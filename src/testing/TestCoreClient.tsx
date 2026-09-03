@@ -135,22 +135,22 @@ import type {
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
   CloudWatchLogEvent,
+  GetTraceQuery,
   InsightsQuery,
   InsightsQueryRow,
+  ListTracesQuery,
   LogSearchQuery,
   LogSource,
   LogTailQuery,
+  TraceRecord,
+  TraceSummary,
 } from "../core/observability/types";
 import type {
   CoreObservabilityClient,
   CoreRuntimeClient,
   DeployedRuntime,
-  GetRuntimeTraceInput,
-  ListRuntimeTracesInput,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
-  TraceRecord,
-  TraceSummary,
 } from "../handlers/runtime/types";
 import type {
   BatchEvaluationDetail,
@@ -2387,17 +2387,24 @@ export class TestObservabilityClient implements CoreObservabilityClient {
   traceSummaries: TraceSummary[] = [];
   traceRecords: TraceRecord[] = [];
 
-  async listRuntimeTraces(
-    input: ListRuntimeTracesInput,
+  async listTraces(
+    source: LogSource,
+    query: ListTracesQuery,
     options: CoreOptions,
+    signal?: AbortSignal,
   ): Promise<TraceSummary[]> {
-    this.calls.push({ method: "listRuntimeTraces", args: [input, options] });
+    this.calls.push({ method: "listTraces", args: [source, query, options, signal] });
     if (this.error) throw this.error;
     return this.traceSummaries;
   }
 
-  async getRuntimeTrace(input: GetRuntimeTraceInput, options: CoreOptions): Promise<TraceRecord[]> {
-    this.calls.push({ method: "getRuntimeTrace", args: [input, options] });
+  async getTrace(
+    source: LogSource,
+    query: GetTraceQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<TraceRecord[]> {
+    this.calls.push({ method: "getTrace", args: [source, query, options, signal] });
     if (this.error) throw this.error;
     return this.traceRecords;
   }

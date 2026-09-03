@@ -6,10 +6,9 @@ import { join, resolve } from "node:path";
 import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/globalConfig";
 import { createRootHandler } from "../../index";
-import type { GetRuntimeTraceInput, ListRuntimeTracesInput } from "../types";
-import { formatTraceTable, formatTraceTimestamp } from "./list";
-import { resolveTraceOutputPath } from "./get/outputPath";
-import type { Project } from "../../project/types";
+import type { GetTraceQuery, ListTracesQuery } from "../../../core/observability/index";
+import { formatTraceTable, formatTraceTimestamp } from "../../observability/traces";
+import { resolveTraceOutputPath } from "./outputPath";
 
 const REGION = "us-west-2";
 const SINCE_MS = 1_709_391_000_000;
@@ -60,13 +59,16 @@ describe("runtime traces list", () => {
 
     expect(core.observability.calls).toHaveLength(1);
     const call = core.observability.calls[0]!;
-    expect(call.method).toBe("listRuntimeTraces");
-    expect(call.args[0] as ListRuntimeTracesInput).toEqual({
-      runtimeId: "my_agent-AbC123XyZ9",
+    expect(call.method).toBe("listTraces");
+    expect(call.args[0]).toEqual({
+      logGroupName: "/aws/bedrock-agentcore/runtimes/my_agent-AbC123XyZ9-DEFAULT",
+    });
+    expect(call.args[1] as ListTracesQuery).toEqual({
       startTimeMs: SINCE_MS,
       endTimeMs: UNTIL_MS,
       limit: 5,
     });
+    expect(call.args[2]).toMatchObject({ region: REGION });
 
     const [header, first, second] = io.stdout().split("\n");
     expect(header).toMatch(/^TRACE ID\s+TIMESTAMP\s+SESSION ID$/);
@@ -80,7 +82,7 @@ describe("runtime traces list", () => {
 
     await route(["runtime", "traces", "list", "--id", "rt-1", "--since", `${SINCE_MS}`]);
 
-    expect((core.observability.calls[0]!.args[0] as ListRuntimeTracesInput).limit).toBe(20);
+    expect((core.observability.calls[0]!.args[1] as ListTracesQuery).limit).toBe(20);
   });
 
   test("--json renders a single JSON document", async () => {
@@ -127,9 +129,11 @@ describe("runtime traces get", () => {
     ]);
 
     const call = core.observability.calls[0]!;
-    expect(call.method).toBe("getRuntimeTrace");
-    expect(call.args[0] as GetRuntimeTraceInput).toMatchObject({
-      runtimeId: "my_agent-AbC123XyZ9",
+    expect(call.method).toBe("getTrace");
+    expect(call.args[0]).toEqual({
+      logGroupName: "/aws/bedrock-agentcore/runtimes/my_agent-AbC123XyZ9-DEFAULT",
+    });
+    expect(call.args[1] as GetTraceQuery).toMatchObject({
       traceId: "abc123def456",
       startTimeMs: SINCE_MS,
     });
@@ -161,6 +165,21 @@ describe("runtime traces get", () => {
     expect(JSON.parse(io.stdout())).toEqual({ filePath: output, recordCount: 2 });
   });
 
+  test("saves and warns when the trace reaches the 10,000-record query limit", async () => {
+    const { core, io, route } = testTracesCommand();
+    core.observability.traceRecords = Array.from({ length: 10_000 }, (_, index) => ({
+      "@message": `record-${index}`,
+    }));
+    const output = join(mkdtempSync(join(tmpdir(), "trace-out-")), "trace.json");
+
+    await route(["runtime", "traces", "get", "abc123", "--id", "rt-1", "--output", output]);
+
+    expect(JSON.parse(await readFile(output, "utf8"))).toHaveLength(10_000);
+    expect(io.stderr()).toContain(
+      "The trace query returned 10,000 records, the maximum; the saved file may be incomplete",
+    );
+  });
+
   test("surfaces core errors (e.g. no trace data) unchanged", async () => {
     const { core, route } = testTracesCommand();
     core.observability.error = new Error("No trace data found for trace ID: abc123");
@@ -172,32 +191,18 @@ describe("runtime traces get", () => {
 });
 
 describe("resolveTraceOutputPath", () => {
-  const project = { name: "Proj", rootPath: "/work/proj", spec: {} } as unknown as Project;
-
-  // Expected paths are built with the same node:path primitives the resolver
-  // uses: what these tests pin down is which branch wins (--output > project
-  // > cwd), not the platform's separator (Windows resolves to drive-letter
-  // backslash paths).
   test("an explicit --output wins, resolved against the cwd", () => {
     expect(
       resolveTraceOutputPath({
         output: "out/trace.json",
-        project,
-        runtimeId: "rt-1",
         traceId: "abc",
         cwd: "/work/elsewhere",
       }),
     ).toBe(resolve("/work/elsewhere", "out/trace.json"));
   });
 
-  test("inside a project the file lands under agentcore/.cli/traces", () => {
-    expect(
-      resolveTraceOutputPath({ project, runtimeId: "my_agent-AbC", traceId: "abc123", cwd: "/x" }),
-    ).toBe(join("/work/proj", "agentcore", ".cli", "traces", "my_agent-AbC-abc123.json"));
-  });
-
-  test("outside a project the file lands in the working directory", () => {
-    expect(resolveTraceOutputPath({ runtimeId: "rt-1", traceId: "abc123", cwd: "/tmp/x" })).toBe(
+  test("the default file lands in the working directory", () => {
+    expect(resolveTraceOutputPath({ traceId: "abc123", cwd: "/tmp/x" })).toBe(
       resolve("/tmp/x", "abc123.json"),
     );
   });

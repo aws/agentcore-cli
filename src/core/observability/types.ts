@@ -32,3 +32,26 @@ export type InsightsQuery = {
 };
 
 export type InsightsQueryRow = Record<string, string>;
+
+export type ListTracesQuery = {
+  startTimeMs: number;
+  endTimeMs: number;
+  limit: number;
+};
+
+export type GetTraceQuery = {
+  traceId: string;
+  startTimeMs: number;
+  endTimeMs: number;
+};
+
+/** One trace aggregated from telemetry records, newest first. */
+export type TraceSummary = {
+  traceId: string;
+  timestamp: string;
+  sessionId?: string;
+  spanCount?: string;
+};
+
+/** One telemetry record belonging to a trace */
+export type TraceRecord = Record<string, unknown>;
