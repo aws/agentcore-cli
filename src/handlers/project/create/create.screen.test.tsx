@@ -99,7 +99,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     // Success: next steps point at the new directory and deploy.
-    await waitForText(r.lastFrame, "✓ Project created in ./DemoApp", 5000);
+    await waitForText(r.lastFrame, "✔ project created in ./DemoApp", 5000);
     expect(r.lastFrame()).toContain("cd DemoApp");
     expect(r.lastFrame()).toContain("agentcore project deploy");
 
@@ -144,7 +144,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
-    await waitForText(r.lastFrame, "✓ Project created in ./TunedApp", 5000);
+    await waitForText(r.lastFrame, "✔ project created in ./TunedApp", 5000);
 
     expect(inputs[0]).toEqual({
       name: "TunedApp",
@@ -192,7 +192,7 @@ describe("project create wizard", () => {
     expect(review).toContain("api key arn");
     expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
     await r.press("return");
-    await waitForText(r.lastFrame, "✓ Project created in ./OpenAIApp", 5000);
+    await waitForText(r.lastFrame, "✔ project created in ./OpenAIApp", 5000);
 
     expect(inputs[0]).toEqual({
       name: "OpenAIApp",
@@ -309,7 +309,7 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("agent-python-strands");
     expect(r.lastFrame()).toContain("long and short-term");
     await r.press("return");
-    await waitForText(r.lastFrame, "✓ Project created in ./StrandsApp", 5000);
+    await waitForText(r.lastFrame, "✔ project created in ./StrandsApp", 5000);
 
     // Identical to the flag-driven `--template agent-python-strands` input.
     expect(inputs).toEqual([
@@ -351,7 +351,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
-    await waitForText(r.lastFrame, "✓ Project created in ./BareStrands", 5000);
+    await waitForText(r.lastFrame, "✔ project created in ./BareStrands", 5000);
 
     expect(inputs[0]).toEqual({
       name: "BareStrands",
@@ -385,7 +385,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).not.toContain("memory");
     await r.press("return");
-    await waitForText(r.lastFrame, "✓ Project created in ./HelloApp", 5000);
+    await waitForText(r.lastFrame, "✔ project created in ./HelloApp", 5000);
 
     expect(inputs[0]).toEqual({
       name: "HelloApp",
@@ -499,13 +499,13 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "Creating DemoApp…");
+    await waitForText(r.lastFrame, "creating DemoApp…");
     releaseFirstStep();
 
     // The running step is the spinner row itself, as on the command line; the
-    // generic "Creating…" spinner shows only until the first step arrives.
+    // generic "creating…" spinner shows only until the first step arrives.
     await waitForText(r.lastFrame, "syncing dependencies");
-    expect(r.lastFrame()).not.toContain("Creating DemoApp…");
+    expect(r.lastFrame()).not.toContain("creating DemoApp…");
     expect(r.lastFrame()).not.toContain("✓ syncing dependencies");
 
     r.unmount();
