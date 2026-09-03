@@ -64,7 +64,7 @@ export class InteractiveTerminal {
     this.stopCurrent = close;
 
     const onData = (chunk: Buffer | string) => {
-      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "binary");
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
       enqueue(() => peer.send(bytes));
     };
     const resize = () => {

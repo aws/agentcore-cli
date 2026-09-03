@@ -138,6 +138,21 @@ describe("InteractiveTerminal", () => {
     expect(s.resizeRemoved()).toBe(1);
   });
 
+  test("encodes string input as UTF-8", async () => {
+    const s = subject();
+    const peer = new FakePeer();
+    s.stdin.setEncoding("utf8");
+    const running = s.terminal.run(peer);
+    await Bun.sleep(0);
+
+    s.stdin.write("café 🙂");
+    await Bun.sleep(0);
+    peer.frames.end();
+
+    await running;
+    expect(peer.sent).toEqual([new TextEncoder().encode("café 🙂")]);
+  });
+
   test("sends initial and subsequent terminal dimensions", async () => {
     const s = subject();
     const peer = new FakePeer();
