@@ -96,6 +96,18 @@ async function runCreate(
   }
 }
 
+async function runAdd(
+  subject: FsProjectManager,
+  project: Project,
+  input: AddResourceInput,
+): Promise<Project> {
+  const iterator = subject.addResource(project, input);
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) return next.value;
+  }
+}
+
 async function projectManifest(projectRoot: string): Promise<string[]> {
   return (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
     .filter((entry) => entry.isFile())
@@ -451,6 +463,58 @@ describe("FsProjectManager.create", () => {
       }),
     ).rejects.toBeInstanceOf(ProjectStateError);
   });
+});
+
+describe("FsProjectManager.addResource", () => {
+  test.each([
+    ["Python", AGENT_PYTHON, "uv"],
+    ["TypeScript", AGENT_TYPESCRIPT_STRANDS, "npm"],
+  ] as const)(
+    "fails before scaffolding a %s runtime when its installer is missing",
+    async (_language, template, tool) => {
+      await inTempDirectory();
+      const checkedTools: string[] = [];
+      const commands: string[][] = [];
+      let missingTool: string | undefined;
+      const subject = new FsProjectManager({
+        logger: createSilentLogger(),
+        identity: new TestIdentityClient(),
+        runner: async (command) => {
+          commands.push(command);
+        },
+        checkTool: async (candidate) => {
+          checkedTools.push(candidate);
+          if (candidate === missingTool) throw new Error(`${candidate} is missing`);
+        },
+      });
+      const { project } = await runCreate(subject, {
+        name: "example",
+        scaffoldRuntimeInput: AGENT_PYTHON,
+        skipInstall: true,
+        skipGit: true,
+      });
+      const runtimeName = `added_${tool}`;
+      const runtimePath = join(project.rootPath, "app", runtimeName);
+      const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+      const specBefore = await Bun.file(specPath).text();
+      missingTool = tool;
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: runtimeName,
+            scaffoldRuntimeInput: { ...template, runtimeName },
+          },
+        }),
+      ).rejects.toThrow(`${tool} is missing`);
+
+      expect(checkedTools).toEqual([tool]);
+      expect(commands).toEqual([]);
+      expect(existsSync(runtimePath)).toBe(false);
+      expect(await Bun.file(specPath).text()).toBe(specBefore);
+    },
+  );
 });
 
 describe("FsProjectManager.build", () => {
@@ -898,18 +962,6 @@ describe("FsProjectManager.resolve", () => {
 });
 
 describe("FsProjectManager removal", () => {
-  async function runAdd(
-    subject: FsProjectManager,
-    project: Project,
-    input: AddResourceInput,
-  ): Promise<Project> {
-    const iterator = subject.addResource(project, input);
-    while (true) {
-      const next = await iterator.next();
-      if (next.done) return next.value;
-    }
-  }
-
   async function createdProject(): Promise<{ subject: FsProjectManager; project: Project }> {
     await inTempDirectory();
     const subject = manager().manager;

@@ -320,6 +320,10 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    if (input.resourceType === "runtime") {
+      await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
+    }
+
     const scaffoldedPaths: string[] = [];
     let envFile: EnvLocalFile | undefined;
 
@@ -1093,20 +1097,27 @@ export class FsProjectManager implements ProjectManager {
     }
   }
 
+  private async checkRuntimeDependency(
+    input: RuntimeResourceConfig["scaffoldRuntimeInput"],
+  ): Promise<void> {
+    if (input.language === "Python") {
+      await this.checkTool("uv", UV_INSTALL_HINT);
+    } else {
+      await this.checkTool("npm", NODE_INSTALL_HINT);
+    }
+  }
+
   /**
    * Installs dependencies for a scaffolded runtime directory (e.g. `uv sync`
    * for Python). No-ops if the runtime has no recognized dependency manifest.
    */
   private async *installRuntimeDependencies(appDir: string): AsyncGenerator<ProjectEvent, void> {
     if (existsSync(join(appDir, "pyproject.toml"))) {
-      await this.checkTool(
-        "uv",
-        "Install uv: https://docs.astral.sh/uv/getting-started/installation/",
-      );
+      await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "Syncing Python dependencies with uv" };
       yield* this.run(["uv", "sync"], appDir);
     } else if (existsSync(join(appDir, "package.json"))) {
-      await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+      await this.checkTool("npm", NODE_INSTALL_HINT);
       yield { type: "step", message: "Installing Node dependencies with npm" };
       yield* this.run(NPM_INSTALL, appDir, npmProgressLine);
     }
