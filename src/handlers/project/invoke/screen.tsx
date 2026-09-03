@@ -10,8 +10,8 @@ import { HarnessChat } from "../../harness/invoke/screen";
 import { RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import type { ResolvedDeployedResources } from "../types";
-import { useProject } from "../ProjectGate";
+import type { Project, ResolvedDeployedResources } from "../types";
+import { ProjectGate } from "../ProjectGate";
 
 type ProjectInvokableRow = Record<string, unknown> & {
   resourceType: "runtime" | "harness";
@@ -33,18 +33,40 @@ type Destination =
   | { resourceType: "runtime"; id: string; ctx: Context; qualifier?: string }
   | { resourceType: "harness"; id: string; ctx: Context };
 
+const BREADCRUMB = ["agentcore", "project", "invoke"];
+const PROJECT_MENU = "/agentcore/project";
+
+// The project comes from the launch context when a project command opened the
+// TUI, and is resolved from the cwd otherwise — the gate reports the CLI's own
+// not-found guidance when there is none, rather than spinning forever.
 export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
-  // The project comes from the launch context when a project command opened
-  // the TUI, and is resolved from the cwd otherwise.
-  const { data: project, error: projectError } = useProject(core, ctx.value(ProjectKey));
+  return (
+    <ProjectGate
+      core={core}
+      breadcrumb={BREADCRUMB}
+      description="invoke a Runtime or Harness from the current project"
+      seed={ctx.value(ProjectKey)}
+      onBack={() => navigate(PROJECT_MENU)}
+    >
+      {(project) => <ProjectInvokePicker ctx={ctx} core={core} project={project} />}
+    </ProjectGate>
+  );
+}
+
+function ProjectInvokePicker({
+  ctx,
+  core,
+  project,
+}: ScreenProps & {
+  project: Project;
+}) {
+  const navigate = useNavigate();
   const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
   const [destination, setDestination] = useState<Destination>();
-  const [deployedError, setDeployedError] = useState<string>();
-  const error = projectError?.message ?? deployedError;
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (!project) return;
     let active = true;
     void core.projectManager
       .resolveDeployedResources(project, { target: "default" })
@@ -52,7 +74,7 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
         if (active) setDeployed(resolved);
       })
       .catch((cause: unknown) => {
-        if (active) setDeployedError(cause instanceof Error ? cause.message : String(cause));
+        if (active) setError(cause instanceof Error ? cause.message : String(cause));
       });
     return () => {
       active = false;
@@ -63,7 +85,7 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
     () =>
       (deployed?.resources ?? []).map((resource) => {
         if (resource.resourceType === "runtime") {
-          const configured = project?.spec.runtimes.find(({ name }) => name === resource.name);
+          const configured = project.spec.runtimes.find(({ name }) => name === resource.name);
           return {
             ...resource,
             type: "Runtime" as const,
@@ -71,7 +93,7 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
             source: configured?.codeLocation ?? "-",
           };
         }
-        const configured = project?.spec.harnesses.find(({ name }) => name === resource.name);
+        const configured = project.spec.harnesses.find(({ name }) => name === resource.name);
         return {
           ...resource,
           type: "Harness" as const,
@@ -91,9 +113,9 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
     });
   };
 
-  const goBack = () => navigate("/agentcore/project");
+  const goBack = () => navigate(PROJECT_MENU);
   useInput((_input, key) => {
-    if (key.escape && (!project || !deployed || error !== undefined)) goBack();
+    if (key.escape && (!deployed || error !== undefined)) goBack();
   });
 
   if (destination?.resourceType === "runtime") {
@@ -133,39 +155,39 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
     );
   }
 
-  if (!project || (!deployed && !error)) {
+  if (error !== undefined) {
     return (
       <Layout
-        breadcrumb={["agentcore", "project", "invoke"]}
-        description={project ? "resolving deployed resources" : "resolving the current project"}
-        keyHints={[
-          { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
-        ]}
-      >
-        <Spinner label={project ? "Resolving deployed resources…" : "Resolving project…"} />
-      </Layout>
-    );
-  }
-
-  if (error) {
-    return (
-      <Layout
-        breadcrumb={["agentcore", "project", "invoke"]}
+        breadcrumb={BREADCRUMB}
         description="unable to load deployed resources"
         keyHints={[
           { key: "esc", label: "back" },
           { key: "ctl+c", label: "quit" },
         ]}
       >
-        <Text color="red">{error}</Text>
+        <Text color="red">✗ {error}</Text>
+      </Layout>
+    );
+  }
+
+  if (!deployed) {
+    return (
+      <Layout
+        breadcrumb={BREADCRUMB}
+        description="resolving deployed resources"
+        keyHints={[
+          { key: "esc", label: "back" },
+          { key: "ctl+c", label: "quit" },
+        ]}
+      >
+        <Spinner label="Resolving deployed resources…" />
       </Layout>
     );
   }
 
   return (
     <Layout
-      breadcrumb={["agentcore", "project", "invoke"]}
+      breadcrumb={BREADCRUMB}
       description="choose a project resource to invoke on target default"
       keyHints={[
         { key: "↑↓/jk", label: "navigate" },

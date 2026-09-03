@@ -4,12 +4,31 @@ import type {
   GetAgentRuntimeResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
-import { cleanupScreens, renderScreen, TestCoreClient, waitForText } from "../../../testing";
+import {
+  cleanupScreens,
+  flatFrame,
+  renderScreen,
+  TestCoreClient,
+  waitForFlatText,
+  waitForText,
+} from "../../../testing";
 import type { Project, ResolvedDeployedResource } from "../types";
 
+const originalCwd = process.cwd();
+const tempDirectories: string[] = [];
+
 afterEach(cleanupScreens);
+afterEach(async () => {
+  process.chdir(originalCwd);
+  await Promise.all(
+    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
 
 const project: Project = {
   name: "orders",
@@ -110,6 +129,22 @@ describe("project invoke picker", () => {
 
     await waitForText(screen.lastFrame, "No deployment targets are configured");
     expect(screen.lastFrame()).not.toContain("checkout");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "manage an AgentCore project");
+  });
+
+  test("reports the CLI's own guidance outside a project", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-no-project-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const screen = renderScreen("/agentcore/project/invoke", { core: core() });
+
+    await waitForFlatText(screen.lastFrame, "No AgentCore project found");
+    const frame = flatFrame(screen.lastFrame);
+    expect(frame).toContain(directory);
+    expect(frame).toContain("agentcore project create");
+    expect(frame).not.toContain("Resolving project");
+    // esc is a way off the error, not just ctl+c.
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
   });
