@@ -59,9 +59,10 @@ function DeployTarget({
   const targets = useQuery({
     queryKey: ["project-targets", project.rootPath],
     queryFn: () => core.projectManager.listTargets(project),
+    gcTime: 0,
   });
 
-  if (targets.data === undefined) {
+  if (targets.data === undefined || targets.isFetching || targets.isError) {
     return (
       <LoadingFrame
         breadcrumb={BREADCRUMB}
@@ -147,10 +148,7 @@ function DeployConfirm({
     <ConfirmAction
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
-      rows={[
-        { label: "project", value: project.name },
-        { label: "target", value: targetName },
-      ]}
+      rows={{ project: project.name, target: targetName }}
       trigger={
         teardown
           ? { kind: "confirm", message: teardownQuestion(project.name, target) }
@@ -167,7 +165,7 @@ function DeployConfirm({
         // The title follows the result, not the preflight heuristic, which
         // synthesis can disagree with. Outputs are not listed: the command
         // prints them only with --json.
-        return { title: deployedMessage(project, targetName, result), rows: [] };
+        return { title: deployedMessage(project, targetName, result), rows: {} };
       }}
       successTitle="Deploy finished"
       runningLabel="deploying…"

@@ -40,7 +40,7 @@ function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["
       error={null}
       action={async function* () {
         yield* core.projectManager.build(project);
-        return [];
+        return { rows: {} };
       }}
       successTitle={builtMessage(project)}
       runningLabel="building…"

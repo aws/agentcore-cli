@@ -11,12 +11,12 @@ import { driveProgress, type ProgressEvent } from "../tui/progress";
 
 const theme = darkTheme;
 
-export interface SummaryRow {
-  label: string;
-  value: string;
-}
+export type SummaryRows = Record<string, string>;
 
-export type ActionResult = SummaryRow[] | { title: string; rows: SummaryRow[] };
+export interface ActionResult {
+  title?: string;
+  rows: SummaryRows;
+}
 
 // ActionTrigger says what starts the action: a y/N question the user answers
 // (destructive actions default to No), or nothing — it runs as soon as the
@@ -32,7 +32,7 @@ export interface ConfirmActionProps {
   title?: string;
   // rows describe the resource the action applies to. With neither title nor
   // rows the overlay is omitted.
-  rows?: SummaryRow[];
+  rows?: SummaryRows;
   trigger: ActionTrigger;
   // isPending / error reflect the summary fetch backing the overlay.
   isPending: boolean;
@@ -59,14 +59,14 @@ export interface ConfirmActionProps {
   onCancel?: () => void;
 }
 
-// "confirm" waits on the question; "idle" waits on the summary for an immediate
-// trigger. Neither survives the first run.
+// "waiting" snapshots the trigger once the summary is ready. A confirmation's
+// message then stays fixed through retries, even if a caller's props change.
 type Phase =
-  | { kind: "confirm" }
-  | { kind: "idle" }
+  | { kind: "waiting" }
+  | { kind: "confirm"; message: string }
   | { kind: "running" }
-  | { kind: "success"; title: string; rows: SummaryRow[] }
-  | { kind: "error"; message: string };
+  | { kind: "success"; title: string; rows: SummaryRows }
+  | { kind: "error"; message: string; retryMessage?: string };
 
 // ConfirmAction is the shared destructive-action screen body: a summary overlay
 // of the target resource, a y/N confirmation (defaulting to No), a spinner
@@ -75,7 +75,7 @@ export function ConfirmAction({
   breadcrumb,
   description,
   title,
-  rows = [],
+  rows = {},
   trigger,
   isPending,
   error,
@@ -89,14 +89,12 @@ export function ConfirmAction({
 }: ConfirmActionProps) {
   const navigate = useNavigate();
   const cancel = onCancel ?? (() => navigate(-1));
-  const [phase, setPhase] = useState<Phase>({
-    kind: trigger.kind === "confirm" ? "confirm" : "idle",
-  });
+  const [phase, setPhase] = useState<Phase>({ kind: "waiting" });
   // tasks is the step list a progress-reporting action builds up; it stays on
   // screen through success and error.
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  const run = async () => {
+  const run = async (retryMessage?: string) => {
     setPhase({ kind: "running" });
     setTasks([]);
     try {
@@ -104,20 +102,25 @@ export function ConfirmAction({
       const outcome = isProgressGenerator(result)
         ? await driveProgress(result, setTasks)
         : await result;
-      const { title, rows } = Array.isArray(outcome)
-        ? { title: successTitle, rows: outcome }
-        : outcome;
-      setPhase({ kind: "success", title, rows });
+      setPhase({ kind: "success", title: outcome.title ?? successTitle, rows: outcome.rows });
     } catch (err) {
-      setPhase({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+      setPhase({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+        retryMessage,
+      });
     }
   };
 
-  // An immediate trigger runs once the summary is ready.
+  // Resolve the latest trigger only after the summary is ready. This prevents a
+  // destructive action from inheriting an earlier immediate trigger while its
+  // data was still loading.
   useEffect(() => {
-    if (phase.kind === "idle" && !isPending && !error) void run();
+    if (phase.kind !== "waiting" || isPending || error) return;
+    if (trigger.kind === "confirm") setPhase({ kind: "confirm", message: trigger.message });
+    else void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the phase guard makes this run once
-  }, [phase.kind, isPending, error]);
+  }, [phase.kind, isPending, error, trigger.kind]);
 
   const hints =
     phase.kind === "confirm"
@@ -145,7 +148,7 @@ export function ConfirmAction({
         <ErrorBody message={error.message} onBack={cancel} />
       ) : (
         <Box flexDirection="column" paddingX={1}>
-          {(title !== undefined || rows.length > 0) && (
+          {(title !== undefined || Object.keys(rows).length > 0) && (
             <Box
               flexDirection="column"
               borderStyle="round"
@@ -154,15 +157,15 @@ export function ConfirmAction({
               marginBottom={1}
             >
               {title !== undefined && <Text bold>{title}</Text>}
-              {rows.length > 0 && <KeyValueTable items={toItems(rows)} />}
+              {Object.keys(rows).length > 0 && <KeyValueTable items={rows} />}
             </Box>
           )}
 
-          {phase.kind === "confirm" && trigger.kind === "confirm" && (
+          {phase.kind === "confirm" && (
             <Confirm
-              message={trigger.message}
+              message={phase.message}
               defaultValue={false}
-              onConfirm={run}
+              onConfirm={() => run(phase.message)}
               onCancel={cancel}
             />
           )}
@@ -185,7 +188,11 @@ export function ConfirmAction({
             // Without a question to return to, returning would run again.
             <ErrorBody
               message={phase.message}
-              onBack={trigger.kind === "confirm" ? () => setPhase({ kind: "confirm" }) : cancel}
+              onBack={
+                phase.retryMessage !== undefined
+                  ? () => setPhase({ kind: "confirm", message: phase.retryMessage! })
+                  : cancel
+              }
             />
           )}
         </Box>
@@ -204,10 +211,6 @@ function isProgressGenerator(
   );
 }
 
-function toItems(rows: SummaryRow[]): Record<string, string> {
-  return Object.fromEntries(rows.map((row) => [row.label, row.value]));
-}
-
 function SuccessBody({
   title,
   rows,
@@ -216,7 +219,7 @@ function SuccessBody({
   doneLabel,
 }: {
   title: string;
-  rows: SummaryRow[];
+  rows: SummaryRows;
   nextSteps?: string[];
   onDone: () => void;
   doneLabel: string;
@@ -230,9 +233,9 @@ function SuccessBody({
       <Text color={theme.colors.success} bold>
         ✔ {title}
       </Text>
-      {rows.length > 0 && (
+      {Object.keys(rows).length > 0 && (
         <Box flexDirection="column" marginTop={1} marginLeft={2}>
-          <KeyValueTable items={toItems(rows)} />
+          <KeyValueTable items={rows} />
         </Box>
       )}
       {nextSteps !== undefined && nextSteps.length > 0 && (

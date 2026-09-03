@@ -873,7 +873,7 @@ export class FsProjectManager implements ProjectManager {
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     const fileExists = existsSync(targetsPath);
-    const targets = fileExists ? await this.json.read(targetsPath, AwsDeploymentTargetsSchema) : [];
+    const targets = await this.listTargets(project);
 
     let target = targets.find((candidate) => candidate.name === input.target);
 

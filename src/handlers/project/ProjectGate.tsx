@@ -24,6 +24,7 @@ export function useProject(core: Core, seed?: Project): UseQueryResult<Project> 
       if (!project) throw new ProjectStateError(projectNotFoundMessage(from));
       return project;
     },
+    gcTime: 0,
     // A seeded project is authoritative — it is what the launching command ran
     // against — so it is never refetched from the cwd.
     ...(seed && { initialData: seed, staleTime: Infinity }),

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { QueryClient } from "@tanstack/react-query";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -224,7 +225,8 @@ describe("project deploy screen", () => {
 
     await r.write("r");
     await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
-    expect(attempts).toBe(2);
+    // Loading retries once, then deploy itself re-reads through listTargets.
+    expect(attempts).toBe(3);
     r.unmount();
   });
 
@@ -258,6 +260,62 @@ describe("project deploy screen", () => {
     await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'staging'");
     expect(flatFrame(r.lastFrame)).toContain("target staging");
     expect(deploys[0]!.input.target).toEqual(STAGING);
+    r.unmount();
+  });
+
+  test("revisiting reads targets afresh before starting another deploy", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: Infinity, staleTime: 0 },
+      },
+    });
+    const r = renderScreen("/agentcore/project/deploy", { core, queryClient });
+
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    expect(deploys).toHaveLength(1);
+    await r.press("return");
+    await waitForText(r.lastFrame, "manage an AgentCore project");
+
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }, STAGING]),
+    );
+    await r.write("deploy");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a deployment target");
+    expect(deploys).toHaveLength(1);
+    r.unmount();
+  });
+
+  test("revisiting resolves the project afresh before deciding whether to confirm teardown", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: Infinity, staleTime: 0 },
+      },
+    });
+    const r = renderScreen("/agentcore/project/deploy", { core, queryClient });
+
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    expect(deploys).toHaveLength(1);
+    await r.press("return");
+    await waitForText(r.lastFrame, "manage an AgentCore project");
+
+    await writeFile(
+      join(projectRoot, "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 1 }),
+    );
+    await r.write("deploy");
+    await r.press("return");
+
+    await waitForFlatText(r.lastFrame, "declares no resources to deploy");
+    expect(deploys).toHaveLength(1);
     r.unmount();
   });
 
