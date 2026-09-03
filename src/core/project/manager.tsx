@@ -320,10 +320,6 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
-    if (input.resourceType === "runtime") {
-      await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
-    }
-
     const scaffoldedPaths: string[] = [];
     let envFile: EnvLocalFile | undefined;
 
@@ -340,6 +336,7 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
+        await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
         yield { type: "step", message: "Scaffolding runtime in project" };
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
         scaffoldedPaths.push(outputPath);
