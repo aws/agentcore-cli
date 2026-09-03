@@ -10,11 +10,8 @@ const BREADCRUMB = ["agentcore", "project", "build"];
 const DESCRIPTION = "build the project's deployable artifacts";
 const PROJECT_MENU = "/agentcore/project";
 
-// BuildProjectScreen is `agentcore project build` from the menu. It runs the
-// same projectManager.build generator the command runs, and ConfirmAction
-// renders its steps through the same TaskList runWithProgress renders on the
-// command line — the TUI is a frame around the CLI's own progress, not a
-// second progress UI. Once done, enter returns to the project menu.
+// BuildProjectScreen runs the same projectManager.build generator the command
+// runs; ConfirmAction renders its steps through the same TaskList.
 export function BuildProjectScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   return (
@@ -33,8 +30,7 @@ export function BuildProjectScreen({ ctx, core }: ScreenProps) {
 function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["core"] }) {
   const navigate = useNavigate();
 
-  // No confirmation: a build changes nothing outside the project directory,
-  // so it starts as soon as the screen opens, as the command does.
+  // No confirmation: a build changes nothing outside the project directory.
   return (
     <ConfirmAction
       breadcrumb={BREADCRUMB}

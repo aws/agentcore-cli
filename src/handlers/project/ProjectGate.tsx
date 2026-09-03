@@ -14,12 +14,10 @@ export interface UseProjectResult {
   error?: string;
 }
 
-// useProject resolves the project enclosing the working directory for a TUI
-// screen. Screens need their own resolution because withProject wraps `handle`
-// only: middleware runs when a command executes, and navigating between TUI
-// screens never executes one, so ProjectKey is set only when the launching
-// command happened to be a project command. When it was, pass it as `seed` and
-// no resolution happens. The not-found guidance is withProject's own.
+// useProject resolves the project enclosing the cwd for a TUI screen. Screens
+// resolve it themselves because withProject wraps `handle` only, and navigating
+// between screens never executes a command — ProjectKey is set only when the
+// launching command was a project command, in which case pass it as `seed`.
 export function useProject(core: Core, seed?: Project): UseProjectResult {
   const [project, setProject] = useState<Project | undefined>(seed);
   const [error, setError] = useState<string>();
@@ -56,8 +54,7 @@ export interface ProjectGateProps {
   // seed is the project already pinned on the launch context, when the command
   // that opened the TUI was itself a project command.
   seed?: Project;
-  // onBack runs on esc when resolution fails, so the user is not left with quit
-  // as the only way off the error.
+  // onBack runs on esc when resolution fails.
   onBack: () => void;
   // children receives the resolved project and returns the screen. It must
   // return an element rather than call hooks itself — the gate renders a

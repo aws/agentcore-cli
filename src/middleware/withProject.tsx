@@ -15,10 +15,7 @@ interface WithProjectConfig {
  *
  * @param config - Contains the {@link ProjectManager} and an optional `cwd` to search from.
  */
-/**
- * The guidance printed when no project encloses `from`. Exported so TUI screens
- * that resolve the project themselves (see useProject) say the same thing.
- */
+/** The guidance printed when no project encloses `from`; TUI screens reuse it. */
 export function projectNotFoundMessage(from: string): string {
   return (
     `No AgentCore project found at ${from} or any parent directory ` +

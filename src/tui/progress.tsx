@@ -27,8 +27,6 @@ const DEFAULT_TAIL_LINES = 5;
 /**
  * Folds one progress event into a task list: a `step` completes the running
  * task and starts a new one; an `output` line joins the running task's tail.
- * Pure, so every renderer of progress — the inline TaskList below, a TUI
- * screen's running phase — reads events the same way and shows the same steps.
  */
 export function applyProgressEvent(
   tasks: readonly Task[],
@@ -64,10 +62,8 @@ export function settleProgress(tasks: readonly Task[], state: "done" | "failed")
 
 /**
  * Drains a progress generator, reporting the task list after every change, and
- * resolves with the generator's return value. On failure the running task is
- * marked failed and the error rethrown unchanged. This is the one place a
- * generator becomes tasks; every renderer — the inline TaskList below, a TUI
- * screen — supplies only how to draw them.
+ * resolves with its return value. On failure the running task is marked failed
+ * and the error rethrown unchanged. Renderers supply only how to draw the tasks.
  */
 export async function driveProgress<T>(
   generator: AsyncGenerator<ProgressEvent, T>,
@@ -136,8 +132,8 @@ export async function runWithProgress<T>(
     patchConsole: false,
   });
 
-  // On failure the failed step keeps its tail: the last frame stays in
-  // scrollback above the error message runWithExitCode prints after the rethrow.
+  // A failed step keeps its tail: the last frame stays in scrollback above the
+  // error runWithExitCode prints after the rethrow.
   try {
     return await driveProgress(
       generator,

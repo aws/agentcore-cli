@@ -21,45 +21,38 @@ export type ActionResult = SummaryRow[] | { title: string; rows: SummaryRow[] };
 export interface ConfirmActionProps {
   // breadcrumb labels the screen.
   breadcrumb: string[];
-  // description is shown dimmed after the breadcrumb, e.g. the command's own
-  // description so the header matches `--help`.
+  // description is shown dimmed after the breadcrumb.
   description?: string;
   // title heads the summary overlay (usually the resource name).
   title?: string;
   // rows describe the resource the action applies to. With neither title nor
-  // rows the overlay is omitted, for an action whose breadcrumb says it all.
+  // rows the overlay is omitted.
   rows?: SummaryRow[];
   // message is the yes/no question (destructive actions default to No). Omit it
-  // to skip the confirmation and run the action as soon as the summary loads —
-  // for an operation that is safe to start without asking, like a build.
+  // to skip the confirmation and run as soon as the summary loads.
   message?: string;
   // isPending / error reflect the summary fetch backing the overlay.
   isPending: boolean;
   error: Error | null;
-  // action performs the confirmed operation and resolves to what the success
-  // panel shows: result rows, optionally under a title that replaces
-  // successTitle — for an outcome only known once the action has run. A
-  // long-running operation may instead return a progress generator — the same
-  // AsyncGenerator<ProgressEvent> runWithProgress drives for the headless
-  // command — and its steps render as a live task list while it runs, exactly
-  // as they do on the command line.
+  // action performs the confirmed operation and resolves to the result rows,
+  // optionally with a title overriding successTitle for an outcome only known
+  // afterwards. A progress generator (what runWithProgress drives) may be
+  // returned instead; its steps render as a live TaskList while it runs.
   action: () => Promise<ActionResult> | AsyncGenerator<ProgressEvent, ActionResult>;
   // successTitle heads the success panel (e.g. "Harness deleted") unless the
   // action's result carries its own.
   successTitle: string;
-  // runningLabel is the spinner label while the action runs, shown until the
-  // action's first progress step arrives (or throughout, for a plain promise).
+  // runningLabel is the spinner label while the action runs, until its first
+  // progress step arrives.
   runningLabel: string;
-  // nextSteps are commands suggested under the success panel, as the create
-  // wizard suggests `agentcore project deploy`.
+  // nextSteps are commands suggested under the success panel.
   nextSteps?: string[];
   // onDone is called when the user acknowledges the success panel; doneLabel
-  // says where that leads ("continue" by default, "go back" for a screen that
-  // returns to a menu).
+  // is the footer's word for it ("continue" by default).
   onDone: () => void;
   doneLabel?: string;
   // onCancel runs when the confirmation is declined or esc is pressed; defaults
-  // to popping the router history, which suits a screen reached from a picker.
+  // to popping the router history.
   onCancel?: () => void;
 }
 
@@ -92,9 +85,8 @@ export function ConfirmAction({
   const cancel = onCancel ?? (() => navigate(-1));
   const [phase, setPhase] = useState<Phase>({ kind: "confirm" });
   const confirms = message !== undefined;
-  // tasks is the step list a progress-reporting action builds up. It stays on
-  // screen through success and error, as the headless command leaves its
-  // completed steps in scrollback above the final line.
+  // tasks is the step list a progress-reporting action builds up; it stays on
+  // screen through success and error.
   const [tasks, setTasks] = useState<Task[]>([]);
 
   const run = async () => {
@@ -114,11 +106,10 @@ export function ConfirmAction({
     }
   };
 
-  // Without a question there is nothing to wait for: run once the summary is
-  // ready. Keyed on isPending/error so it fires exactly once, when they settle.
+  // Without a question, run once the summary is ready.
   useEffect(() => {
     if (!confirms && !isPending && !error && phase.kind === "confirm") void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run is recreated each render; the phase guard makes this idempotent
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the phase guard makes this run once
   }, [confirms, isPending, error, phase.kind]);
 
   const hints =
@@ -179,8 +170,7 @@ export function ConfirmAction({
             />
           )}
           {phase.kind === "error" && (
-            // With a confirmation, esc returns to the question to try again;
-            // without one, returning would run again, so it leaves instead.
+            // Without a confirmation, returning to it would run again.
             <ErrorBody
               message={phase.message}
               onBack={confirms ? () => setPhase({ kind: "confirm" }) : cancel}
@@ -202,8 +192,6 @@ function isProgressGenerator(
   );
 }
 
-// KeyValueTable takes a record; rows are kept as a list here so callers can
-// order them.
 function toItems(rows: SummaryRow[]): Record<string, string> {
   return Object.fromEntries(rows.map((row) => [row.label, row.value]));
 }

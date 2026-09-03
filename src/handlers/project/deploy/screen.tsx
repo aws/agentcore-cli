@@ -18,11 +18,9 @@ const BREADCRUMB = ["agentcore", "project", "deploy"];
 const DESCRIPTION = "deploy the project to AWS";
 const PROJECT_MENU = "/agentcore/project";
 
-// DeployProjectScreen is `agentcore project deploy` from the menu. It runs the
-// same projectManager.deploy generator the command runs, and ConfirmAction
-// renders its steps through the same TaskList runWithProgress renders on the
-// command line. With one target (or none yet) it deploys there; with several,
-// it asks which — the TUI's stand-in for --target.
+// DeployProjectScreen runs the same projectManager.deploy generator the command
+// runs; ConfirmAction renders its steps through the same TaskList. With several
+// targets it asks which first — the TUI's stand-in for --target.
 export function DeployProjectScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   return (
@@ -58,9 +56,8 @@ function DeployTarget({
   const navigate = useNavigate();
   const [chosen, setChosen] = useState<string>();
 
-  // The declared targets decide whether there is anything to choose. A fresh
-  // project has no aws-targets.json yet: the list is empty, and deploy
-  // provisions `default` on first run, as the command does.
+  // A fresh project has no aws-targets.json yet: the list is empty and deploy
+  // provisions `default` on first run.
   const targets = useQuery({
     queryKey: ["project-targets", project.rootPath],
     queryFn: () => core.projectManager.listTargets(project),
@@ -148,12 +145,10 @@ function DeployConfirm({
   const navigate = useNavigate();
   const region = ctx.require(RegionKey);
 
-  // A deploy is confirmed only when it would tear the stack down — the same
-  // rule as the command, which asks its readline question in exactly that case
-  // and otherwise just deploys. Once the progress UI is up nothing may block on
-  // input, so the answer here is the pre-answered decision the backend
-  // consults; when the backend's own count disagrees with this preflight, it
-  // reports the "re-run with --yes" error as it does for a non-interactive run.
+  // Confirmed only when the deploy would tear the stack down, the one case the
+  // command asks. Nothing may block on input once the progress UI is up, so the
+  // answer is the pre-answered decision the backend consults; if its own count
+  // disagrees with this preflight it reports the "re-run with --yes" error.
   const teardown = target !== undefined && declaresNothingDeployable(project);
 
   return (
@@ -173,10 +168,9 @@ function DeployConfirm({
           region,
           confirmTeardown: async () => teardown,
         });
-        // The outcome comes from the result, as the command's own line does:
-        // the preflight heuristic above only decides what to ask, and the
-        // backend's post-synth count can disagree with it. Stack outputs are
-        // not listed — the command prints them only with --json.
+        // The title follows the result, not the preflight heuristic, which
+        // synthesis can disagree with. Outputs are not listed: the command
+        // prints them only with --json.
         return { title: deployedMessage(project, targetName, result), rows: [] };
       }}
       successTitle="Deploy finished"

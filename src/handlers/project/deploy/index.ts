@@ -28,8 +28,7 @@ export function deployedMessage(
 
 /**
  * The teardown question both entry points ask. Asked before synthesis, so the
- * exact stack name is not known yet; the target coordinates identify what would
- * be deleted.
+ * target coordinates stand in for the stack name.
  */
 export function teardownQuestion(
   projectName: string,
