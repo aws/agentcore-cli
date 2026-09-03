@@ -11,14 +11,12 @@ const REQUEST: RuntimeShellRequest = {
   runtimeArn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/checkout-AbCdEf1234",
   qualifier: "prod",
   runtimeSessionId: "session-012345678901234567890123456789",
-  shellId: "shell-1",
 };
 
 function sdkSession(
   frames: { channel: ShellChannel; payload: Uint8Array }[] = [],
 ): RuntimeShellSdkSession & { closed: number } {
   return {
-    shellId: "server-shell",
     sessionId: "server-session",
     kicked: false,
     exitCode: 0,
@@ -77,13 +75,11 @@ describe("createRuntimeShellOpener", () => {
         runtimeArn: REQUEST.runtimeArn,
         endpointName: "prod",
         sessionId: REQUEST.runtimeSessionId,
-        shellId: REQUEST.shellId,
         auth: "sigv4",
         reconnectConfig: {},
       },
     ]);
     expect(result.runtimeSessionId).toBe("server-session");
-    expect(result.shellId).toBe("server-shell");
   });
 
   test("uses OAuth auth for a bearer token", async () => {
@@ -129,7 +125,7 @@ describe("createRuntimeShellOpener", () => {
     for await (const frame of result) frames.push(frame);
     await result.send(Uint8Array.from([1, 2]));
     await result.resize(100, 40);
-    await result.detach();
+    await result.close();
 
     expect(frames).toEqual([
       { type: "stdout", data: new TextEncoder().encode("out") },

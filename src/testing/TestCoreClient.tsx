@@ -674,12 +674,11 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   private invokeBodies: AsyncIterable<Uint8Array>[] = [];
   private shellSession: RuntimeShellSession = {
     runtimeSessionId: "runtime-session-012345678901234567890123",
-    shellId: "shell-1",
     kicked: false,
     exitCode: 0,
     send: async () => {},
     resize: async () => {},
-    detach: async () => {},
+    close: async () => {},
     async *[Symbol.asyncIterator]() {},
   };
   private error?: Error;
