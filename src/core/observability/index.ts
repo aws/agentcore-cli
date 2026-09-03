@@ -6,11 +6,16 @@ export {
   sanitizeQueryValue,
   type InsightsRowLimit,
 } from "./insights";
+export { TRACE_RECORD_LIMIT } from "./traces";
 export type {
   CloudWatchLogEvent,
+  GetTraceQuery,
   InsightsQuery,
   InsightsQueryRow,
+  ListTracesQuery,
   LogSearchQuery,
   LogSource,
   LogTailQuery,
+  TraceRecord,
+  TraceSummary,
 } from "./types";

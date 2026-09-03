@@ -124,11 +124,13 @@ describe("every command-line-only command opens on screen", () => {
 });
 
 describe("paths without a screen of their own", () => {
-  test("an unknown path opens the nearest ancestor's menu", async () => {
+  test("an unknown path retains the standard help fallback", async () => {
     const r = renderScreen("/agentcore/gateway/no-such-command");
 
-    await waitForText(r.lastFrame, "inspect AgentCore Gateways");
-    expect(menuEntries(r.lastFrame()!).screens).toContain("get");
+    await waitForText(() => r.frames.join("\n"), "Usage:");
+    const output = r.frames.join("\n");
+    expect(output).toContain("harness");
+    expect(output).not.toContain("command line only");
     r.unmount();
   });
 

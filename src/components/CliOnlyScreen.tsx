@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import type { Command } from "commander";
@@ -127,12 +127,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 // CommandFallbackScreen is the route for any command path Root does not map to
 // a screen of its own: a command group renders its menu, a leaf renders its
-// help. An unknown trailing segment resolves to the nearest ancestor.
-export function CommandFallbackScreen(props: ScreenProps) {
+// interactive help. A path that is not an exact command keeps the original
+// HelpScreen fallback.
+export function CommandFallbackScreen({
+  unknownFallback,
+  ...props
+}: ScreenProps & { unknownFallback: ReactNode }) {
   const { pathname } = useLocation();
   const path = pathname.split("/").filter((segment) => segment !== "");
   const command = resolveCommand(props.ctx.require(CommandKey), path);
   const resolved = commandPath(command);
+  const isExactCommand =
+    resolved.length === path.length && resolved.every((segment, index) => segment === path[index]);
+
+  if (!isExactCommand) return unknownFallback;
+
   return command.commands.length > 0 ? (
     <RouterScreen {...props} path={resolved} />
   ) : (

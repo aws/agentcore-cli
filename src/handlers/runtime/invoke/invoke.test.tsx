@@ -107,6 +107,7 @@ describe("runtime invoke", () => {
       payload: new TextEncoder().encode('{"prompt":"hello"}'),
       contentType: "application/json",
       runtimeUserId: "default",
+      accept: "text/event-stream",
     });
     expect(invoke.args[1]).toEqual({ region: REGION });
     expect(lookup.args[2]).toBe(invoke.args[2]);

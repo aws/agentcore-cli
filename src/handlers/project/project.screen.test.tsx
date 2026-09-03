@@ -192,9 +192,10 @@ describe("project menu: command-line-only subcommands", () => {
     r.unmount();
   });
 
-  test("an unknown project path falls back to the project menu", async () => {
+  test("an unknown project path retains the standard help fallback", async () => {
     const r = renderScreen("/agentcore/project/no-such-command");
-    await waitForText(r.lastFrame, "manage an AgentCore project");
+    await waitForText(() => r.frames.join("\n"), "Usage:");
+    expect(r.frames.join("\n")).not.toContain("command line only");
     r.unmount();
   });
 });

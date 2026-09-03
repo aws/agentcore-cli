@@ -172,7 +172,7 @@ export function normalizeRuntimeInvokeRequest(
     contentType: contentType || "application/json",
     ...modeled,
     runtimeUserId: modeled.runtimeUserId ?? DEFAULT_RUNTIME_USER_ID,
-    accept: modeled.accept ?? (mcp ? "application/json, text/event-stream" : undefined),
+    accept: modeled.accept ?? (mcp ? "application/json, text/event-stream" : "text/event-stream"),
     ...(applicationHeaders.length > 0 && { applicationHeaders }),
   };
 }

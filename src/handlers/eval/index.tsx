@@ -15,9 +15,11 @@ import { createAbTestHandler } from "./ab-test";
 import { createRecommendationHandler } from "./recommendation";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
-  // ondemand and recommendation have no screens; the menu lists them as
-  // command line only.
+  // Only the groups with an interactive screen are marked TUI-supported;
+  // ondemand and recommendation are listed below the command-line-only divider.
   return new Router("eval", "evaluate and optimize AgentCore agents")
+    .use(withTuiOnEmptyFlagsAndArgs(core, io))
+    .default(renderTui(core, io))
     .supportedTuiCommands(
       "evaluator",
       "online-eval",
@@ -28,8 +30,6 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
       "config-bundle",
       "ab-test",
     )
-    .use(withTuiOnEmptyFlagsAndArgs(core, io))
-    .default(renderTui(core, io))
     .handler(createEvaluatorHandler(core, io))
     .handler(createOnlineEvalHandler(core, io))
     .handler(createOnlineInsightHandler(core, io))
