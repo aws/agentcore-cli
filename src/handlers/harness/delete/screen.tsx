@@ -44,7 +44,10 @@ function DeleteConfirm({ ctx, core, harnessId }: ScreenProps & { harnessId: stri
         { label: "status", value: harness?.status ?? "-" },
         { label: "version", value: harness?.harnessVersion ?? "-" },
       ]}
-      message={`Delete harness ${harness?.harnessName ?? harnessId}? This permanently removes the harness, its versions, and its endpoints.`}
+      trigger={{
+        kind: "confirm",
+        message: `Delete harness ${harness?.harnessName ?? harnessId}? This permanently removes the harness, its versions, and its endpoints.`,
+      }}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       action={async () => {

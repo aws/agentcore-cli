@@ -468,7 +468,7 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
-  test("the spinner follows streamed progress without a blank row", async () => {
+  test("streamed progress renders as the CLI's step list", async () => {
     const core = new TestCoreClient();
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -494,22 +494,11 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
-    await waitFor(() =>
-      r.frames.some(
-        (frame) => frame.includes("✓ syncing dependencies") && frame.includes("creating DemoApp…"),
-      ),
-    );
-    const progressFrame =
-      [...r.frames]
-        .reverse()
-        .find(
-          (frame) =>
-            frame.includes("✓ syncing dependencies") && frame.includes("creating DemoApp…"),
-        ) ?? "";
-    const lines = progressFrame.split("\n");
-    const eventLine = lines.findIndex((line) => line.includes("✓ syncing dependencies"));
-    const spinnerLine = lines.findIndex((line) => line.includes("creating DemoApp…"));
-    expect(spinnerLine).toBe(eventLine + 1);
+    // The running step is the spinner row itself, as on the command line; the
+    // generic "creating…" spinner shows only until the first step arrives.
+    await waitForText(r.lastFrame, "syncing dependencies");
+    expect(r.lastFrame()).not.toContain("creating DemoApp…");
+    expect(r.lastFrame()).not.toContain("✓ syncing dependencies");
 
     r.unmount();
     release();

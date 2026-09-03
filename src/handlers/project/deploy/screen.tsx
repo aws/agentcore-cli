@@ -1,16 +1,14 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Text } from "ink";
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { Layout } from "../../../components/Layout";
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
-import { Spinner } from "../../../components/ui/spinner";
 import { DEFAULT_TARGET_NAME, type AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectKey, type Context } from "../../../router";
 import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
-import { ProjectGate } from "../ProjectGate";
+import { LoadingFrame, ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
 import { declaresNothingDeployable, deployedMessage, teardownQuestion } from "./index";
 
@@ -63,21 +61,15 @@ function DeployTarget({
     queryFn: () => core.projectManager.listTargets(project),
   });
 
-  if (targets.isPending || targets.isError) {
+  if (targets.data === undefined) {
     return (
-      <Layout
+      <LoadingFrame
         breadcrumb={BREADCRUMB}
         description={DESCRIPTION}
-        keyHints={[{ key: "ctl+c", label: "quit" }]}
-      >
-        <Box paddingX={1}>
-          {targets.isError ? (
-            <Text color="red">{(targets.error as Error).message}</Text>
-          ) : (
-            <Spinner label="reading deployment targets…" />
-          )}
-        </Box>
-      </Layout>
+        query={targets}
+        loadingLabel="reading deployment targets…"
+        onBack={() => navigate(PROJECT_MENU)}
+      />
     );
   }
 
@@ -159,7 +151,11 @@ function DeployConfirm({
         { label: "project", value: project.name },
         { label: "target", value: targetName },
       ]}
-      message={teardown ? teardownQuestion(project.name, target) : undefined}
+      trigger={
+        teardown
+          ? { kind: "confirm", message: teardownQuestion(project.name, target) }
+          : { kind: "immediate" }
+      }
       isPending={false}
       error={null}
       action={async function* () {

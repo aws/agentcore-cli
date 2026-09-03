@@ -62,7 +62,10 @@ function DeleteConfirm({
         { label: "status", value: endpoint?.status ?? "-" },
         { label: "target", value: endpoint?.targetVersion ?? "-" },
       ]}
-      message={`Delete endpoint ${endpointName}? Callers using it will lose access.`}
+      trigger={{
+        kind: "confirm",
+        message: `Delete endpoint ${endpointName}? Callers using it will lose access.`,
+      }}
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       action={async () => {

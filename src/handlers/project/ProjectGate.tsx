@@ -1,50 +1,77 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { Layout } from "../../components/Layout";
 import { Spinner } from "../../components/ui/spinner";
 import { darkTheme } from "../../components/ui/_core.js";
+import { ProjectStateError } from "../../errors/errors";
 import { projectNotFoundMessage } from "../../middleware/withProject";
 import type { Core } from "../types";
 import type { Project } from "./types";
 
 const theme = darkTheme;
 
-export interface UseProjectResult {
-  project?: Project;
-  error?: string;
-}
-
 // useProject resolves the project enclosing the cwd for a TUI screen. Screens
 // resolve it themselves because withProject wraps `handle` only, and navigating
 // between screens never executes a command — ProjectKey is set only when the
 // launching command was a project command, in which case pass it as `seed`.
-export function useProject(core: Core, seed?: Project): UseProjectResult {
-  const [project, setProject] = useState<Project | undefined>(seed);
-  const [error, setError] = useState<string>();
+export function useProject(core: Core, seed?: Project): UseQueryResult<Project> {
+  const from = process.cwd();
+  return useQuery({
+    queryKey: ["project", from],
+    queryFn: async () => {
+      const project = await core.projectManager.resolve({ filePath: from });
+      if (!project) throw new ProjectStateError(projectNotFoundMessage(from));
+      return project;
+    },
+    // A seeded project is authoritative — it is what the launching command ran
+    // against — so it is never refetched from the cwd.
+    ...(seed && { initialData: seed, staleTime: Infinity }),
+  });
+}
 
-  useEffect(() => {
-    if (project !== undefined) return;
-    let active = true;
-    const from = process.cwd();
-    void core.projectManager
-      .resolve({ filePath: from })
-      .then((resolved) => {
-        if (!active) return;
-        if (!resolved) {
-          setError(projectNotFoundMessage(from));
-          return;
-        }
-        setProject(resolved);
-      })
-      .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : String(cause));
-      });
-    return () => {
-      active = false;
-    };
-  }, [core.projectManager, project]);
+export interface LoadingFrameProps {
+  breadcrumb: string[];
+  description?: string;
+  // query is whatever the screen is waiting on.
+  query: Pick<UseQueryResult, "isError" | "error" | "refetch">;
+  loadingLabel: string;
+  onBack: () => void;
+}
 
-  return { project, error };
+// LoadingFrame is the spinner-or-error a screen shows before its data arrives:
+// esc leaves, and on an error `r` tries again — the PaginatedTablePicker keys.
+export function LoadingFrame({
+  breadcrumb,
+  description,
+  query,
+  loadingLabel,
+  onBack,
+}: LoadingFrameProps) {
+  useInput((input, key) => {
+    if (key.escape) onBack();
+    if (query.isError && input === "r") void query.refetch();
+  });
+
+  return (
+    <Layout
+      breadcrumb={breadcrumb}
+      description={description}
+      keyHints={[
+        ...(query.isError ? [{ key: "r", label: "retry" }] : []),
+        { key: "esc", label: "back" },
+        { key: "ctl+c", label: "quit" },
+      ]}
+    >
+      <Box paddingX={1}>
+        {query.isError ? (
+          <Text color={theme.colors.error}>✗ {(query.error as Error).message}</Text>
+        ) : (
+          <Spinner label={loadingLabel} />
+        )}
+      </Box>
+    </Layout>
+  );
 }
 
 export interface ProjectGateProps {
@@ -54,7 +81,6 @@ export interface ProjectGateProps {
   // seed is the project already pinned on the launch context, when the command
   // that opened the TUI was itself a project command.
   seed?: Project;
-  // onBack runs on esc when resolution fails.
   onBack: () => void;
   // children receives the resolved project and returns the screen. It must
   // return an element rather than call hooks itself — the gate renders a
@@ -72,43 +98,15 @@ export function ProjectGate({
   onBack,
   children,
 }: ProjectGateProps) {
-  const { project, error } = useProject(core, seed);
-
-  if (project !== undefined) return children(project);
-  if (error !== undefined) {
-    return (
-      <Layout
-        breadcrumb={breadcrumb}
-        description={description}
-        keyHints={[
-          { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
-        ]}
-      >
-        <ResolutionError message={error} onBack={onBack} />
-      </Layout>
-    );
-  }
+  const project = useProject(core, seed);
+  if (project.data !== undefined) return children(project.data);
   return (
-    <Layout
+    <LoadingFrame
       breadcrumb={breadcrumb}
       description={description}
-      keyHints={[{ key: "ctl+c", label: "quit" }]}
-    >
-      <Box paddingX={1}>
-        <Spinner label="loading project…" />
-      </Box>
-    </Layout>
-  );
-}
-
-function ResolutionError({ message, onBack }: { message: string; onBack: () => void }) {
-  useInput((_input, key) => {
-    if (key.escape) onBack();
-  });
-  return (
-    <Box paddingX={1}>
-      <Text color={theme.colors.error}>✗ {message}</Text>
-    </Box>
+      query={project}
+      loadingLabel="loading project…"
+      onBack={onBack}
+    />
   );
 }

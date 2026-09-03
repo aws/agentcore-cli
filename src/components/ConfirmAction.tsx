@@ -18,6 +18,11 @@ export interface SummaryRow {
 
 export type ActionResult = SummaryRow[] | { title: string; rows: SummaryRow[] };
 
+// ActionTrigger says what starts the action: a y/N question the user answers
+// (destructive actions default to No), or nothing — it runs as soon as the
+// summary has loaded, for an operation that is safe to start unasked.
+export type ActionTrigger = { kind: "confirm"; message: string } | { kind: "immediate" };
+
 export interface ConfirmActionProps {
   // breadcrumb labels the screen.
   breadcrumb: string[];
@@ -28,9 +33,7 @@ export interface ConfirmActionProps {
   // rows describe the resource the action applies to. With neither title nor
   // rows the overlay is omitted.
   rows?: SummaryRow[];
-  // message is the yes/no question (destructive actions default to No). Omit it
-  // to skip the confirmation and run as soon as the summary loads.
-  message?: string;
+  trigger: ActionTrigger;
   // isPending / error reflect the summary fetch backing the overlay.
   isPending: boolean;
   error: Error | null;
@@ -56,8 +59,11 @@ export interface ConfirmActionProps {
   onCancel?: () => void;
 }
 
+// "confirm" waits on the question; "idle" waits on the summary for an immediate
+// trigger. Neither survives the first run.
 type Phase =
   | { kind: "confirm" }
+  | { kind: "idle" }
   | { kind: "running" }
   | { kind: "success"; title: string; rows: SummaryRow[] }
   | { kind: "error"; message: string };
@@ -70,7 +76,7 @@ export function ConfirmAction({
   description,
   title,
   rows = [],
-  message,
+  trigger,
   isPending,
   error,
   action,
@@ -83,8 +89,9 @@ export function ConfirmAction({
 }: ConfirmActionProps) {
   const navigate = useNavigate();
   const cancel = onCancel ?? (() => navigate(-1));
-  const [phase, setPhase] = useState<Phase>({ kind: "confirm" });
-  const confirms = message !== undefined;
+  const [phase, setPhase] = useState<Phase>({
+    kind: trigger.kind === "confirm" ? "confirm" : "idle",
+  });
   // tasks is the step list a progress-reporting action builds up; it stays on
   // screen through success and error.
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -106,11 +113,11 @@ export function ConfirmAction({
     }
   };
 
-  // Without a question, run once the summary is ready.
+  // An immediate trigger runs once the summary is ready.
   useEffect(() => {
-    if (!confirms && !isPending && !error && phase.kind === "confirm") void run();
+    if (phase.kind === "idle" && !isPending && !error) void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the phase guard makes this run once
-  }, [confirms, isPending, error, phase.kind]);
+  }, [phase.kind, isPending, error]);
 
   const hints =
     phase.kind === "confirm"
@@ -121,14 +128,14 @@ export function ConfirmAction({
         ]
       : phase.kind === "success"
         ? [{ key: "enter", label: doneLabel }]
-        : phase.kind === "running"
-          ? // Nothing listens for esc mid-action: an operation in flight is
-            // not abandoned by leaving the screen.
-            [{ key: "ctl+c", label: "quit" }]
-          : [
+        : phase.kind === "error"
+          ? [
               { key: "esc", label: "back" },
               { key: "ctl+c", label: "quit" },
-            ];
+            ]
+          : // Nothing listens for esc while the action runs (or is about to):
+            // an operation in flight is not abandoned by leaving the screen.
+            [{ key: "ctl+c", label: "quit" }];
 
   return (
     <Layout breadcrumb={breadcrumb} description={description} keyHints={hints}>
@@ -151,8 +158,13 @@ export function ConfirmAction({
             </Box>
           )}
 
-          {phase.kind === "confirm" && confirms && (
-            <Confirm message={message} defaultValue={false} onConfirm={run} onCancel={cancel} />
+          {phase.kind === "confirm" && trigger.kind === "confirm" && (
+            <Confirm
+              message={trigger.message}
+              defaultValue={false}
+              onConfirm={run}
+              onCancel={cancel}
+            />
           )}
           {phase.kind !== "confirm" && tasks.length > 0 && (
             <Box marginBottom={phase.kind === "running" ? 0 : 1}>
@@ -170,10 +182,10 @@ export function ConfirmAction({
             />
           )}
           {phase.kind === "error" && (
-            // Without a confirmation, returning to it would run again.
+            // Without a question to return to, returning would run again.
             <ErrorBody
               message={phase.message}
-              onBack={confirms ? () => setPhase({ kind: "confirm" }) : cancel}
+              onBack={trigger.kind === "confirm" ? () => setPhase({ kind: "confirm" }) : cancel}
             />
           )}
         </Box>

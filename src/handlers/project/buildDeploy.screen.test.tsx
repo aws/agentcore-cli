@@ -131,7 +131,10 @@ describe("project build screen", () => {
     await waitForText(r.lastFrame, "✔ Built project 'orders'");
     const frame = r.lastFrame()!;
     expect(frame).toContain("agentcore → project → build");
-    expect(frame).not.toContain("(y/N)");
+    // No frame — not even the first — advertised a question.
+    expect(r.frames.some((painted) => painted.includes("(y/N)") || painted.includes("y/n"))).toBe(
+      false,
+    );
     expect(frame).toContain("✓ Synthesizing CloudFormation templates");
     expect(frame).toContain("✓ Deploying stack");
     expect(frame).not.toContain("cdk synth");
@@ -199,6 +202,43 @@ describe("project deploy screen", () => {
     expect(deploys).toHaveLength(1);
     expect(deploys[0]!.confirmed).toBe(false);
     expect(deploys[0]!.input.target.name).toBe("default");
+    r.unmount();
+  });
+
+  test("a target-loading failure offers esc back and r to retry", async () => {
+    const { backend } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    let attempts = 0;
+    const listTargets = core.projectManager.listTargets.bind(core.projectManager);
+    core.projectManager.listTargets = async (project) => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("aws-targets.json is unreadable");
+      return listTargets(project);
+    };
+    const r = renderScreen("/agentcore/project/deploy", { core });
+
+    await waitForText(r.lastFrame, "✗ aws-targets.json is unreadable");
+    expect(r.lastFrame()).toContain("[r] retry");
+    expect(r.lastFrame()).toContain("[esc] back");
+
+    await r.write("r");
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    expect(attempts).toBe(2);
+    r.unmount();
+  });
+
+  test("esc leaves a target-loading failure for the project menu", async () => {
+    const core = new TestCoreClient({ backends: { CDK: fakeBackend().backend } });
+    await inProject(core);
+    core.projectManager.listTargets = async () => {
+      throw new Error("aws-targets.json is unreadable");
+    };
+    const r = renderScreen("/agentcore/project/deploy", { core });
+
+    await waitForText(r.lastFrame, "✗ aws-targets.json is unreadable");
+    await r.press("escape");
+    await waitForText(r.lastFrame, "manage an AgentCore project");
     r.unmount();
   });
 

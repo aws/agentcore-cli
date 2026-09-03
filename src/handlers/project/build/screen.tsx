@@ -35,6 +35,7 @@ function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["
     <ConfirmAction
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
+      trigger={{ kind: "immediate" }}
       isPending={false}
       error={null}
       action={async function* () {

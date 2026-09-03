@@ -18,7 +18,9 @@ import { FormRadioGroup, type FormRadioOption } from "../../../components/FormRa
 import { KeyValueTable } from "../../../components/KeyValueTable";
 import { Stepper, type Step } from "../../../components/ui/stepper";
 import { Spinner } from "../../../components/ui/spinner";
+import { TaskList, type Task } from "../../../components/ui/task-list";
 import { Divider } from "../../../components/ui/divider";
+import { driveProgress } from "../../../tui/progress";
 import { darkTheme } from "../../../components/ui/_core.js";
 
 const theme = darkTheme;
@@ -244,7 +246,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
   const [values, setValues] = useState<CreateProjectFormValues>(emptyCreateProjectForm);
   const [stepIndex, setStepIndex] = useState(0);
   const [phase, setPhase] = useState<WizardPhase>({ kind: "form" });
-  const [events, setEvents] = useState<string[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   // The step list is dynamic: the branch chosen on the type step decides
   // whether model or template (and, for strands, memory) questions follow.
@@ -288,9 +290,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
     }
     setPhase({ kind: "running" });
     try {
-      for await (const event of core.projectManager.create(input)) {
-        if (event.type === "step") setEvents((current) => [...current, event.message]);
-      }
+      await driveProgress(core.projectManager.create(input), setTasks);
       setPhase({ kind: "success" });
     } catch (error) {
       setPhase({ kind: "error", error: toError(error) });
@@ -322,8 +322,10 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
         )}
         {phase.kind !== "form" && (
           <Box flexDirection="column" paddingX={1}>
-            <EventLog events={events} />
-            {phase.kind === "running" && <Spinner label={`creating ${values.name}…`} />}
+            <TaskList tasks={tasks} />
+            {phase.kind === "running" && tasks.length === 0 && (
+              <Spinner label={`creating ${values.name}…`} />
+            )}
             {phase.kind === "success" && (
               <SuccessPanel name={values.name} onContinue={() => exit()} />
             )}
@@ -776,18 +778,6 @@ function ReviewStep({
 }
 
 // ─── result panels ────────────────────────────────────────────────────────────
-
-function EventLog({ events }: { events: string[] }) {
-  return (
-    <Box flexDirection="column">
-      {events.map((message, index) => (
-        <Text key={`${index}-${message}`} color={theme.colors.muted}>
-          ✓ {message}
-        </Text>
-      ))}
-    </Box>
-  );
-}
 
 function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => void }) {
   useInput((_input, key) => {

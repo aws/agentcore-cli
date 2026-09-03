@@ -37,11 +37,11 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   // The project comes from the launch context when a project command opened
   // the TUI, and is resolved from the cwd otherwise.
-  const { project, error: projectError } = useProject(core, ctx.value(ProjectKey));
+  const { data: project, error: projectError } = useProject(core, ctx.value(ProjectKey));
   const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
   const [destination, setDestination] = useState<Destination>();
   const [deployedError, setDeployedError] = useState<string>();
-  const error = projectError ?? deployedError;
+  const error = projectError?.message ?? deployedError;
 
   useEffect(() => {
     if (!project) return;
