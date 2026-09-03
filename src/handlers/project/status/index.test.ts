@@ -213,7 +213,7 @@ describe("project status handler", () => {
     await inProject(subject, { memories: [memory("shortTerm")] }, []);
 
     await expect(subject.run()).rejects.toThrow(
-      /No deployment targets are configured for project 'orders'/,
+      /No deployment targets are configured for project 'orders'\. Please deploy your project using 'agentcore project deploy'\./,
     );
     expect(subject.targets).toEqual([]);
   });

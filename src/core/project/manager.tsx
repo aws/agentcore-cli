@@ -1004,18 +1004,13 @@ export class FsProjectManager implements ProjectManager {
     name: string,
   ): Promise<AwsDeploymentTarget> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
-    if (!existsSync(targetsPath)) {
-      throw new ProjectStateError(
-        `No deployment targets are configured for project '${project.name}'. ` +
-          `Add ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
-      );
-    }
-
-    const targets = await this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+    const targets = existsSync(targetsPath)
+      ? await this.json.read(targetsPath, AwsDeploymentTargetsSchema)
+      : [];
     if (targets.length === 0) {
       throw new ProjectStateError(
         `No deployment targets are configured for project '${project.name}'. ` +
-          `Add at least one to ${targetsPath}, for example:\n\n${TARGETS_EXAMPLE}`,
+          `Please deploy your project using 'agentcore project deploy'.`,
       );
     }
 
