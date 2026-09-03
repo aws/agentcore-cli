@@ -177,9 +177,9 @@ describe("RuntimeShellScreen", () => {
       .withValue(DebugKey, false);
     const rendering = renderTuiAt("/agentcore/runtime/shell", ctx, value, streams.io);
 
-    await waitFor(() => streams.stdout().includes("checkout"), 5000);
+    await waitFor(() => streams.stdout().includes("checkout"));
     stdin.write("\r");
-    await waitFor(() => streams.stdout().includes("prod"), 5000);
+    await waitFor(() => streams.stdout().includes("prod"));
     stdin.write("\r");
     await waitFor(
       () => value.runtime.calls.filter((call) => call.method === "listRuntimes").length === 2,

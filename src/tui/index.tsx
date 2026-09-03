@@ -65,6 +65,7 @@ export async function renderTuiAt(
       stdin: io.stdin,
       stdout: io.stdout,
       stderr: io.stderr,
+      interactive: true,
       alternateScreen: true,
       incrementalRendering: true,
     });
