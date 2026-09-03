@@ -32,33 +32,19 @@ export async function runRuntimeShell(input: RunRuntimeShellInput): Promise<void
   const request = normalizeRuntimeShellRequest(detail, {
     qualifier,
     runtimeSessionId: launchContext?.runtimeSessionId,
-    shellId: launchContext?.shellId,
     bearerToken: launchContext?.bearerToken,
   });
   request.onReconnect = () => io.stderr.write("\r\nReconnected to shell.\r\n");
 
   io.stderr.write(`Connecting to Runtime ${runtimeId} (${qualifier})...\n`);
   const session = await core.runtime.openRuntimeShell(request, options);
-  io.stderr.write(
-    `Connected · session ${session.runtimeSessionId} · shell ${session.shellId} · ` +
-      `Ctrl+D or 'exit' to quit · Ctrl+] to detach\n`,
-  );
+  io.stderr.write(`Connected · session ${session.runtimeSessionId} · Ctrl+D or 'exit' to quit\n`);
 
   const terminal = new InteractiveTerminal({ io });
-  let result: { detached: boolean };
   try {
-    result = await terminal.run(session);
+    await terminal.run(session);
   } finally {
-    await session.detach();
-  }
-
-  if (result.detached) {
-    io.stderr.write(
-      `\nDetached.\nTo reattach:\n` +
-        `  agentcore runtime shell --id ${runtimeId} --qualifier ${qualifier} \\\n` +
-        `    --session-id ${session.runtimeSessionId} --shell-id ${session.shellId}\n`,
-    );
-    return;
+    await session.close();
   }
   if (session.kicked) {
     io.stderr.write("\nShell attached from another client.\n");

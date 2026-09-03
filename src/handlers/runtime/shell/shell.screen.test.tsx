@@ -115,12 +115,11 @@ describe("RuntimeShellScreen", () => {
     const value = core();
     const failedSession: RuntimeShellSession = {
       runtimeSessionId: "session-012345678901234567890123456789",
-      shellId: "shell-1",
       kicked: false,
       exitCode: 42,
       send: async () => {},
       resize: async () => {},
-      detach: async () => {},
+      close: async () => {},
       async *[Symbol.asyncIterator]() {},
     };
     value.runtime.setShellSession(failedSession);
