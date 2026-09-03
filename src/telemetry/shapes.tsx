@@ -12,7 +12,7 @@ const MAX_ATTR_LENGTH = 64;
  */
 export const resourceAttributesSchema = z.object({
   "service.name": z.literal("agentcore-cli"),
-  "service.version": z.string().regex(SEMVER_PATTERN),
+  "service.version": z.string().max(MAX_ATTR_LENGTH).regex(SEMVER_PATTERN),
   "agentcore-cli.installation_id": z.string().regex(UUID_PATTERN),
   "agentcore-cli.session_id": z.string().regex(UUID_PATTERN),
   "os.type": z.string().min(1).max(MAX_ATTR_LENGTH),

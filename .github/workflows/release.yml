@@ -29,10 +29,6 @@ on:
     # TODO: switch to main once the refactor lands there.
     branches: [refactor]
 
-concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
-
 jobs:
   version:
     if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged && startsWith(github.head_ref, 'release/'))
@@ -121,9 +117,15 @@ jobs:
 
           NOTES=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
             -f tag_name="v$VERSION" -f target_commitish="$REF" -f previous_tag_name="$PREVIOUS_TAG" --jq .body)
-          gh pr create --base "$GITHUB_REF_NAME" --head "$BRANCH" --title "chore(release): v$VERSION" --body "Merging publishes \`@aws/agentcore@$VERSION\` to npm under \`latest\` and creates the \`v$VERSION\` release.
+          BODY="Merging publishes \`@aws/agentcore@$VERSION\` to npm under \`latest\` and creates the \`v$VERSION\` release.
 
           $NOTES"
+          EXISTING=$(gh pr list --base "$GITHUB_REF_NAME" --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --body "$BODY"
+          else
+            gh pr create --base "$GITHUB_REF_NAME" --head "$BRANCH" --title "chore(release): v$VERSION" --body "$BODY"
+          fi
 
   check:
     needs: version
@@ -153,6 +155,11 @@ jobs:
   publish:
     needs: [version, check, build, unit-test]
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    # Keyed on the version so unrelated runs never cancel a pending publish, while a duplicate publish of the
+    # same version waits for the first instead of racing it.
+    concurrency:
+      group: publish-${{ needs.version.outputs.version }}
+      cancel-in-progress: false
     # npm-publish-approval requires a reviewer. npm-publish does not: merging the release PR was the approval.
     environment:
       name: ${{ needs.version.outputs.channel == 'rc' && 'npm-publish-approval' || 'npm-publish' }}
@@ -187,7 +194,13 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
           DIST_TAG: ${{ needs.version.outputs.channel == 'rc' && 'rc' || 'latest' }}
-        run: npm publish "$TARBALL" --provenance --access public --tag "$DIST_TAG"
+        # A rerun after a failed release step must not republish, npm rejects an existing version.
+        run: |
+          if npm view "@aws/agentcore@$VERSION" version >/dev/null 2>&1; then
+            echo "@aws/agentcore@$VERSION is already on npm, skipping publish"
+          else
+            npm publish "$TARBALL" --provenance --access public --tag "$DIST_TAG"
+          fi
 
       - if: ${{ !inputs.dry_run }}
         env:
