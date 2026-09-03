@@ -68,6 +68,7 @@ describe("harness endpoint create wizard", () => {
     expect(r.lastFrame()).toContain("choose a harness to create an endpoint for");
     await r.press("return");
     await waitForText(r.lastFrame, "what should this endpoint be called?");
+    expect(r.lastFrame()).toContain("│❯ production");
     r.unmount();
   });
 

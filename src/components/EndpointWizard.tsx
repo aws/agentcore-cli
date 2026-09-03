@@ -10,8 +10,8 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
 import { FormRadioGroup, type FormRadioOption } from "./FormRadioGroup";
+import { FormTextInput } from "./FormTextInput";
 import { Stepper, type Step } from "./ui/stepper";
-import { TextInput } from "./ui/text-input";
 import { Spinner } from "./ui/spinner";
 import { CodeBlock } from "./ui/code-block";
 import { darkTheme } from "./ui/_core.js";
@@ -220,37 +220,25 @@ function NameStep({
   onNext: () => void;
   onBack: () => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
-
   useInput((_input, key) => {
     if (key.escape) {
       onBack();
       return;
     }
-    if (key.return) {
-      if (NAME_PATTERN.test(value)) onNext();
-      else setError("must start with a letter; letters, numbers, and underscores only");
-    }
+    if (key.return && NAME_PATTERN.test(value)) onNext();
   });
 
   return (
     <Box flexDirection="column">
-      <Question text="what should this endpoint be called?" />
-      <TextInput
+      <FormTextInput
+        name="what should this endpoint be called?"
+        helpText="letters, numbers, underscores; starts with a letter"
+        errorText="must start with a letter; letters, numbers, and underscores only"
         value={value}
-        onChange={(next) => {
-          onChange(next);
-          setError(null);
-        }}
+        onChange={onChange}
         placeholder="production"
+        pattern={NAME_PATTERN}
       />
-      {error ? (
-        <Text color={theme.colors.error}>{"  " + error}</Text>
-      ) : (
-        <Text color={theme.colors.muted}>
-          {"  letters, numbers, underscores; starts with a letter"}
-        </Text>
-      )}
     </Box>
   );
 }
