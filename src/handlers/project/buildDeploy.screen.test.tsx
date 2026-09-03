@@ -56,6 +56,9 @@ function fakeBackend(options: FakeBackendOptions = {}) {
       if (options.failure) throw options.failure;
       return options.result ?? { outputs: { RuntimeArn: "arn:runtime" } };
     },
+    async resolveProjectResources() {
+      return [];
+    },
     async resolveDeployedResources() {
       return [];
     },
