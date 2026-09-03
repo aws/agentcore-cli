@@ -1,16 +1,15 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import {
   renderScreen,
+  waitForFlatText,
   waitForText,
   cleanupScreens,
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
-  ttyTestIO,
 } from "../../testing";
-import { renderTuiAt } from "../../tui";
-import { InvalidEnvironmentError, NotImplementedError } from "../../errors";
+import { InvalidEnvironmentError } from "../../errors";
 import { compile, ValueContext } from "../../router";
 import { ExitCode } from "../../runnable";
 import { createRootHandler } from "../index";
@@ -69,51 +68,163 @@ describe("project menu", () => {
   });
 });
 
-describe("project subcommands without a screen", () => {
-  // renderTuiAt rather than renderScreen: ink-testing-library exposes no
-  // waitUntilExit, so it cannot observe the rejection under test.
-  //
-  // Reading the cases off the router also guards Root's hand-written
-  // PROJECT_COMMANDS: an unrouted subcommand hits the catch-all, which resolves
-  // instead of rejecting. Frames can't detect that — the catch-all exits before
-  // painting, so it and this screen both render empty. Subcommands with a real
-  // screen are excluded.
-  const WITH_SCREENS = ["create", "invoke", "build", "deploy"];
+// projectCommand resolves a compiled project subcommand by path, for reading
+// the help the CLI-only screen must match.
+function projectCommand(...path: string[]) {
+  const root = compile(
+    createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    }),
+    ValueContext.EmptyContext(),
+  );
+  let command = root.commands.find((c) => c.name() === "project")!;
+  for (const name of path) command = command.commands.find((c) => c.name() === name)!;
+  return command;
+}
+
+const WITH_SCREENS = ["create", "invoke", "build", "deploy"];
+
+describe("project menu: command-line-only subcommands", () => {
+  test("are listed below a divider, after the ones with a screen", async () => {
+    const r = renderScreen("/agentcore/project");
+
+    await waitForText(r.lastFrame, "command line only");
+    const lines = r.lastFrame()!.split("\n");
+    const divider = lines.findIndex((line) => line.includes("command line only"));
+    const lineOf = (command: string) =>
+      lines.findIndex((line) => new RegExp(`^\\s*(❯ )?\\s*${command}\\s`).test(line));
+    for (const command of WITH_SCREENS) expect(lineOf(command)).toBeLessThan(divider);
+    for (const command of projectSubcommands().filter((c) => !WITH_SCREENS.includes(c))) {
+      expect(lineOf(command)).toBeGreaterThan(divider);
+    }
+    r.unmount();
+  });
+
   test.each(projectSubcommands().filter((command) => !WITH_SCREENS.includes(command)))(
-    "%s tears down the TUI with NotImplementedError",
+    "%s opens its help instead of an error, and esc returns to the menu",
     async (command) => {
-      const { streams } = ttyTestIO();
+      const r = renderScreen(`/agentcore/project/${command}`);
+      const compiled = projectCommand(command);
 
-      const rendering = renderTuiAt(
-        `/agentcore/project/${command}`,
-        ValueContext.EmptyContext(),
-        new TestCoreClient(),
-        streams.io,
-      );
+      if (compiled.commands.length > 0) {
+        // A group opens its own menu, with every child under the divider.
+        await waitForText(r.lastFrame, `agentcore → project → ${command}`);
+        await waitForText(r.lastFrame, "command line only");
+      } else {
+        await waitForText(r.lastFrame, "this command runs from the command line");
+        const help = compiled.createHelp();
+        const frame = r.lastFrame()!.replace(/\s+/g, " ");
+        expect(frame).toContain(help.commandUsage(compiled));
+        // Every option but --help, which means nothing on the help itself.
+        for (const option of help.visibleOptions(compiled)) {
+          if (option.long === "--help") expect(frame).not.toContain("--help");
+          else expect(frame).toContain(help.optionTerm(option));
+        }
+      }
 
-      await expect(rendering).rejects.toThrow(NotImplementedError);
-      await expect(rendering).rejects.toThrow(`'agentcore project ${command}'`);
+      await r.press("escape");
+      await waitForText(r.lastFrame, "manage an AgentCore project");
+      r.unmount();
     },
   );
 
-  test("the error names the command to run instead", async () => {
-    const { streams } = ttyTestIO();
+  test("a group drills down to its leaves' help and back", async () => {
+    const r = renderScreen("/agentcore/project/add");
 
-    const caught: unknown = await renderTuiAt(
-      "/agentcore/project/status",
-      ValueContext.EmptyContext(),
-      new TestCoreClient(),
-      streams.io,
-    ).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
+    await waitForText(r.lastFrame, "agentcore → project → add");
+    await r.write("gateway");
+    await waitForText(r.lastFrame, "❯ gateway");
+    await r.press("return");
 
-    expect(caught).toBeInstanceOf(NotImplementedError);
-    const error = caught as NotImplementedError;
-    expect(error.message).toContain("agentcore project status --help");
-    // Surfaces as a plain CLI failure, not a crash.
-    expect(error.exitCode).toBe(1);
+    await waitForText(r.lastFrame, "agentcore → project → add → gateway");
+    const frame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(frame).toContain("this command runs from the command line");
+    expect(frame).toContain("agentcore project add gateway [options]");
+    expect(frame).toContain("--authorizer-type");
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → project → add");
+    r.unmount();
+  });
+
+  test("help longer than the terminal scrolls, and the parameter details are reachable", async () => {
+    // `add memory` has ten options plus a long --strategies write-up, which
+    // `--help` appends as "Parameter details"; at 80×24 most of it is below
+    // the fold.
+    const r = renderScreen("/agentcore/project/add/memory");
+    await r.resize(80, 24);
+    await waitForText(r.lastFrame, "this command runs from the command line");
+    expect(r.lastFrame()).not.toContain("reflectionNamespaceTemplates");
+
+    // Scroll to the end: the write-up's example is the last thing on the page.
+    for (let i = 0; i < 80; i++) await r.press("down");
+    const bottom = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(bottom).toContain('"reflectionNamespaceTemplates": ["/episodes/{actorId}"]');
+    // …and the heading was on the way.
+    expect(r.frames.some((frame) => frame.includes("Parameter details:"))).toBe(true);
+
+    for (let i = 0; i < 80; i++) await r.press("up");
+    await waitForText(r.lastFrame, "this command runs from the command line");
+    r.unmount();
+  });
+
+  test("growing the terminal after scrolling to the bottom pulls the content back into view", async () => {
+    const r = renderScreen("/agentcore/project/add/runtime");
+    await r.resize(80, 24);
+    await waitForText(r.lastFrame, "this command runs from the command line");
+    for (let i = 0; i < 80; i++) await r.press("down");
+    expect(r.lastFrame()).not.toContain("this command runs from the command line");
+
+    // Tall enough for the whole help: the offset must fall back to the top
+    // rather than leave a mostly blank viewport. Height only — a width change
+    // reflows the content, which would mask a clamp that read a stale height.
+    await r.resize(80, 120);
+    await waitForText(r.lastFrame, "this command runs from the command line");
+    expect(r.lastFrame()).toContain("--role-arn");
+    r.unmount();
+  });
+
+  test("a key that fills its column still stands clear of its value", async () => {
+    const r = renderScreen("/agentcore/project/add/runtime");
+    await r.resize(40, 60);
+    // Narrow enough that the intro wraps and the key column hits its cap.
+    await waitForFlatText(r.lastFrame, "this command runs from the command line");
+    const lines = r.lastFrame()!.split("\n");
+    // "--description <description>" wraps within the capped column…
+    expect(lines.some((line) => /^\s+<description>\s{2,}\S/.test(line))).toBe(true);
+    // …and no line runs a key straight into its value (checked case-insensitively;
+    // this is a terminal layout check, not an HTML filter).
+    expect(lines.some((line) => /<[a-z-]+>[a-z]/i.test(line))).toBe(false);
+    r.unmount();
+  });
+
+  test("every option is reachable on a small terminal", async () => {
+    const r = renderScreen("/agentcore/project/add/runtime");
+    await r.resize(80, 24);
+    await waitForText(r.lastFrame, "this command runs from the command line");
+
+    const seen = new Set<string>();
+    const collect = () => {
+      for (const match of r.lastFrame()!.matchAll(/--[a-z][a-z-]*/g)) seen.add(match[0]);
+    };
+    collect();
+    for (let i = 0; i < 60; i++) {
+      await r.press("down");
+      collect();
+    }
+    const compiled = projectCommand("add", "runtime");
+    for (const option of compiled.options) {
+      if (option.long && option.long !== "--help") expect(seen).toContain(option.long);
+    }
+    r.unmount();
+  });
+
+  test("an unknown project path falls back to the project menu", async () => {
+    const r = renderScreen("/agentcore/project/no-such-command");
+    await waitForText(r.lastFrame, "manage an AgentCore project");
+    r.unmount();
   });
 });
 

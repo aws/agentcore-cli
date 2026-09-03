@@ -27,7 +27,15 @@ type ProjectHandlerConfig = {
 export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router {
   const projectManager: ProjectManager = core.projectManager;
   const config = { projectManager, io, bedrockAgentImporter: core.bedrockAgentImporter };
-  const project = new Router("project", "manage an AgentCore project");
+  // The subcommands with a screen of their own. Every other subcommand — and
+  // everything beneath a group like `add` — is listed in the menu as command
+  // line only and opens its help instead (see CliOnlyScreen).
+  const project = new Router("project", "manage an AgentCore project").supportedTuiCommands(
+    "create",
+    "invoke",
+    "build",
+    "deploy",
+  );
 
   // Without a default, a bare `agentcore project` falls back to Commander's help
   // and a usage exit code instead of the menu every sibling router opens.

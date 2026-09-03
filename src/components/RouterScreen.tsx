@@ -24,7 +24,7 @@ function rootCommand(c: Command): Command {
 // handler, so `CommandKey` is pinned to whichever command *launched* the TUI —
 // we walk up to the root and back down the path to recover the screen's own
 // command regardless of where the app started.
-function resolveCommand(launch: Command, path: string[]): Command {
+export function resolveCommand(launch: Command, path: string[]): Command {
   let cur = rootCommand(launch);
   for (let i = 1; i < path.length; i++) {
     const next = cur.commands.find((c) => c.name() === path[i]);
@@ -37,6 +37,9 @@ function resolveCommand(launch: Command, path: string[]): Command {
 interface Option {
   name: string;
   description: string;
+  // cliOnly marks a subcommand without a screen; it is listed under a divider
+  // and opens its help instead.
+  cliOnly: boolean;
 }
 
 export interface RouterScreenProps extends ScreenProps {
@@ -44,25 +47,33 @@ export interface RouterScreenProps extends ScreenProps {
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
   path: string[];
+  // showCliOnly lists subcommands without a screen below a divider, rather than
+  // omitting them; selecting one opens its help (see CliOnlyScreen).
+  showCliOnly?: boolean;
 }
 
 // RouterScreen renders the interactive command menu for a Router node: a filter
 // input at the top and the node's subcommands (read straight off the Commander
 // Command) as navigable options below. Selecting an option routes to that
 // subcommand's screen.
-export function RouterScreen({ ctx, path }: RouterScreenProps) {
+export function RouterScreen({ ctx, path, showCliOnly = false }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
   const command = resolveCommand(ctx.require(CommandKey), path);
-  const options: Option[] = useMemo(
-    () =>
-      command.commands
-        .filter(isTuiCommandSupported)
-        .map((c) => ({ name: c.name(), description: c.description() })),
-    [command],
-  );
+  // Screen-backed commands first, then the command-line-only ones, so the
+  // divider between them falls at one place in the list.
+  const options: Option[] = useMemo(() => {
+    const all = command.commands
+      .filter((c) => showCliOnly || isTuiCommandSupported(c))
+      .map((c) => ({
+        name: c.name(),
+        description: c.description(),
+        cliOnly: !isTuiCommandSupported(c),
+      }));
+    return [...all.filter((o) => !o.cliOnly), ...all.filter((o) => o.cliOnly)];
+  }, [command, showCliOnly]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -158,14 +169,28 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
           ) : (
             filtered.map((o, i) => {
               const isHl = i === highlight;
+              // The divider sits above the first command-line-only option.
+              const startsCliOnly = o.cliOnly && !filtered[i - 1]?.cliOnly;
               return (
-                <Box key={o.name} paddingX={1}>
-                  <Text color={theme.colors.focus}>{isHl ? "❯ " : "  "}</Text>
-                  <Text bold={isHl} color={isHl ? theme.colors.focus : theme.colors.text}>
-                    {o.name.padEnd(nameWidth)}
-                  </Text>
-                  <Text color={theme.colors.muted}>{o.description}</Text>
-                </Box>
+                <React.Fragment key={o.name}>
+                  {startsCliOnly && <Divider title="command line only" />}
+                  <Box paddingX={1}>
+                    <Text color={theme.colors.focus}>{isHl ? "❯ " : "  "}</Text>
+                    <Text
+                      bold={isHl}
+                      color={
+                        isHl
+                          ? theme.colors.focus
+                          : o.cliOnly
+                            ? theme.colors.muted
+                            : theme.colors.text
+                      }
+                    >
+                      {o.name.padEnd(nameWidth)}
+                    </Text>
+                    <Text color={theme.colors.muted}>{o.description}</Text>
+                  </Box>
+                </React.Fragment>
               );
             })
           )}

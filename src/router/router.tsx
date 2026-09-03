@@ -36,6 +36,16 @@ export function isTuiCommandSupported(command: Command): boolean {
   return command instanceof RoutedCommand ? command.handler.doesSupportTui() : true;
 }
 
+// commandParameterDetails is the "Parameter details" section `--help` appends
+// for flags with long-form documentation; undefined when the command has none.
+// Commander emits added help text only on outputHelp, so helpInformation()
+// does not include it and a TUI rendering of the help must ask for it.
+export function commandParameterDetails(command: Command): string | undefined {
+  return command instanceof RoutedCommand
+    ? formatParameterDetails(command.handler.flags())
+    : undefined;
+}
+
 interface TuiChildSupportProvider {
   supportsTuiCommand(commandName: string): boolean;
 }
