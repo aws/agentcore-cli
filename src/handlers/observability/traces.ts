@@ -133,7 +133,6 @@ export function createGetTraceHandler<F extends readonly Flag<string, unknown>[]
   io: AppIO,
   config: {
     description: string;
-    outputDescription: string;
     flags: F;
     read(
       ctx: Context,
@@ -150,7 +149,11 @@ export function createGetTraceHandler<F extends readonly Flag<string, unknown>[]
 ): Handler {
   const getFlags = [
     ...config.flags,
-    flag("output", config.outputDescription, outputSchema),
+    flag(
+      "output",
+      "the output file path (default: <traceId>.json in the current directory)",
+      outputSchema,
+    ),
     ...traceWindowFlags,
   ] as const;
 

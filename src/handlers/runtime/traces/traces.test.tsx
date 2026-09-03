@@ -85,6 +85,16 @@ describe("runtime traces list", () => {
     expect((core.observability.calls[0]!.args[1] as ListTracesQuery).limit).toBe(20);
   });
 
+  test("uses the requested endpoint qualifier", async () => {
+    const { core, route } = testTracesCommand();
+
+    await route(["runtime", "traces", "list", "--id", "rt-1", "--qualifier", "canary"]);
+
+    expect(core.observability.calls[0]?.args[0]).toEqual({
+      logGroupName: "/aws/bedrock-agentcore/runtimes/rt-1-canary",
+    });
+  });
+
   test("--json renders a single JSON document", async () => {
     const { core, io, route } = testTracesCommand();
     core.observability.traceSummaries = [{ traceId: "abc123", timestamp: "1709391000000" }];

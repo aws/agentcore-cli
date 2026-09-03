@@ -176,6 +176,7 @@ import {
   scopePolicyName,
 } from "./onlineEvalExecutionRole";
 import { accountIdFromArn, deleteAbTestRole, provisionAbTestRole } from "./abTestExecutionRole";
+import { harnessRuntimeFromResponse } from "./harness";
 
 const DEFAULT_INGESTION_WAIT_MS = 180_000;
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
@@ -1959,17 +1960,15 @@ async function resolveAgentToNameAndId(
   }
 
   const harness = await control.send(new GetHarnessCommand({ harnessId: agent }));
-  const environment = harness.harness?.environment;
-  const runtimeEnv =
-    environment && "agentCoreRuntimeEnvironment" in environment
-      ? environment.agentCoreRuntimeEnvironment
-      : undefined;
-  if (!runtimeEnv?.agentRuntimeId || !runtimeEnv?.agentRuntimeName) {
+  try {
+    return harnessRuntimeFromResponse(agent, harness);
+  } catch (error) {
+    if (!(error instanceof InputValidationError)) throw error;
     throw new InputValidationError(`"${agent}" does not exist as a runtime or a harness`, {
+      cause: error,
       meta: { agent },
     });
   }
-  return { runtimeId: runtimeEnv.agentRuntimeId, runtimeName: runtimeEnv.agentRuntimeName };
 }
 
 // agentDataSource builds the CloudWatch data source for an agent id, resolving it

@@ -35,7 +35,12 @@ import {
   type InvokeHarnessRequest,
   type InvokeHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
-import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
+import type {
+  CoreHarnessClient,
+  CreateHarnessInput,
+  ResolvedHarnessRuntime,
+} from "../handlers/harness/types";
+import { InputValidationError } from "../errors";
 import type { AwsClients, CoreOptions } from "./types";
 import { abortable } from "./abortable";
 import { ensureDefaultExecutionRole } from "./executionRole";
@@ -51,6 +56,17 @@ export class HarnessClient implements CoreHarnessClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new GetHarnessCommand({ harnessId: id }));
+  }
+
+  async resolveRuntime(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<ResolvedHarnessRuntime> {
+    const response = await this.clients
+      .control(toClientConfig(options))
+      .send(new GetHarnessCommand({ harnessId: id }), { abortSignal: signal });
+    return harnessRuntimeFromResponse(id, response);
   }
 
   async getHarnessVersion(
@@ -205,6 +221,27 @@ export class HarnessClient implements CoreHarnessClient {
     // Same mid-stream abort gap as invokeHarness; see above.
     return { ...response, stream: abortable(response.stream, abortSignal) };
   }
+}
+
+export function harnessRuntimeFromResponse(
+  id: string,
+  response: GetHarnessResponse,
+): ResolvedHarnessRuntime {
+  const environment = response.harness?.environment;
+  const runtime =
+    environment && "agentCoreRuntimeEnvironment" in environment
+      ? environment.agentCoreRuntimeEnvironment
+      : undefined;
+  if (!runtime?.agentRuntimeId || !runtime.agentRuntimeName) {
+    throw new InputValidationError(
+      `Harness "${id}" does not expose an AgentCore Runtime environment`,
+      { meta: { harnessId: id } },
+    );
+  }
+  return {
+    runtimeId: runtime.agentRuntimeId,
+    runtimeName: runtime.agentRuntimeName,
+  };
 }
 
 // retryWhileRoleUnassumable retries `operation` while it fails with the
