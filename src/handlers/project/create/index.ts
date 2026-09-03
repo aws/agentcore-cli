@@ -87,11 +87,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       // of dying on Commander's mandatory-option check.
       flag("name", "name of the project to create", ProjectNameSchema.optional()),
       flag(
-        "defaults",
-        "create a harness project with default settings (this is the default)",
-        z.boolean().default(false),
-      ),
-      flag(
         "template",
         "a preset of flags for scaffolding the runtime; compatible flags override preset values",
         z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
@@ -212,8 +207,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       );
       if (flags["harness-memory"] === false) presentHarnessFlags.push("no-harness-memory");
 
-      // Mirrors the original CLI's dispatch: mixing the two paths is an error,
-      // while --defaults on the runtime path is simply ignored.
+      // Mirrors the original CLI's dispatch: mixing the two paths is an error.
       if (presentRuntimeFlags.length > 0 && presentHarnessFlags.length > 0) {
         throw new InputValidationError(
           `Cannot mix runtime scaffolding flags (${formatFlagList(presentRuntimeFlags)}) ` +
@@ -297,7 +291,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
             scaffoldHarnessInput: resolveScaffoldHarnessInput({ ...flags, name }),
           };
 
-      if (!isRuntimePath && !flags["defaults"] && presentHarnessFlags.length === 0) {
+      if (!isRuntimePath && presentHarnessFlags.length === 0) {
         config.io.stderr.write(
           "Creating a harness project (pass --framework or --template to scaffold agent code instead).\n",
         );

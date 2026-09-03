@@ -687,6 +687,25 @@ async function helpOutput(root: Router, argv: string[]): Promise<string> {
   return out;
 }
 
+test("command groups omit Commander's generated help subcommand", async () => {
+  const nested = new Router("nested").handler(leaf("deep", () => {}));
+  const root = new Router("app").handler(nested);
+
+  const command = compile(root, ValueContext.EmptyContext());
+  const nestedCommand = command.commands.find((child) => child.name() === "nested")!;
+
+  // Help generation used to materialize a synthetic `help [command]` child.
+  command.helpInformation();
+  nestedCommand.helpInformation();
+  expect(command.commands.map((child) => child.name())).not.toContain("help");
+  expect(nestedCommand.commands.map((child) => child.name())).not.toContain("help");
+
+  const out = await helpOutput(root, ["app", "nested", "--help"]);
+  expect(out).toContain("deep");
+  expect(out).toContain("--help");
+  expect(out).not.toContain("help [command]");
+});
+
 test("flags with long-form help render a Parameter details section", async () => {
   const create = createHandler({
     name: "create",

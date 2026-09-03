@@ -324,7 +324,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
           <Box flexDirection="column" paddingX={1}>
             <TaskList tasks={tasks} />
             {phase.kind === "running" && tasks.length === 0 && (
-              <Spinner label={`creating ${values.name}…`} />
+              <Spinner label={`Creating ${values.name}…`} />
             )}
             {phase.kind === "success" && (
               <SuccessPanel name={values.name} onContinue={() => exit()} />
@@ -787,7 +787,7 @@ function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => vo
   return (
     <Box flexDirection="column" gap={1}>
       <Text color={theme.colors.success} bold>
-        ✔ project created in ./{name}
+        ✓ Project created in ./{name}
       </Text>
       <Box flexDirection="column">
         <Text color={theme.colors.text}>next steps</Text>

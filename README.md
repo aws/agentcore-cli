@@ -185,9 +185,8 @@ one resource of the requested type, `--name` may be omitted.
 
 ```bash
 # Create a project. The default is a harness project: a managed agent
-# configured by spec, no model-loop code to maintain. --defaults says so
-# explicitly; harness flags (--model-id, --max-iterations, --timeout, …)
-# tune it.
+# configured by spec, no model-loop code to maintain. Harness flags
+# (--model-id, --max-iterations, --timeout, …) tune it.
 agentcore project create --name MyAssistant
 cd MyAssistant && agentcore project deploy
 # … or run `agentcore project create` bare in a terminal for the guided

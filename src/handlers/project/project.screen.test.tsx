@@ -28,8 +28,7 @@ function projectSubcommands(): string[] {
     ValueContext.EmptyContext(),
   );
   const project = root.commands.find((command) => command.name() === "project")!;
-  // `help` is Commander's own, not one of ours.
-  return project.commands.map((command) => command.name()).filter((name) => name !== "help");
+  return project.commands.map((command) => command.name());
 }
 
 describe("project menu", () => {

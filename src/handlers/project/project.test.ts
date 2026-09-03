@@ -100,13 +100,11 @@ describe("project create", () => {
     expect(io.stderr()).toContain("Creating a harness project");
   });
 
-  test("--defaults selects the harness path explicitly, without the implicit-default notice", async () => {
-    const directory = await inTempDirectory();
-    const { io } = await run(["create", "--name", "MyAgent", "--defaults"]);
-
-    const spec = await Bun.file(join(directory, "MyAgent", "agentcore", "agentcore.json")).json();
-    expect(spec.harnesses).toHaveLength(1);
-    expect(io.stderr()).not.toContain("Creating a harness project");
+  test("rejects the removed --defaults flag", async () => {
+    await inTempDirectory();
+    await expect(run(["create", "--name", "MyAgent", "--defaults"])).rejects.toThrow(
+      /unknown option '--defaults'/,
+    );
   });
 
   test("harness-only flags flow into the harness spec", async () => {
@@ -252,15 +250,6 @@ describe("project create", () => {
     await expect(
       run(["create", "--name", "MyAgent", "--template", "agent-python", "--no-harness-memory"]),
     ).rejects.toThrow(/harness-only flags \(--no-harness-memory\)/);
-  });
-
-  test("--defaults is ignored when a runtime path flag routes to scaffolding", async () => {
-    const directory = await inTempDirectory();
-    await run(["create", "--name", "MyAgent", "--defaults", "--template", "agent-python"]);
-
-    const spec = await Bun.file(join(directory, "MyAgent", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0]).toMatchObject({ name: "agent_python" });
-    expect(spec.harnesses).toBeUndefined();
   });
 
   test("a harness create installs CDK dependencies and git only (no uv sync)", async () => {

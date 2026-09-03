@@ -165,6 +165,7 @@ export function compile(
   const effectiveTuiSupport = tuiSupported && node.doesSupportTui();
   const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
   const c = new RoutedCommand(compiledNode);
+  c.addHelpCommand(false);
   c.description(node.description());
 
   const ownFlags = node.flags();
