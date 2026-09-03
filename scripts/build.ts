@@ -2,6 +2,7 @@
 
 import { $ } from "bun";
 import { existsSync } from "node:fs";
+import { chmod } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { runWithExitCode } from "../src/runnable";
 
@@ -29,6 +30,11 @@ const BOOTSTRAP_TEMPLATE = ["lib", "api", "bootstrap", "bootstrap-template.yaml"
 // Shrink whitespace/syntax but keep identifiers: minified names make stack
 // traces unreadable and erase error names telemetry keys on.
 const MINIFY = { whitespace: true, syntax: true, identifiers: false } as const;
+
+// React (via Ink) selects its development or production build from NODE_ENV at
+// bundle time. Without this the bundle carries the development build, which is
+// larger to evaluate and slower to render.
+const DEFINE = { "process.env.NODE_ENV": JSON.stringify("production") };
 
 /** Absolute paths of every asset file. dot:true so hidden files (.prettierrc) are included. */
 function discoverAssets(): string[] {
@@ -109,6 +115,14 @@ async function assertAssetsAreText(assets: string[]): Promise<void> {
   }
 }
 
+// V8's compile cache only covers modules loaded after enableCompileCache(), so
+// the bin is a loader in front of the bundle. No-op below Node 22.1.
+const BIN_LOADER = `#!/usr/bin/env node
+import module from "node:module";
+module.enableCompileCache?.();
+await import("./main.js");
+`;
+
 // Bun.build rejects with an AggregateError on failure (throw defaults to true),
 // so build errors propagate to runWithExitCode like any other.
 async function bundle(): Promise<void> {
@@ -116,16 +130,21 @@ async function bundle(): Promise<void> {
   await Bun.build({
     entrypoints: [ENTRYPOINT],
     outdir: DIST,
+    naming: { entry: "main.js" },
     target: "node",
     minify: MINIFY,
+    define: DEFINE,
     external: EXTERNAL,
   });
+  const bin = join(DIST, "index.js");
+  await Bun.write(bin, BIN_LOADER);
+  await chmod(bin, 0o755);
 
   // Mirror assets beside the emitted module for resolveAssetsRoot().
   const distAssets = join(DIST, "assets");
   await $`rm -rf ${distAssets}`;
   await $`cp -R ${ASSETS_DIR} ${distAssets}`;
-  console.log(`Bundled to ${join(DIST, "index.js")} with assets/`);
+  console.log(`Bundled to ${join(DIST, "main.js")} behind ${join(DIST, "index.js")} with assets/`);
 }
 
 async function compile(target: string): Promise<void> {
@@ -145,6 +164,7 @@ async function compile(target: string): Promise<void> {
     entrypoints: [ENTRYPOINT, ...assets, template],
     compile: { target: target as Bun.Build.CompileTarget, outfile },
     minify: MINIFY,
+    define: DEFINE,
     root: REPO_ROOT,
     naming: { asset: ASSET_NAMING },
     plugins: [assetLoaderPlugin()],
