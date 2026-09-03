@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import { Layout } from "./Layout";
@@ -25,11 +25,14 @@ export interface ConfirmActionProps {
   // description so the header matches `--help`.
   description?: string;
   // title heads the summary overlay (usually the resource name).
-  title: string;
-  // rows describe the resource the action applies to.
-  rows: SummaryRow[];
-  // message is the yes/no question (destructive actions default to No).
-  message: string;
+  title?: string;
+  // rows describe the resource the action applies to. With neither title nor
+  // rows the overlay is omitted, for an action whose breadcrumb says it all.
+  rows?: SummaryRow[];
+  // message is the yes/no question (destructive actions default to No). Omit it
+  // to skip the confirmation and run the action as soon as the summary loads —
+  // for an operation that is safe to start without asking, like a build.
+  message?: string;
   // isPending / error reflect the summary fetch backing the overlay.
   isPending: boolean;
   error: Error | null;
@@ -47,8 +50,14 @@ export interface ConfirmActionProps {
   // runningLabel is the spinner label while the action runs, shown until the
   // action's first progress step arrives (or throughout, for a plain promise).
   runningLabel: string;
-  // onDone is called when the user acknowledges the success panel.
+  // nextSteps are commands suggested under the success panel, as the create
+  // wizard suggests `agentcore project deploy`.
+  nextSteps?: string[];
+  // onDone is called when the user acknowledges the success panel; doneLabel
+  // says where that leads ("continue" by default, "go back" for a screen that
+  // returns to a menu).
   onDone: () => void;
+  doneLabel?: string;
   // onCancel runs when the confirmation is declined or esc is pressed; defaults
   // to popping the router history, which suits a screen reached from a picker.
   onCancel?: () => void;
@@ -67,19 +76,22 @@ export function ConfirmAction({
   breadcrumb,
   description,
   title,
-  rows,
+  rows = [],
   message,
   isPending,
   error,
   action,
   successTitle,
   runningLabel,
+  nextSteps,
   onDone,
+  doneLabel = "continue",
   onCancel,
 }: ConfirmActionProps) {
   const navigate = useNavigate();
   const cancel = onCancel ?? (() => navigate(-1));
   const [phase, setPhase] = useState<Phase>({ kind: "confirm" });
+  const confirms = message !== undefined;
   // tasks is the step list a progress-reporting action builds up. It stays on
   // screen through success and error, as the headless command leaves its
   // completed steps in scrollback above the final line.
@@ -102,6 +114,13 @@ export function ConfirmAction({
     }
   };
 
+  // Without a question there is nothing to wait for: run once the summary is
+  // ready. Keyed on isPending/error so it fires exactly once, when they settle.
+  useEffect(() => {
+    if (!confirms && !isPending && !error && phase.kind === "confirm") void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run is recreated each render; the phase guard makes this idempotent
+  }, [confirms, isPending, error, phase.kind]);
+
   const hints =
     phase.kind === "confirm"
       ? [
@@ -110,7 +129,7 @@ export function ConfirmAction({
           { key: "ctl+c", label: "quit" },
         ]
       : phase.kind === "success"
-        ? [{ key: "enter", label: "continue" }]
+        ? [{ key: "enter", label: doneLabel }]
         : phase.kind === "running"
           ? // Nothing listens for esc mid-action: an operation in flight is
             // not abandoned by leaving the screen.
@@ -128,18 +147,20 @@ export function ConfirmAction({
         <ErrorBody message={error.message} onBack={cancel} />
       ) : (
         <Box flexDirection="column" paddingX={1}>
-          <Box
-            flexDirection="column"
-            borderStyle="round"
-            borderColor={theme.colors.border}
-            paddingX={1}
-            marginBottom={1}
-          >
-            <Text bold>{title}</Text>
-            <KeyValueTable items={toItems(rows)} />
-          </Box>
+          {(title !== undefined || rows.length > 0) && (
+            <Box
+              flexDirection="column"
+              borderStyle="round"
+              borderColor={theme.colors.border}
+              paddingX={1}
+              marginBottom={1}
+            >
+              {title !== undefined && <Text bold>{title}</Text>}
+              {rows.length > 0 && <KeyValueTable items={toItems(rows)} />}
+            </Box>
+          )}
 
-          {phase.kind === "confirm" && (
+          {phase.kind === "confirm" && confirms && (
             <Confirm message={message} defaultValue={false} onConfirm={run} onCancel={cancel} />
           )}
           {phase.kind !== "confirm" && tasks.length > 0 && (
@@ -149,10 +170,21 @@ export function ConfirmAction({
           )}
           {phase.kind === "running" && tasks.length === 0 && <Spinner label={runningLabel} />}
           {phase.kind === "success" && (
-            <SuccessBody title={phase.title} rows={phase.rows} onDone={onDone} />
+            <SuccessBody
+              title={phase.title}
+              rows={phase.rows}
+              nextSteps={nextSteps}
+              onDone={onDone}
+              doneLabel={doneLabel}
+            />
           )}
           {phase.kind === "error" && (
-            <ErrorBody message={phase.message} onBack={() => setPhase({ kind: "confirm" })} />
+            // With a confirmation, esc returns to the question to try again;
+            // without one, returning would run again, so it leaves instead.
+            <ErrorBody
+              message={phase.message}
+              onBack={confirms ? () => setPhase({ kind: "confirm" }) : cancel}
+            />
           )}
         </Box>
       )}
@@ -179,11 +211,15 @@ function toItems(rows: SummaryRow[]): Record<string, string> {
 function SuccessBody({
   title,
   rows,
+  nextSteps,
   onDone,
+  doneLabel,
 }: {
   title: string;
   rows: SummaryRow[];
+  nextSteps?: string[];
   onDone: () => void;
+  doneLabel: string;
 }) {
   useInput((_input, key) => {
     if (key.return || key.escape) onDone();
@@ -194,12 +230,22 @@ function SuccessBody({
       <Text color={theme.colors.success} bold>
         ✔ {title}
       </Text>
-      <Box flexDirection="column" marginTop={1} marginLeft={2}>
-        <KeyValueTable items={toItems(rows)} />
-      </Box>
+      {rows.length > 0 && (
+        <Box flexDirection="column" marginTop={1} marginLeft={2}>
+          <KeyValueTable items={toItems(rows)} />
+        </Box>
+      )}
+      {nextSteps !== undefined && nextSteps.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color={theme.colors.text}>next steps</Text>
+          {nextSteps.map((step) => (
+            <Text key={step} color={theme.colors.primary}>{`  ${step}`}</Text>
+          ))}
+        </Box>
+      )}
       <Box marginTop={1}>
         <Text color={theme.colors.muted}>
-          press <Text color={theme.colors.focus}>enter</Text> to continue
+          press <Text color={theme.colors.focus}>enter</Text> to {doneLabel}
         </Text>
       </Box>
     </Box>

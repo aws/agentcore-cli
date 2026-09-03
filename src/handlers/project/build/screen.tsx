@@ -1,5 +1,4 @@
 import { useNavigate } from "react-router";
-import { useApp } from "ink";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { ProjectKey } from "../../../router";
 import type { ScreenProps } from "../../types";
@@ -15,7 +14,7 @@ const PROJECT_MENU = "/agentcore/project";
 // same projectManager.build generator the command runs, and ConfirmAction
 // renders its steps through the same TaskList runWithProgress renders on the
 // command line — the TUI is a frame around the CLI's own progress, not a
-// second progress UI.
+// second progress UI. Once done, enter returns to the project menu.
 export function BuildProjectScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   return (
@@ -33,18 +32,13 @@ export function BuildProjectScreen({ ctx, core }: ScreenProps) {
 
 function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["core"] }) {
   const navigate = useNavigate();
-  const { exit } = useApp();
 
+  // No confirmation: a build changes nothing outside the project directory,
+  // so it starts as soon as the screen opens, as the command does.
   return (
     <ConfirmAction
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
-      title={project.name}
-      rows={[
-        { label: "root", value: project.rootPath },
-        { label: "agents", value: String(project.spec.runtimes.length) },
-      ]}
-      message={`Build project '${project.name}'?`}
       isPending={false}
       error={null}
       action={async function* () {
@@ -53,7 +47,9 @@ function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["
       }}
       successTitle={builtMessage(project)}
       runningLabel="building…"
-      onDone={() => exit()}
+      nextSteps={["agentcore project deploy"]}
+      onDone={() => navigate(PROJECT_MENU)}
+      doneLabel="go back"
       onCancel={() => navigate(PROJECT_MENU)}
     />
   );

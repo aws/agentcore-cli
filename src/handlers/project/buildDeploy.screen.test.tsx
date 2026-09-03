@@ -74,7 +74,12 @@ afterEach(async () => {
 });
 
 /** Scaffolds project 'orders' with a default target and cds into it. */
-async function inProject(core: TestCoreClient, options: { empty?: boolean } = {}): Promise<string> {
+const STAGING = { name: "staging", account: "444455556666", region: "eu-west-1" } as const;
+
+async function inProject(
+  core: TestCoreClient,
+  options: { empty?: boolean; targets?: boolean; staging?: boolean } = {},
+): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-build-deploy-screen-"));
   tempDirectories.push(directory);
   process.chdir(directory);
@@ -94,10 +99,15 @@ async function inProject(core: TestCoreClient, options: { empty?: boolean } = {}
     "--skip-git",
   ]);
   const projectRoot = join(process.cwd(), "orders");
-  await writeFile(
-    join(projectRoot, "agentcore", "aws-targets.json"),
-    JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }]),
-  );
+  if (options.targets !== false) {
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([
+        { name: "default", account: "111122223333", region: "us-east-1" },
+        ...(options.staging ? [STAGING] : []),
+      ]),
+    );
+  }
   if (options.empty) {
     // What `remove --all` leaves: the up-front signal the deploy asks about.
     await writeFile(
@@ -110,23 +120,26 @@ async function inProject(core: TestCoreClient, options: { empty?: boolean } = {}
 }
 
 describe("project build screen", () => {
-  test("confirms, then renders the backend's steps as the CLI does, then the CLI's own success line", async () => {
+  test("starts at once, renders the backend's steps as the CLI does, then the CLI's own success line", async () => {
     const { backend } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core);
     const r = renderScreen("/agentcore/project/build", { core });
 
-    await waitForText(r.lastFrame, "Build project 'orders'?");
-    expect(r.lastFrame()).toContain("agentcore → project → build");
-    await r.write("y");
-
     // Both steps settle to ✓, as the inline TaskList leaves them on the
     // command line; the finished steps' output tails collapse.
     await waitForText(r.lastFrame, "✔ Built project 'orders'");
     const frame = r.lastFrame()!;
+    expect(frame).toContain("agentcore → project → build");
+    expect(frame).not.toContain("(y/N)");
     expect(frame).toContain("✓ Synthesizing CloudFormation templates");
     expect(frame).toContain("✓ Deploying stack");
     expect(frame).not.toContain("cdk synth");
+    expect(frame).toContain("agentcore project deploy");
+
+    // Enter stays in the TUI: back to the project menu.
+    await r.press("return");
+    await waitForText(r.lastFrame, "manage an AgentCore project");
     r.unmount();
   });
 
@@ -136,24 +149,14 @@ describe("project build screen", () => {
     await inProject(core);
     const r = renderScreen("/agentcore/project/build", { core });
 
-    await waitForText(r.lastFrame, "Build project 'orders'?");
-    await r.write("y");
-
     await waitForText(r.lastFrame, "✗ synth exploded");
     const frame = r.lastFrame()!;
     expect(frame).toContain("✓ Synthesizing CloudFormation templates");
     expect(frame).toContain("✕ Deploying stack");
     expect(frame).toContain("CREATE_IN_PROGRESS | AWS::IAM::Role");
-    r.unmount();
-  });
-
-  test("declining returns to the project menu", async () => {
-    const core = new TestCoreClient({ backends: { CDK: fakeBackend().backend } });
-    await inProject(core);
-    const r = renderScreen("/agentcore/project/build", { core });
-
-    await waitForText(r.lastFrame, "Build project 'orders'?");
-    await r.write("n");
+    // With no confirmation to return to, esc leaves for the project menu
+    // rather than running the build again.
+    await r.press("escape");
     await waitForText(r.lastFrame, "manage an AgentCore project");
     r.unmount();
   });
@@ -174,28 +177,64 @@ describe("project build screen", () => {
 });
 
 describe("project deploy screen", () => {
-  test("shows the target, then the backend's steps, then the CLI's own success line and outputs", async () => {
+  test("one target: deploys to it at once, then the CLI's own success line", async () => {
     const { backend, deploys } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core);
     const r = renderScreen("/agentcore/project/deploy", { core });
 
-    await waitForText(r.lastFrame, "Deploy project 'orders' to target 'default'?");
-    expect(flatFrame(r.lastFrame)).toContain("account 111122223333/us-east-1");
-    await r.write("y");
-
+    // A project with resources is not asked anything, as on the command line.
     await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
     const frame = flatFrame(r.lastFrame);
+    expect(frame).not.toContain("(y/N)");
+    expect(frame).toContain("project orders");
+    expect(frame).toContain("target default");
     expect(frame).toContain("✓ Synthesizing CloudFormation templates");
     expect(frame).toContain("✓ Deploying stack");
-    expect(frame).toContain("RuntimeArn arn:runtime");
-    // esc is not offered mid-action; here the action has finished.
-    expect(frame).toContain("[enter] continue");
+    // Stack outputs are not listed, as the command prints them only with --json.
+    expect(frame).not.toContain("RuntimeArn");
+    expect(frame).toContain("[enter] go back");
 
-    // A project with resources never confirms a teardown, as on the command line.
+    // …and never confirms a teardown.
     expect(deploys).toHaveLength(1);
     expect(deploys[0]!.confirmed).toBe(false);
     expect(deploys[0]!.input.target.name).toBe("default");
+    r.unmount();
+  });
+
+  test("several targets: asks which, and deploys to the chosen one", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core, { staging: true });
+    const r = renderScreen("/agentcore/project/deploy", { core });
+
+    await waitForText(r.lastFrame, "choose a deployment target");
+    const picker = flatFrame(r.lastFrame);
+    expect(picker).toContain("default 111122223333 us-east-1");
+    expect(picker).toContain("staging 444455556666 eu-west-1");
+    await r.press("down");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'staging'");
+    expect(flatFrame(r.lastFrame)).toContain("target staging");
+    expect(deploys[0]!.input.target).toEqual(STAGING);
+    r.unmount();
+  });
+
+  test("a fresh project with no aws-targets.json deploys, provisioning the default target as the CLI does", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({
+      backends: { CDK: backend },
+      resolveAccount: async () => "887863153624",
+    });
+    await inProject(core, { targets: false });
+    const r = renderScreen("/agentcore/project/deploy", { core });
+
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    const frame = flatFrame(r.lastFrame);
+    // The manager's own provisioning step streams through like any other.
+    expect(frame).toContain("✓ Created default deployment target: account 887863153624");
+    expect(deploys[0]!.input.target).toMatchObject({ name: "default", account: "887863153624" });
     r.unmount();
   });
 
@@ -226,9 +265,6 @@ describe("project deploy screen", () => {
     await inProject(core);
     const r = renderScreen("/agentcore/project/deploy", { core });
 
-    await waitForText(r.lastFrame, "Deploy project 'orders' to target 'default'?");
-    await r.write("y");
-
     await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
     expect(r.lastFrame()).not.toContain("Deployed project");
     r.unmount();
@@ -239,9 +275,6 @@ describe("project deploy screen", () => {
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core);
     const r = renderScreen("/agentcore/project/deploy", { core });
-
-    await waitForText(r.lastFrame, "Deploy project 'orders' to target 'default'?");
-    await r.write("y");
 
     await waitForText(r.lastFrame, "✗ stack rolled back");
     expect(r.lastFrame()).toContain("✕ Deploying stack");

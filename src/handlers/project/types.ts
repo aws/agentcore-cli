@@ -350,6 +350,12 @@ export interface ProjectManager {
   deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, DeployResult>;
 
   /**
+   * The targets aws-targets.json declares, in file order; empty when the file
+   * is absent (deploy then synthesizes the default target on demand).
+   */
+  listTargets(project: Project): Promise<AwsDeploymentTarget[]>;
+
+  /**
    * Look up a target in aws-targets.json without provisioning or requiring it.
    * Returns undefined when the file or the named entry is absent — unlike
    * deploy, which synthesizes the default target on demand.
