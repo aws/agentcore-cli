@@ -17,7 +17,14 @@ export type RuntimeShellSdkFrame = Pick<ShellFrame, "channel" | "payload">;
 
 export type RuntimeShellSdkSession = Pick<
   ShellSession,
-  "sessionId" | "reconnected" | "kicked" | "exitCode" | "send" | "resize" | "close"
+  | "shellId"
+  | "sessionId"
+  | "reconnected"
+  | "kicked"
+  | "exitCode"
+  | "send"
+  | "resize"
+  | "close"
 > &
   AsyncIterable<RuntimeShellSdkFrame>;
 
@@ -59,6 +66,7 @@ export function createRuntimeShellOpener(config: RuntimeShellOpenerConfig = {}):
       runtimeArn: request.runtimeArn,
       endpointName: request.qualifier,
       ...(request.runtimeSessionId !== undefined && { sessionId: request.runtimeSessionId }),
+      ...(request.shellId !== undefined && { shellId: request.shellId }),
       auth:
         request.bearerToken === undefined
           ? "sigv4"
@@ -105,6 +113,10 @@ class RuntimeShellSessionAdapter implements RuntimeShellSession {
     return this.session.sessionId;
   }
 
+  get shellId(): string {
+    return this.session.shellId;
+  }
+
   get kicked(): boolean {
     return this.session.kicked;
   }
@@ -123,7 +135,7 @@ class RuntimeShellSessionAdapter implements RuntimeShellSession {
     return this.session.resize(columns, rows);
   }
 
-  close(): Promise<void> {
+  detach(): Promise<void> {
     return this.session.close();
   }
 
