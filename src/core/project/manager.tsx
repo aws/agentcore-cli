@@ -85,6 +85,10 @@ import type { CoreIdentityClient } from "../../handlers/identity/types";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
+const NODE_INSTALL_HINT = "Install Node.js: https://nodejs.org/";
+const UV_INSTALL_HINT = "Install uv: https://docs.astral.sh/uv/getting-started/installation/";
+const GIT_INSTALL_HINT = "Install git: https://git-scm.com/downloads";
+
 // npm prints nothing until it exits when stderr is piped, and its HTTP log is the only per-package
 // progress it will emit, so the log is asked for and then rewritten into package names.
 const NPM_INSTALL = ["npm", "install", "--loglevel=http"];
@@ -191,12 +195,16 @@ export class FsProjectManager implements ProjectManager {
     const scaffoldRuntimeInput = input.scaffoldRuntimeInput;
     const destination = join(process.cwd(), input.name);
 
-    yield { type: "step", message: "Creating project tree" };
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
       { projectName: input.name },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
+
+    // Validate required tools exist before starting creation flow
+    await this.checkCreateDependencies(input);
+
+    yield { type: "step", message: "Creating project tree" };
     await projectTree.write(destination);
 
     if (envEntries.length > 0) {
@@ -223,7 +231,6 @@ export class FsProjectManager implements ProjectManager {
     // A failed step leaves the scaffolded files in place; the error tells the
     // user how to rerun the step by hand.
     if (!input.skipInstall) {
-      await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
       yield { type: "step", message: "Installing CDK dependencies with npm" };
       yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
 
@@ -238,7 +245,6 @@ export class FsProjectManager implements ProjectManager {
     }
 
     if (!input.skipGit) {
-      await this.checkTool("git", "Install git: https://git-scm.com/downloads");
       yield { type: "step", message: "Initializing git repository" };
       yield* this.run(["git", "init"], destination);
     }
@@ -1073,6 +1079,18 @@ export class FsProjectManager implements ProjectManager {
       );
     }
     return backend;
+  }
+
+  private async checkCreateDependencies(input: CreateProjectInput): Promise<void> {
+    if (!input.skipInstall) {
+      await this.checkTool("npm", NODE_INSTALL_HINT);
+      if (input.scaffoldRuntimeInput?.language === "Python") {
+        await this.checkTool("uv", UV_INSTALL_HINT);
+      }
+    }
+    if (!input.skipGit) {
+      await this.checkTool("git", GIT_INSTALL_HINT);
+    }
   }
 
   /**

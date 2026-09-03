@@ -56,8 +56,13 @@ afterEach(async () => {
 });
 
 // A manager whose runner records commands instead of spawning them.
-function manager(): { manager: FsProjectManager; commands: { command: string[]; cwd: string }[] } {
+function manager(): {
+  manager: FsProjectManager;
+  commands: { command: string[]; cwd: string }[];
+  checkedTools: string[];
+} {
   const commands: { command: string[]; cwd: string }[] = [];
+  const checkedTools: string[] = [];
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
@@ -65,9 +70,13 @@ function manager(): { manager: FsProjectManager; commands: { command: string[]; 
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
       },
-      checkTool: async () => {}, // CI hosts don't have uv installed
+      // CI hosts don't have uv installed.
+      checkTool: async (tool) => {
+        checkedTools.push(tool);
+      },
     }),
     commands,
+    checkedTools,
   };
 }
 
@@ -279,9 +288,62 @@ describe("FsProjectManager.create", () => {
     ]);
   });
 
+  test("fails before writing files or running npm when a later dependency is missing", async () => {
+    const directory = await inTempDirectory();
+    const checkedTools: string[] = [];
+    const commands: string[][] = [];
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      runner: async (command) => {
+        commands.push(command);
+      },
+      checkTool: async (tool) => {
+        checkedTools.push(tool);
+        if (tool === "uv") throw new Error("uv is missing");
+      },
+    });
+
+    await expect(
+      runCreate(subject, { name: "example", scaffoldRuntimeInput: AGENT_PYTHON }),
+    ).rejects.toThrow("uv is missing");
+
+    expect(checkedTools).toEqual(["npm", "uv"]);
+    expect(commands).toEqual([]);
+    expect(existsSync(join(directory, "example"))).toBe(false);
+  });
+
+  test("checks the tools required by the selected create path", async () => {
+    await inTempDirectory();
+
+    const python = manager();
+    await runCreate(python.manager, {
+      name: "python",
+      scaffoldRuntimeInput: AGENT_PYTHON,
+    });
+    expect(python.checkedTools).toEqual(["npm", "uv", "git", "uv"]);
+
+    const typescript = manager();
+    await runCreate(typescript.manager, {
+      name: "typescript",
+      scaffoldRuntimeInput: AGENT_TYPESCRIPT_STRANDS,
+    });
+    expect(typescript.checkedTools).toEqual(["npm", "git", "npm"]);
+
+    const harness = manager();
+    await runCreate(harness.manager, {
+      name: "harness",
+      scaffoldHarnessInput: {
+        name: "harness",
+        model: { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-4-6" },
+      },
+    });
+    expect(harness.checkedTools).toEqual(["npm", "git"]);
+  });
+
   test("skipInstall skips npm install and uv sync", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager();
+    const { manager: subject, commands, checkedTools } = manager();
     await runCreate(subject, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON,
@@ -289,6 +351,7 @@ describe("FsProjectManager.create", () => {
     });
 
     expect(commands).toEqual([{ command: ["git", "init"], cwd: join(directory, "example") }]);
+    expect(checkedTools).toEqual(["git"]);
   });
 
   test.each([
@@ -308,7 +371,7 @@ describe("FsProjectManager.create", () => {
     "skipInstall still generates the container lockfile for %s",
     async (_label, scaffoldRuntimeInput, lockCommand, runtimeName) => {
       const directory = await inTempDirectory();
-      const { manager: subject, commands } = manager();
+      const { manager: subject, commands, checkedTools } = manager();
       await runCreate(subject, {
         name: "example",
         scaffoldRuntimeInput,
@@ -319,12 +382,13 @@ describe("FsProjectManager.create", () => {
       expect(commands).toEqual([
         { command: lockCommand, cwd: join(directory, "example", "app", runtimeName) },
       ]);
+      expect(checkedTools).toEqual([]);
     },
   );
 
   test("skipGit skips git init", async () => {
     await inTempDirectory();
-    const { manager: subject, commands } = manager();
+    const { manager: subject, commands, checkedTools } = manager();
     await runCreate(subject, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON,
@@ -332,6 +396,7 @@ describe("FsProjectManager.create", () => {
     });
 
     expect(commands.map(({ command }) => command[0])).toEqual(["npm", "uv"]);
+    expect(checkedTools).toEqual(["npm", "uv", "uv"]);
   });
 
   test("yields each step as a project event", async () => {
