@@ -216,6 +216,7 @@ describe("runtime hub", () => {
     await waitForText(r.lastFrame, "show the full JSON definition");
     const frame = r.lastFrame()!;
     expect(frame).toMatch(/❯ invoke\s+invoke this Runtime/);
+    expect(frame).toMatch(/shell\s+open an interactive terminal/);
     expect(frame).toContain("versions");
     expect(frame).toContain("endpoints");
     for (const excluded of ["exec", "update", "create", "delete"]) {
@@ -245,8 +246,9 @@ describe("runtime hub", () => {
   });
 
   test.each([
-    ["endpoints", 1],
-    ["versions", 2],
+    ["shell", 1],
+    ["endpoints", 2],
+    ["versions", 3],
   ] as const)(
     "selecting %s opens its encoded Runtime-scoped route",
     async (action, downPresses) => {
@@ -287,7 +289,9 @@ describe("runtime hub", () => {
         r.lastFrame,
         action === "versions"
           ? `agentcore → runtime → version → list → ${runtimeId}`
-          : `agentcore → runtime → endpoint → list → ${runtimeId}`,
+          : action === "shell"
+            ? `agentcore → runtime → shell → ${runtimeId}`
+            : `agentcore → runtime → endpoint → list → ${runtimeId}`,
       );
     },
   );
@@ -304,7 +308,7 @@ describe("runtime hub", () => {
     const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
-    for (let index = 0; index < 3; index += 1) await r.press("down");
+    for (let index = 0; index < 4; index += 1) await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123 → json");
     const frame = r.lastFrame()!;
@@ -401,7 +405,7 @@ describe("runtime hub", () => {
     await waitForText(r.lastFrame, "checkout");
     await r.press("return");
     await waitForText(r.lastFrame, "show the full JSON definition");
-    for (let index = 0; index < 3; index += 1) await r.press("down");
+    for (let index = 0; index < 4; index += 1) await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, '"agentRuntimeId"');
     await r.press("escape");

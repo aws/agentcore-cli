@@ -97,6 +97,7 @@ describe("runtime command hierarchy", () => {
       "get",
       "list",
       "invoke",
+      "shell",
       "version",
       "endpoint",
       "logs",

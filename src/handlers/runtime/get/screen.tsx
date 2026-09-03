@@ -13,6 +13,12 @@ const ACTIONS = [
     returnsToDetails: true,
   },
   {
+    name: "shell",
+    description: "open an interactive terminal",
+    to: (id: string) => `/agentcore/runtime/shell/${encodeURIComponent(id)}`,
+    returnsToDetails: true,
+  },
+  {
     name: "endpoints",
     description: "list this Runtime's endpoints",
     to: (id: string) => `/agentcore/runtime/endpoint/list/${encodeURIComponent(id)}`,

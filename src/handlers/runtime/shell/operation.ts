@@ -1,0 +1,78 @@
+import { InputValidationError, InvalidEnvironmentError, SilentCLIError } from "../../../errors";
+import { InteractiveTerminal, type AppIO } from "../../../io";
+import type { Context } from "../../../router";
+import { ExitCode } from "../../../runnable";
+import type { Core } from "../../types";
+import { coreOptsFromCtx } from "../../utils";
+import type { RuntimeShellLaunchContext } from "./launchContext";
+import { normalizeRuntimeShellRequest } from "./request";
+
+export type RunRuntimeShellInput = {
+  ctx: Context;
+  core: Core;
+  io: AppIO;
+  runtimeId: string;
+  qualifier: string;
+  launchContext?: RuntimeShellLaunchContext;
+};
+
+export async function runRuntimeShell(input: RunRuntimeShellInput): Promise<void> {
+  const { ctx, core, io, runtimeId, qualifier, launchContext } = input;
+  if (!io.stdin.isTTY || !io.stdout.isTTY) {
+    throw new InvalidEnvironmentError("interactive mode requires a TTY on stdin and stdout", {
+      exitCode: ExitCode.USAGE,
+    });
+  }
+
+  const options = coreOptsFromCtx(ctx);
+  if (options.endpointUrl !== undefined) {
+    throw new InputValidationError("runtime shell does not support --endpoint-url");
+  }
+  const detail = await core.runtime.getRuntime(runtimeId, options);
+  const request = normalizeRuntimeShellRequest(detail, {
+    qualifier,
+    runtimeSessionId: launchContext?.runtimeSessionId,
+    shellId: launchContext?.shellId,
+    bearerToken: launchContext?.bearerToken,
+  });
+  request.onReconnect = () => io.stderr.write("\r\nReconnected to shell.\r\n");
+
+  io.stderr.write(`Connecting to Runtime ${runtimeId} (${qualifier})...\n`);
+  const session = await core.runtime.openRuntimeShell(request, options);
+  io.stderr.write(
+    `Connected · session ${session.runtimeSessionId} · shell ${session.shellId} · ` +
+      `Ctrl+D or 'exit' to quit · Ctrl+] to detach\n`,
+  );
+
+  const terminal = new InteractiveTerminal({ io });
+  let result: { detached: boolean };
+  try {
+    result = await terminal.run(session);
+  } finally {
+    await session.detach();
+  }
+
+  if (result.detached) {
+    io.stderr.write(
+      `\nDetached.\nTo reattach:\n` +
+        `  agentcore runtime shell --id ${runtimeId} --qualifier ${qualifier} \\\n` +
+        `    --session-id ${session.runtimeSessionId} --shell-id ${session.shellId}\n`,
+    );
+    return;
+  }
+  if (session.kicked) {
+    io.stderr.write("\nShell attached from another client.\n");
+    throw new SilentCLIError("shell attached from another client");
+  }
+  if (session.exitCode === null) {
+    io.stderr.write("\nShell connection ended without an exit code.\n");
+    throw new SilentCLIError("shell connection ended without an exit code");
+  }
+
+  io.stderr.write(`\nSession closed · exit ${session.exitCode}\n`);
+  if (session.exitCode !== 0) {
+    throw new SilentCLIError(`shell exited with code ${session.exitCode}`, {
+      exitCode: session.exitCode,
+    });
+  }
+}

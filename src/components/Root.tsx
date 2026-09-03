@@ -35,6 +35,7 @@ import { MemoryScreen } from "../handlers/memory/screen.tsx";
 import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
 import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
 import { RuntimeInvokeScreen } from "../handlers/runtime/invoke/screen.tsx";
+import { RuntimeShellScreen } from "../handlers/runtime/shell/screen.tsx";
 import { EvalScreen } from "../handlers/eval/screen.tsx";
 import { EvaluatorScreen } from "../handlers/eval/evaluator/screen.tsx";
 import { EvaluatorListScreen } from "../handlers/eval/evaluator/list/screen.tsx";
@@ -377,6 +378,18 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/runtime/invoke/:runtimeId/:qualifier"
             element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/shell"
+            element={<RuntimeShellScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/shell/:runtimeId"
+            element={<RuntimeShellScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/runtime/shell/:runtimeId/:qualifier"
+            element={<RuntimeShellScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/gateway" element={<GatewayScreen ctx={ctx} core={core} />} />
           <Route
