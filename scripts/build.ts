@@ -80,13 +80,30 @@ function assetLoaderPlugin(): Bun.BunPlugin {
 
 function runtimeShellSdkPlugin(): Bun.BunPlugin {
   const runtimeEntry = Bun.resolveSync("bedrock-agentcore/runtime", REPO_ROOT);
-  const runtimeClient = join(resolve(runtimeEntry, ".."), "client.js");
+  const runtimeDirectory = resolve(runtimeEntry, "..");
+  const runtimeClient = join(runtimeDirectory, "client.js");
+  const shellProtocol = join(runtimeDirectory, "shell", "protocol.js");
+  const namespace = "runtime-shell-sdk";
 
   return {
     name: "runtime-shell-sdk-client",
     setup(build) {
       build.onResolve({ filter: /^bedrock-agentcore\/runtime$/ }, () => ({
+        path: "runtime",
+        namespace,
+      }));
+      build.onResolve({ filter: /^runtime-shell-sdk\/client$/ }, () => ({
         path: runtimeClient,
+      }));
+      build.onResolve({ filter: /^runtime-shell-sdk\/protocol$/ }, () => ({
+        path: shellProtocol,
+      }));
+      build.onLoad({ filter: /^runtime$/, namespace }, () => ({
+        contents: [
+          'export { RuntimeClient } from "runtime-shell-sdk/client";',
+          'export { ShellChannel, MAX_FRAME_SIZE } from "runtime-shell-sdk/protocol";',
+        ].join("\n"),
+        loader: "js",
       }));
     },
   };
