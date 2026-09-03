@@ -23,7 +23,6 @@ export {
   InteractiveTerminal,
   type InteractiveTerminalConfig,
   type InteractiveTerminalPeer,
-  type InteractiveTerminalResult,
   type TerminalFrame,
 } from "./interactiveTerminal";
 export { readTextFile, type ReadTextFileOptions } from "./fileRead";
