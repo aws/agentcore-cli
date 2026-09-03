@@ -364,38 +364,45 @@ describe("project create wizard", () => {
     r.unmount();
   }, 10000);
 
-  test("template flow: the container strands template asks about memory", async () => {
-    await inTempDirectory();
-    const core = new TestCoreClient();
-    const inputs = spyOnCreate(core);
-    const r = renderScreen("/agentcore/project/create", { core });
+  test.each([
+    ["agent-python-strands-container", 1],
+    ["a2a-python-strands", 4],
+  ] as const)(
+    "template flow: %s asks about memory",
+    async (template, downPresses) => {
+      await inTempDirectory();
+      const core = new TestCoreClient();
+      const inputs = spyOnCreate(core);
+      const r = renderScreen("/agentcore/project/create", { core });
 
-    await waitForText(r.lastFrame, "name your project");
-    await r.write("ContainerApp");
-    await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("down");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await waitForText(r.lastFrame, "● agent-python-strands-container");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a memory configuration");
-    await r.press("return");
-    await waitForText(r.lastFrame, "this project will be created");
-    await r.press("return");
-    await waitForText(r.lastFrame, "project created in ./ContainerApp", 5000);
+      await waitForText(r.lastFrame, "name your project");
+      await r.write("StrandsVariant");
+      await r.press("return");
+      await waitForText(r.lastFrame, "what should the project be built around?");
+      await r.press("down");
+      await r.press("return");
+      await waitForText(r.lastFrame, "choose a template");
+      for (let i = 0; i < downPresses; i++) await r.press("down");
+      await waitForText(r.lastFrame, `● ${template}`);
+      await r.press("return");
+      await waitForText(r.lastFrame, "choose a memory configuration");
+      await r.press("return");
+      await waitForText(r.lastFrame, "this project will be created");
+      await r.press("return");
+      await waitForText(r.lastFrame, "project created in ./StrandsVariant", 5000);
 
-    expect(inputs).toEqual([
-      {
-        name: "ContainerApp",
-        skipInstall: false,
-        skipGit: false,
-        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-container"),
-      },
-    ]);
-    r.unmount();
-  }, 10000);
+      expect(inputs).toEqual([
+        {
+          name: "StrandsVariant",
+          skipInstall: false,
+          skipGit: false,
+          scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template),
+        },
+      ]);
+      r.unmount();
+    },
+    10000,
+  );
 
   test("template flow: hello-world skips the memory question", async () => {
     await inTempDirectory();

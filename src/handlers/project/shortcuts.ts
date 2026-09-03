@@ -139,7 +139,10 @@ export function resolveRuntimeTemplateShortcut(
     modelProvider: overrides?.modelProvider ?? template.modelProvider,
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(memory && { memory }),
-    runtimeVersion: build === "CodeZip" ? (template.runtimeVersion ?? "PYTHON_3_14") : undefined,
+    runtimeVersion:
+      build === "CodeZip"
+        ? (template.runtimeVersion ?? LANGUAGE_VERSION_DEFAULTS[template.language])
+        : undefined,
   };
 
   const result = ScaffoldRuntimeInputSchema.safeParse(input);
