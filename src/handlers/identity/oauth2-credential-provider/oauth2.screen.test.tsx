@@ -11,6 +11,7 @@ import {
   tick,
   waitFor,
   waitForText,
+  menuEntries,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -58,15 +59,14 @@ function coreWithProviders(providers: Oauth2CredentialProviderItem[]): TestCoreC
 }
 
 describe("OAuth2 credential provider menu", () => {
-  test("offers only the read-only commands", async () => {
+  test("lists the read-only commands, then the rest as command line only", async () => {
     const screen = renderScreen("/agentcore/identity/oauth2-credential-provider");
 
     await waitForText(screen.lastFrame, "get an OAuth2 credential provider");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("list");
-    expect(frame).not.toContain("create");
-    expect(frame).not.toContain("update");
-    expect(frame).not.toContain("delete");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["create", "update", "delete"],
+    });
   });
 });
 

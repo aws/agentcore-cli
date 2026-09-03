@@ -6,6 +6,7 @@ import {
   TestCoreClient,
   waitFor,
   waitForText,
+  menuEntries,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -62,20 +63,14 @@ function coreWithTests(tests: ABTestSummary[]): TestCoreClient {
 }
 
 describe("ab-test menu", () => {
-  test("lists only the read commands, not the write commands", async () => {
-    const r = renderScreen("/agentcore/eval/ab-test");
+  test("lists the read-only commands, then the rest as command line only", async () => {
+    const screen = renderScreen("/agentcore/eval/ab-test");
 
-    await waitForText(r.lastFrame, "list A/B tests");
-    const frame = r.lastFrame()!;
-    expect(frame).toContain("get an A/B test by id");
-    for (const write of [
-      "pause a running A/B test",
-      "resume a paused A/B test",
-      "stop an A/B test",
-      "delete a stopped A/B test",
-    ]) {
-      expect(frame).not.toContain(write);
-    }
+    await waitForText(screen.lastFrame, "list A/B tests");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["pause", "resume", "stop", "delete", "config-based", "target-based"],
+    });
   });
 });
 

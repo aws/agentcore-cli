@@ -9,6 +9,7 @@ import {
   TestCoreClient,
   waitFor,
   waitForText,
+  menuEntries,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -51,14 +52,14 @@ function coreWithBatchEvaluations(items: BatchEvaluationSummary[]): TestCoreClie
 }
 
 describe("batch-insights menu", () => {
-  test("offers only read-only commands", async () => {
+  test("lists the read-only commands, then the rest as command line only", async () => {
     const screen = renderScreen("/agentcore/eval/batch-insights");
 
     await waitForText(screen.lastFrame, "list batch insights runs");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("list");
-    expect(frame).toContain("get");
-    expect(frame).not.toContain("start an asynchronous batch insights run");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["run"],
+    });
   });
 });
 

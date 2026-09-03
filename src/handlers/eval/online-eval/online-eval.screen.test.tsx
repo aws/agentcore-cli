@@ -9,6 +9,7 @@ import {
   TestCoreClient,
   waitFor,
   waitForText,
+  menuEntries,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -60,17 +61,14 @@ function coreWithConfigs(configs: OnlineEvaluationConfigSummary[]): TestCoreClie
 }
 
 describe("online-eval menu", () => {
-  test("offers only the read-only commands", async () => {
+  test("lists the read-only commands, then the rest as command line only", async () => {
     const screen = renderScreen("/agentcore/eval/online-eval");
 
     await waitForText(screen.lastFrame, "get an online evaluation config by id");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("list");
-    expect(frame).not.toContain("create");
-    expect(frame).not.toContain("update");
-    expect(frame).not.toContain("pause");
-    expect(frame).not.toContain("resume");
-    expect(frame).not.toContain("delete");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["create", "update", "pause", "resume", "delete"],
+    });
   });
 });
 

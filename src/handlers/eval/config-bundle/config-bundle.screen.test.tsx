@@ -11,6 +11,7 @@ import {
   TestCoreClient,
   waitFor,
   waitForText,
+  menuEntries,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -104,27 +105,24 @@ function coreWithBundles(bundles: ConfigurationBundleSummary[]): TestCoreClient 
 }
 
 describe("configuration bundle menu", () => {
-  test("offers only get, list, and version", async () => {
+  test("lists the read-only commands, then the rest as command line only", async () => {
     const screen = renderScreen("/agentcore/eval/config-bundle");
 
     await waitForText(
       screen.lastFrame,
       "get the latest or a specific configuration bundle version",
     );
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("list");
-    expect(frame).toContain("version");
-    expect(frame).not.toContain("create");
-    expect(frame).not.toContain("update");
-    expect(frame).not.toContain("delete");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list", "version"],
+      cliOnly: ["create", "update", "delete"],
+    });
   });
 
   test("the version menu offers only list", async () => {
     const screen = renderScreen("/agentcore/eval/config-bundle/version");
 
     await waitForText(screen.lastFrame, "list immutable versions of a configuration bundle");
-    expect(screen.lastFrame()).not.toContain("create");
-    expect(screen.lastFrame()).not.toContain("delete");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({ screens: ["list"], cliOnly: [] });
   });
 });
 

@@ -26,7 +26,12 @@ export interface RootHandlerConfig {
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
   const { io, logger } = config;
-  const root = new Router("agentcore", "the platform for production AI agents");
+  // The subcommands with screens of their own; the rest (feedback, config,
+  // update) are listed in the menu as command line only and open their help.
+  const root = new Router(
+    "agentcore",
+    "the platform for production AI agents",
+  ).supportedTuiCommands("harness", "identity", "runtime", "memory", "gateway", "eval", "project");
 
   // `agentcore --version` prints the build-time package version.
   root.version(PACKAGE_VERSION);

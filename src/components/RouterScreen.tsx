@@ -47,16 +47,14 @@ export interface RouterScreenProps extends ScreenProps {
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
   path: string[];
-  // showCliOnly lists subcommands without a screen below a divider, rather than
-  // omitting them; selecting one opens its help (see CliOnlyScreen).
-  showCliOnly?: boolean;
 }
 
 // RouterScreen renders the interactive command menu for a Router node: a filter
 // input at the top and the node's subcommands (read straight off the Commander
 // Command) as navigable options below. Selecting an option routes to that
-// subcommand's screen.
-export function RouterScreen({ ctx, path, showCliOnly = false }: RouterScreenProps) {
+// subcommand's screen. Subcommands without a screen are listed below a divider
+// and open their help instead (see CliOnlyScreen).
+export function RouterScreen({ ctx, path }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
@@ -65,15 +63,13 @@ export function RouterScreen({ ctx, path, showCliOnly = false }: RouterScreenPro
   // Screen-backed commands first, then the command-line-only ones, so the
   // divider between them falls at one place in the list.
   const options: Option[] = useMemo(() => {
-    const all = command.commands
-      .filter((c) => showCliOnly || isTuiCommandSupported(c))
-      .map((c) => ({
-        name: c.name(),
-        description: c.description(),
-        cliOnly: !isTuiCommandSupported(c),
-      }));
+    const all = command.commands.map((c) => ({
+      name: c.name(),
+      description: c.description(),
+      cliOnly: !isTuiCommandSupported(c),
+    }));
     return [...all.filter((o) => !o.cliOnly), ...all.filter((o) => o.cliOnly)];
-  }, [command, showCliOnly]);
+  }, [command]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);

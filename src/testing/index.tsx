@@ -27,6 +27,8 @@ export {
   waitForText,
   flatFrame,
   waitForFlatText,
+  menuEntries,
+  type MenuEntries,
   type RenderScreenOptions,
   type RenderScreenResult,
 } from "./renderScreen";

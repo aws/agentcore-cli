@@ -186,3 +186,27 @@ export function waitForFlatText(
 ): Promise<void> {
   return waitFor(() => flatFrame(lastFrame).includes(text), timeoutMs);
 }
+
+// MenuEntries splits a RouterScreen frame into the subcommands listed with a
+// screen of their own and those listed below the "command line only" divider.
+export interface MenuEntries {
+  screens: string[];
+  cliOnly: string[];
+}
+
+// menuEntries reads the option names off a rendered RouterScreen frame, in
+// display order, partitioned by the divider.
+export function menuEntries(frame: string): MenuEntries {
+  const entries: MenuEntries = { screens: [], cliOnly: [] };
+  let belowDivider = false;
+  for (const line of frame.split("\n")) {
+    if (line.includes("command line only")) {
+      belowDivider = true;
+      continue;
+    }
+    // "   name   description" or " ❯ name   description".
+    const match = /^\s{1,3}(?:❯ )?\s*([a-z][a-z0-9-]*)\s{2,}\S/.exec(line);
+    if (match) (belowDivider ? entries.cliOnly : entries.screens).push(match[1]!);
+  }
+  return entries;
+}

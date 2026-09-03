@@ -9,7 +9,13 @@ import {
   type ListGatewaysResponse,
   type TargetSummary,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { cleanupScreens, renderScreen, TestCoreClient, waitForText } from "../../testing";
+import {
+  cleanupScreens,
+  renderScreen,
+  TestCoreClient,
+  waitForText,
+  menuEntries,
+} from "../../testing";
 
 afterEach(cleanupScreens);
 
@@ -109,11 +115,10 @@ describe("Gateway menu and list", () => {
     const screen = renderScreen("/agentcore/gateway");
 
     await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
-    const frame = screen.lastFrame()!;
-    for (const command of ["get", "list", "invoke", "target", "connector", "rule", "policy"]) {
-      expect(frame).toContain(command);
-    }
-    expect(frame).not.toMatch(/\bcreate\b/);
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list", "invoke", "target", "connector", "rule", "policy"],
+      cliOnly: ["create", "update", "delete"],
+    });
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -214,10 +219,10 @@ describe("Gateway Target flow", () => {
     const screen = renderScreen("/agentcore/gateway/target");
 
     await waitForText(screen.lastFrame, "inspect targets for an AgentCore Gateway");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("get");
-    expect(frame).toContain("list");
-    expect(frame).not.toMatch(/\bcreate\b/);
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["create", "update", "delete"],
+    });
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -317,10 +322,10 @@ describe("Gateway Connector flow", () => {
     const screen = renderScreen("/agentcore/gateway/connector");
 
     await waitForText(screen.lastFrame, "inspect connectors configured for an AgentCore Gateway");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("get");
-    expect(frame).toContain("list");
-    expect(frame).not.toMatch(/\bcreate\b/);
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["create", "update", "delete"],
+    });
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -403,10 +408,10 @@ describe("Gateway Rule flow", () => {
     const screen = renderScreen("/agentcore/gateway/rule");
 
     await waitForText(screen.lastFrame, "inspect rules for an AgentCore Gateway");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("get");
-    expect(frame).toContain("list");
-    expect(frame).not.toMatch(/\bcreate\b/);
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["create", "update", "delete"],
+    });
     expect(screen.core.gateway.calls).toEqual([]);
   });
 

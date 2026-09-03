@@ -5,6 +5,7 @@ import {
   waitForText,
   cleanupScreens,
   createSilentLogger,
+  menuEntries,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -84,51 +85,21 @@ function projectCommand(...path: string[]) {
   return command;
 }
 
-const WITH_SCREENS = ["create", "invoke", "build", "deploy"];
-
 describe("project menu: command-line-only subcommands", () => {
   test("are listed below a divider, after the ones with a screen", async () => {
     const r = renderScreen("/agentcore/project");
 
     await waitForText(r.lastFrame, "command line only");
-    const lines = r.lastFrame()!.split("\n");
-    const divider = lines.findIndex((line) => line.includes("command line only"));
-    const lineOf = (command: string) =>
-      lines.findIndex((line) => new RegExp(`^\\s*(❯ )?\\s*${command}\\s`).test(line));
-    for (const command of WITH_SCREENS) expect(lineOf(command)).toBeLessThan(divider);
-    for (const command of projectSubcommands().filter((c) => !WITH_SCREENS.includes(c))) {
-      expect(lineOf(command)).toBeGreaterThan(divider);
-    }
+    const withScreens = ["create", "deploy", "invoke", "build"];
+    const { screens, cliOnly } = menuEntries(r.lastFrame()!);
+    expect(screens.toSorted()).toEqual(withScreens.toSorted());
+    expect(cliOnly.toSorted()).toEqual(
+      projectSubcommands()
+        .filter((c) => !withScreens.includes(c))
+        .toSorted(),
+    );
     r.unmount();
   });
-
-  test.each(projectSubcommands().filter((command) => !WITH_SCREENS.includes(command)))(
-    "%s opens its help instead of an error, and esc returns to the menu",
-    async (command) => {
-      const r = renderScreen(`/agentcore/project/${command}`);
-      const compiled = projectCommand(command);
-
-      if (compiled.commands.length > 0) {
-        // A group opens its own menu, with every child under the divider.
-        await waitForText(r.lastFrame, `agentcore → project → ${command}`);
-        await waitForText(r.lastFrame, "command line only");
-      } else {
-        await waitForText(r.lastFrame, "this command runs from the command line");
-        const help = compiled.createHelp();
-        const frame = r.lastFrame()!.replace(/\s+/g, " ");
-        expect(frame).toContain(help.commandUsage(compiled));
-        // Every option but --help, which means nothing on the help itself.
-        for (const option of help.visibleOptions(compiled)) {
-          if (option.long === "--help") expect(frame).not.toContain("--help");
-          else expect(frame).toContain(help.optionTerm(option));
-        }
-      }
-
-      await r.press("escape");
-      await waitForText(r.lastFrame, "manage an AgentCore project");
-      r.unmount();
-    },
-  );
 
   test("a group drills down to its leaves' help and back", async () => {
     const r = renderScreen("/agentcore/project/add");

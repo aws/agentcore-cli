@@ -15,7 +15,19 @@ import { createAbTestHandler } from "./ab-test";
 import { createRecommendationHandler } from "./recommendation";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
+  // ondemand and recommendation have no screens; the menu lists them as
+  // command line only.
   return new Router("eval", "evaluate and optimize AgentCore agents")
+    .supportedTuiCommands(
+      "evaluator",
+      "online-eval",
+      "online-insight",
+      "dataset",
+      "batch-evaluation",
+      "batch-insights",
+      "config-bundle",
+      "ab-test",
+    )
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .handler(createEvaluatorHandler(core, io))

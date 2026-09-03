@@ -115,28 +115,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text color={theme.colors.text}>{title}</Text>
-      <Box paddingLeft={2}>{children}</Box>
+      {/* A column, so the table stretches to the full width and its key
+          column's share is a share of the screen, not of the table's own
+          content. */}
+      <Box paddingLeft={2} flexDirection="column">
+        {children}
+      </Box>
     </Box>
   );
 }
 
 // CommandFallbackScreen is the route for any command path Root does not map to
 // a screen of its own: a command group renders its menu, a leaf renders its
-// help. `basePath` is the route prefix the wildcard matched under.
-export function CommandFallbackScreen({
-  basePath,
-  ...props
-}: ScreenProps & { basePath: string[] }) {
+// help. An unknown trailing segment resolves to the nearest ancestor.
+export function CommandFallbackScreen(props: ScreenProps) {
   const { pathname } = useLocation();
   const path = pathname.split("/").filter((segment) => segment !== "");
   const command = resolveCommand(props.ctx.require(CommandKey), path);
-  // An unknown trailing segment resolves to the nearest ancestor; show that.
   const resolved = commandPath(command);
-  if (resolved.length < basePath.length) {
-    return <RouterScreen {...props} path={basePath} showCliOnly />;
-  }
   return command.commands.length > 0 ? (
-    <RouterScreen {...props} path={resolved} showCliOnly />
+    <RouterScreen {...props} path={resolved} />
   ) : (
     <CliOnlyScreen {...props} path={resolved} />
   );

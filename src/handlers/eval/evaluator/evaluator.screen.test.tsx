@@ -9,6 +9,7 @@ import {
   TestCoreClient,
   waitFor,
   waitForText,
+  menuEntries,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -60,16 +61,14 @@ function coreWithEvaluators(evaluators: EvaluatorSummary[]): TestCoreClient {
 }
 
 describe("evaluator menu", () => {
-  test("offers only the read-only commands", async () => {
+  test("lists the read-only commands, then the rest as command line only", async () => {
     const screen = renderScreen("/agentcore/eval/evaluator");
 
     await waitForText(screen.lastFrame, "get an evaluator by id");
-    const frame = screen.lastFrame()!;
-    expect(frame).toContain("list");
-    // Mutating subcommands are omitted so they can't fall through to HelpScreen.
-    expect(frame).not.toContain("llm-as-a-judge");
-    expect(frame).not.toContain("code-based");
-    expect(frame).not.toContain("delete");
+    expect(menuEntries(screen.lastFrame()!)).toEqual({
+      screens: ["get", "list"],
+      cliOnly: ["llm-as-a-judge", "code-based", "delete"],
+    });
   });
 
   test("the eval root menu shows evaluator and online-eval", async () => {
