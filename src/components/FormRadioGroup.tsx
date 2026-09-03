@@ -9,7 +9,7 @@ export interface FormRadioOption {
 }
 
 export interface FormRadioGroupProps {
-  name: string;
+  name?: string;
   helpText: string;
   options: FormRadioOption[];
   // highlighted/hovered row
@@ -32,7 +32,7 @@ export function FormRadioGroup({
   return (
     <Box flexDirection="column">
       <Box flexDirection="column">
-        <Text color={theme.colors.text}>{name}</Text>
+        {name && <Text color={theme.colors.text}>{name}</Text>}
         <Text color={theme.colors.muted}>{helpText}</Text>
       </Box>
       <Box

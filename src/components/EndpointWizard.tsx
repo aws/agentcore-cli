@@ -342,7 +342,6 @@ function VersionStep({
         </>
       ) : (
         <FormRadioGroup
-          name="choose a harness version"
           helpText="which harness version should this endpoint serve?"
           options={options}
           focusedIndex={index}
