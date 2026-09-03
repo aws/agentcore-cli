@@ -62,9 +62,6 @@ function fakeBackend(options: FakeBackendOptions = {}) {
     async resolveDeployedResources() {
       return [];
     },
-    async resolveProjectResources() {
-      return [];
-    },
   };
   return { backend, deploys };
 }
