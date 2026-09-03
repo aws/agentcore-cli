@@ -435,11 +435,12 @@ describe("invoke chat screen", () => {
     await sendMessage(r, "hi agent");
     await waitForText(r.lastFrame, "end_turn");
 
-    await r.write("abcd");
-    await waitForText(r.lastFrame, "abcd");
+    // Non-hex letters, so the random session UUID in the frame can never contain them.
+    await r.write("wxyz");
+    await waitForText(r.lastFrame, "wxyz");
     await r.write("\x7f"); // backspace
-    await waitFor(() => !(r.lastFrame() ?? "").includes("abcd"));
-    expect(r.lastFrame()).toContain("abc");
+    await waitFor(() => !(r.lastFrame() ?? "").includes("wxyz"));
+    expect(r.lastFrame()).toContain("wxy");
     r.unmount();
   });
 
