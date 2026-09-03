@@ -4,6 +4,7 @@ import type { RuntimeShellRequest } from "../handlers/runtime/types";
 import {
   createRuntimeShellOpener,
   type RuntimeShellSdkClient,
+  type RuntimeShellSdkOpenInput,
   type RuntimeShellSdkSession,
 } from "./runtimeShell";
 
@@ -100,6 +101,29 @@ describe("createRuntimeShellOpener", () => {
     expect(opens).toEqual([
       expect.objectContaining({ auth: { type: "oauth", bearerToken: "token" } }),
     ]);
+  });
+
+  test("preserves the SDK reconnect outcome callback", async () => {
+    const opens: RuntimeShellSdkOpenInput[] = [];
+    const outcomes: boolean[] = [];
+    const onReconnect = async (reconnected: boolean) => {
+      outcomes.push(reconnected);
+    };
+    const opener = createRuntimeShellOpener({
+      createClient: () => ({
+        openShell: async (input) => {
+          opens.push(input);
+          return sdkSession();
+        },
+      }),
+      sleep: async () => {},
+    });
+
+    await opener({ ...REQUEST, onReconnect }, { region: "us-west-2" });
+    await opens[0]?.reconnectConfig?.onReconnect?.(false);
+
+    expect(opens[0]?.reconnectConfig?.onReconnect).toBe(onReconnect);
+    expect(outcomes).toEqual([false]);
   });
 
   test("translates stdout and stderr frames and delegates writes", async () => {

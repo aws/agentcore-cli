@@ -34,7 +34,13 @@ export async function runRuntimeShell(input: RunRuntimeShellInput): Promise<void
     runtimeSessionId: launchContext?.runtimeSessionId,
     bearerToken: launchContext?.bearerToken,
   });
-  request.onReconnect = () => io.stderr.write("\r\nReconnected to shell.\r\n");
+  request.onReconnect = (reconnected) => {
+    io.stderr.write(
+      reconnected
+        ? "\r\nReattached to existing shell.\r\n"
+        : "\r\nPrevious shell unavailable; started a new shell.\r\n",
+    );
+  };
 
   io.stderr.write(`Connecting to Runtime ${runtimeId} (${qualifier})...\n`);
   const session = await core.runtime.openRuntimeShell(request, options);

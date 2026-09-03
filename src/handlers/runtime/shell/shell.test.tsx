@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createRootHandler } from "../../index";
-import type { RuntimeShellSession } from "../types";
+import type { RuntimeShellRequest, RuntimeShellSession } from "../types";
 import {
   createSilentLogger,
   TestCoreClient,
@@ -115,6 +115,19 @@ describe("runtime shell command", () => {
     expect(
       subject.core.runtime.calls.find((call) => call.method === "openRuntimeShell")?.args[0],
     ).toMatchObject({ bearerToken: "token" });
+  });
+
+  test("reports whether reconnect preserved the existing shell", async () => {
+    const subject = harness();
+
+    await subject.run("--id", RUNTIME_ID, "--qualifier", "prod");
+    const request = subject.core.runtime.calls.find((call) => call.method === "openRuntimeShell")
+      ?.args[0] as RuntimeShellRequest;
+    await request.onReconnect?.(true);
+    await request.onReconnect?.(false);
+
+    expect(subject.io.stderr()).toContain("Reattached to existing shell.");
+    expect(subject.io.stderr()).toContain("Previous shell unavailable; started a new shell.");
   });
 
   test("rejects JSON mode", async () => {
