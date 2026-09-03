@@ -1,4 +1,4 @@
-import { RuntimeClient as AgentCoreRuntimeClient, ShellChannel } from "bedrock-agentcore/runtime";
+import { RuntimeClient as AgentCoreRuntimeClient } from "bedrock-agentcore/runtime";
 import type { AwsCredentialIdentityProvider } from "@smithy/types";
 import { Buffer } from "node:buffer";
 import type { RuntimeShellFrame, RuntimeShellSession } from "../handlers/runtime/types";
@@ -50,6 +50,8 @@ export type RuntimeShellOpenerConfig = {
 const RETRYABLE_UPGRADE = /HTTP (409|424|429)\b/;
 const MAX_ATTEMPTS = 5;
 const MAX_STDIN_PAYLOAD_BYTES = 64 * 1024 - 1;
+const STDOUT_CHANNEL = 1;
+const STDERR_CHANNEL = 2;
 
 export function createRuntimeShellOpener(config: RuntimeShellOpenerConfig = {}): OpenRuntimeShell {
   const createClient =
@@ -147,9 +149,9 @@ class RuntimeShellSessionAdapter implements RuntimeShellSession {
 
   async *[Symbol.asyncIterator](): AsyncIterator<RuntimeShellFrame> {
     for await (const frame of this.session) {
-      if (frame.channel === ShellChannel.STDOUT) {
+      if (frame.channel === STDOUT_CHANNEL) {
         yield { type: "stdout", data: Uint8Array.from(frame.payload) };
-      } else if (frame.channel === ShellChannel.STDERR) {
+      } else if (frame.channel === STDERR_CHANNEL) {
         yield { type: "stderr", data: Uint8Array.from(frame.payload) };
       }
     }

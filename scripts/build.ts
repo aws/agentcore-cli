@@ -78,6 +78,20 @@ function assetLoaderPlugin(): Bun.BunPlugin {
   };
 }
 
+function runtimeShellSdkPlugin(): Bun.BunPlugin {
+  const runtimeEntry = Bun.resolveSync("bedrock-agentcore/runtime", REPO_ROOT);
+  const runtimeClient = join(resolve(runtimeEntry, ".."), "client.js");
+
+  return {
+    name: "runtime-shell-sdk-client",
+    setup(build) {
+      build.onResolve({ filter: /^bedrock-agentcore\/runtime$/ }, () => ({
+        path: runtimeClient,
+      }));
+    },
+  };
+}
+
 function bootstrapTemplate(): string {
   const manifest = Bun.resolveSync("@aws-cdk/toolkit-lib/package.json", REPO_ROOT);
   const template = join(resolve(manifest, ".."), ...BOOTSTRAP_TEMPLATE);
@@ -133,6 +147,7 @@ async function bundle(): Promise<void> {
     minify: MINIFY,
     define: DEFINE,
     external: EXTERNAL,
+    plugins: [runtimeShellSdkPlugin()],
   });
   const bin = join(DIST, "index.js");
   await Bun.write(bin, BIN_LOADER);
@@ -165,7 +180,7 @@ async function compile(target: string): Promise<void> {
     define: DEFINE,
     root: REPO_ROOT,
     naming: { asset: ASSET_NAMING },
-    plugins: [assetLoaderPlugin()],
+    plugins: [assetLoaderPlugin(), runtimeShellSdkPlugin()],
   });
   await assertTemplateIsEmbedded(outfile, template);
   console.log(
