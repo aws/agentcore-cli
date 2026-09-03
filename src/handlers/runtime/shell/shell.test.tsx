@@ -9,8 +9,9 @@ import {
   testIO,
 } from "../../../testing";
 
+const REGION = "us-west-2";
 const RUNTIME_ID = "checkout-AbCdEf1234";
-const RUNTIME_ARN = "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/checkout-AbCdEf1234";
+const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/checkout-AbCdEf1234`;
 
 function runtime(overrides: Partial<GetAgentRuntimeResponse> = {}): GetAgentRuntimeResponse {
   return {
@@ -69,7 +70,8 @@ function harness(options: { isTTY?: boolean; runtime?: GetAgentRuntimeResponse }
     core,
     shell,
     io,
-    run: (...args: string[]) => root.route(["node", "agentcore", "runtime", "shell", ...args]),
+    run: (...args: string[]) =>
+      root.route(["node", "agentcore", "runtime", "shell", ...args, "--region", REGION]),
   };
 }
 
