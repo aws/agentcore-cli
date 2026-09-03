@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { TuiHandoffController, TuiHandoffKey } from "../../../tui/handoff";
 import { renderTuiAt } from "../../../tui";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "../../keys";
-import { type Context, ValueContext } from "../../../router";
+import { ValueContext } from "../../../router";
 import type { RuntimeShellSession } from "../types";
 import {
   cleanupScreens,
@@ -66,52 +65,16 @@ function core() {
 }
 
 describe("RuntimeShellScreen", () => {
-  test("a shell selected from the bare picker returns to that picker", async () => {
-    const controller = new TuiHandoffController();
-    let handoffContext!: Context;
-    const screen = renderScreen("/agentcore/runtime/shell", {
-      core: core(),
-      withContext: (ctx) => {
-        handoffContext = ctx.withValue(TuiHandoffKey, controller);
-        return handoffContext;
-      },
-    });
-
-    await waitForText(screen.lastFrame, "checkout");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "prod");
-    await screen.press("return");
-    let handoff = controller.take();
-    await waitFor(() => {
-      handoff ??= controller.take();
-      return handoff !== undefined;
-    });
-    const { streams } = ttyTestIO();
-
-    expect(screen.core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(true);
-    expect(screen.core.runtime.calls.some((call) => call.method === "listRuntimeEndpoints")).toBe(
-      true,
-    );
-    await expect(
-      handoff!({ ctx: handoffContext, core: screen.core, io: streams.io }),
-    ).resolves.toEqual({
-      resumePath: "/agentcore/runtime/shell",
-    });
-  });
-
   test("a direct Runtime route skips the Runtime picker", async () => {
-    const controller = new TuiHandoffController();
     const screen = renderScreen("/agentcore/runtime/shell/checkout-AbCdEf1234", {
       core: core(),
-      withContext: (ctx) => ctx.withValue(TuiHandoffKey, controller),
     });
 
     await waitForText(screen.lastFrame, "prod");
     expect(screen.core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
   });
 
-  test("a shell selected from Runtime details returns there after a nonzero exit", async () => {
-    const controller = new TuiHandoffController();
+  test("renderTuiAt returns to Runtime details after a nonzero shell exit", async () => {
     const value = core();
     const failedSession: RuntimeShellSession = {
       runtimeSessionId: "session-012345678901234567890123456789",
@@ -123,36 +86,38 @@ describe("RuntimeShellScreen", () => {
       async *[Symbol.asyncIterator]() {},
     };
     value.runtime.setShellSession(failedSession);
-    let handoffContext!: Context;
-    const screen = renderScreen("/agentcore/runtime/get/checkout-AbCdEf1234", {
-      core: value,
-      withContext: (ctx) => {
-        handoffContext = ctx.withValue(TuiHandoffKey, controller);
-        return handoffContext;
-      },
-    });
+    const { streams, stdin } = ttyTestIO();
+    const ctx = ValueContext.EmptyContext()
+      .withValue(RegionKey, "us-east-1")
+      .withValue(EndpointKey, undefined)
+      .withValue(JsonKey, false)
+      .withValue(DebugKey, false);
+    const detailText = "show the full JSON definition";
+    const rendering = renderTuiAt(
+      "/agentcore/runtime/get/checkout-AbCdEf1234",
+      ctx,
+      value,
+      streams.io,
+    );
 
-    await waitForText(screen.lastFrame, "show the full JSON definition");
-    await screen.press("down");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "prod");
-    await screen.press("return");
-    let handoff = controller.take();
-    await waitFor(() => {
-      handoff ??= controller.take();
-      return handoff !== undefined;
-    });
-    const { streams } = ttyTestIO();
+    await waitFor(() => streams.stdout().includes(detailText));
+    const initialDetails = streams.stdout().split(detailText).length;
+    stdin.write("\x1b[B");
+    await waitFor(() => streams.stdout().includes("❯ shell"));
+    stdin.write("\r");
+    await waitFor(() => streams.stdout().includes("prod"));
+    stdin.write("\r");
+    await waitFor(() => streams.stderr().includes("Session closed · exit 42"));
+    await waitFor(() => streams.stdout().split(detailText).length > initialDetails);
+    stdin.write("\x03");
 
-    await expect(
-      handoff!({ ctx: handoffContext, core: screen.core, io: streams.io }),
-    ).resolves.toEqual({
-      resumePath: "/agentcore/runtime/get/checkout-AbCdEf1234",
-    });
-    expect(streams.stderr()).toContain("Session closed · exit 42");
+    await rendering;
+    expect(value.runtime.calls.filter((call) => call.method === "openRuntimeShell")).toHaveLength(
+      1,
+    );
   });
 
-  test("renderTuiAt unmounts Ink before executing the shell handoff", async () => {
+  test("renderTuiAt runs a direct shell to completion", async () => {
     const value = core();
     const { streams } = ttyTestIO();
     const ctx = ValueContext.EmptyContext()
@@ -167,7 +132,22 @@ describe("RuntimeShellScreen", () => {
     expect(streams.stderr()).toContain("Connected");
   });
 
-  test("renderTuiAt remounts a requested origin after the shell ends", async () => {
+  test("renderTuiAt propagates unexpected shell failures", async () => {
+    const value = core();
+    value.runtime.setError(new Error("shell lookup failed"));
+    const { streams } = ttyTestIO();
+    const ctx = ValueContext.EmptyContext()
+      .withValue(RegionKey, "us-east-1")
+      .withValue(EndpointKey, undefined)
+      .withValue(JsonKey, false)
+      .withValue(DebugKey, false);
+
+    await expect(
+      renderTuiAt("/agentcore/runtime/shell/checkout-AbCdEf1234/prod", ctx, value, streams.io),
+    ).rejects.toThrow("shell lookup failed");
+  });
+
+  test("renderTuiAt returns to a requested origin after the shell ends", async () => {
     const value = core();
     const { streams, stdin } = ttyTestIO();
     const ctx = ValueContext.EmptyContext()
@@ -183,7 +163,6 @@ describe("RuntimeShellScreen", () => {
     stdin.write("\r");
     await waitFor(
       () => value.runtime.calls.filter((call) => call.method === "listRuntimes").length === 2,
-      5000,
     );
     stdin.write("\x03");
 

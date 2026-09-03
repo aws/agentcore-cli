@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
-import { useApp } from "ink";
+import { useApp, useStderr, useStdin, useStdout } from "ink";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
 import { Spinner } from "../../../components/ui/spinner";
 import { SilentCLIError } from "../../../errors";
-import { TuiHandoffKey } from "../../../tui/handoff";
 import type { ScreenProps } from "../../types";
 import { RuntimeShellLaunchContextKey } from "./launchContext";
 import { runRuntimeShell } from "./operation";
@@ -82,7 +81,11 @@ function RuntimeShellHandoff({
   qualifier,
   returnPath,
 }: ScreenProps & { runtimeId: string; qualifier: string; returnPath?: string }) {
-  const { exit } = useApp();
+  const { exit, suspendTerminal } = useApp();
+  const { stdin } = useStdin();
+  const { stdout } = useStdout();
+  const { stderr } = useStderr();
+  const navigate = useNavigate();
   const requested = useRef(false);
   const launchContext = ctx.value(RuntimeShellLaunchContextKey);
   const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;
@@ -90,23 +93,44 @@ function RuntimeShellHandoff({
   useEffect(() => {
     if (requested.current) return;
     requested.current = true;
-    ctx.require(TuiHandoffKey).request(async ({ ctx, core, io }) => {
+    void (async () => {
       try {
-        await runRuntimeShell({
-          ctx,
-          core,
-          io,
-          runtimeId,
-          qualifier,
-          launchContext: initialContext,
-        });
+        await suspendTerminal(() =>
+          runRuntimeShell({
+            ctx,
+            core,
+            io: { stdin, stdout, stderr },
+            runtimeId,
+            qualifier,
+            launchContext: initialContext,
+          }),
+        );
       } catch (error) {
-        if (returnPath === undefined || !(error instanceof SilentCLIError)) throw error;
+        if (returnPath === undefined || !(error instanceof SilentCLIError)) {
+          exit(error);
+          return;
+        }
       }
-      return returnPath === undefined ? undefined : { resumePath: returnPath };
-    });
-    exit();
-  }, [ctx, core, exit, initialContext, qualifier, returnPath, runtimeId]);
+      if (returnPath === undefined) {
+        exit();
+      } else {
+        navigate(returnPath, { replace: true });
+      }
+    })();
+  }, [
+    core,
+    ctx,
+    exit,
+    initialContext,
+    navigate,
+    qualifier,
+    returnPath,
+    runtimeId,
+    stderr,
+    stdin,
+    stdout,
+    suspendTerminal,
+  ]);
 
   return <Spinner label={`Opening shell for ${runtimeId} (${qualifier})...`} />;
 }
