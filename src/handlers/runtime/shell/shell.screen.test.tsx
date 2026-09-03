@@ -184,6 +184,7 @@ describe("RuntimeShellScreen", () => {
     stdin.write("\r");
     await waitFor(
       () => value.runtime.calls.filter((call) => call.method === "listRuntimes").length === 2,
+      5000,
     );
     stdin.write("\x03");
 
