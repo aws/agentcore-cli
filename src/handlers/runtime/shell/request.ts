@@ -5,15 +5,6 @@ import type { RuntimeShellRequest } from "../types";
 
 export type RuntimeShellInput = Omit<RuntimeShellRequest, "runtimeArn">;
 
-export function validateRuntimeShellIds(
-  runtimeSessionId: string | undefined,
-  shellId: string | undefined,
-): void {
-  if (shellId !== undefined && runtimeSessionId === undefined) {
-    throw new InputValidationError("--shell-id requires --session-id");
-  }
-}
-
 export async function resolveRuntimeShellBearerToken(
   source: string | undefined,
   stdin: NodeJS.ReadStream,
@@ -62,15 +53,12 @@ export function normalizeRuntimeShellRequest(
   if (!customJwt && input.bearerToken !== undefined) {
     throw new InputValidationError("IAM Runtime does not accept --bearer-token");
   }
-  validateRuntimeShellIds(input.runtimeSessionId, input.shellId);
-
   return {
     runtimeArn,
     qualifier: input.qualifier,
     ...(input.runtimeSessionId !== undefined && {
       runtimeSessionId: input.runtimeSessionId,
     }),
-    ...(input.shellId !== undefined && { shellId: input.shellId }),
     ...(input.bearerToken !== undefined && { bearerToken: input.bearerToken }),
   };
 }

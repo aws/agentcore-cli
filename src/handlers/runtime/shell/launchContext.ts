@@ -3,7 +3,6 @@ import { contextKey } from "../../../router";
 export type RuntimeShellLaunchContext = {
   runtimeId: string;
   runtimeSessionId?: string;
-  shellId?: string;
   bearerToken?: string;
 };
 
