@@ -66,33 +66,48 @@ interface MemoryRecordScopeScreenProps {
 
 function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
   const navigate = useNavigate();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [focusedIndex, setFocusedIndex] = useState(0);
   const [scope, setScope] = useState("");
   const [submitted, setSubmitted] = useState(false);
-
-  const submit = (value: string) => {
-    if (value.trim() === "") {
-      setSubmitted(true);
-      return;
-    }
-
-    const kind: RecordScopeKind = selectedIndex === 0 ? "namespace" : "namespace-path";
-    navigate(
-      `/agentcore/memory/record/list/${encodeURIComponent(memoryId)}/${kind}/${encodeURIComponent(value)}`,
-    );
-  };
+  // editing is true while the scope text field has focus; the radio list has
+  // focus otherwise.
+  const [editing, setEditing] = useState(false);
 
   useInput((_input, key) => {
-    if (key.escape) {
-      navigate(-1);
+    if (!editing) {
+      if (key.escape) {
+        navigate(-1);
+        return;
+      }
+      if (key.upArrow) {
+        setFocusedIndex(0);
+        return;
+      }
+      if (key.downArrow) {
+        setFocusedIndex(1);
+        return;
+      }
+      if (key.return) {
+        setEditing(true);
+      }
       return;
     }
-    if (key.upArrow) {
-      setSelectedIndex(0);
+
+    // The scope field is focused; its TextInput owns text editing.
+    if (key.escape || key.upArrow) {
+      setEditing(false);
+      setSubmitted(false);
       return;
     }
-    if (key.downArrow) {
-      setSelectedIndex(1);
+    if (key.return) {
+      if (scope.trim() === "") {
+        setSubmitted(true);
+        return;
+      }
+      const kind: RecordScopeKind = focusedIndex === 0 ? "namespace" : "namespace-path";
+      navigate(
+        `/agentcore/memory/record/list/${encodeURIComponent(memoryId)}/${kind}/${encodeURIComponent(scope)}`,
+      );
     }
   });
 
@@ -112,20 +127,22 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
           name="scope type"
           helpText="Choose how the service should match record namespaces."
           options={scopeOptions}
-          selectedIndex={selectedIndex}
+          focusedIndex={focusedIndex}
+          selectedIndex={editing ? focusedIndex : undefined}
         />
-        <FormTextInput
-          name={selectedIndex === 0 ? "namespace" : "namespace path"}
-          helpText="Enter the namespace value used to scope this request."
-          placeholder="/strategies/strategy-id/actors/actor-id"
-          errorText="A namespace value is required."
-          value={scope}
-          onChange={(value) => {
-            setScope(value);
-            setSubmitted(false);
-          }}
-          onSubmit={submit}
-        />
+        {editing && (
+          <FormTextInput
+            name={focusedIndex === 0 ? "namespace" : "namespace path"}
+            helpText="Enter the namespace value used to scope this request."
+            placeholder="/strategies/strategy-id/actors/actor-id"
+            errorText="A namespace value is required."
+            value={scope}
+            onChange={(value) => {
+              setScope(value);
+              setSubmitted(false);
+            }}
+          />
+        )}
         {submitted && scope.trim() === "" ? (
           <Text color={darkTheme.colors.error}>A namespace value is required.</Text>
         ) : null}

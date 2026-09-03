@@ -755,23 +755,25 @@ function ModelStep({
         name="choose a model"
         helpText="the provider and model that will power the harness"
         options={rows}
-        selectedIndex={index}
+        focusedIndex={index}
+        selectedIndex={focusedField !== null ? index : undefined}
       />
-      {provider.fields.map((field, i) => (
-        <FormTextInput
-          key={`${provider.kind}.${field.key}`}
-          name={field.name}
-          helpText={field.helpText}
-          placeholder={field.placeholder}
-          errorText=""
-          value={value[field.key]}
-          onChange={(next) => {
-            onChange({ ...value, [field.key]: next });
-            setError(null);
-          }}
-          focused={focusedField === i}
-        />
-      ))}
+      {focusedField !== null &&
+        provider.fields.map((field, i) => (
+          <FormTextInput
+            key={`${provider.kind}.${field.key}`}
+            name={field.name}
+            helpText={field.helpText}
+            placeholder={field.placeholder}
+            errorText=""
+            value={value[field.key]}
+            onChange={(next) => {
+              onChange({ ...value, [field.key]: next });
+              setError(null);
+            }}
+            focused={focusedField === i}
+          />
+        ))}
       {error && <Text color={theme.colors.error}>{error}</Text>}
       {index !== 0 && (
         <Text color={theme.colors.info}>
@@ -861,7 +863,7 @@ function MemoryStep({
         name="choose a memory configuration"
         helpText="how should the harness remember conversations?"
         options={MEMORY_OPTIONS}
-        selectedIndex={index}
+        focusedIndex={index}
       />
       {value.kind === "byo" && (
         <FormTextInput

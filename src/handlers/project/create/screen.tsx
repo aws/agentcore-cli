@@ -393,7 +393,7 @@ function WizardStep({ stepKey, values, patch, onNext, onBack, onSubmit }: Wizard
           name="what should the project be built around?"
           helpText="a project deploys either a managed harness or your own agent code"
           options={PROJECT_KIND_OPTIONS}
-          selectedIndex={PROJECT_KIND_OPTIONS.findIndex((option) => option.kind === values.kind)}
+          focusedIndex={PROJECT_KIND_OPTIONS.findIndex((option) => option.kind === values.kind)}
           onSelect={(index) => patch({ kind: PROJECT_KIND_OPTIONS[index]!.kind })}
           onNext={onNext}
           onBack={onBack}
@@ -414,9 +414,7 @@ function WizardStep({ stepKey, values, patch, onNext, onBack, onSubmit }: Wizard
           name="choose a template"
           helpText="the agent code scaffolded into the project"
           options={TEMPLATE_OPTIONS}
-          selectedIndex={TEMPLATE_OPTIONS.findIndex(
-            (option) => option.template === values.template,
-          )}
+          focusedIndex={TEMPLATE_OPTIONS.findIndex((option) => option.template === values.template)}
           onSelect={(index) => patch({ template: TEMPLATE_OPTIONS[index]!.template })}
           onNext={onNext}
           onBack={onBack}
@@ -428,7 +426,7 @@ function WizardStep({ stepKey, values, patch, onNext, onBack, onSubmit }: Wizard
           name="choose a memory configuration"
           helpText="how should the Strands agent remember conversations?"
           options={MEMORY_OPTIONS}
-          selectedIndex={MEMORY_OPTIONS.findIndex((option) => option.memory === values.memory)}
+          focusedIndex={MEMORY_OPTIONS.findIndex((option) => option.memory === values.memory)}
           onSelect={(index) => patch({ memory: MEMORY_OPTIONS[index]!.memory })}
           onNext={onNext}
           onBack={onBack}
@@ -495,7 +493,7 @@ function RadioStep({
   name,
   helpText,
   options,
-  selectedIndex,
+  focusedIndex,
   onSelect,
   onNext,
   onBack,
@@ -503,7 +501,7 @@ function RadioStep({
   name: string;
   helpText: string;
   options: FormRadioOption[];
-  selectedIndex: number;
+  focusedIndex: number;
   onSelect: (index: number) => void;
   onNext: () => void;
   onBack: () => void;
@@ -514,11 +512,11 @@ function RadioStep({
       return;
     }
     if (key.upArrow) {
-      onSelect(Math.max(0, selectedIndex - 1));
+      onSelect(Math.max(0, focusedIndex - 1));
       return;
     }
     if (key.downArrow) {
-      onSelect(Math.min(options.length - 1, selectedIndex + 1));
+      onSelect(Math.min(options.length - 1, focusedIndex + 1));
       return;
     }
     if (key.return) onNext();
@@ -530,7 +528,7 @@ function RadioStep({
         name={name}
         helpText={helpText}
         options={options}
-        selectedIndex={selectedIndex}
+        focusedIndex={focusedIndex}
       />
     </Box>
   );
@@ -706,7 +704,7 @@ function ModelStep({
           name="choose a model"
           helpText="the provider and model that will power the harness"
           options={options}
-          selectedIndex={providerIndex}
+          focusedIndex={providerIndex}
         />
         {fields.map((field, fieldIndex) => (
           <FormTextInput

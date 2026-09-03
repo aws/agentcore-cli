@@ -12,12 +12,21 @@ export interface FormRadioGroupProps {
   name: string;
   helpText: string;
   options: FormRadioOption[];
-  selectedIndex: number;
+  // highlighted/hovered row
+  focusedIndex: number;
+  // row that user selects / hits ENTER on
+  selectedIndex?: number;
 }
 
 // FormRadioGroup renders a column of radio rows. It is fully controlled: the
-// parent owns the selected index and the key handling that moves it.
-export function FormRadioGroup({ name, helpText, options, selectedIndex }: FormRadioGroupProps) {
+// parent owns the focused index and the key handling that moves it.
+export function FormRadioGroup({
+  name,
+  helpText,
+  options,
+  focusedIndex,
+  selectedIndex,
+}: FormRadioGroupProps) {
   const columnWidth = options.reduce((max, option) => Math.max(max, option.label.length), 0) + 2;
 
   return (
@@ -33,16 +42,23 @@ export function FormRadioGroup({ name, helpText, options, selectedIndex }: FormR
         borderColor={theme.colors.border}
       >
         {options.map((option, i) => {
+          const focused = i === focusedIndex;
           const selected = i === selectedIndex;
+          // A selected row uses the selection color; a hovered (focused) row
+          // uses the brighter focus color; everything else is neutral.
+          const accentColor = selected
+            ? theme.colors.selection
+            : focused
+              ? theme.colors.focus
+              : undefined;
+          const highlighted = focused || selected;
           return (
             <Box key={option.label} flexDirection="row">
               <Box width={2} flexShrink={0}>
-                <Text color={selected ? theme.colors.focus : theme.colors.muted}>
-                  {selected ? "●" : "○"}
-                </Text>
+                <Text color={accentColor ?? theme.colors.muted}>{highlighted ? "●" : "○"}</Text>
               </Box>
               <Box width={columnWidth} flexShrink={0}>
-                <Text bold={selected} color={selected ? theme.colors.focus : theme.colors.text}>
+                <Text bold={highlighted} color={accentColor ?? theme.colors.text}>
                   {option.label}
                 </Text>
               </Box>
