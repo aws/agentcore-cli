@@ -10,6 +10,7 @@ import { MemoryClient } from "./memory";
 import { PolicyClient } from "./policy";
 import { ObservabilityClient } from "./observability";
 import { RuntimeClient } from "./runtime";
+import type { OpenRuntimeShell } from "./runtime";
 import { FsReadWriteJson } from "../io";
 import type {
   AwsClients,
@@ -49,6 +50,7 @@ type CoreClientConfig = {
   newSessionId?: () => string;
   now?: () => number;
   bedrockAgentImporter?: CoreBedrockAgentImporter;
+  openRuntimeShell?: OpenRuntimeShell;
 };
 
 // CoreClient is the single entry point to the Bedrock AgentCore APIs. It owns the
@@ -89,7 +91,12 @@ export class CoreClient implements AwsClients {
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
     this.fetch = fetch;
-    this.runtime = new RuntimeClient(this, fetch, this.logger.child({ module: "runtime" }));
+    this.runtime = new RuntimeClient(
+      this,
+      fetch,
+      this.logger.child({ module: "runtime" }),
+      config.openRuntimeShell,
+    );
     this.gateway = new GatewayClient(this, fetch, this.logger.child({ module: "gateway" }));
     this.policy = new PolicyClient(this, this.logger.child({ module: "policy" }));
     // EvalClient shares the injected fetch: dataset content is served from a

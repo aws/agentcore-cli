@@ -14,17 +14,27 @@ import type {
   CoreRuntimeClient,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
+  RuntimeShellRequest,
+  RuntimeShellSession,
 } from "../handlers/runtime/types";
 import type { Logger } from "../logging";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { invokeRuntime } from "./invokeRuntime";
 import { toClientConfig } from "./utils";
 
+export type OpenRuntimeShell = (
+  request: RuntimeShellRequest,
+  options: CoreOptions,
+) => Promise<RuntimeShellSession>;
+
 export class RuntimeClient implements CoreRuntimeClient {
   constructor(
     private readonly clients: AwsClients,
     private readonly fetch: CoreFetch,
     private readonly logger: Logger,
+    private readonly openShell: OpenRuntimeShell = async () => {
+      throw new Error("Runtime shell transport is not configured");
+    },
   ) {}
 
   invokeRuntime(
@@ -38,6 +48,13 @@ export class RuntimeClient implements CoreRuntimeClient {
       options,
       signal,
     );
+  }
+
+  openRuntimeShell(
+    request: RuntimeShellRequest,
+    options: CoreOptions,
+  ): Promise<RuntimeShellSession> {
+    return this.openShell(request, options);
   }
 
   async getRuntime(

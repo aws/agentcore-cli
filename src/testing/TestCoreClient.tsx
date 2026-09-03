@@ -151,6 +151,8 @@ import type {
   DeployedRuntime,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
+  RuntimeShellRequest,
+  RuntimeShellSession,
 } from "../handlers/runtime/types";
 import type {
   BatchEvaluationDetail,
@@ -670,6 +672,16 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   private listEndpointResponses = new Map<string | undefined, ListAgentRuntimeEndpointsResponse>();
   private invokeResponse: RuntimeInvokeResponse = DEFAULT_RUNTIME_INVOKE_RESPONSE;
   private invokeBodies: AsyncIterable<Uint8Array>[] = [];
+  private shellSession: RuntimeShellSession = {
+    runtimeSessionId: "runtime-session-012345678901234567890123",
+    shellId: "shell-1",
+    kicked: false,
+    exitCode: 0,
+    send: async () => {},
+    resize: async () => {},
+    detach: async () => {},
+    async *[Symbol.asyncIterator]() {},
+  };
   private error?: Error;
 
   setGetResponse(response: GetAgentRuntimeResponse): this {
@@ -710,6 +722,11 @@ export class TestRuntimeClient implements CoreRuntimeClient {
     return this;
   }
 
+  setShellSession(session: RuntimeShellSession): this {
+    this.shellSession = session;
+    return this;
+  }
+
   queueInvokeBody(body: AsyncIterable<Uint8Array>): this {
     this.invokeBodies.push(body);
     return this;
@@ -741,6 +758,15 @@ export class TestRuntimeClient implements CoreRuntimeClient {
       ...this.invokeResponse,
       body: this.invokeBodies.shift() ?? this.invokeResponse.body,
     };
+  }
+
+  async openRuntimeShell(
+    request: RuntimeShellRequest,
+    options: CoreOptions,
+  ): Promise<RuntimeShellSession> {
+    this.calls.push({ method: "openRuntimeShell", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.shellSession;
   }
 
   async getRuntimeVersion(

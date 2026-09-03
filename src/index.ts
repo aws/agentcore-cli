@@ -2,6 +2,7 @@ import { homedir } from "os";
 import { join } from "path";
 
 import { CoreClient } from "./core";
+import { createRuntimeShellOpener } from "./core/runtimeShell";
 import {
   createCloudFormationClient,
   createControlClient,
@@ -68,6 +69,7 @@ process.exit(
         createDataClient,
         createIamClient,
         createLogsClient,
+        openRuntimeShell: createRuntimeShellOpener(),
         logger: rootLogger.child({ module: "core" }),
       });
 

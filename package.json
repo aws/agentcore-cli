@@ -72,6 +72,7 @@
     "@opentelemetry/sdk-metrics": "^2.10.0",
     "@smithy/core": "^3.33.3",
     "@tanstack/react-query": "^5.101.2",
+    "bedrock-agentcore": "^0.4.3",
     "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
     "handlebars": "^4.7.9",
