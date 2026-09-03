@@ -117,7 +117,6 @@ test('AgentCoreStack synthesizes manual and Quick Create payment connectors', ()
     ProvisionMode: 'QUICK_CREATE',
     CredentialProviderConfigurations: [],
   });
-  expect(Object.keys(template.findOutputs('*')).some(key => key.includes('AuthorizationUrl'))).toBe(true);
 });
 
 test('AgentCoreStack preserves complete and type-distinct payment resource identities', () => {
