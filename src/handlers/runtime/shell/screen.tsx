@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
 import { Spinner } from "../../../components/ui/spinner";
+import { SilentCLIError } from "../../../errors";
 import { TuiHandoffKey } from "../../../tui/handoff";
 import type { ScreenProps } from "../../types";
 import { RuntimeShellLaunchContextKey } from "./launchContext";
@@ -11,6 +12,7 @@ import { runRuntimeShell } from "./operation";
 
 type RuntimeShellLocationState = {
   returnOnEscape?: boolean;
+  returnPath?: string;
 };
 
 const shellPath = (...parts: string[]) =>
@@ -20,7 +22,8 @@ export function RuntimeShellScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const returnOnEscape = (location.state as RuntimeShellLocationState | null)?.returnOnEscape;
+  const locationState = location.state as RuntimeShellLocationState | null;
+  const returnOnEscape = locationState?.returnOnEscape;
 
   if (!runtimeId) {
     return (
@@ -28,11 +31,20 @@ export function RuntimeShellScreen(props: ScreenProps) {
         {...props}
         breadcrumb={["agentcore", "runtime", "shell"]}
         description="choose a Runtime to open a shell"
-        onSelect={(id) => navigate(shellPath(id))}
+        onSelect={(id) =>
+          navigate(shellPath(id), {
+            state: { returnPath: locationState?.returnPath ?? location.pathname },
+          })
+        }
       />
     );
   }
   if (!qualifier) {
+    const returnPath =
+      locationState?.returnPath ??
+      (returnOnEscape
+        ? `/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`
+        : location.pathname);
     return (
       <RuntimeEndpointPicker
         {...props}
@@ -42,7 +54,10 @@ export function RuntimeShellScreen(props: ScreenProps) {
         onSelect={(selected) =>
           navigate(shellPath(runtimeId, selected), {
             replace: returnOnEscape === true,
-            state: returnOnEscape ? { returnOnEscape } : undefined,
+            state: {
+              ...locationState,
+              returnPath,
+            },
           })
         }
         onEscape={() => (returnOnEscape ? navigate(-1) : navigate(shellPath()))}
@@ -50,7 +65,14 @@ export function RuntimeShellScreen(props: ScreenProps) {
     );
   }
 
-  return <RuntimeShellHandoff {...props} runtimeId={runtimeId} qualifier={qualifier} />;
+  return (
+    <RuntimeShellHandoff
+      {...props}
+      runtimeId={runtimeId}
+      qualifier={qualifier}
+      returnPath={locationState?.returnPath}
+    />
+  );
 }
 
 function RuntimeShellHandoff({
@@ -58,7 +80,8 @@ function RuntimeShellHandoff({
   core,
   runtimeId,
   qualifier,
-}: ScreenProps & { runtimeId: string; qualifier: string }) {
+  returnPath,
+}: ScreenProps & { runtimeId: string; qualifier: string; returnPath?: string }) {
   const { exit } = useApp();
   const requested = useRef(false);
   const launchContext = ctx.value(RuntimeShellLaunchContextKey);
@@ -67,18 +90,23 @@ function RuntimeShellHandoff({
   useEffect(() => {
     if (requested.current) return;
     requested.current = true;
-    ctx.require(TuiHandoffKey).request(({ ctx, core, io }) =>
-      runRuntimeShell({
-        ctx,
-        core,
-        io,
-        runtimeId,
-        qualifier,
-        launchContext: initialContext,
-      }),
-    );
+    ctx.require(TuiHandoffKey).request(async ({ ctx, core, io }) => {
+      try {
+        await runRuntimeShell({
+          ctx,
+          core,
+          io,
+          runtimeId,
+          qualifier,
+          launchContext: initialContext,
+        });
+      } catch (error) {
+        if (returnPath === undefined || !(error instanceof SilentCLIError)) throw error;
+      }
+      return returnPath === undefined ? undefined : { resumePath: returnPath };
+    });
     exit();
-  }, [ctx, core, exit, initialContext, qualifier, runtimeId]);
+  }, [ctx, core, exit, initialContext, qualifier, returnPath, runtimeId]);
 
   return <Spinner label={`Opening shell for ${runtimeId} (${qualifier})...`} />;
 }
