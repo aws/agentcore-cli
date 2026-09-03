@@ -221,6 +221,34 @@ describe("normalizeRuntimeInvokeRequest", () => {
     expect(request.runtimeUserId).toBe("default");
   });
 
+  test.each([["HTTP"], ["A2A"]] as const)(
+    "defaults %s requests to JSON content and SSE accept",
+    (serverProtocol) => {
+      const request = normalizeRuntimeInvokeRequest(
+        detail({ protocolConfiguration: { serverProtocol } }),
+        {
+          runtimeId: RUNTIME_ID,
+          payload: new Uint8Array(),
+        },
+      );
+
+      expect(request.contentType).toBe("application/json");
+      expect(request.accept).toBe("text/event-stream");
+    },
+  );
+
+  test("lets explicit content-type and accept override the defaults", () => {
+    const request = normalizeRuntimeInvokeRequest(detail(), {
+      runtimeId: RUNTIME_ID,
+      payload: new Uint8Array(),
+      contentType: "application/cbor",
+      accept: "application/json",
+    });
+
+    expect(request.contentType).toBe("application/cbor");
+    expect(request.accept).toBe("application/json");
+  });
+
   test("maps every request field and ordered allowed headers once", () => {
     const request = normalizeRuntimeInvokeRequest(
       detail({
