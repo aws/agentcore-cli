@@ -490,19 +490,12 @@ describe("project create", () => {
     expect(envLocal).toContain("test-api-key");
   });
 
-  test("scaffolds a Container agent from the strands template", async () => {
+  test.each([
+    ["--build Container override", ["--template", "agent-python-strands", "--build", "Container"]],
+    ["container template", ["--template", "agent-python-strands-container"]],
+  ])("scaffolds a Container agent from the strands template (%s)", async (_label, flags) => {
     const directory = await inTempDirectory();
-    await run([
-      "create",
-      "--name",
-      "MyProject",
-      "--template",
-      "agent-python-strands",
-      "--build",
-      "Container",
-      "--skip-install",
-      "--skip-git",
-    ]);
+    await run(["create", "--name", "MyProject", ...flags, "--skip-install", "--skip-git"]);
 
     const projectRoot = join(directory, "MyProject");
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();

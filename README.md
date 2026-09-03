@@ -197,6 +197,8 @@ agentcore harness invoke --id <id from the deploy outputs> --prompt "hello"
 
 # Scaffold runtime code instead (pass a template or framework flags).
 agentcore project create --name MyAgent --template agent-python-strands
+# The same Strands agent built as a container image, with a Dockerfile.
+agentcore project create --name MyAgent --template agent-python-strands-container
 
 # Translate an existing Amazon Bedrock Agent version into editable runtime code.
 # The selected alias identifies the immutable source version; generated code

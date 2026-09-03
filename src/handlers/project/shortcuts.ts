@@ -68,6 +68,14 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     memory: "longAndShortTerm",
     runtimeVersion: "PYTHON_3_14",
   },
+  "agent-python-strands-container": {
+    runtimeName: "agent_python_strands",
+    build: "Container",
+    language: "Python",
+    framework: "strands",
+    modelProvider: "Bedrock",
+    memory: "longAndShortTerm",
+  },
   "agent-typescript-strands": {
     runtimeName: "agent_typescript_strands",
     build: "CodeZip",
