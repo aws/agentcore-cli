@@ -27,5 +27,6 @@ export interface CorePolicyClient {
   generatePolicy(
     input: GeneratePolicyInput,
     options: CoreOptions,
+    signal?: AbortSignal,
   ): AsyncGenerator<ProgressEvent, PolicyGenerationResult>;
 }

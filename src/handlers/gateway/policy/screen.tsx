@@ -4,19 +4,21 @@ import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { ErrorPanel } from "../../../components/ErrorPanel";
-import { EventLog } from "../../../components/EventLog";
 import { GatewayPicker } from "../../../components/GatewayPicker";
 import { KeyValueTable } from "../../../components/KeyValueTable";
 import { Layout } from "../../../components/Layout";
 import { MultilineInput } from "../../../components/MultilineInput";
 import { Divider } from "../../../components/ui/divider";
 import { Spinner } from "../../../components/ui/spinner";
+import { TaskList, type Task } from "../../../components/ui/task-list";
 import { darkTheme } from "../../../components/ui/_core.js";
+import { UserCancellationError } from "../../../errors";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import type { PolicyGenerationResult } from "./types";
 
 const theme = darkTheme;
+const PICKER_PATH = "/agentcore/gateway/policy/generate";
 const PROMPT_PLACEHOLDER = "Describe what the policy should allow or deny";
 
 type Phase =
@@ -35,11 +37,15 @@ export function GatewayPolicyGenerateScreen(props: ScreenProps) {
         {...props}
         breadcrumb={["agentcore", "gateway", "policy", "generate"]}
         description="choose a Gateway to generate a policy for"
-        onSelect={(id) => navigate(`/agentcore/gateway/policy/generate/${encodeURIComponent(id)}`)}
+        onSelect={(id) => navigate(`${PICKER_PATH}/${encodeURIComponent(id)}`)}
       />
     );
   }
   return <GeneratePolicyForm {...props} gatewayId={gatewayId} />;
+}
+
+function finishTasks(tasks: Task[], state: Task["state"]): Task[] {
+  return tasks.map((task, index) => (index === tasks.length - 1 ? { ...task, state } : task));
 }
 
 function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId: string }) {
@@ -53,43 +59,62 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
 
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [prompt, setPrompt] = useState("");
-  const [events, setEvents] = useState<string[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const scrollRef = useRef<ScrollViewRef>(null);
-  const aliveRef = useRef(true);
-  useEffect(
-    () => () => {
-      aliveRef.current = false;
-    },
-    [],
-  );
+  const runRef = useRef<{
+    controller: AbortController;
+    generation: AsyncGenerator<unknown, PolicyGenerationResult>;
+  }>(null);
+
+  const cancel = () => {
+    const run = runRef.current;
+    if (!run) return;
+    runRef.current = null;
+    run.controller.abort(new UserCancellationError());
+    void run.generation.return(undefined as never);
+  };
+  useEffect(() => cancel, []);
 
   const submit = async () => {
-    setEvents([]);
+    const controller = new AbortController();
+    const generation = core.policy.generatePolicy(
+      { gatewayId, prompt, name: `cli_generation_${Date.now()}` },
+      opts,
+      controller.signal,
+    );
+    runRef.current = { controller, generation };
+    setTasks([]);
     setPhase({ kind: "running" });
     try {
-      const generation = core.policy.generatePolicy(
-        { gatewayId, prompt, name: `cli_generation_${Date.now()}` },
-        opts,
-      );
       let next = await generation.next();
       while (!next.done) {
-        if (!aliveRef.current) return;
+        if (controller.signal.aborted) return;
         if (next.value.type === "step") {
-          const message = next.value.message;
-          setEvents((current) => [...current, message]);
+          const title = next.value.message;
+          setTasks((current) => [
+            ...finishTasks(current, "done"),
+            { title, state: "running", tail: [] },
+          ]);
         }
         next = await generation.next();
       }
-      if (aliveRef.current) setPhase({ kind: "result", result: next.value });
+      if (controller.signal.aborted) return;
+      setTasks((current) => finishTasks(current, "done"));
+      setPhase({ kind: "result", result: next.value });
     } catch (error) {
-      if (aliveRef.current) setPhase({ kind: "error", message: (error as Error).message });
+      if (controller.signal.aborted) return;
+      setTasks((current) => finishTasks(current, "failed"));
+      setPhase({ kind: "error", message: (error as Error).message });
+    } finally {
+      if (runRef.current?.controller === controller) runRef.current = null;
     }
   };
 
   useInput(
     (input, key) => {
       if (key.escape) {
-        navigate(-1);
+        cancel();
+        navigate(PICKER_PATH);
         return;
       }
       if (phase.kind !== "result") return;
@@ -116,7 +141,7 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
             { key: "ctl+c", label: "quit" },
           ]
         : [
-            { key: "esc", label: "back" },
+            { key: "esc", label: phase.kind === "running" ? "cancel" : "back" },
             { key: "ctl+c", label: "quit" },
           ];
 
@@ -152,15 +177,15 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
               submitDisabled={prompt.trim().length === 0}
             />
           ) : phase.kind === "running" ? (
-            <Box flexDirection="column">
-              <EventLog events={events} />
-              <Spinner label="generating…" />
-            </Box>
+            <TaskList tasks={tasks} />
           ) : phase.kind === "error" ? (
-            <ErrorPanel message={phase.message} onBack={() => setPhase({ kind: "form" })} />
+            <Box flexDirection="column">
+              <TaskList tasks={tasks} />
+              <ErrorPanel message={phase.message} onBack={() => setPhase({ kind: "form" })} />
+            </Box>
           ) : (
             <ScrollView ref={scrollRef}>
-              <EventLog events={events} />
+              <TaskList tasks={tasks} />
               <Divider />
               <Text>
                 {phase.result.policies

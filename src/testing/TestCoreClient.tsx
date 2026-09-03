@@ -2413,13 +2413,24 @@ export class TestPolicyClient implements CorePolicyClient {
     ],
   };
   error: Error | undefined;
+  // hang keeps the generator waiting after its first step until the signal aborts.
+  hang = false;
   readonly calls: GeneratePolicyInput[] = [];
+  readonly signals: (AbortSignal | undefined)[] = [];
 
   async *generatePolicy(
     input: GeneratePolicyInput,
+    _options: CoreOptions,
+    signal?: AbortSignal,
   ): AsyncGenerator<ProgressEvent, PolicyGenerationResult> {
     this.calls.push(input);
+    this.signals.push(signal);
     yield { type: "step", message: "Resolving gateway" };
+    if (this.hang) {
+      await new Promise((_, reject) =>
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true }),
+      );
+    }
     if (this.error) throw this.error;
     return this.result;
   }

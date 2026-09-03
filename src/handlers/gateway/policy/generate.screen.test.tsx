@@ -94,6 +94,21 @@ describe("gateway policy generate screen", () => {
     expect(screen.lastFrame()).toContain("forbid IAM callers");
   });
 
+  test("aborts the run and returns to the picker on esc while generating", async () => {
+    const core = coreWith(ENGINE_ARN);
+    core.policy.hang = true;
+    const screen = renderScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, { core });
+    await waitForText(screen.lastFrame, PLACEHOLDER);
+
+    await screen.write("x");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "[esc] cancel");
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Gateway to generate a policy for");
+    expect(core.policy.signals[0]!.aborted).toBe(true);
+  });
+
   test("shows the error and returns to the form on esc", async () => {
     const core = coreWith(ENGINE_ARN);
     core.policy.error = new Error("policy generation 'gen-1' failed: bad prompt");

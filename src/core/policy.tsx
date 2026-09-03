@@ -6,7 +6,13 @@ import {
   type GetPolicyGenerationCommandOutput,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { WaiterState } from "@smithy/core/client";
-import { AgentCoreCLIError, ERROR_SOURCE, InputValidationError, NetworkingError } from "../errors";
+import {
+  AgentCoreCLIError,
+  ERROR_SOURCE,
+  InputValidationError,
+  NetworkingError,
+  UserCancellationError,
+} from "../errors";
 import type {
   CorePolicyClient,
   GeneratedPolicy,
@@ -40,12 +46,15 @@ export class PolicyClient implements CorePolicyClient {
   async *generatePolicy(
     input: GeneratePolicyInput,
     options: CoreOptions,
+    signal?: AbortSignal,
   ): AsyncGenerator<ProgressEvent, PolicyGenerationResult> {
     const control = this.clients.control(toClientConfig(options));
     const gatewayId = resourceIdFromArn(input.gatewayId);
 
     yield { type: "step", message: `Resolving gateway ${gatewayId}` };
-    const gateway = await control.send(new GetGatewayCommand({ gatewayIdentifier: gatewayId }));
+    const gateway = await control.send(new GetGatewayCommand({ gatewayIdentifier: gatewayId }), {
+      abortSignal: signal,
+    });
     const gatewayArn = gateway.gatewayArn!;
     const engine = input.policyEngineId ?? gateway.policyEngineConfiguration?.arn;
     if (!engine) {
@@ -63,16 +72,20 @@ export class PolicyClient implements CorePolicyClient {
         content: { rawText: input.prompt },
         name: input.name,
       }),
+      { abortSignal: signal },
     );
     const policyGenerationId = started.policyGenerationId!;
     const meta = { policyGenerationId, policyEngineId };
 
     yield { type: "step", message: "Waiting for generation to complete" };
     const waited = await waitForPolicyGenerationCompleted(
-      { client: control, ...this.wait },
+      { client: control, abortSignal: signal, ...this.wait },
       { policyEngineId, policyGenerationId },
     );
     this.logger.debug(`policy generation ${policyGenerationId} waiter state: ${waited.state}`);
+    if (waited.state === WaiterState.ABORTED) {
+      throw signal?.reason ?? new UserCancellationError();
+    }
     if (waited.state === WaiterState.TIMEOUT) {
       throw new NetworkingError(
         `policy generation '${policyGenerationId}' did not finish within ${this.wait.maxWaitTime}s; ` +
@@ -95,6 +108,7 @@ export class PolicyClient implements CorePolicyClient {
     do {
       const page = await control.send(
         new ListPolicyGenerationAssetsCommand({ policyEngineId, policyGenerationId, nextToken }),
+        { abortSignal: signal },
       );
       for (const asset of page.policyGenerationAssets ?? []) {
         policies.push({

@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { PolicyClient } from "../../core/policy";
 import type { AwsClients } from "../../core/types";
-import { NetworkingError } from "../../errors";
+import { NetworkingError, UserCancellationError } from "../../errors";
 import {
   createSilentLogger,
   TestCoreClient,
@@ -213,6 +213,21 @@ describe("gateway policy generate against a faked control plane", () => {
     await expect(
       run(args, coreWith("GENERATE_FAILED", ["bad prompt", "try again"])),
     ).rejects.toThrow("policy generation 'gen-1' failed: bad prompt; try again");
+  });
+
+  test("stops waiting when the signal aborts", async () => {
+    const generation = coreWith("GENERATING").policy.generatePolicy(
+      { gatewayId: GATEWAY_ID, prompt: "x", name: "n" },
+      { region: REGION },
+      AbortSignal.abort(new UserCancellationError()),
+    );
+    await expect(
+      (async () => {
+        for await (const _event of generation) {
+          // drain
+        }
+      })(),
+    ).rejects.toBeInstanceOf(UserCancellationError);
   });
 
   test("times out when the generation keeps running", async () => {
