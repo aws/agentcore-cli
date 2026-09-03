@@ -68,6 +68,7 @@ agentcore                          # interactive TUI
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
 │   ├── invoke                     # invoke a Runtime headlessly or in a persistent console
+│   ├── shell                      # open a persistent interactive terminal in a Runtime
 │   ├── logs                       # follow a Runtime's logs live, or search a time window
 │   ├── traces
 │   │   ├── list                   # list a Runtime's recent traces
@@ -516,6 +517,40 @@ Runtime Invoke accepts Runtime IDs from the current account only. It does not
 accept ARNs, `--version`, `--interactive`, cross-account targets, or custom
 request paths. All requests use the Runtime `/invocations` route, including MCP
 Runtimes.
+
+### Open a Runtime shell
+
+Runtime Shell opens a persistent interactive terminal in a Runtime session.
+Bare shell opens the Runtime and endpoint pickers. `--id` skips the Runtime
+picker, and `--id` plus `--qualifier` connects directly.
+
+```bash
+agentcore runtime shell
+agentcore runtime shell --id <runtimeId>
+agentcore runtime shell --id <runtimeId> --qualifier DEFAULT
+```
+
+Use both IDs to reattach to the same shell:
+
+```bash
+agentcore runtime shell \
+  --id <runtimeId> \
+  --qualifier DEFAULT \
+  --session-id <runtimeSessionId> \
+  --shell-id <shellId>
+```
+
+CUSTOM_JWT Runtimes require `--bearer-token`. Interactive bearer tokens may be
+inline or `file://` sources, but not stdin.
+
+The shell forwards terminal input byte-for-byte, including `Ctrl+C`, `Ctrl+D`,
+escape sequences, and full-screen terminal applications. Terminal resize events
+update the remote PTY. `Ctrl+]` detaches the client while leaving the shell
+available for reattachment. Running `exit` or sending `Ctrl+D` terminates the
+remote shell.
+
+Runtime Shell requires TTY stdin and stdout and does not support `--json` or
+`--endpoint-url`.
 
 Bare Runtime branches and leaves, plus `memory`, `memory get`, and `memory list`,
 require a TTY on stdin and stdout.
