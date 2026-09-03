@@ -23,7 +23,7 @@ test("debounces a burst of edits into a single callback and stops on abort", asy
   const controller = new AbortController();
   let calls = 0;
   watchFile(path, () => calls++, controller.signal);
-  // Bun registers the macOS kqueue watch off-thread; edits written before it is live are dropped.
+  // Bun registers the macOS kqueue watch off-thread, so edits written before it is live are dropped.
   await Bun.sleep(100);
 
   writeFileSync(path, '{"a":1}');
