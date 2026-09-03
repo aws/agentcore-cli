@@ -16,6 +16,9 @@ const CREDENTIALS: CdkCredentialProvider = async () => ({
 const CONNECTOR_ARN =
   "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
   "payment-manager/payments-abc123def4/connector/quick-abc123def4";
+const SECOND_CONNECTOR_ARN =
+  "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
+  "payment-manager/payments-abc123def4/connector/second-abc123def4";
 
 type Send = (command: unknown) => Promise<unknown>;
 
@@ -155,6 +158,38 @@ describe("Quick Create authorization reporting", () => {
 
     expect(paymentCalls).toBe(0);
     expect(messages).toEqual([]);
+  });
+
+  test("continues reporting URLs when one connector lookup fails", async () => {
+    let paymentCalls = 0;
+    const messages = await report(
+      project(),
+      async () => ({
+        StackResourceSummaries: [
+          {
+            ResourceType: "AWS::BedrockAgentCore::PaymentConnector",
+            PhysicalResourceId: CONNECTOR_ARN,
+          },
+          {
+            ResourceType: "AWS::BedrockAgentCore::PaymentConnector",
+            PhysicalResourceId: SECOND_CONNECTOR_ARN,
+          },
+        ],
+      }),
+      async () => {
+        paymentCalls += 1;
+        if (paymentCalls === 1) throw new Error("Throttled");
+        return {
+          name: "second",
+          authorizationUrl: "https://example.com/authorize-second",
+        };
+      },
+    );
+
+    expect(messages).toEqual([
+      "Deployed, but payment connector 'quick-abc123def4' authorization URL could not be retrieved: Throttled",
+      'Authorize payment connector "second": https://example.com/authorize-second',
+    ]);
   });
 
   test("reports retrieval failure without failing the completed deployment", async () => {

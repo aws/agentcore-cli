@@ -1,4 +1,7 @@
-import { GetPaymentConnectorCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import {
+  GetPaymentConnectorCommand,
+  type GetPaymentConnectorCommandOutput,
+} from "@aws-sdk/client-bedrock-agentcore-control";
 import { ListStackResourcesCommand } from "@aws-sdk/client-cloudformation";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import { createCloudFormationClient, createControlClient } from "../../../factories";
@@ -52,12 +55,24 @@ export function createPaymentConnectorAuthorizationUrlReporter(
           const ids = paymentConnectorIds(resource.PhysicalResourceId);
           if (!ids) continue;
 
-          const connector = await paymentsClient.send(
-            new GetPaymentConnectorCommand({
-              paymentManagerId: ids.managerId,
-              paymentConnectorId: ids.connectorId,
-            }),
-          );
+          let connector: GetPaymentConnectorCommandOutput;
+          try {
+            connector = await paymentsClient.send(
+              new GetPaymentConnectorCommand({
+                paymentManagerId: ids.managerId,
+                paymentConnectorId: ids.connectorId,
+              }),
+            );
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            yield {
+              type: "step",
+              message:
+                `Deployed, but payment connector '${ids.connectorId}' authorization URL ` +
+                `could not be retrieved: ${detail}`,
+            };
+            continue;
+          }
           if (!connector.authorizationUrl) continue;
 
           yield {
