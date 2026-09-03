@@ -18,4 +18,13 @@ describe("TuiHandoffController", () => {
 
     expect(() => controller.request(async () => {})).toThrow("TUI handoff already requested");
   });
+
+  test("preserves the handoff result", async () => {
+    const controller = new TuiHandoffController();
+    controller.request(async () => ({ resumePath: "/agentcore/runtime/shell" }));
+
+    await expect(controller.take()!({} as never)).resolves.toEqual({
+      resumePath: "/agentcore/runtime/shell",
+    });
+  });
 });

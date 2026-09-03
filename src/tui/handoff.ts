@@ -2,7 +2,15 @@ import type { Core } from "../handlers/types";
 import type { AppIO } from "../io";
 import { contextKey, type Context } from "../router";
 
-export type TuiHandoff = (input: { ctx: Context; core: Core; io: AppIO }) => Promise<void>;
+export type TuiHandoffResult = {
+  resumePath?: string;
+};
+
+export type TuiHandoff = (input: {
+  ctx: Context;
+  core: Core;
+  io: AppIO;
+}) => Promise<TuiHandoffResult | void>;
 
 export class TuiHandoffController {
   private handoff?: TuiHandoff;
