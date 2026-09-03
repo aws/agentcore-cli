@@ -82,6 +82,7 @@ describe("harness endpoint create wizard", () => {
     // Versions listed newest first after the "latest" default.
     await waitForText(r.lastFrame, "which harness version should this endpoint serve?");
     expect(r.lastFrame()).toContain("● latest");
+    expect(r.lastFrame()).toContain("│ ● latest");
     expect(r.lastFrame()).toContain("version 2");
     expect(r.lastFrame()).toContain("version 1");
     await r.press("down"); // version 2

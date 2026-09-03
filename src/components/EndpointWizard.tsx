@@ -9,6 +9,7 @@ import type {
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
+import { FormRadioGroup, type FormRadioOption } from "./FormRadioGroup";
 import { Stepper, type Step } from "./ui/stepper";
 import { TextInput } from "./ui/text-input";
 import { Spinner } from "./ui/spinner";
@@ -254,10 +255,8 @@ function NameStep({
   );
 }
 
-interface VersionOption {
+interface VersionOption extends FormRadioOption {
   value: string;
-  label: string;
-  detail: string;
 }
 
 function VersionStep({
@@ -285,14 +284,18 @@ function VersionStep({
       .map((v) => ({
         value: v.harnessVersion ?? "",
         label: `version ${v.harnessVersion}`,
-        detail: `${v.status} · updated ${v.updatedAt?.toISOString().slice(0, 10) ?? ""}`,
+        description: `${v.status} · updated ${v.updatedAt?.toISOString().slice(0, 10) ?? ""}`,
       }))
       .sort((a, b) => Number(b.value) - Number(a.value));
     // Create mode offers "latest": omitting targetVersion tracks the newest
     // version at creation time.
     return mode === "create"
       ? [
-          { value: "", label: "latest", detail: "track the most recent version (default)" },
+          {
+            value: "",
+            label: "latest",
+            description: "track the most recent version (default)",
+          },
           ...listed,
         ]
       : listed;
@@ -322,28 +325,28 @@ function VersionStep({
 
   return (
     <Box flexDirection="column">
-      <Question text="which harness version should this endpoint serve?" />
       {versions.isPending ? (
-        <Spinner label="loading versions…" />
+        <>
+          <Question text="which harness version should this endpoint serve?" />
+          <Spinner label="loading versions…" />
+        </>
       ) : versions.isError ? (
-        <Text color={theme.colors.error}>✗ {(versions.error as Error).message}</Text>
+        <>
+          <Question text="which harness version should this endpoint serve?" />
+          <Text color={theme.colors.error}>✗ {(versions.error as Error).message}</Text>
+        </>
       ) : options.length === 0 ? (
-        <Text color={theme.colors.muted}>this harness has no versions</Text>
+        <>
+          <Question text="which harness version should this endpoint serve?" />
+          <Text color={theme.colors.muted}>this harness has no versions</Text>
+        </>
       ) : (
-        options.map((option, i) => {
-          const selected = i === index;
-          return (
-            <Box key={option.value === "" ? "(latest)" : option.value}>
-              <Text color={selected ? theme.colors.focus : theme.colors.muted}>
-                {selected ? "● " : "○ "}
-              </Text>
-              <Text bold={selected} color={selected ? theme.colors.focus : theme.colors.text}>
-                {option.label.padEnd(12)}
-              </Text>
-              <Text color={theme.colors.muted}>{option.detail}</Text>
-            </Box>
-          );
-        })
+        <FormRadioGroup
+          name="choose a harness version"
+          helpText="which harness version should this endpoint serve?"
+          options={options}
+          focusedIndex={index}
+        />
       )}
     </Box>
   );

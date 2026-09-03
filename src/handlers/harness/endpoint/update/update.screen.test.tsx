@@ -90,6 +90,7 @@ describe("harness endpoint update wizard", () => {
     // The endpoint's current target (version 1) is preselected; no "latest"
     // option exists in update mode.
     await waitForText(r.lastFrame, "● version 1");
+    expect(r.lastFrame()).toContain("│ ● version 1");
     expect(r.lastFrame()).not.toContain("latest");
     await r.press("up"); // version 2 (sorted newest first)
     await waitForText(r.lastFrame, "● version 2");
