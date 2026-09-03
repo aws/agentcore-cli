@@ -1,6 +1,10 @@
 {
-  "name": "agentcore",
-  "version": "1.0.0",
+  "name": "@aws/agentcore",
+  "version": "0.28.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aws/agentcore-cli.git"
+  },
   "module": "src/index.ts",
   "type": "module",
   "bin": {

@@ -19,22 +19,18 @@ care what triggered it.
 
 An orchestrator calls jobs via `workflow_call`.
 
-### Current example
+### Current examples
 
 ```
 ci.yml
   |-- check.yml      (lint, format, typecheck, audit, secret scan)
   |-- build.yml      (bundle, package, compile, smoke test)
   `-- unit-test.yml  (tests on Linux, Windows, macOS)
-```
 
-### Future examples
-
-```
-release.yml
-  ├── unit-test.yml
-  ├── build.yml
-  └── publish-npm.yml
+release.yml         (version, release PR, approval, npm publish, GitHub release)
+  |-- check.yml
+  |-- build.yml
+  `-- unit-test.yml
 ```
 
 Jobs like `unit-test.yml` and `build.yml` appear in multiple orchestrators. This

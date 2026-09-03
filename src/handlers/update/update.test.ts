@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { fetchLatestVersion, handleUpdate } from "./index";
 import { NetworkingError } from "../../errors";
 import type { ProcessRunner } from "../../io";
+import { PACKAGE_VERSION } from "../../constants";
 
 // No golden/fixture tests here: the repo's *.fixture.test.tsx harness records and
 // replays AWS SDK responses through CoreClient, but `update` makes no AWS calls —
@@ -50,12 +51,12 @@ describe("handleUpdate", () => {
   });
 
   test("up-to-date when versions match, without invoking the runner", async () => {
-    mockLatest("1.0.0");
+    mockLatest(PACKAGE_VERSION);
     const runner: ProcessRunner = mock(async () => {});
     expect(await handleUpdate(false, { runner })).toEqual({
       status: "up-to-date",
-      currentVersion: "1.0.0",
-      latestVersion: "1.0.0",
+      currentVersion: PACKAGE_VERSION,
+      latestVersion: PACKAGE_VERSION,
     });
     expect(runner).not.toHaveBeenCalled();
   });
@@ -70,7 +71,7 @@ describe("handleUpdate", () => {
     const runner: ProcessRunner = mock(async () => {});
     expect(await handleUpdate(true, { runner })).toEqual({
       status: "update-available",
-      currentVersion: "1.0.0",
+      currentVersion: PACKAGE_VERSION,
       latestVersion: "2.0.0",
     });
     expect(runner).not.toHaveBeenCalled();

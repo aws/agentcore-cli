@@ -1,0 +1,224 @@
+# Publishes @aws/agentcore to npm and creates the matching GitHub release.
+#
+# rc:     dispatch -> version -> check/build/unit-test -> approval -> publish <next>-rc.N under the `rc` dist-tag.
+# stable: dispatch -> version -> release PR bumping package.json. Merging that PR re-enters this
+#         workflow, which runs check/build/unit-test and publishes under `latest`.
+#
+# package.json always holds the last published stable version. rc numbers come from git tags, never commits.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semver component to bump from the last stable release
+        required: true
+        type: choice
+        options: [major, minor, patch]
+      channel:
+        description: rc publishes after approval, stable opens a release PR
+        required: true
+        type: choice
+        options: [rc, stable]
+      dry_run:
+        description: Build and pack, but skip npm publish and the GitHub release
+        type: boolean
+        default: false
+  pull_request:
+    types: [closed]
+    branches: [refactor]
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: "1"
+
+jobs:
+  version:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged && startsWith(github.head_ref, 'release/'))
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      contents: read
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
+      previous_tag: ${{ steps.resolve.outputs.previous_tag }}
+      channel: ${{ steps.resolve.outputs.channel }}
+      action: ${{ steps.resolve.outputs.action }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-tags: true
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - run: bun install --frozen-lockfile
+
+      - name: Resolve version
+        id: resolve
+        env:
+          BUMP: ${{ inputs.bump }}
+          CHANNEL: ${{ inputs.channel || 'stable' }}
+          ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' && 'pull-request' || 'publish' }}
+          REF: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BUMP" ]; then
+            BASE=$(npm version "$BUMP" --no-git-tag-version)
+          else
+            BASE="v$(npm pkg get version | tr -d '"')"
+          fi
+          if git rev-parse -q --verify "refs/tags/$BASE" >/dev/null; then
+            echo "::error::$BASE is already released"
+            exit 1
+          fi
+
+          if [ "$CHANNEL" = rc ]; then
+            LAST=$(git tag -l "$BASE-rc.*" | sed 's/.*-rc\.//' | sort -n | tail -1)
+            VERSION="${BASE#v}-rc.$(( ${LAST:--1} + 1 ))"
+          else
+            VERSION="${BASE#v}"
+          fi
+
+          # rc.1 and later diff against the previous rc. Stable and rc.0 diff against the previous stable.
+          SEMVER_FLAGS=()
+          [[ "$VERSION" == *-rc.[1-9]* ]] && SEMVER_FLAGS=(--include-prerelease)
+          PREVIOUS=$(git tag -l 'v*' | xargs bunx semver "${SEMVER_FLAGS[@]}" --range "<$VERSION" | tail -1)
+
+          {
+            echo "ref=$REF"
+            echo "version=$VERSION"
+            echo "previous_tag=v$PREVIOUS"
+            echo "channel=$CHANNEL"
+            echo "action=$ACTION"
+          } >> "$GITHUB_OUTPUT"
+          echo "$ACTION $VERSION (notes since v$PREVIOUS)" >> "$GITHUB_STEP_SUMMARY"
+
+  release-pr:
+    needs: version
+    if: needs.version.outputs.action == 'pull-request'
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PREVIOUS_TAG: ${{ needs.version.outputs.previous_tag }}
+          REF: ${{ needs.version.outputs.ref }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$VERSION"
+          npm version "$VERSION" --no-git-tag-version
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): v$VERSION"
+          git push --force "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+
+          NOTES=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="v$VERSION" -f target_commitish="$REF" -f previous_tag_name="$PREVIOUS_TAG" --jq .body)
+          gh pr create --base refactor --head "$BRANCH" --title "chore(release): v$VERSION" --body "Merging publishes \`@aws/agentcore@$VERSION\` to npm under \`latest\` and creates the \`v$VERSION\` release.
+
+          $NOTES"
+
+  check:
+    needs: version
+    if: needs.version.outputs.action == 'publish'
+    uses: ./.github/workflows/check.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.version.outputs.ref }}
+  build:
+    needs: version
+    if: needs.version.outputs.action == 'publish'
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.version.outputs.ref }}
+  unit-test:
+    needs: version
+    if: needs.version.outputs.action == 'publish'
+    uses: ./.github/workflows/unit-test.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ needs.version.outputs.ref }}
+
+  approve:
+    needs: [version, check, build, unit-test]
+    if: needs.version.outputs.channel == 'rc'
+    runs-on: ubuntu-latest
+    environment: npm-publish-approval
+    steps:
+      - run: echo "Approved ${{ needs.version.outputs.version }}"
+
+  publish:
+    needs: [version, check, build, unit-test, approve]
+    # approve is skipped on the stable path, so a plain `needs` would skip this job too.
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.build.result == 'success' && needs.unit-test.result == 'success' && needs.approve.result != 'failure' }}
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+          registry-url: https://registry.npmjs.org
+      - run: bun install --frozen-lockfile
+
+      - run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - run: bun run build
+      - id: pack
+        run: echo "tarball=$(bun pm pack --quiet --ignore-scripts)" >> "$GITHUB_OUTPUT"
+      - run: bun run compile
+
+      - if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ needs.version.outputs.channel == 'rc' && 'rc' || 'latest' }}
+        run: npm publish "${{ steps.pack.outputs.tarball }}" --provenance --access public --tag "$DIST_TAG"
+
+      - if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" --target "${{ needs.version.outputs.ref }}" --title "v$VERSION" \
+            --generate-notes --notes-start-tag "${{ needs.version.outputs.previous_tag }}" \
+            ${{ needs.version.outputs.channel == 'rc' && '--prerelease' || '--latest' }} \
+            "${{ steps.pack.outputs.tarball }}" dist/bin/*
+
+      - if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ env.VERSION }}
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            dist/bin/*
