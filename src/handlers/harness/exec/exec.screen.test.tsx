@@ -181,7 +181,7 @@ describe("exec screen", () => {
 
     await waitForText(r.lastFrame, "run a command…");
     await type(r, "sleep 999");
-    await waitForText(r.lastFrame, "working…");
+    await waitForText(r.lastFrame, "Working…");
 
     stream.emit({ chunk: { contentDelta: { stdout: "tick\n" } } });
     await waitForText(r.lastFrame, "tick");

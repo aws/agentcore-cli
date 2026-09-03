@@ -88,7 +88,7 @@ export function HarnessPicker({
       onBack={goBack}
       loadingMessage="Loading harnesses…"
       errorMessage={(error) => `Error: ${error.message}`}
-      emptyMessage="No harnesses found."
+      emptyMessage="No harnesses found in this Region."
       emptyPageMessage="No harnesses on this page."
     />
   );

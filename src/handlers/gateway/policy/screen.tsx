@@ -135,7 +135,7 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
         ]
       : phase.kind === "result"
         ? [
-            { key: "↑↓/kj", label: "scroll" },
+            { key: "↑↓/jk", label: "scroll" },
             { key: "e", label: "edit prompt" },
             { key: "esc", label: "back" },
             { key: "ctl+c", label: "quit" },

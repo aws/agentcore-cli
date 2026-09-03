@@ -68,7 +68,7 @@ function DeployTarget({
         breadcrumb={BREADCRUMB}
         description={DESCRIPTION}
         query={targets}
-        loadingLabel="reading deployment targets…"
+        loadingLabel="Reading deployment targets…"
         onBack={() => navigate(PROJECT_MENU)}
       />
     );

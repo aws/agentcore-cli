@@ -26,7 +26,7 @@ export function MemoryRecordGetScreen({ ctx, core }: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data?.memoryRecord}
-      loadingLabel={`Loading Memory record ${recordId ?? ""}...`}
+      loadingLabel={`Loading Memory record ${recordId ?? ""}…`}
       onRetry={() => void detail.refetch()}
     />
   );

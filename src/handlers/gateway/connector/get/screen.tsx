@@ -19,7 +19,7 @@ export function GatewayConnectorGetScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading Gateway Connector…"
+      loadingLabel="Loading Gateway connector…"
       onRetry={() => void detail.refetch()}
     />
   );

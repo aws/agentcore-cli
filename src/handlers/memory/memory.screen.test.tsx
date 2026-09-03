@@ -91,7 +91,7 @@ describe("Memory picker", () => {
 
     await waitForText(screen.lastFrame, "memory-visible-id");
     const frame = screen.lastFrame()!;
-    expect(frame).toContain("id");
+    expect(frame).toContain("ID");
     expect(frame).toContain("status");
     expect(frame).toContain("updated UTC");
     expect(frame).toContain("FAILED");

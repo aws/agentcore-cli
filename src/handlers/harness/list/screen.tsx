@@ -11,6 +11,7 @@ export function HarnessListScreen(props: ScreenProps) {
     <HarnessPicker
       {...props}
       breadcrumb={["agentcore", "harness", "list"]}
+      description="list harnesses"
       onSelect={(harnessId) => navigate(`/agentcore/harness/get/${harnessId}`)}
     />
   );

@@ -322,7 +322,7 @@ describe("eval ab-test target-based run validation", () => {
         same,
         "--json",
       ]),
-    ).rejects.toThrow(/different gateway targets/);
+    ).rejects.toThrow(/different Gateway Targets/);
   });
 
   test("maps flags to a createTargetBasedABTest call", async () => {

@@ -55,7 +55,7 @@ export function OnlineInsightGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading online insight config…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

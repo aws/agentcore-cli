@@ -85,8 +85,8 @@ describe("runtime picker", () => {
     await waitForText(r.lastFrame, "orders");
     const frame = r.lastFrame()!;
     expect(frame).toContain("name");
-    expect(frame).toContain("id");
-    expect(frame).toContain("id suffix");
+    expect(frame).toContain("ID");
+    expect(frame).toContain("ID suffix");
     expect(frame).toContain("version");
     expect(frame).toContain("status");
     expect(frame).toContain("updated UTC");

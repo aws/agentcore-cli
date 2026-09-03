@@ -18,7 +18,7 @@ export const gatewayRuleColumns = [
   { key: "description", header: "description", flex: true },
   {
     key: "ruleId",
-    header: "id suffix",
+    header: "ID suffix",
     width: 10,
     render: (value: unknown) => String(value ?? "").slice(-8),
   },

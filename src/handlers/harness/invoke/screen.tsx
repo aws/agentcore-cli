@@ -370,7 +370,7 @@ export function HarnessChat({
 
           <Box height={1}>
             {streaming ? (
-              <Spinner label="working… (esc to interrupt)" />
+              <Spinner label="Working… (esc to interrupt)" />
             ) : (
               <Text color={theme.colors.muted}>
                 session: {sessionId} · qualifier: {qualifier}

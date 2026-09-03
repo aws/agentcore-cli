@@ -15,7 +15,7 @@ interface EventRow extends Record<string, unknown> {
 }
 
 const eventColumns = [
-  { key: "eventId", header: "event id", flex: true },
+  { key: "eventId", header: "event ID", flex: true },
   { key: "branch", header: "branch", width: 18, minWidth: 8 },
   {
     key: "occurredAt",

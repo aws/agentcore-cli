@@ -65,7 +65,7 @@ describe("harness create wizard", () => {
     expect(r.lastFrame()).toContain("[✓] browser");
     await r.press("down"); // gateway
     await r.write(" "); // opens the arn input
-    await waitForText(r.lastFrame, "gateway arn");
+    await waitForText(r.lastFrame, "Gateway ARN");
     await r.write("arn:aws:bedrock-agentcore:us-east-1:123:gateway/g-1");
     await r.press("return"); // commit the arn
     await waitForText(r.lastFrame, "arn:aws:bedrock-agentcore:us-east-1:123:gateway/g-1");
@@ -121,13 +121,13 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "choose a model");
     await r.press("down"); // bedrock
     await waitForText(r.lastFrame, "● bedrock");
-    expect(r.lastFrame()).not.toContain("model id");
+    expect(r.lastFrame()).not.toContain("model ID");
 
     await r.press("return");
-    await waitForText(r.lastFrame, "model id");
+    await waitForText(r.lastFrame, "model ID");
 
     await r.press("escape");
-    await waitFor(() => !(r.lastFrame() ?? "").includes("model id"));
+    await waitFor(() => !(r.lastFrame() ?? "").includes("model ID"));
     expect(r.lastFrame()).toContain("● bedrock");
     r.unmount();
   });
@@ -190,11 +190,11 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "● openai");
     await r.press("return"); // focus the model id field
     await r.press("return"); // empty → error
-    await waitForText(r.lastFrame, "enter an openai model id");
+    await waitForText(r.lastFrame, "enter an OpenAI model ID");
     await r.write("gpt-5");
     await r.press("return"); // on to the api key arn field
     await r.press("return"); // empty → error
-    await waitForText(r.lastFrame, "enter the arn of your openai api key");
+    await waitForText(r.lastFrame, "enter an API-key credential provider ARN");
     await r.write("arn:aws:bedrock-agentcore:us-east-1:123:token-vault/default/apikey/openai");
     await r.press("return");
 
@@ -323,7 +323,7 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "● bring your own");
     await r.press("return"); // focus the memory arn field
     await r.press("return"); // empty → error
-    await waitForText(r.lastFrame, "enter the arn");
+    await waitForText(r.lastFrame, "enter the ARN of an existing AgentCore Memory");
     await r.write("arn:aws:bedrock-agentcore:us-east-1:123:memory/m-1");
     await r.press("return");
 

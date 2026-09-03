@@ -60,7 +60,7 @@ export function JsonDetail({
     <Layout
       breadcrumb={breadcrumb}
       keyHints={[
-        { key: "↑↓/kj", label: "navigate" },
+        { key: "↑↓/jk", label: "navigate" },
         ...(error && onRetry ? [{ key: "r", label: "retry" }] : []),
         { key: "esc", label: "back" },
         { key: "ctl+c", label: "quit" },

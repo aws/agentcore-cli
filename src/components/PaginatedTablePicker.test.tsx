@@ -109,7 +109,7 @@ describe("paginated table picker contract", () => {
 
   test("distinguishes first-page and later-page empty states", async () => {
     const firstPage = renderScreen("/agentcore/harness/list");
-    await waitForText(firstPage.lastFrame, "No harnesses found.");
+    await waitForText(firstPage.lastFrame, "No harnesses found in this Region.");
     expect(firstPage.lastFrame()).not.toContain("page 1");
     await firstPage.press("escape");
     await waitForText(firstPage.lastFrame, "manage AgentCore harnesses");
@@ -127,7 +127,7 @@ describe("paginated table picker contract", () => {
     await laterPage.write("l");
     await waitForText(laterPage.lastFrame, "No harnesses on this page.");
     expect(laterPage.lastFrame()).toContain("page 2");
-    expect(laterPage.lastFrame()).not.toContain("No harnesses found.");
+    expect(laterPage.lastFrame()).not.toContain("No harnesses found in this Region.");
   });
 
   test("pages forward and backward using token history", async () => {
@@ -465,7 +465,7 @@ describe("paginated table picker contract", () => {
     for (const width of [100, 80, 60]) {
       if (width !== 100) await r.resize(width);
       const lines = (r.lastFrame() ?? "").split("\n");
-      const headerIndex = lines.findIndex((line) => line.includes("id suffix"));
+      const headerIndex = lines.findIndex((line) => line.includes("ID suffix"));
       const rowLines = suffixes.map((suffix) => lines.find((line) => line.includes(suffix)));
 
       expect(headerIndex).toBeGreaterThanOrEqual(0);

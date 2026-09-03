@@ -41,7 +41,7 @@ export function MemoryEventGetScreen({ ctx, core }: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data?.event}
-      loadingLabel={`Loading Memory event ${eventId ?? ""}...`}
+      loadingLabel={`Loading Memory event ${eventId ?? ""}…`}
       onRetry={() => void detail.refetch()}
     />
   );

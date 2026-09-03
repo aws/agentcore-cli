@@ -74,7 +74,7 @@ export function MemoryGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading Memory…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

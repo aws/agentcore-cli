@@ -321,7 +321,7 @@ export function DataTable<T extends Record<string, unknown>>({
             Showing {currentPage * pageSize + 1}-
             {Math.min((currentPage + 1) * pageSize, filtered.length)} of {filtered.length} · Page{" "}
             {currentPage + 1}/{totalPages || 1}
-            {" · "}[↑↓/jk] Row [←→/hl] Page [/] Search
+            {" · "}[↑↓/jk] row [←→/hl] page [/] search
           </Text>
         </Box>
       )}

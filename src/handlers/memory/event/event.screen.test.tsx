@@ -155,7 +155,7 @@ describe("Memory event list flow", () => {
 
     await waitForText(screen.lastFrame, "event blue");
     const frame = screen.lastFrame()!;
-    expect(frame).toContain("event id");
+    expect(frame).toContain("event ID");
     expect(frame).toContain("branch");
     expect(frame).toContain("occurred UTC");
     expect(frame).toContain("main");

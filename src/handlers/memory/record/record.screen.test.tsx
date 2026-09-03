@@ -73,7 +73,7 @@ describe("Memory record list flow", () => {
 
   test("reveals the scope input only after enter and hides it again on escape", async () => {
     const screen = renderScreen("/agentcore/memory/record/list/memory-1");
-    const fieldHelp = "Enter the namespace value used to scope this request.";
+    const fieldHelp = "the namespace value used to scope this request";
 
     await waitForText(screen.lastFrame, "scope type");
     expect(screen.lastFrame()).not.toContain(fieldHelp);

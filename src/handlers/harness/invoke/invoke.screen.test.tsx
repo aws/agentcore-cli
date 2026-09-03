@@ -338,7 +338,7 @@ describe("invoke chat screen", () => {
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "take your time");
-    await waitForText(r.lastFrame, "working… (esc to interrupt)");
+    await waitForText(r.lastFrame, "Working… (esc to interrupt)");
 
     stream.emit({ messageStart: { role: "assistant" } });
     stream.emit({ contentBlockDelta: { contentBlockIndex: 0, delta: { text: "Thinking" } } });
@@ -348,7 +348,7 @@ describe("invoke chat screen", () => {
     await waitForText(r.lastFrame, "interrupted");
     // Idle again: the status line shows the session, not the spinner.
     await waitForText(r.lastFrame, "session:");
-    expect(r.lastFrame()).not.toContain("working…");
+    expect(r.lastFrame()).not.toContain("Working…");
     r.unmount();
   });
 
@@ -360,7 +360,7 @@ describe("invoke chat screen", () => {
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "hi");
-    await waitForText(r.lastFrame, "working…");
+    await waitForText(r.lastFrame, "Working…");
 
     stream.emit({ messageStart: { role: "assistant" } });
     stream.emit({ contentBlockDelta: { contentBlockIndex: 0, delta: { text: "Done deal" } } });

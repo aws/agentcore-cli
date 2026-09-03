@@ -45,7 +45,7 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
     <ProjectGate
       core={core}
       breadcrumb={BREADCRUMB}
-      description="invoke a Runtime or Harness from the current project"
+      description="invoke a Runtime or harness from the current project"
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(PROJECT_MENU)}
     >
@@ -193,7 +193,7 @@ function ProjectInvokePicker({
         { key: "↑↓/jk", label: "navigate" },
         { key: "/", label: "filter" },
         { key: "enter", label: "select" },
-        { key: "esc", label: "cancel" },
+        { key: "esc", label: "back" },
         { key: "ctl+c", label: "quit" },
       ]}
     >
@@ -207,7 +207,7 @@ function ProjectInvokePicker({
           focus
           columns={columns}
           data={rows}
-          emptyMessage="No deployed Runtimes or Harnesses were found on target default."
+          emptyMessage="No deployed Runtimes or harnesses were found on target default."
           onSelect={select}
           onEscape={goBack}
         />

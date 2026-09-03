@@ -67,7 +67,7 @@ function UpdateWizard({
         ]}
       >
         {detail.isPending ? (
-          <Spinner label="loading endpoint…" />
+          <Spinner label="Loading endpoint…" />
         ) : (
           <Text color="red">Error: {(detail.error as Error).message}</Text>
         )}

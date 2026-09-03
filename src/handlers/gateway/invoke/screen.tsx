@@ -427,7 +427,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
         editingPath
           ? [
               { key: "enter", label: "save" },
-              { key: "esc", label: "cancel" },
+              { key: "esc", label: "back" },
               { key: "ctl+c", label: "quit" },
             ]
           : busy
@@ -516,7 +516,9 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
                   Gateway is {unavailableStatus}; invocation requires READY.
                 </Text>
               ) : busy ? (
-                <Spinner label={`${liveState}… (esc to interrupt)`} />
+                <Spinner
+                  label={`${liveState === "connecting" ? "Connecting" : "Streaming"}… (esc to interrupt)`}
+                />
               ) : (
                 <>
                   <Text color={theme.colors.muted}>

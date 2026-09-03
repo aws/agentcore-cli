@@ -36,6 +36,7 @@ export function ApiKeyCredentialProviderListScreen({ ctx, core }: ScreenProps) {
   return (
     <PaginatedTablePicker
       breadcrumb={["agentcore", "identity", "api-key-credential-provider", "list"]}
+      description="list API key credential providers"
       queryKey={["api-key-credential-providers", opts.region]}
       loadPage={async (token, pageSize) => {
         const response = await core.identity.listApiKeyCredentialProviders(token, pageSize, opts);

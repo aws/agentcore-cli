@@ -34,7 +34,7 @@ interface MemoryRecordRow extends Record<string, unknown> {
 }
 
 const recordColumns = [
-  { key: "recordId", header: "id", flex: true },
+  { key: "recordId", header: "ID", flex: true },
   { key: "content", header: "content", width: 70, minWidth: 20 },
   { key: "strategyId", header: "strategy", width: 32, minWidth: 16 },
   {
@@ -116,7 +116,7 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
       breadcrumb={["agentcore", "memory", "record", "list", memoryId]}
       description="choose the namespace scope for the record list"
       keyHints={[
-        { key: "up/down", label: "scope type" },
+        { key: "↑↓", label: "scope type" },
         { key: "enter", label: "list records" },
         { key: "esc", label: "back" },
         { key: "ctl+c", label: "quit" },
@@ -125,7 +125,7 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
       <Box flexDirection="column" gap={1} paddingX={1}>
         <FormRadioGroup
           name="scope type"
-          helpText="Choose how the service should match record namespaces."
+          helpText="choose how the service should match record namespaces"
           options={scopeOptions}
           focusedIndex={focusedIndex}
           selectedIndex={editing ? focusedIndex : undefined}
@@ -133,7 +133,7 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
         {editing && (
           <FormTextInput
             name={focusedIndex === 0 ? "namespace" : "namespace path"}
-            helpText="Enter the namespace value used to scope this request."
+            helpText="the namespace value used to scope this request"
             placeholder="/strategies/strategy-id/actors/actor-id"
             errorText="A namespace value is required."
             value={scope}

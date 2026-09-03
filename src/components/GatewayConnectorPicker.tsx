@@ -72,7 +72,7 @@ export function GatewayConnectorPicker({
       errorMessage={(error) =>
         `Error loading Connectors for Gateway ${gatewayId}: ${error.message}`
       }
-      emptyMessage="This Gateway has no Connectors."
+      emptyMessage="This Gateway has no connectors."
       emptyPageMessage="No Connectors on this page."
     />
   );

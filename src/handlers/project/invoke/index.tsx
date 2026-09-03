@@ -20,7 +20,7 @@ export function createProjectInvokeHandler(
     .default((ctx) => {
       if (ctx.require(JsonKey)) {
         throw new InputValidationError(
-          "a Runtime or Harness invoke subcommand is required with --json",
+          "a Runtime or harness invoke subcommand is required with --json",
         );
       }
       return renderInvokeTui("/agentcore/project/invoke", ctx, core, io);

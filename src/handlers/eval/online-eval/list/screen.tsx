@@ -9,6 +9,7 @@ export function OnlineEvalListScreen(props: ScreenProps) {
     <OnlineEvalPicker
       {...props}
       breadcrumb={["agentcore", "eval", "online-eval", "list"]}
+      description="list online evaluation configs"
       onSelect={(configId) =>
         navigate(`/agentcore/eval/online-eval/get/${encodeURIComponent(configId)}`)
       }

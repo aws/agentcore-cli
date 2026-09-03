@@ -9,6 +9,7 @@ export function MemoryListScreen(props: ScreenProps) {
     <MemoryPicker
       {...props}
       breadcrumb={["agentcore", "memory", "list"]}
+      description="list AgentCore Memories"
       onSelect={(memoryId) => navigate(`/agentcore/memory/get/${encodeURIComponent(memoryId)}`)}
     />
   );

@@ -41,7 +41,7 @@ describe("Memory session list flow", () => {
 
     await waitForText(screen.lastFrame, sessionId);
     const frame = screen.lastFrame()!;
-    expect(frame).toContain("session id");
+    expect(frame).toContain("session ID");
     expect(frame).toContain("created UTC");
     expect(frame).toContain("2026-08-02 10:20");
 

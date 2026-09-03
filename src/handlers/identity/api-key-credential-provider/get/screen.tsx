@@ -48,7 +48,7 @@ export function ApiKeyCredentialProviderGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading API key credential provider…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

@@ -81,7 +81,7 @@ export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
       const treatment = toTargetRef("treatment", treatmentRaw);
       if (control.gatewayTarget === treatment.gatewayTarget) {
         throw new InputValidationError(
-          "control and treatment must reference different gateway targets",
+          "control and treatment must reference different Gateway Targets",
         );
       }
 

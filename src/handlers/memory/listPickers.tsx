@@ -10,7 +10,7 @@ interface MemoryActorRow extends Record<string, unknown> {
 }
 
 const actorColumns = [
-  { key: "actorId", header: "actor id", flex: true },
+  { key: "actorId", header: "actor ID", flex: true },
 ] satisfies DataTableColumn<MemoryActorRow>[];
 
 function toActorRow(actor: ActorSummary): MemoryActorRow {
@@ -70,7 +70,7 @@ interface MemorySessionRow extends Record<string, unknown> {
 }
 
 const sessionColumns = [
-  { key: "sessionId", header: "session id", flex: true },
+  { key: "sessionId", header: "session ID", flex: true },
   {
     key: "createdAt",
     header: "created UTC",

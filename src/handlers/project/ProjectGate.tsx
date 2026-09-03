@@ -106,7 +106,7 @@ export function ProjectGate({
       breadcrumb={breadcrumb}
       description={description}
       query={project}
-      loadingLabel="loading project…"
+      loadingLabel="Loading project…"
       onBack={onBack}
     />
   );

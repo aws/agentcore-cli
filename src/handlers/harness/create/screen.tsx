@@ -14,6 +14,7 @@ export function HarnessCreateScreen(props: ScreenProps) {
       {...props}
       mode="create"
       breadcrumb={["agentcore", "harness", "create"]}
+      description="create a harness"
       onDone={(harnessId) => finishFlow(`/agentcore/harness/get/${harnessId}`)}
     />
   );

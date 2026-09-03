@@ -52,7 +52,7 @@ export function Oauth2CredentialProviderGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading OAuth2 credential provider…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

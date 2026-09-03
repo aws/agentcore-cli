@@ -238,6 +238,8 @@ type WizardPhase =
 export interface HarnessWizardProps extends ScreenProps {
   mode: "create" | "update";
   breadcrumb: string[];
+  // description is the optional subtitle shown after the breadcrumb.
+  description?: string;
   // harnessId is the update target (update mode only).
   harnessId?: string;
   // initial seeds the form (update mode: the current configuration).
@@ -257,6 +259,7 @@ export function HarnessWizard({
   core,
   mode,
   breadcrumb,
+  description,
   harnessId,
   initial,
   onDone,
@@ -336,7 +339,7 @@ export function HarnessWizard({
   const keyHints = hintsFor(stepKey, phase, verb);
 
   return (
-    <Layout breadcrumb={breadcrumb} keyHints={keyHints}>
+    <Layout breadcrumb={breadcrumb} description={description} keyHints={keyHints}>
       <Box flexDirection="column">
         <Box paddingX={1}>
           <Stepper
@@ -408,10 +411,10 @@ function hintsFor(
       return [{ key: "enter", label: "continue" }, ...base];
     case "model":
     case "memory":
-      return [{ key: "↑↓", label: "choose" }, { key: "enter", label: "continue" }, ...base];
+      return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
     case "tools":
       return [
-        { key: "↑↓", label: "move" },
+        { key: "↑↓", label: "navigate" },
         { key: "space", label: "toggle" },
         { key: "enter", label: "continue" },
         ...base,
@@ -569,89 +572,89 @@ const MODEL_PROVIDERS: {
   {
     kind: "bedrock",
     label: "bedrock",
-    description: "an amazon bedrock model",
+    description: "an Amazon Bedrock model or inference profile",
     fields: [
       {
         key: "modelId",
-        name: "model id",
-        helpText: "a bedrock model or inference profile id",
+        name: "model ID",
+        helpText: "a Bedrock model or inference profile ID",
         placeholder: "us.anthropic.claude-sonnet-4-6",
         required: true,
-        requiredError: "enter a bedrock model or inference profile id",
+        requiredError: "enter a Bedrock model or inference profile ID",
       },
     ],
   },
   {
     kind: "gemini",
     label: "gemini",
-    description: "a google gemini model",
+    description: "a Google Gemini model using an API-key credential ARN",
     fields: [
       {
         key: "modelId",
-        name: "model id",
-        helpText: "the gemini model to use",
+        name: "model ID",
+        helpText: "the Gemini model to use",
         placeholder: "gemini-2.5-pro",
         required: true,
-        requiredError: "enter a gemini model id",
+        requiredError: "enter a Gemini model ID",
       },
       {
         key: "apiKeyArn",
-        name: "api key arn",
-        helpText: "the arn of your gemini api key in agentcore identity",
+        name: "API key ARN",
+        helpText: "an AgentCore Identity API-key credential provider ARN",
         placeholder: "arn:aws:bedrock-agentcore:…:token-vault/…",
         required: true,
-        requiredError: "enter the arn of your gemini api key",
+        requiredError: "enter an API-key credential provider ARN",
       },
     ],
   },
   {
     kind: "openai",
     label: "openai",
-    description: "an openai model",
+    description: "an OpenAI model using an API-key credential ARN",
     fields: [
       {
         key: "modelId",
-        name: "model id",
-        helpText: "the openai model to use",
+        name: "model ID",
+        helpText: "the OpenAI model to use",
         placeholder: "gpt-5",
         required: true,
-        requiredError: "enter an openai model id",
+        requiredError: "enter an OpenAI model ID",
       },
       {
         key: "apiKeyArn",
-        name: "api key arn",
-        helpText: "the arn of your openai api key in agentcore identity",
+        name: "API key ARN",
+        helpText: "an AgentCore Identity API-key credential provider ARN",
         placeholder: "arn:aws:bedrock-agentcore:…:token-vault/…",
         required: true,
-        requiredError: "enter the arn of your openai api key",
+        requiredError: "enter an API-key credential provider ARN",
       },
     ],
   },
   {
     kind: "litellm",
     label: "litellm",
-    description: "any third-party provider via litellm",
+    description: "a third-party provider through LiteLLM",
     fields: [
       {
         key: "modelId",
-        name: "model id",
-        helpText: "the litellm model identifier (provider/model)",
+        name: "model ID",
+        helpText: "the LiteLLM model identifier (provider/model)",
         placeholder: "anthropic/claude-3-sonnet",
         required: true,
-        requiredError: "enter a litellm model identifier",
+        requiredError: "enter a LiteLLM model identifier",
       },
       {
         key: "apiKeyArn",
-        name: "api key arn",
-        helpText: "optional · the arn of the provider api key in agentcore identity",
+        name: "API key ARN",
+        helpText: "optional · an AgentCore Identity API-key credential provider ARN",
         placeholder: "arn:aws:bedrock-agentcore:…:token-vault/…",
         required: false,
         requiredError: "",
       },
       {
         key: "apiBase",
-        name: "api base url",
-        helpText: "optional · the base url of the provider's api endpoint",
+        name: "API base URL",
+        helpText: "optional · the provider API endpoint",
         placeholder: "https://…",
         required: false,
         requiredError: "",
@@ -791,12 +794,12 @@ const MEMORY_OPTIONS: { kind: MemoryKind; label: string; description: string }[]
   {
     kind: "managed",
     label: "managed",
-    description: "agentcore creates and manages memory for you (recommended)",
+    description: "AgentCore creates and manages memory for you (recommended)",
   },
   {
     kind: "byo",
     label: "bring your own",
-    description: "use an existing agentcore memory resource",
+    description: "use an existing AgentCore Memory",
   },
   { kind: "disabled", label: "disabled", description: "no memory across sessions" },
 ];
@@ -850,7 +853,7 @@ function MemoryStep({
     }
     if (key.return) {
       if (value.arn.trim() === "") {
-        setError("enter the arn of your agentcore memory resource");
+        setError("enter the ARN of an existing AgentCore Memory");
         return;
       }
       onNext();
@@ -867,8 +870,8 @@ function MemoryStep({
       />
       {value.kind === "byo" && (
         <FormTextInput
-          name="memory arn"
-          helpText="the arn of an existing agentcore memory resource"
+          name="Memory ARN"
+          helpText="the ARN of an existing AgentCore Memory"
           placeholder="arn:aws:bedrock-agentcore:…:memory/…"
           errorText=""
           value={value.arn}
@@ -901,26 +904,26 @@ const TOOL_ROWS: {
     placeholder: string;
   };
 }[] = [
-  { key: "browser", label: "browser", description: "browse the web with agentcore browser" },
+  { key: "browser", label: "browser", description: "browse the web with AgentCore Browser" },
   {
     key: "gateway",
     label: "gateway",
-    description: "call tools through an agentcore gateway",
+    description: "call tools through an AgentCore Gateway",
     field: {
       valueKey: "gatewayArn",
-      name: "gateway arn",
-      helpText: "the arn of the agentcore gateway to call tools through",
+      name: "Gateway ARN",
+      helpText: "the ARN of the AgentCore Gateway to call tools through",
       placeholder: "arn:aws:bedrock-agentcore:…:gateway/…",
     },
   },
   {
     key: "mcp",
-    label: "mcp server",
-    description: "connect to a remote mcp server",
+    label: "MCP server",
+    description: "connect to a remote MCP server",
     field: {
       valueKey: "mcpUrl",
-      name: "server url",
-      helpText: "the url of the remote mcp server",
+      name: "server URL",
+      helpText: "the URL of the remote MCP server",
       placeholder: "https://…",
     },
   },

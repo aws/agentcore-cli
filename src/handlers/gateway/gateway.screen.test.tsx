@@ -390,7 +390,7 @@ describe("Gateway Connector flow", () => {
       `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
     );
 
-    await waitForText(screen.lastFrame, "This Gateway has no Connectors.");
+    await waitForText(screen.lastFrame, "This Gateway has no connectors.");
     expect(screen.lastFrame()).not.toContain("more →");
   });
 

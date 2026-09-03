@@ -189,7 +189,7 @@ describe("project create wizard", () => {
     expect(review).toContain("openai");
     expect(review).toContain("model");
     expect(review).toContain("gpt-5");
-    expect(review).toContain("api key arn");
+    expect(review).toContain("API key ARN");
     expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./OpenAIApp", 5000);
@@ -260,7 +260,7 @@ describe("project create wizard", () => {
     expect(frame).toContain("○ openai");
     expect(frame).toContain("○ gemini");
     expect(frame).toContain("○ litellm");
-    expect(frame).toContain("model id");
+    expect(frame).toContain("model ID");
     expect(frame).toContain(DEFAULT_MODEL_ID);
     expect(frame).toContain("[enter] continue");
     expect(frame).toContain("[esc] back");
@@ -485,13 +485,13 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "creating DemoApp…");
+    await waitForText(r.lastFrame, "Creating DemoApp…");
     releaseFirstStep();
 
     // The running step is the spinner row itself, as on the command line; the
-    // generic "creating…" spinner shows only until the first step arrives.
+    // generic "Creating…" spinner shows only until the first step arrives.
     await waitForText(r.lastFrame, "syncing dependencies");
-    expect(r.lastFrame()).not.toContain("creating DemoApp…");
+    expect(r.lastFrame()).not.toContain("Creating DemoApp…");
     expect(r.lastFrame()).not.toContain("✓ syncing dependencies");
 
     r.unmount();

@@ -91,7 +91,7 @@ export function HarnessEndpointPicker({
       onBack={goBack}
       loadingMessage="Loading endpoints…"
       errorMessage={(error) => `Error: ${error.message}`}
-      emptyMessage="This harness has no endpoints yet."
+      emptyMessage="This harness has no endpoints."
       emptyPageMessage={`No endpoints on this page for harness ${harnessId}.`}
     />
   );

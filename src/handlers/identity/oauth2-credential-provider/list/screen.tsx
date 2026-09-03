@@ -39,6 +39,7 @@ export function Oauth2CredentialProviderListScreen({ ctx, core }: ScreenProps) {
   return (
     <PaginatedTablePicker
       breadcrumb={["agentcore", "identity", "oauth2-credential-provider", "list"]}
+      description="list OAuth2 credential providers"
       queryKey={["oauth2-credential-providers", opts.region]}
       loadPage={async (token, pageSize) => {
         const response = await core.identity.listOauth2CredentialProviders(token, pageSize, opts);

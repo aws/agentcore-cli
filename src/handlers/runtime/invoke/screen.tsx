@@ -453,7 +453,9 @@ export function RuntimeInvokeConsole({
               {inputError ? (
                 <Text color="red">{inputError}</Text>
               ) : busy ? (
-                <Spinner label={`${liveState}… (esc to interrupt)`} />
+                <Spinner
+                  label={`${liveState === "connecting" ? "Connecting" : "Streaming"}… (esc to interrupt)`}
+                />
               ) : (
                 <Text color={theme.colors.muted}>
                   {cliTruncate(

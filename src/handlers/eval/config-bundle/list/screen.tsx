@@ -9,6 +9,7 @@ export function ConfigBundleListScreen(props: ScreenProps) {
     <ConfigBundlePicker
       {...props}
       breadcrumb={["agentcore", "eval", "config-bundle", "list"]}
+      description="list configuration bundles"
       onSelect={(bundleId) =>
         navigate(`/agentcore/eval/config-bundle/get/${encodeURIComponent(bundleId)}`)
       }

@@ -9,6 +9,7 @@ export function DatasetListScreen(props: ScreenProps) {
     <DatasetPicker
       {...props}
       breadcrumb={["agentcore", "eval", "dataset", "list"]}
+      description="list datasets"
       onSelect={(datasetId) =>
         navigate(`/agentcore/eval/dataset/get/${encodeURIComponent(datasetId)}`)
       }

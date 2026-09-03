@@ -58,7 +58,7 @@ export function EvaluatorGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading evaluator…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

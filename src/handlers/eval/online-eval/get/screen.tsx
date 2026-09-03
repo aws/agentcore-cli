@@ -50,7 +50,7 @@ export function OnlineEvalGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading online evaluation config…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

@@ -9,6 +9,7 @@ export function BatchInsightsListScreen(props: ScreenProps) {
     <BatchInsightsPicker
       {...props}
       breadcrumb={["agentcore", "eval", "batch-insights", "list"]}
+      description="list batch insights runs"
       onSelect={(batchEvaluationId) =>
         navigate(`/agentcore/eval/batch-insights/get/${encodeURIComponent(batchEvaluationId)}`)
       }

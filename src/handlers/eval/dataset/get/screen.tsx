@@ -52,7 +52,7 @@ export function DatasetGetScreen(props: ScreenProps) {
       }
       loadingLabel="Loading dataset…"
       onRetry={() => void detail.refetch()}
-      selectLabel="open detail"
+      selectLabel="open"
     />
   );
 }

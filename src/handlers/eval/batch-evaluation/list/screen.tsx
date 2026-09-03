@@ -9,6 +9,7 @@ export function BatchEvaluationListScreen(props: ScreenProps) {
     <BatchEvaluationPicker
       {...props}
       breadcrumb={["agentcore", "eval", "batch-evaluation", "list"]}
+      description="list batch evaluations"
       onSelect={(batchEvaluationId) =>
         navigate(`/agentcore/eval/batch-evaluation/get/${encodeURIComponent(batchEvaluationId)}`)
       }

@@ -9,6 +9,7 @@ export function OnlineInsightListScreen(props: ScreenProps) {
     <OnlineInsightPicker
       {...props}
       breadcrumb={["agentcore", "eval", "online-insight", "list"]}
+      description="list online insight configs"
       onSelect={(configId) =>
         navigate(`/agentcore/eval/online-insight/get/${encodeURIComponent(configId)}`)
       }

@@ -23,7 +23,7 @@ export const runtimeColumns = [
   { key: "runtimeName", header: "name", flex: true },
   {
     key: "runtimeId",
-    header: "id suffix",
+    header: "ID suffix",
     width: 10,
     render: runtimeIdSuffix,
   },

@@ -12,7 +12,7 @@ export function GatewayConnectorListScreen(props: ScreenProps) {
       <GatewayPicker
         {...props}
         breadcrumb={["agentcore", "gateway", "connector", "list"]}
-        description="choose a Gateway to list Connectors for"
+        description="choose a Gateway to list connectors for"
         onSelect={(id) => navigate(`/agentcore/gateway/connector/list/${encodeURIComponent(id)}`)}
       />
     );

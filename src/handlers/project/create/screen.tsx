@@ -207,8 +207,8 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
       type: "harness",
       provider: providerLabel(provider),
       model: config.modelId,
-      ...(config.apiKeyArn && { "api key arn": config.apiKeyArn }),
-      ...(config.apiBase && { "api base url": config.apiBase }),
+      ...(config.apiKeyArn && { "API key ARN": config.apiKeyArn }),
+      ...(config.apiBase && { "API base URL": config.apiBase }),
       directory: `./${values.name}`,
     };
   }
@@ -288,7 +288,11 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
   };
 
   return (
-    <Layout breadcrumb={["agentcore", "project", "create"]} keyHints={hintsFor(stepKey, phase)}>
+    <Layout
+      breadcrumb={["agentcore", "project", "create"]}
+      description="create a new AgentCore project"
+      keyHints={hintsFor(stepKey, phase)}
+    >
       <Box flexDirection="column">
         {phase.kind === "form" && (
           <>
@@ -314,7 +318,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
           <Box flexDirection="column" paddingX={1}>
             <TaskList tasks={tasks} />
             {phase.kind === "running" && tasks.length === 0 && (
-              <Spinner label={`creating ${values.name}…`} />
+              <Spinner label={`Creating ${values.name}…`} />
             )}
             {phase.kind === "success" && (
               <SuccessPanel name={values.name} onContinue={() => exit()} />
@@ -346,7 +350,8 @@ function hintsFor(stepKey: string, phase: WizardPhase): { key: string; label: st
       return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
     case "type":
     case "template":
-      return [{ key: "↑↓", label: "choose" }, { key: "enter", label: "continue" }, ...base];
+    case "memory":
+      return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
     case "review":
       return [{ key: "enter", label: "create" }, ...base];
     default:
@@ -526,21 +531,21 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
   const fields: ModelField[] = [
     {
       key: "modelId",
-      name: "model id",
+      name: "model ID",
       helpText:
         provider === "bedrock"
-          ? "a Bedrock model or inference profile id"
+          ? "a Bedrock model or inference profile ID"
           : `the ${providerLabel(provider)} model to use`,
       placeholder: HARNESS_DEFAULT_MODEL_IDS[provider],
       required: true,
-      requiredError: `enter a model id for ${providerLabel(provider)}`,
+      requiredError: `enter a model ID for ${providerLabel(provider)}`,
     },
   ];
 
   if (provider !== "bedrock") {
     fields.push({
       key: "apiKeyArn",
-      name: "api key arn",
+      name: "API key ARN",
       helpText:
         provider === "lite_llm"
           ? "optional · an AgentCore Identity API-key credential provider ARN"
@@ -557,7 +562,7 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
   if (provider === "lite_llm") {
     fields.push({
       key: "apiBase",
-      name: "api base url",
+      name: "API base URL",
       helpText: "optional · the provider API endpoint",
       placeholder: "https://…",
       required: false,

@@ -161,7 +161,7 @@ export function EndpointWizard({
         )}
 
         {phase.kind === "submitting" && (
-          <Spinner label={mode === "create" ? "creating endpoint…" : "updating endpoint…"} />
+          <Spinner label={mode === "create" ? "Creating endpoint…" : "Updating endpoint…"} />
         )}
         {phase.kind === "success" && (
           <SuccessPanel
@@ -197,7 +197,7 @@ function hintsFor(
     { key: "ctl+c", label: "quit" },
   ];
   if (stepKey === "version") {
-    return [{ key: "↑↓", label: "choose" }, { key: "enter", label: "continue" }, ...base];
+    return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
   }
   if (stepKey === "review") return [{ key: "enter", label: verb }, ...base];
   return [{ key: "enter", label: "continue" }, ...base];
@@ -316,7 +316,7 @@ function VersionStep({
       {versions.isPending ? (
         <>
           <Question text="which harness version should this endpoint serve?" />
-          <Spinner label="loading versions…" />
+          <Spinner label="Loading versions…" />
         </>
       ) : versions.isError ? (
         <>

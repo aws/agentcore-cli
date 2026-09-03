@@ -9,6 +9,7 @@ export function EvaluatorListScreen(props: ScreenProps) {
     <EvaluatorPicker
       {...props}
       breadcrumb={["agentcore", "eval", "evaluator", "list"]}
+      description="list evaluators"
       onSelect={(evaluatorId) =>
         navigate(`/agentcore/eval/evaluator/get/${encodeURIComponent(evaluatorId)}`)
       }

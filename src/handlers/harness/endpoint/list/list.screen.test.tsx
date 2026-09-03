@@ -113,7 +113,7 @@ describe("harness endpoint list screen", () => {
     const core = coreWithEndpoints([]);
     const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
-    await waitForText(r.lastFrame, "This harness has no endpoints yet.");
+    await waitForText(r.lastFrame, "This harness has no endpoints.");
     expect(r.lastFrame()).not.toContain("No endpoints on this page");
     r.unmount();
   });

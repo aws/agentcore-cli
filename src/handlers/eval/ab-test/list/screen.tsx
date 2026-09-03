@@ -9,6 +9,7 @@ export function AbTestListScreen(props: ScreenProps) {
     <AbTestPicker
       {...props}
       breadcrumb={["agentcore", "eval", "ab-test", "list"]}
+      description="list A/B tests"
       onSelect={(abTestId) =>
         navigate(`/agentcore/eval/ab-test/get/${encodeURIComponent(abTestId)}`)
       }
