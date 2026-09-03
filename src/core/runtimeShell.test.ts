@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ShellChannel } from "bedrock-agentcore/runtime";
+import { MAX_FRAME_SIZE, ShellChannel } from "bedrock-agentcore/runtime";
 import type { RuntimeShellRequest } from "../handlers/runtime/types";
 import {
   createRuntimeShellOpener,
@@ -14,10 +14,11 @@ const REQUEST: RuntimeShellRequest = {
 };
 
 function sdkSession(
-  frames: { channel: ShellChannel; payload: Uint8Array }[] = [],
+  frames: { channel: ShellChannel; payload: Buffer }[] = [],
 ): RuntimeShellSdkSession & { closed: number } {
   return {
     sessionId: "server-session",
+    reconnected: false,
     kicked: false,
     exitCode: 0,
     closed: 0,
@@ -105,9 +106,9 @@ describe("createRuntimeShellOpener", () => {
     const sent: (string | Buffer)[] = [];
     const resizes: unknown[] = [];
     const session = sdkSession([
-      { channel: ShellChannel.STDOUT, payload: new TextEncoder().encode("out") },
-      { channel: ShellChannel.STATUS, payload: new Uint8Array() },
-      { channel: ShellChannel.STDERR, payload: new TextEncoder().encode("err") },
+      { channel: ShellChannel.STDOUT, payload: Buffer.from("out") },
+      { channel: ShellChannel.STATUS, payload: Buffer.alloc(0) },
+      { channel: ShellChannel.STDERR, payload: Buffer.from("err") },
     ]);
     session.send = async (data) => {
       sent.push(data);
@@ -149,11 +150,11 @@ describe("createRuntimeShellOpener", () => {
       sleep: async () => {},
     });
     const result = await opener(REQUEST, { region: "us-west-2" });
-    const paste = Buffer.alloc(64 * 1024 + 1, 0x61);
+    const paste = Buffer.alloc(MAX_FRAME_SIZE + 1, 0x61);
 
     await result.send(paste);
 
-    expect(sent.map((frame) => frame.byteLength)).toEqual([64 * 1024 - 1, 2]);
+    expect(sent.map((frame) => frame.byteLength)).toEqual([MAX_FRAME_SIZE - 1, 2]);
     expect(Buffer.concat(sent)).toEqual(paste);
   });
 

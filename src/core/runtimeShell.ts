@@ -1,40 +1,33 @@
-import { RuntimeClient as AgentCoreRuntimeClient } from "bedrock-agentcore/runtime";
-import type { AwsCredentialIdentityProvider } from "@smithy/types";
+import {
+  MAX_FRAME_SIZE,
+  RuntimeClient as AgentCoreRuntimeClient,
+  ShellChannel,
+  type OpenShellParams,
+  type ShellFrame,
+  type ShellSession,
+} from "bedrock-agentcore/runtime";
 import { Buffer } from "node:buffer";
 import type { RuntimeShellFrame, RuntimeShellSession } from "../handlers/runtime/types";
 import type { OpenRuntimeShell } from "./runtime";
 import type { CoreOptions } from "./types";
 
-export type RuntimeShellSdkOpenInput = {
-  runtimeArn: string;
-  endpointName: string;
-  sessionId?: string;
-  auth: "sigv4" | { type: "oauth"; bearerToken: string };
-  reconnectConfig: { onReconnect?: (reconnected: boolean) => void };
-};
+export type RuntimeShellSdkOpenInput = OpenShellParams;
 
-export type RuntimeShellSdkFrame = {
-  channel: number;
-  payload: Uint8Array;
-};
+export type RuntimeShellSdkFrame = Pick<ShellFrame, "channel" | "payload">;
 
-export interface RuntimeShellSdkSession extends AsyncIterable<RuntimeShellSdkFrame> {
-  readonly sessionId: string;
-  readonly kicked: boolean;
-  readonly exitCode: number | null;
-  send(data: string | Buffer): Promise<void>;
-  resize(columns: number, rows: number): Promise<void>;
-  close(): Promise<void>;
-}
+export type RuntimeShellSdkSession = Pick<
+  ShellSession,
+  "sessionId" | "reconnected" | "kicked" | "exitCode" | "send" | "resize" | "close"
+> &
+  AsyncIterable<RuntimeShellSdkFrame>;
 
 export interface RuntimeShellSdkClient {
   openShell(input: RuntimeShellSdkOpenInput): Promise<RuntimeShellSdkSession>;
 }
 
-export type RuntimeShellSdkClientConfig = {
-  region: string;
-  credentialsProvider?: AwsCredentialIdentityProvider;
-};
+export type RuntimeShellSdkClientConfig = NonNullable<
+  ConstructorParameters<typeof AgentCoreRuntimeClient>[0]
+>;
 
 export type CreateRuntimeShellSdkClient = (
   config: RuntimeShellSdkClientConfig,
@@ -47,17 +40,11 @@ export type RuntimeShellOpenerConfig = {
 
 const RETRYABLE_UPGRADE = /HTTP (409|424|429)\b/;
 const MAX_ATTEMPTS = 5;
-const MAX_STDIN_PAYLOAD_BYTES = 64 * 1024 - 1;
-const STDOUT_CHANNEL = 1;
-const STDERR_CHANNEL = 2;
+const MAX_STDIN_PAYLOAD_BYTES = MAX_FRAME_SIZE - 1;
 
 export function createRuntimeShellOpener(config: RuntimeShellOpenerConfig = {}): OpenRuntimeShell {
   const createClient =
-    config.createClient ??
-    ((clientConfig) =>
-      new AgentCoreRuntimeClient(
-        clientConfig as ConstructorParameters<typeof AgentCoreRuntimeClient>[0],
-      ) as unknown as RuntimeShellSdkClient);
+    config.createClient ?? ((clientConfig) => new AgentCoreRuntimeClient(clientConfig));
   const sleep =
     config.sleep ?? ((delayMs) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
 
@@ -97,7 +84,7 @@ export function createRuntimeShellOpener(config: RuntimeShellOpenerConfig = {}):
 
 function credentialProvider(
   credentials: NonNullable<CoreOptions["credentials"]>,
-): AwsCredentialIdentityProvider {
+): NonNullable<RuntimeShellSdkClientConfig["credentialsProvider"]> {
   return typeof credentials === "function" ? credentials : async () => credentials;
 }
 
@@ -142,9 +129,9 @@ class RuntimeShellSessionAdapter implements RuntimeShellSession {
 
   async *[Symbol.asyncIterator](): AsyncIterator<RuntimeShellFrame> {
     for await (const frame of this.session) {
-      if (frame.channel === STDOUT_CHANNEL) {
+      if (frame.channel === ShellChannel.STDOUT) {
         yield { type: "stdout", data: Uint8Array.from(frame.payload) };
-      } else if (frame.channel === STDERR_CHANNEL) {
+      } else if (frame.channel === ShellChannel.STDERR) {
         yield { type: "stderr", data: Uint8Array.from(frame.payload) };
       }
     }
