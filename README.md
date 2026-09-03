@@ -532,13 +532,14 @@ agentcore runtime shell --id <runtimeId>
 agentcore runtime shell --id <runtimeId> --qualifier DEFAULT
 ```
 
-Use `--session-id` to open the shell in a specific Runtime session/VM:
+Use both IDs to reattach to the same shell:
 
 ```bash
 agentcore runtime shell \
   --id <runtimeId> \
   --qualifier DEFAULT \
-  --session-id <runtimeSessionId>
+  --session-id <runtimeSessionId> \
+  --shell-id <shellId>
 ```
 
 CUSTOM_JWT Runtimes require `--bearer-token`. Interactive bearer tokens may be
@@ -546,8 +547,9 @@ inline or `file://` sources, but not stdin.
 
 The shell forwards terminal input byte-for-byte, including `Ctrl+C`, `Ctrl+D`,
 escape sequences, and full-screen terminal applications. Terminal resize events
-update the remote PTY. Running `exit` or sending `Ctrl+D` terminates the remote
-shell.
+update the remote PTY. `Ctrl+]` detaches the client while leaving the shell
+available for reattachment. Running `exit` or sending `Ctrl+D` terminates the
+remote shell.
 
 Runtime Shell requires TTY stdin and stdout and does not support `--json` or
 `--endpoint-url`.
