@@ -7,6 +7,7 @@ import {
   cleanupScreens,
   renderScreen,
   TestCoreClient,
+  tick,
   ttyTestIO,
   waitFor,
   waitForText,
@@ -109,6 +110,7 @@ describe("RuntimeShellScreen", () => {
     stdin.write("\r");
     await waitFor(() => streams.stderr().includes("Session closed · exit 42"));
     await waitFor(() => streams.stdout().split(detailText).length > initialDetails);
+    await tick();
     stdin.write("\x03");
 
     await rendering;
