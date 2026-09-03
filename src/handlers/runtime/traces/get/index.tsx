@@ -12,7 +12,7 @@ const runtimeFlags = [flag("id", "the ID of the Runtime", runtimeIdSchema)] as c
 export const createGetRuntimeTraceHandler = (core: Core, io: AppIO) =>
   createGetTraceHandler(io, {
     description: "download a trace's log records to a JSON file",
-    outputDescription: "the output file path (default: <traceId>.json in the current directory)",
+    outputDescription: "the output file path (default <traceId>.json in the current directory)",
     flags: runtimeFlags,
     read: (ctx, flags, query, signal) => {
       const source = {

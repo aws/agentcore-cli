@@ -27,10 +27,10 @@ function toTargetRef(name: string, raw: unknown): TargetVariantRef {
 export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "run",
-    description: "run an A/B test between two gateway targets and their online evaluations",
+    description: "run an A/B test between two Gateway Targets and their online evaluations",
     flags: [
       flag("name", "the A/B test name", z.string().optional()),
-      flag("gateway", "deployed gateway id", z.string().optional()),
+      flag("gateway", "deployed Gateway ID", z.string().optional()),
       flag(
         "control",
         'control JSON {"gateway-target":"<name>","online-eval":"<id>"} (inline, file://, or -)',
@@ -51,11 +51,7 @@ export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
         'GatewayFilter JSON, e.g. {"targetPaths":["/orders"]} (inline, file://, or -)',
         z.string().optional(),
       ),
-      flag(
-        "role-arn",
-        "execution-role override (default: auto-provisioned)",
-        z.string().optional(),
-      ),
+      flag("role-arn", "execution-role override (default auto-provisioned)", z.string().optional()),
       flag(
         "enable-on-create",
         "whether to start the test immediately (default true; pass false to create it paused)",

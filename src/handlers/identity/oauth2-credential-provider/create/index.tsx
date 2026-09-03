@@ -32,11 +32,11 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
         'external secret reference JSON: {"secretId":"<arn>","jsonKey":"<key>"}',
         z.string().optional(),
       ),
-      flag("client-id", "OAuth2 client ID (guided Custom OAuth2)", z.string().optional()),
-      flag("discovery-url", "OAuth2 discovery URL (guided Custom OAuth2)", z.string().optional()),
+      flag("client-id", "OAuth2 client ID (guided custom OAuth2)", z.string().optional()),
+      flag("discovery-url", "OAuth2 discovery URL (guided custom OAuth2)", z.string().optional()),
       flag(
         "authorization-server-metadata",
-        "authorization server metadata JSON (guided Custom OAuth2)",
+        "authorization server metadata JSON (guided custom OAuth2)",
         z.string().optional(),
       ),
       flag(

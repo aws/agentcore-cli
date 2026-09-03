@@ -15,10 +15,10 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
     description: "start an asynchronous batch insights run over existing sessions",
     flags: [
       ...SessionSource.flags,
-      flag("insight", "insight id(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT])),
+      flag("insight", "insight ID(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT])),
       flag(
         "evaluator",
-        "optional evaluator id(s) to run alongside the insights",
+        "optional evaluator ID(s) to run alongside the insights",
         z.array(z.string()).optional(),
       ),
       flag("name", "batch insights name (must be unique in the account)", z.string().optional()),

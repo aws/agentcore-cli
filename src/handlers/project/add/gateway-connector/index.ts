@@ -13,7 +13,7 @@ import type { AddProjectResourceConfig } from "../types";
 export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway-connector",
-    description: "adds a connector-backed Target to a project Gateway",
+    description: "add a connector-backed Target to a project Gateway",
     flags: [
       flag("gateway", "name of the parent Gateway in this project", z.string().optional()),
       flag("name", "the Target name for a connector shortcut", z.string().optional()),

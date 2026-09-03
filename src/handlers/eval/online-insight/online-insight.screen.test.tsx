@@ -66,7 +66,7 @@ describe("online-insight menu", () => {
   test("lists the read-only commands, then the rest as command line only", async () => {
     const screen = renderScreen("/agentcore/eval/online-insight");
 
-    await waitForText(screen.lastFrame, "get an online insight config by id");
+    await waitForText(screen.lastFrame, "get an online insight config by ID");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
       cliOnly: ["create", "update", "pause", "resume", "delete"],

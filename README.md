@@ -87,7 +87,7 @@ agentcore                          # interactive TUI
 │   └── record
 │       ├── get                    # get a long-term Memory record
 │       └── list                   # list long-term Memory records
-├── gateway                        # inspect AgentCore Gateways
+├── gateway                        # manage AgentCore Gateways
 │   ├── get                        # get a Gateway by id
 │   ├── list                       # list Gateways (server-side paginated)
 │   ├── invoke                     # invoke a Gateway headlessly or in a persistent console

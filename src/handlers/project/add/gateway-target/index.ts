@@ -15,7 +15,7 @@ import type { AddProjectResourceConfig } from "../types";
 export const createAddGatewayTargetHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway-target",
-    description: "adds a Target to a project Gateway",
+    description: "add a Target to a project Gateway",
     flags: [
       flag("gateway", "name of the parent Gateway in this project", z.string().optional()),
       flag("name", "the Target name for endpoint or Runtime shortcuts", z.string().optional()),

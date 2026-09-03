@@ -114,7 +114,7 @@ describe("Gateway menu and list", () => {
   test("renders the Gateway command menu without calling Core", async () => {
     const screen = renderScreen("/agentcore/gateway");
 
-    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(screen.lastFrame, "manage AgentCore Gateways");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list", "invoke", "target", "connector", "rule", "policy"],
       cliOnly: ["create", "update", "delete"],
@@ -149,7 +149,7 @@ describe("Gateway menu and list", () => {
 
     await waitForText(loading.lastFrame, "Loading Gateways");
     await loading.press("escape");
-    await waitForText(loading.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(loading.lastFrame, "manage AgentCore Gateways");
     loading.unmount();
 
     const empty = renderScreen("/agentcore/gateway/list");
@@ -218,7 +218,7 @@ describe("Gateway Target flow", () => {
   test("renders the Target command menu without calling Core", async () => {
     const screen = renderScreen("/agentcore/gateway/target");
 
-    await waitForText(screen.lastFrame, "inspect targets for an AgentCore Gateway");
+    await waitForText(screen.lastFrame, "manage Targets for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
       cliOnly: ["create", "update", "delete"],
@@ -313,7 +313,7 @@ describe("Gateway Target flow", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Gateway to list Targets for");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "inspect targets for an AgentCore Gateway");
+    await waitForText(screen.lastFrame, "manage Targets for an AgentCore Gateway");
   });
 });
 
@@ -321,7 +321,7 @@ describe("Gateway Connector flow", () => {
   test("renders the separate Connector command menu without calling Core", async () => {
     const screen = renderScreen("/agentcore/gateway/connector");
 
-    await waitForText(screen.lastFrame, "inspect connectors configured for an AgentCore Gateway");
+    await waitForText(screen.lastFrame, "manage connectors configured for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
       cliOnly: ["create", "update", "delete"],
@@ -407,7 +407,7 @@ describe("Gateway Rule flow", () => {
   test("renders the Rule command menu without calling Core", async () => {
     const screen = renderScreen("/agentcore/gateway/rule");
 
-    await waitForText(screen.lastFrame, "inspect rules for an AgentCore Gateway");
+    await waitForText(screen.lastFrame, "manage Rules for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
       cliOnly: ["create", "update", "delete"],

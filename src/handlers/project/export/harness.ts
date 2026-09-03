@@ -13,7 +13,7 @@ import { harnessIdFromArn, mapServiceHarnessToSpec, regionFromHarnessArn } from 
 export const createExportHarnessHandler = (config: ExportProjectResourceConfig) =>
   createHandler({
     name: "harness",
-    description: "convert a harness into an editable Strands runtime agent",
+    description: "convert a harness into an editable Strands Runtime agent",
     flags: [
       flag("name", "the name of an in-project harness to export", z.string().optional()),
       flag(
@@ -23,7 +23,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
       ),
       flag(
         "target-agent-name",
-        "the name of the generated runtime agent (default: <harnessName>Agent)",
+        "the name of the generated Runtime agent (default <harnessName>Agent)",
         z.string().optional(),
       ),
     ],

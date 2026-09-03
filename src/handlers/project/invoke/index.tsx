@@ -13,7 +13,7 @@ export function createProjectInvokeHandler(
   io: AppIO,
   renderInvokeTui: typeof renderTuiAt = renderTuiAt,
 ): Router {
-  return new Router("invoke", "invoke a Runtime or Harness from the current project")
+  return new Router("invoke", "invoke a Runtime or harness from the current project")
     .use(withProject({ projectManager: core.projectManager }))
     .handler(createProjectInvokeRuntimeHandler(core, io, renderInvokeTui))
     .handler(createProjectInvokeHarnessHandler(core, io, renderInvokeTui))

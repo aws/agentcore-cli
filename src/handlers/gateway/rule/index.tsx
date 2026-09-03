@@ -9,7 +9,7 @@ import { createListGatewayRulesHandler } from "./list";
 import { createUpdateGatewayRuleHandler } from "./update";
 
 export function createGatewayRuleHandler(core: Core, io: AppIO): Router {
-  return new Router("rule", "inspect rules for an AgentCore Gateway")
+  return new Router("rule", "manage Rules for an AgentCore Gateway")
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
     .handler(createCreateGatewayRuleHandler(core, io))

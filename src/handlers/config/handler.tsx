@@ -18,10 +18,10 @@ export const createConfigHandler = () =>
     arguments: [
       argument(
         "key",
-        "config key in JSON path notation (e.g. telemetry.enabled)",
+        "the config key in JSON path notation (e.g. telemetry.enabled)",
         z.enum(getKeys(DEFAULT_GLOBAL_CONFIG)).optional(),
       ),
-      argument("value", "value to set for the key", z.string().optional()),
+      argument("value", "the value to set for the key", z.string().optional()),
     ],
     handle: async (ctx, _flags, args) => {
       const globalConfigAccessor = ctx.require(GlobalConfigAccessorKey);

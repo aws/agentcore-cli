@@ -76,7 +76,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("the divider is omitted when nothing is command line only", async () => {
     const r = renderScreen("/agentcore/harness");
 
-    await waitForText(r.lastFrame, "manage agentcore harnesses");
+    await waitForText(r.lastFrame, "manage AgentCore harnesses");
     expect(r.lastFrame()).not.toContain("command line only");
     r.unmount();
   });
@@ -149,7 +149,7 @@ describe("paths without a screen of their own", () => {
     expect(frame).toContain("--authorizer-type");
 
     await r.press("escape");
-    await waitForText(r.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(r.lastFrame, "manage AgentCore Gateways");
     r.unmount();
   });
 });

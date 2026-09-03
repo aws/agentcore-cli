@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetOnlineInsightHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get an online insight config by id",
+    description: "get an online insight config by ID",
     flags: [flag("id", "the ID of the online insight config", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");

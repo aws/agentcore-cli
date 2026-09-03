@@ -15,7 +15,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
     flags: [
       flag("name", "the name of the evaluator", z.string().optional()),
       flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
-      flag("model", "the Bedrock model id used to judge", z.string().optional()),
+      flag("model", "the Bedrock model ID used to judge", z.string().optional()),
       instructionsFlag,
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),

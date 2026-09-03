@@ -69,7 +69,7 @@ describe("Memory picker", () => {
   test("shows event, record, actor, and session commands in the Memory TUI menu", async () => {
     const screen = renderScreen("/agentcore/memory");
 
-    await waitForText(screen.lastFrame, "manage AgentCore Memories");
+    await waitForText(screen.lastFrame, "inspect AgentCore Memories");
     const frame = screen.lastFrame()!;
     expect(frame).toContain("get");
     expect(frame).toContain("list");

@@ -8,12 +8,12 @@ import type { AddProjectResourceConfig } from "../types";
 export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "online-eval",
-    description: "adds an online evaluation config to the current project",
+    description: "add an online evaluation config to the current project",
     flags: [
       flag("name", "the name of the online evaluation config", z.string().optional()),
       flag(
         "agent",
-        "runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
+        "Runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
         z.string().optional(),
       ),
       flag(

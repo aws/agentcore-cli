@@ -17,7 +17,7 @@ export const createExecHarnessHandler = (core: Core, io: AppIO) =>
       flag("command", "the shell command to run", z.string().optional()),
       flag(
         "session-id",
-        "the runtime session ID to run in (33-100 characters)",
+        "the Runtime session ID to run in (33-100 characters)",
         z.string().min(33).max(100).optional(),
       ),
       flag(

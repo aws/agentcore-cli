@@ -107,10 +107,10 @@ JSON example:
 export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "memory",
-    description: "adds a memory to the current project",
+    description: "add a Memory to the current project",
     flags: [
-      flag("name", "the name of the memory", z.string().optional()),
-      flag("description", "a description of what the memory stores", z.string().optional()),
+      flag("name", "the name of the Memory", z.string().optional()),
+      flag("description", "a description of what the Memory stores", z.string().optional()),
       flag(
         "event-expiry-duration",
         "how long raw events are retained, in days (3-365)",
@@ -118,7 +118,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "strategies",
-        "long-term memory strategies: comma-separated types, or the JSON strategies[] as stored in agentcore.json",
+        "long-term Memory strategies: comma-separated types, or the JSON strategies[] as stored in agentcore.json",
         z.string().optional(),
         { help: strategiesHelp },
       ),
@@ -129,17 +129,17 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "stream-delivery-resources",
-        "destinations memory records are streamed to (JSON StreamDeliveryResources)",
+        "destinations Memory records are streamed to (JSON StreamDeliveryResources)",
         z.string().optional(),
       ),
       flag(
         "encryption-key-arn",
-        "customer managed KMS key ARN used to encrypt the memory",
+        "customer managed KMS key ARN used to encrypt the Memory",
         z.string().optional(),
       ),
       flag(
         "execution-role-arn",
-        "IAM role the memory assumes; a default role is created when omitted",
+        "IAM role the Memory assumes; a default role is created when omitted",
         z.string().optional(),
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),

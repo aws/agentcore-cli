@@ -71,7 +71,7 @@ export async function handleUpdate(
 export const createUpdateHandler = (io: AppIO) =>
   createHandler({
     name: "update",
-    description: "Check for and install CLI updates",
+    description: "check for and install CLI updates",
     flags: [flag("check", "check for updates without installing", z.boolean().default(false))],
     handle: async (ctx, flags) => {
       const result = await handleUpdate(flags.check, {

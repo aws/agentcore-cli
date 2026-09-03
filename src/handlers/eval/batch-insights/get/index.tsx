@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetBatchInsightsHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get a batch insights run and its reports by id",
+    description: "get a batch insights run and its reports by ID",
     flags: [flag("id", "the ID of the batch insights run", z.string().optional())],
     handle: async (ctx, flags) => {
       const id = flags["id"];

@@ -17,7 +17,7 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
       flag("prompt", "the message to send to the harness", z.string().optional()),
       flag(
         "session-id",
-        "the runtime session ID to continue (33-100 characters)",
+        "the Runtime session ID to continue (33-100 characters)",
         z.string().min(33).max(100).optional(),
       ),
       flag(

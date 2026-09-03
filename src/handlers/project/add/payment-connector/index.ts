@@ -6,7 +6,7 @@ import type { AddProjectResourceConfig } from "../types";
 export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "payment-connector",
-    description: "adds a connector to a project payment manager",
+    description: "add a connector to a project payment manager",
     flags: [
       flag("manager", "the parent payment manager", z.string().optional()),
       flag("name", "the payment connector name", z.string().optional()),

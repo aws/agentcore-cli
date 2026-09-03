@@ -112,7 +112,7 @@ describe("Gateway invoke routing", () => {
     expect(screen.lastFrame()).toContain("checkout-gateway");
 
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(screen.lastFrame, "manage AgentCore Gateways");
   });
 });
 

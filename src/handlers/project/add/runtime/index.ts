@@ -29,10 +29,10 @@ import { RegionKey } from "../../../keys";
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "runtime",
-    description: "adds a runtime to the current project",
+    description: "add a Runtime to the current project",
     flags: [
-      flag("name", "the name of the runtime", z.string().max(42).optional()),
-      flag("description", "an optional description of the runtime", z.string().optional()),
+      flag("name", "the name of the Runtime", z.string().max(42).optional()),
+      flag("description", "an optional description of the Runtime", z.string().optional()),
       flag(
         "type",
         "create scaffolds new agent code (the default); import translates a Bedrock Agent version",
@@ -51,13 +51,13 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "template",
-        "a preset of flags for scaffolding the runtime; compatible flags override preset values",
+        "a preset of flags for scaffolding the Runtime; compatible flags override preset values",
         z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
       ),
       flag("build", "build type: CodeZip or Container", BuildTypeSchema.optional()),
       flag(
         "language",
-        "target language for the scaffolded runtime code",
+        "target language for the scaffolded Runtime code",
         z.enum(["Python", "TypeScript"]).optional(),
       ),
       flag(
@@ -67,7 +67,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "model-provider",
-        "model provider for the scaffolded runtime code (Bedrock, Anthropic, OpenAI, or Gemini)",
+        "model provider for the scaffolded Runtime code (Bedrock, Anthropic, OpenAI, or Gemini)",
         ModelProviderSchema.optional(),
       ),
       flag(
@@ -78,12 +78,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "memory",
-        "memory option for the scaffolded runtime",
+        "memory option for the scaffolded Runtime",
         z.enum(MEMORY_SHORTCUT_NAMES).optional(),
       ),
       flag(
         "role-arn",
-        "IAM role ARN that provides permissions for the runtime",
+        "IAM role ARN that provides permissions for the Runtime",
         z.string().optional(),
       ),
       flag(
@@ -98,7 +98,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "network-mode",
-        "network mode for the runtime environment (PUBLIC or VPC)",
+        "network mode for the Runtime environment (PUBLIC or VPC)",
         NetworkModeSchema.optional(),
       ),
       flag("network-config", "VPC network configuration (JSON)", z.string().optional()),
@@ -114,7 +114,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "request-header-allowlist",
-        "request headers to pass through to the runtime",
+        "request headers to pass through to the Runtime",
         z.array(z.string()).optional(),
       ),
       flag("lifecycle-configuration", "lifecycle configuration (JSON)", z.string().optional()),

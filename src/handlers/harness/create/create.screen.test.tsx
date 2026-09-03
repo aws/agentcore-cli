@@ -412,7 +412,7 @@ describe("harness create wizard", () => {
 
     // Esc from the hub: the finished wizard must not come back.
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage agentcore harnesses");
+    await waitForText(r.lastFrame, "manage AgentCore harnesses");
     expect(r.lastFrame()).not.toContain("the name of your harness");
     r.unmount();
   });
@@ -428,7 +428,7 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "the name of your harness");
 
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage agentcore harnesses");
+    await waitForText(r.lastFrame, "manage AgentCore harnesses");
     r.unmount();
   });
 });

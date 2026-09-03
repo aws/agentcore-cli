@@ -8,7 +8,7 @@ import { createListBatchInsightsHandler } from "./list";
 import { createRunBatchInsightsHandler } from "./run";
 
 export function createBatchInsightsHandler(core: Core, io: AppIO): Router {
-  return new Router("batch-insights", "run and inspect batch insights")
+  return new Router("batch-insights", "run and inspect AgentCore batch insights")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")

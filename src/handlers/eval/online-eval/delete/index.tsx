@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createDeleteOnlineEvalHandler = (core: Core) =>
   createHandler({
     name: "delete",
-    description: "delete an online evaluation config by id",
+    description: "delete an online evaluation config by ID",
     flags: [flag("id", "the ID of the online evaluation config to delete", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");

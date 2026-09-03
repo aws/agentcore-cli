@@ -15,11 +15,11 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
     flags: [
       flag(
         "agent",
-        "source: harness id or runtime id whose sessions to evaluate",
+        "source: harness ID or Runtime ID whose sessions to evaluate",
         z.string().optional(),
       ),
-      flag("endpoint", "runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
-      flag("evaluator", "evaluator id(s) to apply", z.array(z.string()).optional()),
+      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
+      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag(
         "lookback-days",
         "time filter: evaluate sessions from the last N days",
@@ -35,10 +35,10 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
         "time filter: window end (ISO-8601, with --start-time)",
         z.string().optional(),
       ),
-      flag("session-ids", "filter: specific session ids", z.array(z.string()).optional()),
+      flag("session-ids", "filter: specific session IDs", z.array(z.string()).optional()),
       flag(
         "trace-id",
-        "filter: a single trace id (session id is read off the span)",
+        "filter: a single trace ID (session ID is read off the span)",
         z.string().optional(),
       ),
       flag(

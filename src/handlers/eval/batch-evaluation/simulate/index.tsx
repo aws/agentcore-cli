@@ -12,10 +12,10 @@ import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
 export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
   createHandler({
     name: "simulate",
-    description: "replay a dataset against a runtime, then batch-evaluate the resulting sessions",
+    description: "replay a dataset against a Runtime, then batch-evaluate the resulting sessions",
     flags: [
-      flag("runtime-id", "runtime id to invoke per scenario", z.string().optional()),
-      flag("qualifier", "runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
+      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional()),
+      flag("qualifier", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
       flag(
         "payload-template",
         'JSON payload template; {input} is the scenario input, e.g. {"prompt":"{input}"}',
@@ -26,14 +26,14 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       }),
       flag(
         "bearer-token",
-        "CUSTOM_JWT bearer token (for JWT-auth runtimes)",
+        "CUSTOM_JWT bearer token (for JWT-auth Runtimes)",
         z.string().optional(),
         { sensitive: true },
       ),
-      flag("user-id", "runtime user id", z.string().optional()),
-      flag("dataset", "dataset source: local JSONL path or a dataset id", z.string().optional()),
-      flag("dataset-version", "dataset version (with a dataset id)", z.string().optional()),
-      flag("evaluator", "evaluator id(s) to apply", z.array(z.string()).optional()),
+      flag("user-id", "Runtime user ID", z.string().optional()),
+      flag("dataset", "dataset source: local JSONL path or a dataset ID", z.string().optional()),
+      flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional()),
+      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag("name", "batch evaluation name (unique in the account)", z.string().optional()),
       flag("description", "description for the batch evaluation", z.string().optional()),
       flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional()),

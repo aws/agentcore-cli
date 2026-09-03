@@ -34,7 +34,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         "the ID(s) of the evaluators to apply (replaces the existing list)",
         z.array(z.string()).optional(),
       ),
-      flag("agent", "repoint at a different harness ID or runtime ID", z.string().optional()),
+      flag("agent", "repoint at a different harness ID or Runtime ID", z.string().optional()),
       flag(
         "endpoint",
         "re-scope monitoring to a different agent endpoint qualifier",

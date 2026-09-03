@@ -32,10 +32,10 @@ function toBundleRef(name: string, raw: unknown): BundleRef {
 export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "run",
-    description: "run an A/B test between two config-bundle versions on one gateway",
+    description: "run an A/B test between two config-bundle versions on one Gateway",
     flags: [
       flag("name", "the A/B test name", z.string().optional()),
-      flag("gateway", "deployed gateway id", z.string().optional()),
+      flag("gateway", "deployed Gateway ID", z.string().optional()),
       flag(
         "control",
         'control JSON {"config-bundle","bundle-version"} (inline, file://, or -)',
@@ -46,7 +46,7 @@ export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
         'treatment JSON {"config-bundle","bundle-version"} (inline, file://, or -)',
         z.string().optional(),
       ),
-      flag("online-eval", "online-evaluation config id", z.string().optional()),
+      flag("online-eval", "online-evaluation config ID", z.string().optional()),
       flag(
         "treatment-weight",
         "1-99; control weight = 100 - this (default 50)",
@@ -57,11 +57,7 @@ export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
         'GatewayFilter JSON, e.g. {"targetPaths":["/orders"]} (inline, file://, or -)',
         z.string().optional(),
       ),
-      flag(
-        "role-arn",
-        "execution-role override (default: auto-provisioned)",
-        z.string().optional(),
-      ),
+      flag("role-arn", "execution-role override (default auto-provisioned)", z.string().optional()),
       flag(
         "enable-on-create",
         "whether to start the test immediately (default true; pass false to create it paused)",

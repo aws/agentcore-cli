@@ -14,7 +14,7 @@ import { createEndpointHandler } from "./endpoint";
 import { createVersionHandler } from "./version";
 
 export function createHarnessHandler(core: Core, io: AppIO): Router {
-  const harness = new Router("harness", "manage agentcore harnesses");
+  const harness = new Router("harness", "manage AgentCore harnesses");
 
   // Open the TUI by default if no flags or arguments are passed
   harness.use(withTuiOnEmptyFlagsAndArgs(core, io));

@@ -13,7 +13,7 @@ import { createConfigBasedAbTestHandler } from "./config-based";
 import { createTargetBasedAbTestHandler } from "./target-based";
 
 export function createAbTestHandler(core: Core, io: AppIO): Router {
-  return new Router("ab-test", "inspect AgentCore A/B tests")
+  return new Router("ab-test", "manage AgentCore A/B tests")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")

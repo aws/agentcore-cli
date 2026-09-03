@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createDeleteEvaluatorHandler = (core: Core) =>
   createHandler({
     name: "delete",
-    description: "delete an evaluator by id",
+    description: "delete an evaluator by ID",
     flags: [flag("id", "the ID of the evaluator to delete", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");

@@ -13,7 +13,7 @@ export const createDeleteHarnessHandler = (core: Core) =>
       flag("id", "the ID of the harness to delete", z.string().max(48).optional()),
       flag(
         "delete-managed-memory",
-        "whether to also delete the managed memory (default true; pass false to keep it)",
+        "whether to also delete the managed Memory (default true; pass false to keep it)",
         z.enum(["true", "false"]).optional(),
       ),
     ],

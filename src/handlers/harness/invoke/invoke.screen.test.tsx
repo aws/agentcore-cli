@@ -109,7 +109,7 @@ describe("invoke picker screen", () => {
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage agentcore harnesses");
+    await waitForText(r.lastFrame, "manage AgentCore harnesses");
     r.unmount();
   });
 });

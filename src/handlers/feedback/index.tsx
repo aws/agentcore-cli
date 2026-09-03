@@ -11,7 +11,7 @@ import type { Core } from "../types.tsx";
 export const createFeedbackHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "feedback",
-    description: "Send feedback about the AgentCore CLI to the team.",
+    description: "send feedback about the AgentCore CLI to the team",
     arguments: [argument("message", "the feedback message to send", z.string())],
     flags: [
       flag(

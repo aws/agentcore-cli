@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetGatewayConnectorHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get a connector configured for an AgentCore Gateway",
+    description: "get a connector-backed Gateway Target",
     flags: [
       flag("gateway-id", "the ID of the Gateway", z.string().optional()),
       flag("id", "the ID of the connector-backed Gateway Target", z.string().optional()),

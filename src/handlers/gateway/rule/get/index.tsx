@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetGatewayRuleHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get an AgentCore Gateway Rule",
+    description: "get a Gateway Rule",
     flags: [
       flag("gateway-id", "the ID of the Gateway", z.string().optional()),
       flag("rule-id", "the ID of the Gateway Rule", z.string().optional()),

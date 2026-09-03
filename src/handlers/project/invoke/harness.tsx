@@ -16,11 +16,11 @@ export const createProjectInvokeHarnessHandler = (
 ) =>
   createHandler({
     name: "harness",
-    description: "invoke a Harness from the current project",
+    description: "invoke a harness from the current project",
     flags: [
-      flag("name", "the logical project Harness name", z.string().optional()),
+      flag("name", "the logical project harness name", z.string().optional()),
       flag("target", "project deployment target", z.string().default("default")),
-      flag("prompt", "the message to send to the Harness", z.string().optional()),
+      flag("prompt", "the message to send to the harness", z.string().optional()),
       flag(
         "session-id",
         "the Runtime session ID to continue (33-100 characters)",
@@ -28,7 +28,7 @@ export const createProjectInvokeHarnessHandler = (
       ),
       flag(
         "qualifier",
-        "the Harness endpoint qualifier to invoke (default DEFAULT)",
+        "the harness endpoint qualifier to invoke (default DEFAULT)",
         z.string().optional(),
       ),
     ],

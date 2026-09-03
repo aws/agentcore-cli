@@ -4,7 +4,7 @@ import type { Core } from "../../../types";
 import { createTargetBasedRunHandler } from "./run";
 
 export function createTargetBasedAbTestHandler(core: Core, io: AppIO): Router {
-  return new Router("target-based", "target-based A/B tests").handler(
+  return new Router("target-based", "run target-based A/B tests").handler(
     createTargetBasedRunHandler(core, io),
   );
 }

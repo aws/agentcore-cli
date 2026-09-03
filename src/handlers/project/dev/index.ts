@@ -94,7 +94,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
     name: "dev",
     description: "run the project locally for development",
     flags: [
-      flag("agent", "runtime to run", z.string().optional()),
+      flag("agent", "Runtime to run", z.string().optional()),
       flag(
         "port",
         "port for the development server",

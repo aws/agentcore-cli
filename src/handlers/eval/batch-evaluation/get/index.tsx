@@ -11,7 +11,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "get",
-    description: "get a batch evaluation by id, with CloudWatch-backed results when available",
+    description: "get a batch evaluation by ID, with CloudWatch-backed results when available",
     flags: [
       flag("id", "the ID of the batch evaluation", z.string().optional()),
       flag(

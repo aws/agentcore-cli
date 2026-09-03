@@ -41,7 +41,7 @@ export const createUpdateOnlineInsightHandler = (core: Core, io: AppIO) =>
         "insight clustering cadence(s) (replaces the existing set): DAILY, WEEKLY, MONTHLY",
         z.array(z.enum(["DAILY", "WEEKLY", "MONTHLY"])).optional(),
       ),
-      flag("agent", "repoint at a different runtime ID", z.string().optional()),
+      flag("agent", "repoint at a different Runtime ID", z.string().optional()),
       flag(
         "endpoint",
         "re-scope monitoring to a different agent endpoint qualifier",

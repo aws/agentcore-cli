@@ -22,7 +22,7 @@ const ComponentsSchema = z
 export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "config-bundle",
-    description: "adds a configuration bundle to the current project",
+    description: "add a configuration bundle to the current project",
     flags: [
       flag("name", "the name of the configuration bundle", ConfigBundleNameSchema.optional()),
       flag(

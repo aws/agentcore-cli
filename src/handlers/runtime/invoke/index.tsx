@@ -30,7 +30,7 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
       flag("content-type", "the payload content type", z.string().optional()),
       flag("accept", "the accepted response content type", z.string().optional()),
       flag("session-id", "the Runtime session ID", z.string().optional()),
-      flag("user-id", 'the Runtime user ID (default: "default")', z.string().optional()),
+      flag("user-id", 'the Runtime user ID (default "default")', z.string().optional()),
       flag("header", "an ordered application header", z.array(z.string()).optional(), {
         sensitive: true,
       }),

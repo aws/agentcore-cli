@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createListGatewayTargetsHandler = (core: Core) =>
   createHandler({
     name: "list",
-    description: "list targets for an AgentCore Gateway",
+    description: "list Targets for an AgentCore Gateway",
     flags: [
       flag("gateway-id", "the ID of the Gateway", z.string().optional()),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),

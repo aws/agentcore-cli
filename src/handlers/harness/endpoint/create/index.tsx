@@ -14,7 +14,7 @@ export const createCreateEndpointHandler = (core: Core) =>
       flag("name", "the name of the endpoint", z.string().optional()),
       flag(
         "target-version",
-        "the harness version the endpoint points to (defaults to the latest)",
+        "the harness version the endpoint points to (default latest)",
         z.string().optional(),
       ),
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),

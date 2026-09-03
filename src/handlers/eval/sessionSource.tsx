@@ -8,10 +8,10 @@ import type { SessionSourceValue, SessionWindow } from "./types";
 
 export class SessionSource {
   static readonly flags = [
-    flag("agent", "source: harness id or runtime id whose sessions to use", z.string().optional()),
+    flag("agent", "source: harness ID or Runtime ID whose sessions to use", z.string().optional()),
     flag(
       "endpoint",
-      "runtime endpoint qualifier (default DEFAULT; only with --agent)",
+      "Runtime endpoint qualifier (default DEFAULT; only with --agent)",
       z.string().optional(),
     ),
     flag(
@@ -36,7 +36,7 @@ export class SessionSource {
     ),
     flag(
       "session-ids",
-      "filter: specific session ids (only with --agent)",
+      "filter: specific session IDs (only with --agent)",
       z.array(z.string()).optional(),
     ),
   ] as const;

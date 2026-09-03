@@ -88,17 +88,17 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       flag("name", "name of the project to create", ProjectNameSchema.optional()),
       flag(
         "template",
-        "a preset of flags for scaffolding the runtime; compatible flags override preset values",
+        "a preset of flags for scaffolding the Runtime; compatible flags override preset values",
         z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
       ),
       flag(
         "build",
-        "build type for the scaffolded runtime code",
+        "build type for the scaffolded Runtime code",
         z.enum(["CodeZip", "Container"]).optional(),
       ),
       flag(
         "language",
-        "target language for the scaffolded runtime code",
+        "target language for the scaffolded Runtime code",
         z.enum(["Python", "TypeScript"]).optional(),
       ),
       flag(
@@ -114,7 +114,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       flag(
         "model-provider",
         "model provider: bedrock, open_ai, gemini, or lite_llm for harnesses; " +
-          "bedrock, anthropic, open_ai, or gemini for runtime code",
+          "bedrock, anthropic, open_ai, or gemini for Runtime code",
         ModelProviderFlagSchema.optional(),
       ),
       flag(
@@ -125,10 +125,10 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       ),
       flag(
         "memory",
-        "memory option for the scaffolded runtime",
+        "memory option for the scaffolded Runtime",
         z.enum(MEMORY_SHORTCUT_NAMES).optional(),
       ),
-      flag("runtime-name", "name of the scaffolded runtime", z.string().max(42).optional()),
+      flag("runtime-name", "name of the scaffolded Runtime", z.string().max(42).optional()),
       flag(
         "type",
         "create scaffolds new agent code (the default); import translates a Bedrock Agent version",

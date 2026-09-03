@@ -11,10 +11,10 @@ import { SessionSource } from "../../sessionSource";
 export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "evaluate",
-    description: "evaluate existing sessions service-side (async; returns a job id)",
+    description: "evaluate existing sessions service-side (async; returns a job ID)",
     flags: [
       ...SessionSource.flags,
-      flag("evaluator", "evaluator id(s) to apply", z.array(z.string()).optional()),
+      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag(
         "ground-truth",
         "session ground truth (JSON SessionMetadataShape[]; inline, file://<path>, or -)",

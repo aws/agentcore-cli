@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetOnlineEvalHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get an online evaluation config by id",
+    description: "get an online evaluation config by ID",
     flags: [flag("id", "the ID of the online evaluation config", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");

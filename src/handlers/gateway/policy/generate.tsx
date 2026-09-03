@@ -25,7 +25,7 @@ export const createGeneratePolicyHandler = (
       ),
       flag(
         "policy-engine-id",
-        "the ID or ARN of the Policy Engine (defaults to the Gateway's attached engine)",
+        "the ID or ARN of the Policy Engine (default the Gateway's attached engine)",
         z.string().optional(),
       ),
       flag(
@@ -35,7 +35,7 @@ export const createGeneratePolicyHandler = (
       ),
       flag(
         "name",
-        "name of the generation request (defaults to cli_generation_<timestamp>)",
+        "name of the generation request (default cli_generation_<timestamp>)",
         z.string().optional(),
       ),
     ],

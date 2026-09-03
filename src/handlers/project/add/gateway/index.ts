@@ -22,7 +22,7 @@ export function gatewayResourceName(
 export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway",
-    description: "adds a Gateway to the current project",
+    description: "add a Gateway to the current project",
     flags: [
       flag("name", "the Gateway name", z.string().optional()),
       flag(

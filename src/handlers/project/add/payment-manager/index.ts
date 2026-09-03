@@ -12,7 +12,7 @@ import type { AddProjectResourceConfig } from "../types";
 export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "payment-manager",
-    description: "adds a payment manager to the current project",
+    description: "add a payment manager to the current project",
     flags: [
       flag("name", "the payment manager name", z.string().optional()),
       flag(

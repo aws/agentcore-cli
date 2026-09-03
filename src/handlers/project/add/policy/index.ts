@@ -22,7 +22,7 @@ const ENFORCEMENT_MODES = { active: "ACTIVE", "log-only": "LOG_ONLY" } as const;
 export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "policy",
-    description: "adds a Cedar Policy to a project Policy Engine",
+    description: "add a Cedar Policy to a project Policy Engine",
     flags: [
       flag("engine", "name of the parent Policy Engine in this project", z.string().optional()),
       flag("name", "the Policy name", z.string().optional()),

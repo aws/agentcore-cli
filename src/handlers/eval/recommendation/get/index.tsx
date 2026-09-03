@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetRecommendationHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get a recommendation by id",
+    description: "get a recommendation by ID",
     flags: [flag("id", "the ID of the recommendation", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");

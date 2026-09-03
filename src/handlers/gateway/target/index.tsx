@@ -9,7 +9,7 @@ import { createListGatewayTargetsHandler } from "./list";
 import { createUpdateGatewayTargetHandler } from "./update";
 
 export function createGatewayTargetHandler(core: Core, io: AppIO): Router {
-  return new Router("target", "inspect targets for an AgentCore Gateway")
+  return new Router("target", "manage Targets for an AgentCore Gateway")
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
     .handler(createCreateGatewayTargetHandler(core, io))

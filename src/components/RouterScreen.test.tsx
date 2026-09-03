@@ -14,13 +14,13 @@ describe("menu rendering", () => {
 
     const frame = r.lastFrame()!;
     expect(frame).toContain("harness");
-    expect(frame).toContain("manage agentcore harnesses");
+    expect(frame).toContain("manage AgentCore harnesses");
     expect(frame).toContain("runtime");
     expect(frame).toContain("inspect AgentCore Runtimes");
     expect(frame).toContain("memory");
-    expect(frame).toContain("manage AgentCore Memories");
+    expect(frame).toContain("inspect AgentCore Memories");
     expect(frame).toContain("gateway");
-    expect(frame).toContain("inspect AgentCore Gateways");
+    expect(frame).toContain("manage AgentCore Gateways");
     expect(frame).toContain("config");
     expect(frame).toContain("read/write global config values");
     r.unmount();

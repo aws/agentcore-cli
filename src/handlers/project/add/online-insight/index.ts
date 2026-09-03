@@ -11,12 +11,12 @@ const ARN_PREFIX = "arn:";
 export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "online-insight",
-    description: "adds an online insight config to the current project",
+    description: "add an online insight config to the current project",
     flags: [
       flag("name", "the name of the online insight config", z.string().optional()),
       flag(
         "agent",
-        "runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
+        "Runtime name whose traffic to sample (mutually exclusive with --log-group-name)",
         z.string().optional(),
       ),
       flag(

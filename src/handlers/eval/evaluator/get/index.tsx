@@ -8,7 +8,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createGetEvaluatorHandler = (core: Core) =>
   createHandler({
     name: "get",
-    description: "get an evaluator by id",
+    description: "get an evaluator by ID",
     flags: [flag("id", "the ID of the evaluator", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");

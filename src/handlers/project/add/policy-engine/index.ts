@@ -15,7 +15,7 @@ export function policyEngineResourceName(projectName: string, engineName: string
 export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "policy-engine",
-    description: "adds a Policy Engine to the current project",
+    description: "add a Policy Engine to the current project",
     flags: [
       flag("name", "the Policy Engine name", z.string().optional()),
       flag("description", "Policy Engine description", z.string().optional()),

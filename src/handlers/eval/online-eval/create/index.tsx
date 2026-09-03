@@ -13,7 +13,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
     description: "create an online evaluation config",
     flags: [
       flag("name", "the name of the online evaluation config", z.string().optional()),
-      flag("agent", "harness ID or runtime ID whose traffic to sample", z.string().optional()),
+      flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional()),
       flag(
         "endpoint",
         "the agent endpoint qualifier to scope monitoring to (default DEFAULT)",
@@ -42,7 +42,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
       ),
       flag(
         "role-arn",
-        "IAM role the online evaluation assumes (default: auto-provisioned)",
+        "IAM role the online evaluation assumes (default auto-provisioned)",
         z.string().optional(),
       ),
       flag(

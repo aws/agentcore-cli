@@ -6,7 +6,7 @@ import { createGetVersionHandler } from "./get";
 import { createListVersionsHandler } from "./list";
 
 export function createVersionHandler(core: Core, io: AppIO): Router {
-  const version = new Router("version", "manage harness versions");
+  const version = new Router("version", "inspect harness versions");
 
   // Open the TUI at this root, i.e., `agentcore harness version`. Leaves
   // inherit the harness router's TUI-on-empty-flags middleware.
