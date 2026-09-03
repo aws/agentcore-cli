@@ -34,9 +34,10 @@ function runtime(overrides: Partial<GetAgentRuntimeResponse> = {}): GetAgentRunt
 
 class CompletedShell implements RuntimeShellSession {
   readonly runtimeSessionId = "session-012345678901234567890123456789";
+  readonly shellId = "shell-1";
   readonly kicked = false;
   readonly exitCode = 0;
-  closed = 0;
+  detached = 0;
 
   send(): Promise<void> {
     return Promise.resolve();
@@ -46,8 +47,8 @@ class CompletedShell implements RuntimeShellSession {
     return Promise.resolve();
   }
 
-  close(): Promise<void> {
-    this.closed += 1;
+  detach(): Promise<void> {
+    this.detached += 1;
     return Promise.resolve();
   }
 
@@ -75,7 +76,7 @@ function harness(options: { isTTY?: boolean; runtime?: GetAgentRuntimeResponse }
 }
 
 describe("runtime shell command", () => {
-  test("opens a direct IAM shell and closes after the remote stream ends", async () => {
+  test("opens a direct IAM shell and detaches after the remote stream ends", async () => {
     const subject = harness();
 
     await subject.run("--id", RUNTIME_ID, "--qualifier", "prod");
@@ -94,7 +95,7 @@ describe("runtime shell command", () => {
         { region: "us-west-2", endpointUrl: undefined },
       ],
     });
-    expect(subject.shell.closed).toBe(1);
+    expect(subject.shell.detached).toBe(1);
     expect(subject.io.stderr()).toContain("Connected");
     expect(subject.io.stderr()).toContain("exit 0");
   });
@@ -163,5 +164,13 @@ describe("runtime shell command", () => {
       ),
     ).rejects.toThrow("runtime shell does not support --endpoint-url");
     expect(subject.core.runtime.calls.some((call) => call.method === "getRuntime")).toBe(false);
+  });
+
+  test("requires session ID when shell ID is supplied", async () => {
+    const subject = harness();
+
+    await expect(
+      subject.run("--id", RUNTIME_ID, "--qualifier", "DEFAULT", "--shell-id", "shell-1"),
+    ).rejects.toThrow("--shell-id requires --session-id");
   });
 });
