@@ -7,11 +7,15 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CloudWatchLogEvent,
+  GetTraceQuery,
   InsightsQuery,
   InsightsQueryRow,
+  ListTracesQuery,
   LogSearchQuery,
   LogSource,
   LogTailQuery,
+  TraceRecord,
+  TraceSummary,
 } from "../../core/observability/types";
 import type { CoreOptions } from "../../core/types";
 import type { Project } from "../project/types";
@@ -99,41 +103,6 @@ export type DeployedRuntime = {
   targetName: string;
 };
 
-/** One trace aggregated from a runtime's telemetry, newest first. */
-export type TraceSummary = {
-  traceId: string;
-  /** Last-seen time as reported by Logs Insights (epoch ms rendered as a string). */
-  timestamp: string;
-  sessionId?: string;
-  spanCount?: string;
-};
-
-/**
- * One raw log record belonging to a trace. `@message` is the parsed JSON body
- * when it parses, otherwise the original string; other Insights fields (e.g.
- * `@timestamp`, `@ptr`) pass through as returned.
- */
-export type TraceRecord = Record<string, unknown>;
-
-export type ListRuntimeTracesInput = {
-  runtimeId: string;
-  /** Window start, epoch milliseconds. */
-  startTimeMs: number;
-  /** Window end, epoch milliseconds. */
-  endTimeMs: number;
-  /** Maximum number of traces to return. */
-  limit: number;
-};
-
-export type GetRuntimeTraceInput = {
-  runtimeId: string;
-  traceId: string;
-  /** Window start, epoch milliseconds. */
-  startTimeMs: number;
-  /** Window end, epoch milliseconds. */
-  endTimeMs: number;
-};
-
 export interface CoreObservabilityClient {
   resolveDeployedRuntime(project: Project, targetName: string): Promise<DeployedRuntime>;
   searchLogs(
@@ -154,8 +123,16 @@ export interface CoreObservabilityClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<InsightsQueryRow[]>;
-  /** Lists recent traces in the runtime's log group, newest first. */
-  listRuntimeTraces(input: ListRuntimeTracesInput, options: CoreOptions): Promise<TraceSummary[]>;
-  /** Downloads every log record of one trace, oldest first. */
-  getRuntimeTrace(input: GetRuntimeTraceInput, options: CoreOptions): Promise<TraceRecord[]>;
+  listTraces(
+    source: LogSource,
+    query: ListTracesQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<TraceSummary[]>;
+  getTrace(
+    source: LogSource,
+    query: GetTraceQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<TraceRecord[]>;
 }

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   GetQueryResultsCommand,
-  ResourceNotFoundException,
   StartQueryCommand,
   type CloudWatchLogsClient,
 } from "@aws-sdk/client-cloudwatch-logs";
@@ -266,9 +265,12 @@ function insightsLogs(results: { field: string; value: string }[][]) {
   return { logs, queries };
 }
 
-describe("ObservabilityClient.listRuntimeTraces", () => {
-  const INPUT = {
-    runtimeId: "my_agent-AbC123XyZ9",
+const TRACE_SOURCE = {
+  logGroupName: "/aws/bedrock-agentcore/runtimes/my_agent-AbC123XyZ9-DEFAULT",
+};
+
+describe("ObservabilityClient.listTraces", () => {
+  const QUERY = {
     startTimeMs: 1_700_000_000_123,
     endTimeMs: 1_700_003_600_456,
     limit: 5,
@@ -277,12 +279,10 @@ describe("ObservabilityClient.listRuntimeTraces", () => {
   test("aggregates traces with a stats-by-traceId query over the runtime log group", async () => {
     const { logs, queries } = insightsLogs([]);
 
-    await clientWith(logs).listRuntimeTraces(INPUT, OPTIONS);
+    await clientWith(logs).listTraces(TRACE_SOURCE, QUERY, OPTIONS);
 
     expect(queries).toHaveLength(1);
-    expect(queries[0]!.logGroupNames).toEqual([
-      "/aws/bedrock-agentcore/runtimes/my_agent-AbC123XyZ9-DEFAULT",
-    ]);
+    expect(queries[0]!.logGroupNames).toEqual([TRACE_SOURCE.logGroupName]);
     // Epoch ms narrows to whole seconds.
     expect(queries[0]!.startTime).toBe(1_700_000_000);
     expect(queries[0]!.endTime).toBe(1_700_003_600);
@@ -311,7 +311,7 @@ describe("ObservabilityClient.listRuntimeTraces", () => {
       ],
     ]);
 
-    const traces = await clientWith(logs).listRuntimeTraces(INPUT, OPTIONS);
+    const traces = await clientWith(logs).listTraces(TRACE_SOURCE, QUERY, OPTIONS);
 
     expect(traces).toEqual([
       {
@@ -324,21 +324,10 @@ describe("ObservabilityClient.listRuntimeTraces", () => {
       { traceId: "def456", timestamp: "1700000002000", sessionId: undefined, spanCount: undefined },
     ]);
   });
-
-  test("translates a missing log group into invoked-yet guidance", async () => {
-    const logs = fakeLogs(async () => {
-      throw new ResourceNotFoundException({ message: "no such group", $metadata: {} });
-    });
-
-    await expect(clientWith(logs).listRuntimeTraces(INPUT, OPTIONS)).rejects.toThrow(
-      "Has the runtime been invoked yet?",
-    );
-  });
 });
 
-describe("ObservabilityClient.getRuntimeTrace", () => {
-  const INPUT = {
-    runtimeId: "my_agent-AbC123XyZ9",
+describe("ObservabilityClient.getTrace", () => {
+  const QUERY = {
     traceId: "68b2fabc0000000000abcdef",
     startTimeMs: 1_700_000_000_000,
     endTimeMs: 1_700_003_600_000,
@@ -350,7 +339,7 @@ describe("ObservabilityClient.getRuntimeTrace", () => {
     });
 
     await expect(
-      clientWith(logs).getRuntimeTrace({ ...INPUT, traceId: "not'a$trace" }, OPTIONS),
+      clientWith(logs).getTrace(TRACE_SOURCE, { ...QUERY, traceId: "not'a$trace" }, OPTIONS),
     ).rejects.toThrow("Invalid trace ID format. Expected a hex string (e.g., abc123def456).");
   });
 
@@ -367,7 +356,7 @@ describe("ObservabilityClient.getRuntimeTrace", () => {
       ],
     ]);
 
-    const records = await clientWith(logs).getRuntimeTrace(INPUT, OPTIONS);
+    const records = await clientWith(logs).getTrace(TRACE_SOURCE, QUERY, OPTIONS);
 
     expect(queries[0]!.queryString).toBe(
       "fields @timestamp, @message\n" +
@@ -388,8 +377,20 @@ describe("ObservabilityClient.getRuntimeTrace", () => {
   test("fails when the trace has no records", async () => {
     const { logs } = insightsLogs([]);
 
-    await expect(clientWith(logs).getRuntimeTrace(INPUT, OPTIONS)).rejects.toThrow(
+    await expect(clientWith(logs).getTrace(TRACE_SOURCE, QUERY, OPTIONS)).rejects.toThrow(
       "No trace data found for trace ID: 68b2fabc0000000000abcdef",
     );
+  });
+
+  test("returns every record when the trace reaches the 10,000-record query limit", async () => {
+    const { logs } = insightsLogs(
+      Array.from({ length: 10_000 }, (_, index) => [
+        { field: "@message", value: `record-${index}` },
+      ]),
+    );
+
+    const records = await clientWith(logs).getTrace(TRACE_SOURCE, QUERY, OPTIONS);
+
+    expect(records).toHaveLength(10_000);
   });
 });
