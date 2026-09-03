@@ -11,6 +11,19 @@ import type { PaymentConnectorCalls } from "./paymentConnectors";
 const PAYMENT_MANAGER_RESOURCE_TYPE = "AWS::BedrockAgentCore::PaymentManager";
 
 /**
+ * The manager ID the Payments API takes, from the physical resource ID
+ * CloudFormation reports.
+ *
+ * CloudFormation reports the manager's ARN, while `paymentManagerId` accepts only
+ * the bare identifier and rejects an ARN outright. Anything without a slash is
+ * already an ID and passes through, so this keeps working if the resource ever
+ * reports one directly.
+ */
+export function paymentManagerId(physicalResourceId: string): string {
+  return physicalResourceId.slice(physicalResourceId.lastIndexOf("/") + 1);
+}
+
+/**
  * The AWS reads behind the Quick Create authorization report, kept apart from the
  * reporting logic so that logic tests without the SDK — the split `stackReader`
  * uses for the same reason.
@@ -37,7 +50,7 @@ export function createPaymentConnectorCalls(
             resource.ResourceType === PAYMENT_MANAGER_RESOURCE_TYPE &&
             resource.PhysicalResourceId
           ) {
-            ids.push(resource.PhysicalResourceId);
+            ids.push(paymentManagerId(resource.PhysicalResourceId));
           }
         }
         token = page.NextToken;
