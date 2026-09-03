@@ -55,6 +55,29 @@ describe("TaskList", () => {
     expect(frame).toContain("│ three");
   });
 
+  test("keeps a long title on one line without losing its glyph", () => {
+    const instance = render(<></>);
+    Object.defineProperty(instance.stdout, "columns", { configurable: true, value: 40 });
+    // Left to wrap, the title flex-shrinks the glyph column away entirely.
+    instance.rerender(
+      <TaskList
+        tasks={[
+          {
+            title: "Updating project spec file at '/a/very/long/absolute/path/agentcore.json'",
+            state: "done",
+            tail: [],
+          },
+        ]}
+      />,
+    );
+
+    const lines = (instance.lastFrame() ?? "").split("\n").filter((line) => line.trim());
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toStartWith("✓ Updating project spec file");
+    expect(lines[0]).toContain("…");
+    instance.unmount();
+  });
+
   test("truncates tail lines to the terminal width", () => {
     const instance = render(<></>);
     Object.defineProperty(instance.stdout, "columns", { configurable: true, value: 24 });

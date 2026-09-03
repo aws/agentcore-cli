@@ -25,7 +25,8 @@ import {
   type HarnessModelProvider,
 } from "../../../projectSchemas/harness";
 import { InputValidationError } from "../../../errors";
-import { parseJsonFlag } from "../../utils";
+import { JsonRendererKey } from "../../../tui";
+import { parseJsonFlag, renderJsonError } from "../../utils";
 import { DEFAULT_HARNESS_MODEL } from "../add/harness";
 import type { CoreBedrockAgentImporter } from "../../../core/project/bedrockAgentImport";
 import { importScaffoldRuntimeInput, resolveImportBedrockAgentInput } from "../importBedrockAgent";
@@ -196,6 +197,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       flag("skip-git", "skip initializing a git repository", z.boolean().default(false)),
     ],
     handle: async (ctx, flags) => {
+      const jsonOutput = ctx.require(JsonKey);
       const name = flags["name"];
       if (name === undefined) {
         throw new InputValidationError("required option '--name <name>' not specified");
@@ -305,13 +307,20 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
-      await runWithProgress(config.projectManager.create(createInput), {
-        io: config.io,
-        interactive: ctx.require(JsonKey) ? false : undefined,
-      });
+      try {
+        await runWithProgress(config.projectManager.create(createInput), {
+          io: config.io,
+          interactive: jsonOutput ? false : undefined,
+        });
+      } catch (error) {
+        if (jsonOutput) renderJsonError(ctx, error);
+        throw error;
+      }
 
-      config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
+      const message = `Created project '${name}' in ./${name}`;
+      config.io.stderr.write(`${message}\n`);
       config.io.stderr.write(`To deploy it: cd ${name} && agentcore project deploy\n`);
+      if (jsonOutput) ctx.require(JsonRendererKey).renderJson({ message });
     },
   });
 

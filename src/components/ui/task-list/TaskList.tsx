@@ -40,19 +40,23 @@ export const TaskList: React.FC<TaskListProps> = ({
   // `||`, not `??`: a pty can report 0 columns, which would truncate every
   // tail line to nothing. Match Ink's own layout fallback of 80.
   const columns = stdout?.columns || 80;
+  // One line per step: a title left to wrap flex-shrinks the 1-char glyph
+  // column to nothing, so the ✓/✕/spinner disappears. The glyph and its
+  // trailing space take 2 of the row's columns.
+  const title = (task: Task) => cliTruncate(task.title, Math.max(columns - 2, 3));
 
   return (
     <Box flexDirection="column">
       {tasks.map((task, index) => (
         <Box key={`${index}-${task.title}`} flexDirection="column">
           {task.state === "running" ? (
-            <Spinner label={task.title} theme={theme} />
+            <Spinner label={title(task)} theme={theme} />
           ) : (
             <Box>
               <Text color={task.state === "done" ? theme.colors.success : theme.colors.error}>
                 {task.state === "done" ? "✓" : "✕"}
               </Text>
-              <Text color={theme.colors.text}> {task.title}</Text>
+              <Text color={theme.colors.text}> {title(task)}</Text>
             </Box>
           )}
           {task.state !== "done" &&

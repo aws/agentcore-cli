@@ -279,6 +279,29 @@ describe("FsProjectManager.create", () => {
     ]);
   });
 
+  test("streams subprocess output as line-buffered output events", async () => {
+    await inTempDirectory();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      // The chunk boundary splits a line, so a chunk-per-event bridge would
+      // leak the fragments "vulnerabilit" / "ies".
+      runner: async (_command, { onOutput }) => {
+        onOutput?.("added 12 packages\nfound 0 vulnerabilit");
+        onOutput?.("ies\n");
+      },
+      checkTool: async () => {},
+      identity: new TestIdentityClient(),
+    });
+
+    const { events } = await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON,
+    });
+
+    expect(events).toContainEqual({ type: "output", line: "added 12 packages" });
+    expect(events).toContainEqual({ type: "output", line: "found 0 vulnerabilities" });
+  });
+
   test("skipInstall skips npm install and uv sync", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();

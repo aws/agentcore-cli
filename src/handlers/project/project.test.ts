@@ -387,6 +387,40 @@ describe("project create", () => {
     expect(io.stderr()).toContain("Syncing Python dependencies with uv");
     expect(io.stderr()).toContain("Initializing git repository");
     expect(io.stderr()).toContain("Created project 'MyAgent' in ./MyAgent");
+    expect(io.stdout()).toBe("");
+  });
+
+  test("renders the success message as JSON with --json", async () => {
+    await inTempDirectory();
+    const { io } = await run([
+      "create",
+      "--name",
+      "MyAgent",
+      "--skip-install",
+      "--skip-git",
+      "--json",
+    ]);
+
+    expect(JSON.parse(io.stdout())).toEqual({ message: "Created project 'MyAgent' in ./MyAgent" });
+  });
+
+  test("renders a create failure as JSON without changing the thrown error", async () => {
+    await inTempDirectory();
+    await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
+
+    // The run helper builds io after routing, so drive the failing route with
+    // its own io to read what the command wrote before rejecting.
+    const io = testIO();
+    const root = createRootHandler(new TestCoreClient(), {
+      io: io.io,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      logger: createSilentLogger(),
+    });
+    const args = ["create", "--name", "MyAgent", "--skip-install", "--skip-git", "--json"];
+
+    await expect(root.route(["node", "agentcore", "project", ...args])).rejects.toThrow(/MyAgent/);
+
+    expect(JSON.parse(io.stdout())).toEqual({ error: expect.stringContaining("MyAgent") });
   });
 
   test("--skip-install and --skip-git run no commands", async () => {
