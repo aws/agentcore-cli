@@ -169,6 +169,19 @@ describe("harness hub screen", () => {
 });
 
 describe("harness JSON detail screen", () => {
+  test("wraps long JSON values instead of truncating them", async () => {
+    const longPrompt = `${"reply sarcastically but accurately and concisely ".repeat(5)}WRAP_SENTINEL`;
+    const response = getResponse();
+    response.harness!.systemPrompt = [{ text: longPrompt }];
+
+    const core = new TestCoreClient();
+    core.harness.setGetResponse(response);
+    const r = renderScreen("/agentcore/harness/get/MyHarness-abc123/json", { core });
+
+    await waitForText(r.lastFrame, "WRAP_SENTINEL");
+    r.unmount();
+  });
+
   test("renders the harness JSON and scrolls without crashing", async () => {
     const core = new TestCoreClient();
     core.harness.setGetResponse(getResponse());

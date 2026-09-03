@@ -77,6 +77,7 @@ export function JsonDetail({
             language="json"
             showLineNumbers={false}
             showBorder={false}
+            wrap
             code={JSON.stringify(data, null, 2)}
           />
         </ScrollView>
