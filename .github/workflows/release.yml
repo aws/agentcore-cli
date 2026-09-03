@@ -167,7 +167,7 @@ jobs:
   approve:
     needs: [version, check, build, unit-test]
     if: needs.version.outputs.channel == 'rc'
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     environment: npm-publish-approval
     steps:
       - run: echo "Approved ${{ needs.version.outputs.version }}"
