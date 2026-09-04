@@ -151,7 +151,7 @@ export function renderJsonError(ctx: Context, error: unknown): void {
   ctx.require(JsonRendererKey).renderJson({ error: cliError.message });
 }
 
-export function renderResult(ctx: Context, result: unknown, renderHuman: () => void): void {
+export function renderResult<T>(ctx: Context, result: T, renderHuman: () => void): void {
   if (ctx.require(JsonKey)) {
     ctx.require(JsonRendererKey).renderJson(result);
     return;
