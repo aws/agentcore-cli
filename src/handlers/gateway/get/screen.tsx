@@ -3,10 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts } from "../../utils";
 
 function useGatewayDetail({ ctx, core }: ScreenProps, gatewayId: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["gateway", opts.region, gatewayId],
     queryFn: () => core.gateway.getGateway(gatewayId!, opts),

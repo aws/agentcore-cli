@@ -2,11 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 export function GatewayTargetGetScreen(props: ScreenProps) {
   const { gatewayId, targetId } = useParams();
-  const opts = coreOptsFromCtx(props.ctx);
+  const opts = useCoreOpts(props.ctx);
   const detail = useQuery({
     queryKey: ["gateway-target", opts.region, gatewayId, targetId],
     queryFn: () => props.core.gateway.getGatewayTarget(gatewayId!, targetId!, opts),

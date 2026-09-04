@@ -89,7 +89,7 @@ describe("project menu: command-line-only subcommands", () => {
     const r = renderScreen("/agentcore/project");
 
     await waitForText(r.lastFrame, "command line only");
-    const withScreens = ["create", "deploy", "invoke", "build"];
+    const withScreens = ["create", "deploy", "invoke", "build", "status"];
     const { screens, cliOnly } = menuEntries(r.lastFrame()!);
     expect(screens.toSorted()).toEqual(withScreens.toSorted());
     expect(cliOnly.toSorted()).toEqual(

@@ -35,6 +35,7 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
     "invoke",
     "build",
     "deploy",
+    "status",
   );
 
   // Without a default, a bare `agentcore project` falls back to Commander's help
@@ -98,11 +99,26 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
     ),
   );
   project.handler(createProjectInvokeHandler(core, io));
-  project.handler(
-    withProject({ projectManager: config.projectManager })(
-      createStatusProjectHandler({ projectManager: config.projectManager }),
-    ),
-  );
+  // A bare `agentcore project status` in an interactive session opens the TUI
+  // linked-resources screen; any user-supplied flag, --json, or a non-TTY
+  // invocation keeps the headless JSON report (same dispatch shape as create).
+  // withProject stays outermost so the not-found guidance outside a project is
+  // the CLI's own, and the resolved project seeds the screen via ProjectKey.
+  const statusProject = createStatusProjectHandler({ projectManager: config.projectManager });
+  const statusProjectWithTui = withTuiOnEmptyFlagsAndArgs(core, io)(statusProject);
+  const statusProjectDispatch: Handler = {
+    name: () => statusProject.name(),
+    description: () => statusProject.description(),
+    flags: () => statusProject.flags(),
+    arguments: () => statusProject.arguments(),
+    doesSupportTui: () => statusProject.doesSupportTui(),
+    children: () => statusProject.children(),
+    handle: (ctx, flags, args) =>
+      isInteractive()
+        ? statusProjectWithTui.handle(ctx, flags, args)
+        : statusProject.handle(ctx, flags, args),
+  };
+  project.handler(withProject({ projectManager: config.projectManager })(statusProjectDispatch));
   // withProject wraps only the commands that require an existing project, so
   // `create` (which refuses to nest inside one) stays unaffected.
   project.handler(

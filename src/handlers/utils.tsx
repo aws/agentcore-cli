@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router";
 import type { Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
@@ -16,6 +17,19 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
     region: ctx.require(RegionKey),
     endpointUrl: ctx.value(EndpointKey),
   };
+}
+
+// useCoreOpts is coreOptsFromCtx for screens that can be linked to across
+// regions. The context's region is the ambient one resolved at launch, which is
+// not necessarily where the resource a screen is asked to show lives — project
+// status forwards to detail pages on a target that may be deployed elsewhere,
+// and links there with `?region=<target region>`. A region in the query string
+// wins; without one the context's region applies as usual.
+export function useCoreOpts(ctx: Context): CoreOptions {
+  const [search] = useSearchParams();
+  const region = search.get("region");
+  const opts = coreOptsFromCtx(ctx);
+  return region ? { ...opts, region } : opts;
 }
 
 // parseJsonFlag parses a flag's raw string as JSON, typed as the API structure

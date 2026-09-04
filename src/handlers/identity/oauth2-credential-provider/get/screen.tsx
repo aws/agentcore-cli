@@ -3,10 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 function useOauth2ProviderDetail({ ctx, core }: ScreenProps, name: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["oauth2-credential-provider", opts.region, name],
     queryFn: () => core.identity.getOauth2CredentialProvider(name!, opts),

@@ -8,6 +8,8 @@ import {
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  ttyTestIO,
+  waitFor,
 } from "../../../testing";
 import type { ProjectBackend } from "../../../core/project";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
@@ -45,8 +47,7 @@ function fakeBackend(deployed: ResolvedProjectResource[]) {
   return { targets, backend };
 }
 
-function testStatusCommand(deployed: ResolvedProjectResource[] = []) {
-  const io = testIO();
+function testStatusCommand(deployed: ResolvedProjectResource[] = [], io = testIO()) {
   const fake = fakeBackend(deployed);
   const root = createRootHandler(new TestCoreClient({ backends: { CDK: fake.backend } }), {
     io: io.io,
@@ -230,5 +231,63 @@ describe("project status handler", () => {
     await expect(subject.run(["--target", "typo"])).rejects.toThrow(
       /has no deployment target named 'typo'/,
     );
+  });
+});
+
+describe("project status dispatch", () => {
+  // The bare-invocation tests above run without a TTY and assert the exact
+  // JSON envelope, which pins the non-TTY headless path; these cover how a TTY
+  // changes (and does not change) the dispatch.
+  test("bare status in a TTY session opens the TUI instead of printing JSON", async () => {
+    const tty = ttyTestIO();
+    const subject = testStatusCommand([HARNESS_ROW], tty.streams);
+    await inProject(subject);
+
+    // outcome never rejects, so a mid-pump failure cannot trip bun's
+    // unhandled-rejection detection before the final assertion.
+    const outcome = subject.run().then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    let settled = false;
+    void outcome.finally(() => {
+      settled = true;
+    });
+
+    // The screen never finishes on its own; Ctrl+C (re-sent until the app
+    // reacts) closes it and resolves the route cleanly.
+    await waitFor(
+      () => {
+        if (!settled) tty.stdin.write("\x03");
+        return settled;
+      },
+      5000,
+      150,
+    );
+    expect(await outcome).toEqual({ ok: true });
+    expect(subject.io.stdout()).not.toContain('"projectName"');
+  }, 10000);
+
+  test("an explicitly passed --target stays headless even in a TTY", async () => {
+    const subject = testStatusCommand([HARNESS_ROW], ttyTestIO().streams);
+    await inProject(subject);
+
+    await subject.run(["--target", "default"]);
+
+    expect(subject.json()).toMatchObject({ projectName: "orders", target: "default" });
+  });
+
+  test("--json stays headless even in a TTY", async () => {
+    const subject = testStatusCommand([HARNESS_ROW], ttyTestIO().streams);
+    await inProject(subject);
+
+    await subject.run(["--json"]);
+
+    expect(subject.json()).toEqual({
+      projectName: "orders",
+      target: "default",
+      region: "us-east-1",
+      resources: [HARNESS_ROW],
+    });
   });
 });

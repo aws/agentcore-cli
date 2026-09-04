@@ -30,7 +30,11 @@ responses. `agentcore` wraps all of that behind one ergonomic tool.
 Commands with operation flags run headlessly. Bare Harness, Runtime, Memory,
 Identity, and Gateway branches and leaves open their interactive flows, as does
 a bare `project create` in a terminal (any flag, `--json`, or a non-TTY stays
-headless).
+headless). A bare `project status` opens a Linked Resources view that groups
+the project's resources by agent and forwards to each deployed resource's
+detail page. The harness hub (`harness get`) ends with the same kind of Linked
+Resources tree for the Runtime, Memory, Gateway, Browser, Code Interpreter and
+credential providers wired to that harness, each opening in its own region.
 
 ```
 agentcore                          # interactive TUI
@@ -134,7 +138,7 @@ agentcore                          # interactive TUI
 │   ├── invoke                     # invoke a deployed project resource
 │   │   ├── runtime                # use the existing Runtime invoke experience
 │   │   └── harness                # use the existing Harness invoke experience
-│   ├── status                     # inspect deployed project resources
+│   ├── status                     # inspect deployed project resources (TUI when run bare)
 │   └── build                      # synthesize the project's CloudFormation templates
 └── config                         # read/write global config values
 ```

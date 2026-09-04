@@ -6,6 +6,8 @@ import type { InkUITheme } from "../_core.js";
 export interface TreeNode<T = unknown> {
   id: string;
   label: string;
+  /** Muted text rendered after the label (e.g. a status or description). */
+  annotation?: string;
   children?: TreeNode<T>[];
   icon?: string;
   defaultExpanded?: boolean;
@@ -23,7 +25,18 @@ export interface TreeViewProps<T = unknown> {
   leafIcon?: string;
   branchIcon?: string;
   branchOpenIcon?: string;
+  /**
+   * Mark the focused row with a "❯ " prefix in the focus color instead of
+   * inverse video, matching the selection style of DataTable and the menus.
+   */
+  focusMarker?: boolean;
   focus?: boolean;
+  /**
+   * Called when up (or k) is pressed while the first enabled row is focused,
+   * so a parent that stacks the tree under another list can hand focus back
+   * to it. Without it the press is a no-op, as before.
+   */
+  onUpFromFirst?: () => void;
   theme?: InkUITheme;
 }
 
@@ -62,7 +75,9 @@ export function TreeView<T = unknown>({
   leafIcon = glyphs.file,
   branchIcon = glyphs.folder,
   branchOpenIcon = glyphs.folderOpen,
+  focusMarker = false,
   focus = true,
+  onUpFromFirst,
   theme = darkTheme,
 }: TreeViewProps<T>): React.ReactElement {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
@@ -84,6 +99,12 @@ export function TreeView<T = unknown>({
       const current = flatNodes.find((f) => f.node.id === focusedId);
 
       if (key.upArrow || input === "k") {
+        // Nothing above the first enabled row (or no valid focus yet): let the
+        // parent take focus back when it asked to.
+        if (currentIdx <= 0 && onUpFromFirst) {
+          onUpFromFirst();
+          return;
+        }
         const prev = enabledFlat[Math.max(0, currentIdx - 1)];
         if (prev) setFocusedId(prev.node.id);
       } else if (key.downArrow || input === "j") {
@@ -149,6 +170,7 @@ export function TreeView<T = unknown>({
 
         return (
           <Box key={node.id} flexDirection="row">
+            {focusMarker && <Text color={theme.colors.focus}>{isFocused ? "❯ " : "  "}</Text>}
             {guides && depth > 0 && <Text color={theme.colors.border}>{guidePrefix}</Text>}
             <Text
               color={
@@ -160,7 +182,7 @@ export function TreeView<T = unknown>({
               }
               bold={isFocused}
               dimColor={node.disabled}
-              inverse={isFocused}
+              inverse={isFocused && !focusMarker}
             >
               <Text color={hasBranch ? theme.colors.primary : theme.colors.muted}>
                 {branchChar}
@@ -168,6 +190,12 @@ export function TreeView<T = unknown>({
               {showIcons ? ` ${icon} ` : " "}
               {node.label}
             </Text>
+            {node.annotation !== undefined && (
+              <Text color={theme.colors.muted} dimColor={node.disabled}>
+                {" "}
+                {node.annotation}
+              </Text>
+            )}
           </Box>
         );
       })}

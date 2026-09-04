@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts } from "../../utils";
 
 const ACTIONS = [
   {
@@ -34,7 +34,7 @@ const ACTIONS = [
 ] as const;
 
 function useMemoryDetail({ ctx, core }: ScreenProps, memoryId: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["memory", opts.region, memoryId, "full"],
     queryFn: () => core.memory.getMemory(memoryId!, "full", opts),
