@@ -94,8 +94,6 @@ async function* transformAgentSse(
   }
 }
 
-// Handles bedrock {text}, {error}, ConverseStream contentBlockDelta, LangChain {content: [blocks]},
-// bare JSON string, and non-JSON tokens.
 export function parseAgentEvent(data: string): string | { error: string } | null {
   try {
     const parsed: unknown = JSON.parse(data);
