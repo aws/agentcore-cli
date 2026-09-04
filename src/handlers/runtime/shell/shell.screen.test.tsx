@@ -8,6 +8,7 @@ import {
   renderScreen,
   TestCoreClient,
   tick,
+  type TtyInput,
   ttyTestIO,
   waitFor,
   waitForText,
@@ -65,6 +66,18 @@ function core() {
   return value;
 }
 
+async function interruptUntilExit(rendering: Promise<void>, stdin: TtyInput): Promise<void> {
+  let settled = false;
+  const tracked = rendering.finally(() => {
+    settled = true;
+  });
+  while (!settled) {
+    stdin.write("\x03");
+    await tick();
+  }
+  await tracked;
+}
+
 describe("RuntimeShellScreen", () => {
   test("a direct Runtime route skips the Runtime picker", async () => {
     const screen = renderScreen("/agentcore/runtime/shell/checkout-AbCdEf1234", {
@@ -110,10 +123,8 @@ describe("RuntimeShellScreen", () => {
     stdin.write("\r");
     await waitFor(() => streams.stderr().includes("Session closed · exit 42"));
     await waitFor(() => streams.stdout().split(detailText).length > initialDetails);
-    await tick();
-    stdin.write("\x03");
 
-    await rendering;
+    await interruptUntilExit(rendering, stdin);
     expect(value.runtime.calls.filter((call) => call.method === "openRuntimeShell")).toHaveLength(
       1,
     );
@@ -166,9 +177,8 @@ describe("RuntimeShellScreen", () => {
     await waitFor(
       () => value.runtime.calls.filter((call) => call.method === "listRuntimes").length === 2,
     );
-    stdin.write("\x03");
 
-    await rendering;
+    await interruptUntilExit(rendering, stdin);
     expect(value.runtime.calls.filter((call) => call.method === "openRuntimeShell")).toHaveLength(
       1,
     );
