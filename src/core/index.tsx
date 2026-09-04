@@ -2,6 +2,7 @@ import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import { S3Client } from "@aws-sdk/client-s3";
 import { EvalClient } from "./eval";
 import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
@@ -21,7 +22,10 @@ import type {
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateS3Client,
 } from "./types";
+import { createS3Client as createDefaultS3Client } from "./factories";
+import { S3SkillsStore } from "./skillsStore";
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
@@ -37,6 +41,7 @@ export type {
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateS3Client,
 } from "./types";
 
 type CoreClientConfig = {
@@ -45,6 +50,8 @@ type CoreClientConfig = {
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
+  /** Optional like the CloudFormation factory: only an imperative deploy with skills reaches S3. */
+  createS3Client?: CreateS3Client;
   logger: Logger;
   fetch?: CoreFetch;
   newSessionId?: () => string;
@@ -61,11 +68,13 @@ export class CoreClient implements AwsClients {
   private dataClients = new ClientCache<BedrockAgentCoreClient>();
   private iamClients = new ClientCache<IAMClient>();
   private logsClients = new ClientCache<CloudWatchLogsClient>();
+  private s3Clients = new ClientCache<S3Client>();
 
   private readonly createControlClient: CreateControlClient;
   private readonly createDataClient: CreateDataClient;
   private readonly createIamClient: CreateIamClient;
   private readonly createLogsClient: CreateLogsClient;
+  private readonly createS3Client: CreateS3Client;
   private logger: Logger;
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
@@ -87,6 +96,7 @@ export class CoreClient implements AwsClients {
     this.createDataClient = config.createDataClient;
     this.createIamClient = config.createIamClient;
     this.createLogsClient = config.createLogsClient;
+    this.createS3Client = config.createS3Client ?? createDefaultS3Client;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
     this.fetch = fetch;
@@ -121,6 +131,7 @@ export class CoreClient implements AwsClients {
       // IAM is a global service; the region only selects the endpoint, and the
       // agentcore endpoint override must not leak onto it.
       executionRoles: createIamExecutionRoleProvisioner((region) => this.iam({ region })),
+      skills: new S3SkillsStore(this),
     });
     this.bedrockAgentImporter = config.bedrockAgentImporter ?? new BedrockAgentImporter();
   }
@@ -147,6 +158,12 @@ export class CoreClient implements AwsClients {
   // on first use (used to read batch-evaluation result log streams).
   logs(config: ClientConfig): CloudWatchLogsClient {
     return this.logsClients.get(config, this.createLogsClient);
+  }
+
+  // s3 returns the S3 client for `config`, creating and caching it on first use
+  // (used to sync a harness's skills/ directory on imperative deploys).
+  s3(config: ClientConfig): S3Client {
+    return this.s3Clients.get(config, this.createS3Client);
   }
 }
 

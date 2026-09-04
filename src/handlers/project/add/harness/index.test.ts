@@ -447,6 +447,16 @@ describe("project add harness", () => {
     });
   });
 
+  test("scaffolds an empty skills/ directory with its README", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "harness", "--name", "x"]);
+
+    const readme = await Bun.file(join(projectRoot, "app", "x", "skills", "README.md")).text();
+    expect(readme).toContain("one subdirectory per skill");
+    expect(readme).toContain("SKILL.md");
+    expect(readme).toContain("AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY");
+  });
+
   test("--system-prompt overrides the default system-prompt.md", async () => {
     const projectRoot = await inProject();
     await run(["add", "harness", "--name", "x", "--system-prompt", "You are a pirate."]);

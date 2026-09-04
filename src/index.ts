@@ -8,6 +8,7 @@ import {
   createDataClient,
   createIamClient,
   createLogsClient,
+  createS3Client,
 } from "./core/factories";
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
@@ -69,6 +70,7 @@ process.exit(
         createDataClient,
         createIamClient,
         createLogsClient,
+        createS3Client,
         logger: rootLogger.child({ module: "core" }),
       });
 

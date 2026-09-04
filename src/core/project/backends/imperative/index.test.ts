@@ -23,7 +23,12 @@ import type { CoreOptions } from "../../../types";
 import { DEPLOYED_STATE_RELATIVE_PATH, readDeployedState } from "../../deployedState";
 import type { DeployBackendInput } from "../types";
 import { ImperativeBackend, type HarnessCalls } from "./index";
-import type { ExecutionRoleProvisioner, ExecutionRoleState } from "./types";
+import type {
+  ExecutionRoleProvisioner,
+  ExecutionRoleState,
+  LocalObjectSource,
+  SkillsStore,
+} from "./types";
 
 const TARGET = { name: "default", account: "111122223333", region: "us-east-1" } as const;
 const ACCOUNT = TARGET.account;
@@ -238,20 +243,81 @@ async function reloadSpec(project: Project, harnessNames: string[]): Promise<Pro
   return { ...project, spec };
 }
 
+/** An in-memory SkillsStore: one map of key -> MD5 per bucket, plus a call log. */
+class FakeSkillsStore implements SkillsStore {
+  readonly buckets = new Map<string, Map<string, string>>();
+  readonly forbidden = new Set<string>();
+  readonly calls: string[] = [];
+  readonly puts: string[] = [];
+  readonly deletes: string[] = [];
+
+  async bucketState(bucket: string): Promise<"present" | "absent" | "forbidden"> {
+    this.calls.push("bucketState");
+    if (this.forbidden.has(bucket)) return "forbidden";
+    return this.buckets.has(bucket) ? "present" : "absent";
+  }
+
+  async createBucket(bucket: string): Promise<void> {
+    this.calls.push("createBucket");
+    if (!this.buckets.has(bucket)) this.buckets.set(bucket, new Map());
+  }
+
+  async list(bucket: string, prefix: string): Promise<{ key: string; etag: string }[]> {
+    this.calls.push("list");
+    return [...(this.buckets.get(bucket) ?? new Map<string, string>())]
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, etag]) => ({ key, etag }));
+  }
+
+  async put(bucket: string, key: string, body: LocalObjectSource): Promise<void> {
+    this.calls.push("put");
+    this.puts.push(key);
+    this.buckets.get(bucket)!.set(key, body.md5);
+  }
+
+  async delete(bucket: string, keys: string[]): Promise<void> {
+    this.calls.push("delete");
+    this.deletes.push(...keys);
+    for (const key of keys) this.buckets.get(bucket)?.delete(key);
+  }
+
+  keysOf(bucket: string): string[] {
+    return [...(this.buckets.get(bucket)?.keys() ?? [])].sort();
+  }
+}
+
+const BUCKET = `agentcore-skills-${ACCOUNT}-us-east-1`;
+
 function subject(options: { account?: string } = {}) {
   const service = new FakeHarnessService();
   const roles = new FakeRoles();
+  const store = new FakeSkillsStore();
   let tokens = 0;
   const backend = new ImperativeBackend({
     logger: createSilentLogger(),
     json,
     harness: service,
     executionRoles: roles,
+    skills: store,
     resolveAccount: async () => options.account ?? ACCOUNT,
     plan: { sleep: async () => {}, pollIntervalMs: 0 },
     newClientToken: () => `token-${++tokens}`,
   });
-  return { backend, service, roles };
+  return { backend, service, roles, store };
+}
+
+/** Writes (or rewrites) one skill's files under the harness's skills/ directory. */
+async function writeSkill(
+  rootPath: string,
+  harnessName: string,
+  skillName: string,
+  files: Record<string, string> = { "SKILL.md": `# ${skillName}` },
+): Promise<void> {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const path = join(rootPath, "app", harnessName, "skills", skillName, relativePath);
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, content);
+  }
 }
 
 function input(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
@@ -643,6 +709,237 @@ describe("ImperativeBackend teardown", () => {
     const state = await readDeployedState(json, p.rootPath);
     expect(state.targets.default).toBeUndefined();
     expect(await Bun.file(join(p.rootPath, DEPLOYED_STATE_RELATIVE_PATH)).exists()).toBe(true);
+  });
+});
+
+describe("ImperativeBackend skills", () => {
+  const PREFIX = "example/support/skills/";
+
+  test("first deploy creates the bucket, uploads every file, scopes the role, and lists the skills", async () => {
+    const { backend, service, roles, store } = subject();
+    const p = await project([{ name: "support", spec: { skills: [{ s3Uri: "s3://other/x/" }] } }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools", {
+      "SKILL.md": "# PDF",
+      "scripts/extract.py": "print(1)",
+    });
+    await writeSkill(p.rootPath, "support", "release-notes");
+
+    const { events } = await deploy(backend, p);
+
+    expect(stepsOf(events)).toEqual(
+      expect.arrayContaining([
+        "skills-bucket",
+        "harness/support/sync-skills",
+        "harness/support/execution-role",
+        "harness/support/put-harness",
+      ]),
+    );
+    // The bucket is created before anything is uploaded, and the harness is put
+    // only once both the role and the sync are done.
+    const steps = stepsOf(events);
+    expect(steps.indexOf("skills-bucket")).toBeLessThan(
+      steps.indexOf("harness/support/sync-skills"),
+    );
+    expect(linesOf(events)).toEqual(
+      expect.arrayContaining([
+        `harness/support/sync-skills: uploaded ${PREFIX}pdf-tools/SKILL.md`,
+        `harness/support/sync-skills: uploaded ${PREFIX}pdf-tools/scripts/extract.py`,
+        `harness/support/sync-skills: uploaded ${PREFIX}release-notes/SKILL.md`,
+      ]),
+    );
+    expect(store.calls.filter((c) => c === "createBucket")).toHaveLength(1);
+    expect(store.keysOf(BUCKET)).toEqual([
+      `${PREFIX}pdf-tools/SKILL.md`,
+      `${PREFIX}pdf-tools/scripts/extract.py`,
+      `${PREFIX}release-notes/SKILL.md`,
+    ]);
+    expect(roles.ensureOptions).toEqual([
+      { managedMemory: false, skillsBucket: BUCKET, skillsPrefix: PREFIX },
+    ]);
+    // harness.json's skills first, then the discovered ones sorted by name.
+    expect(service.created[0]?.skills).toEqual([
+      { s3: { uri: "s3://other/x/" } },
+      { s3: { uri: `s3://${BUCKET}/${PREFIX}pdf-tools/` } },
+      { s3: { uri: `s3://${BUCKET}/${PREFIX}release-notes/` } },
+    ]);
+    expect((await recordedHarnesses(p)).support?.skills).toEqual({
+      bucket: BUCKET,
+      prefix: PREFIX,
+      manifestHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+  });
+
+  test("an unchanged redeploy issues no put, delete, or update", async () => {
+    const { backend, service, store } = subject();
+    const p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools");
+    await deploy(backend, p);
+    const before = { puts: store.puts.length, deletes: store.deletes.length };
+
+    const { events } = await deploy(backend, p);
+
+    expect(store.puts).toHaveLength(before.puts);
+    expect(store.deletes).toHaveLength(before.deletes);
+    expect(store.calls.filter((c) => c === "createBucket")).toHaveLength(1);
+    expect(service.updated).toHaveLength(0);
+    expect(linesOf(events)).toContain("harness/support/sync-skills: satisfied");
+  });
+
+  test("editing one file re-uploads exactly that key and updates the harness", async () => {
+    const { backend, service, store } = subject();
+    const p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools", { "SKILL.md": "# v1", "lib/a.txt": "a" });
+    await deploy(backend, p);
+    const { manifestHash: before } = (await recordedHarnesses(p)).support!.skills!;
+    store.puts.length = 0;
+
+    await writeSkill(p.rootPath, "support", "pdf-tools", { "SKILL.md": "# v2" });
+    await deploy(backend, p);
+
+    expect(store.puts).toEqual([`${PREFIX}pdf-tools/SKILL.md`]);
+    expect(store.deletes).toEqual([]);
+    // Same URIs, new content: the harness still gets an update so it picks it up.
+    expect(service.updated).toHaveLength(1);
+    expect((await recordedHarnesses(p)).support?.skills?.manifestHash).not.toBe(before);
+  });
+
+  test("removing a skill directory deletes its keys and updates the harness", async () => {
+    const { backend, service, store } = subject();
+    const p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools", { "SKILL.md": "# PDF", "x.txt": "x" });
+    await writeSkill(p.rootPath, "support", "release-notes");
+    await deploy(backend, p);
+
+    await rm(join(p.rootPath, "app", "support", "skills", "pdf-tools"), { recursive: true });
+    const { events } = await deploy(backend, p);
+
+    expect(store.deletes.sort()).toEqual([
+      `${PREFIX}pdf-tools/SKILL.md`,
+      `${PREFIX}pdf-tools/x.txt`,
+    ]);
+    expect(store.keysOf(BUCKET)).toEqual([`${PREFIX}release-notes/SKILL.md`]);
+    expect(linesOf(events)).toContain(
+      `harness/support/sync-skills: deleted ${PREFIX}pdf-tools/x.txt`,
+    );
+    expect(service.updated).toHaveLength(1);
+    expect(service.updated[0]?.skills).toEqual([
+      { s3: { uri: `s3://${BUCKET}/${PREFIX}release-notes/` } },
+    ]);
+  });
+
+  test("removing the last skill still syncs (to clean up), drops the S3 grant, and forgets the sync", async () => {
+    const { backend, service, roles, store } = subject();
+    const p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools");
+    await deploy(backend, p);
+
+    await rm(join(p.rootPath, "app", "support", "skills", "pdf-tools"), { recursive: true });
+    const { events } = await deploy(backend, p);
+
+    expect(stepsOf(events)).toContain("harness/support/sync-skills");
+    expect(store.keysOf(BUCKET)).toEqual([]);
+    expect(roles.ensureOptions.at(-1)).toEqual({ managedMemory: false });
+    expect(service.updated[0]?.skills).toEqual([]);
+    expect((await recordedHarnesses(p)).support?.skills).toBeUndefined();
+
+    // With nothing recorded and nothing on disk, the next deploy has no skills steps.
+    const again = await deploy(backend, p);
+    expect(stepsOf(again.events)).not.toContain("harness/support/sync-skills");
+    expect(stepsOf(again.events)).not.toContain("skills-bucket");
+  });
+
+  test("a user-supplied role is never touched, and the reminder is printed", async () => {
+    const { backend, roles, store } = subject();
+    const p = await project([
+      { name: "support", spec: { executionRoleArn: "arn:aws:iam::111122223333:role/mine" } },
+    ]);
+    await writeSkill(p.rootPath, "support", "pdf-tools");
+
+    const { events } = await deploy(backend, p);
+
+    expect(roles.calls).toEqual([]);
+    expect(store.keysOf(BUCKET)).toEqual([`${PREFIX}pdf-tools/SKILL.md`]);
+    expect(linesOf(events)).toContain(
+      "harness/support/put-harness: the harness uses your role arn:aws:iam::111122223333:role/mine; " +
+        `it needs s3:GetObject on arn:aws:s3:::${BUCKET}/${PREFIX}* and s3:ListBucket on ` +
+        `arn:aws:s3:::${BUCKET} to read its skills.`,
+    );
+  });
+
+  test("shares one bucket step between harnesses", async () => {
+    const { backend, store } = subject();
+    const p = await project([{ name: "support" }, { name: "billing" }]);
+    await writeSkill(p.rootPath, "support", "a");
+    await writeSkill(p.rootPath, "billing", "b");
+
+    const { events } = await deploy(backend, p);
+
+    expect(stepsOf(events).filter((s) => s === "skills-bucket")).toHaveLength(1);
+    expect(store.calls.filter((c) => c === "createBucket")).toHaveLength(1);
+    expect(store.keysOf(BUCKET)).toEqual([
+      "example/billing/skills/b/SKILL.md",
+      "example/support/skills/a/SKILL.md",
+    ]);
+  });
+
+  test("a harness dropped from the spec loses its objects along with itself", async () => {
+    const { backend, service, store } = subject();
+    let p = await project([{ name: "support" }, { name: "billing" }]);
+    await writeSkill(p.rootPath, "billing", "b");
+    await deploy(backend, p);
+
+    p = await reloadSpec(p, ["support"]);
+    const { events } = await deploy(backend, p);
+
+    expect(stepsOf(events)).toEqual(
+      expect.arrayContaining(["delete-harness/billing", "delete-skills/billing"]),
+    );
+    expect(store.keysOf(BUCKET)).toEqual([]);
+    expect(service.harnesses.has("billing-2")).toBe(false);
+    expect((await recordedHarnesses(p)).billing).toBeUndefined();
+  });
+
+  test("teardown empties every recorded prefix and never deletes the bucket", async () => {
+    const { backend, store } = subject();
+    let p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools");
+    await deploy(backend, p);
+    p = await reloadSpec(p, []);
+
+    const { events, result } = await deploy(backend, p, { confirmTeardown: async () => true });
+
+    expect(result.tornDown).toBe(true);
+    expect(stepsOf(events)).toContain("delete-skills/support");
+    expect(store.keysOf(BUCKET)).toEqual([]);
+    expect(store.buckets.has(BUCKET)).toBe(true);
+  });
+
+  test("validation fails before any store, IAM, or harness call", async () => {
+    const { backend, service, roles, store } = subject();
+    const p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "no-manifest", { "notes.md": "x" });
+
+    const error = await failureOf(deploy(backend, p));
+
+    expect(error.message).toContain("'skills/no-manifest': missing SKILL.md");
+    expect(store.calls).toEqual([]);
+    expect(roles.calls).toEqual([]);
+    expect(service.calls).toEqual([]);
+  });
+
+  test("a bucket owned by another account fails with an explanation", async () => {
+    const { backend, service, store } = subject();
+    store.forbidden.add(BUCKET);
+    const p = await project([{ name: "support" }]);
+    await writeSkill(p.rootPath, "support", "pdf-tools");
+
+    const error = await failureOf(deploy(backend, p));
+
+    expect(error.message).toContain(
+      `skills-bucket: The skills bucket '${BUCKET}' exists but is not accessible`,
+    );
+    expect(error.message).toContain("taken by another AWS account");
+    expect(service.created).toHaveLength(0);
   });
 });
 

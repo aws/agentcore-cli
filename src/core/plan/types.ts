@@ -11,11 +11,18 @@ export type StepStatus = "NOT_STARTED" | "WAITING" | "SUCCESSFUL" | "FAILED";
  * call), self-healing (a deleted resource reads as NOT_STARTED and is recreated)
  * and resumable (a killed run picks up from whatever the read calls report).
  */
+/** Emits one progress line under the running step; the engine prefixes the step name. */
+export type StepReporter = (line: string) => void;
+
 export interface Step {
   /** Unique within a plan; used in progress output and errors. */
   name: string;
-  /** Issues the mutating call. Called only when `status` reports NOT_STARTED. */
-  do(): Promise<void>;
+  /**
+   * Issues the mutating call. Called only when `status` reports NOT_STARTED.
+   * `report` lets a step that does several things (upload many objects) show
+   * its progress; a step with one call ignores it.
+   */
+  do(report: StepReporter): Promise<void>;
   /**
    * Observes the world. Must be side-effect free and safe to call repeatedly. A
    * step that needs to explain a FAILED reading throws instead of returning it;

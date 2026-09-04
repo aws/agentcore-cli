@@ -5,6 +5,7 @@ export {
   type ImperativeBackendConfig,
   type ExecutionRoleProvisioner,
   type HarnessCalls,
+  type SkillsStore,
 } from "./backends/imperative";
 export type {
   DeployBackendInput,

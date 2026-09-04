@@ -77,6 +77,7 @@ import {
   ImperativeBackend,
   type ExecutionRoleProvisioner,
   type HarnessCalls,
+  type SkillsStore,
 } from "./backends/imperative";
 import type { ProjectBackend } from "./backends/types";
 import { readDeployedState, recordedDeploymentMode } from "./deployedState";
@@ -137,6 +138,7 @@ type ProjectManagerConfig = {
    */
   harness?: HarnessCalls;
   executionRoles?: ExecutionRoleProvisioner;
+  skills?: SkillsStore;
   source?: AssetSource;
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
@@ -185,12 +187,13 @@ export class FsProjectManager implements ProjectManager {
     };
     this.imperativeBackend =
       config.imperativeBackend ??
-      (config.harness && config.executionRoles
+      (config.harness && config.executionRoles && config.skills
         ? new ImperativeBackend({
             logger: config.logger,
             json: config.json,
             harness: config.harness,
             executionRoles: config.executionRoles,
+            skills: config.skills,
             resolveAccount: config.resolveAccount,
           })
         : unconfiguredImperativeBackend());
@@ -1262,7 +1265,7 @@ function unconfiguredImperativeBackend(): ProjectBackend {
   const refuse = (): never => {
     throw new ProjectStateError(
       "Imperative deploy is not configured for this project manager; it needs a harness " +
-        "client and an execution-role provisioner.",
+        "client, an execution-role provisioner, and a skills store.",
     );
   };
   return {

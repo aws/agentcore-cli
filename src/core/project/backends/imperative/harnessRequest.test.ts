@@ -307,6 +307,13 @@ describe("harnessRequestHash", () => {
     expect(harnessRequestHash(a)).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  test("changes with the skills manifest so edited skill files trigger an update", () => {
+    const request = buildCreateHarnessRequest(spec(), "p", ROLE);
+    expect(harnessRequestHash(request, "m1")).toBe(harnessRequestHash(request, "m1"));
+    expect(harnessRequestHash(request, "m1")).not.toBe(harnessRequestHash(request, "m2"));
+    expect(harnessRequestHash(request, "m1")).not.toBe(harnessRequestHash(request));
+  });
+
   test("stableStringify sorts nested keys but keeps array order", () => {
     expect(stableStringify({ b: [{ y: 1, x: 2 }, 3], a: undefined, c: 1 })).toBe(
       '{"b":[{"x":2,"y":1},3],"c":1}',

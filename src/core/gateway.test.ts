@@ -207,6 +207,9 @@ function recordingGatewayClient(responses: unknown[]): {
     data: () => {
       throw new Error("unexpected data client");
     },
+    s3: () => {
+      throw new Error("unexpected s3 client");
+    },
     iam: () => {
       throw new Error("unexpected IAM client");
     },

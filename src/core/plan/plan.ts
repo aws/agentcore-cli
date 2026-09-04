@@ -152,7 +152,7 @@ async function runStep(step: Step, runner: StepRunner): Promise<void> {
           );
         }
         line(notStarted === 1 ? "issuing" : `issuing again (attempt ${notStarted})`);
-        await step.do();
+        await step.do(line);
         line("issued");
         waiting = false;
         break;

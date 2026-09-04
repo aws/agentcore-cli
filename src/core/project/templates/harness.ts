@@ -3,6 +3,8 @@ import { ZodError, z } from "zod";
 import { HarnessSpecSchema } from "../../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
 import { InputValidationError } from "../../../errors/errors";
+import { SKILLS_DIRECTORY } from "../skillsDir";
+import { HARNESS_SKILLS_README } from "./harnessSkills";
 import type { TemplateResolver } from "./types";
 
 /** The prompt a scaffolded harness starts with; consumers fall back to it when neither file nor spec carries one. */
@@ -30,6 +32,11 @@ export function getHarnessTemplateResolver(): TemplateResolver<z.input<typeof Ha
           async () => systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
         ),
         ...(spec.dockerfile ? [FsTreeNode.fromTextFile("Dockerfile", spec.dockerfile)] : []),
+        // An empty skills/ with a README explaining the layout, so a user who
+        // wants skills finds where they go without reading the docs.
+        FsTreeNode.createDirectory(SKILLS_DIRECTORY, [
+          FsTreeNode.createFile("README.md", async () => HARNESS_SKILLS_README),
+        ]),
       ]);
 
       return {

@@ -86,6 +86,7 @@ function stubClients(options: {
     data: () => client,
     iam: () => client,
     logs: () => client,
+    s3: () => client,
   };
 }
 

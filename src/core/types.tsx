@@ -3,6 +3,7 @@ import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
+import type { S3Client } from "@aws-sdk/client-s3";
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@smithy/types";
 
 // AwsCredentials is an explicit credential source for a call: either resolved
@@ -49,6 +50,7 @@ export type CreateDataClient = (config: ClientConfig) => BedrockAgentCoreClient;
 export type CreateIamClient = (config: ClientConfig) => IAMClient;
 export type CreateLogsClient = (config: ClientConfig) => CloudWatchLogsClient;
 export type CreateCloudFormationClient = (config: CredentialedClientConfig) => CloudFormationClient;
+export type CreateS3Client = (config: ClientConfig) => S3Client;
 export type CoreFetch = (
   ...args: Parameters<typeof globalThis.fetch>
 ) => ReturnType<typeof globalThis.fetch>;
@@ -66,4 +68,7 @@ export interface AwsClients {
   // results to. CloudWatch is a distinct service from the AgentCore data plane,
   // so it gets its own client/factory rather than reusing `data`.
   logs(config: ClientConfig): CloudWatchLogsClient;
+  // s3 holds the bucket an imperative deploy syncs a harness's skills/ directory
+  // to. S3 is its own service with its own client, so it gets its own accessor.
+  s3(config: ClientConfig): S3Client;
 }

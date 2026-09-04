@@ -55,6 +55,13 @@ export type ExecutionPolicyOptions = {
    * `memory/harness_*` grant does not cover, so the grant widens to it.
    */
   managedMemory?: boolean;
+  /**
+   * The bucket and key prefix the harness's skills/ directory was synced to.
+   * Both or neither: the grant is scoped to exactly that prefix so one
+   * harness's role cannot read another project's skills.
+   */
+  skillsBucket?: string;
+  skillsPrefix?: string;
 };
 
 /**
@@ -247,6 +254,23 @@ export function desiredExecutionPolicy(
         Action: ["bedrock-agentcore:InvokeGateway"],
         Resource: [`arn:aws:bedrock-agentcore:${region}:${accountId}:gateway/*`],
       },
+      ...(options.skillsBucket && options.skillsPrefix
+        ? [
+            {
+              Sid: "AgentCoreSkillsRead",
+              Effect: "Allow",
+              Action: ["s3:GetObject"],
+              Resource: `arn:aws:s3:::${options.skillsBucket}/${options.skillsPrefix}*`,
+            },
+            {
+              Sid: "AgentCoreSkillsList",
+              Effect: "Allow",
+              Action: ["s3:ListBucket"],
+              Resource: `arn:aws:s3:::${options.skillsBucket}`,
+              Condition: { StringLike: { "s3:prefix": [`${options.skillsPrefix}*`] } },
+            },
+          ]
+        : []),
     ],
   };
 }

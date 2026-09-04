@@ -72,6 +72,61 @@ describe("desiredExecutionPolicy", () => {
       "arn:aws:bedrock-agentcore:us-east-1:111122223333:memory/harness_*",
     );
   });
+
+  test("widens the memory grant to the harness-named managed memory when asked", () => {
+    const policy = desiredExecutionPolicy("us-east-1", "111122223333", "support", {
+      managedMemory: true,
+    });
+    const statements = policy.Statement as { Sid: string; Resource: unknown }[];
+    expect(statements.find((s) => s.Sid === "AgentCoreMemory")!.Resource).toEqual([
+      "arn:aws:bedrock-agentcore:us-east-1:111122223333:memory/harness_*",
+      "arn:aws:bedrock-agentcore:us-east-1:111122223333:memory/support-*",
+    ]);
+    // Without options the document is exactly the one harness create writes.
+    expect(desiredExecutionPolicy("us-east-1", "111122223333", "support", {})).toEqual(
+      desiredExecutionPolicy("us-east-1", "111122223333", "support"),
+    );
+  });
+
+  test("grants read and scoped list on the skills prefix when asked", () => {
+    const policy = desiredExecutionPolicy("us-east-1", "111122223333", "support", {
+      skillsBucket: "agentcore-skills-111122223333-us-east-1",
+      skillsPrefix: "orders/support/skills/",
+    });
+    const statements = policy.Statement as Record<string, unknown>[];
+    expect(statements.slice(-2)).toEqual([
+      {
+        Sid: "AgentCoreSkillsRead",
+        Effect: "Allow",
+        Action: ["s3:GetObject"],
+        Resource: "arn:aws:s3:::agentcore-skills-111122223333-us-east-1/orders/support/skills/*",
+      },
+      {
+        Sid: "AgentCoreSkillsList",
+        Effect: "Allow",
+        Action: ["s3:ListBucket"],
+        Resource: "arn:aws:s3:::agentcore-skills-111122223333-us-east-1",
+        Condition: { StringLike: { "s3:prefix": ["orders/support/skills/*"] } },
+      },
+    ]);
+    // Half an option grants nothing.
+    const half = desiredExecutionPolicy("us-east-1", "111122223333", "support", {
+      skillsBucket: "b",
+    });
+    const sids = (half.Statement as { Sid: string }[]).map((s) => s.Sid);
+    expect(sids.some((sid) => sid.startsWith("AgentCoreSkills"))).toBe(false);
+  });
+
+  test("ensureDefaultExecutionRole forwards the options into the attached policy", async () => {
+    const iam = fakeIam();
+
+    await ensureDefaultExecutionRole(iam.client, "support", "us-east-1", {
+      skillsBucket: "bkt",
+      skillsPrefix: "p/support/skills/",
+    });
+
+    expect(iam.policy()).toContain("arn:aws:s3:::bkt/p/support/skills/*");
+  });
 });
 
 describe("ensureDefaultExecutionRole", () => {

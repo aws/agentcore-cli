@@ -6,6 +6,7 @@ import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
+import type { S3Client } from "@aws-sdk/client-s3";
 import type {
   ClientConfig,
   CreateCloudFormationClient,
@@ -13,6 +14,7 @@ import type {
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateS3Client,
   CoreFetch,
 } from "../core/types";
 import {
@@ -21,6 +23,7 @@ import {
   createDataClient,
   createIamClient,
   createLogsClient,
+  createS3Client,
 } from "../core/factories";
 import { parse, stringify } from "./serialization";
 
@@ -237,6 +240,7 @@ export function fixtureFactories(dir: string): {
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
+  createS3Client: CreateS3Client;
 } {
   return {
     createCloudFormationClient: (config) => {
@@ -270,6 +274,12 @@ export function fixtureFactories(dir: string): {
       return {
         send: makeRecordingSend(real, dir),
       } as unknown as CloudWatchLogsClient;
+    },
+    createS3Client: (config: ClientConfig) => {
+      const real = createS3Client(config);
+      return {
+        send: makeRecordingSend(real, dir),
+      } as unknown as S3Client;
     },
   };
 }

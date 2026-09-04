@@ -267,8 +267,15 @@ export function buildUpdateHarnessRequest(
  * The identity of a desired configuration: a hash of the create request with
  * the per-attempt client token left out. Recorded after a harness reaches
  * READY and compared on the next deploy, so an unchanged spec issues no call.
+ *
+ * `skillsManifestHash` folds in the content of the harness's skills/ directory:
+ * the request lists skills by URI, so a changed file would not change the body,
+ * yet the harness has to be updated for the new content to be picked up.
  */
-export function harnessRequestHash(request: CreateHarnessRequest): string {
+export function harnessRequestHash(
+  request: CreateHarnessRequest,
+  skillsManifestHash?: string,
+): string {
   const { clientToken: _token, ...body } = request;
-  return hashOf(body);
+  return hashOf(skillsManifestHash ? { body, skillsManifestHash } : body);
 }

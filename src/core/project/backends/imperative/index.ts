@@ -26,9 +26,19 @@ import {
   readDeployedState,
   removeTargetState,
   updateTargetState,
+  type HarnessSkillsState,
   type HarnessState,
 } from "../../deployedState";
 import { readHarnessDirectory, type HarnessDirectory } from "../../harnessDir";
+import {
+  discoverSkills,
+  skillsBucketName,
+  skillsManifest,
+  skillsPrefix,
+  skillUri,
+  validateSkills,
+  type LocalSkill,
+} from "../../skillsDir";
 import type {
   DeployBackendInput,
   ProjectBackend,
@@ -41,10 +51,15 @@ import {
   harnessRequestHash,
   validateForImperativeDeploy,
 } from "./harnessRequest";
-import { stableStringify } from "./hash";
-import type { ExecutionRoleProvisioner } from "./types";
+import { hashOf, stableStringify } from "./hash";
+import type { ExecutionRoleProvisioner, SkillsStore } from "./types";
 
-export type { ExecutionRoleProvisioner, ExecutionRoleState } from "./types";
+export type {
+  ExecutionRoleProvisioner,
+  ExecutionRoleState,
+  LocalObjectSource,
+  SkillsStore,
+} from "./types";
 
 /** The harness control-plane calls a deploy needs, narrowed from CoreHarnessClient. */
 export type HarnessCalls = Pick<
@@ -62,6 +77,8 @@ export type ImperativeBackendConfig = {
    * to compile instead of silently getting a client that talks to IAM.
    */
   executionRoles: ExecutionRoleProvisioner;
+  /** The bucket a harness's skills/ directory is synced to; required for the same reason. */
+  skills: SkillsStore;
   /** STS lookup used to verify the active credentials belong to the target's account. */
   resolveAccount?: (region: string) => Promise<string>;
   /** Plan execution knobs, for tests. */
@@ -83,11 +100,27 @@ type HarnessData = {
   appliedRequestHash?: string;
   /** The hash of the request this deploy last issued, applied once READY is observed. */
   issuedRequestHash?: string;
-  /** Set once the delete step for a harness no longer in the spec observes it gone. */
+  /** Set once the sync step observed the bucket matching the local skills. */
+  skillsSynced?: boolean;
+  /** Set once a delete step observed the harness (or its skills prefix) gone. */
   deleted?: boolean;
+  skillsDeleted?: boolean;
 };
 
-type DeclaredHarness = HarnessDirectory & { entry: HarnessRegistryEntry };
+type DeclaredHarness = HarnessDirectory & {
+  entry: HarnessRegistryEntry;
+  skills: LocalSkill[];
+  /** Where this harness's skills live; the same bucket for every harness of the target. */
+  bucket: string;
+  prefix: string;
+  /** Identity of the skills' content; undefined without skills. Folded into the request hash. */
+  skillsManifestHash?: string;
+};
+
+function manifestHashOf(prefix: string, skills: LocalSkill[]): string | undefined {
+  if (skills.length === 0) return undefined;
+  return hashOf([...skillsManifest(prefix, skills)].map(([key, file]) => [key, file.md5]));
+}
 
 function isNotFound(error: unknown): boolean {
   return (error as Error)?.name === "ResourceNotFoundException";
@@ -96,17 +129,25 @@ function isNotFound(error: unknown): boolean {
 /**
  * Deploys a harness-only project by calling the control plane directly: no
  * CloudFormation, no CDK toolchain. Each deploy builds a plan (see
- * src/core/plan) with one create/update subtree per declared harness and one
- * delete root per harness the state still records, then walks it. Because
- * every step reads before it writes, re-running converges: an unchanged spec
- * issues no call, a harness deleted out of band is recreated, a killed run
- * resumes from what the service reports.
+ * src/core/plan) — per declared harness
+ *
+ *   [execution-role] ─────────────────────────┐
+ *                                              ├──► [put-harness]
+ *   [skills-bucket] ──► [sync-skills] ─────────┘
+ *
+ * with the skills branch only when the harness has a skills/ directory (or
+ * had one synced before, so stale objects get cleaned), and one delete root
+ * per harness the state still records — then walks it. Because every step
+ * reads before it writes, re-running converges: an unchanged spec issues no
+ * call, a harness deleted out of band is recreated, a killed run resumes from
+ * what the service reports.
  */
 export class ImperativeBackend implements ProjectBackend {
   private readonly logger: Logger;
   private readonly json: ReadWriteJson;
   private readonly harness: HarnessCalls;
   private readonly executionRoles: ExecutionRoleProvisioner;
+  private readonly skills: SkillsStore;
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly planOptions: ImperativeBackendConfig["plan"];
   private readonly newClientToken: () => string;
@@ -116,6 +157,7 @@ export class ImperativeBackend implements ProjectBackend {
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
     this.harness = config.harness;
     this.executionRoles = config.executionRoles;
+    this.skills = config.skills;
     this.resolveAccount = config.resolveAccount ?? ((region) => resolveAwsAccount(region));
     this.planOptions = config.plan;
     this.newClientToken = config.newClientToken ?? (() => randomUUID());
@@ -142,7 +184,7 @@ export class ImperativeBackend implements ProjectBackend {
 
     // Everything that can fail on local input fails here, before any AWS call.
     yield { type: "step", message: "Reading harness configuration" };
-    const declared = await this.readDeclaredHarnesses(project);
+    const declared = await this.readDeclaredHarnesses(project, account, target.region);
     const recorded =
       (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
         ?.harnesses ?? {};
@@ -155,21 +197,35 @@ export class ImperativeBackend implements ProjectBackend {
     const data = await this.resolveIdentities(declared, recorded, options);
 
     const plan: Plan = { name: `${project.name}/${target.name}`, steps: [] };
+    const syncs: Step[] = [];
     for (const harness of declared) {
-      plan.steps.push(
-        this.harnessSubtree(harness, data.get(harness.spec.name)!, {
-          account,
-          options,
-        }),
-      );
+      const { roots, sync } = this.harnessSubtree(harness, data.get(harness.spec.name)!, {
+        account,
+        options,
+        recorded: recorded[harness.spec.name],
+      });
+      plan.steps.push(...roots);
+      if (sync) syncs.push(sync);
+      if (harness.spec.executionRoleArn && harness.skills.length > 0) {
+        yield {
+          type: "output",
+          line:
+            `harness/${harness.spec.name}/put-harness: the harness uses your role ` +
+            `${harness.spec.executionRoleArn}; it needs s3:GetObject on ` +
+            `arn:aws:s3:::${harness.bucket}/${harness.prefix}* and s3:ListBucket on ` +
+            `arn:aws:s3:::${harness.bucket} to read its skills.`,
+        };
+      }
     }
-    const removed = Object.keys(recorded).filter(
-      (name) => !declared.some((harness) => harness.spec.name === name),
-    );
-    for (const name of removed) {
+    // One bucket for every harness of the target, so one step owns it.
+    if (syncs.length > 0) {
+      plan.steps.push({ ...this.skillsBucketStep(declared[0]!.bucket, options), next: syncs });
+    }
+    for (const name of Object.keys(recorded)) {
+      if (declared.some((harness) => harness.spec.name === name)) continue;
       const state: HarnessData = { harnessId: recorded[name]!.harnessId };
       data.set(name, state);
-      plan.steps.push(this.deleteStep(name, state, options));
+      plan.steps.push(...this.removalSteps(name, state, recorded[name]!, options));
     }
 
     try {
@@ -178,7 +234,7 @@ export class ImperativeBackend implements ProjectBackend {
       // Recorded even after a failure: a harness created moments before an
       // error is still ours, and the next deploy must find it by id rather
       // than by name.
-      await this.recordState(project, target, recorded, data);
+      await this.recordState(project, target, recorded, declared, data);
     }
 
     const outputs: Record<string, string> = {};
@@ -235,13 +291,13 @@ export class ImperativeBackend implements ProjectBackend {
     for (const name of names) {
       const state: HarnessData = { harnessId: recorded[name]!.harnessId };
       data.set(name, state);
-      plan.steps.push(this.deleteStep(name, state, options));
+      plan.steps.push(...this.removalSteps(name, state, recorded[name]!, options));
     }
 
     try {
       yield* executePlan(plan, { ...this.planOptions, logger: this.logger });
     } catch (error) {
-      await this.recordState(project, target, recorded, data);
+      await this.recordState(project, target, recorded, [], data);
       throw error;
     }
     await removeTargetState(this.json, project.rootPath, target.name);
@@ -249,24 +305,33 @@ export class ImperativeBackend implements ProjectBackend {
   }
 
   /**
-   * The subtree for one declared harness:
-   *
-   *   [execution-role] ──► [put-harness]
-   *
-   * The role step is omitted for a user-supplied role, which is used as-is and
-   * never modified; put-harness is then the subtree's root.
+   * The subtree for one declared harness (see the class comment). The role
+   * step is omitted for a user-supplied role, which is used as-is and never
+   * modified; the skills branch is omitted when there is nothing to sync and
+   * nothing was synced before. The returned roots exclude the bucket step,
+   * which the caller shares across harnesses.
    */
   private harnessSubtree(
     harness: DeclaredHarness,
     data: HarnessData,
-    context: { account: string; options: CoreOptions },
-  ): Step {
+    context: { account: string; options: CoreOptions; recorded: HarnessState | undefined },
+  ): { roots: Step[]; sync?: Step } {
     const put = this.putHarnessStep(harness, data, context.options);
+    const roots: Step[] = [];
+    let joined = false;
     if (harness.spec.executionRoleArn) {
       data.executionRoleArn = harness.spec.executionRoleArn;
-      return put;
+    } else {
+      roots.push({ ...this.executionRoleStep(harness, data, context), next: [put] });
+      joined = true;
     }
-    return { ...this.executionRoleStep(harness, data, context), next: [put] };
+    let sync: Step | undefined;
+    if (harness.skills.length > 0 || context.recorded?.skills) {
+      sync = { ...this.syncSkillsStep(harness, data, context.options), next: [put] };
+      joined = true;
+    }
+    if (!joined) roots.push(put);
+    return { roots, sync };
   }
 
   private executionRoleStep(
@@ -304,9 +369,85 @@ export class ImperativeBackend implements ProjectBackend {
     };
   }
 
-  /** What this harness's spec adds to the baseline execution policy. */
-  protected executionPolicyOptions(harness: DeclaredHarness): ExecutionPolicyOptions {
-    return { managedMemory: harness.spec.memory?.mode === "managed" };
+  /** What this harness's spec and skills add to the baseline execution policy. */
+  private executionPolicyOptions(harness: DeclaredHarness): ExecutionPolicyOptions {
+    return {
+      managedMemory: harness.spec.memory?.mode === "managed",
+      ...(harness.skills.length > 0 && {
+        skillsBucket: harness.bucket,
+        skillsPrefix: harness.prefix,
+      }),
+    };
+  }
+
+  /** The discovered skills as the s3 sources put-harness appends after harness.json's. */
+  private extraSkills(harness: DeclaredHarness): ServiceHarnessSkill[] {
+    return harness.skills.map((skill) => ({
+      s3: { uri: skillUri(harness.bucket, harness.prefix, skill.name) },
+    }));
+  }
+
+  private skillsBucketStep(bucket: string, options: CoreOptions): Step {
+    return {
+      name: "skills-bucket",
+      status: async () => {
+        const state = await this.skills.bucketState(bucket, options.region);
+        if (state === "present") return "SUCCESSFUL";
+        if (state === "absent") return "NOT_STARTED";
+        throw new ProjectStateError(
+          `The skills bucket '${bucket}' exists but is not accessible from this account, so its ` +
+            `name is taken by another AWS account. Bucket names are global; this CLI derives it ` +
+            `from your account id and region and has no override yet. Remove the harness's ` +
+            `skills/ directory to deploy without skills, or report this so an override can be added.`,
+        );
+      },
+      do: async () => {
+        await this.skills.createBucket(bucket, options.region);
+      },
+    };
+  }
+
+  /**
+   * Brings the objects under the harness's prefix in line with its skills/
+   * directory: upload what is new or changed (by MD5 against the ETag), delete
+   * what is no longer there. With no skills left the step still runs, to
+   * empty the prefix.
+   */
+  private syncSkillsStep(harness: DeclaredHarness, data: HarnessData, options: CoreOptions): Step {
+    const { bucket, prefix } = harness;
+    const manifest = skillsManifest(prefix, harness.skills);
+    const remote = async () =>
+      new Map(
+        (await this.skills.list(bucket, prefix, options.region)).map(({ key, etag }) => [
+          key,
+          etag,
+        ]),
+      );
+    return {
+      name: `harness/${harness.spec.name}/sync-skills`,
+      status: async () => {
+        const current = await remote();
+        if (current.size !== manifest.size) return "NOT_STARTED";
+        for (const [key, file] of manifest) {
+          if (current.get(key) !== file.md5) return "NOT_STARTED";
+        }
+        data.skillsSynced = true;
+        return "SUCCESSFUL";
+      },
+      do: async (report) => {
+        const current = await remote();
+        for (const [key, file] of manifest) {
+          if (current.get(key) === file.md5) continue;
+          await this.skills.put(bucket, key, file, options.region);
+          report(`uploaded ${key}`);
+        }
+        const stale = [...current.keys()].filter((key) => !manifest.has(key));
+        if (stale.length > 0) {
+          await this.skills.delete(bucket, stale, options.region);
+          for (const key of stale) report(`deleted ${key}`);
+        }
+      },
+    };
   }
 
   private putHarnessStep(harness: DeclaredHarness, data: HarnessData, options: CoreOptions): Step {
@@ -373,7 +514,7 @@ export class ImperativeBackend implements ProjectBackend {
                 `deletion to finish (or resolve it) and redeploy.`,
             );
           case "READY": {
-            const hash = harnessRequestHash(desiredRequest());
+            const hash = harnessRequestHash(desiredRequest(), harness.skillsManifestHash);
             if (data.issuedRequestHash === hash || data.appliedRequestHash === hash) {
               data.appliedRequestHash = hash;
               return "SUCCESSFUL";
@@ -388,7 +529,7 @@ export class ImperativeBackend implements ProjectBackend {
       },
       do: async () => {
         const request = desiredRequest();
-        const hash = harnessRequestHash(request);
+        const hash = harnessRequestHash(request, harness.skillsManifestHash);
         if (!data.harnessId) {
           // A fresh default role may not be assumable yet; the service reports
           // that as a validation error, which the retry waits out.
@@ -422,12 +563,23 @@ export class ImperativeBackend implements ProjectBackend {
     };
   }
 
-  /** Skills the deploy adds beyond harness.json. None yet. */
-  protected extraSkills(_harness: DeclaredHarness): ServiceHarnessSkill[] {
-    return [];
+  /**
+   * The roots that remove a harness the target no longer declares: the harness
+   * itself, and — when a sync was recorded — every object under its prefix.
+   * Independent, so they run in parallel.
+   */
+  private removalSteps(
+    name: string,
+    data: HarnessData,
+    recorded: HarnessState,
+    options: CoreOptions,
+  ): Step[] {
+    const steps: Step[] = [this.deleteHarnessStep(name, data, options)];
+    if (recorded.skills) steps.push(this.deleteSkillsStep(name, data, recorded.skills, options));
+    return steps;
   }
 
-  private deleteStep(name: string, data: HarnessData, options: CoreOptions): Step {
+  private deleteHarnessStep(name: string, data: HarnessData, options: CoreOptions): Step {
     return {
       name: `delete-harness/${name}`,
       status: async () => {
@@ -450,6 +602,30 @@ export class ImperativeBackend implements ProjectBackend {
     };
   }
 
+  private deleteSkillsStep(
+    name: string,
+    data: HarnessData,
+    skills: HarnessSkillsState,
+    options: CoreOptions,
+  ): Step {
+    return {
+      name: `delete-skills/${name}`,
+      status: async () => {
+        const objects = await this.skills.list(skills.bucket, skills.prefix, options.region);
+        if (objects.length > 0) return "NOT_STARTED";
+        data.skillsDeleted = true;
+        return "SUCCESSFUL";
+      },
+      do: async (report) => {
+        const keys = (await this.skills.list(skills.bucket, skills.prefix, options.region)).map(
+          ({ key }) => key,
+        );
+        await this.skills.delete(skills.bucket, keys, options.region);
+        for (const key of keys) report(`deleted ${key}`);
+      },
+    };
+  }
+
   private async verifyAccount(target: AwsDeploymentTarget): Promise<string> {
     const account = await this.resolveAccount(target.region);
     if (account !== target.account) {
@@ -461,12 +637,29 @@ export class ImperativeBackend implements ProjectBackend {
     return account;
   }
 
-  private async readDeclaredHarnesses(project: Project): Promise<DeclaredHarness[]> {
+  private async readDeclaredHarnesses(
+    project: Project,
+    account: string,
+    region: string,
+  ): Promise<DeclaredHarness[]> {
+    const bucket = skillsBucketName(account, region);
     const declared: DeclaredHarness[] = [];
     for (const entry of project.spec.harnesses) {
       const read = await readHarnessDirectory(this.json, project.rootPath, entry);
       validateForImperativeDeploy(read.spec);
-      declared.push({ ...read, entry });
+      const prefix = skillsPrefix(project.name, read.spec.name);
+      const skills = await discoverSkills(read.harnessDir);
+      validateSkills(read.spec.name, skills, read.spec, (skill) =>
+        skillUri(bucket, prefix, skill.name),
+      );
+      declared.push({
+        ...read,
+        entry,
+        skills,
+        bucket,
+        prefix,
+        skillsManifestHash: manifestHashOf(prefix, skills),
+      });
     }
     // Adoption keys on the service's harness name, so two names that differ
     // only by case would be an ambiguous match waiting to happen.
@@ -552,14 +745,16 @@ export class ImperativeBackend implements ProjectBackend {
 
   /**
    * Writes what the steps learned back to deployed-state.json. The harnesses
-   * map is replaced wholesale: a declared harness with an id is (re)recorded,
-   * one whose delete step saw it gone is dropped, and anything else the target
-   * recorded is kept as it was.
+   * map is replaced wholesale: a declared harness with an id is (re)recorded
+   * (with its skills sync, when one was observed complete), one whose delete
+   * step saw it gone is dropped, and anything else the target recorded is kept
+   * as it was.
    */
   private async recordState(
     project: Project,
     target: AwsDeploymentTarget,
     recorded: Record<string, HarnessState>,
+    declared: DeclaredHarness[],
     data: Map<string, HarnessData>,
   ): Promise<void> {
     const next: Record<string, HarnessState> = { ...recorded };
@@ -568,13 +763,30 @@ export class ImperativeBackend implements ProjectBackend {
         delete next[name];
         continue;
       }
+      if (state.skillsDeleted && next[name]) {
+        const { skills: _skills, ...rest } = next[name]!;
+        next[name] = rest;
+      }
       if (!state.harnessId || !state.harnessArn) continue;
+      const harness = declared.find((candidate) => candidate.spec.name === name);
+      const { skills: previousSkills, ...previous } = recorded[name] ?? {};
+      let skills: HarnessSkillsState | undefined = previousSkills;
+      if (state.skillsSynced && harness) {
+        skills = harness.skillsManifestHash
+          ? {
+              bucket: harness.bucket,
+              prefix: harness.prefix,
+              manifestHash: harness.skillsManifestHash,
+            }
+          : undefined;
+      }
       next[name] = {
-        ...recorded[name],
+        ...previous,
         harnessId: state.harnessId,
         harnessArn: state.harnessArn,
         ...(state.executionRoleArn && { executionRoleArn: state.executionRoleArn }),
         ...(state.appliedRequestHash && { appliedRequestHash: state.appliedRequestHash }),
+        ...(skills && { skills }),
       };
     }
     await updateTargetState(this.json, project.rootPath, target.name, {

@@ -219,6 +219,46 @@ inline policy kept in sync; a harness with an `executionRoleArn` in its
 `harness.json` uses that role as-is. `--json` output carries
 `harness.<name>.id` and `harness.<name>.arn` in `outputs`.
 
+**Skills directory.** A harness directory scaffolded by `project create` or
+`project add harness` also holds `skills/`, with a README explaining the
+layout: one subdirectory per skill, each with a `SKILL.md` and whatever files
+the skill needs; drop skills in by copying a directory, remove them by deleting
+it. Files at the top level of `skills/` are ignored, as are dotfiles, `.git`,
+`__pycache__`, and `.DS_Store`.
+
+```
+app/<harness>/
+├── harness.json
+├── system-prompt.md
+└── skills/
+    ├── README.md          # ignored by deploy (not a directory)
+    ├── pdf-tools/
+    │   ├── SKILL.md
+    │   └── scripts/…
+    └── release-notes/
+        └── SKILL.md
+```
+
+On an imperative deploy every skill is uploaded to an S3 bucket the CLI
+gets-or-creates for the account and region, `agentcore-skills-<account>-<region>`
+(public access blocked), under `<project>/<harness>/skills/<skill>/`, and the
+harness is created or updated with an `s3` skill entry per uploaded skill
+**after** whatever `harness.json` lists; `harness.json` itself is never
+rewritten. Redeploying uploads only files whose content changed, deletes the
+objects of skills you removed, and updates the harness whenever the skill set or
+any file changed; removing the last skill still empties the prefix. The default
+execution role gains `s3:GetObject` on the harness's prefix and a prefix-scoped
+`s3:ListBucket` only while the harness has skills; a harness with its own
+`executionRoleArn` is left alone and the deploy prints a reminder that the role
+needs that access. Before any AWS call the deploy checks that every skill
+directory has a `SKILL.md`, that names match `^[a-z0-9][a-z0-9._-]{0,63}$`, that
+no file exceeds 5 GB (a single upload), and that no discovered skill duplicates
+an `s3Uri` already in `harness.json`. The bucket is shared by every project in
+the account and is never deleted by the CLI, not even on teardown (which does
+empty the harness's prefix); if its name is already taken by another account the
+deploy fails with an explanation, since there is no override yet. The CDK
+deployment path currently ignores `skills/`.
+
 `project status` and `project invoke harness` follow the mode recorded in
 `deployed-state.json`, not the variable, so they keep working on an
 imperatively deployed target after the variable is unset. A target is never
