@@ -26,6 +26,8 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 
 type RuntimeTemplateShortcut = {
   runtimeName: string;
+  /** One line shown next to the template name in the create wizard. */
+  description: string;
   build: ScaffoldRuntimeInput["build"];
   language: ScaffoldRuntimeInput["language"];
   framework: ScaffoldRuntimeInput["framework"];
@@ -46,6 +48,7 @@ type RuntimeTemplateShortcut = {
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "agent-python-minimal": {
     runtimeName: "agent_python_minimal",
+    description: "minimal Python agent on Bedrock, no framework",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -56,6 +59,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-strands": {
     runtimeName: "agent_python_strands",
+    description: "Strands agent on Bedrock with memory",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -66,6 +70,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-strands-container": {
     runtimeName: "agent_python_strands_container",
+    description: "Strands agent on Bedrock with memory",
     build: "Container",
     language: "Python",
     framework: "strands",
@@ -75,6 +80,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-typescript-strands": {
     runtimeName: "agent_typescript_strands",
+    description: "Strands agent on Bedrock with memory, in TypeScript",
     build: "CodeZip",
     language: "TypeScript",
     framework: "strands",
@@ -85,6 +91,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-langchain": {
     runtimeName: "agent_python_langchain",
+    description: "LangChain agent on Bedrock",
     build: "CodeZip",
     language: "Python",
     framework: "langchain",
@@ -95,6 +102,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "mcp-python-fastmcp": {
     runtimeName: "mcp_python_fastmcp",
+    description: "MCP server exposing tools via FastMCP",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -105,6 +113,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "a2a-python-strands": {
     runtimeName: "a2a_python_strands",
+    description: "Strands agent speaking the A2A protocol on Bedrock",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -116,6 +125,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agui-python-strands": {
     runtimeName: "agui_python_strands",
+    description: "Strands agent speaking the AG-UI protocol on Bedrock",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -129,9 +139,40 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
 
 export type RuntimeTemplateShortcutName = keyof typeof RUNTIME_TEMPLATE_SHORTCUTS;
 
-export const RUNTIME_TEMPLATE_SHORTCUT_NAMES = Object.keys(
-  RUNTIME_TEMPLATE_SHORTCUTS,
-) as unknown as readonly [RuntimeTemplateShortcutName, ...RuntimeTemplateShortcutName[]];
+const PROTOCOL_ORDER: Record<NonNullable<ScaffoldRuntimeInput["protocol"]>, number> = {
+  HTTP: 0,
+  A2A: 1,
+  AGUI: 2,
+  MCP: 3,
+};
+const LANGUAGE_ORDER: Record<ScaffoldRuntimeInput["language"], number> = {
+  Python: 0,
+  TypeScript: 1,
+};
+const FRAMEWORK_ORDER: Record<ScaffoldRuntimeInput["framework"], number> = {
+  strands: 0,
+  langchain: 1,
+  none: 2,
+};
+const BUILD_ORDER: Record<ScaffoldRuntimeInput["build"], number> = { CodeZip: 0, Container: 1 };
+
+function templateSortKey(template: RuntimeTemplateShortcut): number[] {
+  return [
+    PROTOCOL_ORDER[template.protocol ?? "HTTP"],
+    LANGUAGE_ORDER[template.language],
+    FRAMEWORK_ORDER[template.framework],
+    BUILD_ORDER[template.build],
+  ];
+}
+
+/** Template names ordered by protocol, then language, framework, and build, for `--template` help and the wizard. */
+export const RUNTIME_TEMPLATE_SHORTCUT_NAMES = (
+  Object.keys(RUNTIME_TEMPLATE_SHORTCUTS) as RuntimeTemplateShortcutName[]
+).sort((a, b) => {
+  const left = templateSortKey(RUNTIME_TEMPLATE_SHORTCUTS[a]);
+  const right = templateSortKey(RUNTIME_TEMPLATE_SHORTCUTS[b]);
+  return left.map((value, i) => value - right[i]!).find((diff) => diff !== 0) ?? 0;
+}) as unknown as readonly [RuntimeTemplateShortcutName, ...RuntimeTemplateShortcutName[]];
 
 /** The empty template scaffolds a project with no runtime and no harness. */
 export const EMPTY_TEMPLATE_NAME = "empty";

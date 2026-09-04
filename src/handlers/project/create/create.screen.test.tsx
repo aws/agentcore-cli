@@ -329,7 +329,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a template");
     await r.press("down"); // agent-python-strands-container
     await r.press("down"); // agent-python-langchain
-    await r.press("down"); // agent-typescript-strands
     await r.press("down"); // agent-python-minimal
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
