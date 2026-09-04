@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import z from "zod";
 import { createHandler, flag, PlatformKey } from "../../../router";
 import { assertProjectPathFits } from "./pathLimit";
@@ -154,10 +155,11 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
   const provider = resolveHarnessModelProvider(flags["model-provider"]);
 
   const input: ScaffoldHarnessInput = {
-    // A project name always satisfies the harness name grammar (letters and
-    // digits only), so the harness is named after the project like the
-    // original CLI does.
-    name: flags["name"],
+    // CFN's HarnessName is `${projectName}_${harnessName}` capped at 40 chars.
+    // Defaulting the harness to the project name doubles the string, so when
+    // the doubled form would exceed the CFN cap we truncate the harness half
+    // and append a 5-char hash to keep the derived name short and unique.
+    name: defaultHarnessNameFor(flags["name"]),
     model: {
       provider,
       modelId: flags["model-id"] ?? HARNESS_DEFAULT_MODEL_IDS[provider],
@@ -170,6 +172,19 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
   if (!result.success)
     throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
   return input;
+}
+
+// CloudFormation limits HarnessName to 40 characters. The synth step joins the
+// project name and the harness name with an underscore. The default harness
+// name is the project name. If the project name is 19 characters or less, the
+// joined name fits. If the project name is longer, this function shortens the
+// harness name so that the joined name is 40 characters. The shortened name
+// ends with a 5-character hash of the project name.
+function defaultHarnessNameFor(projectName: string): string {
+  if (projectName.length <= 19) return projectName;
+  const hash = createHash("sha256").update(projectName).digest("hex").slice(0, 5);
+  const prefixLen = 40 - projectName.length - 1 - 6;
+  return `${projectName.slice(0, prefixLen)}_${hash}`;
 }
 
 // Runtimes and harnesses support different model sets and record them under
