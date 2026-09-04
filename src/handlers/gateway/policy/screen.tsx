@@ -38,6 +38,7 @@ export function GatewayPolicyGenerateScreen(props: ScreenProps) {
         breadcrumb={["agentcore", "gateway", "policy", "generate"]}
         description="choose a Gateway to generate a policy for"
         onSelect={(id) => navigate(`${PICKER_PATH}/${encodeURIComponent(id)}`)}
+        onEscape={() => navigate("/agentcore/gateway")}
       />
     );
   }
