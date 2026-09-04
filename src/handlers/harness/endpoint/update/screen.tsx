@@ -1,8 +1,8 @@
 import { Text } from "ink";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 import { HarnessPicker } from "../../../../components/HarnessPicker";
 import { HarnessEndpointPicker } from "../../../../components/HarnessEndpointPicker";
 import { EndpointWizard } from "../../../../components/EndpointWizard";
@@ -14,7 +14,7 @@ import { useFinishFlow } from "../../../../components/useFinishFlow";
 // harness, pick the endpoint, then run the endpoint wizard prefilled with the
 // endpoint's current target version, ending in an UpdateHarnessEndpoint call.
 export function HarnessUpdateEndpointScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { harnessId, endpointName } = useParams();
 
   if (!harnessId) {
@@ -47,7 +47,7 @@ function UpdateWizard({
   harnessId,
   endpointName,
 }: ScreenProps & { harnessId: string; endpointName: string }) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const finishFlow = useFinishFlow("/agentcore/harness/endpoint");
 
   // The wizard seeds its form state once on mount, so it renders only after the

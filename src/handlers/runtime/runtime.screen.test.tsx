@@ -499,4 +499,37 @@ describe("runtime hub", () => {
       return frame.includes("agentcore → runtime → get → runtime-123") && !frame.includes("→ json");
     });
   });
+
+  // A hub reached with ?region= (from project status or a harness's linked
+  // rows) fetches there; its actions must keep fetching there too.
+  test("a hub opened with ?region= carries the region into its actions", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse(getRuntimeResponse());
+    core.runtime.setListEndpointsResponse({ runtimeEndpoints: [] });
+    const r = renderScreen("/agentcore/runtime/get/runtime-123?region=eu-west-1", { core });
+
+    await waitForText(r.lastFrame, "show the full JSON definition");
+    expect(core.runtime.calls.find((call) => call.method === "getRuntime")?.args[1]).toMatchObject({
+      region: "eu-west-1",
+    });
+
+    await r.press("down");
+    await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → endpoint → list → runtime-123");
+    await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeEndpoints"));
+    expect(
+      core.runtime.calls.find((call) => call.method === "listRuntimeEndpoints")?.args[3],
+    ).toMatchObject({ region: "eu-west-1" });
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "show the full JSON definition");
+    for (let index = 0; index < 4; index += 1) await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123 → json");
+    await waitForText(r.lastFrame, '"agentRuntimeId"');
+    const fetches = core.runtime.calls.filter((call) => call.method === "getRuntime");
+    expect(fetches.length).toBeGreaterThanOrEqual(2);
+    for (const fetch of fetches) expect(fetch.args[1]).toMatchObject({ region: "eu-west-1" });
+  });
 });

@@ -3,10 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 function useDatasetDetail({ ctx, core }: ScreenProps, datasetId: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["dataset", opts.region, datasetId],
     queryFn: () => core.eval.getDataset(datasetId!, undefined, opts),

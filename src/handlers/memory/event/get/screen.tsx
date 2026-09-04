@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 export function MemoryEventGetScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const { memoryId, actorId, sessionId, eventId } = useParams();
   const detail = useQuery({
     queryKey: ["memory-event", opts.region, memoryId, actorId, sessionId, eventId],

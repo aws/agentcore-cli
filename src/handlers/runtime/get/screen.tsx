@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
-import { useCoreOpts } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 
 const ACTIONS = [
   {
@@ -45,7 +45,7 @@ function useRuntimeDetail({ ctx, core }: ScreenProps, runtimeId: string | undefi
 }
 
 export function RuntimeGetScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { runtimeId } = useParams();
   const detail = useRuntimeDetail(props, runtimeId);
 

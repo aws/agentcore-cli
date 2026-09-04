@@ -1,10 +1,9 @@
 import type { Oauth2CredentialProviderItem } from "@aws-sdk/client-bedrock-agentcore-control";
-import { useNavigate } from "react-router";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 
 // The Identity list APIs cap maxResults at 20
 const MAX_PAGE_SIZE = 20;
@@ -33,8 +32,8 @@ function toRow(provider: Oauth2CredentialProviderItem): Oauth2ProviderRow {
 }
 
 export function Oauth2CredentialProviderListScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
+  const opts = useCoreOpts(ctx);
+  const navigate = useRegionNavigate();
 
   return (
     <PaginatedTablePicker

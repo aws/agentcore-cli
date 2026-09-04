@@ -1,10 +1,11 @@
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
 import { RuntimeEndpointPicker } from "../../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../../components/RuntimePicker";
+import { useRegionNavigate } from "../../../utils";
 
 export function RuntimeListEndpointsScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { runtimeId } = useParams();
 
   if (!runtimeId) {

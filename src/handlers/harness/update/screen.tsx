@@ -1,8 +1,8 @@
 import { Text } from "ink";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import { HarnessPicker } from "../../../components/HarnessPicker";
 import { HarnessWizard, fromHarness } from "../../../components/HarnessWizard";
 import { useFinishFlow } from "../../../components/useFinishFlow";
@@ -14,7 +14,7 @@ import { Spinner } from "../../../components/ui/spinner";
 // current configuration and reuses the create wizard's steps, prefilled, ending
 // in an UpdateHarness call (which creates a new version).
 export function HarnessUpdateScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { harnessId } = useParams();
 
   if (!harnessId) {
@@ -31,8 +31,8 @@ export function HarnessUpdateScreen(props: ScreenProps) {
 }
 
 function UpdateWizard({ ctx, core, harnessId }: ScreenProps & { harnessId: string }) {
-  const navigate = useNavigate();
-  const opts = coreOptsFromCtx(ctx);
+  const navigate = useRegionNavigate();
+  const opts = useCoreOpts(ctx);
   const finishFlow = useFinishFlow("/agentcore/harness");
 
   // The wizard seeds its form state once on mount, so it renders only after the

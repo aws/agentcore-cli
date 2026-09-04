@@ -176,6 +176,30 @@ describe("harness hub screen", () => {
     await waitFor(() => core.harness.calls.some((c) => c.method === "listHarnesses"));
     r.unmount();
   });
+
+  // A hub reached with ?region= (from project status) fetches there; its
+  // actions must keep fetching there too.
+  test("a hub opened with ?region= carries the region into its endpoint list", async () => {
+    const core = new TestCoreClient();
+    core.harness.setGetResponse(getResponse());
+    core.harness.setListEndpointsResponse({ endpoints: [] });
+    const r = renderScreen("/agentcore/harness/get/MyHarness-abc123?region=us-west-2", { core });
+
+    await waitForText(r.lastFrame, "detail");
+    const get = core.harness.calls.find((c) => c.method === "getHarness")!;
+    expect(get.args[1]).toMatchObject({ region: "us-west-2" });
+
+    await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore → harness → endpoint → list → MyHarness-abc123");
+    await waitFor(() => core.harness.calls.some((c) => c.method === "listHarnessEndpoints"));
+    const list = core.harness.calls.find((c) => c.method === "listHarnessEndpoints")!;
+    const options = list.args.find(
+      (arg) => typeof arg === "object" && arg !== null && "region" in arg,
+    );
+    expect(options).toMatchObject({ region: "us-west-2" });
+    r.unmount();
+  });
 });
 
 // The linked resources live in us-west-2 while the test context's ambient
@@ -480,6 +504,26 @@ describe("harness hub linked resources", () => {
     await focusTree(r);
     expect(r.lastFrame()).toContain("open");
     expect(r.lastFrame()).toContain("collapse/expand");
+    r.unmount();
+  });
+
+  test("a linked runtime's region follows it into the runtime's detail JSON", async () => {
+    const { core, r } = linkedHubScreen();
+
+    await waitForText(r.lastFrame, "linked resources");
+    await focusTree(r);
+    await r.press("return");
+    await waitForText(r.lastFrame, `agentcore → runtime → get → ${RUNTIME_ID}`);
+    await waitForText(r.lastFrame, "show the full JSON definition");
+    // invoke → shell → endpoints → versions → detail
+    for (let press = 0; press < 4; press++) await r.press("down");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, `agentcore → runtime → get → ${RUNTIME_ID} → json`);
+    await waitForText(r.lastFrame, '"agentRuntimeId"');
+    const fetches = core.runtime.calls.filter(({ method }) => method === "getRuntime");
+    expect(fetches.length).toBeGreaterThanOrEqual(2);
+    for (const fetch of fetches) expect(fetch.args[1]).toMatchObject({ region: LINK_REGION });
     r.unmount();
   });
 });

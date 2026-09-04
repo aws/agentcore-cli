@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { useCoreOpts } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 
 function useApiKeyProviderDetail({ ctx, core }: ScreenProps, name: string | undefined) {
   const opts = useCoreOpts(ctx);
@@ -15,7 +15,7 @@ function useApiKeyProviderDetail({ ctx, core }: ScreenProps, name: string | unde
 }
 
 export function ApiKeyCredentialProviderGetScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { name } = useParams();
   const detail = useApiKeyProviderDetail(props, name);
 

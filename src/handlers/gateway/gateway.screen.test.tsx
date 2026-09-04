@@ -11,10 +11,11 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
+  menuEntries,
   renderScreen,
   TestCoreClient,
+  waitFor,
   waitForText,
-  menuEntries,
 } from "../../testing";
 
 afterEach(cleanupScreens);
@@ -314,6 +315,31 @@ describe("Gateway Target flow", () => {
     await waitForText(screen.lastFrame, "choose a Gateway to list Targets for");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage Targets for an AgentCore Gateway");
+  });
+
+  // A hub reached with ?region= (from project status or a harness's linked
+  // rows) fetches there; its actions must keep fetching there too.
+  test("a Gateway hub opened with ?region= carries the region into its Target list", async () => {
+    const core = new TestCoreClient();
+    core.gateway.setGetResponse(gatewayDetail());
+    core.gateway.setListTargetsResponse({ items: [] });
+    const screen = renderScreen(
+      `/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}?region=eu-west-1`,
+      { core },
+    );
+
+    await waitForText(screen.lastFrame, "browse every Target");
+    expect(core.gateway.calls.find((call) => call.method === "getGateway")?.args[1]).toMatchObject({
+      region: "eu-west-1",
+    });
+
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, `agentcore → gateway → target → list → ${GATEWAY_ID}`);
+    await waitFor(() => core.gateway.calls.some((call) => call.method === "listGatewayTargets"));
+    expect(
+      core.gateway.calls.find((call) => call.method === "listGatewayTargets")?.args[3],
+    ).toMatchObject({ region: "eu-west-1" });
   });
 });
 

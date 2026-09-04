@@ -322,4 +322,26 @@ describe("Memory detail", () => {
     expect(screen.lastFrame()).toContain("agentcore → memory → get → memory-1");
     expect(screen.lastFrame()).not.toContain("→ json");
   });
+
+  // A hub reached with ?region= (from project status or a harness's linked
+  // rows) fetches there; its actions must keep fetching there too.
+  test("a hub opened with ?region= carries the region into its actor list", async () => {
+    const core = new TestCoreClient();
+    core.memory.setGetResponse(getMemoryOutput());
+    core.memory.setListActorsResponse({ actorSummaries: [] });
+    const screen = renderScreen("/agentcore/memory/get/memory-1?region=eu-west-1", { core });
+
+    await waitForText(screen.lastFrame, "list this Memory's events");
+    expect(core.memory.calls.find((call) => call.method === "getMemory")?.args[2]).toMatchObject({
+      region: "eu-west-1",
+    });
+
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "choose an actor to list sessions for");
+    await waitFor(() => core.memory.calls.some((call) => call.method === "listActors"));
+    expect(core.memory.calls.find((call) => call.method === "listActors")?.args[1]).toMatchObject({
+      region: "eu-west-1",
+    });
+  });
 });

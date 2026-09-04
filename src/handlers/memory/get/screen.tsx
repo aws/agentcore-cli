@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
-import { useCoreOpts } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 
 const ACTIONS = [
   {
@@ -43,7 +43,7 @@ function useMemoryDetail({ ctx, core }: ScreenProps, memoryId: string | undefine
 }
 
 export function MemoryGetScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { memoryId } = useParams();
   const detail = useMemoryDetail(props, memoryId);
   const memory = detail.data?.memory;

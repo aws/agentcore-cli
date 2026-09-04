@@ -1,9 +1,9 @@
-import { useNavigate } from "react-router";
 import { MemoryPicker } from "../../../components/MemoryPicker";
 import type { ScreenProps } from "../../types";
+import { useRegionNavigate } from "../../utils";
 
 export function MemoryListScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   return (
     <MemoryPicker

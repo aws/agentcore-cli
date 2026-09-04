@@ -3,10 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 function useAbTestDetail({ ctx, core }: ScreenProps, abTestId: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["ab-test", opts.region, abTestId],
     queryFn: () => core.eval.getABTest(abTestId!, opts),

@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 function useBatchInsightsDetail({ ctx, core }: ScreenProps, id: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["batch-insights", opts.region, id],
     queryFn: () => core.eval.getBatchInsights(id!, opts),

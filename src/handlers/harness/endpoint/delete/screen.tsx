@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 import { HarnessPicker } from "../../../../components/HarnessPicker";
 import { HarnessEndpointPicker } from "../../../../components/HarnessEndpointPicker";
 import { ConfirmAction } from "../../../../components/ConfirmAction";
@@ -11,7 +11,7 @@ import { useFinishFlow } from "../../../../components/useFinishFlow";
 // from a harness picker to an endpoint picker to a confirmation, then calls
 // DeleteHarnessEndpoint.
 export function HarnessDeleteEndpointScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { harnessId, endpointName } = useParams();
 
   if (!harnessId) {
@@ -44,7 +44,7 @@ function DeleteConfirm({
   harnessId,
   endpointName,
 }: ScreenProps & { harnessId: string; endpointName: string }) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const finishFlow = useFinishFlow("/agentcore/harness/endpoint");
 
   const detail = useQuery({

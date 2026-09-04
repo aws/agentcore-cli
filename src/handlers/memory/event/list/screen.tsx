@@ -1,11 +1,11 @@
 import type { Event } from "@aws-sdk/client-bedrock-agentcore";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { MemoryPicker } from "../../../../components/MemoryPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 import { MemoryActorPicker, MemorySessionPicker } from "../../listPickers";
 
 interface EventRow extends Record<string, unknown> {
@@ -41,8 +41,8 @@ interface EventPickerProps extends ScreenProps {
 }
 
 function EventPicker({ ctx, core, memoryId, actorId, sessionId }: EventPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
+  const opts = useCoreOpts(ctx);
+  const navigate = useRegionNavigate();
 
   return (
     <PaginatedTablePicker
@@ -82,7 +82,7 @@ function EventPicker({ ctx, core, memoryId, actorId, sessionId }: EventPickerPro
 }
 
 export function MemoryEventListScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { memoryId, actorId, sessionId } = useParams();
 
   if (!memoryId) {

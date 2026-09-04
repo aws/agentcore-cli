@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import { HarnessPicker } from "../../../components/HarnessPicker";
 import { HarnessEndpointPicker } from "../../../components/HarnessEndpointPicker";
 import { Layout } from "../../../components/Layout";
@@ -37,7 +37,7 @@ const theme = darkTheme;
 export function HarnessInvokeScreen(props: ScreenProps) {
   const { harnessId, sessionId } = useParams();
   const [search] = useSearchParams();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   if (!harnessId) {
     return (
@@ -95,9 +95,9 @@ export function HarnessChat({
   variant,
   onBack,
 }: HarnessChatProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const { columns, rows } = useWindowSize();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   const detail = useQuery({
     queryKey: ["harness", opts.region, harnessId],

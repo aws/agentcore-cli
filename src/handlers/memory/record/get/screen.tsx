@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 export function MemoryRecordGetScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const { memoryId, recordId } = useParams();
   const detail = useQuery({
     queryKey: ["memory-record", opts.region, memoryId, recordId],

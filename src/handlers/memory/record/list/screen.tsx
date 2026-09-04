@@ -1,7 +1,7 @@
 import type { MemoryContent, MemoryRecordSummary } from "@aws-sdk/client-bedrock-agentcore";
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { FormRadioGroup, type FormRadioOption } from "../../../../components/FormRadioGroup";
 import { FormTextInput } from "../../../../components/FormTextInput";
 import { Layout } from "../../../../components/Layout";
@@ -11,7 +11,7 @@ import { formatTimestamp } from "../../../../components/formatTimestamp";
 import { darkTheme } from "../../../../components/ui/_core";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 
 type RecordScopeKind = "namespace" | "namespace-path";
 
@@ -65,7 +65,7 @@ interface MemoryRecordScopeScreenProps {
 }
 
 function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [scope, setScope] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -158,8 +158,8 @@ interface MemoryRecordPickerProps extends ScreenProps {
 }
 
 function MemoryRecordPicker({ ctx, core, memoryId, scopeKind, scope }: MemoryRecordPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
+  const opts = useCoreOpts(ctx);
+  const navigate = useRegionNavigate();
 
   return (
     <PaginatedTablePicker
@@ -200,7 +200,7 @@ function MemoryRecordPicker({ ctx, core, memoryId, scopeKind, scope }: MemoryRec
 }
 
 export function MemoryRecordListScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { memoryId, scopeKind, scope } = useParams();
 
   if (!memoryId) {

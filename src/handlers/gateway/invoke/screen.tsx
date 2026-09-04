@@ -5,7 +5,7 @@ import cliTruncate from "cli-truncate";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { GatewayPicker } from "../../../components/GatewayPicker";
 import { Layout } from "../../../components/Layout";
 import { MultilineInput } from "../../../components/MultilineInput";
@@ -15,7 +15,7 @@ import { Spinner } from "../../../components/ui/spinner";
 import { TextInput } from "../../../components/ui/text-input";
 import { classifyStreamingResponse } from "../../../io";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import type { GatewayInvokeRequest, GatewayInvokeResponse } from "../types";
 import { GatewayInvokeLaunchContextKey, type GatewayInvokeLaunchContext } from "./launchContext";
 import { normalizeGatewayInvokeRequest } from "./request";
@@ -140,7 +140,7 @@ function PathEditor({
 
 export function GatewayInvokeScreen(props: ScreenProps) {
   const { gatewayId } = useParams();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const launchContext = props.ctx.value(GatewayInvokeLaunchContextKey);
   const initialContext = launchContext?.gatewayId === gatewayId ? launchContext : undefined;
 
@@ -164,8 +164,8 @@ type GatewayInvokeConsoleProps = ScreenProps & {
 };
 
 function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayInvokeConsoleProps) {
-  const navigate = useNavigate();
-  const opts = coreOptsFromCtx(ctx);
+  const navigate = useRegionNavigate();
+  const opts = useCoreOpts(ctx);
   const { columns, rows } = useWindowSize();
   const [targetGatewayId, setTargetGatewayId] = useState(gatewayId);
   const [pickingGateway, setPickingGateway] = useState(false);

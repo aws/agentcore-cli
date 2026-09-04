@@ -1,7 +1,8 @@
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import type { ScreenProps } from "../../types";
 import { HarnessPicker } from "../../../components/HarnessPicker";
 import { HarnessChat } from "../invoke/screen";
+import { useRegionNavigate } from "../../utils";
 
 // HarnessExecScreen is `harness exec` in the TUI: the same chat screen as
 // invoke, but starting in exec mode ($ prompt, enter runs a shell command in
@@ -11,7 +12,7 @@ import { HarnessChat } from "../invoke/screen";
 export function HarnessExecScreen(props: ScreenProps) {
   const { harnessId, sessionId } = useParams();
   const [search] = useSearchParams();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   if (!harnessId) {
     return (

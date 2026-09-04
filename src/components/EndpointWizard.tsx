@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import type {
   CreateHarnessEndpointRequest,
   UpdateHarnessEndpointRequest,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../handlers/types";
-import { coreOptsFromCtx } from "../handlers/utils";
+import { useCoreOpts, useRegionNavigate } from "../handlers/utils";
 import { Layout } from "./Layout";
 import { FormRadioGroup, type FormRadioOption } from "./FormRadioGroup";
 import { FormTextInput } from "./FormTextInput";
@@ -60,8 +59,8 @@ export function EndpointWizard({
   initial,
   onDone,
 }: EndpointWizardProps) {
-  const navigate = useNavigate();
-  const opts = coreOptsFromCtx(ctx);
+  const navigate = useRegionNavigate();
+  const opts = useCoreOpts(ctx);
 
   const steps: Step[] = useMemo(() => {
     const all: Step[] = [

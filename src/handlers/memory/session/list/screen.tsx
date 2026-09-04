@@ -1,10 +1,11 @@
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { MemoryPicker } from "../../../../components/MemoryPicker";
 import type { ScreenProps } from "../../../types";
 import { MemoryActorPicker, MemorySessionPicker } from "../../listPickers";
+import { useRegionNavigate } from "../../../utils";
 
 export function MemorySessionListScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { memoryId, actorId } = useParams();
 
   if (!memoryId) {

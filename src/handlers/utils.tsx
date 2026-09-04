@@ -1,4 +1,5 @@
-import { useSearchParams } from "react-router";
+import { useCallback } from "react";
+import { useNavigate, useSearchParams, type NavigateOptions } from "react-router";
 import type { Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
@@ -30,6 +31,38 @@ export function useCoreOpts(ctx: Context): CoreOptions {
   const region = search.get("region");
   const opts = coreOptsFromCtx(ctx);
   return region ? { ...opts, region } : opts;
+}
+
+// withRegion carries a region override onto a route as the ?region= query
+// useCoreOpts reads on the other side. A route that already names a region
+// keeps it (a linked resource's own region beats the current screen's), and
+// without an override the route comes back unchanged.
+export function withRegion(to: string, region: string | null | undefined): string {
+  if (!region) return to;
+  const [path = "", query = ""] = to.split("?", 2);
+  const params = new URLSearchParams(query);
+  if (params.has("region")) return to;
+  params.set("region", region);
+  return `${path}?${params.toString()}`;
+}
+
+// useRegionNavigate is useNavigate for screens that may have been opened with
+// a ?region= override. A hub reached through project status or a harness's
+// linked rows fetches in that region, but its actions, the lists they open and
+// the rows those lists forward to are all routes of their own — so string
+// routes carry the override forward and the whole flow keeps fetching where
+// the resource lives. History moves (navigate(-1)) pass through untouched.
+export function useRegionNavigate(): (to: string | number, options?: NavigateOptions) => void {
+  const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const region = search.get("region");
+  return useCallback(
+    (to: string | number, options?: NavigateOptions) => {
+      if (typeof to === "number") navigate(to);
+      else navigate(withRegion(to, region), options);
+    },
+    [navigate, region],
+  );
 }
 
 // parseJsonFlag parses a flag's raw string as JSON, typed as the API structure

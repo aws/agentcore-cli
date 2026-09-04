@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseJsonArrayFlag, parseJsonObjectFlag, parseTags } from "./utils";
+import { parseJsonArrayFlag, parseJsonObjectFlag, parseTags, withRegion } from "./utils";
 
 describe("structured JSON flags", () => {
   test("parses object and array values", () => {
@@ -63,5 +63,33 @@ describe("parseTags", () => {
 
   test("rejects bare value without equals", () => {
     expect(() => parseTags(["noequals"])).toThrow("expected key=value");
+  });
+});
+
+describe("withRegion", () => {
+  test("appends the region as a query string", () => {
+    expect(withRegion("/agentcore/runtime/get/rt-1", "eu-west-1")).toBe(
+      "/agentcore/runtime/get/rt-1?region=eu-west-1",
+    );
+  });
+
+  test("joins an existing query string", () => {
+    expect(withRegion("/agentcore/harness/exec/h-1?qualifier=PROD", "eu-west-1")).toBe(
+      "/agentcore/harness/exec/h-1?qualifier=PROD&region=eu-west-1",
+    );
+  });
+
+  test("keeps a region the route already names", () => {
+    expect(withRegion("/agentcore/memory/get/m-1?region=us-west-2", "eu-west-1")).toBe(
+      "/agentcore/memory/get/m-1?region=us-west-2",
+    );
+  });
+
+  test("leaves the route alone without an override", () => {
+    expect(withRegion("/agentcore/runtime/get/rt-1", null)).toBe("/agentcore/runtime/get/rt-1");
+    expect(withRegion("/agentcore/runtime/get/rt-1", undefined)).toBe(
+      "/agentcore/runtime/get/rt-1",
+    );
+    expect(withRegion("/agentcore/runtime/get/rt-1", "")).toBe("/agentcore/runtime/get/rt-1");
   });
 });

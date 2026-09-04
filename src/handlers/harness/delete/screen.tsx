@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import { HarnessPicker } from "../../../components/HarnessPicker";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 
@@ -9,7 +9,7 @@ import { ConfirmAction } from "../../../components/ConfirmAction";
 // renders a harness picker; with one it shows the harness summary and asks for
 // confirmation before calling DeleteHarness.
 export function HarnessDeleteScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { harnessId } = useParams();
 
   if (!harnessId) {
@@ -26,8 +26,8 @@ export function HarnessDeleteScreen(props: ScreenProps) {
 }
 
 function DeleteConfirm({ ctx, core, harnessId }: ScreenProps & { harnessId: string }) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
+  const opts = useCoreOpts(ctx);
+  const navigate = useRegionNavigate();
 
   const detail = useQuery({
     queryKey: ["harness", opts.region, harnessId],

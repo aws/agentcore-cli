@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useApp, useStderr, useStdin, useStdout } from "ink";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
 import { Spinner } from "../../../components/ui/spinner";
@@ -8,6 +8,7 @@ import { SilentCLIError } from "../../../errors";
 import type { ScreenProps } from "../../types";
 import { RuntimeShellLaunchContextKey } from "./launchContext";
 import { runRuntimeShell } from "./operation";
+import { useRegionNavigate } from "../../utils";
 
 type RuntimeShellLocationState = {
   returnOnEscape?: boolean;
@@ -20,7 +21,7 @@ const shellPath = (...parts: string[]) =>
 export function RuntimeShellScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const locationState = location.state as RuntimeShellLocationState | null;
   const returnOnEscape = locationState?.returnOnEscape;
 
@@ -85,7 +86,7 @@ function RuntimeShellHandoff({
   const { stdin } = useStdin();
   const { stdout } = useStdout();
   const { stderr } = useStderr();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const requested = useRef(false);
   const launchContext = ctx.value(RuntimeShellLaunchContextKey);
   const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;

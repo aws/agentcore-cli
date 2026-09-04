@@ -4,10 +4,10 @@ import type { GetEvaluatorResponse } from "@aws-sdk/client-bedrock-agentcore-con
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 function useEvaluatorDetail({ ctx, core }: ScreenProps, evaluatorId: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["evaluator", opts.region, evaluatorId],
     queryFn: () => core.eval.getEvaluator(evaluatorId!, opts),

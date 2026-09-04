@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 export function RuntimeGetVersionScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const { runtimeId, version } = useParams();
   const detail = useQuery({
     queryKey: ["runtime-version", opts.region, runtimeId, version],

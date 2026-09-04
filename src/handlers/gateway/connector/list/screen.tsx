@@ -1,11 +1,12 @@
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { GatewayConnectorPicker } from "../../../../components/GatewayConnectorPicker";
 import { GatewayPicker } from "../../../../components/GatewayPicker";
 import type { ScreenProps } from "../../../types";
+import { useRegionNavigate } from "../../../utils";
 
 export function GatewayConnectorListScreen(props: ScreenProps) {
   const { gatewayId } = useParams();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   if (!gatewayId) {
     return (

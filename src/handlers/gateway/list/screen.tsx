@@ -1,9 +1,9 @@
-import { useNavigate } from "react-router";
 import { GatewayPicker } from "../../../components/GatewayPicker";
 import type { ScreenProps } from "../../types";
+import { useRegionNavigate } from "../../utils";
 
 export function GatewayListScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   return (
     <GatewayPicker

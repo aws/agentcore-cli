@@ -8,7 +8,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CreateHarnessInput } from "../handlers/harness/types";
 import type { ScreenProps } from "../handlers/types";
-import { coreOptsFromCtx } from "../handlers/utils";
+import { useCoreOpts } from "../handlers/utils";
 import { Layout } from "./Layout";
 import { ErrorPanel } from "./ErrorPanel";
 import { FormTextInput } from "./FormTextInput";
@@ -268,7 +268,7 @@ export function HarnessWizard({
   onDone,
   onExit,
 }: HarnessWizardProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
 
   const steps: Step[] = useMemo(() => {
     const all: Step[] = [

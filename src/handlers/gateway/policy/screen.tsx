@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { ErrorPanel } from "../../../components/ErrorPanel";
 import { GatewayPicker } from "../../../components/GatewayPicker";
 import { KeyValueTable } from "../../../components/KeyValueTable";
@@ -14,7 +14,7 @@ import { TaskList, type Task } from "../../../components/ui/task-list";
 import { darkTheme, glyphs } from "../../../components/ui/_core.js";
 import { UserCancellationError } from "../../../errors";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import type { PolicyGenerationResult } from "./types";
 
 const theme = darkTheme;
@@ -29,7 +29,7 @@ type Phase =
 
 export function GatewayPolicyGenerateScreen(props: ScreenProps) {
   const { gatewayId } = useParams();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   if (!gatewayId) {
     return (
@@ -50,8 +50,8 @@ function finishTasks(tasks: Task[], state: Task["state"]): Task[] {
 }
 
 function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId: string }) {
-  const navigate = useNavigate();
-  const opts = coreOptsFromCtx(ctx);
+  const navigate = useRegionNavigate();
+  const opts = useCoreOpts(ctx);
   const gateway = useQuery({
     queryKey: ["gateway", opts.region, gatewayId],
     queryFn: () => core.gateway.getGateway(gatewayId, opts),

@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import type { Harness, HarnessTool } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../../types";
-import { useCoreOpts } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import {
   credentialProviderTypeFromArn,
   parseArn,
@@ -288,7 +288,7 @@ function useHarnessDetail({ ctx, core }: ScreenProps, harnessId: string | undefi
 // the API key providers behind the model and git-backed skills. Enter on a
 // linked row opens that resource's own hub in the region its ARN names.
 export function HarnessGetScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { harnessId } = useParams();
   const { query: detail, region } = useHarnessDetail(props, harnessId);
   const harness = detail.data?.harness;

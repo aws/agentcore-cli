@@ -1,6 +1,6 @@
 import type { ConfigurationBundleVersionSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../handlers/types";
-import { coreOptsFromCtx } from "../handlers/utils";
+import { useCoreOpts } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
 import type { DataTableColumn } from "./ui/data-table";
@@ -49,7 +49,7 @@ export function ConfigBundleVersionPicker({
   onSelect,
   onBack,
 }: ConfigBundleVersionPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
 
   return (
     <PaginatedTablePicker

@@ -1,7 +1,7 @@
 import type { EvaluatorSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
-import { coreOptsFromCtx } from "../handlers/utils";
+import { useCoreOpts } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
 import type { DataTableColumn } from "./ui/data-table";
@@ -62,7 +62,7 @@ export function EvaluatorPicker({
   onSelect,
   onEscape,
 }: EvaluatorPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const navigate = useNavigate();
   const goBack = onEscape ?? (() => navigate("/" + breadcrumb.slice(0, -1).join("/")));
 

@@ -1,10 +1,9 @@
 import type { ApiKeyCredentialProviderItem } from "@aws-sdk/client-bedrock-agentcore-control";
-import { useNavigate } from "react-router";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 
 // identity list APIs cap maxResults at 20
 const MAX_PAGE_SIZE = 20;
@@ -30,8 +29,8 @@ function toRow(provider: ApiKeyCredentialProviderItem): ApiKeyProviderRow {
 }
 
 export function ApiKeyCredentialProviderListScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
+  const opts = useCoreOpts(ctx);
+  const navigate = useRegionNavigate();
 
   return (
     <PaginatedTablePicker

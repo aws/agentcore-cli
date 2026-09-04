@@ -3,7 +3,7 @@ import { PaginatedTablePicker } from "../../components/PaginatedTablePicker";
 import { formatTimestamp } from "../../components/formatTimestamp";
 import type { DataTableColumn } from "../../components/ui/data-table";
 import type { ScreenProps } from "../types";
-import { coreOptsFromCtx } from "../utils";
+import { useCoreOpts } from "../utils";
 
 interface MemoryActorRow extends Record<string, unknown> {
   actorId: string;
@@ -34,7 +34,7 @@ export function MemoryActorPicker({
   onSelect,
   onBack,
 }: MemoryActorPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
 
   return (
     <PaginatedTablePicker
@@ -106,7 +106,7 @@ export function MemorySessionPicker({
   onSelect,
   onBack,
 }: MemorySessionPickerProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
 
   return (
     <PaginatedTablePicker

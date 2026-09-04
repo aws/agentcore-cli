@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 // getBatchEvaluation already fetches the job and merges the per-session CloudWatch
 // results, returning `{ detail, resultsError? }`. The screen keeps both: a
@@ -10,7 +10,7 @@ import { coreOptsFromCtx } from "../../../utils";
 // that simply has none yet, so `resultsError` drives a warning banner (the TUI's
 // equivalent of the CLI's stderr warning).
 function useBatchEvaluationDetail({ ctx, core }: ScreenProps, id: string | undefined) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["batch-evaluation", opts.region, id],
     queryFn: () => core.eval.getBatchEvaluation(id!, opts),

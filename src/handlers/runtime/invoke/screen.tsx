@@ -3,11 +3,11 @@ import { ServiceException } from "@smithy/core/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import cliTruncate from "cli-truncate";
 import type { ScreenProps } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../utils";
 import { Layout } from "../../../components/Layout";
 import { MultilineInput } from "../../../components/MultilineInput";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
@@ -95,7 +95,7 @@ function ErrorBlock({ details }: { details: ErrorDetails }) {
 export function RuntimeInvokeScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const launchContext = props.ctx.value(RuntimeInvokeLaunchContextKey);
   const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;
   const returnOnEscape = (location.state as RuntimeInvokeLocationState | null)?.returnOnEscape;
@@ -157,8 +157,8 @@ export function RuntimeInvokeConsole({
   returnOnEscape,
   onBack,
 }: RuntimeInvokeConsoleProps) {
-  const opts = coreOptsFromCtx(ctx);
-  const navigate = useNavigate();
+  const opts = useCoreOpts(ctx);
+  const navigate = useRegionNavigate();
   const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);

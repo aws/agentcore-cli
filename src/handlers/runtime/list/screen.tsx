@@ -1,9 +1,9 @@
-import { useNavigate } from "react-router";
 import type { ScreenProps } from "../../types";
 import { RuntimePicker } from "../../../components/RuntimePicker";
+import { useRegionNavigate } from "../../utils";
 
 export function RuntimeListScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
 
   return (
     <RuntimePicker

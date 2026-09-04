@@ -34,7 +34,8 @@ headless). A bare `project status` opens a Linked Resources view that groups
 the project's resources by agent and forwards to each deployed resource's
 detail page. The harness hub (`harness get`) ends with the same kind of Linked
 Resources tree for the Runtime, Memory, Gateway, Browser, Code Interpreter and
-credential providers wired to that harness, each opening in its own region.
+credential providers wired to that harness, each opening in its own region; the
+region then follows that resource through its actions, lists and detail views.
 
 ```
 agentcore                          # interactive TUI

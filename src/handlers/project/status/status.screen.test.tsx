@@ -14,6 +14,7 @@ import {
   flatFrame,
   renderScreen,
   TestCoreClient,
+  waitFor,
   waitForFlatText,
   waitForText,
 } from "../../../testing";
@@ -287,5 +288,70 @@ describe("project status screen", () => {
     expect(flatFrame(screen.lastFrame)).toContain("agentcore project create");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
+  });
+
+  // A detail page opened from status fetches in the target's region, but its
+  // actions are routes of their own: without the override travelling with
+  // them the JSON view (and every list) would fetch in the ambient region and
+  // fail to find the resource.
+  test("the target region follows the Runtime into its detail JSON", async () => {
+    const value = core();
+    const screen = renderStatus(value);
+
+    await waitForGroup(screen);
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "show the full JSON definition");
+    // invoke → shell → endpoints → versions → detail
+    for (let press = 0; press < 4; press++) await screen.press("down");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "agentcore → runtime → get → " + RUNTIME_ID + " → json");
+    await waitForText(screen.lastFrame, '"agentRuntimeId"');
+    const fetches = value.runtime.calls.filter(({ method }) => method === "getRuntime");
+    expect(fetches.length).toBeGreaterThanOrEqual(2);
+    for (const fetch of fetches) expect(fetch.args[1]).toMatchObject({ region: TARGET.region });
+  });
+
+  test("the target region follows the Runtime into its endpoint list", async () => {
+    const value = core();
+    value.runtime.setListEndpointsResponse({ runtimeEndpoints: [] });
+    const screen = renderStatus(value);
+
+    await waitForGroup(screen);
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "show the full JSON definition");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "agentcore → runtime → endpoint → list → " + RUNTIME_ID);
+    await waitFor(() =>
+      value.runtime.calls.some(({ method }) => method === "listRuntimeEndpoints"),
+    );
+    const call = value.runtime.calls.find(({ method }) => method === "listRuntimeEndpoints")!;
+    expect(call.args[0]).toBe(RUNTIME_ID);
+    expect(call.args[3]).toMatchObject({ region: TARGET.region });
+  });
+
+  test("the target region follows the Memory into its actor list", async () => {
+    const value = core();
+    value.memory.setListActorsResponse({ actorSummaries: [] });
+    const screen = renderStatus(value);
+
+    await waitForGroup(screen);
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "list this Memory's events");
+    await screen.press("down");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "choose an actor to list sessions for");
+    await waitFor(() => value.memory.calls.some(({ method }) => method === "listActors"));
+    const call = value.memory.calls.find(({ method }) => method === "listActors")!;
+    expect(call.args[0]).toMatchObject({ memoryId: MEMORY_ID });
+    expect(call.args[1]).toMatchObject({ region: TARGET.region });
   });
 });

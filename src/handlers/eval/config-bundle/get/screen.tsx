@@ -2,12 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts } from "../../../utils";
 
 const DEFAULT_BRANCH = "mainline";
 
 export function ConfigBundleGetScreen({ ctx, core }: ScreenProps) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   const { bundleId, versionId } = useParams();
   const detail = useQuery({
     queryKey: ["configuration-bundle", opts.region, bundleId, versionId ?? DEFAULT_BRANCH],

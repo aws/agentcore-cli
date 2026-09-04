@@ -1,16 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { useCoreOpts, useRegionNavigate } from "../../../utils";
 
 function useRuntimeEndpointDetail(
   { ctx, core }: ScreenProps,
   runtimeId: string | undefined,
   qualifier: string | undefined,
 ) {
-  const opts = coreOptsFromCtx(ctx);
+  const opts = useCoreOpts(ctx);
   return useQuery({
     queryKey: ["runtime-endpoint", opts.region, runtimeId, qualifier],
     queryFn: () => core.runtime.getRuntimeEndpoint(runtimeId!, qualifier!, opts),
@@ -24,7 +24,7 @@ function endpointPath(runtimeId: string, qualifier: string, suffix?: string): st
 }
 
 export function RuntimeGetEndpointScreen(props: ScreenProps) {
-  const navigate = useNavigate();
+  const navigate = useRegionNavigate();
   const { runtimeId, qualifier } = useParams();
   const detail = useRuntimeEndpointDetail(props, runtimeId, qualifier);
   const endpoint = detail.data;
