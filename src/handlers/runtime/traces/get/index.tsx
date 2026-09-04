@@ -3,10 +3,10 @@ import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../../core/ob
 import type { AppIO } from "../../../../io";
 import { flag } from "../../../../router";
 import { createGetTraceHandler } from "../../../observability/traces";
+import { resolveTraceOutputPath } from "../../../observability/traceOutputPath";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { runtimeIdSchema } from "../../invoke/request";
-import { resolveTraceOutputPath } from "../outputPath";
 
 const runtimeFlags = [
   flag("id", "the ID of the Runtime", runtimeIdSchema),

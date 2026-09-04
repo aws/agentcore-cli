@@ -7,8 +7,8 @@ import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/globalConfig";
 import { createRootHandler } from "../../index";
 import type { GetTraceQuery, ListTracesQuery } from "../../../core/observability/index";
+import { resolveTraceOutputPath } from "../../observability/traceOutputPath";
 import { formatTraceTable, formatTraceTimestamp } from "../../observability/traces";
-import { resolveTraceOutputPath } from "./outputPath";
 
 const REGION = "us-west-2";
 const SINCE_MS = 1_709_391_000_000;
