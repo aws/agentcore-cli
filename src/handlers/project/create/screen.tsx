@@ -104,14 +104,14 @@ function emptyCreateProjectForm(): CreateProjectFormValues {
 
 const PROJECT_KIND_OPTIONS: { kind: ProjectKind; label: string; description: string }[] = [
   {
-    kind: "harness",
-    label: "harness (recommended)",
-    description: "a managed agent configured by spec — no agent-loop code to maintain",
-  },
-  {
     kind: "agent",
     label: "agent code",
     description: "generate runnable agent code from a template",
+  },
+  {
+    kind: "harness",
+    label: "harness",
+    description: "a managed agent configured by spec — no agent-loop code to maintain",
   },
 ];
 

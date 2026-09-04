@@ -73,7 +73,11 @@ describe("project create wizard", () => {
 
     // Type step: harness is the preselected default.
     await waitForText(r.lastFrame, "what should the project be built around?");
-    expect(r.lastFrame()).toContain("● harness (recommended)");
+    const typeStep = r.lastFrame()!;
+    expect(typeStep).toContain("○ agent code");
+    expect(typeStep).toContain("● harness");
+    expect(typeStep).not.toContain("harness (recommended)");
+    expect(typeStep.indexOf("○ agent code")).toBeLessThan(typeStep.indexOf("● harness"));
     await r.press("return");
 
     // Model step: providers and the selected provider's fields share one page.
@@ -275,7 +279,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("down"); // agent code
+    await r.press("up"); // agent code
     await waitForText(r.lastFrame, "● agent code");
     await r.press("return");
 
@@ -324,7 +328,7 @@ describe("project create wizard", () => {
     await r.write("HelloApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("down");
+    await r.press("up");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     await r.press("down"); // agent-python-strands-container
@@ -359,7 +363,7 @@ describe("project create wizard", () => {
     await r.write("EmptyApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("down");
+    await r.press("up");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
