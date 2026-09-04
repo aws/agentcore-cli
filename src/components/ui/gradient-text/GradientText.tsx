@@ -31,7 +31,10 @@ function toHex(value: number): string {
   return value.toString(16).padStart(2, "0");
 }
 
-function colorAt(colors: readonly [string, ...string[]], position: number): string {
+export function interpolateGradientColor(
+  colors: readonly [string, ...string[]],
+  position: number,
+): string {
   if (colors.length === 1) return colors[0];
 
   const scaledPosition = position * (colors.length - 1);
@@ -52,7 +55,7 @@ export function GradientText({ text, colors, span = Array.from(text).length }: G
   return (
     <Text>
       {characters.map((character, index) => (
-        <Text key={index} color={colorAt(colors, index / denominator)}>
+        <Text key={index} color={interpolateGradientColor(colors, index / denominator)}>
           {character}
         </Text>
       ))}
