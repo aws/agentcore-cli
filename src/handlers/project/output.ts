@@ -1,5 +1,3 @@
-import type { Context } from "../../router";
-import { renderResult } from "../utils";
 import type { AddResourceInput, Project, RemoveResourceInput } from "./types";
 
 export type ProjectMutationResourceType = AddResourceInput["resourceType"] | "gateway-connector";
@@ -44,14 +42,6 @@ export function projectMutationResource(
 ): ProjectMutationResource {
   const parent = parentFor(input);
   return parent ? { type, name, parent } : { type, name };
-}
-
-export function renderProjectMutationResult(
-  ctx: Context,
-  result: ProjectMutationResult,
-  renderHuman: () => void,
-): void {
-  renderResult(ctx, result, renderHuman);
 }
 
 function parentFor(

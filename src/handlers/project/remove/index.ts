@@ -5,8 +5,9 @@ import z from "zod";
 import type { AppIO } from "../../../io";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { JsonKey } from "../../keys";
+import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
-import { projectMutationResource, projectReference, renderProjectMutationResult } from "../output";
+import { projectMutationResource, projectReference } from "../output";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -83,7 +84,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await confirmRemoveAll(config.io, ctx.require(JsonKey), flags.yes, project.name);
         const result = await config.projectManager.removeAllResources(project);
         reportEnvCleanup(config.io, result.removedEnvKeys);
-        renderProjectMutationResult(
+        renderResult(
           ctx,
           {
             operation: "remove",
@@ -133,7 +134,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
 
       const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      renderProjectMutationResult(
+      renderResult(
         ctx,
         {
           operation: "remove",

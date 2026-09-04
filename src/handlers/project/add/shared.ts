@@ -1,9 +1,9 @@
 import { ProjectKey, type Context } from "../../../router";
 import { runWithProgress } from "../../../tui/progress";
+import { renderResult } from "../../utils";
 import {
   projectMutationResource,
   projectReference,
-  renderProjectMutationResult,
   type ProjectMutationResourceType,
 } from "../output";
 import type { AddResourceInput, Project } from "../types";
@@ -28,7 +28,7 @@ export async function addProjectResource(
     interactive: false,
   });
 
-  renderProjectMutationResult(
+  renderResult(
     ctx,
     {
       operation: "add",

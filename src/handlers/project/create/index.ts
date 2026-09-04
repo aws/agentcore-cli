@@ -25,7 +25,8 @@ import {
 import { InputValidationError } from "../../../errors";
 import { DEFAULT_HARNESS_MODEL } from "../add/harness";
 import { JsonKey } from "../../keys";
-import { projectReference, renderProjectMutationResult } from "../output";
+import { renderResult } from "../../utils";
+import { projectReference } from "../output";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -135,7 +136,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         interactive: ctx.require(JsonKey) ? false : undefined,
       });
 
-      renderProjectMutationResult(
+      renderResult(
         ctx,
         {
           operation: "create",
