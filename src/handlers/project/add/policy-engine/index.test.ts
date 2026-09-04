@@ -87,6 +87,24 @@ describe("project add policy-engine", () => {
     }
   });
 
+  test("--json reports gateway attachments as structured notes", async () => {
+    await inProject();
+    await addGateway("tools");
+
+    const io = await run([
+      "add",
+      "policy-engine",
+      "--name",
+      "Guardrails",
+      "--attach-to-gateways",
+      "tools",
+      "--json",
+    ]);
+
+    expect(JSON.parse(io.stdout()).notes).toEqual(["attached 'Guardrails' to 1 gateway(s)"]);
+    expect(io.stderr()).not.toContain("attached 'Guardrails'");
+  });
+
   test("rejects unknown gateway names without writing the engine", async () => {
     const projectRoot = await inProject();
     await expect(

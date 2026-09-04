@@ -323,6 +323,25 @@ describe("project add evaluator code-based", () => {
     expect(io.stderr()).toContain("returns Pass for every session");
   });
 
+  test("--json reports the empty stub guidance as a structured note", async () => {
+    await inProject();
+    const { io } = await run([
+      "add",
+      "evaluator",
+      "code-based",
+      "--name",
+      "stub",
+      "--level",
+      "SESSION",
+      "--json",
+    ]);
+
+    expect(JSON.parse(io.stdout()).notes).toEqual([
+      "note: this evaluator returns Pass for every session until you implement app/stub/lambda_function.py",
+    ]);
+    expect(io.stderr()).not.toContain("returns Pass for every session");
+  });
+
   test("external mode prints no stub note", async () => {
     await inProject();
     const { io } = await run([

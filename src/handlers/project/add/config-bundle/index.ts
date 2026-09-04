@@ -72,6 +72,7 @@ export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "config-bundle",
           resourceConfig: {
@@ -83,7 +84,7 @@ export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =
             kmsKeyArn: flags["kms-key-arn"],
           },
         },
-        `added configuration bundle '${flags.name}' to '${project.name}'\n`,
+        `added configuration bundle '${flags.name}' to '${project.name}'`,
       );
     },
   });

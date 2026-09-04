@@ -7,7 +7,7 @@ import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
-import { projectMutationResource, projectReference } from "../output";
+import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -84,7 +84,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await confirmRemoveAll(config.io, ctx.require(JsonKey), flags.yes, project.name);
         const result = await config.projectManager.removeAllResources(project);
         reportEnvCleanup(config.io, result.removedEnvKeys);
-        renderResult(
+        renderResult<ProjectMutationResult>(
           ctx,
           {
             operation: "remove",
@@ -134,12 +134,12 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
 
       const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      renderResult(
+      renderResult<ProjectMutationResult>(
         ctx,
         {
           operation: "remove",
           project: projectReference(result.project),
-          resource: projectMutationResource(resource, name, input),
+          resource: projectMutationResource(resource, name, result.removedResource),
           removedEnvironmentKeys: result.removedEnvKeys,
         },
         () => config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`),

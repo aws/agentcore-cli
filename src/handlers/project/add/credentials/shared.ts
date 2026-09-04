@@ -72,13 +72,16 @@ export async function addCredentialToProject(
   await addProjectResource(
     ctx,
     config,
+    project,
     {
       resourceType: "credential",
       ...input,
     },
-    `added credential '${input.resourceConfig.name}' to '${project.name}'\n`,
+    `added credential '${input.resourceConfig.name}' to '${project.name}'`,
+    {
+      notes: (input.envEntries ?? [])
+        .filter((entry) => entry.value === undefined)
+        .map((entry) => `Set ${entry.key} in agentcore/.env.local before you deploy.`),
+    },
   );
-  for (const entry of (input.envEntries ?? []).filter((e) => e.value === undefined)) {
-    config.io.stderr.write(`Set ${entry.key} in agentcore/.env.local before you deploy.\n`);
-  }
 }

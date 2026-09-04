@@ -89,12 +89,13 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "gateway-target",
           gatewayName: flags.gateway,
           resourceConfig: target,
         },
-        `added Connector Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'\n`,
+        `added Connector Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
         { resourceType: "gateway-connector" },
       );
     },

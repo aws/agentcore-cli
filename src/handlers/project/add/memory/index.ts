@@ -176,11 +176,12 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "memory",
           resourceConfig: memoryConfig,
         },
-        `added memory '${flags["name"]}' to '${project.name}'\n`,
+        `added memory '${flags["name"]}' to '${project.name}'`,
       );
     },
   });

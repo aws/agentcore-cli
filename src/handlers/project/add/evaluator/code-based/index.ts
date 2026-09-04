@@ -87,11 +87,12 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         await addProjectResource(
           ctx,
           config,
+          project,
           {
             resourceType: "evaluator",
             resourceConfig: parsed.data,
           },
-          `added evaluator '${flags["name"]}' to '${project.name}'\n`,
+          `added evaluator '${flags["name"]}' to '${project.name}'`,
         );
         return;
       }
@@ -108,17 +109,21 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "evaluator",
           resourceConfig: { name: scaffold.name },
           scaffold,
         },
-        `added evaluator '${flags["name"]}' to '${project.name}'\n`,
+        `added evaluator '${flags["name"]}' to '${project.name}'`,
+        {
+          notes: hasMetric
+            ? []
+            : [
+                `note: this evaluator returns Pass for every session until you implement app/${flags["name"]}/lambda_function.py`,
+              ],
+        },
       );
-      if (!hasMetric)
-        config.io.stderr.write(
-          `note: this evaluator returns Pass for every session until you implement app/${flags["name"]}/lambda_function.py\n`,
-        );
     },
   });
 

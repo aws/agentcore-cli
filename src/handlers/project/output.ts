@@ -20,7 +20,12 @@ type ProjectReference = {
 
 export type ProjectMutationResult =
   | { operation: "create"; project: ProjectReference }
-  | { operation: "add"; project: ProjectReference; resource: ProjectMutationResource }
+  | {
+      operation: "add";
+      project: ProjectReference;
+      resource: ProjectMutationResource;
+      notes?: string[];
+    }
   | {
       operation: "remove";
       project: ProjectReference;

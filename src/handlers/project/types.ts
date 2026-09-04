@@ -420,11 +420,16 @@ export type RemoveResourceInput =
       name: string;
     };
 
-/** The outcome of a spec-level removal. */
-export type RemoveResourceResult = {
+/** The shared outcome of a spec-level removal. */
+export type RemoveResourcesResult = {
   project: Project;
   /** .env.local keys deleted because the removed credential(s) reserved them. */
   removedEnvKeys: string[];
+};
+
+/** The outcome of removing one resource, including its resolved parent. */
+export type RemoveResourceResult = RemoveResourcesResult & {
+  removedResource: RemoveResourceInput;
 };
 
 /**
@@ -495,7 +500,7 @@ export interface ProjectManager {
    * code directories under app/ and aws-targets.json survive, so a following
    * deploy can tear down the target's stack.
    */
-  removeAllResources(project: Project): Promise<RemoveResourceResult>;
+  removeAllResources(project: Project): Promise<RemoveResourcesResult>;
 
   /**
    * Convert a harness into an editable Strands runtime agent: render the agent

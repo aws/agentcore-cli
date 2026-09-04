@@ -156,6 +156,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       const apiKey = await source.resolveSecret("api-key", flags["api-key"]);
 
       const runtimeName = flags.name;
+      const notes: string[] = [];
 
       let importBedrockAgent: ImportBedrockAgentInput | undefined;
       if (isImport) {
@@ -169,10 +170,10 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           memory: "longAndShortTerm",
         });
         if (importBedrockAgent.notes.length > 0) {
-          config.io.stderr.write(
+          notes.push(
             `Import generated ${importBedrockAgent.notes.length} manual follow-up ` +
               `${importBedrockAgent.notes.length === 1 ? "item" : "items"} in ` +
-              `app/${runtimeName}/IMPORT_NOTES.md.\n`,
+              `app/${runtimeName}/IMPORT_NOTES.md.`,
           );
         }
       }
@@ -227,11 +228,13 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "runtime",
           resourceConfig: result.data,
         },
-        `added runtime '${flags.name}' to '${project.name}'\n`,
+        `added runtime '${flags.name}' to '${project.name}'`,
+        { notes },
       );
     },
   });

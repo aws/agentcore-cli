@@ -84,12 +84,13 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "policy",
           engineName: flags.engine,
           resourceConfig: policy,
         },
-        `added Policy '${flags.name}' to Policy Engine '${flags.engine}' in '${project.name}'\n`,
+        `added Policy '${flags.name}' to Policy Engine '${flags.engine}' in '${project.name}'`,
       );
     },
   });

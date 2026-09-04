@@ -58,6 +58,7 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "policy-engine",
           resourceConfig: engine,
@@ -68,12 +69,12 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
               }
             : undefined,
         },
-        `added Policy Engine '${flags.name}' to '${project.name}'\n`,
+        `added Policy Engine '${flags.name}' to '${project.name}'`,
+        {
+          notes: flags["attach-to-gateways"]
+            ? [`attached '${flags.name}' to ${flags["attach-to-gateways"].length} gateway(s)`]
+            : [],
+        },
       );
-      if (flags["attach-to-gateways"]) {
-        config.io.stderr.write(
-          `attached '${flags.name}' to ${flags["attach-to-gateways"].length} gateway(s)\n`,
-        );
-      }
     },
   });

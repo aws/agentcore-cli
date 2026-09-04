@@ -69,9 +69,24 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
       }
 
       const project = ctx.require(ProjectKey);
+      const notes: string[] = [];
+      if (flags["auto-payment"]) {
+        notes.push(
+          `Warning: auto-payment is ENABLED for manager '${flags.name}'. Agents can automatically settle ` +
+            "402 responses without human approval. Use --no-auto-payment to require manual approval.",
+        );
+      }
+      if (project.spec.runtimes.length > 0) {
+        notes.push(
+          "Warning: project add payment-manager does not modify runtime source code. " +
+            "Configure the Payments SDK or plugin in supported runtimes before invoking payment-enabled agents.",
+        );
+      }
+
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "payment-manager",
           resourceConfig: {
@@ -96,19 +111,8 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
             networkPreferences: flags["network-preferences"],
           },
         },
-        `added payment manager '${flags.name}' to '${project.name}'\n`,
+        `added payment manager '${flags.name}' to '${project.name}'`,
+        { notes },
       );
-      if (flags["auto-payment"]) {
-        config.io.stderr.write(
-          `Warning: auto-payment is ENABLED for manager '${flags.name}'. Agents can automatically settle ` +
-            "402 responses without human approval. Use --no-auto-payment to require manual approval.\n",
-        );
-      }
-      if (project.spec.runtimes.length > 0) {
-        config.io.stderr.write(
-          "Warning: project add payment-manager does not modify runtime source code. " +
-            "Configure the Payments SDK or plugin in supported runtimes before invoking payment-enabled agents.\n",
-        );
-      }
     },
   });

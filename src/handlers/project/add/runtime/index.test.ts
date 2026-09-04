@@ -507,6 +507,19 @@ describe("project add runtime --type import", () => {
     expect(pyproject).toContain('name = "support-proxy"');
   });
 
+  test("--json reports import follow-up as a structured note", async () => {
+    await inProject();
+    const core = new TestCoreClient();
+    core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
+
+    const { io } = await run([...importArgs, "--json"], { core });
+
+    expect(JSON.parse(io.stdout()).notes).toEqual([
+      "Import generated 1 manual follow-up item in app/support_proxy/IMPORT_NOTES.md.",
+    ]);
+    expect(io.stderr()).not.toContain("IMPORT_NOTES.md");
+  });
+
   test("supports LangGraph translation", async () => {
     const projectRoot = await inProject();
     const core = new TestCoreClient();

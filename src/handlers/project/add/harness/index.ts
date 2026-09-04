@@ -113,11 +113,12 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "harness",
           resourceConfig: result.data,
         },
-        `added harness '${flags["name"]}' to '${project.name}'\n`,
+        `added harness '${flags["name"]}' to '${project.name}'`,
       );
     },
   });

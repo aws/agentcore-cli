@@ -84,7 +84,7 @@ describe("project create", () => {
       project: { name: "JsonProject", path: projectRoot },
     });
     expect(io.stderr()).not.toContain("Created project");
-    expect(io.stderr()).not.toContain("To deploy it");
+    expect(io.stderr()).not.toContain("Next steps");
   });
 
   test("scaffolds a harness project by default, named for the project", async () => {
@@ -759,6 +759,16 @@ describe("project add credentials", () => {
     expect(io.stderr()).toContain(
       "Set AGENTCORE_CREDENTIAL_SVC_KEY in agentcore/.env.local before you deploy",
     );
+  });
+
+  test("--json reports credential setup guidance as structured notes", async () => {
+    await inProject();
+    const { io } = await run(["add", "credentials", "api-key", "--name", "svc-key", "--json"]);
+
+    expect(JSON.parse(io.stdout()).notes).toEqual([
+      "Set AGENTCORE_CREDENTIAL_SVC_KEY in agentcore/.env.local before you deploy.",
+    ]);
+    expect(io.stderr()).not.toContain("before you deploy");
   });
 
   test("api-key with an external secret reference records it in the spec and skips .env.local", async () => {

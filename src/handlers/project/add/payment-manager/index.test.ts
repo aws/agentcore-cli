@@ -83,6 +83,22 @@ describe("project add payment-manager", () => {
     expect(io.stderr()).toContain("does not modify runtime source code");
   });
 
+  test("--json reports payment warnings as structured notes", async () => {
+    await inProject();
+
+    const io = await run(["add", "payment-manager", "--name", "payments", "--json"]);
+    const result = JSON.parse(io.stdout());
+
+    expect(result.notes).toEqual([
+      "Warning: auto-payment is ENABLED for manager 'payments'. Agents can automatically settle " +
+        "402 responses without human approval. Use --no-auto-payment to require manual approval.",
+      "Warning: project add payment-manager does not modify runtime source code. " +
+        "Configure the Payments SDK or plugin in supported runtimes before invoking payment-enabled agents.",
+    ]);
+    expect(io.stderr()).not.toContain("auto-payment is ENABLED");
+    expect(io.stderr()).not.toContain("does not modify runtime source code");
+  });
+
   test.each([
     ["missing name", [], "required option '--name"],
     [

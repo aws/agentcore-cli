@@ -54,6 +54,7 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "payment-connector",
           managerName: flags.manager,
@@ -69,7 +70,7 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
                 credentialName: credentialName!,
               },
         },
-        `added payment connector '${flags.name}' to manager '${flags.manager}' in '${project.name}'\n`,
+        `added payment connector '${flags.name}' to manager '${flags.manager}' in '${project.name}'`,
       );
     },
   });

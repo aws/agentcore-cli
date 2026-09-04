@@ -97,11 +97,12 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "evaluator",
           resourceConfig: parsed.data,
         },
-        `added evaluator '${flags["name"]}' to '${project.name}'\n`,
+        `added evaluator '${flags["name"]}' to '${project.name}'`,
       );
     },
   });

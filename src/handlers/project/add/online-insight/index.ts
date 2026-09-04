@@ -102,11 +102,12 @@ export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) 
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "online-insight",
           resourceConfig: parsed.data,
         },
-        `added online-insight config '${flags["name"]}' to '${project.name}'\n`,
+        `added online-insight config '${flags["name"]}' to '${project.name}'`,
       );
     },
   });

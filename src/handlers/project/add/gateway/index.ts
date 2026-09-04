@@ -129,11 +129,12 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "gateway",
           resourceConfig: gateway,
         },
-        `added Gateway '${flags.name}' to '${project.name}'\n`,
+        `added Gateway '${flags.name}' to '${project.name}'`,
       );
     },
   });

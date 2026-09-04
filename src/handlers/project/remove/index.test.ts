@@ -461,9 +461,9 @@ describe("project remove", () => {
   }
 
   test.each([
-    ["with --engine", ["--engine", "Guardrails"], { type: "policy-engine", name: "Guardrails" }],
-    ["resolving the engine from an unambiguous name", [], undefined],
-  ])("removes a policy from its engine %s", async (_label, engineArgs, parent) => {
+    ["with --engine", ["--engine", "Guardrails"]],
+    ["resolving the engine from an unambiguous name", []],
+  ])("removes a policy from its engine %s", async (_label, engineArgs) => {
     const projectRoot = await inProject();
     await run(["add", "policy-engine", "--name", "Guardrails"]);
     await addPolicy("Guardrails", "DenyAll");
@@ -477,7 +477,7 @@ describe("project remove", () => {
       resource: {
         type: "policy",
         name: "DenyAll",
-        ...(parent && { parent }),
+        parent: { type: "policy-engine", name: "Guardrails" },
       },
       removedEnvironmentKeys: [],
     });

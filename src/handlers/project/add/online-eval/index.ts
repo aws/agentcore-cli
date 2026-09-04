@@ -85,11 +85,12 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "online-eval",
           resourceConfig: parsed.data,
         },
-        `added online-eval config '${flags["name"]}' to '${project.name}'\n`,
+        `added online-eval config '${flags["name"]}' to '${project.name}'`,
       );
     },
   });

@@ -124,12 +124,13 @@ Use project add gateway-connector for curated Connector shortcuts.`,
       await addProjectResource(
         ctx,
         config,
+        project,
         {
           resourceType: "gateway-target",
           gatewayName: flags.gateway,
           resourceConfig: target,
         },
-        `added Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'\n`,
+        `added Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
       );
     },
   });
