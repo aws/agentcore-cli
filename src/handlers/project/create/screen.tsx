@@ -141,6 +141,11 @@ const TEMPLATE_OPTIONS: {
     description: "Strands agent on Bedrock with memory, in TypeScript (CodeZip build)",
   },
   {
+    template: "agent-python-langchain",
+    label: "agent-python-langchain",
+    description: "LangChain agent on Bedrock (CodeZip build)",
+  },
+  {
     template: "mcp-python-fastmcp",
     label: "mcp-python-fastmcp",
     description: "MCP server exposing tools via FastMCP (CodeZip build)",
