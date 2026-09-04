@@ -28,7 +28,7 @@ describe("fetchLatestVersion", () => {
       new Response(JSON.stringify({ version: "9.9.9" }), { status: 200 }),
     );
     expect(await fetchLatestVersion()).toBe("9.9.9");
-    expect(fetchSpy).toHaveBeenCalledWith("https://registry.npmjs.org/@aws/agentcore/latest");
+    expect(fetchSpy).toHaveBeenCalledWith(`https://registry.npmjs.org/@aws/agentcore/${distTag()}`);
   });
 
   test("throws a NetworkingError when the registry responds non-OK", async () => {
@@ -90,7 +90,7 @@ describe("handleUpdate", () => {
     const result = await handleUpdate(false, { runner: okRunner });
     expect(result.status).toBe("updated");
     expect(okRunner).toHaveBeenCalledWith(
-      ["npm", "install", "-g", "@aws/agentcore@latest"],
+      ["npm", "install", "-g", `@aws/agentcore@${distTag()}`],
       expect.objectContaining({ cwd: expect.any(String) }),
     );
   });
