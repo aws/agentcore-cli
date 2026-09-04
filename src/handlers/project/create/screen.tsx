@@ -121,16 +121,6 @@ const TEMPLATE_OPTIONS: {
   description: string;
 }[] = [
   {
-    template: "agent-python-langchain",
-    label: "agent-python-langchain",
-    description: "LangChain agent on Bedrock",
-  },
-  {
-    template: "agent-python-minimal",
-    label: "agent-python-minimal",
-    description: "minimal Python agent on Bedrock, no framework",
-  },
-  {
     template: "agent-python-strands",
     label: "agent-python-strands (recommended)",
     description: "Strands agent on Bedrock with memory",
@@ -141,9 +131,19 @@ const TEMPLATE_OPTIONS: {
     description: "Strands agent on Bedrock with memory",
   },
   {
+    template: "agent-python-langchain",
+    label: "agent-python-langchain",
+    description: "LangChain agent on Bedrock",
+  },
+  {
     template: "agent-typescript-strands",
     label: "agent-typescript-strands",
     description: "Strands agent on Bedrock with memory, in TypeScript",
+  },
+  {
+    template: "agent-python-minimal",
+    label: "agent-python-minimal",
+    description: "minimal Python agent on Bedrock, no framework",
   },
   {
     template: "a2a-python-strands",
