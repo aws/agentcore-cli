@@ -248,7 +248,7 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
 }
 `;
 
-exports[`FsProjectManager.create snapshots the Strands AG-UI project manifest and runtime spec 1`] = `
+exports[`FsProjectManager.create snapshots the LangChain project manifest and runtime spec 1`] = `
 {
   "manifest": [
     ".gitignore",
@@ -266,57 +266,21 @@ exports[`FsProjectManager.create snapshots the Strands AG-UI project manifest an
     "agentcore/cdk/package.json",
     "agentcore/cdk/test/cdk.test.ts",
     "agentcore/cdk/tsconfig.json",
-    "app/agui_python_strands/.gitignore",
-    "app/agui_python_strands/README.md",
-    "app/agui_python_strands/main.py",
-    "app/agui_python_strands/memory/__init__.py",
-    "app/agui_python_strands/memory/session.py",
-    "app/agui_python_strands/model/__init__.py",
-    "app/agui_python_strands/model/load.py",
-    "app/agui_python_strands/pyproject.toml",
+    "app/agent_python_langchain/.gitignore",
+    "app/agent_python_langchain/README.md",
+    "app/agent_python_langchain/main.py",
+    "app/agent_python_langchain/model/__init__.py",
+    "app/agent_python_langchain/model/load.py",
+    "app/agent_python_langchain/pyproject.toml",
   ],
-  "memories": [
-    {
-      "eventExpiryDuration": 30,
-      "name": "agui_python_strandsMemory",
-      "strategies": [
-        {
-          "namespaceTemplates": [
-            "/users/{actorId}/facts",
-          ],
-          "type": "SEMANTIC",
-        },
-        {
-          "namespaceTemplates": [
-            "/users/{actorId}/preferences",
-          ],
-          "type": "USER_PREFERENCE",
-        },
-        {
-          "namespaceTemplates": [
-            "/summaries/{actorId}/{sessionId}",
-          ],
-          "type": "SUMMARIZATION",
-        },
-        {
-          "namespaceTemplates": [
-            "/episodes/{actorId}/{sessionId}",
-          ],
-          "reflectionNamespaceTemplates": [
-            "/episodes/{actorId}",
-          ],
-          "type": "EPISODIC",
-        },
-      ],
-    },
-  ],
+  "memories": undefined,
   "runtimes": [
     {
       "build": "CodeZip",
-      "codeLocation": "app/agui_python_strands",
+      "codeLocation": "app/agent_python_langchain",
       "entrypoint": "main.py",
-      "name": "agui_python_strands",
-      "protocol": "AGUI",
+      "name": "agent_python_langchain",
+      "protocol": "HTTP",
       "runtimeVersion": "PYTHON_3_14",
     },
   ],

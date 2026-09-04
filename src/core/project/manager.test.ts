@@ -32,6 +32,7 @@ const AGENT_PYTHON_STRANDS_CONTAINER = resolveRuntimeTemplateShortcut(
 );
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
+const AGENT_PYTHON_LANGCHAIN = resolveRuntimeTemplateShortcut("agent-python-langchain");
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -161,6 +162,22 @@ describe("FsProjectManager.create", () => {
     await runCreate(manager().manager, {
       name: "example",
       scaffoldRuntimeInput: A2A_PYTHON_STRANDS,
+    });
+
+    const projectRoot = join(directory, "example");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect({
+      manifest: await projectManifest(projectRoot),
+      runtimes: spec.runtimes,
+      memories: spec.memories,
+    }).toMatchSnapshot();
+  });
+
+  test("snapshots the LangChain project manifest and runtime spec", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_LANGCHAIN,
     });
 
     const projectRoot = join(directory, "example");

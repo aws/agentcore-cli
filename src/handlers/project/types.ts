@@ -67,7 +67,7 @@ export const ScaffoldRuntimeInputSchema = z
     runtimeName: AgentNameSchema,
     build: BuildTypeSchema,
     language: z.enum(["Python", "TypeScript"]),
-    framework: z.enum(["strands", "none"]),
+    framework: z.enum(["strands", "langchain", "none"]),
     protocol: ProtocolModeSchema.optional(),
     modelProvider: ModelProviderSchema.optional(),
     apiKey: z.string().min(1).optional(),

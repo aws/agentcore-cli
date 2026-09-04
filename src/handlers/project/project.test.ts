@@ -423,6 +423,58 @@ describe("project create", () => {
     expect(spec.memories ?? []).toEqual([]);
   });
 
+  test("scaffolds the LangChain template on Bedrock without memory", async () => {
+    const directory = await inTempDirectory();
+    await run([
+      "create",
+      "--name",
+      "MyAgent",
+      "--template",
+      "agent-python-langchain",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyAgent");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes).toEqual([
+      {
+        name: "agent_python_langchain",
+        build: "CodeZip",
+        entrypoint: "main.py",
+        codeLocation: "app/agent_python_langchain",
+        runtimeVersion: "PYTHON_3_14",
+        protocol: "HTTP",
+      },
+    ]);
+    expect(spec.memories ?? []).toEqual([]);
+    expect(spec.credentials ?? []).toEqual([]);
+
+    const appDir = join(projectRoot, "app", "agent_python_langchain");
+    const pyproject = await Bun.file(join(appDir, "pyproject.toml")).text();
+    expect(pyproject).toContain('name = "agent_python_langchain"');
+    expect(pyproject).not.toContain("{{");
+    expect(await Bun.file(join(appDir, "Dockerfile")).exists()).toBe(false);
+    expect(await Bun.file(join(appDir, ".gitignore")).exists()).toBe(true);
+  });
+
+  test("rejects --model-provider with the LangChain template", async () => {
+    await inTempDirectory();
+    await expect(
+      run([
+        "create",
+        "--name",
+        "MyAgent",
+        "--template",
+        "agent-python-langchain",
+        "--model-provider",
+        "anthropic",
+        "--api-key",
+        "sk-test",
+      ]),
+    ).rejects.toThrow(/--model-provider is not valid with the agent-python-langchain template/);
+  });
+
   test("scaffolds a TypeScript strands runtime with memory pre-configured", async () => {
     const directory = await inTempDirectory();
     await run([

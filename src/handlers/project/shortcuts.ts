@@ -83,6 +83,16 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "NODE_22",
   },
+  "agent-python-langchain": {
+    runtimeName: "agent_python_langchain",
+    build: "CodeZip",
+    language: "Python",
+    framework: "langchain",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "mcp-python-fastmcp": {
     runtimeName: "mcp_python_fastmcp",
     build: "CodeZip",
