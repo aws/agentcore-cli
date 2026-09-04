@@ -51,7 +51,7 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
     ]);
     const projectRoot = join(directory, name);
     process.chdir(projectRoot);
-    return projectRoot;
+    return process.cwd();
   }
 
   async function addGateway(name = "tools"): Promise<void> {
