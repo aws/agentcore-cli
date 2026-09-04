@@ -19,7 +19,7 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       flag("name", "the Target name for a connector shortcut", z.string().optional()),
       flag(
         "connector",
-        "curated connector",
+        "curated connector [bedrock-knowledge-bases | web-search]",
         z.enum(["web-search", "bedrock-knowledge-bases"]).optional(),
       ),
       flag(
@@ -29,7 +29,7 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       ),
       flag(
         "knowledge-base",
-        "project Knowledge Base name or external ten-character ID; only for bedrock-knowledge-bases",
+        "external ten-character Knowledge Base ID; only for bedrock-knowledge-bases",
         z.string().optional(),
       ),
     ],
