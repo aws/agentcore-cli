@@ -126,13 +126,13 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     return { tree, spec: { runtimes: [buildRuntimeSpec(input)] } };
   },
   [buildResolverKey("langchain", "Python", "HTTP")]: async (input: RuntimeResourceConfig) => {
-    const context = { name: toPythonPackageName(input.name) };
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
       { assetDir: "templates/agent-python-langchain" },
       {
         rootDirName: input.name,
-        transformContent: (raw) => templateRenderer.render(raw, context),
+        transformContent: (raw) =>
+          templateRenderer.render(raw, { name: toPythonPackageName(input.name) }),
       },
     );
     return {

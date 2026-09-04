@@ -6,7 +6,6 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 
 app = BedrockAgentCoreApp()
-log = app.logger
 
 SYSTEM_PROMPT = "You are a helpful assistant. Use tools when appropriate."
 
@@ -29,8 +28,6 @@ agent = create_agent(
 
 @app.entrypoint
 async def invoke(payload, context):
-    log.info("Invoking Agent.....")
-
     prompt = payload.get("prompt") if isinstance(payload, dict) else None
     if not isinstance(prompt, str) or not prompt:
         yield {"error": "payload must be a JSON object with a non-empty string 'prompt'"}
@@ -46,9 +43,11 @@ async def invoke(payload, context):
         version="v2",
     ):
         message, metadata = event["data"]
-        if not isinstance(message, AIMessageChunk) or not message.content_blocks:
+        if not isinstance(message, AIMessageChunk):
             continue
-        yield {"node": metadata["langgraph_node"], "content": message.content_blocks}
+        blocks = message.content_blocks
+        if blocks:
+            yield {"node": metadata["langgraph_node"], "content": blocks}
 
 
 if __name__ == "__main__":

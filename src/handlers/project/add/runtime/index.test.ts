@@ -303,6 +303,7 @@ describe("project add runtime", () => {
     ["agent-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
     ["a2a-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
     ["agent-python-minimal", []],
+    ["agent-python-langchain", []],
     ["mcp-python-fastmcp", []],
     ["agui-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
   ])("%s ships with its pre-configured memory", async (templateName, expectedStrategies) => {
