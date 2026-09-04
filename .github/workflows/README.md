@@ -41,6 +41,15 @@ compose freely.
 - **Jobs** are named as verbs or noun-verb pairs describing the work
   (e.g. `verify`).
 
+## Releasing
+
+Dispatch `release-prepare` with a bump and a channel, review the release PR it opens, merge it.
+`release-publish` then publishes the merged package.json version.
+
+If publish fails after the merge, rerun the failed `release-publish` jobs. Both the npm publish
+and the GitHub release steps skip work that already succeeded. Do not re-dispatch
+`release-prepare`, package.json already holds the new version and it would bump again.
+
 ## Key Choices
 
 ### Explicit ref passing

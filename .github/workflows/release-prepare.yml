@@ -40,13 +40,16 @@ jobs:
         run: |
           set -euo pipefail
           CURRENT=$(bun pm pkg get version | tr -d '"')
-          # 0.28.1 -> 1.0.0-rc.0 -> 1.0.0-rc.1 -> 1.0.0. Bun's own "major" would jump an rc to 2.0.0.
+          # 0.28.1 -> 1.0.0-rc.1 -> 1.0.0-rc.2 -> 1.0.0. Series boundaries set the version explicitly:
+          # Bun's prerelease counter starts at 0, and its "major" on an rc would jump to 2.0.0.
           if [[ "$CURRENT" == *-rc.* ]]; then
-            INCREMENT=$([ "$CHANNEL" = rc ] && echo prerelease || echo "${CURRENT%%-*}")
+            NEXT=$([ "$CHANNEL" = rc ] && echo prerelease || echo "${CURRENT%%-*}")
           else
-            INCREMENT=$([ "$CHANNEL" = rc ] && echo "pre$BUMP" || echo "$BUMP")
+            NEXT=$(bun pm version "$BUMP" --no-git-tag-version)
+            NEXT=${NEXT#v}
+            [ "$CHANNEL" = rc ] && NEXT="$NEXT-rc.1"
           fi
-          TAG=$(bun pm version "$INCREMENT" --preid rc --no-git-tag-version)
+          TAG=$(bun pm version "$NEXT" --preid rc --no-git-tag-version --allow-same-version)
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::error::$TAG is already released"
             exit 1

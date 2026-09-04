@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { fetchLatestVersion, handleUpdate } from "./index";
+import { distTag, fetchLatestVersion, handleUpdate } from "./index";
 import { NetworkingError } from "../../errors";
 import type { ProcessRunner } from "../../io";
 import { PACKAGE_VERSION } from "../../constants";
@@ -9,6 +9,14 @@ import { PACKAGE_VERSION } from "../../constants";
 // it queries the npm registry (fetch) and shells out to `npm install -g`
 // (runProcess). There is nothing for that harness to record, so a fetch spy plus
 // an injected fake runner is the right, hermetic way to cover this command.
+
+test.each([
+  ["0.28.1", "latest"],
+  ["1.0.0-rc.1", "rc"],
+  ["1.0.0-preview.29", "preview"],
+])("distTag(%s) tracks the %s dist-tag", (version, tag) => {
+  expect(distTag(version)).toBe(tag);
+});
 
 describe("fetchLatestVersion", () => {
   afterEach(() => {

@@ -7,6 +7,7 @@
   },
   "module": "src/index.ts",
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "bin": {
     "agentcore": "./dist/index.js"
   },

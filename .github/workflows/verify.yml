@@ -46,19 +46,20 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
+      # Every static check reports even when an earlier one fails. Build and tests only run when all pass.
       - run: bun run lint:check
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !cancelled()
       - run: bun run format:check
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !cancelled()
       - run: bun run typecheck
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !cancelled()
       - run: bun audit
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !cancelled()
       - run: bun run secrets:check
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !cancelled()
 
       - run: bun run build
-      - run: bun pm pack
+      - run: bun pm pack --ignore-scripts
       - run: bun run compile:${{ matrix.target }}
       - name: Smoke test binary
         run: ${{ matrix.binary }} --help

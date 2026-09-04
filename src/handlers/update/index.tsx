@@ -9,8 +9,8 @@ import { PACKAGE_VERSION } from "../../constants";
 const PACKAGE_NAME = "@aws/agentcore";
 const REGISTRY_URL = "https://registry.npmjs.org";
 
-function distTag(): string {
-  return PACKAGE_VERSION.includes("-") ? "preview" : "latest";
+export function distTag(version: string = PACKAGE_VERSION): string {
+  return semver.prerelease(version)?.[0]?.toString() ?? "latest";
 }
 
 export function installArgv(): string[] {
@@ -20,7 +20,7 @@ export function installArgv(): string[] {
 export async function fetchLatestVersion(): Promise<string> {
   let response: Response;
   try {
-    response = await fetch(`${REGISTRY_URL}/${PACKAGE_NAME}/latest`);
+    response = await fetch(`${REGISTRY_URL}/${PACKAGE_NAME}/${distTag()}`);
   } catch (cause) {
     throw new NetworkingError(
       `Could not reach the npm registry: ${cause instanceof Error ? cause.message : String(cause)}`,
