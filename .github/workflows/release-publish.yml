@@ -63,14 +63,16 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(bun pm pkg get version | tr -d '"')
-          # rc notes span from the previous rc, stable notes from the previous stable.
+          # rc notes span from the previous rc, stable notes from the previous stable. Only this
+          # workflow's tags count, main's v1.0.0-preview.N tags live in the same repo.
           DIST_TAG=latest
           SEMVER_FLAGS=()
           if [[ "$VERSION" == *-rc.* ]]; then
             DIST_TAG=rc
             SEMVER_FLAGS=(--include-prerelease)
           fi
-          PREVIOUS=$(git tag -l 'v*' | xargs bunx semver "${SEMVER_FLAGS[@]}" --range "<$VERSION" | tail -1)
+          PREVIOUS=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' \
+            | xargs bunx semver "${SEMVER_FLAGS[@]}" --range "<$VERSION" | tail -1)
           {
             echo "version=$VERSION"
             echo "dist_tag=$DIST_TAG"
@@ -102,11 +104,16 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           PREVIOUS_TAG: ${{ steps.release.outputs.previous_tag }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
+        # A rerun after a failed asset upload re-uploads into the existing release instead of failing on the tag.
         run: |
-          gh release create "v$VERSION" --target "$REF" --title "v$VERSION" \
-            --generate-notes --notes-start-tag "$PREVIOUS_TAG" \
-            ${{ steps.release.outputs.dist_tag == 'rc' && '--prerelease' || '--latest' }} \
-            "$TARBALL" dist/bin/*
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" --clobber "$TARBALL" dist/bin/*
+          else
+            gh release create "v$VERSION" --target "$REF" --title "v$VERSION" \
+              --generate-notes --notes-start-tag "$PREVIOUS_TAG" \
+              ${{ steps.release.outputs.dist_tag == 'rc' && '--prerelease' || '--latest' }} \
+              "$TARBALL" dist/bin/*
+          fi
 
       - if: ${{ inputs.dry_run }}
         uses: actions/upload-artifact@v7

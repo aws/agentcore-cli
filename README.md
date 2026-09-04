@@ -905,14 +905,14 @@ npm link
 Re-run `bun run build` after changes; the linked command picks it up. Remove with:
 
 ```bash
-npm unlink -g agentcore
+npm unlink -g @aws/agentcore
 ```
 
 To test the exact published artifact instead:
 
 ```bash
 npm pack                          # builds via prepublishOnly, creates the .tgz
-npm i -g ./agentcore-1.0.0.tgz
+npm i -g ./aws-agentcore-0.28.1.tgz
 ```
 
 # Build
