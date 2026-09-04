@@ -566,7 +566,7 @@ const MODEL_PROVIDERS: {
   {
     kind: "default",
     label: "service default",
-    description: "let the service choose the model (recommended)",
+    description: "let the service choose the model",
     fields: [],
   },
   {
@@ -794,7 +794,7 @@ const MEMORY_OPTIONS: { kind: MemoryKind; label: string; description: string }[]
   {
     kind: "managed",
     label: "managed",
-    description: "AgentCore creates and manages memory for you (recommended)",
+    description: "AgentCore creates and manages memory for you",
   },
   {
     kind: "byo",

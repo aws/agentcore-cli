@@ -63,7 +63,7 @@ const MODEL_PROVIDERS: {
 }[] = [
   {
     provider: "bedrock",
-    label: "bedrock (recommended)",
+    label: "bedrock",
     description: "an Amazon Bedrock model or inference profile",
   },
   {
@@ -98,7 +98,7 @@ function emptyProjectModel(): ProjectModelValues {
 function emptyCreateProjectForm(): CreateProjectFormValues {
   return {
     name: "",
-    kind: "harness",
+    kind: "agent",
     model: emptyProjectModel(),
     template: DEFAULT_TEMPLATE,
   };
@@ -121,7 +121,7 @@ const DEFAULT_TEMPLATE: TemplateName = "agent-python-strands";
 
 const TEMPLATE_OPTIONS = PROJECT_TEMPLATE_NAMES.map((template) => ({
   template,
-  label: template === DEFAULT_TEMPLATE ? `${template} (recommended)` : template,
+  label: template,
   description:
     template === EMPTY_TEMPLATE_NAME
       ? "an empty project with no runtime or harness"
@@ -186,10 +186,7 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
 }
 
 function providerLabel(provider: HarnessModelProvider): string {
-  return MODEL_PROVIDERS.find((candidate) => candidate.provider === provider)!.label.replace(
-    " (recommended)",
-    "",
-  );
+  return MODEL_PROVIDERS.find((candidate) => candidate.provider === provider)!.label;
 }
 
 // ─── wizard shell ─────────────────────────────────────────────────────────────

@@ -61,7 +61,7 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-4-6";
 
 describe("project create wizard", () => {
-  test("harness default flow: name → type → model → review → created", async () => {
+  test("harness flow: name → type → model → review → created", async () => {
     const directory = await inTempDirectory();
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
@@ -71,18 +71,20 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
 
-    // Type step: harness is the preselected default.
+    // Type step: agent code is the preselected default.
     await waitForText(r.lastFrame, "what should the project be built around?");
     const typeStep = r.lastFrame()!;
-    expect(typeStep).toContain("○ agent code");
-    expect(typeStep).toContain("● harness");
+    expect(typeStep).toContain("● agent code");
+    expect(typeStep).toContain("○ harness");
     expect(typeStep).not.toContain("harness (recommended)");
-    expect(typeStep.indexOf("○ agent code")).toBeLessThan(typeStep.indexOf("● harness"));
+    expect(typeStep.indexOf("● agent code")).toBeLessThan(typeStep.indexOf("○ harness"));
+    await r.press("down"); // harness
     await r.press("return");
 
     // Model step: providers and the selected provider's fields share one page.
     await waitForText(r.lastFrame, "choose a model");
-    expect(r.lastFrame()).toContain("● bedrock (recommended)");
+    expect(r.lastFrame()).toContain("● bedrock");
+    expect(r.lastFrame()).not.toContain("bedrock (recommended)");
     expect(r.lastFrame()).toContain("○ openai");
     expect(r.lastFrame()).toContain("○ gemini");
     expect(r.lastFrame()).toContain("○ litellm");
@@ -135,6 +137,7 @@ describe("project create wizard", () => {
     await r.write("TunedApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("down"); // harness
     await r.press("return");
 
     // Enter focuses the selected provider's model field. The cursor starts at
@@ -171,6 +174,7 @@ describe("project create wizard", () => {
     await r.write("OpenAIApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("down"); // harness
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a model");
@@ -227,6 +231,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("ProviderApp");
     await r.press("return");
+    await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
 
@@ -249,6 +254,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("CompactApp");
     await r.press("return");
+    await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
 
@@ -257,7 +263,8 @@ describe("project create wizard", () => {
     expect(lines[0]).toContain("agentcore → project → create");
     expect(lines[1]).toBe("─".repeat(80));
     expect(lines[2]).toContain("✓ name");
-    expect(frame).toContain("● bedrock (recommended)");
+    expect(frame).toContain("● bedrock");
+    expect(frame).not.toContain("bedrock (recommended)");
     expect(frame).toContain("○ openai");
     expect(frame).toContain("○ gemini");
     expect(frame).toContain("○ litellm");
@@ -279,14 +286,14 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("up"); // agent code
     await waitForText(r.lastFrame, "● agent code");
     await r.press("return");
 
     // Template step: the supported templates are offered, including the
     // -container variants and the empty project.
     await waitForText(r.lastFrame, "choose a template");
-    expect(r.lastFrame()).toContain("● agent-python-strands (recommended)");
+    expect(r.lastFrame()).toContain("● agent-python-strands");
+    expect(r.lastFrame()).not.toContain("agent-python-strands (recommended)");
     expect(r.lastFrame()).toContain("agent-python-strands-container");
     await r.press("return");
 
@@ -328,7 +335,6 @@ describe("project create wizard", () => {
     await r.write("HelloApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("up");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     await r.press("down"); // agent-python-strands-container
@@ -365,7 +371,6 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("up"); // agent code
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
@@ -400,7 +405,6 @@ describe("project create wizard", () => {
     await r.write("EmptyApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("up");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
@@ -516,6 +520,7 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
     await r.press("return");
@@ -558,6 +563,7 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
     await r.press("return"); // focus model id
@@ -597,6 +603,7 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
     await r.press("return");
