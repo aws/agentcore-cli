@@ -94,7 +94,8 @@ async function* transformAgentSse(
   }
 }
 
-// Handles bedrock {text}, {error}, ConverseStream contentBlockDelta, bare JSON string, and non-JSON tokens.
+// Handles bedrock {text}, {error}, ConverseStream contentBlockDelta, LangChain {content: [blocks]},
+// bare JSON string, and non-JSON tokens.
 export function parseAgentEvent(data: string): string | { error: string } | null {
   try {
     const parsed: unknown = JSON.parse(data);
@@ -105,6 +106,13 @@ export function parseAgentEvent(data: string): string | { error: string } | null
         return error ? { error } : null;
       }
       if ("text" in parsed) return String((parsed as { text: unknown }).text) || null;
+      if ("content" in parsed && Array.isArray((parsed as { content: unknown }).content)) {
+        const blocks = (parsed as { content: { type?: unknown; text?: unknown }[] }).content;
+        return (
+          blocks.flatMap((block) => (block.type === "text" ? [String(block.text)] : [])).join("") ||
+          null
+        );
+      }
       const event = (parsed as { event?: { contentBlockDelta?: { delta?: { text?: string } } } })
         .event;
       return event?.contentBlockDelta?.delta?.text || null;

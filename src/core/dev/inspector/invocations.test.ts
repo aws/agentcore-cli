@@ -68,6 +68,13 @@ describe("parseAgentEvent drops non-renderable frames", () => {
     { name: "a JSON primitive that is not text", data: JSON.stringify(42) },
     { name: "a blank error field", data: JSON.stringify({ error: "" }) },
     { name: "a blank text field", data: JSON.stringify({ text: "" }) },
+    {
+      name: "a LangChain chunk with only tool-call blocks",
+      data: JSON.stringify({
+        node: "model",
+        content: [{ type: "tool_call_chunk", name: "add_numbers", args: "{", index: 0 }],
+      }),
+    },
     { name: "an empty non-JSON token", data: "" },
   ])("returns null for $name", ({ data }) => {
     expect(parseAgentEvent(data)).toBeNull();
@@ -84,6 +91,14 @@ describe("HTTP agent SSE normalization", () => {
       expected: "delta",
     },
     { name: "a non-JSON plain-text token", frame: "raw-token", expected: "raw-token" },
+    {
+      name: "a LangChain content-block chunk",
+      frame: JSON.stringify({
+        node: "model",
+        content: [{ type: "text", text: "blocks", index: 0 }],
+      }),
+      expected: "blocks",
+    },
   ])("normalizes $name to a data frame", async ({ frame, expected }) => {
     const { url } = await inspectorFor(sseAgent([frame]));
     const response = await post(url, "/invocations", { agentName: "orders", prompt: "hi" });
