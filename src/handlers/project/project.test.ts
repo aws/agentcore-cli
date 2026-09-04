@@ -67,6 +67,26 @@ async function inProject(name = "TestProject"): Promise<string> {
 }
 
 describe("project create", () => {
+  test("--json returns the created project without human success text", async () => {
+    const directory = await inTempDirectory();
+    const { io } = await run([
+      "create",
+      "--name",
+      "JsonProject",
+      "--skip-install",
+      "--skip-git",
+      "--json",
+    ]);
+    const projectRoot = join(directory, "JsonProject");
+
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "create",
+      project: { name: "JsonProject", path: projectRoot },
+    });
+    expect(io.stderr()).not.toContain("Created project");
+    expect(io.stderr()).not.toContain("To deploy it");
+  });
+
   test("scaffolds a harness project by default, named for the project", async () => {
     const directory = await inTempDirectory();
     await run(["create", "--name", "MyAgent"]);
@@ -678,6 +698,31 @@ describe("project add config-bundle", () => {
 });
 
 describe("project add credentials", () => {
+  test("--json reports the credential without exposing its secret", async () => {
+    const projectRoot = await inProject();
+    const keyPath = join(projectRoot, "key.txt");
+    await Bun.write(keyPath, "sk-secret-value\n");
+
+    const { io } = await run([
+      "add",
+      "credentials",
+      "api-key",
+      "--name",
+      "svc-key",
+      "--api-key",
+      `file://${keyPath}`,
+      "--json",
+    ]);
+
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "add",
+      project: { name: "TestProject", path: projectRoot },
+      resource: { type: "credential", name: "svc-key" },
+    });
+    expect(io.stdout()).not.toContain("sk-secret-value");
+    expect(io.stderr()).not.toContain("added credential");
+  });
+
   test("api-key with a file:// secret records the spec entry and stores the trailing-newline-stripped key in .env.local", async () => {
     const projectRoot = await inProject();
     const keyPath = join(projectRoot, "key.txt");

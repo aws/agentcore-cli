@@ -2,6 +2,7 @@ import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -50,25 +51,24 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
         provider = credential.provider;
       }
 
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "payment-connector",
-        managerName: flags.manager,
-        resourceConfig: flags["quick-create"]
-          ? {
-              name: flags.name,
-              provider: "CoinbaseCDP",
-              provisionMode: "QUICK_CREATE",
-            }
-          : {
-              name: flags.name,
-              provider,
-              credentialName: credentialName!,
-            },
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "payment-connector",
+          managerName: flags.manager,
+          resourceConfig: flags["quick-create"]
+            ? {
+                name: flags.name,
+                provider: "CoinbaseCDP",
+                provisionMode: "QUICK_CREATE",
+              }
+            : {
+                name: flags.name,
+                provider,
+                credentialName: credentialName!,
+              },
+        },
         `added payment connector '${flags.name}' to manager '${flags.manager}' in '${project.name}'\n`,
       );
     },

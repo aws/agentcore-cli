@@ -20,6 +20,7 @@ import {
   resolveImportBedrockAgentInput,
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
+import { addProjectResource } from "../shared";
 
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -223,14 +224,15 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "runtime",
-        resourceConfig: result.data,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added runtime '${flags.name}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "runtime",
+          resourceConfig: result.data,
+        },
+        `added runtime '${flags.name}' to '${project.name}'\n`,
+      );
     },
   });
 

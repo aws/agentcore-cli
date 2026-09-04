@@ -8,6 +8,7 @@ import {
   credentialEnvVarName,
   credentialNameFieldSuffix,
 } from "../../../../projectSchemas/credential";
+import { addProjectResource } from "../shared";
 
 export { credentialEnvVarName };
 
@@ -68,14 +69,15 @@ export async function addCredentialToProject(
     );
   }
 
-  for await (const event of config.projectManager.addResource(project, {
-    resourceType: "credential",
-    ...input,
-  })) {
-    if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-  }
-
-  config.io.stderr.write(`added credential '${input.resourceConfig.name}' to '${project.name}'\n`);
+  await addProjectResource(
+    ctx,
+    config,
+    {
+      resourceType: "credential",
+      ...input,
+    },
+    `added credential '${input.resourceConfig.name}' to '${project.name}'\n`,
+  );
   for (const entry of (input.envEntries ?? []).filter((e) => e.value === undefined)) {
     config.io.stderr.write(`Set ${entry.key} in agentcore/.env.local before you deploy.\n`);
   }

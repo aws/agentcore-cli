@@ -25,6 +25,7 @@ import {
 import { InputValidationError } from "../../../errors";
 import { DEFAULT_HARNESS_MODEL } from "../add/harness";
 import { JsonKey } from "../../keys";
+import { projectReference, renderProjectMutationResult } from "../output";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -129,13 +130,22 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
-      await runWithProgress(config.projectManager.create(createInput), {
+      const project = await runWithProgress(config.projectManager.create(createInput), {
         io: config.io,
         interactive: ctx.require(JsonKey) ? false : undefined,
       });
 
-      config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
-      config.io.stderr.write(`Next steps:\n  cd ${name}\n  agentcore project deploy\n`);
+      renderProjectMutationResult(
+        ctx,
+        {
+          operation: "create",
+          project: projectReference(project),
+        },
+        () => {
+          config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
+          config.io.stderr.write(`Next steps:\n  cd ${name}\n  agentcore project deploy\n`);
+        },
+      );
     },
   });
 

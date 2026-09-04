@@ -8,6 +8,7 @@ import {
 } from "../../../../projectSchemas/payment";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -68,33 +69,35 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
       }
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "payment-manager",
-        resourceConfig: {
-          name: flags.name,
-          authorizerType: flags["authorizer-type"],
-          authorizerConfiguration:
-            flags["authorizer-type"] === "CUSTOM_JWT"
-              ? {
-                  customJWTAuthorizer: {
-                    discoveryUrl: flags["discovery-url"]!,
-                    allowedClients: flags["allowed-clients"],
-                    allowedAudience: flags["allowed-audience"],
-                    allowedScopes: flags["allowed-scopes"],
-                  },
-                }
-              : undefined,
-          connectors: [],
-          description: flags.description,
-          autoPayment: flags["auto-payment"],
-          defaultSpendLimit: flags["default-spend-limit"],
-          paymentToolAllowlist: flags["tool-allowlist"],
-          networkPreferences: flags["network-preferences"],
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "payment-manager",
+          resourceConfig: {
+            name: flags.name,
+            authorizerType: flags["authorizer-type"],
+            authorizerConfiguration:
+              flags["authorizer-type"] === "CUSTOM_JWT"
+                ? {
+                    customJWTAuthorizer: {
+                      discoveryUrl: flags["discovery-url"]!,
+                      allowedClients: flags["allowed-clients"],
+                      allowedAudience: flags["allowed-audience"],
+                      allowedScopes: flags["allowed-scopes"],
+                    },
+                  }
+                : undefined,
+            connectors: [],
+            description: flags.description,
+            autoPayment: flags["auto-payment"],
+            defaultSpendLimit: flags["default-spend-limit"],
+            paymentToolAllowlist: flags["tool-allowlist"],
+            networkPreferences: flags["network-preferences"],
+          },
         },
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-      config.io.stderr.write(`added payment manager '${flags.name}' to '${project.name}'\n`);
+        `added payment manager '${flags.name}' to '${project.name}'\n`,
+      );
       if (flags["auto-payment"]) {
         config.io.stderr.write(
           `Warning: auto-payment is ENABLED for manager '${flags.name}'. Agents can automatically settle ` +

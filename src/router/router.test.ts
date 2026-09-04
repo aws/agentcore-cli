@@ -747,6 +747,18 @@ test("command indexes show names without usage syntax", async () => {
   expect(out).not.toContain("nested [command]");
 });
 
+test("nested help shows inherited global options", async () => {
+  const JsonKey = globalFlag("json", "JSON output", z.boolean().default(false));
+  const nested = new Router("nested").handler(leaf("deep", () => {}));
+  const root = new Router("app").groupFlags(JsonKey).handler(nested);
+
+  const out = await helpOutput(root, ["app", "nested", "deep", "--help"]);
+
+  expect(out).toContain("Global Options:");
+  expect(out).toContain("--json");
+  expect(out).toContain("JSON output");
+});
+
 test("flags with long-form help render a Parameter details section", async () => {
   const create = createHandler({
     name: "create",

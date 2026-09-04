@@ -14,6 +14,7 @@ import {
 } from "../../../types";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
+import { addProjectResource } from "../../shared";
 
 export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -83,13 +84,15 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
           config: { codeBased: { external: { lambdaArn: flags["lambda-arn"] } } },
         });
         if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
-        for await (const event of config.projectManager.addResource(project, {
-          resourceType: "evaluator",
-          resourceConfig: parsed.data,
-        })) {
-          if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-        }
-        config.io.stderr.write(`added evaluator '${flags["name"]}' to '${project.name}'\n`);
+        await addProjectResource(
+          ctx,
+          config,
+          {
+            resourceType: "evaluator",
+            resourceConfig: parsed.data,
+          },
+          `added evaluator '${flags["name"]}' to '${project.name}'\n`,
+        );
         return;
       }
 
@@ -102,15 +105,16 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         ...(flags["timeout-seconds"] !== undefined && { timeoutSeconds: flags["timeout-seconds"] }),
       };
 
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "evaluator",
-        resourceConfig: { name: scaffold.name },
-        scaffold,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added evaluator '${flags["name"]}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "evaluator",
+          resourceConfig: { name: scaffold.name },
+          scaffold,
+        },
+        `added evaluator '${flags["name"]}' to '${project.name}'\n`,
+      );
       if (!hasMetric)
         config.io.stderr.write(
           `note: this evaluator returns Pass for every session until you implement app/${flags["name"]}/lambda_function.py\n`,

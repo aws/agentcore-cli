@@ -15,6 +15,34 @@ const { addGateway, cleanup, inProject, projectSpec, run } =
 afterEach(cleanup);
 
 describe("project add gateway-connector", () => {
+  test("--json preserves the command resource type and parent Gateway", async () => {
+    const projectRoot = await inProject();
+    await addGateway();
+
+    const io = await run([
+      "add",
+      "gateway-connector",
+      "--gateway",
+      "tools",
+      "--name",
+      "web",
+      "--connector",
+      "web-search",
+      "--json",
+    ]);
+
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "add",
+      project: { name: "TestProject", path: projectRoot },
+      resource: {
+        type: "gateway-connector",
+        name: "web",
+        parent: { type: "gateway", name: "tools" },
+      },
+    });
+    expect(io.stderr()).not.toContain("added Connector Target");
+  });
+
   test("adds Web Search and external Knowledge Base connectors", async () => {
     const projectRoot = await inProject();
     await addGateway();

@@ -13,6 +13,7 @@ import {
   type MemoryStrategy,
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
+import { addProjectResource } from "../shared";
 
 // The service default for raw event retention
 const DEFAULT_EVENT_EXPIRY_DURATION = 30;
@@ -172,14 +173,15 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       };
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "memory",
-        resourceConfig: memoryConfig,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added memory '${flags["name"]}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "memory",
+          resourceConfig: memoryConfig,
+        },
+        `added memory '${flags["name"]}' to '${project.name}'\n`,
+      );
     },
   });
 

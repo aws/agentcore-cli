@@ -11,6 +11,7 @@ import {
 import { TagsSchema } from "../../../../../projectSchemas/tags";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
+import { addProjectResource } from "../../shared";
 import {
   isRatingScalePreset,
   RATING_SCALE_PRESETS,
@@ -93,14 +94,15 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "evaluator",
-        resourceConfig: parsed.data,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added evaluator '${flags["name"]}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "evaluator",
+          resourceConfig: parsed.data,
+        },
+        `added evaluator '${flags["name"]}' to '${project.name}'\n`,
+      );
     },
   });
 

@@ -4,6 +4,7 @@ import { SourceResolver } from "../../../../io";
 import type { PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 /**
  A substring heuristic, not a Cedar parser; --authorization-phase overrides it.
@@ -80,14 +81,14 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         authorizationPhase,
       };
 
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "policy",
-        engineName: flags.engine,
-        resourceConfig: policy,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-      config.io.stderr.write(
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "policy",
+          engineName: flags.engine,
+          resourceConfig: policy,
+        },
         `added Policy '${flags.name}' to Policy Engine '${flags.engine}' in '${project.name}'\n`,
       );
     },

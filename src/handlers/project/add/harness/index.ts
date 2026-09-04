@@ -1,6 +1,7 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { HarnessSpecSchema } from "../../../../projectSchemas/harness";
@@ -109,13 +110,14 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "harness",
-        resourceConfig: result.data,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added harness '${flags["name"]}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "harness",
+          resourceConfig: result.data,
+        },
+        `added harness '${flags["name"]}' to '${project.name}'\n`,
+      );
     },
   });

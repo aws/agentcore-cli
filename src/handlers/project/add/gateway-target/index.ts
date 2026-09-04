@@ -11,6 +11,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema } from "../../../utils";
 import type { Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 export const createAddGatewayTargetHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -120,14 +121,14 @@ Use project add gateway-connector for curated Connector shortcuts.`,
               };
       }
 
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "gateway-target",
-        gatewayName: flags.gateway,
-        resourceConfig: target,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-      config.io.stderr.write(
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "gateway-target",
+          gatewayName: flags.gateway,
+          resourceConfig: target,
+        },
         `added Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'\n`,
       );
     },

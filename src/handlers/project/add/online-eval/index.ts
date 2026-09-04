@@ -4,6 +4,7 @@ import { InputValidationError } from "../../../../errors";
 import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-config";
 import { parseJsonFlag } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -81,13 +82,14 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "online-eval",
-        resourceConfig: parsed.data,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added online-eval config '${flags["name"]}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "online-eval",
+          resourceConfig: parsed.data,
+        },
+        `added online-eval config '${flags["name"]}' to '${project.name}'\n`,
+      );
     },
   });

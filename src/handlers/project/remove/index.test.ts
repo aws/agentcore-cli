@@ -224,6 +224,25 @@ describe("project remove", () => {
     expect(io.stderr()).toContain("removed credential with name 'svc-key' from project");
   });
 
+  test("--json reports a removal and its cleaned environment keys", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
+      stdin: "sekret",
+    });
+    const envKey = credentialEnvVarName("svc-key");
+
+    const { io } = await run(["remove", "credential", "--name", "svc-key", "--json"]);
+
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "remove",
+      project: { name: "TestProject", path: projectRoot },
+      resource: { type: "credential", name: "svc-key" },
+      removedEnvironmentKeys: [envKey],
+    });
+    expect(io.stdout()).not.toContain("removed credential with name");
+    expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
+  });
+
   test("removing a secret-reference credential leaves .env.local alone", async () => {
     const projectRoot = await inProject();
     await run([

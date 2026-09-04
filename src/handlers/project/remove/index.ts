@@ -5,8 +5,8 @@ import z from "zod";
 import type { AppIO } from "../../../io";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { JsonKey } from "../../keys";
-import { reportMessage } from "../../utils";
 import type { ProjectManager } from "../types";
+import { projectReference, renderProjectMutationResult } from "../output";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -83,7 +83,16 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await confirmRemoveAll(config.io, ctx.require(JsonKey), flags.yes, project.name);
         const result = await config.projectManager.removeAllResources(project);
         reportEnvCleanup(config.io, result.removedEnvKeys);
-        reportMessage(ctx, config.io, "removed all resources from project");
+        renderProjectMutationResult(
+          ctx,
+          {
+            operation: "remove",
+            project: projectReference(result.project),
+            resource: { type: "all" },
+            removedEnvironmentKeys: result.removedEnvKeys,
+          },
+          () => config.io.stdout.write(`removed all resources from project`),
+        );
         return;
       }
 
@@ -123,7 +132,24 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       }
 
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      reportMessage(ctx, config.io, `removed ${resource} with name '${name}' from project`);
+      const parent =
+        resource === "gateway-target" || resource === "gateway-connector"
+          ? { type: "gateway", name: flags.gateway! }
+          : resource === "policy" && flags.engine
+            ? { type: "policy-engine", name: flags.engine }
+            : resource === "payment-connector"
+              ? { type: "payment-manager", name: flags.manager! }
+              : undefined;
+      renderProjectMutationResult(
+        ctx,
+        {
+          operation: "remove",
+          project: projectReference(result.project),
+          resource: { type: resource, name, parent },
+          removedEnvironmentKeys: result.removedEnvKeys,
+        },
+        () => config.io.stdout.write(`removed ${resource} with name '${name}' from project`),
+      );
     },
   });
 

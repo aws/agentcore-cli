@@ -6,6 +6,7 @@ import type { AgentCoreGateway } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema, parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 const GatewayAuthorizerConfigurationInputSchema = GatewayAuthorizerConfigSchema.strict();
 
@@ -125,12 +126,14 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         tags: parseTags(flags.tags),
       };
 
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "gateway",
-        resourceConfig: gateway,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-      config.io.stderr.write(`added Gateway '${flags.name}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "gateway",
+          resourceConfig: gateway,
+        },
+        `added Gateway '${flags.name}' to '${project.name}'\n`,
+      );
     },
   });

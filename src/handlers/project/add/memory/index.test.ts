@@ -54,6 +54,18 @@ async function inProject(name = "TestProject"): Promise<string> {
 }
 
 describe("project add memory", () => {
+  test("--json returns a structured project mutation result", async () => {
+    const projectRoot = await inProject();
+    const { io } = await run(["add", "memory", "--name", "customer_memory", "--json"]);
+
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "add",
+      project: { name: "TestProject", path: projectRoot },
+      resource: { type: "memory", name: "customer_memory" },
+    });
+    expect(io.stderr()).not.toContain("added memory");
+  });
+
   /** Verify the flag -> agentcore.json memories[] entry for each flag. */
   test.each<[string, string[], Record<string, unknown>]>([
     [

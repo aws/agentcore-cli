@@ -12,6 +12,7 @@ import { KmsKeyArnSchema } from "../../../../projectSchemas/evaluator";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 const ComponentsSchema = z
   .record(z.string().min(1), ComponentConfigurationSchema.strict())
@@ -68,20 +69,21 @@ export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =
       }
 
       const project = ctx.require(ProjectKey);
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "config-bundle",
-        resourceConfig: {
-          name: flags.name,
-          description: flags.description,
-          components,
-          branchName: flags["branch-name"],
-          commitMessage: flags["commit-message"],
-          kmsKeyArn: flags["kms-key-arn"],
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "config-bundle",
+          resourceConfig: {
+            name: flags.name,
+            description: flags.description,
+            components,
+            branchName: flags["branch-name"],
+            commitMessage: flags["commit-message"],
+            kmsKeyArn: flags["kms-key-arn"],
+          },
         },
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-
-      config.io.stderr.write(`added configuration bundle '${flags.name}' to '${project.name}'\n`);
+        `added configuration bundle '${flags.name}' to '${project.name}'\n`,
+      );
     },
   });

@@ -4,6 +4,7 @@ import type { PolicyEngineSchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
+import { addProjectResource } from "../shared";
 
 /**
  The deployed service name of a policy engine; mirrors the L3 AgentCorePolicyEngine construct's rule.
@@ -54,19 +55,21 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
         tags: parseTags(flags.tags),
       };
 
-      for await (const event of config.projectManager.addResource(project, {
-        resourceType: "policy-engine",
-        resourceConfig: engine,
-        attachGateways: flags["attach-to-gateways"]
-          ? {
-              names: flags["attach-to-gateways"],
-              mode: flags["attach-mode"] === "log-only" ? "LOG_ONLY" : "ENFORCE",
-            }
-          : undefined,
-      })) {
-        if (event.type === "step") config.io.stderr.write(`${event.message}\n`);
-      }
-      config.io.stderr.write(`added Policy Engine '${flags.name}' to '${project.name}'\n`);
+      await addProjectResource(
+        ctx,
+        config,
+        {
+          resourceType: "policy-engine",
+          resourceConfig: engine,
+          attachGateways: flags["attach-to-gateways"]
+            ? {
+                names: flags["attach-to-gateways"],
+                mode: flags["attach-mode"] === "log-only" ? "LOG_ONLY" : "ENFORCE",
+              }
+            : undefined,
+        },
+        `added Policy Engine '${flags.name}' to '${project.name}'\n`,
+      );
       if (flags["attach-to-gateways"]) {
         config.io.stderr.write(
           `attached '${flags.name}' to ${flags["attach-to-gateways"].length} gateway(s)\n`,
