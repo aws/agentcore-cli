@@ -1,0 +1,19 @@
+# Placeholder. The real release-prepare workflow lives on the refactor branch.
+#
+# GitHub only lists a workflow in the Actions UI and the dispatch API if a file with its name exists on
+# the default branch. Selecting "refactor" in the branch picker runs refactor's release-prepare.yml with
+# refactor's inputs. Selecting "main" runs this file, which refuses so nothing happens to main.
+#
+# Delete this file when refactor lands on main and brings the real workflow with it.
+name: release-prepare
+
+on:
+  workflow_dispatch:
+
+jobs:
+  refuse:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::release-prepare only exists on the refactor branch. Re-run with 'refactor' selected in the branch picker."
+          exit 1
