@@ -161,7 +161,7 @@ export function EndpointWizard({
         )}
 
         {phase.kind === "submitting" && (
-          <Spinner label={mode === "create" ? "Creating endpoint…" : "Updating endpoint…"} />
+          <Spinner label={mode === "create" ? "creating endpoint…" : "updating endpoint…"} />
         )}
         {phase.kind === "success" && (
           <SuccessPanel
@@ -316,7 +316,7 @@ function VersionStep({
       {versions.isPending ? (
         <>
           <Question text="which harness version should this endpoint serve?" />
-          <Spinner label="Loading versions…" />
+          <Spinner label="loading versions…" />
         </>
       ) : versions.isError ? (
         <>

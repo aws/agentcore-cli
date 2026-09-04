@@ -339,7 +339,7 @@ export function HarnessChat({
       }
     >
       {detail.isPending ? (
-        <Spinner label="Loading harness…" />
+        <Spinner label="loading harness…" />
       ) : detail.isError ? (
         <Text color="red">Error: {(detail.error as Error).message}</Text>
       ) : (
@@ -370,7 +370,7 @@ export function HarnessChat({
 
           <Box height={1}>
             {streaming ? (
-              <Spinner label="Working… (esc to interrupt)" />
+              <Spinner label="working… (esc to interrupt)" />
             ) : (
               <Text color={theme.colors.muted}>
                 session: {sessionId} · qualifier: {qualifier}

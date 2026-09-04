@@ -82,7 +82,7 @@ export function DatasetPicker({
       getValue={(row) => row.datasetId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading datasets…"
+      loadingMessage="loading datasets…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No datasets found in this Region."
       emptyPageMessage="No datasets on this page."

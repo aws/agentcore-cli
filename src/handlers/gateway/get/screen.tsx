@@ -62,7 +62,7 @@ export function GatewayGetScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel="Loading Gateway…"
+      loadingLabel="loading Gateway…"
       onRetry={() => void detail.refetch()}
       selectLabel="open"
     />
@@ -79,7 +79,7 @@ export function GatewayGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading Gateway…"
+      loadingLabel="loading Gateway…"
       onRetry={() => void detail.refetch()}
     />
   );

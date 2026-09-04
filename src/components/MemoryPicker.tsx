@@ -59,7 +59,7 @@ export function MemoryPicker({ ctx, core, breadcrumb, description, onSelect }: M
       getValue={(row) => row.memoryId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading Memories…"
+      loadingMessage="loading Memories…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No Memories found in this Region."
       emptyPageMessage="No Memories on this page."

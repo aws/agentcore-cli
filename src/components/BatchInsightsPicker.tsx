@@ -70,7 +70,7 @@ export function BatchInsightsPicker({
       getValue={(row) => row.batchEvaluationId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading batch insights…"
+      loadingMessage="loading batch insights…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No batch insights found in this Region."
       emptyPageMessage="No batch insights on this page."

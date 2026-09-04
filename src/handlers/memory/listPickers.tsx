@@ -56,7 +56,7 @@ export function MemoryActorPicker({
       getValue={(row) => row.actorId}
       onSelect={onSelect}
       onBack={onBack}
-      loadingMessage={`Loading actors for Memory ${memoryId}...`}
+      loadingMessage={`loading actors for Memory ${memoryId}...`}
       errorMessage={(error) => `Error loading actors for Memory ${memoryId}: ${error.message}`}
       emptyMessage={`No actors found for Memory ${memoryId}.`}
       emptyPageMessage={`No actors on this page for Memory ${memoryId}.`}
@@ -128,7 +128,7 @@ export function MemorySessionPicker({
       getValue={(row) => row.sessionId}
       onSelect={onSelect}
       onBack={onBack}
-      loadingMessage={`Loading sessions for actor ${actorId}...`}
+      loadingMessage={`loading sessions for actor ${actorId}...`}
       errorMessage={(error) => `Error loading sessions for actor ${actorId}: ${error.message}`}
       emptyMessage={`No sessions found for actor ${actorId}.`}
       emptyPageMessage={`No sessions on this page for actor ${actorId}.`}

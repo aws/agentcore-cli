@@ -180,7 +180,7 @@ function ProjectInvokePicker({
           { key: "ctl+c", label: "quit" },
         ]}
       >
-        <Spinner label="Resolving deployed resources…" />
+        <Spinner label="resolving deployed resources…" />
       </Layout>
     );
   }

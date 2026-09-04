@@ -84,7 +84,7 @@ export function OnlineInsightPicker({
       getValue={(row) => row.configId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading online insight configs…"
+      loadingMessage="loading online insight configs…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No online insight configs found in this Region."
       emptyPageMessage="No online insight configs on this page."

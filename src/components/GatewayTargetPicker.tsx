@@ -71,7 +71,7 @@ export function GatewayTargetPicker({
       getValue={(row) => row.targetId}
       onSelect={onSelect}
       onBack={() => navigate(-1)}
-      loadingMessage={`Loading Targets for Gateway ${gatewayId}…`}
+      loadingMessage={`loading Targets for Gateway ${gatewayId}…`}
       errorMessage={(error) => `Error loading Targets for Gateway ${gatewayId}: ${error.message}`}
       emptyMessage="This Gateway has no Targets."
       emptyPageMessage={`No Targets on this page for Gateway ${gatewayId}.`}

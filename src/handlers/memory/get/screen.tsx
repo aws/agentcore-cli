@@ -72,7 +72,7 @@ export function MemoryGetScreen(props: ScreenProps) {
             }))
           : []
       }
-      loadingLabel="Loading Memory…"
+      loadingLabel="loading Memory…"
       onRetry={() => void detail.refetch()}
       selectLabel="open"
     />
@@ -89,7 +89,7 @@ export function MemoryGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data?.memory}
-      loadingLabel="Loading Memory…"
+      loadingLabel="loading Memory…"
       onRetry={() => void detail.refetch()}
     />
   );

@@ -84,7 +84,7 @@ export function RuntimePicker({
       getValue={(row) => row.runtimeId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading Runtimes…"
+      loadingMessage="loading Runtimes…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No Runtimes found in this Region."
       emptyPageMessage="No Runtimes on this page."

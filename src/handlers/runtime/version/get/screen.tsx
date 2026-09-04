@@ -19,7 +19,7 @@ export function RuntimeGetVersionScreen({ ctx, core }: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel={`Loading version ${version ?? ""} for Runtime ${runtimeId ?? ""}…`}
+      loadingLabel={`loading version ${version ?? ""} for Runtime ${runtimeId ?? ""}…`}
       onRetry={() => void detail.refetch()}
     />
   );

@@ -86,7 +86,7 @@ export function HarnessPicker({
       getValue={(row) => row.harnessId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading harnesses…"
+      loadingMessage="loading harnesses…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No harnesses found in this Region."
       emptyPageMessage="No harnesses on this page."

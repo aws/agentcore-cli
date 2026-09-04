@@ -60,7 +60,7 @@ function DeleteConfirm({ ctx, core, harnessId }: ScreenProps & { harnessId: stri
         };
       }}
       successTitle="Harness deletion started"
-      runningLabel="Deleting harness…"
+      runningLabel="deleting harness…"
       onDone={() => navigate("/agentcore/harness/list")}
     />
   );

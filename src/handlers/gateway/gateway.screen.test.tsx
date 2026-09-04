@@ -147,7 +147,7 @@ describe("Gateway menu and list", () => {
     loadingCore.gateway.listGateways = async () => pending.promise;
     const loading = renderScreen("/agentcore/gateway/list", { core: loadingCore });
 
-    await waitForText(loading.lastFrame, "Loading Gateways");
+    await waitForText(loading.lastFrame, "loading Gateways");
     await loading.press("escape");
     await waitForText(loading.lastFrame, "manage AgentCore Gateways");
     loading.unmount();

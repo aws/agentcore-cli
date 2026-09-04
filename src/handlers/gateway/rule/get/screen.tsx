@@ -19,7 +19,7 @@ export function GatewayRuleGetScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading Gateway Rule…"
+      loadingLabel="loading Gateway Rule…"
       onRetry={() => void detail.refetch()}
     />
   );

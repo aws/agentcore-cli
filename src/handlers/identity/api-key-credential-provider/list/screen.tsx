@@ -53,7 +53,7 @@ export function ApiKeyCredentialProviderListScreen({ ctx, core }: ScreenProps) {
       }
       onBack={() => navigate("/agentcore/identity/api-key-credential-provider")}
       maxPageSize={MAX_PAGE_SIZE}
-      loadingMessage="Loading API key credential providers…"
+      loadingMessage="loading API key credential providers…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No API key credential providers found in this Region."
       emptyPageMessage="No API key credential providers on this page."

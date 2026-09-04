@@ -72,7 +72,7 @@ export function RuntimeGetScreen(props: ScreenProps) {
             }))
           : []
       }
-      loadingLabel="Loading Runtime…"
+      loadingLabel="loading Runtime…"
       onRetry={() => void detail.refetch()}
     />
   );
@@ -88,7 +88,7 @@ export function RuntimeGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading Runtime…"
+      loadingLabel="loading Runtime…"
       onRetry={() => void detail.refetch()}
     />
   );

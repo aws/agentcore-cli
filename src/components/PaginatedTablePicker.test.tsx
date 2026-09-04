@@ -92,7 +92,7 @@ describe("paginated table picker contract", () => {
     core.harness.listHarnesses = async () => pending.promise;
     const r = renderScreen("/agentcore/harness/list", { core });
 
-    await waitForText(r.lastFrame, "Loading harnesses");
+    await waitForText(r.lastFrame, "loading harnesses");
     await r.press("escape");
     await waitForText(r.lastFrame, "manage AgentCore harnesses");
   });

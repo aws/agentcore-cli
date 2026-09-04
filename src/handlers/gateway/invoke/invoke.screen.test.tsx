@@ -474,7 +474,7 @@ describe("Gateway invoke JSON console", () => {
     await screen.press("return");
     await waitForText(screen.lastFrame, "data: first");
 
-    expect(screen.lastFrame()).toContain("Streaming");
+    expect(screen.lastFrame()).toContain("streaming");
     expect(screen.lastFrame()).not.toContain("returned-runtime");
     release.resolve();
     await waitForText(screen.lastFrame, "data: second");

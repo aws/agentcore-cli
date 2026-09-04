@@ -48,7 +48,7 @@ export function OnlineEvalGetScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel="Loading online evaluation config…"
+      loadingLabel="loading online evaluation config…"
       onRetry={() => void detail.refetch()}
       selectLabel="open"
     />
@@ -65,7 +65,7 @@ export function OnlineEvalGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading online evaluation config…"
+      loadingLabel="loading online evaluation config…"
       onRetry={() => void detail.refetch()}
     />
   );

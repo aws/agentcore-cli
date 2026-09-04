@@ -64,7 +64,7 @@ export function RuntimeGetEndpointScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel={`Loading endpoint ${qualifier ?? ""} for Runtime ${runtimeId ?? ""}…`}
+      loadingLabel={`loading endpoint ${qualifier ?? ""} for Runtime ${runtimeId ?? ""}…`}
       onRetry={() => void detail.refetch()}
     />
   );
@@ -88,7 +88,7 @@ export function RuntimeGetEndpointJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel={`Loading endpoint ${qualifier ?? ""} for Runtime ${runtimeId ?? ""}…`}
+      loadingLabel={`loading endpoint ${qualifier ?? ""} for Runtime ${runtimeId ?? ""}…`}
       onRetry={() => void detail.refetch()}
     />
   );

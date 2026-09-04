@@ -77,7 +77,7 @@ export function ConfigBundleVersionPicker({
       getValue={(row) => row.versionId}
       onSelect={onSelect}
       onBack={onBack}
-      loadingMessage="Loading configuration bundle versions…"
+      loadingMessage="loading configuration bundle versions…"
       errorMessage={(error) =>
         `Error loading versions for configuration bundle ${bundleId}: ${error.message}`
       }

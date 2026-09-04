@@ -81,7 +81,7 @@ function DeleteConfirm({
         };
       }}
       successTitle="Endpoint deletion started"
-      runningLabel="Deleting endpoint…"
+      runningLabel="deleting endpoint…"
       onDone={() => finishFlow(`/agentcore/harness/endpoint/list/${harnessId}`)}
     />
   );

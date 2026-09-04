@@ -83,7 +83,7 @@ export function EvaluatorPicker({
       getValue={(row) => row.evaluatorId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading evaluators…"
+      loadingMessage="loading evaluators…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No evaluators found in this Region."
       emptyPageMessage="No evaluators on this page."

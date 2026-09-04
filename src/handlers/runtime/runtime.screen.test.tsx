@@ -459,7 +459,7 @@ describe("runtime hub", () => {
 
     await waitForText(hub.lastFrame, "checkout");
     await hub.press("return");
-    await waitForText(hub.lastFrame, "Loading Runtime…");
+    await waitForText(hub.lastFrame, "loading Runtime…");
     await hub.press("escape");
     await waitForText(hub.lastFrame, "agentcore → runtime → list");
   });

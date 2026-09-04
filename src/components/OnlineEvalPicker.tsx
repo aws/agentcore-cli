@@ -84,7 +84,7 @@ export function OnlineEvalPicker({
       getValue={(row) => row.configId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading online evaluation configs…"
+      loadingMessage="loading online evaluation configs…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No online evaluation configs found in this Region."
       emptyPageMessage="No online evaluation configs on this page."

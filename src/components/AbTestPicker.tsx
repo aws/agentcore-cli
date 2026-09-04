@@ -65,7 +65,7 @@ export function AbTestPicker({
       getValue={(row) => row.abTestId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading A/B tests…"
+      loadingMessage="loading A/B tests…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No A/B tests found in this Region."
       emptyPageMessage="No A/B tests on this page."

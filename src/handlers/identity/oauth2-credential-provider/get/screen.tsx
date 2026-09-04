@@ -50,7 +50,7 @@ export function Oauth2CredentialProviderGetScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel="Loading OAuth2 credential provider…"
+      loadingLabel="loading OAuth2 credential provider…"
       onRetry={() => void detail.refetch()}
       selectLabel="open"
     />
@@ -74,7 +74,7 @@ export function Oauth2CredentialProviderGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading OAuth2 credential provider…"
+      loadingLabel="loading OAuth2 credential provider…"
       onRetry={() => void detail.refetch()}
     />
   );

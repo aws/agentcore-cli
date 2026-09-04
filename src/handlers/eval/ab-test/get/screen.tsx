@@ -51,7 +51,7 @@ export function AbTestGetScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel="Loading A/B test…"
+      loadingLabel="loading A/B test…"
       onRetry={() => void detail.refetch()}
     />
   );
@@ -67,7 +67,7 @@ export function AbTestGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading A/B test…"
+      loadingLabel="loading A/B test…"
       onRetry={() => void detail.refetch()}
     />
   );

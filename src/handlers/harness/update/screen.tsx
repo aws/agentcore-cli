@@ -51,7 +51,7 @@ function UpdateWizard({ ctx, core, harnessId }: ScreenProps & { harnessId: strin
         ]}
       >
         {detail.isPending ? (
-          <Spinner label="Loading harness…" />
+          <Spinner label="loading harness…" />
         ) : (
           <Text color="red">Error: {(detail.error as Error).message}</Text>
         )}

@@ -318,7 +318,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
           <Box flexDirection="column" paddingX={1}>
             <TaskList tasks={tasks} />
             {phase.kind === "running" && tasks.length === 0 && (
-              <Spinner label={`Creating ${values.name}…`} />
+              <Spinner label={`creating ${values.name}…`} />
             )}
             {phase.kind === "success" && (
               <SuccessPanel name={values.name} onContinue={() => exit()} />

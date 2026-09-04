@@ -53,7 +53,7 @@ export function OnlineInsightGetScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel="Loading online insight config…"
+      loadingLabel="loading online insight config…"
       onRetry={() => void detail.refetch()}
       selectLabel="open"
     />
@@ -70,7 +70,7 @@ export function OnlineInsightGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading online insight config…"
+      loadingLabel="loading online insight config…"
       onRetry={() => void detail.refetch()}
     />
   );

@@ -451,7 +451,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
     >
       <Box height="100%" flexDirection="column" position="relative">
         {detail.isPending ? (
-          <Spinner label="Loading Gateway…" />
+          <Spinner label="loading Gateway…" />
         ) : detail.isError ? (
           <ErrorBlock details={errorDetails(detail.error)} />
         ) : (
@@ -516,9 +516,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
                   Gateway is {unavailableStatus}; invocation requires READY.
                 </Text>
               ) : busy ? (
-                <Spinner
-                  label={`${liveState === "connecting" ? "Connecting" : "Streaming"}… (esc to interrupt)`}
-                />
+                <Spinner label={`${liveState}… (esc to interrupt)`} />
               ) : (
                 <>
                   <Text color={theme.colors.muted}>

@@ -83,7 +83,7 @@ export function HarnessVersionPicker({
       getValue={(row) => row.harnessVersion}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading versions…"
+      loadingMessage="loading versions…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No versions found."
       emptyPageMessage={`No versions on this page for harness ${harnessId}.`}

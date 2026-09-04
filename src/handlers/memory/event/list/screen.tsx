@@ -73,7 +73,7 @@ function EventPicker({ ctx, core, memoryId, actorId, sessionId }: EventPickerPro
         )
       }
       onBack={() => navigate(-1)}
-      loadingMessage={`Loading events for session ${sessionId}...`}
+      loadingMessage={`loading events for session ${sessionId}...`}
       errorMessage={(error) => `Error loading events for session ${sessionId}: ${error.message}`}
       emptyMessage={`No events found for session ${sessionId}.`}
       emptyPageMessage={`No events on this page for session ${sessionId}.`}

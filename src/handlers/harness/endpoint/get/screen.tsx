@@ -22,7 +22,7 @@ export function HarnessGetEndpointScreen({ ctx, core }: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data?.endpoint}
-      loadingLabel="Loading endpoint…"
+      loadingLabel="loading endpoint…"
     />
   );
 }

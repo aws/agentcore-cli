@@ -79,7 +79,7 @@ export function BatchEvaluationPicker({
       getValue={(row) => row.batchEvaluationId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading batch evaluations…"
+      loadingMessage="loading batch evaluations…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No batch evaluations found in this Region."
       emptyPageMessage="No batch evaluations on this page."

@@ -74,7 +74,7 @@ export function GatewayPicker({
       getValue={(row) => row.gatewayId}
       onSelect={onSelect}
       onBack={onEscape ?? (() => navigate("/" + breadcrumb.slice(0, -1).join("/")))}
-      loadingMessage="Loading Gateways…"
+      loadingMessage="loading Gateways…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No Gateways found in this Region."
       emptyPageMessage="No Gateways on this page."

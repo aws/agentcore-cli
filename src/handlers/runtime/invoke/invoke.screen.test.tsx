@@ -413,7 +413,7 @@ describe("Runtime invoke JSON console", () => {
 
     const streamingFrames = screen.frames
       .slice(frameCount)
-      .filter((frame) => frame.includes("Streaming…"));
+      .filter((frame) => frame.includes("streaming…"));
     expect(streamingFrames.length).toBeGreaterThan(0);
     for (const frame of streamingFrames) {
       expect(frame).not.toContain("Session ID: returned-runtime");

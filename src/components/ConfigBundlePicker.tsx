@@ -71,7 +71,7 @@ export function ConfigBundlePicker({
       getValue={(row) => row.bundleId}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage="Loading configuration bundles…"
+      loadingMessage="loading configuration bundles…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No configuration bundles found in this Region."
       emptyPageMessage="No configuration bundles on this page."

@@ -75,7 +75,7 @@ export function RuntimeEndpointPicker({
       getValue={(row) => row.qualifier}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage={`Loading endpoints for Runtime ${runtimeId}…`}
+      loadingMessage={`loading endpoints for Runtime ${runtimeId}…`}
       errorMessage={(error) => `Error loading endpoints for Runtime ${runtimeId}: ${error.message}`}
       emptyMessage="This Runtime has no endpoints."
       emptyPageMessage={`No endpoints on this page for Runtime ${runtimeId}.`}

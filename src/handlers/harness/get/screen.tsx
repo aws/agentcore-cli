@@ -79,7 +79,7 @@ export function HarnessGetScreen(props: ScreenProps) {
             }))
           : []
       }
-      loadingLabel="Loading harness…"
+      loadingLabel="loading harness…"
       onRetry={() => void detail.refetch()}
     />
   );
@@ -97,7 +97,7 @@ export function HarnessGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data?.harness}
-      loadingLabel="Loading harness…"
+      loadingLabel="loading harness…"
       onRetry={() => void detail.refetch()}
     />
   );

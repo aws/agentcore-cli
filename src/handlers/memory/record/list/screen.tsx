@@ -191,7 +191,7 @@ function MemoryRecordPicker({ ctx, core, memoryId, scopeKind, scope }: MemoryRec
         )
       }
       onBack={() => navigate(-1)}
-      loadingMessage={`Loading Memory records for ${memoryId}...`}
+      loadingMessage={`loading Memory records for ${memoryId}...`}
       errorMessage={(error) => `Error loading Memory records for ${memoryId}: ${error.message}`}
       emptyMessage={`No Memory records found for ${scopeKind} ${scope}.`}
       emptyPageMessage={`No Memory records on this page for ${scopeKind} ${scope}.`}

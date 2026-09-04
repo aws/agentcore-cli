@@ -485,13 +485,13 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "Creating DemoApp…");
+    await waitForText(r.lastFrame, "creating DemoApp…");
     releaseFirstStep();
 
     // The running step is the spinner row itself, as on the command line; the
-    // generic "Creating…" spinner shows only until the first step arrives.
+    // generic "creating…" spinner shows only until the first step arrives.
     await waitForText(r.lastFrame, "syncing dependencies");
-    expect(r.lastFrame()).not.toContain("Creating DemoApp…");
+    expect(r.lastFrame()).not.toContain("creating DemoApp…");
     expect(r.lastFrame()).not.toContain("✓ syncing dependencies");
 
     r.unmount();

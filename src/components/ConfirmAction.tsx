@@ -143,7 +143,7 @@ export function ConfirmAction({
   return (
     <Layout breadcrumb={breadcrumb} description={description} keyHints={hints}>
       {isPending ? (
-        <Spinner label="Loading…" />
+        <Spinner label="loading…" />
       ) : error ? (
         <ErrorBody message={error.message} onBack={cancel} />
       ) : (

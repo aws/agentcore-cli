@@ -50,7 +50,7 @@ export function DatasetGetScreen(props: ScreenProps) {
             ]
           : []
       }
-      loadingLabel="Loading dataset…"
+      loadingLabel="loading dataset…"
       onRetry={() => void detail.refetch()}
       selectLabel="open"
     />
@@ -67,7 +67,7 @@ export function DatasetGetJsonScreen(props: ScreenProps) {
       isPending={detail.isPending}
       error={detail.isError ? (detail.error as Error) : null}
       data={detail.data}
-      loadingLabel="Loading dataset…"
+      loadingLabel="loading dataset…"
       onRetry={() => void detail.refetch()}
     />
   );

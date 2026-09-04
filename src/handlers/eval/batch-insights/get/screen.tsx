@@ -23,7 +23,7 @@ export function BatchInsightsGetJsonScreen(props: ScreenProps) {
       isPending={query.isPending}
       error={query.isError ? (query.error as Error) : null}
       data={query.data}
-      loadingLabel="Loading batch insights…"
+      loadingLabel="loading batch insights…"
       onRetry={() => void query.refetch()}
     />
   );

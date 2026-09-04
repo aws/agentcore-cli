@@ -71,7 +71,7 @@ export function RuntimeVersionPicker({
       getValue={(row) => row.version}
       onSelect={onSelect}
       onBack={goBack}
-      loadingMessage={`Loading versions for Runtime ${runtimeId}…`}
+      loadingMessage={`loading versions for Runtime ${runtimeId}…`}
       errorMessage={(error) => `Error loading versions for Runtime ${runtimeId}: ${error.message}`}
       emptyMessage={`No versions found for Runtime ${runtimeId}.`}
       emptyPageMessage={`No versions on this page for Runtime ${runtimeId}.`}

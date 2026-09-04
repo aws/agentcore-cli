@@ -37,7 +37,7 @@ export function BatchEvaluationGetJsonScreen(props: ScreenProps) {
           ? `could not retrieve CloudWatch results (${(resultsError as Error).message}). Job status is unaffected.`
           : undefined
       }
-      loadingLabel="Loading batch evaluation…"
+      loadingLabel="loading batch evaluation…"
       onRetry={() => void query.refetch()}
     />
   );
