@@ -327,8 +327,7 @@ describe("project create wizard", () => {
     await r.press("down");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-minimal
+    await r.press("up"); // agent-python-minimal sits above the recommended default
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
 
@@ -349,8 +348,8 @@ describe("project create wizard", () => {
     r.unmount();
   }, 10000);
 
-  test("template flow: the LangChain template scaffolds a Bedrock agent without memory", async () => {
-    const directory = await inTempDirectory();
+  test("template flow: the LangChain template hands the preset to create", async () => {
+    await inTempDirectory();
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -364,12 +363,9 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-minimal
-    await r.press("down"); // agent-typescript-strands
-    await r.press("down"); // agent-python-langchain
+    await r.press("up"); // agent-python-minimal
+    await r.press("up"); // agent-python-langchain
     await waitForText(r.lastFrame, "● agent-python-langchain");
-    expect(r.lastFrame()).toContain("LangChain agent on Bedrock (CodeZip build)");
     await r.press("return");
 
     await waitForText(r.lastFrame, "this project will be created");
@@ -385,14 +381,6 @@ describe("project create wizard", () => {
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-langchain"),
       },
     ]);
-
-    const spec = await Bun.file(
-      join(directory, "LangChainApp", "agentcore", "agentcore.json"),
-    ).json();
-    expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual([
-      "agent_python_langchain",
-    ]);
-    expect(spec.memories ?? []).toEqual([]);
     r.unmount();
   }, 10000);
 

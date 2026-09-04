@@ -121,44 +121,44 @@ const TEMPLATE_OPTIONS: {
   description: string;
 }[] = [
   {
-    template: "agent-python-strands",
-    label: "agent-python-strands (recommended)",
-    description: "Strands agent on Bedrock with memory (CodeZip build)",
-  },
-  {
-    template: "agent-python-strands-container",
-    label: "agent-python-strands-container",
-    description: "Strands agent on Bedrock with memory (container build)",
+    template: "agent-python-langchain",
+    label: "agent-python-langchain",
+    description: "LangChain agent on Bedrock",
   },
   {
     template: "agent-python-minimal",
     label: "agent-python-minimal",
-    description: "minimal Python agent on Bedrock, no framework (CodeZip build)",
+    description: "minimal Python agent on Bedrock, no framework",
+  },
+  {
+    template: "agent-python-strands",
+    label: "agent-python-strands (recommended)",
+    description: "Strands agent on Bedrock with memory",
+  },
+  {
+    template: "agent-python-strands-container",
+    label: "agent-python-strands-container",
+    description: "Strands agent on Bedrock with memory",
   },
   {
     template: "agent-typescript-strands",
     label: "agent-typescript-strands",
-    description: "Strands agent on Bedrock with memory, in TypeScript (CodeZip build)",
-  },
-  {
-    template: "agent-python-langchain",
-    label: "agent-python-langchain",
-    description: "LangChain agent on Bedrock (CodeZip build)",
-  },
-  {
-    template: "mcp-python-fastmcp",
-    label: "mcp-python-fastmcp",
-    description: "MCP server exposing tools via FastMCP (CodeZip build)",
+    description: "Strands agent on Bedrock with memory, in TypeScript",
   },
   {
     template: "a2a-python-strands",
     label: "a2a-python-strands",
-    description: "Strands agent speaking the A2A protocol on Bedrock (CodeZip build)",
+    description: "Strands agent speaking the A2A protocol on Bedrock",
   },
   {
     template: "agui-python-strands",
     label: "agui-python-strands",
-    description: "Strands agent speaking the AG-UI protocol on Bedrock (CodeZip build)",
+    description: "Strands agent speaking the AG-UI protocol on Bedrock",
+  },
+  {
+    template: "mcp-python-fastmcp",
+    label: "mcp-python-fastmcp",
+    description: "MCP server exposing tools via FastMCP",
   },
   {
     template: EMPTY_TEMPLATE_NAME,
