@@ -27,7 +27,9 @@ ci.yml
   |-- build.yml      (bundle, package, compile, smoke test)
   `-- unit-test.yml  (tests on Linux, Windows, macOS)
 
-release.yml         (version, release PR, approval, npm publish, GitHub release)
+release-prepare.yml (version bump, vended CDK pin, release PR)
+
+release-publish.yml (npm publish and GitHub release when a release PR merges)
   |-- check.yml
   |-- build.yml
   `-- unit-test.yml

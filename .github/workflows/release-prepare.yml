@@ -1,0 +1,73 @@
+# Opens the release PR: bumps package.json, refreshes the vended @aws/agentcore-cdk pin, and pushes
+# release/v<version>. Merging that PR is the release approval and triggers release-publish.yml.
+name: release-prepare
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semver component to release. Ignored while an rc series is open, which continues or graduates instead.
+        required: true
+        type: choice
+        options: [major, minor, patch]
+      channel:
+        description: rc publishes under the rc dist-tag, stable under latest
+        required: true
+        type: choice
+        options: [rc, stable]
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-tags: true
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Bump version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          CURRENT=$(bun pm pkg get version | tr -d '"')
+          # 0.28.1 -> 1.0.0-rc.0 -> 1.0.0-rc.1 -> 1.0.0. Bun's own "major" would jump an rc to 2.0.0.
+          if [[ "$CURRENT" == *-rc.* ]]; then
+            INCREMENT=$([ "$CHANNEL" = rc ] && echo prerelease || echo "${CURRENT%%-*}")
+          else
+            INCREMENT=$([ "$CHANNEL" = rc ] && echo "pre$BUMP" || echo "$BUMP")
+          fi
+          TAG=$(bun pm version "$INCREMENT" --preid rc --no-git-tag-version)
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG is already released"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - run: bun scripts/sync-vended-cdk.ts
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): v$VERSION"
+          git push --force "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+
+          if [ -z "$(gh pr list --base "$GITHUB_REF_NAME" --head "$BRANCH" --json number --jq '.[0].number')" ]; then
+            gh pr create --base "$GITHUB_REF_NAME" --head "$BRANCH" --title "chore(release): v$VERSION" \
+              --body "Merging publishes \`@aws/agentcore@$VERSION\` to npm and creates the \`v$VERSION\` GitHub release with generated notes."
+          fi
