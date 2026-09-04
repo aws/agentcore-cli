@@ -1,4 +1,5 @@
 import { test, expect, describe, afterEach } from "bun:test";
+import { PACKAGE_VERSION } from "../constants";
 import { cleanupScreens, renderScreen, tick, waitForText } from "../testing";
 
 afterEach(cleanupScreens);
@@ -30,6 +31,23 @@ describe("menu rendering", () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "the platform for production AI agents");
     r.unmount();
+  });
+
+  test("shows the brand banner only on the root menu", async () => {
+    const logoMarker = "█▀█ █▀▀ █▀▀";
+    const version = `v${PACKAGE_VERSION}`;
+    const root = renderScreen("/agentcore");
+    await waitForText(root.lastFrame, logoMarker);
+
+    expect(root.lastFrame()).toContain(version);
+    root.unmount();
+
+    const nested = renderScreen("/agentcore/harness");
+    await waitForText(nested.lastFrame, "agentcore → harness");
+
+    expect(nested.lastFrame()).not.toContain(logoMarker);
+    expect(nested.lastFrame()).not.toContain(version);
+    nested.unmount();
   });
 
   test("renders the harness subcommands when mounted at the harness path", async () => {
