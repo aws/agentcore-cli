@@ -202,6 +202,8 @@ agentcore harness invoke --id <id from the deploy outputs> --prompt "hello"
 agentcore project create --name MyAgent --template agent-python-strands
 # The same Strands agent built as a container image, with a Dockerfile.
 agentcore project create --name MyAgent --template agent-python-strands-container
+# A LangChain agent on Bedrock, built with create_agent.
+agentcore project create --name MyAgent --template agent-python-langchain
 
 # Translate an existing Amazon Bedrock Agent version into editable runtime code
 # with `project add runtime --type import` from inside a project. The selected
