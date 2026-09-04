@@ -75,6 +75,12 @@ describe("harness create wizard", () => {
 
     // Step: prompt — type a prompt with a newline, then ctrl+d.
     await waitForText(r.lastFrame, "type or paste the agent's instructions");
+    const promptFrame = r.lastFrame()!;
+    const promptHelpLine = promptFrame
+      .split("\n")
+      .findIndex((line) => line.includes("type or paste the agent's instructions"));
+    expect(promptFrame.split("\n")[promptHelpLine + 1]).toContain("╭");
+    expect(promptFrame).toContain("╰");
     await r.write("You are helpful.");
     await r.press("return"); // newline
     await r.write("Be brief.");

@@ -1087,15 +1087,7 @@ function PromptStep({
         onChange={onChange}
       />
       {value !== "" && (
-        <Box
-          borderStyle="single"
-          borderColor={theme.colors.border}
-          borderLeft={false}
-          borderRight={false}
-          borderBottom={false}
-        >
-          <Text color={theme.colors.muted}>{`${value.length} chars · ctrl+d continues`}</Text>
-        </Box>
+        <Text color={theme.colors.muted}>{`${value.length} chars · ctrl+d continues`}</Text>
       )}
     </Box>
   );

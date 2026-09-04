@@ -54,31 +54,30 @@ export function FormTextArea({
 
   return (
     <Box flexDirection="column">
-      <Box
-        flexDirection="column"
-        borderStyle="single"
-        borderLeft={false}
-        borderRight={false}
-        borderTop={false}
-        borderColor={theme.colors.border}
-      >
+      <Box flexDirection="column">
         <Text color={theme.colors.text}>{name}</Text>
         <Text color={theme.colors.muted}>{helpText}</Text>
       </Box>
-      {hidden > 0 && <Text color={theme.colors.muted}>… (+{hidden} earlier lines)</Text>}
-      {visible.length === 0 ? (
-        <Text color={theme.colors.muted}>
-          {placeholder}
-          <Text inverse> </Text>
-        </Text>
-      ) : (
-        visible.map((line, i) => (
-          <Text key={i}>
-            {line}
-            {i === visible.length - 1 ? <Text inverse> </Text> : null}
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={focused ? theme.colors.focus : theme.colors.border}
+      >
+        {hidden > 0 && <Text color={theme.colors.muted}>… (+{hidden} earlier lines)</Text>}
+        {visible.length === 0 ? (
+          <Text color={theme.colors.muted}>
+            {placeholder}
+            <Text inverse> </Text>
           </Text>
-        ))
-      )}
+        ) : (
+          visible.map((line, i) => (
+            <Text key={i}>
+              {line}
+              {i === visible.length - 1 ? <Text inverse> </Text> : null}
+            </Text>
+          ))
+        )}
+      </Box>
     </Box>
   );
 }
