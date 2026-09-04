@@ -233,7 +233,7 @@ function ProjectStatusView({
         { key: "←→", label: "collapse/expand" },
         { key: "enter", label: "open" },
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       <Box flexDirection="column" paddingX={1}>

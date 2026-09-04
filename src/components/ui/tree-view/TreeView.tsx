@@ -26,7 +26,7 @@ export interface TreeViewProps<T = unknown> {
   branchIcon?: string;
   branchOpenIcon?: string;
   /**
-   * Mark the focused row with a "❯ " prefix in the focus color instead of
+   * Mark the focused row with a pointer prefix in the focus color instead of
    * inverse video, matching the selection style of DataTable and the menus.
    */
   focusMarker?: boolean;
@@ -170,7 +170,9 @@ export function TreeView<T = unknown>({
 
         return (
           <Box key={node.id} flexDirection="row">
-            {focusMarker && <Text color={theme.colors.focus}>{isFocused ? "❯ " : "  "}</Text>}
+            {focusMarker && (
+              <Text color={theme.colors.focus}>{isFocused ? `${glyphs.pointer} ` : "  "}</Text>
+            )}
             {guides && depth > 0 && <Text color={theme.colors.border}>{guidePrefix}</Text>}
             <Text
               color={
