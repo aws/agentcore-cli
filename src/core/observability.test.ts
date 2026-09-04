@@ -24,6 +24,7 @@ import {
   sanitizeQueryValue,
   type DescribeStackOutputs,
 } from "./observability";
+import { CloudWatchClient } from "./observability/index";
 
 describe("runtimeLogGroup", () => {
   test("derives the fixed per-runtime path keyed by runtime id and endpoint", () => {
@@ -141,7 +142,10 @@ function clientWith(logs: CloudWatchLogsClient, describeStackOutputs?: DescribeS
       throw new Error("not implemented");
     },
   } as ReadWriteJson;
-  return new ObservabilityClient(clients, { readJson, describeStackOutputs });
+  return new ObservabilityClient(new CloudWatchClient(clients), {
+    readJson,
+    describeStackOutputs,
+  });
 }
 
 function fakeProject(rootPath: string, name = "My_Project"): Project {

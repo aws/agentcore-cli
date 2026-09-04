@@ -230,8 +230,6 @@ const noopLogger: Logger = {
 const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
 
 export class EvalClient implements CoreEvalClient {
-  private readonly cloudWatch: CloudWatchClient;
-
   constructor(
     private readonly clients: AwsClients,
     // HTTP client for datasets presigned S3 URL
@@ -240,9 +238,8 @@ export class EvalClient implements CoreEvalClient {
     private readonly logger: Logger = noopLogger,
     private readonly newSessionId: () => string = randomUUID,
     private readonly now: () => number = () => Date.now(),
-  ) {
-    this.cloudWatch = new CloudWatchClient(clients);
-  }
+    private readonly cloudWatch: CloudWatchClient = new CloudWatchClient(clients),
+  ) {}
 
   async createEvaluator(
     request: CreateEvaluatorRequest,

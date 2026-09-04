@@ -23,7 +23,6 @@ import {
   ObservabilityClient as GenericObservabilityClient,
 } from "./observability/index";
 import { isStackNotFound } from "./project/backends/cdk/environment";
-import type { AwsClients } from "./types";
 
 // Shared CloudWatch observability helpers. AgentCore Runtimes write their logs
 // and OTel telemetry to per-runtime CloudWatch log groups; both the eval flows
@@ -244,8 +243,8 @@ export class ObservabilityClient
   private readonly readJson: ReadWriteJson;
   private readonly describeStackOutputs: DescribeStackOutputs;
 
-  constructor(clients: AwsClients, deps: ObservabilityClientDeps) {
-    super(new CloudWatchClient(clients));
+  constructor(cloudWatch: CloudWatchClient, deps: ObservabilityClientDeps) {
+    super(cloudWatch);
     this.readJson = deps.readJson;
     this.describeStackOutputs = deps.describeStackOutputs ?? describeStackOutputsWithSdk;
   }
