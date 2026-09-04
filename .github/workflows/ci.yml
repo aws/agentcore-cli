@@ -13,20 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    uses: ./.github/workflows/check.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.head.sha || github.sha }}
-  build:
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.head.sha || github.sha }}
-  unit-test:
-    uses: ./.github/workflows/unit-test.yml
+  verify:
+    uses: ./.github/workflows/verify.yml
     permissions:
       contents: read
     with:

@@ -5,8 +5,8 @@
 Workflows are organized into two roles:
 
 ```
-Orchestrators (e.g. ci.yml, release.yml)
-Jobs          (e.g. build.yml, unit-test.yml, publish-npm.yml)
+Orchestrators (ci.yml, release-prepare.yml, release-publish.yml)
+Jobs          (verify.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
@@ -23,26 +23,24 @@ An orchestrator calls jobs via `workflow_call`.
 
 ```
 ci.yml
-  |-- check.yml      (lint, format, typecheck, audit, secret scan)
-  |-- build.yml      (bundle, package, compile, smoke test)
-  `-- unit-test.yml  (tests on Linux, Windows, macOS)
+  `-- verify.yml     (check: lint, format, typecheck, audit, secret scan
+                      build: bundle, package, compile, smoke test per platform
+                      unit-test: Linux, Windows, macOS)
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
 release-publish.yml (npm publish and GitHub release when a release PR merges)
-  |-- check.yml
-  |-- build.yml
-  `-- unit-test.yml
+  `-- verify.yml
 ```
 
-Jobs like `unit-test.yml` and `build.yml` appear in multiple orchestrators. This
-is the point — write once, compose freely.
+`verify.yml` appears in both orchestrators. This is the point — write once,
+compose freely.
 
 ## Naming Convention
 
-- **Orchestrators** are named for their purpose (e.g. `ci`, `release`).
+- **Orchestrators** are named for their purpose (e.g. `ci`, `release-publish`).
 - **Jobs** are named as verbs or noun-verb pairs describing the work
-  (e.g. `build`, `unit-test`, `publish-npm`).
+  (e.g. `verify`).
 
 ## Key Choices
 

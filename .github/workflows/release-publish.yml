@@ -6,45 +6,25 @@ on:
     types: [closed]
     # TODO: switch to main once the refactor lands there.
     branches: [refactor]
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Build, pack and compile, but skip npm publish and the GitHub release
-        type: boolean
-        default: true
 
 jobs:
-  check:
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged && startsWith(github.head_ref, 'release/v'))
-    uses: ./.github/workflows/check.yml
+  verify:
+    if: github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')
+    uses: ./.github/workflows/verify.yml
     permissions:
       contents: read
     with:
-      ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-  build:
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged && startsWith(github.head_ref, 'release/v'))
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-  unit-test:
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged && startsWith(github.head_ref, 'release/v'))
-    uses: ./.github/workflows/unit-test.yml
-    permissions:
-      contents: read
-    with:
-      ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      ref: ${{ github.event.pull_request.merge_commit_sha }}
 
   publish:
-    needs: [check, build, unit-test]
+    needs: verify
     # npm provenance is only issued from GitHub-hosted runners.
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
     env:
-      REF: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      REF: ${{ github.event.pull_request.merge_commit_sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -84,8 +64,7 @@ jobs:
         run: echo "tarball=$(bun pm pack --quiet --ignore-scripts)" >> "$GITHUB_OUTPUT"
       - run: bun run compile
 
-      - if: ${{ !inputs.dry_run }}
-        env:
+      - env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.release.outputs.version }}
           DIST_TAG: ${{ steps.release.outputs.dist_tag }}
@@ -98,8 +77,7 @@ jobs:
             npm publish "$TARBALL" --provenance --access public --tag "$DIST_TAG"
           fi
 
-      - if: ${{ !inputs.dry_run }}
-        env:
+      - env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.release.outputs.version }}
           PREVIOUS_TAG: ${{ steps.release.outputs.previous_tag }}
@@ -114,11 +92,3 @@ jobs:
               ${{ steps.release.outputs.dist_tag == 'rc' && '--prerelease' || '--latest' }} \
               "$TARBALL" dist/bin/*
           fi
-
-      - if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-${{ steps.release.outputs.version }}
-          path: |
-            ${{ steps.pack.outputs.tarball }}
-            dist/bin/*
