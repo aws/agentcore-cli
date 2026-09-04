@@ -4,44 +4,40 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import {
+  NUMERIC_ALIGN,
+  STATUS_WIDTH,
+  TIMESTAMP_WIDTH,
+  VERSION_WIDTH,
+  type DataTableColumn,
+} from "./ui/data-table";
 
 interface RuntimeRow extends Record<string, unknown> {
   runtimeId: string;
-  runtimeName: string;
   runtimeVersion: string;
   status: string;
   lastUpdatedAt: string;
 }
 
-function runtimeIdSuffix(value: unknown): string {
-  const id = String(value ?? "");
-  return id.slice(id.lastIndexOf("-") + 1);
-}
-
+// The control plane derives a Runtime's ID from its name (`orders-Ab12Cd34Ef`),
+// so the ID column carries the name already; splitting the suffix out would
+// only show the same value twice.
 export const runtimeColumns = [
-  { key: "runtimeName", header: "name", flex: true },
-  {
-    key: "runtimeId",
-    header: "id suffix",
-    width: 10,
-    render: runtimeIdSuffix,
-  },
-  { key: "runtimeVersion", header: "version", width: 7 },
-  { key: "status", header: "status", width: 13 },
+  { key: "runtimeId", header: "id", flex: true },
+  { key: "runtimeVersion", header: "version", width: VERSION_WIDTH, align: NUMERIC_ALIGN },
+  { key: "status", header: "status", width: STATUS_WIDTH },
   {
     key: "lastUpdatedAt",
     header: "updated UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<RuntimeRow>[];
 
 function toRow(runtime: AgentRuntime): RuntimeRow {
-  const runtimeId = runtime.agentRuntimeId ?? "";
+  const runtimeId = runtime.agentRuntimeId ?? runtime.agentRuntimeName ?? "";
   return {
     runtimeId,
-    runtimeName: runtime.agentRuntimeName ?? runtimeId,
     runtimeVersion: runtime.agentRuntimeVersion ?? "-",
     status: runtime.status ?? "-",
     lastUpdatedAt: runtime.lastUpdatedAt?.toISOString() ?? "-",

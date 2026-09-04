@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { MemoryPicker } from "../../../../components/MemoryPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
-import type { DataTableColumn } from "../../../../components/ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { MemoryActorPicker, MemorySessionPicker } from "../../listPickers";
@@ -20,7 +20,7 @@ const eventColumns = [
   {
     key: "occurredAt",
     header: "occurred UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     minWidth: 11,
     render: formatTimestamp,
   },

@@ -4,7 +4,7 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { FLAG_ALIGN, STATUS_WIDTH, TIMESTAMP_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 interface RuntimeEndpointRow extends Record<string, unknown> {
   qualifier: string;
@@ -16,13 +16,13 @@ interface RuntimeEndpointRow extends Record<string, unknown> {
 
 export const runtimeEndpointColumns = [
   { key: "qualifier", header: "qualifier", flex: true },
-  { key: "liveVersion", header: "live", width: 6, minWidth: 5 },
-  { key: "targetVersion", header: "target", width: 6 },
-  { key: "status", header: "status", width: 13 },
+  { key: "liveVersion", header: "live", width: 6, minWidth: 5, align: FLAG_ALIGN },
+  { key: "targetVersion", header: "target", width: 6, align: FLAG_ALIGN },
+  { key: "status", header: "status", width: STATUS_WIDTH },
   {
     key: "lastUpdatedAt",
     header: "updated UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<RuntimeEndpointRow>[];

@@ -4,7 +4,7 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { STATUS_WIDTH, TIMESTAMP_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 // VersionRow is the flat, display-ready shape the table renders.
 interface VersionRow extends Record<string, unknown> {
@@ -16,11 +16,11 @@ interface VersionRow extends Record<string, unknown> {
 
 export const harnessVersionColumns = [
   { key: "harnessVersion", header: "version", flex: true },
-  { key: "status", header: "status", width: 13, minWidth: 6 },
+  { key: "status", header: "status", width: STATUS_WIDTH, minWidth: 6 },
   {
     key: "createdAt",
     header: "created UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     minWidth: 11,
     render: formatTimestamp,
   },

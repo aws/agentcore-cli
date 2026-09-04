@@ -1,9 +1,16 @@
 export const COLUMN_GAP = 1;
 export const FLEX_MIN_WIDTH = 16;
 export const SELECTION_MARKER_WIDTH = 1;
+/**
+ * How wide a flexible column may grow before the leftover terminal width is
+ * left as right margin instead. Without a ceiling the flexible column absorbs
+ * every spare cell, so on a wide terminal the identifier ends up separated
+ * from its own metadata by a canyon of blank space.
+ */
+export const FLEX_MAX_WIDTH = 40;
 
 export type ColumnSizing =
-  | { flex: true; width?: never; minWidth?: never }
+  | { flex: true; maxWidth?: number; width?: never; minWidth?: never }
   | { flex?: false; width: number; minWidth?: number };
 
 export type ComputedColumnWidths = {
@@ -81,9 +88,12 @@ export function computeColumnWidths(
   for (const column of fixedColumns) widths[column.index] = column.width;
 
   if (flexIndex !== -1) {
+    const flexColumn = columns[flexIndex]!;
+    const ceiling = flexColumn.flex === true ? (flexColumn.maxWidth ?? FLEX_MAX_WIDTH) : undefined;
+    const available = frameWidth - markerWidth - visibleFixedWidth() - gapWidth();
     widths[flexIndex] = Math.max(
       FLEX_MIN_WIDTH,
-      frameWidth - markerWidth - visibleFixedWidth() - gapWidth(),
+      ceiling === undefined ? available : Math.min(available, ceiling),
     );
   }
 

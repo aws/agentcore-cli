@@ -2,7 +2,7 @@ import type { Oauth2CredentialProviderItem } from "@aws-sdk/client-bedrock-agent
 import { useNavigate } from "react-router";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
-import type { DataTableColumn } from "../../../../components/ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -19,8 +19,8 @@ interface Oauth2ProviderRow extends Record<string, unknown> {
 export const oauth2ProviderColumns = [
   { key: "name", header: "name", flex: true },
   { key: "vendor", header: "vendor", width: 18 },
-  { key: "createdAt", header: "created UTC", width: 16, render: formatTimestamp },
-  { key: "updatedAt", header: "updated UTC", width: 16, render: formatTimestamp },
+  { key: "createdAt", header: "created UTC", width: TIMESTAMP_WIDTH, render: formatTimestamp },
+  { key: "updatedAt", header: "updated UTC", width: TIMESTAMP_WIDTH, render: formatTimestamp },
 ] satisfies DataTableColumn<Oauth2ProviderRow>[];
 
 function toRow(provider: Oauth2CredentialProviderItem): Oauth2ProviderRow {

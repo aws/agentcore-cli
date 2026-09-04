@@ -9,7 +9,7 @@ import { MemoryPicker } from "../../../../components/MemoryPicker";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
 import { darkTheme } from "../../../../components/ui/_core";
-import type { DataTableColumn } from "../../../../components/ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -40,7 +40,7 @@ const recordColumns = [
   {
     key: "createdAt",
     header: "created UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     minWidth: 16,
     render: formatTimestamp,
   },

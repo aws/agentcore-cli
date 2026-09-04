@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { COUNT_WIDTH, NUMERIC_ALIGN, STATUS_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 interface GatewayRuleRow extends Record<string, unknown> {
   ruleId: string;
@@ -13,8 +13,8 @@ interface GatewayRuleRow extends Record<string, unknown> {
 }
 
 export const gatewayRuleColumns = [
-  { key: "priority", header: "priority", width: 10 },
-  { key: "status", header: "status", width: 13 },
+  { key: "priority", header: "priority", width: COUNT_WIDTH, align: NUMERIC_ALIGN },
+  { key: "status", header: "status", width: STATUS_WIDTH },
   { key: "description", header: "description", flex: true },
   {
     key: "ruleId",

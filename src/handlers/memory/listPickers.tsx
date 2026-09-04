@@ -1,7 +1,7 @@
 import type { ActorSummary, SessionSummary } from "@aws-sdk/client-bedrock-agentcore";
 import { PaginatedTablePicker } from "../../components/PaginatedTablePicker";
 import { formatTimestamp } from "../../components/formatTimestamp";
-import type { DataTableColumn } from "../../components/ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "../../components/ui/data-table";
 import type { ScreenProps } from "../types";
 import { coreOptsFromCtx } from "../utils";
 
@@ -74,7 +74,7 @@ const sessionColumns = [
   {
     key: "createdAt",
     header: "created UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     minWidth: 11,
     render: formatTimestamp,
   },

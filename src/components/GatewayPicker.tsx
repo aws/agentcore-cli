@@ -4,7 +4,7 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { STATUS_WIDTH, TIMESTAMP_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 interface GatewayRow extends Record<string, unknown> {
   gatewayId: string;
@@ -17,13 +17,13 @@ interface GatewayRow extends Record<string, unknown> {
 
 export const gatewayColumns = [
   { key: "name", header: "name", flex: true },
-  { key: "status", header: "status", width: 16 },
+  { key: "status", header: "status", width: STATUS_WIDTH },
   { key: "protocol", header: "protocol", width: 12 },
   { key: "authorizer", header: "authorizer", width: 18 },
   {
     key: "updatedAt",
     header: "updated UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<GatewayRow>[];

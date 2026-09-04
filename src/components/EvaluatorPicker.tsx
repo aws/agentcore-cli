@@ -4,7 +4,7 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 // EvaluatorRow is the flat, display-ready shape the table renders. It also
 // satisfies DataTable's `T extends Record<string, unknown>` constraint, which the
@@ -24,7 +24,7 @@ export const evaluatorColumns = [
   {
     key: "updatedAt",
     header: "updated UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<EvaluatorRow>[];

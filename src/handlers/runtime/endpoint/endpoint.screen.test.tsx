@@ -91,7 +91,7 @@ async function waitForRuntimePicker(lastFrame: () => string | undefined): Promis
     return (
       frame.includes("agentcore → runtime → endpoint → list") &&
       !frame.includes("agentcore → runtime → endpoint → list → runtime-123") &&
-      frame.includes("checkout")
+      frame.includes("runtime-123")
     );
   });
 }
@@ -108,7 +108,7 @@ describe("Runtime endpoint flow", () => {
     });
     const r = renderScreen("/agentcore/runtime/endpoint/list", { core });
 
-    await waitForText(r.lastFrame, "pick-runtime");
+    await waitForText(r.lastFrame, runtimeId);
     await r.press("return");
     await waitForText(r.lastFrame, "agentcore → runtime → endpoint → list → runtime/blue one");
     await waitForText(r.lastFrame, "prod");
@@ -324,7 +324,7 @@ describe("Runtime endpoint flow", () => {
     const parent = renderScreen("/agentcore/runtime/endpoint/list", {
       core: parentCore,
     });
-    await waitForText(parent.lastFrame, "checkout");
+    await waitForText(parent.lastFrame, "runtime-123");
     await parent.press("escape");
     await waitForText(
       parent.lastFrame,
@@ -341,7 +341,7 @@ describe("Runtime endpoint flow", () => {
     });
     listCore.runtime.setGetEndpointResponse(getEndpointResponse());
     const list = renderScreen("/agentcore/runtime/endpoint/list", { core: listCore });
-    await waitForText(list.lastFrame, "checkout");
+    await waitForText(list.lastFrame, "runtime-123");
     await list.press("return");
     await waitForText(list.lastFrame, "prod");
     await list.press("escape");
@@ -358,7 +358,7 @@ describe("Runtime endpoint flow", () => {
   test("bare endpoint get redirects to parent selection", async () => {
     const core = new TestCoreClient();
     core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "redirect-parent" })],
+      agentRuntimes: [runtime({ agentRuntimeId: "redirect-parent" })],
     });
     const r = renderScreen("/agentcore/runtime/endpoint/get", { core });
 

@@ -3,7 +3,7 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 interface ConfigBundleVersionRow extends Record<string, unknown> {
   versionId: string;
@@ -19,7 +19,7 @@ export const configBundleVersionColumns = [
   {
     key: "versionCreatedAt",
     header: "created UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     minWidth: 11,
     render: formatTimestamp,
   },

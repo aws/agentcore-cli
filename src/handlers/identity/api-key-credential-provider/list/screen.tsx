@@ -2,7 +2,7 @@ import type { ApiKeyCredentialProviderItem } from "@aws-sdk/client-bedrock-agent
 import { useNavigate } from "react-router";
 import { formatTimestamp } from "../../../../components/formatTimestamp";
 import { PaginatedTablePicker } from "../../../../components/PaginatedTablePicker";
-import type { DataTableColumn } from "../../../../components/ui/data-table";
+import { TIMESTAMP_WIDTH, type DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -17,8 +17,8 @@ interface ApiKeyProviderRow extends Record<string, unknown> {
 
 export const apiKeyProviderColumns = [
   { key: "name", header: "name", flex: true },
-  { key: "createdAt", header: "created UTC", width: 16, render: formatTimestamp },
-  { key: "updatedAt", header: "updated UTC", width: 16, render: formatTimestamp },
+  { key: "createdAt", header: "created UTC", width: TIMESTAMP_WIDTH, render: formatTimestamp },
+  { key: "updatedAt", header: "updated UTC", width: TIMESTAMP_WIDTH, render: formatTimestamp },
 ] satisfies DataTableColumn<ApiKeyProviderRow>[];
 
 function toRow(provider: ApiKeyCredentialProviderItem): ApiKeyProviderRow {

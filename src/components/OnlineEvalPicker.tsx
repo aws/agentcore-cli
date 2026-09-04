@@ -4,7 +4,7 @@ import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { formatTimestamp } from "./formatTimestamp";
 import { PaginatedTablePicker } from "./PaginatedTablePicker";
-import type { DataTableColumn } from "./ui/data-table";
+import { STATUS_WIDTH, TIMESTAMP_WIDTH, type DataTableColumn } from "./ui/data-table";
 
 // OnlineEvalRow is the flat, display-ready shape the table renders. It also
 // satisfies DataTable's `T extends Record<string, unknown>` constraint, which the
@@ -21,12 +21,12 @@ interface OnlineEvalRow extends Record<string, unknown> {
 
 export const onlineEvalColumns = [
   { key: "configName", header: "name", flex: true },
-  { key: "status", header: "status", width: 12 },
+  { key: "status", header: "status", width: STATUS_WIDTH },
   { key: "executionStatus", header: "execution", width: 11 },
   {
     key: "updatedAt",
     header: "updated UTC",
-    width: 16,
+    width: TIMESTAMP_WIDTH,
     render: formatTimestamp,
   },
 ] satisfies DataTableColumn<OnlineEvalRow>[];
