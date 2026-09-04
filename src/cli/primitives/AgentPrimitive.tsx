@@ -28,7 +28,8 @@ import type {
 import {
   AgentEnvSpecSchema,
   CREDENTIAL_PROVIDERS,
-  DEFAULT_PYTHON_VERSION,
+  DEFAULT_ENTRYPOINT_BY_LANGUAGE,
+  DEFAULT_RUNTIME_BY_LANGUAGE,
   LIFECYCLE_TIMEOUT_MAX,
   LIFECYCLE_TIMEOUT_MIN,
   isCapacityProviderArn,
@@ -797,13 +798,14 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
         : undefined;
 
     const lifecycleConfiguration = this.buildLifecycleConfig(options);
+    const defaultLanguage = options.language === 'TypeScript' ? 'TypeScript' : 'Python';
 
     const agent: AgentEnvSpec = {
       name: options.name,
       build: options.buildType,
-      entrypoint: (options.entrypoint ?? 'main.py') as FilePath,
+      entrypoint: (options.entrypoint ?? DEFAULT_ENTRYPOINT_BY_LANGUAGE[defaultLanguage]) as FilePath,
       codeLocation: codeLocation as DirectoryPath,
-      runtimeVersion: DEFAULT_PYTHON_VERSION,
+      runtimeVersion: DEFAULT_RUNTIME_BY_LANGUAGE[defaultLanguage],
       protocol,
       ...(networkMode !== undefined && { networkMode }),
       ...(networkMode === 'VPC' &&
