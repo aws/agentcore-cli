@@ -951,6 +951,19 @@ npm pack                          # builds via prepublishOnly, creates the .tgz
 npm i -g ./agentcore-1.0.0.tgz
 ```
 
+## Windows notes
+
+- **`agentcore.ps1 cannot be loaded because running scripts is disabled`**: the
+  npm shim is a PowerShell script and Windows Server defaults to a `Restricted`
+  execution policy. Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+  once, or call `agentcore.cmd`. The compiled `.exe` has no shim.
+- **The CLI looks frozen in a PowerShell window**: legacy conhost pauses all
+  output while text is selected (the title bar shows `Select`). Press `Esc`.
+  Windows Terminal does not do this.
+- **`project create` refuses a long path**: Windows caps paths at 260 characters
+  unless `LongPathsEnabled` is set, and the CDK app's `node_modules` needs about
+  100 of them. Create the project higher in the tree or enable long paths.
+
 # Build
 
 Run `make` to verify bun is installed, build the Node bundle, and compile all native binaries:

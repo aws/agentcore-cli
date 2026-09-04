@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Text, Box, useInput, useApp } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export interface ConfirmProps {
@@ -47,7 +47,7 @@ export const Confirm: React.FC<ConfirmProps> = ({
     return (
       <Box>
         <Text color={answered ? theme.colors.success : theme.colors.error}>
-          {answered ? "✔ Confirmed" : "✖ Cancelled"}
+          {answered ? `${glyphs.check} Confirmed` : `${glyphs.cross} Cancelled`}
         </Text>
       </Box>
     );

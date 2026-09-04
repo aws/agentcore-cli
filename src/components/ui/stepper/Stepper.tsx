@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export interface Step {
@@ -30,8 +30,9 @@ export const Stepper: React.FC<StepperProps> = ({
   theme = darkTheme,
 }) => {
   const getIndicator = (step: Step, _index: number) => {
-    if (errorSteps.includes(step.key)) return { char: "✕", color: theme.colors.error };
-    if (completedSteps.includes(step.key)) return { char: "✓", color: theme.colors.success };
+    if (errorSteps.includes(step.key)) return { char: glyphs.failed, color: theme.colors.error };
+    if (completedSteps.includes(step.key))
+      return { char: glyphs.done, color: theme.colors.success };
     if (step.key === currentStep) return { char: "●", color: theme.colors.primary };
     return { char: "○", color: theme.colors.muted };
   };

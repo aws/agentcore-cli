@@ -11,7 +11,13 @@ import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
 import { createUpdateHandler } from "./update/index.tsx";
 import { renderTui } from "../tui";
-import { withRegion, withJsonRenderer, withLogging, withGlobalConfigAccessor } from "../middleware";
+import {
+  withRegion,
+  withJsonRenderer,
+  withLogging,
+  withGlobalConfigAccessor,
+  withPlatform,
+} from "../middleware";
 import type { AppIO } from "../io";
 import type { Core } from "./types.tsx";
 import type { Logger } from "../logging";
@@ -22,6 +28,8 @@ export interface RootHandlerConfig {
   io: AppIO;
   logger: Logger;
   globalConfigAccessor: GlobalConfigAccessor;
+  /** Host platform, defaults to `process.platform`. Tests pass "win32" to exercise Windows paths. */
+  platform?: NodeJS.Platform;
 }
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
@@ -52,6 +60,9 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
 
   // Pin the global config accessor on the context for any handler that needs it.
   root.use(withGlobalConfigAccessor(config.globalConfigAccessor));
+
+  // Pin the host platform so Windows-specific behavior is decided from the context.
+  root.use(withPlatform(config.platform ?? process.platform));
 
   // Install sub handlers. Registration order is menu/help order; project is
   // the primary workflow, so it goes first.

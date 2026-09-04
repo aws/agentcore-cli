@@ -1,9 +1,8 @@
 import { createHandler, ProjectKey } from "../../../router";
 import type { AppIO } from "../../../io";
-import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey } from "../../keys";
-import { renderJsonError } from "../../utils";
+import { renderJsonError, reportMessage } from "../../utils";
 import type { Project, ProjectManager } from "../types";
 
 type BuildProjectHandlerConfig = {
@@ -40,8 +39,6 @@ export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
         throw error;
       }
 
-      const message = builtMessage(project);
-      config.io.stderr.write(`${message}\n`);
-      if (jsonOutput) ctx.require(JsonRendererKey).renderJson({ message });
+      reportMessage(ctx, config.io, builtMessage(project));
     },
   });

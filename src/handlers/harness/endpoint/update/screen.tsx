@@ -63,7 +63,7 @@ function UpdateWizard({
         breadcrumb={["agentcore", "harness", "endpoint", "update", harnessId, endpointName]}
         keyHints={[
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]}
       >
         {detail.isPending ? (

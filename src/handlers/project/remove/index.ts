@@ -5,6 +5,7 @@ import z from "zod";
 import type { AppIO } from "../../../io";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { JsonKey } from "../../keys";
+import { reportMessage } from "../../utils";
 import type { ProjectManager } from "../types";
 
 type RemoveProjectResourceConfig = {
@@ -82,7 +83,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await confirmRemoveAll(config.io, ctx.require(JsonKey), flags.yes, project.name);
         const result = await config.projectManager.removeAllResources(project);
         reportEnvCleanup(config.io, result.removedEnvKeys);
-        config.io.stdout.write(`removed all resources from project`);
+        reportMessage(ctx, config.io, "removed all resources from project");
         return;
       }
 
@@ -122,7 +123,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       }
 
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      config.io.stdout.write(`removed ${resource} with name '${name}' from project`);
+      reportMessage(ctx, config.io, `removed ${resource} with name '${name}' from project`);
     },
   });
 

@@ -221,7 +221,7 @@ describe("project remove", () => {
     expect((await projectSpec(projectRoot)).credentials).toEqual([]);
     expect(await Bun.file(envPath).text()).not.toContain(envKey);
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
-    expect(io.stdout()).toContain("removed credential with name 'svc-key' from project");
+    expect(io.stderr()).toContain("removed credential with name 'svc-key' from project");
   });
 
   test("removing a secret-reference credential leaves .env.local alone", async () => {
@@ -536,7 +536,16 @@ describe("project remove all", () => {
     expect(existsSync(join(projectRoot, "app", "agent_python_minimal"))).toBe(true);
     expect(await Bun.file(envPath).text()).not.toContain(envKey);
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
-    expect(io.stdout()).toContain("removed all resources from project");
+    expect(io.stderr()).toContain("removed all resources from project");
+    expect(io.stdout()).toBe("");
+  });
+
+  test("reports the removal as JSON under --json", async () => {
+    await populatedProject();
+
+    const { io } = await run(["remove", "all", "--yes", "--json"]);
+
+    expect(JSON.parse(io.stdout())).toEqual({ message: "removed all resources from project" });
   });
 
   test("prompts on a TTY and proceeds on 'y'", async () => {

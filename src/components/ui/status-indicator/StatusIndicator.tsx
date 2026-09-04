@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, Box } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export type StatusValue = "online" | "offline" | "loading" | "warning" | "error" | "idle";
@@ -41,7 +41,7 @@ function staticDot(status: StatusValue): string {
     case "error":
       return "●";
     case "warning":
-      return "⚠";
+      return glyphs.warning;
     case "loading":
       return "◉";
     case "idle":

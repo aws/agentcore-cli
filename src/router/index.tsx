@@ -4,6 +4,7 @@ export {
   CommandKey,
   PathKey,
   LoggerKey,
+  PlatformKey,
   GlobalConfigAccessorKey,
   CommandRunMetricEventKey,
   ProjectKey,

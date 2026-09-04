@@ -119,7 +119,7 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
         { key: "↑↓", label: "scope type" },
         { key: "enter", label: "list records" },
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       <Box flexDirection="column" gap={1} paddingX={1}>

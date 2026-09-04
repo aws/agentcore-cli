@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text, useStdout } from "ink";
 import cliTruncate from "cli-truncate";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 import { Spinner } from "../spinner/Spinner.js";
 
@@ -50,7 +50,7 @@ export const TaskList: React.FC<TaskListProps> = ({
           ) : (
             <Box>
               <Text color={task.state === "done" ? theme.colors.success : theme.colors.error}>
-                {task.state === "done" ? "✓" : "✕"}
+                {task.state === "done" ? glyphs.done : glyphs.failed}
               </Text>
               <Text color={theme.colors.text}> {task.title}</Text>
             </Box>

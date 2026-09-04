@@ -5,6 +5,8 @@ import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { HarnessModelProvider } from "../../../projectSchemas/harness";
 import type { ScreenProps } from "../../types";
+import { PlatformKey } from "../../../router";
+import { assertProjectPathFits } from "./pathLimit";
 import type { CreateProjectInput } from "../types";
 import {
   EMPTY_TEMPLATE_NAME,
@@ -13,6 +15,7 @@ import {
 } from "../shortcuts";
 import { HARNESS_DEFAULT_MODEL_IDS, resolveScaffoldHarnessInput } from "./index";
 import { Layout } from "../../../components/Layout";
+import { ErrorPanel } from "../../../components/ErrorPanel";
 import { FormTextInput } from "../../../components/FormTextInput";
 import { FormRadioGroup, type FormRadioOption } from "../../../components/FormRadioGroup";
 import { KeyValueTable } from "../../../components/KeyValueTable";
@@ -21,7 +24,7 @@ import { Spinner } from "../../../components/ui/spinner";
 import { TaskList, type Task } from "../../../components/ui/task-list";
 import { Divider } from "../../../components/ui/divider";
 import { driveProgress } from "../../../tui/progress";
-import { darkTheme } from "../../../components/ui/_core.js";
+import { darkTheme, glyphs } from "../../../components/ui/_core.js";
 
 const theme = darkTheme;
 
@@ -234,7 +237,7 @@ type WizardPhase =
 // core.projectManager.create with the same input the flag-driven handler
 // builds, so both entry points scaffold identical projects — in the current
 // working directory, npm install and git init included.
-export function ProjectCreateScreen({ core }: ScreenProps) {
+export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   const { exit } = useApp();
 
@@ -273,12 +276,14 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
   const submit = async () => {
     let input: CreateProjectInput;
     try {
+      assertProjectPathFits(values.name, ctx.require(PlatformKey));
       input = buildCreateInput(values);
     } catch (error) {
       setPhase({ kind: "error", error: toError(error) });
       return;
     }
     setPhase({ kind: "running" });
+    setTasks([]);
     try {
       await driveProgress(core.projectManager.create(input), setTasks);
       setPhase({ kind: "success" });
@@ -291,7 +296,7 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
     <Layout
       breadcrumb={["agentcore", "project", "create"]}
       description="create a new AgentCore project"
-      keyHints={hintsFor(stepKey, phase)}
+      keyHints={hintsFor(stepKey, phase, tasks.length === 0)}
     >
       <Box flexDirection="column">
         {phase.kind === "form" && (
@@ -323,7 +328,13 @@ export function ProjectCreateScreen({ core }: ScreenProps) {
             {phase.kind === "success" && (
               <SuccessPanel name={values.name} onContinue={() => exit()} />
             )}
-            {phase.kind === "error" && <ErrorPanel error={phase.error} />}
+            {phase.kind === "error" && (
+              <ErrorPanel
+                message={phase.error.message}
+                onRetry={tasks.length === 0 ? submit : undefined}
+                onBack={() => setPhase({ kind: "form" })}
+              />
+            )}
           </Box>
         )}
       </Box>
@@ -335,13 +346,24 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-function hintsFor(stepKey: string, phase: WizardPhase): { key: string; label: string }[] {
-  if (phase.kind === "running") return [{ key: "ctl+c", label: "quit" }];
+// A retry is only offered while nothing has been written yet: once a step has
+// run, the scaffolded directory exists and re-submitting would fail on it.
+function hintsFor(
+  stepKey: string,
+  phase: WizardPhase,
+  retryable: boolean,
+): { key: string; label: string }[] {
+  if (phase.kind === "running") return [{ key: "ctrl+c", label: "quit" }];
   if (phase.kind === "success") return [{ key: "enter", label: "exit" }];
-  if (phase.kind === "error") return [{ key: "ctl+c", label: "quit" }];
+  if (phase.kind === "error")
+    return [
+      ...(retryable ? [{ key: "r", label: "retry" }] : []),
+      { key: "esc", label: "back" },
+      { key: "ctrl+c", label: "quit" },
+    ];
   const base = [
     { key: "esc", label: "back" },
-    { key: "ctl+c", label: "quit" },
+    { key: "ctrl+c", label: "quit" },
   ];
   switch (stepKey) {
     case "name":
@@ -767,7 +789,7 @@ function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => vo
   return (
     <Box flexDirection="column" gap={1}>
       <Text color={theme.colors.success} bold>
-        ✔ project created in ./{name}
+        {glyphs.check} project created in ./{name}
       </Text>
       <Box flexDirection="column">
         <Text color={theme.colors.text}>next steps</Text>
@@ -777,18 +799,4 @@ function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => vo
       <Text color={theme.colors.muted}>enter exits</Text>
     </Box>
   );
-}
-
-// ErrorPanel reports the failure and tears the TUI down through the same
-// exit(error) pattern the not-implemented project stubs use: exit(error)
-// rejects the waitUntilExit() that renderTuiAt awaits, so the error takes the
-// normal CLI path and the process exits nonzero.
-function ErrorPanel({ error }: { error: Error }) {
-  const { exit } = useApp();
-
-  useEffect(() => {
-    exit(error);
-  }, [exit, error]);
-
-  return <Text color={theme.colors.error}>✗ {error.message}</Text>;
 }

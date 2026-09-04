@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export interface AutocompleteItem<T = string> {
@@ -94,7 +94,7 @@ export function Autocomplete<T = string>({
       {/* Input */}
       <Box>
         {label && <Text color={theme.colors.muted}>{label} </Text>}
-        <Text color={theme.colors.primary}>❯ </Text>
+        <Text color={theme.colors.primary}>{glyphs.pointer} </Text>
         <Text color={theme.colors.text}>
           {query || <Text color={theme.colors.muted}>{placeholder}</Text>}
         </Text>
@@ -119,7 +119,7 @@ export function Autocomplete<T = string>({
               return (
                 <Box key={String(item.value)} paddingX={1} flexDirection="row" gap={1}>
                   <Text color={isHl ? theme.colors.primary : theme.colors.muted}>
-                    {isHl ? "❯" : " "}
+                    {isHl ? glyphs.pointer : " "}
                   </Text>
                   <Text bold={isHl} color={isHl ? theme.colors.primary : theme.colors.text}>
                     {item.label}

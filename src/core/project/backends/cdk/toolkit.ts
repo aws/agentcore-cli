@@ -80,6 +80,7 @@ export type BootstrapTemplateLoader = () => Promise<LoadedBootstrapTemplate | un
 const BOOTSTRAP_TEMPLATE = "bootstrap-template.yaml";
 
 function embeddedFiles(): readonly NamedBlob[] {
+  // oxlint-disable-next-line no-restricted-globals
   return typeof Bun === "undefined" ? [] : (Bun.embeddedFiles as readonly NamedBlob[]);
 }
 

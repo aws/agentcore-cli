@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 
 const theme = darkTheme;
 
@@ -46,10 +46,10 @@ export function FormCheckboxMultiSelect({
           return (
             <Box key={option.label}>
               <Text color={isCursor ? theme.colors.focus : theme.colors.muted}>
-                {isCursor ? "❯ " : "  "}
+                {isCursor ? `${glyphs.pointer} ` : "  "}
               </Text>
               <Text color={option.checked ? theme.colors.success : theme.colors.muted}>
-                {option.checked ? "[✓] " : "[ ] "}
+                {option.checked ? `[${glyphs.done}] ` : "[ ] "}
               </Text>
               <Text bold={isCursor} color={isCursor ? theme.colors.focus : theme.colors.text}>
                 {option.label.padEnd(columnWidth)}

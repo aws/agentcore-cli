@@ -13,7 +13,7 @@ import { Markdown } from "../../../components/ui/markdown";
 import { Spinner } from "../../../components/ui/spinner";
 import { StatusIndicator, type StatusValue } from "../../../components/ui/status-indicator";
 import { TextInput } from "../../../components/ui/text-input";
-import { darkTheme } from "../../../components/ui/_core.js";
+import { darkTheme, glyphs } from "../../../components/ui/_core.js";
 import {
   applyEvent,
   applyExecEvent,
@@ -326,15 +326,15 @@ export function HarnessChat({
         streaming
           ? [
               { key: "esc", label: "interrupt" },
-              { key: "ctl+c", label: "quit" },
+              { key: "ctrl+c", label: "quit" },
             ]
           : [
               { key: "enter", label: mode === "exec" ? "run" : "send" },
-              { key: "ctl+e", label: mode === "exec" ? "chat mode" : "exec mode" },
-              { key: "ctl+t", label: "endpoint" },
+              { key: "ctrl+e", label: mode === "exec" ? "chat mode" : "exec mode" },
+              { key: "ctrl+t", label: "endpoint" },
               { key: "↑↓", label: "scroll" },
               { key: "esc", label: "back" },
-              { key: "ctl+c", label: "quit" },
+              { key: "ctrl+c", label: "quit" },
             ]
       }
     >
@@ -361,7 +361,7 @@ export function HarnessChat({
               value={input}
               onChange={setInput}
               onSubmit={submit}
-              prompt={mode === "exec" ? "$ " : "❯ "}
+              prompt={mode === "exec" ? "$ " : `${glyphs.pointer} `}
               placeholder={mode === "exec" ? "run a command…" : "send a message…"}
             />
           </Box>
@@ -411,7 +411,7 @@ function ItemView({ item, width }: { item: TranscriptItem; width: number }) {
     case "user":
       return (
         <Box>
-          <Text color={theme.colors.text}>❯ </Text>
+          <Text color={theme.colors.text}>{glyphs.pointer} </Text>
           <Box width={width - 4}>
             <Text color={theme.colors.text}>{item.text}</Text>
           </Box>
@@ -421,7 +421,7 @@ function ItemView({ item, width }: { item: TranscriptItem; width: number }) {
       if (item.streaming) {
         return (
           <Box>
-            <Text>⏺ </Text>
+            <Text>{glyphs.bullet} </Text>
             <Box width={width - 4}>
               <Text>{item.text}</Text>
               <Text color={theme.colors.text}>▌</Text>
@@ -431,7 +431,7 @@ function ItemView({ item, width }: { item: TranscriptItem; width: number }) {
       }
       return (
         <Box>
-          <Text>⏺ </Text>
+          <Text>{glyphs.bullet} </Text>
           <Box width={width - 4}>
             <Markdown content={item.text} width={width - 4} />
           </Box>
@@ -440,7 +440,7 @@ function ItemView({ item, width }: { item: TranscriptItem; width: number }) {
     case "reasoning":
       return (
         <Text color={theme.colors.muted} italic>
-          ✻ {item.text}
+          {glyphs.star} {item.text}
           {item.streaming ? "▌" : ""}
         </Text>
       );
@@ -483,7 +483,11 @@ function ItemView({ item, width }: { item: TranscriptItem; width: number }) {
         </Box>
       );
     case "error":
-      return <Text color={theme.colors.error}>✗ {item.message}</Text>;
+      return (
+        <Text color={theme.colors.error}>
+          {glyphs.cross} {item.message}
+        </Text>
+      );
     case "notice":
       return (
         <Box paddingLeft={2}>

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { RegionKey } from "../handlers/keys";
+import { readTextFile } from "../io";
 import { type Middleware } from "../router";
 
 // DEFAULT_REGION is the final fallback when no region is configured anywhere.
@@ -14,7 +15,7 @@ async function regionFromConfigFile(): Promise<string | undefined> {
   const path = process.env.AWS_CONFIG_FILE || join(homedir(), ".aws", "config");
   let text: string;
   try {
-    text = await Bun.file(path).text();
+    text = await readTextFile(path);
   } catch {
     return undefined; // no config file
   }

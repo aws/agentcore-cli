@@ -22,10 +22,10 @@ describe("KeyHint", () => {
       [
         { key: "enter", label: "send" },
         { key: "⇧↵", label: "newline" },
-        { key: "ctl+t", label: "target" },
+        { key: "ctrl+t", label: "target" },
         { key: "↑↓", label: "scroll" },
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ],
       60,
     );

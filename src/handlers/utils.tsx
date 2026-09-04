@@ -1,9 +1,10 @@
 import type { Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
+import type { AppIO } from "../io";
 import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
 import { formatZodError } from "../router/schema";
-import { EndpointKey, RegionKey } from "./keys";
+import { EndpointKey, JsonKey, RegionKey } from "./keys";
 import { JsonRendererKey } from "../tui";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
@@ -134,4 +135,11 @@ export function renderJsonError(ctx: Context, error: unknown): void {
   const cliError = AgentCoreCLIError.fromError(error);
   if (cliError instanceof SilentCLIError) return;
   ctx.require(JsonRendererKey).renderJson({ error: cliError.message });
+}
+
+// reportMessage is the success-side twin: the human line goes to stderr and,
+// under --json, the same message becomes the machine-readable result on stdout.
+export function reportMessage(ctx: Context, io: AppIO, message: string): void {
+  io.stderr.write(`${message}\n`);
+  if (ctx.require(JsonKey)) ctx.require(JsonRendererKey).renderJson({ message });
 }

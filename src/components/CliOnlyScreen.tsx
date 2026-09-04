@@ -77,7 +77,7 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
       keyHints={[
         { key: "↑↓", label: "scroll" },
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       <Box flexDirection="column" paddingX={1} flexGrow={1} minHeight={0}>

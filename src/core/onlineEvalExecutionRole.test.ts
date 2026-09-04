@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import {
   executionPolicy,
+  isManagedOnlineEvalRole,
   onlineEvalExecutionRoleName,
   scopePolicyName,
 } from "./onlineEvalExecutionRole";
@@ -59,6 +60,31 @@ test("keeps role names within 64 characters and distinct", () => {
   expect(b.length).toBeLessThanOrEqual(64);
   expect(a).not.toBe(b);
   expect(onlineEvalExecutionRoleName("short")).toBe("AgentCoreOnlineEval-short");
+});
+
+// A role created by an earlier build carries a hash suffix this build cannot
+// recompute, so a truncated name is recognised on its prefix.
+test.each([
+  ["short", "arn:aws:iam::123456789012:role/AgentCoreOnlineEval-short", true],
+  ["short", "arn:aws:iam::123456789012:role/AgentCoreOnlineEval-other", false],
+  ["short", "arn:aws:iam::123456789012:role/custom-role", false],
+  [
+    "x".repeat(50),
+    `arn:aws:iam::123456789012:role/${onlineEvalExecutionRoleName("x".repeat(50))}`,
+    true,
+  ],
+  [
+    "x".repeat(50),
+    `arn:aws:iam::123456789012:role/AgentCoreOnlineEval-${"x".repeat(35)}-20487c61`,
+    true,
+  ],
+  [
+    "x".repeat(50),
+    `arn:aws:iam::123456789012:role/AgentCoreOnlineEval-${"y".repeat(35)}-20487c61`,
+    false,
+  ],
+])("recognises the managed role for %s from %s: %s", (configName, roleArn, expected) => {
+  expect(isManagedOnlineEvalRole(roleArn, configName)).toBe(expected);
 });
 
 // Each scope must map to its own policy name. Granting a new scope writes a new

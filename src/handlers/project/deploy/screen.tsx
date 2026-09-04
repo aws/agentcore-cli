@@ -87,7 +87,7 @@ function DeployTarget({
           { key: "↑↓", label: "navigate" },
           { key: "enter", label: "select" },
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]}
       >
         <DataTable

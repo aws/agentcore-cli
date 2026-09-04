@@ -153,6 +153,7 @@ import type {
 } from "../handlers/eval/types";
 import { atomicWrite, atomicWriteStream, readTextFile } from "../io";
 import { accountIdFromRuntimeArn, invokeRuntime } from "./invokeRuntime";
+import { isFile } from "./dev/path";
 import { DatasetLoader } from "./eval/invokeDataset/load";
 import { runExamples } from "./eval/invokeDataset/run";
 import { renderJsonTemplate } from "./eval/invokeDataset/template";
@@ -168,8 +169,9 @@ import {
   accountIdFromRoleArn,
   executionPolicy,
   grantOnlineEvalScope,
-  onlineEvalExecutionRoleName,
+  isManagedOnlineEvalRole,
   revokeOnlineEvalScope,
+  roleNameFromArn,
   scopePolicyName,
 } from "./onlineEvalExecutionRole";
 import { accountIdFromArn, deleteAbTestRole, provisionAbTestRole } from "./abTestExecutionRole";
@@ -926,7 +928,7 @@ export class EvalClient implements CoreEvalClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<string> {
-    if (await Bun.file(ref).exists()) return readLocalDatasetFile(ref, signal);
+    if (isFile(ref)) return readLocalDatasetFile(ref, signal);
     const path = await this.downloadDatasetToTemp(ref, version, options, signal);
     try {
       return await readLocalDatasetFile(path, signal);
@@ -1228,7 +1230,8 @@ export class EvalClient implements CoreEvalClient {
     const managedRoleName =
       configName !== undefined &&
       update.evaluationExecutionRoleArn === undefined &&
-      roleArn?.endsWith(`/${onlineEvalExecutionRoleName(configName)}`) === true
+      roleArn !== undefined &&
+      isManagedOnlineEvalRole(roleArn, configName)
         ? configName
         : undefined;
     const refreshManagedRole = movedTo !== undefined && managedRoleName !== undefined;
@@ -1275,6 +1278,7 @@ export class EvalClient implements CoreEvalClient {
         options.region,
         newLogGroups,
         kmsKeys,
+        roleNameFromArn(roleArn!),
       );
       const oldPolicyName = scopePolicyName(
         executionPolicy(
@@ -1295,11 +1299,15 @@ export class EvalClient implements CoreEvalClient {
       );
 
       if (newPolicyName !== oldPolicyName) {
-        try {
-          await revokeOnlineEvalScope(iam, managedRoleName, oldPolicyName);
-        } catch {
-          // The config is already correct; the role just still grants a data
-          // source it no longer uses.
+        const revoked = await revokeOnlineEvalScope(
+          iam,
+          roleNameFromArn(managedRoleArn),
+          oldPolicyName,
+        ).catch(() => false);
+        // The config is already correct; the role just still grants a data
+        // source it no longer uses, either because the delete failed or because
+        // the policy was written under a legacy name this build cannot derive.
+        if (!revoked) {
           roleScopeWarning = {
             reason: "stale-scope",
             roleArn: roleArn!,

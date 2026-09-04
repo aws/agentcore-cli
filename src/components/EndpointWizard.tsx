@@ -11,10 +11,11 @@ import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
 import { FormRadioGroup, type FormRadioOption } from "./FormRadioGroup";
 import { FormTextInput } from "./FormTextInput";
+import { ErrorPanel } from "./ErrorPanel";
 import { Stepper, type Step } from "./ui/stepper";
 import { Spinner } from "./ui/spinner";
 import { CodeBlock } from "./ui/code-block";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 
 const theme = darkTheme;
 
@@ -185,16 +186,16 @@ function hintsFor(
   phase: WizardPhase,
   verb: string,
 ): { key: string; label: string }[] {
-  if (phase.kind === "submitting") return [{ key: "ctl+c", label: "quit" }];
+  if (phase.kind === "submitting") return [{ key: "ctrl+c", label: "quit" }];
   if (phase.kind === "success") return [{ key: "enter", label: "continue" }];
   if (phase.kind === "error")
     return [
       { key: "esc", label: "back" },
-      { key: "ctl+c", label: "quit" },
+      { key: "ctrl+c", label: "quit" },
     ];
   const base = [
     { key: "esc", label: "back" },
-    { key: "ctl+c", label: "quit" },
+    { key: "ctrl+c", label: "quit" },
   ];
   if (stepKey === "version") {
     return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
@@ -321,7 +322,9 @@ function VersionStep({
       ) : versions.isError ? (
         <>
           <Question text="which harness version should this endpoint serve?" />
-          <Text color={theme.colors.error}>✗ {(versions.error as Error).message}</Text>
+          <Text color={theme.colors.error}>
+            {glyphs.cross} {(versions.error as Error).message}
+          </Text>
         </>
       ) : options.length === 0 ? (
         <>
@@ -392,7 +395,7 @@ function SuccessPanel({
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.success} bold>
-        ✔ endpoint {verb}d
+        {glyphs.check} endpoint {verb}d
       </Text>
       <Text>
         {"  "}
@@ -401,19 +404,6 @@ function SuccessPanel({
         {status ? ` · ${status}` : ""}
       </Text>
       <Text color={theme.colors.muted}>{"  enter opens the endpoint"}</Text>
-    </Box>
-  );
-}
-
-function ErrorPanel({ message, onBack }: { message: string; onBack: () => void }) {
-  useInput((_input, key) => {
-    if (key.escape || key.return) onBack();
-  });
-
-  return (
-    <Box flexDirection="column">
-      <Text color={theme.colors.error}>✗ {message}</Text>
-      <Text color={theme.colors.muted}>{"  esc returns to the form"}</Text>
     </Box>
   );
 }

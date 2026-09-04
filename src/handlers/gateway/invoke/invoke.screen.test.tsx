@@ -255,8 +255,8 @@ describe("Gateway invoke JSON console", () => {
 
     expect(invokeRequests(core)).toHaveLength(0);
     expect(screen.lastFrame()).toContain("{}");
-    expect(screen.lastFrame()).toContain("[ctl+p] path");
-    expect(screen.lastFrame()).toContain("[ctl+t] gateway");
+    expect(screen.lastFrame()).toContain("[ctrl+p] path");
+    expect(screen.lastFrame()).toContain("[ctrl+t] gateway");
   });
 
   test("blocks a non-READY Gateway with its current status", async () => {
@@ -736,7 +736,7 @@ describe("Gateway invoke JSON console", () => {
     await waitForText(screen.lastFrame, "Ready");
     await screen.resize(80, 24);
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
-    expect(screen.lastFrame()).toContain("[ctl+p] path");
+    expect(screen.lastFrame()).toContain("[ctrl+p] path");
 
     await screen.resize(60, 24);
     expect(screen.lastFrame()).toContain("[enter] send");

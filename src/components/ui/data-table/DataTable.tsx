@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import cliTruncate from "cli-truncate";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import stringWidth from "string-width";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 import {
   COLUMN_GAP,
@@ -288,7 +288,7 @@ export function DataTable<T extends Record<string, unknown>>({
                       color={isSelected ? theme.colors.primary : theme.colors.muted}
                       wrap="truncate"
                     >
-                      {isSelected ? "❯" : " "}
+                      {isSelected ? glyphs.pointer : " "}
                     </Text>
                   </Box>
                 )}

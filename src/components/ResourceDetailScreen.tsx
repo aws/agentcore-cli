@@ -3,7 +3,7 @@ import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import { KeyValueTable } from "./KeyValueTable.js";
 import { Layout } from "./Layout";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 import { Divider } from "./ui/divider/Divider.js";
 import { Spinner } from "./ui/spinner";
 
@@ -69,7 +69,7 @@ export function ResourceDetailScreen({
         ...(ready && actions.length > 0 ? [{ key: "enter", label: selectLabel }] : []),
         ...(error && onRetry ? [{ key: "r", label: "retry" }] : []),
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       {isPending ? (
@@ -91,7 +91,9 @@ export function ResourceDetailScreen({
                   const selected = actionIndex === selectedIndex;
                   return (
                     <Box key={action.name}>
-                      <Text color={darkTheme.colors.focus}>{selected ? "❯ " : "  "}</Text>
+                      <Text color={darkTheme.colors.focus}>
+                        {selected ? `${glyphs.pointer} ` : "  "}
+                      </Text>
                       <Text
                         bold={selected}
                         color={selected ? darkTheme.colors.focus : darkTheme.colors.text}

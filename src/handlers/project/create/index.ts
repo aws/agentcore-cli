@@ -1,5 +1,6 @@
 import z from "zod";
-import { createHandler, flag } from "../../../router";
+import { createHandler, flag, PlatformKey } from "../../../router";
+import { assertProjectPathFits } from "./pathLimit";
 import { SourceResolver, type AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
 import {
@@ -76,6 +77,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       if (name === undefined) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
+      if (!flags["skip-install"]) {
+        assertProjectPathFits(name, ctx.require(PlatformKey), {
+          alternative: "pass --skip-install and install the CDK dependencies yourself",
+        });
+      }
 
       const template = flags["template"];
       const modelProviderFlag = flags["model-provider"];
@@ -128,7 +134,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       });
 
       config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
-      config.io.stderr.write(`To deploy it: cd ${name} && agentcore project deploy\n`);
+      config.io.stderr.write(`Next steps:\n  cd ${name}\n  agentcore project deploy\n`);
     },
   });
 

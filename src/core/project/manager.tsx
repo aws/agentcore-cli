@@ -230,8 +230,8 @@ export class FsProjectManager implements ProjectManager {
       });
     }
 
-    // A failed step leaves the scaffolded files in place; the error tells the
-    // user how to rerun the step by hand.
+    // A failed step leaves the scaffolded files in place; the error carries the
+    // failing command, its directory, and its output.
     if (!input.skipInstall) {
       yield { type: "step", message: "Installing CDK dependencies with npm" };
       yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);

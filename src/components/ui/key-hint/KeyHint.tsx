@@ -1,7 +1,7 @@
 import React from "react";
 import { Text, Box, useWindowSize } from "ink";
 import stringWidth from "string-width";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 const ITEM_GAP = 2;
@@ -20,9 +20,9 @@ export interface KeyHintProps {
 
 function priority({ key, label }: KeyHintItem): number {
   if (key === "esc" || label === "back") return 0;
-  if (key === "enter" || key.includes("↵") || label === "select") return 1;
+  if (key === "enter" || key.includes(glyphs.enter) || label === "select") return 1;
   if (key.includes("↑") || key.includes("↓")) return 2;
-  if (key.includes("←") || key.includes("→") || key === "/" || key === "ctl+c") return 4;
+  if (key.includes("←") || key.includes("→") || key === "/" || key === "ctrl+c") return 4;
   return 3;
 }
 

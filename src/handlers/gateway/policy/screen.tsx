@@ -11,7 +11,7 @@ import { MultilineInput } from "../../../components/MultilineInput";
 import { Divider } from "../../../components/ui/divider";
 import { Spinner } from "../../../components/ui/spinner";
 import { TaskList, type Task } from "../../../components/ui/task-list";
-import { darkTheme } from "../../../components/ui/_core.js";
+import { darkTheme, glyphs } from "../../../components/ui/_core.js";
 import { UserCancellationError } from "../../../errors";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
@@ -129,20 +129,20 @@ function GeneratePolicyForm({ ctx, core, gatewayId }: ScreenProps & { gatewayId:
     phase.kind === "form" && engineArn
       ? [
           { key: "enter", label: "generate" },
-          { key: "⇧↵", label: "newline" },
+          { key: `${glyphs.shift}${glyphs.enter}`, label: "newline" },
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]
       : phase.kind === "result"
         ? [
             { key: "↑↓/jk", label: "scroll" },
             { key: "e", label: "edit prompt" },
             { key: "esc", label: "back" },
-            { key: "ctl+c", label: "quit" },
+            { key: "ctrl+c", label: "quit" },
           ]
         : [
             { key: "esc", label: phase.kind === "running" ? "cancel" : "back" },
-            { key: "ctl+c", label: "quit" },
+            { key: "ctrl+c", label: "quit" },
           ];
 
   return (

@@ -3,7 +3,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { Layout } from "../../components/Layout";
 import { Spinner } from "../../components/ui/spinner";
-import { darkTheme } from "../../components/ui/_core.js";
+import { darkTheme, glyphs } from "../../components/ui/_core.js";
 import { ProjectStateError } from "../../errors/errors";
 import { projectNotFoundMessage } from "../../middleware/withProject";
 import type { Core } from "../types";
@@ -61,12 +61,14 @@ export function LoadingFrame({
       keyHints={[
         ...(query.isError ? [{ key: "r", label: "retry" }] : []),
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       <Box paddingX={1}>
         {query.isError ? (
-          <Text color={theme.colors.error}>✗ {(query.error as Error).message}</Text>
+          <Text color={theme.colors.error}>
+            {glyphs.cross} {(query.error as Error).message}
+          </Text>
         ) : (
           <Spinner label={loadingLabel} />
         )}

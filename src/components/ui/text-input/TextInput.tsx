@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp, useStdin } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export interface TextInputProps {
@@ -169,7 +169,7 @@ export const TextInput: React.FC<TextInputProps> = ({
   password = false,
   focus = true,
   label,
-  prompt = "❯ ",
+  prompt = `${glyphs.pointer} `,
   theme = darkTheme,
 }) => {
   const { isRawModeSupported } = useStdin();

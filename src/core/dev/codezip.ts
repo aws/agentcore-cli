@@ -17,6 +17,8 @@ type CodeZipDevRunnerConfig = {
 };
 
 const SITECUSTOMIZE_MARKER = "AGENTCORE_OTEL_SITECUSTOMIZE=";
+// Windows Python defaults piped stdout to the ANSI code page and block buffering.
+const PYTHON_ENV = { PYTHONUTF8: "1", PYTHONUNBUFFERED: "1" } as const;
 
 export class CodeZipDevRunner implements DevRunner {
   private readonly streamProcess: ProcessStreamer;
@@ -53,7 +55,6 @@ export class CodeZipDevRunner implements DevRunner {
       yield* this.streamProcess(["npm", "install"], {
         cwd: directory,
         signal: input.signal,
-        shell: process.platform === "win32",
       });
     }
 
@@ -95,6 +96,7 @@ export class CodeZipDevRunner implements DevRunner {
     try {
       await this.runProcess(["uv", "run", "python", "-c", script], {
         cwd: directory,
+        env: { ...process.env, ...PYTHON_ENV },
         onOutput: (chunk) => output.push(chunk),
         signal,
       });
@@ -120,6 +122,7 @@ function commandForRuntime(
 ): { command: string[]; options: StreamProcessOptions } {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    ...(entrypoint.endsWith(".py") ? PYTHON_ENV : {}),
     ...input.env,
     PORT: String(input.port),
     LOCAL_DEV: "1",
@@ -132,12 +135,7 @@ function commandForRuntime(
   if (!entrypoint.endsWith(".py")) {
     return {
       command: ["npm", "exec", "--", "tsx", "watch", entrypoint],
-      options: {
-        cwd: directory,
-        env,
-        signal: input.signal,
-        shell: process.platform === "win32",
-      },
+      options: { cwd: directory, env, signal: input.signal },
     };
   }
 

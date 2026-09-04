@@ -134,11 +134,11 @@ describe("exec screen", () => {
     const r = renderScreen(EXEC_PATH, { core: execCore() });
 
     await waitForText(r.lastFrame, "run a command…");
-    expect(r.lastFrame()).toContain("[ctl+e] chat mode");
+    expect(r.lastFrame()).toContain("[ctrl+e] chat mode");
 
     await r.write(CTRL_E);
     await waitForText(r.lastFrame, "send a message…");
-    expect(r.lastFrame()).toContain("[ctl+e] exec mode");
+    expect(r.lastFrame()).toContain("[ctrl+e] exec mode");
 
     await r.write(CTRL_E);
     await waitForText(r.lastFrame, "run a command…");

@@ -168,7 +168,7 @@ export class CdkBackend implements ProjectBackend {
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
         `CDK dependencies are missing for project '${project.name}'. ` +
-          `Run 'cd ${cdkDir} && npm install'.`,
+          `Run 'npm install' in ${cdkDir}.`,
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");

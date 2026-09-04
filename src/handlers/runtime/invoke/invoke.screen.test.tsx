@@ -344,7 +344,7 @@ describe("Runtime invoke JSON console", () => {
     await screen.resize(80, 24);
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
     expect(screen.lastFrame()).toContain(
-      "[enter] send  [⇧↵] newline  [ctl+t] target  [↑↓] scroll  [esc] back",
+      "[enter] send  [⇧↵] newline  [ctrl+t] target  [↑↓] scroll  [esc] back",
     );
 
     await screen.resize(60, 24);

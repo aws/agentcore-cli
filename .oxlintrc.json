@@ -4,6 +4,20 @@
   "categories": {
     "correctness": "error"
   },
+  "rules": {
+    "no-restricted-globals": [
+      "error",
+      {
+        "name": "Bun",
+        "message": "The npm bundle runs under Node. Use node:* APIs in src/ and keep Bun to scripts/, src/testing/, and tests."
+      }
+    ]
+  },
   "ignorePatterns": ["dist/", "node_modules/", "src/assets/"],
-  "overrides": []
+  "overrides": [
+    {
+      "files": ["scripts/**", "src/testing/**", "**/*.test.*", "**/*-test-support.ts"],
+      "rules": { "no-restricted-globals": "off" }
+    }
+  ]
 }

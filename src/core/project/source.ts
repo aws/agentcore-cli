@@ -24,6 +24,7 @@ type NamedBlob = Blob & { readonly name: string };
 /** Reads assets embedded in the compiled standalone executable. */
 export class EmbeddedAssetSource implements AssetSource {
   private blobs(): readonly NamedBlob[] {
+    // oxlint-disable-next-line no-restricted-globals
     return Bun.embeddedFiles as readonly NamedBlob[];
   }
 
@@ -78,6 +79,7 @@ function resolveAssetsRoot(moduleDirectory = dirname(fileURLToPath(import.meta.u
  * as a compiled Bun executable, disk otherwise.
  */
 export function defaultSource(): AssetSource {
+  // oxlint-disable-next-line no-restricted-globals
   const embedded = typeof Bun !== "undefined" && Bun.embeddedFiles.length > 0;
   return embedded ? new EmbeddedAssetSource() : new FsAssetSource();
 }

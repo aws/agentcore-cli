@@ -1,6 +1,6 @@
 import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
@@ -12,13 +12,17 @@ import {
 } from "../../testing";
 import { InputValidationError } from "../../errors";
 
-async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: string }) {
+async function run(
+  args: string[],
+  opts?: { core?: TestCoreClient; stdin?: string; platform?: NodeJS.Platform },
+) {
   const io = testIO({ stdin: opts?.stdin });
   const core = opts?.core ?? new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
+    platform: opts?.platform,
   });
   await root.route(["node", "agentcore", "project", ...args]);
   return { io, core };
@@ -81,6 +85,20 @@ describe("project create", () => {
     expect(await Bun.file(join(projectRoot, "app", "MyAgent", "system-prompt.md")).exists()).toBe(
       true,
     );
+  });
+
+  test("refuses a project root that would exceed MAX_PATH on Windows, leaving nothing behind", async () => {
+    const deep = join(await inTempDirectory(), "n".repeat(120));
+    await mkdir(deep);
+    process.chdir(deep);
+
+    await expect(run(["create", "--name", "Deep"], { platform: "win32" })).rejects.toThrow(
+      /too long for Windows/,
+    );
+    expect(await readdir(deep)).toEqual([]);
+
+    await run(["create", "--name", "Deep", "--skip-install", "--skip-git"], { platform: "win32" });
+    expect(await readdir(deep)).toEqual(["Deep"]);
   });
 
   test("a harness create installs CDK dependencies and git only (no uv sync)", async () => {
@@ -192,6 +210,7 @@ describe("project create", () => {
     expect(io.stderr()).toContain("Syncing Python dependencies with uv");
     expect(io.stderr()).toContain("Initializing git repository");
     expect(io.stderr()).toContain("Created project 'MyAgent' in ./MyAgent");
+    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore project deploy");
   });
 
   test("--skip-install and --skip-git run no commands", async () => {

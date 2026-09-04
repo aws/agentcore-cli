@@ -12,7 +12,7 @@ import { Layout } from "../../../components/Layout";
 import { MultilineInput } from "../../../components/MultilineInput";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
-import { darkTheme } from "../../../components/ui/_core.js";
+import { darkTheme, glyphs } from "../../../components/ui/_core.js";
 import { Divider } from "../../../components/ui/divider";
 import { Spinner } from "../../../components/ui/spinner";
 import type { RuntimeInvokeResponse } from "../types";
@@ -384,22 +384,22 @@ export function RuntimeInvokeConsole({
           ? [
               { key: "esc", label: "interrupt" },
               { key: "↑↓", label: "scroll" },
-              { key: "ctl+c", label: "quit" },
+              { key: "ctrl+c", label: "quit" },
             ]
           : [
               { key: "enter", label: "send" },
               ...(canPrettyJson
                 ? [
                     {
-                      key: "ctl+v",
+                      key: "ctrl+v",
                       label: prettyJson ? "raw JSON" : "pretty JSON",
                     },
                   ]
-                : [{ key: "⇧↵", label: "newline" }]),
-              { key: "ctl+t", label: "target" },
+                : [{ key: `${glyphs.shift}${glyphs.enter}`, label: "newline" }]),
+              { key: "ctrl+t", label: "target" },
               { key: "↑↓", label: "scroll" },
               { key: "esc", label: "back" },
-              { key: "ctl+c", label: "quit" },
+              { key: "ctrl+c", label: "quit" },
             ]
       }
     >

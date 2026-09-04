@@ -9,7 +9,7 @@ import { useNavigate, useParams } from "react-router";
 import { GatewayPicker } from "../../../components/GatewayPicker";
 import { Layout } from "../../../components/Layout";
 import { MultilineInput } from "../../../components/MultilineInput";
-import { darkTheme } from "../../../components/ui/_core.js";
+import { darkTheme, glyphs } from "../../../components/ui/_core.js";
 import { Divider } from "../../../components/ui/divider";
 import { Spinner } from "../../../components/ui/spinner";
 import { TextInput } from "../../../components/ui/text-input";
@@ -428,24 +428,24 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
           ? [
               { key: "enter", label: "save" },
               { key: "esc", label: "back" },
-              { key: "ctl+c", label: "quit" },
+              { key: "ctrl+c", label: "quit" },
             ]
           : busy
             ? [
                 { key: "esc", label: "interrupt" },
                 { key: "↑↓", label: "scroll" },
-                { key: "ctl+c", label: "quit" },
+                { key: "ctrl+c", label: "quit" },
               ]
             : [
                 { key: "enter", label: "send" },
                 ...(canPrettyJson
-                  ? [{ key: "ctl+v", label: prettyJson ? "raw JSON" : "pretty JSON" }]
-                  : [{ key: "⇧↵", label: "newline" }]),
-                { key: "ctl+p", label: "path" },
-                { key: "ctl+t", label: "gateway" },
+                  ? [{ key: "ctrl+v", label: prettyJson ? "raw JSON" : "pretty JSON" }]
+                  : [{ key: `${glyphs.shift}${glyphs.enter}`, label: "newline" }]),
+                { key: "ctrl+p", label: "path" },
+                { key: "ctrl+t", label: "gateway" },
                 { key: "↑↓", label: "scroll" },
                 { key: "esc", label: "back" },
-                { key: "ctl+c", label: "quit" },
+                { key: "ctrl+c", label: "quit" },
               ]
       }
     >

@@ -20,7 +20,7 @@ import { Stepper, type Step } from "./ui/stepper";
 import { Spinner } from "./ui/spinner";
 import { CodeBlock } from "./ui/code-block";
 import { ScrollView } from "ink-scroll-view";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 import { Divider } from "./ui/divider/Divider.js";
 import { KeyValueTable } from "./KeyValueTable.js";
 
@@ -395,16 +395,16 @@ function hintsFor(
   phase: WizardPhase,
   verb: string,
 ): { key: string; label: string }[] {
-  if (phase.kind === "submitting") return [{ key: "ctl+c", label: "quit" }];
+  if (phase.kind === "submitting") return [{ key: "ctrl+c", label: "quit" }];
   if (phase.kind === "success") return [{ key: "enter", label: "continue" }];
   if (phase.kind === "error")
     return [
       { key: "esc", label: "back" },
-      { key: "ctl+c", label: "quit" },
+      { key: "ctrl+c", label: "quit" },
     ];
   const base = [
     { key: "esc", label: "back" },
-    { key: "ctl+c", label: "quit" },
+    { key: "ctrl+c", label: "quit" },
   ];
   switch (stepKey) {
     case "name":
@@ -420,7 +420,7 @@ function hintsFor(
         ...base,
       ];
     case "prompt":
-      return [{ key: "enter", label: "newline" }, { key: "ctl+d", label: "continue" }, ...base];
+      return [{ key: "enter", label: "newline" }, { key: "ctrl+d", label: "continue" }, ...base];
     case "review":
       return [{ key: "enter", label: verb }, { key: "↑↓", label: "scroll" }, ...base];
     default:
@@ -1168,7 +1168,7 @@ function SuccessPanel({
   return (
     <Box flexDirection="column" paddingX={1}>
       <Text color={theme.colors.success} bold>
-        ✔ harness {mode === "create" ? "created" : "updated"}
+        {glyphs.check} harness {mode === "create" ? "created" : "updated"}
       </Text>
       <Text color={theme.colors.muted}>
         {mode === "create"

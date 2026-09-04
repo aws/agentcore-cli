@@ -6,7 +6,7 @@ import { CommandKey, isTuiCommandSupported } from "../router";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 
 const theme = darkTheme;
@@ -135,7 +135,7 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
         { key: "↑↓", label: "navigate" },
         { key: "enter", label: "select" },
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       <Box flexDirection="column">
@@ -171,7 +171,7 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
                 <React.Fragment key={o.name}>
                   {startsCliOnly && <Divider title="command line only" />}
                   <Box paddingX={1}>
-                    <Text color={theme.colors.focus}>{isHl ? "❯ " : "  "}</Text>
+                    <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
                     <Text
                       bold={isHl}
                       color={

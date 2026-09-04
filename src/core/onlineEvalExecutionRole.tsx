@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   CreateRoleCommand,
   DeleteRolePolicyCommand,
@@ -26,6 +27,10 @@ const ROLE_NAME_PREFIX = "AgentCoreOnlineEval-";
 const ROLE_NAME_MAX = 64;
 const NAME_HASH_LENGTH = 8;
 
+function fingerprint(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, NAME_HASH_LENGTH);
+}
+
 // onlineEvalExecutionRoleName derives the default role's name from the online eval
 // config name. IAM caps role names at 64 characters, which leaves only 44 for the
 // config name — while config names run to 100 — so a name that would overflow is
@@ -36,12 +41,26 @@ export function onlineEvalExecutionRoleName(configName: string): string {
   const full = `${ROLE_NAME_PREFIX}${configName}`;
   if (full.length <= ROLE_NAME_MAX) return full;
 
-  const hash = Bun.hash(configName)
-    .toString(16)
-    .padStart(NAME_HASH_LENGTH, "0")
-    .slice(-NAME_HASH_LENGTH);
+  return `${truncatedRolePrefix(configName)}${fingerprint(configName)}`;
+}
+
+function truncatedRolePrefix(configName: string): string {
   const room = ROLE_NAME_MAX - ROLE_NAME_PREFIX.length - NAME_HASH_LENGTH - 1;
-  return `${ROLE_NAME_PREFIX}${configName.slice(0, room)}-${hash}`;
+  return `${ROLE_NAME_PREFIX}${configName.slice(0, room)}-`;
+}
+
+export function roleNameFromArn(roleArn: string): string {
+  return roleArn.slice(roleArn.lastIndexOf("/") + 1);
+}
+
+// isManagedOnlineEvalRole recognises the CLI's default role for a config. Roles
+// created before the hash moved off Bun.hash carry a different suffix, so a
+// truncated name is matched on its prefix rather than recomputed.
+export function isManagedOnlineEvalRole(roleArn: string, configName: string): boolean {
+  const roleName = roleNameFromArn(roleArn);
+  const full = `${ROLE_NAME_PREFIX}${configName}`;
+  if (full.length <= ROLE_NAME_MAX) return roleName === full;
+  return roleName.startsWith(truncatedRolePrefix(configName));
 }
 
 function trustPolicy(): string {
@@ -182,11 +201,7 @@ export function accountIdFromRoleArn(arn: string): string {
 // policy can never clobber another's — a superseded scope stays intact until it
 // is explicitly revoked.
 export function scopePolicyName(policyDocument: string): string {
-  const fingerprint = Bun.hash(policyDocument)
-    .toString(16)
-    .padStart(NAME_HASH_LENGTH, "0")
-    .slice(-NAME_HASH_LENGTH);
-  return `${POLICY_PREFIX}-${fingerprint}`;
+  return `${POLICY_PREFIX}-${fingerprint(policyDocument)}`;
 }
 
 // grantOnlineEvalScope creates the execution role for `configName` if it does not
@@ -199,9 +214,8 @@ export async function grantOnlineEvalScope(
   region: string,
   logGroupNames: string[],
   kmsKeyArns: string[] = [],
+  roleName = onlineEvalExecutionRoleName(configName),
 ): Promise<{ roleArn: string; policyName: string }> {
-  const roleName = onlineEvalExecutionRoleName(configName);
-
   let roleArn: string;
   try {
     const existing = await iam.send(new GetRoleCommand({ RoleName: roleName }));
@@ -237,20 +251,18 @@ export async function grantOnlineEvalScope(
 }
 
 // revokeOnlineEvalScope detaches a scope's inline policy, dropping the access it
-// granted. A scope that is already absent is treated as revoked.
+// granted. Returns false when no policy of that name was attached, which is how a
+// policy written under a legacy name shows up: still granted, not removable here.
 export async function revokeOnlineEvalScope(
   iam: IAMClient,
-  configName: string,
+  roleName: string,
   policyName: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await iam.send(
-      new DeleteRolePolicyCommand({
-        RoleName: onlineEvalExecutionRoleName(configName),
-        PolicyName: policyName,
-      }),
-    );
+    await iam.send(new DeleteRolePolicyCommand({ RoleName: roleName, PolicyName: policyName }));
+    return true;
   } catch (error) {
     if ((error as Error).name !== "NoSuchEntityException") throw error;
+    return false;
   }
 }

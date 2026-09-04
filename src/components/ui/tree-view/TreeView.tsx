@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export interface TreeNode<T = unknown> {
@@ -59,9 +59,9 @@ export function TreeView<T = unknown>({
   maxHeight,
   guides = true,
   showIcons = true,
-  leafIcon = "📄",
-  branchIcon = "📁",
-  branchOpenIcon = "📂",
+  leafIcon = glyphs.file,
+  branchIcon = glyphs.folder,
+  branchOpenIcon = glyphs.folderOpen,
   focus = true,
   theme = darkTheme,
 }: TreeViewProps<T>): React.ReactElement {

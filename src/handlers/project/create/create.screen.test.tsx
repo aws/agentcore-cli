@@ -1,6 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -12,12 +12,9 @@ import {
   TestGlobalConfigAccessor,
   testIO,
   ttyTestIO,
-  tick,
   waitFor,
 } from "../../../testing";
-import { renderTuiAt } from "../../../tui";
 import { createRootHandler } from "../../index";
-import { ValueContext } from "../../../router";
 import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { resolveRuntimeTemplateShortcut } from "../shortcuts";
@@ -498,12 +495,20 @@ describe("project create wizard", () => {
     release();
   });
 
-  test("an error from create() renders after the streamed progress", async () => {
+  test("a create() error offers r to retry only before anything was written, esc returns to review with the input kept", async () => {
+    await inTempDirectory();
     const core = new TestCoreClient();
-    core.projectManager.create = () => {
+    const created: CreateProjectInput[] = [];
+    const real = core.projectManager.create.bind(core.projectManager);
+    core.projectManager.create = (input) => {
+      created.push(input);
+      if (created.length > 2) return real(input);
+      // First attempt fails before any step (a missing tool), the second after
+      // the tree was written.
+      const wroteTree = created.length === 2;
       return (async function* () {
-        yield { type: "step" as const, message: "creating project directory" };
-        throw new Error("disk full");
+        if (wroteTree) yield { type: "step" as const, message: "creating project directory" };
+        throw new Error("'git' was not found on your PATH.");
       })();
     };
     const r = renderScreen("/agentcore/project/create", { core });
@@ -519,70 +524,52 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
-    // The error panel also requests app exit, which may unmount the screen;
-    // assert on the frame history rather than only the final frame.
-    await waitFor(() =>
-      r.frames.some(
-        (frame) => frame.includes("✗ disk full") && frame.includes("creating project directory"),
-      ),
-    );
+    await waitForText(r.lastFrame, "✗ 'git' was not found on your PATH.");
+    expect(r.lastFrame()).toContain("[r] retry");
+    expect(r.lastFrame()).toContain("[esc] back");
+
+    await r.write("r");
+    await waitFor(() => created.length === 2);
+    await waitForText(r.lastFrame, "creating project directory");
+    await waitForText(r.lastFrame, "✗ 'git' was not found on your PATH.");
+    expect(r.lastFrame()).not.toContain("[r] retry");
+    expect(r.lastFrame()).toContain("[esc] back");
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()).toContain("DemoApp");
+
+    await r.press("return");
+    await waitForText(r.lastFrame, "project created in ./DemoApp");
+    expect(created).toHaveLength(3);
+    expect(created[2]).toEqual(created[0]);
     r.unmount();
   });
 
-  test("a create() error tears the TUI down nonzero (renderTuiAt rejects)", async () => {
-    const core = new TestCoreClient();
-    const created: CreateProjectInput[] = [];
-    core.projectManager.create = (input) => {
-      created.push(input);
-      return (async function* () {
-        yield { type: "step" as const, message: "creating project directory" };
-        throw new Error("disk full");
-      })();
-    };
-    const { streams, stdin } = ttyTestIO();
+  test("on Windows a deep project root is refused before anything is written", async () => {
+    const deep = join(await inTempDirectory(), "n".repeat(120));
+    await mkdir(deep);
+    process.chdir(deep);
+    const r = renderScreen("/agentcore/project/create", { platform: "win32" });
 
-    // The settlement handler is attached before any input is sent: the app
-    // exits (rejecting waitUntilExit) while keys are still being paced, and a
-    // bare rejected promise would trip bun's unhandled-rejection detection.
-    const caught: Promise<unknown> = renderTuiAt(
-      "/agentcore/project/create",
-      ValueContext.EmptyContext(),
-      core,
-      streams.io,
-    ).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("DemoApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what should the project be built around?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model");
+    await r.press("return");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
 
-    // Walk the shortest path (harness defaults) by raw key writes — frames are
-    // not observable here (Ink suppresses incremental frames under CI), so the
-    // pacing is tick-based. Writes are spaced out so consecutive keys cannot
-    // coalesce into one stdin chunk (Ink parses a merged "\r\r" as text, not as
-    // return presses); a slow trailing pump re-sends return as a recovery for a
-    // key that landed before its step's input handler subscribed.
-    await tick(50);
-    stdin.write("DemoApp");
-    // One return per step, plus one to enter the model field:
-    // name → type → provider → model → review → submit.
-    for (let press = 0; press < 5; press++) {
-      await tick(50);
-      stdin.write("\r");
-    }
-    await waitFor(
-      () => {
-        if (created.length === 0) stdin.write("\r");
-        return created.length > 0;
-      },
-      5000,
-      150,
-    );
-
-    // exit(error) rejects waitUntilExit, so the error takes the normal CLI
-    // path and the process exits nonzero.
-    const error = await caught;
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("disk full");
-  }, 10000);
+    await waitForText(r.lastFrame, "too long for Windows");
+    expect(r.lastFrame()).toContain("Create the project in a shorter directory.");
+    expect(r.lastFrame()).not.toContain("--skip-install");
+    expect(r.lastFrame()).toContain("[r] retry");
+    expect(await readdir(deep)).toEqual([]);
+    r.unmount();
+  });
 });
 
 describe("project create dispatch", () => {

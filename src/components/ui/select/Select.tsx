@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp, useStdin } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export interface SelectItem<T = string> {
@@ -45,7 +45,7 @@ function ListDisplay<T>({ items, activeIndex, isFocused, theme }: ListDisplayPro
           labelColor = theme.colors.text;
         }
 
-        const indicator = isActive && isFocused ? "❯ " : "  ";
+        const indicator = isActive && isFocused ? `${glyphs.pointer} ` : "  ";
 
         return (
           <Box key={String(item.value)}>

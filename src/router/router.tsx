@@ -5,6 +5,7 @@ import { applyGlobalFlags, formatParameterDetails, parseFlags, toOption } from "
 import { parseArguments, toCommanderArgument } from "./args";
 
 import { Command, CommanderError } from "commander";
+import { InputValidationError } from "../errors";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
@@ -16,6 +17,7 @@ export const CommandKey: ContextKey<Command> = contextKey<Command>("commander.co
 export const PathKey: ContextKey<string> = contextKey<string>("path");
 
 export const LoggerKey = contextKey<Logger>("logger");
+export const PlatformKey = contextKey<NodeJS.Platform>("platform");
 
 export const CommandRunMetricEventKey =
   contextKey<MetricEvent<"cli.command_run">>("commandRunMetricEvent");
@@ -120,6 +122,15 @@ function attachAction(
 
     recordCommandPath(ctx);
 
+    // A group's default action also receives positionals that matched no child.
+    // Those are typos, not arguments, so they are named before the default runs.
+    if (command.commands.length > 0 && command.args.length > 0) {
+      const names = command.commands.map((child) => child.name()).join(", ");
+      throw new InputValidationError(
+        `unknown command '${command.args[0]}' for '${command.name()}'. Available commands: ${names}`,
+      );
+    }
+
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).
     let leafCtx = ctx.withValue(CommandKey, command);
     leafCtx = applyGlobalFlags(globals, merged, leafCtx);
@@ -215,6 +226,7 @@ export function compile(
     // has no own flags/arguments (globals-only).
     const fallback = isDefaultHandlerProvider(node) ? node.defaultHandler() : undefined;
     if (fallback) {
+      c.allowExcessArguments();
       attachAction(
         c,
         withEffectiveTuiSupport(fallback, effectiveTuiSupport && fallback.doesSupportTui()),

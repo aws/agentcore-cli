@@ -1,13 +1,17 @@
 // Local subprocess execution. Uses node:child_process (not Bun.$/Bun.spawn)
 // because the npm bundle targets Node — Bun APIs are unavailable there.
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn, type SpawnOptions } from "node:child_process";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
 
-// cmd.exe resolves PATHEXT executables (npm.cmd, uv.exe) that a bare spawn misses.
-const useShell = process.platform === "win32";
+const isWindows = process.platform === "win32";
 const KILL_GRACE_MS = 2000;
 const MAX_ERROR_OUTPUT_LINES = 20;
+
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+const COMMAND_SCRIPT = /\.(cmd|bat)$/i;
 
 /** Error raised when a required executable is not found on PATH. */
 export class MissingToolError extends AgentCoreCLIError {
@@ -22,20 +26,61 @@ export class MissingToolError extends AgentCoreCLIError {
 /** Error raised when a subprocess exits non-zero, carrying its captured output. */
 export class ProcessFailedError extends AgentCoreCLIError {
   constructor(command: string[], cwd: string, exitCode: number | null, output: string) {
-    const rendered = command.join(" ");
     super(
-      `'${rendered}' failed in ${cwd} (exit code ${exitCode ?? "unknown"}).\n\n` +
-        `${output.trim()}\n\n` +
-        `Fix the issue and run 'cd ${cwd} && ${rendered}' to retry.`,
+      `'${command.join(" ")}' failed in ${cwd} (exit code ${exitCode ?? "unknown"}).\n\n${output.trim()}`,
       { source: ERROR_SOURCE.USER, meta: { command, cwd, exitCode } },
     );
   }
 }
 
+/**
+ Windows cannot spawn .cmd/.bat wrappers such as npm.cmd directly. This finds the
+ script cmd.exe would run for a bare name (PATH then PATHEXT order), or undefined
+ when the match is a real executable that spawns on its own.
+**/
+export function windowsCommandScript(
+  executable: string,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  const extensions = (env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
+  const lower = executable.toLowerCase();
+  const names = extensions.some((ext) => lower.endsWith(ext.toLowerCase()))
+    ? [executable]
+    : extensions.map((ext) => executable + ext);
+  for (const dir of (env.PATH || "").split(delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) return COMMAND_SCRIPT.test(candidate) ? candidate : undefined;
+    }
+  }
+  return undefined;
+}
+
+// Quoting follows https://qntm.org/cmd: C runtime rules for the argument, then
+// every cmd.exe metacharacter escaped with ^ because /s strips the outer quotes.
+function escapeArgument(arg: string): string {
+  const quoted = `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
+  return quoted.replace(CMD_META, "^$1");
+}
+
+// Single escape: a % inside an argument would still be expanded by the batch file.
+export function cmdSpawnArgs(script: string, args: string[]): { file: string; args: string[] } {
+  const commandLine = [script.replace(CMD_META, "^$1"), ...args.map(escapeArgument)].join(" ");
+  return { file: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", `"${commandLine}"`] };
+}
+
+function spawnCommand(executable: string, args: string[], options: SpawnOptions): ChildProcess {
+  const script = isWindows ? windowsCommandScript(executable, process.env) : undefined;
+  if (!script) return spawn(executable, args, options);
+  const resolved = cmdSpawnArgs(script, args);
+  return spawn(resolved.file, resolved.args, { ...options, windowsVerbatimArguments: true });
+}
+
 /** Returns true if running `tool` with probeArgs (`--version` by default) exits 0. */
 export function toolAvailable(tool: string, probeArgs: string[] = ["--version"]): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn(tool, probeArgs, { stdio: "ignore", shell: useShell });
+    const child = spawnCommand(tool, probeArgs, { stdio: "ignore" });
     child.on("error", () => resolve(false));
     child.on("close", (exitCode) => resolve(exitCode === 0));
   });
@@ -53,6 +98,7 @@ export async function requireTool(
 export type RunProcessOptions = {
   /** Working directory the process runs in. */
   cwd: string;
+  env?: NodeJS.ProcessEnv;
   /** Receives each chunk of combined stdout/stderr as it streams (e.g. into a logger). */
   onOutput?: (chunk: string) => void;
   /** Terminates the process and rejects when aborted, so callers can cancel a slow run. */
@@ -70,8 +116,6 @@ export type StreamProcessOptions = {
   signal?: AbortSignal;
   /** Command rendered in errors when the actual arguments contain sensitive values. */
   redactedCommand?: string[];
-  /** Required on Windows for command scripts such as npm.cmd. */
-  shell?: boolean;
 };
 
 export type ProcessStreamer = (
@@ -83,16 +127,19 @@ export type ProcessStreamer = (
  * Runs a subprocess, streaming combined stdout/stderr to `onOutput` while also
  * capturing it; rejects with {@link ProcessFailedError} on a non-zero exit.
  */
-export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput, signal }) => {
+export const runProcess: ProcessRunner = (
+  [executable, ...args],
+  { cwd, env, onOutput, signal },
+) => {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(abortReason(signal));
       return;
     }
-    const child = spawn(executable!, args, {
+    const child = spawnCommand(executable!, args, {
       cwd,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: useShell,
     });
 
     let output = "";
@@ -101,8 +148,8 @@ export const runProcess: ProcessRunner = ([executable, ...args], { cwd, onOutput
       output += text;
       onOutput?.(text);
     };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
+    child.stdout!.on("data", collect);
+    child.stderr!.on("data", collect);
 
     const onAbort = () => killTree(child, "SIGTERM");
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -137,12 +184,11 @@ export async function* streamProcess(
 
   let child: ChildProcess;
   try {
-    child = spawn(executable, args, {
+    child = spawnCommand(executable, args, {
       cwd: options.cwd,
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: options.shell ?? false,
-      detached: !useShell,
+      detached: !isWindows,
     });
   } catch (error) {
     throw new ProcessFailedError(errorCommand, options.cwd, null, String(error));
@@ -249,7 +295,7 @@ function abortReason(signal: AbortSignal): unknown {
 function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (!child.pid) return;
   try {
-    if (useShell) {
+    if (isWindows) {
       execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
     } else {
       process.kill(-child.pid, signal);
@@ -260,7 +306,7 @@ function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
 }
 
 function processTreeAlive(child: ChildProcess): boolean {
-  if (useShell || !child.pid) return false;
+  if (isWindows || !child.pid) return false;
   try {
     process.kill(-child.pid, 0);
     return true;

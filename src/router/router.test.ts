@@ -170,6 +170,18 @@ test("the root's default handler runs when invoked with no subcommand", async ()
   expect(ran).toBe(true);
 });
 
+test("a stray positional on a group with a default handler is an unknown command", async () => {
+  const root = new Router("app").default(async () => {});
+  root.handler(leaf("harness", () => {}));
+  root.handler(leaf("runtime", () => {}));
+
+  await expect(root.route(["node", "app", "projekt", "status"])).rejects.toThrow(
+    new InputValidationError(
+      "unknown command 'projekt' for 'app'. Available commands: harness, runtime",
+    ),
+  );
+});
+
 test("middleware wraps the default handler ancestor-first", async () => {
   const log: string[] = [];
 

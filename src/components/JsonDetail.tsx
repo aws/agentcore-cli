@@ -63,7 +63,7 @@ export function JsonDetail({
         { key: "↑↓/jk", label: "navigate" },
         ...(error && onRetry ? [{ key: "r", label: "retry" }] : []),
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       {isPending ? (

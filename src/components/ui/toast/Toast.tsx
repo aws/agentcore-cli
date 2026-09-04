@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Text, Box } from "ink";
-import { darkTheme } from "../_core.js";
+import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
 export type ToastVariant = "success" | "warning" | "error" | "info";
@@ -15,10 +15,10 @@ export interface ToastProps {
 }
 
 const ICONS: Record<ToastVariant, string> = {
-  success: "✔",
-  warning: "⚠",
-  error: "✖",
-  info: "ℹ",
+  success: glyphs.check,
+  warning: glyphs.warning,
+  error: glyphs.cross,
+  info: glyphs.info,
 };
 
 function variantColor(variant: ToastVariant, theme: InkUITheme): string {

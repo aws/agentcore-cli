@@ -12,3 +12,8 @@
 // is registered as a Bun test preload in bunfig.toml, which runs before test
 // modules load (supports-color reads FORCE_COLOR at import time).
 process.env.FORCE_COLOR = "0";
+
+// The glyph table (components/ui/_core.ts) picks Unicode or ASCII from the
+// terminal env at import time. Pin the Windows Terminal marker so frame
+// assertions on ❯ ✗ ↵ hold on a plain conhost dev box as well.
+process.env.WT_SESSION ??= "bun-test";

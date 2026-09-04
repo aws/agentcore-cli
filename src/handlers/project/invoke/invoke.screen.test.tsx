@@ -144,7 +144,7 @@ describe("project invoke picker", () => {
     expect(frame).toContain(directory);
     expect(frame).toContain("agentcore project create");
     expect(frame).not.toContain("Resolving project");
-    // esc is a way off the error, not just ctl+c.
+    // esc is a way off the error, not just ctrl+c.
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
   });

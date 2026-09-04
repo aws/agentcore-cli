@@ -5,6 +5,7 @@ import { Layout } from "../../../components/Layout";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { Spinner } from "../../../components/ui/spinner";
+import { glyphs } from "../../../components/ui/_core.js";
 import { ProjectKey, type Context } from "../../../router";
 import { HarnessChat } from "../../harness/invoke/screen";
 import { RegionKey } from "../../keys";
@@ -162,10 +163,12 @@ function ProjectInvokePicker({
         description="unable to load deployed resources"
         keyHints={[
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]}
       >
-        <Text color="red">✗ {error}</Text>
+        <Text color="red">
+          {glyphs.cross} {error}
+        </Text>
       </Layout>
     );
   }
@@ -177,7 +180,7 @@ function ProjectInvokePicker({
         description="resolving deployed resources"
         keyHints={[
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]}
       >
         <Spinner label="resolving deployed resources…" />
@@ -194,7 +197,7 @@ function ProjectInvokePicker({
         { key: "/", label: "filter" },
         { key: "enter", label: "select" },
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       <Box flexDirection="column">

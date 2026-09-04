@@ -89,7 +89,7 @@ export function PaginatedTablePicker<TItem, TRow extends Record<string, unknown>
         ...(list.isError && paging.pageIndex > 0 ? [{ key: "←/h", label: "previous page" }] : []),
         ...(list.isError ? [{ key: "r", label: "retry" }] : []),
         { key: "esc", label: "back" },
-        { key: "ctl+c", label: "quit" },
+        { key: "ctrl+c", label: "quit" },
       ]}
     >
       {list.isPending ? (

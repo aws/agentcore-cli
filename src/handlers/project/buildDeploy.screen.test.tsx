@@ -176,7 +176,7 @@ describe("project build screen", () => {
 
     await waitForFlatText(r.lastFrame, "No AgentCore project found");
     expect(flatFrame(r.lastFrame)).toContain("agentcore project create");
-    // esc is a way off the error, not just ctl+c.
+    // esc is a way off the error, not just ctrl+c.
     await r.press("escape");
     await waitForText(r.lastFrame, "manage an AgentCore project");
     r.unmount();

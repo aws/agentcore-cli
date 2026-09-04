@@ -6,7 +6,7 @@ import { Spinner } from "./ui/spinner";
 import { Confirm } from "./ui/confirm";
 import { TaskList, type Task } from "./ui/task-list";
 import { KeyValueTable } from "./KeyValueTable";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 import { driveProgress, type ProgressEvent } from "../tui/progress";
 
 const theme = darkTheme;
@@ -127,18 +127,18 @@ export function ConfirmAction({
       ? [
           { key: "y/n", label: "confirm" },
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]
       : phase.kind === "success"
         ? [{ key: "enter", label: doneLabel }]
         : phase.kind === "error"
           ? [
               { key: "esc", label: "back" },
-              { key: "ctl+c", label: "quit" },
+              { key: "ctrl+c", label: "quit" },
             ]
           : // Nothing listens for esc while the action runs (or is about to):
             // an operation in flight is not abandoned by leaving the screen.
-            [{ key: "ctl+c", label: "quit" }];
+            [{ key: "ctrl+c", label: "quit" }];
 
   return (
     <Layout breadcrumb={breadcrumb} description={description} keyHints={hints}>
@@ -231,7 +231,7 @@ function SuccessBody({
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.success} bold>
-        ✔ {title}
+        {glyphs.check} {title}
       </Text>
       {Object.keys(rows).length > 0 && (
         <Box flexDirection="column" marginTop={1} marginLeft={2}>
@@ -262,7 +262,9 @@ function ErrorBody({ message, onBack }: { message: string; onBack: () => void })
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.colors.error}>✗ {message}</Text>
+      <Text color={theme.colors.error}>
+        {glyphs.cross} {message}
+      </Text>
       <Box marginTop={1}>
         <Text color={theme.colors.muted}>press esc to go back</Text>
       </Box>

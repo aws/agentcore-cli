@@ -47,7 +47,7 @@ function UpdateWizard({ ctx, core, harnessId }: ScreenProps & { harnessId: strin
         breadcrumb={["agentcore", "harness", "update", harnessId]}
         keyHints={[
           { key: "esc", label: "back" },
-          { key: "ctl+c", label: "quit" },
+          { key: "ctrl+c", label: "quit" },
         ]}
       >
         {detail.isPending ? (

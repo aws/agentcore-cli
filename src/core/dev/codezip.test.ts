@@ -60,12 +60,14 @@ function harness(
 ) {
   const calls: ProcessCall[] = [];
   const discoverCalls: string[][] = [];
+  const discoverEnvs: (NodeJS.ProcessEnv | undefined)[] = [];
   const fakeStreamProcess: ProcessStreamer = async function* (command, options) {
     calls.push({ command, options });
     yield* output;
   };
   const fakeRunProcess: ProcessRunner = async (command, options) => {
     discoverCalls.push(command);
+    discoverEnvs.push(options.env);
     if (site.fail) throw new Error("discovery failed");
     for (const line of site.noise ?? []) options.onOutput?.(`${line}\n`);
     if (site.dir !== undefined) options.onOutput?.(`AGENTCORE_OTEL_SITECUSTOMIZE=${site.dir}\n`);
@@ -73,6 +75,7 @@ function harness(
   return {
     calls,
     discoverCalls,
+    discoverEnvs,
     runner: new CodeZipDevRunner({ streamProcess: fakeStreamProcess, runProcess: fakeRunProcess }),
   };
 }
@@ -153,12 +156,27 @@ describe("CodeZipDevRunner", () => {
     ]);
     expect(calls[0]?.options).toMatchObject({
       cwd: join(root, "app", "hello-world"),
-      env: { CUSTOM_ENV: "value", PORT: "9000", LOCAL_DEV: "1" },
+      env: {
+        CUSTOM_ENV: "value",
+        PORT: "9000",
+        LOCAL_DEV: "1",
+        PYTHONUTF8: "1",
+        PYTHONUNBUFFERED: "1",
+      },
     });
     expect(events).toEqual([
       { type: "status", message: "Starting development server" },
       { type: "stdout", line: "server output" },
     ]);
+  });
+
+  test("lets the project's own env override the Python defaults", async () => {
+    const root = await projectRoot();
+    const { calls, runner } = harness();
+
+    await collect(runner.run({ ...input(root, runtime()), env: { PYTHONUTF8: "0" } }));
+
+    expect(calls[0]?.options.env).toMatchObject({ PYTHONUTF8: "0", PYTHONUNBUFFERED: "1" });
   });
 
   test.each(["MCP", "A2A", "AGUI"] as const)(
@@ -202,6 +220,7 @@ describe("CodeZipDevRunner", () => {
     expect(calls.map(({ command }) => command)).toEqual([
       ["npm", "exec", "--", "tsx", "watch", "index.js"],
     ]);
+    expect(calls[0]?.options.env?.PYTHONUTF8).toBeUndefined();
   });
 
   test("runs the .ts source when a TypeScript runtime's entrypoint is the compiled .js", async () => {
@@ -236,11 +255,12 @@ describe("CodeZipDevRunner OTEL instrumentation", () => {
   test("prepends the sitecustomize directory to PYTHONPATH when instrumentation is installed", async () => {
     const root = await projectRoot();
     const directory = await sitecustomizeDir();
-    const { calls, discoverCalls, runner } = harness([], { dir: directory });
+    const { calls, discoverCalls, discoverEnvs, runner } = harness([], { dir: directory });
 
     await collect(runner.run(otelInput(root)));
 
     expect(discoverCalls[0]?.slice(0, 4)).toEqual(["uv", "run", "python", "-c"]);
+    expect(discoverEnvs[0]).toMatchObject({ PYTHONUTF8: "1", PYTHONUNBUFFERED: "1" });
     expect(calls[0]?.options.env?.PYTHONPATH).toBe(directory);
   });
 
