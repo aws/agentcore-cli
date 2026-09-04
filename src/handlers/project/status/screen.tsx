@@ -15,6 +15,7 @@ import { ProjectKey } from "../../../router";
 import type { ScreenProps } from "../../types";
 import type { DeployableResource, Project, ResolvedProjectResource } from "../types";
 import { LoadingFrame, ProjectGate } from "../ProjectGate";
+import { RegionKey } from "../../keys";
 
 const theme = darkTheme;
 
@@ -168,15 +169,16 @@ export function ProjectStatusScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(PROJECT_MENU)}
     >
-      {(project) => <ProjectStatusView core={core} project={project} />}
+      {(project) => <ProjectStatusView core={core} ctx={ctx} project={project} />}
     </ProjectGate>
   );
 }
 
 function ProjectStatusView({
   core,
+  ctx,
   project,
-}: Pick<ScreenProps, "core"> & {
+}: ScreenProps & {
   project: Project;
 }) {
   const navigate = useNavigate();
@@ -224,6 +226,12 @@ function ProjectStatusView({
     setHint(node.data?.hint);
   };
 
+  // A linked detail page fetches in the target's region, but everything it
+  // opens in turn runs in the ambient one, so a project deployed elsewhere is
+  // reported rather than listed: the user reopens with --region.
+  const region = ctx.require(RegionKey);
+  const isWrongRegion = status.data.target.region !== region;
+
   return (
     <Layout
       breadcrumb={BREADCRUMB}
@@ -237,16 +245,26 @@ function ProjectStatusView({
       ]}
     >
       <Box flexDirection="column" paddingX={1}>
-        <Text bold>resources</Text>
-        <Box flexDirection="column">
-          {nodes.length === 0 ? (
-            <Text color={theme.colors.muted}>
-              No resources are declared in this project. Run `agentcore project add` to declare one.
-            </Text>
-          ) : (
-            <TreeView nodes={nodes} onSelect={select} showIcons={false} focusMarker />
-          )}
-        </Box>
+        {isWrongRegion && (
+          <Text color="red">
+            This project is deployed to {status.data.target.region}, not {region}
+          </Text>
+        )}
+        {!isWrongRegion && (
+          <>
+            <Text bold>resources</Text>
+            <Box flexDirection="column">
+              {nodes.length === 0 ? (
+                <Text color={theme.colors.muted}>
+                  No resources are declared in this project. Run `agentcore project add` to declare
+                  one.
+                </Text>
+              ) : (
+                <TreeView nodes={nodes} onSelect={select} showIcons={false} focusMarker />
+              )}
+            </Box>
+          </>
+        )}
         {hint !== undefined && (
           <Box marginTop={1}>
             <Text color={theme.colors.muted}>{hint}</Text>

@@ -3,6 +3,8 @@ import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { ProjectManager, ResolvedProjectResource } from "../types";
+import { RegionKey } from "../../keys";
+import { ProjectStateError } from "../../../errors";
 
 type StatusProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -38,6 +40,15 @@ export const createStatusProjectHandler = (config: StatusProjectHandlerConfig) =
         region: resolved.target.region,
         resources: resolved.resources,
       };
+
+      // Every follow-up command runs in the ambient region, so a report for a
+      // project deployed elsewhere would print ids the user cannot act on as-is.
+      // Refuse it and name the region to rerun with.
+      const region = ctx.require(RegionKey);
+      if (status.region !== region) {
+        throw new ProjectStateError(`This project is deployed to ${status.region}, not ${region}`);
+      }
+
       ctx.require(JsonRendererKey).renderJson(status);
     },
   });

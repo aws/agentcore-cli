@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import {
   waitFor,
 } from "../../../testing";
 import type { ProjectBackend } from "../../../core/project";
+import { ProjectStateError } from "../../../errors";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { ResolvedProjectResource } from "../types";
 
@@ -72,6 +73,18 @@ afterEach(async () => {
   await Promise.all(
     tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
+});
+
+// The report is refused when the ambient region is not the target's, so pin
+// the ambient region to the default target's rather than leave it to the
+// developer's shell (see withRegion for the fallback chain).
+const SAVED_AWS_REGION = process.env.AWS_REGION;
+beforeEach(() => {
+  process.env.AWS_REGION = DEFAULT_TARGET.region;
+});
+afterEach(() => {
+  if (SAVED_AWS_REGION === undefined) delete process.env.AWS_REGION;
+  else process.env.AWS_REGION = SAVED_AWS_REGION;
 });
 
 async function inProject(
@@ -223,7 +236,7 @@ describe("project status handler", () => {
     const subject = testStatusCommand([]);
     await inProject(subject);
 
-    await subject.run(["--target", "staging"]);
+    await subject.run(["--region", STAGING_TARGET.region, "--target", "staging"]);
 
     expect(subject.targets).toEqual([STAGING_TARGET]);
     expect(subject.json()).toMatchObject({ target: "staging", region: "eu-west-1" });
@@ -231,6 +244,21 @@ describe("project status handler", () => {
     await expect(subject.run(["--target", "typo"])).rejects.toThrow(
       /has no deployment target named 'typo'/,
     );
+  });
+
+  test("refuses a target deployed outside the ambient region", async () => {
+    const subject = testStatusCommand([HARNESS_ROW]);
+    await inProject(subject);
+
+    // The ambient region is the default target's (pinned above); staging's is not.
+    const outcome = subject.run(["--target", "staging"]);
+    await expect(outcome).rejects.toBeInstanceOf(ProjectStateError);
+    await expect(outcome).rejects.toThrow("This project is deployed to eu-west-1, not us-east-1");
+    // An explicit --region takes part in the same comparison.
+    await expect(subject.run(["--region", "us-west-2"])).rejects.toThrow(
+      "This project is deployed to us-east-1, not us-west-2",
+    );
+    expect(subject.io.stdout()).toBe("");
   });
 });
 

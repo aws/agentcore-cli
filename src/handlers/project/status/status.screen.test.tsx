@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
+import { RegionKey } from "../../keys";
 import {
   cleanupScreens,
   flatFrame,
@@ -30,9 +31,10 @@ afterEach(async () => {
   );
 });
 
-// The target region differs from the base context's us-east-1 on purpose: the
-// detail screens must fetch where the project deployed, not in the ambient
-// region.
+// The target region differs from the base context's us-east-1 on purpose, so
+// the detail screens are linked with the region the project deployed in.
+// renderStatus pins the ambient region to the target's, since the screen only
+// lists a project deployed there; the mismatch case has a test of its own.
 const TARGET = { name: "default", account: "111122223333", region: "eu-west-1" } as const;
 const ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}`;
 const RUNTIME_ID = "checkout-AbCdEf1234";
@@ -100,10 +102,14 @@ function core(resources: ResolvedProjectResource[] = RUNTIME_RESOURCES): TestCor
   return value;
 }
 
-function renderStatus(value: TestCoreClient, seed: Project = RUNTIME_PROJECT) {
+function renderStatus(
+  value: TestCoreClient,
+  seed: Project = RUNTIME_PROJECT,
+  region: string = TARGET.region,
+) {
   return renderScreen("/agentcore/project/status", {
     core: value,
-    withContext: (ctx) => ctx.withValue(ProjectKey, seed),
+    withContext: (ctx) => ctx.withValue(ProjectKey, seed).withValue(RegionKey, region),
   });
 }
 
@@ -275,6 +281,23 @@ describe("project status screen", () => {
     const screen = renderStatus(core([]), project({}));
 
     await waitForText(screen.lastFrame, "No resources are declared in this project.");
+  });
+
+  test("reports a project deployed outside the ambient region instead of listing it", async () => {
+    const screen = renderStatus(core(), RUNTIME_PROJECT, "us-east-1");
+
+    await waitForFlatText(
+      screen.lastFrame,
+      `This project is deployed to ${TARGET.region}, not us-east-1`,
+    );
+    const frame = flatFrame(screen.lastFrame);
+    expect(frame).not.toContain("checkout agent");
+    expect(frame).not.toMatch(/runtime\s+checkout/);
+    // Nothing is focusable, so enter goes nowhere and escape still leaves.
+    await screen.press("return");
+    expect(screen.lastFrame()).toContain("agentcore → project → status");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "manage an AgentCore project");
   });
 
   test("reports the CLI's own guidance outside a project", async () => {
