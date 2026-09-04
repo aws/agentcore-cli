@@ -37,13 +37,9 @@ function initialPagination(pageSize: number): PaginationState {
 // usePagedList holds the server-side pagination state shared by the picker
 // tables: a terminal-height-derived page size and the trail of nextTokens
 // leading to the current page, so ←/h can walk back through cached pages.
-//
-// maxPageSize caps the terminal-derived page size for APIs that constrain
-// maxResults (e.g. identity list operation capped at 20)
-export function usePagedList(maxPageSize?: number): PagedList {
+export function usePagedList(): PagedList {
   const { rows } = useWindowSize();
-  const fitsTerminal = Math.max(3, rows - CHROME_ROWS);
-  const pageSize = maxPageSize ? Math.min(fitsTerminal, maxPageSize) : fitsTerminal;
+  const pageSize = Math.max(3, rows - CHROME_ROWS);
 
   // A resize changes maxResults, which invalidates the token trail (tokens
   // encode positions relative to the old page size) — so every read derives

@@ -103,19 +103,21 @@ describe("API key credential provider picker", () => {
     ]);
   });
 
-  test("caps maxResults at the service limit of 20 on a tall terminal", async () => {
-    const core = coreWithProviders([providerItem()]);
+  test("fills a tall terminal past the service's 20-item page", async () => {
+    const core = coreWithProviders(
+      Array.from({ length: 25 }, (_, index) => providerItem({ name: `provider-${index + 1}` })),
+    );
     const screen = renderScreen("/agentcore/identity/api-key-credential-provider/list", { core });
-    // Terminal taller than the 20-row service cap: page size must still clamp.
+    // Core assembles a page taller than one service page, so the picker asks for
+    // as many rows as the terminal holds and shows them all.
     await screen.resize(120, 60);
 
-    await waitFor(() =>
-      core.identity.calls.some((call) => call.method === "listApiKeyCredentialProviders"),
-    );
-    for (const call of core.identity.calls) {
-      if (call.method !== "listApiKeyCredentialProviders") continue;
-      expect(call.args[1] as number).toBeLessThanOrEqual(20);
-    }
+    await waitForText(screen.lastFrame, "provider-25");
+    const pageSizes = core.identity.calls
+      .filter((call) => call.method === "listApiKeyCredentialProviders")
+      .map((call) => call.args[1] as number);
+    expect(pageSizes.at(-1)).toBeGreaterThan(20);
+    expect(screen.lastFrame()).not.toContain("more →");
   });
 
   test("shows first-page and later-page empty states", async () => {

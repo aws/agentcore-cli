@@ -37,13 +37,51 @@ import type {
   UpdateOauth2CredentialProviderInput,
   UpdatePaymentCredentialProviderInput,
 } from "../handlers/identity/types";
+import { FilteredPaginator } from "./filteredPaginator";
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
+
+// Documented maxResults ceilings of the Identity list APIs. A TUI page can be
+// taller than either, so a larger page is assembled from several service calls.
+const API_KEY_LIST_MAX_RESULTS = 100;
+const OAUTH2_LIST_MAX_RESULTS = 20;
+
+type ProviderPage<TItem> = {
+  credentialProviders: TItem[] | undefined;
+  nextToken?: string | undefined;
+};
+
+type ListProvidersInput = { nextToken?: string | undefined; maxResults?: number | undefined };
 
 export class IdentityClient implements CoreIdentityClient {
   // Narrowed to `control` so any holder of a cached control client satisfies it;
   // CoreClient passes itself.
   constructor(private readonly clients: Pick<AwsClients, "control">) {}
+
+  // Without maxResults the call passes straight through and the service picks
+  // the page size. With one, a page larger than the service cap is filled from
+  // consecutive service calls; the caps are the only Identity-specific input.
+  private static async listProviders<TItem>(
+    send: (input: ListProvidersInput) => Promise<ProviderPage<TItem>>,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    maxResultsCap: number,
+    resourceLabel: string,
+  ): Promise<ProviderPage<TItem>> {
+    if (maxResults === undefined) return send({ nextToken, maxResults });
+    const page = await FilteredPaginator.paginate({
+      fetchPage: async (token, size) => {
+        const response = await send({ nextToken: token, maxResults: size });
+        return { items: response.credentialProviders ?? [], nextToken: response.nextToken };
+      },
+      nextToken,
+      maxResults,
+      defaultPageSize: maxResultsCap,
+      scanPageSize: maxResultsCap,
+      resourceLabel,
+    });
+    return { credentialProviders: page.items, nextToken: page.nextToken };
+  }
 
   async createApiKeyCredentialProvider(
     input: CreateApiKeyCredentialProviderInput,
@@ -68,9 +106,14 @@ export class IdentityClient implements CoreIdentityClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListApiKeyCredentialProvidersResponse> {
-    return this.clients
-      .control(toClientConfig(options))
-      .send(new ListApiKeyCredentialProvidersCommand({ nextToken, maxResults }));
+    const control = this.clients.control(toClientConfig(options));
+    return IdentityClient.listProviders(
+      (input) => control.send(new ListApiKeyCredentialProvidersCommand(input)),
+      nextToken,
+      maxResults,
+      API_KEY_LIST_MAX_RESULTS,
+      "API key credential provider",
+    );
   }
 
   async updateApiKeyCredentialProvider(
@@ -114,9 +157,14 @@ export class IdentityClient implements CoreIdentityClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListOauth2CredentialProvidersResponse> {
-    return this.clients
-      .control(toClientConfig(options))
-      .send(new ListOauth2CredentialProvidersCommand({ nextToken, maxResults }));
+    const control = this.clients.control(toClientConfig(options));
+    return IdentityClient.listProviders(
+      (input) => control.send(new ListOauth2CredentialProvidersCommand(input)),
+      nextToken,
+      maxResults,
+      OAUTH2_LIST_MAX_RESULTS,
+      "OAuth2 credential provider",
+    );
   }
 
   async updateOauth2CredentialProvider(
