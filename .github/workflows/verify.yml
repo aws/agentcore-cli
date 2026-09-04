@@ -24,10 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Every CodeBuild job in a run shares the codebuild-* label, and CodeBuild registers each
-          # runner with all labels its job requested. Without a per-job label, a runner created for
-          # the Windows job also satisfies the Linux job, which then fails on Windows while the
-          # Windows job sits queued with no runner.
+          # Per-job labels stop GitHub from routing a job to the runner CodeBuild created for another job.
           # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html
           - name: Linux
             runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "verify-linux"]'
