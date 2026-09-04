@@ -187,7 +187,7 @@ export function TreeView<T = unknown>({
               <Text color={hasBranch ? theme.colors.primary : theme.colors.muted}>
                 {branchChar}
               </Text>
-              {showIcons ? ` ${icon} ` : " "}
+              {showIcons ? ` ${icon} ` : ""}
               {node.label}
             </Text>
             {node.annotation !== undefined && (

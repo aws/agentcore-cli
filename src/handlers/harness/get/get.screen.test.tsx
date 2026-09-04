@@ -277,12 +277,12 @@ describe("harness hub linked resources", () => {
     await waitForText(r.lastFrame, "linked resources");
     expect(r.lastFrame()).toContain("── linked resources ");
     const frame = flatFrame(r.lastFrame);
-    expect(frame).toMatch(/Runtime\s+harness_MyHarness/);
-    expect(frame).toMatch(new RegExp(`Memory\\s+${MEMORY_ID} managed`));
-    expect(frame).toMatch(new RegExp(`Gateway\\s+${GATEWAY_ID}`));
-    expect(frame).toMatch(/OAuth2 Provider\s+github-oauth outbound auth/);
-    expect(frame).toMatch(/Browser\s+default aws default/);
-    expect(frame).toMatch(/API Key\s+openai-key model gpt-4o/);
+    expect(frame).toMatch(new RegExp(`runtime\\s+${RUNTIME_ID}`));
+    expect(frame).toMatch(new RegExp(`memory\\s+${MEMORY_ID} managed`));
+    expect(frame).toMatch(new RegExp(`gateway\\s+${GATEWAY_ID}`));
+    expect(frame).toMatch(/oauth2 provider\s+github-oauth outbound auth/);
+    expect(frame).toMatch(/browser\s+default aws default/);
+    expect(frame).toMatch(/api key\s+openai-key model gpt-4o/);
     expect(frame).not.toContain("docs_mcp");
     r.unmount();
   });
@@ -298,8 +298,8 @@ describe("harness hub linked resources", () => {
 
     await waitForText(r.lastFrame, "linked resources");
     const frame = flatFrame(r.lastFrame);
-    expect(frame).toMatch(/Runtime\s+harness_MyHarness/);
-    for (const type of ["Memory", "Gateway", "Browser", "Code Interpreter", "API Key"]) {
+    expect(frame).toMatch(new RegExp(`runtime\\s+${RUNTIME_ID}`));
+    for (const type of ["memory", "gateway", "browser", "code interpreter", "api key"]) {
       expect(frame).not.toContain(type);
     }
     r.unmount();
@@ -316,14 +316,14 @@ describe("harness hub linked resources", () => {
     await r.press("down");
     let marked = markedLines(r.lastFrame());
     expect(marked).toHaveLength(1);
-    expect(marked[0]).toContain("Runtime");
+    expect(marked[0]).toContain("runtime");
     expect(marked[0]).not.toContain("update");
 
     // Down again moves within the tree, not the action list.
     await r.press("down");
     marked = markedLines(r.lastFrame());
     expect(marked).toHaveLength(1);
-    expect(marked[0]).toContain("Memory");
+    expect(marked[0]).toContain("memory");
 
     await r.press("up");
     await r.press("up");
@@ -415,7 +415,7 @@ describe("harness hub linked resources", () => {
 
     await waitForText(r.lastFrame, "linked resources");
     await focusTree(r, 3);
-    expect(markedLines(r.lastFrame())[0]).toContain("OAuth2 Provider");
+    expect(markedLines(r.lastFrame())[0]).toContain("oauth2 provider");
     await r.press("return");
 
     await waitForText(
@@ -438,7 +438,7 @@ describe("harness hub linked resources", () => {
 
     await waitForText(r.lastFrame, "linked resources");
     await focusTree(r, 5);
-    expect(markedLines(r.lastFrame())[0]).toContain("API Key");
+    expect(markedLines(r.lastFrame())[0]).toContain("api key");
     await r.press("return");
 
     await waitForText(
@@ -461,10 +461,10 @@ describe("harness hub linked resources", () => {
 
     await waitForText(r.lastFrame, "linked resources");
     await focusTree(r, 4);
-    expect(markedLines(r.lastFrame())[0]).toContain("Browser");
+    expect(markedLines(r.lastFrame())[0]).toContain("browser");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "Browser default has no detail view.");
+    await waitForText(r.lastFrame, "browser default has no detail view.");
     expect(r.lastFrame()).toContain("agentcore → harness → get → MyHarness-abc123");
     expect(r.lastFrame()).toContain("linked resources");
     expect(core.runtime.calls).toHaveLength(0);
@@ -500,7 +500,7 @@ describe("buildHarnessLinkNodes", () => {
     const gateway = nodes[2]!;
     expect(gateway.defaultExpanded).toBe(true);
     expect(gateway.children?.map((node) => node.id)).toEqual(["tool:0/oauth"]);
-    expect(gateway.children?.[0]?.label).toContain("OAuth2 Provider");
+    expect(gateway.children?.[0]?.label).toContain("oauth2 provider");
     expect(gateway.children?.[0]?.annotation).toBe("outbound auth");
   });
 
@@ -550,14 +550,14 @@ describe("buildHarnessLinkNodes", () => {
 
     // Browsers come before Code Interpreters regardless of tools[] order.
     expect(tools.map((node) => node.id)).toEqual(["tool:1", "tool:2", "tool:0"]);
-    expect(tools[0]?.label).toMatch(/Browser\s+aws\.browser\.v1$/);
+    expect(tools[0]?.label).toMatch(/browser\s+aws\.browser\.v1$/);
     expect(tools[0]?.annotation).toBe("aws default");
-    expect(tools[1]?.label).toMatch(/Browser\s+default$/);
+    expect(tools[1]?.label).toMatch(/browser\s+default$/);
     expect(tools[1]?.annotation).toBe("aws default");
-    expect(tools[1]?.data).toEqual({ hint: "Browser default has no detail view." });
-    expect(tools[2]?.label).toMatch(/Code Interpreter\s+ci-123$/);
+    expect(tools[1]?.data).toEqual({ hint: "browser default has no detail view." });
+    expect(tools[2]?.label).toMatch(/code interpreter\s+ci-123$/);
     expect(tools[2]?.annotation).toBeUndefined();
-    expect(tools[2]?.data).toEqual({ hint: "Code Interpreter ci-123 has no detail view." });
+    expect(tools[2]?.data).toEqual({ hint: "code interpreter ci-123 has no detail view." });
   });
 
   test("keeps the name column aligned across the tree", () => {
@@ -573,11 +573,11 @@ describe("buildHarnessLinkNodes", () => {
     const column = (label: string) => label.search(/\S+$/);
 
     // TreeView draws four guide characters ("│ └─") before a row nested under
-    // a top-level one, so the nested "OAuth2 Provider" is the widest entry:
+    // a top-level one, so the nested "oauth2 provider" is the widest entry:
     // every top-level name starts after it plus two spaces, and the nested
     // row gives those four columns back so its name lands in the same place.
     const nestedGuides = 4;
-    const width = "OAuth2 Provider".length + nestedGuides + 2;
+    const width = "oauth2 provider".length + nestedGuides + 2;
     for (const node of nodes) expect(column(node.label)).toBe(width);
     expect(column(nodes[2]!.children![0]!.label)).toBe(width - nestedGuides);
   });
@@ -640,12 +640,12 @@ describe("buildHarnessLinkNodes", () => {
     const keys = nodes.filter((node) => node.id.startsWith("skill:"));
 
     expect(keys.map((node) => node.id)).toEqual(["skill:1/key", "skill:2/key"]);
-    expect(keys[0]?.label).toMatch(/API Key\s+openai-key$/);
+    expect(keys[0]?.label).toMatch(/api key\s+openai-key$/);
     expect(keys[0]?.annotation).toBe("skill skills/search");
     expect(keys[0]?.data?.route).toBe(
       `/agentcore/identity/api-key-credential-provider/get/openai-key?region=${LINK_REGION}`,
     );
-    expect(keys[1]?.label).toMatch(/OAuth2 Provider\s+github-oauth$/);
+    expect(keys[1]?.label).toMatch(/oauth2 provider\s+github-oauth$/);
     expect(keys[1]?.annotation).toBe("skill https://github.com/acme/private.git");
     expect(nodes.some((node) => node.id === "model-key")).toBe(false);
   });

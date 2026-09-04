@@ -107,6 +107,13 @@ function renderStatus(value: TestCoreClient, seed: Project = RUNTIME_PROJECT) {
   });
 }
 
+// waitForGroup waits for the tree to be up: the agent group row is the first
+// thing only a resolved status renders (the description mentions resources
+// while loading too).
+function waitForGroup(screen: ReturnType<typeof renderStatus>, name = "checkout") {
+  return waitForFlatText(screen.lastFrame, `${name} agent`);
+}
+
 // focusedLine returns the line carrying the ❯ marker.
 function focusedLine(frame: string | undefined): string {
   return (frame ?? "").split("\n").find((line) => line.includes("❯")) ?? "";
@@ -116,11 +123,11 @@ describe("project status screen", () => {
   test("groups the runtime agent's Runtime and Memory beneath it", async () => {
     const screen = renderStatus(core());
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     const frame = flatFrame(screen.lastFrame);
     expect(frame).toContain("checkout agent");
-    expect(frame).toMatch(/Runtime\s+checkout deployed/);
-    expect(frame).toMatch(/Memory\s+recall deployed/);
+    expect(frame).toMatch(/runtime\s+checkout deployed/);
+    expect(frame).toMatch(/memory\s+recall deployed/);
     // Both resources are attributed to the agent — no shared group appears.
     expect(frame).not.toContain("project shared resources");
   });
@@ -136,12 +143,12 @@ describe("project status screen", () => {
       ]),
     );
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     const frame = flatFrame(screen.lastFrame);
     expect(frame).toContain("project shared resources");
-    expect(frame).toMatch(/Gateway\s+tools deployed/);
-    expect(frame).toMatch(/Gateway Target\s+search deployed/);
-    expect(frame).toMatch(/Credential\s+svc-key local-only/);
+    expect(frame).toMatch(/gateway\s+tools deployed/);
+    expect(frame).toMatch(/gateway-target\s+search deployed/);
+    expect(frame).toMatch(/credential\s+svc-key local-only/);
   });
 
   test("marks declared-but-undeployed rows local-only and skips them when navigating", async () => {
@@ -156,16 +163,16 @@ describe("project status screen", () => {
     // Down from the agent group focuses the Runtime; the disabled Memory row
     // cannot take focus, so a second press leaves the focus where it is.
     await screen.press("down");
-    expect(focusedLine(screen.lastFrame())).toContain("Runtime");
+    expect(focusedLine(screen.lastFrame())).toContain("runtime");
     await screen.press("down");
-    expect(focusedLine(screen.lastFrame())).toContain("Runtime");
+    expect(focusedLine(screen.lastFrame())).toContain("runtime");
   });
 
   test("enter on the Runtime opens the Runtime detail page in the target region", async () => {
     const value = core();
     const screen = renderStatus(value);
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     await screen.press("down");
     await screen.press("return");
 
@@ -180,7 +187,7 @@ describe("project status screen", () => {
     const value = core();
     const screen = renderStatus(value);
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     await screen.press("down");
     await screen.press("down");
     await screen.press("return");
@@ -198,7 +205,7 @@ describe("project status screen", () => {
       project({ harnesses: [{ name: "support", path: "app/support" }] }),
     );
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen, "support");
     await screen.press("down");
     await screen.press("return");
 
@@ -208,13 +215,13 @@ describe("project status screen", () => {
   test("escape from a detail page returns to the status screen", async () => {
     const screen = renderStatus(core());
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "agentcore → runtime → get");
 
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
   });
 
   test("a deployed resource without a detail screen explains itself instead of navigating", async () => {
@@ -222,31 +229,31 @@ describe("project status screen", () => {
       core([...RUNTIME_RESOURCES, deployed("credential", "svc-key", `${ARN}:token-vault/default`)]),
     );
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     // group → runtime → memory → project group → credential.
     for (let press = 0; press < 4; press++) await screen.press("down");
-    expect(focusedLine(screen.lastFrame())).toContain("Credential");
+    expect(focusedLine(screen.lastFrame())).toContain("credential");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "Credential svc-key has no detail view.");
-    expect(screen.lastFrame()).toContain("Linked Resources");
+    await waitForText(screen.lastFrame, "credential svc-key has no detail view.");
+    expect(screen.lastFrame()).toContain("agentcore → project → status");
   });
 
   test("left and right arrows collapse and expand an agent group", async () => {
     const screen = renderStatus(core());
 
-    await waitForText(screen.lastFrame, "Linked Resources");
-    expect(screen.lastFrame()).toContain("Runtime");
+    await waitForGroup(screen);
+    expect(screen.lastFrame()).toContain("runtime");
     await screen.press("left");
-    expect(screen.lastFrame()).not.toContain("Runtime");
+    expect(screen.lastFrame()).not.toContain("runtime");
     await screen.press("right");
-    await waitForText(screen.lastFrame, "Runtime");
+    await waitForText(screen.lastFrame, "runtime");
   });
 
   test("esc returns to the project command menu", async () => {
     const screen = renderStatus(core());
 
-    await waitForText(screen.lastFrame, "Linked Resources");
+    await waitForGroup(screen);
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
   });

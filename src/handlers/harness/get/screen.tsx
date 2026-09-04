@@ -68,8 +68,8 @@ const DETAIL_ROUTES = {
 } as const;
 
 const CREDENTIAL_PROVIDER_TYPES: Record<CredentialProviderType, string> = {
-  "api-key": "API Key",
-  oauth2: "OAuth2 Provider",
+  "api-key": "api key",
+  oauth2: "oauth2 provider",
 };
 
 // A resource the harness is wired to, before it becomes a tree row.
@@ -134,8 +134,8 @@ function collectLinks(harness: Harness): HarnessLink[] {
   if (runtime?.agentRuntimeId) {
     links.push({
       id: "runtime",
-      type: "Runtime",
-      name: runtime.agentRuntimeName ?? runtime.agentRuntimeId,
+      type: "runtime",
+      name: runtime.agentRuntimeId,
       route: DETAIL_ROUTES.runtime(runtime.agentRuntimeId),
       arn: runtime.agentRuntimeArn,
     });
@@ -148,7 +148,7 @@ function collectLinks(harness: Harness): HarnessLink[] {
     const memoryId = serviceIdFromArn(memoryArn);
     links.push({
       id: "memory",
-      type: "Memory",
+      type: "memory",
       name: memoryId,
       annotation: managedMemoryArn ? "managed" : "attached",
       route: DETAIL_ROUTES.memory(memoryId),
@@ -167,7 +167,7 @@ function collectLinks(harness: Harness): HarnessLink[] {
       : undefined;
     links.push({
       id: `tool:${index}`,
-      type: "Gateway",
+      type: "gateway",
       name: gatewayId,
       route: DETAIL_ROUTES.gateway(gatewayId),
       arn: gateway.gatewayArn,
@@ -176,13 +176,13 @@ function collectLinks(harness: Harness): HarnessLink[] {
   });
   tools.forEach((tool, index) => {
     const browser = tool.config?.agentCoreBrowser;
-    if (browser) links.push(managedToolLink(`tool:${index}`, "Browser", tool, browser.browserArn));
+    if (browser) links.push(managedToolLink(`tool:${index}`, "browser", tool, browser.browserArn));
   });
   tools.forEach((tool, index) => {
     const interpreter = tool.config?.agentCoreCodeInterpreter;
     if (interpreter) {
       links.push(
-        managedToolLink(`tool:${index}`, "Code Interpreter", tool, interpreter.codeInterpreterArn),
+        managedToolLink(`tool:${index}`, "code interpreter", tool, interpreter.codeInterpreterArn),
       );
     }
   });
@@ -246,6 +246,7 @@ export function buildHarnessLinkNodes(
       type: link.type,
       guideDepth: guideDepthOf(depth),
     })),
+    10,
   );
 
   const toNode = (link: HarnessLink, depth: number): LinkedResourceNode => {

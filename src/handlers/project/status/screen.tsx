@@ -25,23 +25,6 @@ const PROJECT_MENU = "/agentcore/project";
 // invoke picker.
 const TARGET_NAME = "default";
 
-const RESOURCE_TYPE_LABELS: Record<DeployableResource, string> = {
-  runtime: "Runtime",
-  harness: "Harness",
-  memory: "Memory",
-  "knowledge-base": "Knowledge Base",
-  credential: "Credential",
-  evaluator: "Evaluator",
-  "online-eval": "Online Eval",
-  gateway: "Gateway",
-  "gateway-target": "Gateway Target",
-  "policy-engine": "Policy Engine",
-  policy: "Policy",
-  "config-bundle": "Config Bundle",
-  "payment-manager": "Payment Manager",
-  "payment-connector": "Payment Connector",
-};
-
 // The detail routes a deployed resource can forward to. Types without a detail
 // screen are listed but not navigable.
 const DETAIL_ROUTES: Partial<Record<DeployableResource, (id: string) => string>> = {
@@ -102,7 +85,7 @@ export function buildStatusNodes(
 
   // The type column is sized for the resource rows (depth 1); rows nested
   // deeper give up the width their guide characters take.
-  const typeWidth = typeColumnWidth(resources.map((r) => RESOURCE_TYPE_LABELS[r.resourceType]));
+  const typeWidth = typeColumnWidth(resources.map((r) => r.resourceType));
 
   const resourceNode = (
     resource: ResolvedProjectResource,
@@ -111,7 +94,7 @@ export function buildStatusNodes(
     parent?: ResolvedProjectResource,
   ): StatusNode => {
     const id = `${parentId}/${resource.resourceType}:${resource.name}`;
-    const type = RESOURCE_TYPE_LABELS[resource.resourceType];
+    const type = resource.resourceType;
     const route = routeFor(resource, parent);
     const deployed = resource.deploymentState === "deployed";
     return {
@@ -254,8 +237,8 @@ function ProjectStatusView({
       ]}
     >
       <Box flexDirection="column" paddingX={1}>
-        <Text bold>Linked Resources</Text>
-        <Box marginTop={1} flexDirection="column">
+        <Text bold>resources</Text>
+        <Box flexDirection="column">
           {nodes.length === 0 ? (
             <Text color={theme.colors.muted}>
               No resources are declared in this project. Run `agentcore project add` to declare one.

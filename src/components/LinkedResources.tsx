@@ -30,11 +30,11 @@ export interface TypeColumnEntry {
 // typeColumnWidth is the width of the type column that keeps names aligned
 // across these rows: the widest label, counting the guide characters a nested
 // row is pushed right by, plus two spaces.
-export function typeColumnWidth(entries: (string | TypeColumnEntry)[]): number {
+export function typeColumnWidth(entries: (string | TypeColumnEntry)[], min: number = 0): number {
   const widths = entries.map((entry) =>
     typeof entry === "string" ? entry.length : entry.type.length + 2 * (entry.guideDepth ?? 0),
   );
-  return Math.max(...widths, 0) + 2;
+  return Math.max(min, Math.max(...widths, 0)) + 2;
 }
 
 // linkedResourceLabel lays out one row's label. Rows nested `guideDepth`
@@ -83,7 +83,7 @@ export function LinkedResourcesTree({
   return (
     <>
       <Divider title={title} />
-      <Box flexDirection="column" paddingLeft={1}>
+      <Box flexDirection="column">
         <TreeView
           nodes={nodes}
           onSelect={select}
