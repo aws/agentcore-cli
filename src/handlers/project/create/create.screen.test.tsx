@@ -278,8 +278,8 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "what should the project be built around?");
-    await r.press("down"); // scaffolded agent code
-    await waitForText(r.lastFrame, "● scaffolded agent code");
+    await r.press("down"); // agent code
+    await waitForText(r.lastFrame, "● agent code");
     await r.press("return");
 
     // Template step: the supported templates are offered, including the

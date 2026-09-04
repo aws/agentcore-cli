@@ -46,8 +46,8 @@ describe("menu rendering", () => {
   test("highlights the first option by default", async () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "harness");
-    // The focus caret marks the highlighted row; the first option is harness.
-    expect(r.lastFrame()).toContain("❯ harness");
+    // The focus caret marks the highlighted row; the first option is project.
+    expect(r.lastFrame()).toContain("❯ project");
     r.unmount();
   });
 });
@@ -89,31 +89,33 @@ describe("filtering", () => {
 describe("navigation", () => {
   test("down arrow moves the highlight to the next option", async () => {
     const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "❯ project");
+
+    await r.press("down");
     await waitForText(r.lastFrame, "❯ harness");
 
     await r.press("down");
     await waitForText(r.lastFrame, "❯ identity");
-
-    await r.press("down");
-    await waitForText(r.lastFrame, "❯ runtime");
     r.unmount();
   });
 
   test("up arrow does not move past the first option", async () => {
     const r = renderScreen("/agentcore");
-    await waitForText(r.lastFrame, "❯ harness");
+    await waitForText(r.lastFrame, "❯ project");
 
     await r.press("up");
     await tick(20);
     // Still on the first option.
-    expect(r.lastFrame()).toContain("❯ harness");
+    expect(r.lastFrame()).toContain("❯ project");
     r.unmount();
   });
 
   test("enter navigates into the highlighted subcommand's screen", async () => {
     const r = renderScreen("/agentcore");
-    await waitForText(r.lastFrame, "❯ harness");
+    await waitForText(r.lastFrame, "❯ project");
 
+    await r.press("down");
+    await waitForText(r.lastFrame, "❯ harness");
     await r.press("return");
     // The harness screen is itself a RouterScreen showing harness subcommands.
     await waitForText(r.lastFrame, "agentcore → harness");
@@ -128,17 +130,17 @@ describe("navigation", () => {
     await r.press("escape");
     // Back at the root menu (breadcrumb no longer includes harness).
     await waitForText(r.lastFrame, "the platform for production AI agents");
-    expect(r.lastFrame()).toContain("❯ harness");
+    expect(r.lastFrame()).toContain("❯ project");
     r.unmount();
   });
 
   test("esc at the root menu is a no-op (no parent to go to)", async () => {
     const r = renderScreen("/agentcore");
-    await waitForText(r.lastFrame, "❯ harness");
+    await waitForText(r.lastFrame, "❯ project");
 
     await r.press("escape");
     await tick(20);
-    expect(r.lastFrame()).toContain("❯ harness");
+    expect(r.lastFrame()).toContain("❯ project");
     r.unmount();
   });
 });

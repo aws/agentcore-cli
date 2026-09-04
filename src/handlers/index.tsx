@@ -31,7 +31,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   const root = new Router(
     "agentcore",
     "the platform for production AI agents",
-  ).supportedTuiCommands("harness", "identity", "runtime", "memory", "gateway", "eval", "project");
+  ).supportedTuiCommands("project", "harness", "identity", "runtime", "memory", "gateway", "eval");
 
   // `agentcore --version` prints the build-time package version.
   root.version(PACKAGE_VERSION);
@@ -53,7 +53,9 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // Pin the global config accessor on the context for any handler that needs it.
   root.use(withGlobalConfigAccessor(config.globalConfigAccessor));
 
-  // Install sub handlers
+  // Install sub handlers. Registration order is menu/help order; project is
+  // the primary workflow, so it goes first.
+  root.handler(createProjectHandler({ core, io }));
   root.handler(createHarnessHandler(core, io));
   root.handler(createIdentityHandler(core, io));
   root.handler(createRuntimeHandler(core, io));
@@ -62,7 +64,6 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createEvalHandler(core, io));
   root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
-  root.handler(createProjectHandler({ core, io }));
   root.handler(createUpdateHandler(io));
 
   // Invoking with no subcommand launches the interactive TUI.

@@ -107,7 +107,7 @@ const PROJECT_KIND_OPTIONS: { kind: ProjectKind; label: string; description: str
   },
   {
     kind: "agent",
-    label: "scaffolded agent code",
+    label: "agent code",
     description: "generate runnable agent code from a template",
   },
 ];
