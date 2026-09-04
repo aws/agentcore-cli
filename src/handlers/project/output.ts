@@ -1,32 +1,49 @@
 import type { Context } from "../../router";
-import { JsonRendererKey } from "../../tui";
-import { JsonKey } from "../keys";
-import type { Project } from "./types";
+import { renderResult } from "../utils";
+import type { AddResourceInput, Project, RemoveResourceInput } from "./types";
 
-export type ProjectMutationResource = {
-  type: string;
-  name?: string;
-  parent?: {
-    type: string;
-    name: string;
-  };
+export type ProjectMutationResourceType = AddResourceInput["resourceType"] | "gateway-connector";
+
+type ProjectMutationParent =
+  | { type: "gateway"; name: string }
+  | { type: "policy-engine"; name: string }
+  | { type: "payment-manager"; name: string };
+
+type ProjectMutationResource = {
+  type: ProjectMutationResourceType;
+  name: string;
+  parent?: ProjectMutationParent;
 };
 
-export type ProjectMutationResult = {
-  operation: "create" | "add" | "remove";
-  project: {
-    name: string;
-    path: string;
-  };
-  resource?: ProjectMutationResource;
-  removedEnvironmentKeys?: string[];
+type ProjectReference = {
+  name: string;
+  path: string;
 };
 
-export function projectReference(project: Project): ProjectMutationResult["project"] {
+export type ProjectMutationResult =
+  | { operation: "create"; project: ProjectReference }
+  | { operation: "add"; project: ProjectReference; resource: ProjectMutationResource }
+  | {
+      operation: "remove";
+      project: ProjectReference;
+      resource: ProjectMutationResource | { type: "all" };
+      removedEnvironmentKeys: string[];
+    };
+
+export function projectReference(project: Project): ProjectReference {
   return {
     name: project.name,
     path: project.rootPath,
   };
+}
+
+export function projectMutationResource(
+  type: ProjectMutationResourceType,
+  name: string,
+  input: AddResourceInput | RemoveResourceInput,
+): ProjectMutationResource {
+  const parent = parentFor(input);
+  return parent ? { type, name, parent } : { type, name };
 }
 
 export function renderProjectMutationResult(
@@ -34,9 +51,20 @@ export function renderProjectMutationResult(
   result: ProjectMutationResult,
   renderHuman: () => void,
 ): void {
-  if (ctx.require(JsonKey)) {
-    ctx.require(JsonRendererKey).renderJson(result);
-    return;
+  renderResult(ctx, result, renderHuman);
+}
+
+function parentFor(
+  input: AddResourceInput | RemoveResourceInput,
+): ProjectMutationParent | undefined {
+  switch (input.resourceType) {
+    case "gateway-target":
+      return { type: "gateway", name: input.gatewayName };
+    case "policy":
+      return input.engineName ? { type: "policy-engine", name: input.engineName } : undefined;
+    case "payment-connector":
+      return { type: "payment-manager", name: input.managerName };
+    default:
+      return undefined;
   }
-  renderHuman();
 }

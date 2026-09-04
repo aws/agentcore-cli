@@ -5,8 +5,8 @@ import z from "zod";
 import type { AppIO } from "../../../io";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { JsonKey } from "../../keys";
-import type { ProjectManager } from "../types";
-import { projectReference, renderProjectMutationResult } from "../output";
+import type { ProjectManager, RemoveResourceInput } from "../types";
+import { projectMutationResource, projectReference, renderProjectMutationResult } from "../output";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -91,7 +91,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             resource: { type: "all" },
             removedEnvironmentKeys: result.removedEnvKeys,
           },
-          () => config.io.stdout.write(`removed all resources from project`),
+          () => config.io.stderr.write("removed all resources from project\n"),
         );
         return;
       }
@@ -99,56 +99,49 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       const name = flags["name"];
       if (!name) throw new InputValidationError(`--name is required option`);
 
-      let result;
+      let input: RemoveResourceInput;
       if (resource === "gateway-target" || resource === "gateway-connector") {
         if (!flags.gateway) {
           throw new InputValidationError(`--gateway is required option`);
         }
-        result = await config.projectManager.removeResource(project, {
+        input = {
           resourceType: "gateway-target",
           gatewayName: flags.gateway,
           name,
-        });
+        };
       } else if (resource === "policy") {
-        result = await config.projectManager.removeResource(project, {
+        input = {
           resourceType: "policy",
           engineName: flags.engine,
           name,
-        });
+        };
       } else if (resource === "payment-connector") {
         if (!flags.manager) {
           throw new InputValidationError(`--manager is required option`);
         }
-        result = await config.projectManager.removeResource(project, {
+        input = {
           resourceType: "payment-connector",
           managerName: flags.manager,
           name,
-        });
+        };
       } else {
-        result = await config.projectManager.removeResource(project, {
+        input = {
           resourceType: resource,
           name,
-        });
+        };
       }
 
+      const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      const parent =
-        resource === "gateway-target" || resource === "gateway-connector"
-          ? { type: "gateway", name: flags.gateway! }
-          : resource === "policy" && flags.engine
-            ? { type: "policy-engine", name: flags.engine }
-            : resource === "payment-connector"
-              ? { type: "payment-manager", name: flags.manager! }
-              : undefined;
       renderProjectMutationResult(
         ctx,
         {
           operation: "remove",
           project: projectReference(result.project),
-          resource: { type: resource, name, parent },
+          resource: projectMutationResource(resource, name, input),
           removedEnvironmentKeys: result.removedEnvKeys,
         },
-        () => config.io.stdout.write(`removed ${resource} with name '${name}' from project`),
+        () => config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`),
       );
     },
   });

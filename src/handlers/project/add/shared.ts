@@ -1,25 +1,17 @@
 import { ProjectKey, type Context } from "../../../router";
 import { runWithProgress } from "../../../tui/progress";
-import { projectReference, renderProjectMutationResult } from "../output";
+import {
+  projectMutationResource,
+  projectReference,
+  renderProjectMutationResult,
+  type ProjectMutationResourceType,
+} from "../output";
 import type { AddResourceInput, Project } from "../types";
 import type { AddProjectResourceConfig } from "./types";
 
 type AddProjectResourceResultOptions = {
-  resourceType?: string;
+  resourceType?: ProjectMutationResourceType;
 };
-
-function parentFor(input: AddResourceInput) {
-  switch (input.resourceType) {
-    case "gateway-target":
-      return { type: "gateway", name: input.gatewayName };
-    case "policy":
-      return { type: "policy-engine", name: input.engineName };
-    case "payment-connector":
-      return { type: "payment-manager", name: input.managerName };
-    default:
-      return undefined;
-  }
-}
 
 export async function addProjectResource(
   ctx: Context,
@@ -41,11 +33,11 @@ export async function addProjectResource(
     {
       operation: "add",
       project: projectReference(updatedProject),
-      resource: {
-        type: options.resourceType ?? input.resourceType,
-        name: input.resourceConfig.name,
-        parent: parentFor(input),
-      },
+      resource: projectMutationResource(
+        options.resourceType ?? input.resourceType,
+        input.resourceConfig.name,
+        input,
+      ),
     },
     () => config.io.stderr.write(humanSuccessMessage),
   );

@@ -151,6 +151,14 @@ export function renderJsonError(ctx: Context, error: unknown): void {
   ctx.require(JsonRendererKey).renderJson({ error: cliError.message });
 }
 
+export function renderResult(ctx: Context, result: unknown, renderHuman: () => void): void {
+  if (ctx.require(JsonKey)) {
+    ctx.require(JsonRendererKey).renderJson(result);
+    return;
+  }
+  renderHuman();
+}
+
 // reportMessage is the success-side twin: the human line goes to stderr and,
 // under --json, the same message becomes the machine-readable result on stdout.
 export function reportMessage(ctx: Context, io: AppIO, message: string): void {
