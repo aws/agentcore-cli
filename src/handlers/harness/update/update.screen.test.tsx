@@ -131,6 +131,36 @@ describe("harness update wizard", () => {
     r.unmount();
   });
 
+  test("reveals the current bring-your-own memory ARN only after enter", async () => {
+    const core = coreForUpdate();
+    const current = currentHarness();
+    const memoryArn = "arn:aws:bedrock-agentcore:us-east-1:123:memory/existing";
+    current.harness!.memory = {
+      agentCoreMemoryConfiguration: { arn: memoryArn },
+    };
+    core.harness.setGetResponse(current);
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+
+    await waitForText(r.lastFrame, "● keep current");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "● bring your own");
+    expect(r.lastFrame()).not.toContain("Memory ARN");
+    expect(r.lastFrame()).not.toContain(memoryArn);
+
+    await r.press("return");
+    await waitForText(r.lastFrame, memoryArn);
+
+    await r.press("escape");
+    await waitFor(() => !(r.lastFrame() ?? "").includes(memoryArn));
+    expect(r.lastFrame()).not.toContain("Memory ARN");
+    expect(r.lastFrame()).toContain("● bring your own");
+
+    await r.press("return");
+    await waitForText(r.lastFrame, memoryArn);
+    r.unmount();
+  });
+
   test("changing the model submits a request with just that field", async () => {
     const core = coreForUpdate();
     const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });

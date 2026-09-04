@@ -81,15 +81,16 @@ describe("project create wizard", () => {
     await r.press("down"); // harness
     await r.press("return");
 
-    // Model step: providers and the selected provider's fields share one page.
+    // Model step: fields stay hidden until the provider is confirmed.
     await waitForText(r.lastFrame, "choose a model");
     expect(r.lastFrame()).toContain("● bedrock");
     expect(r.lastFrame()).not.toContain("bedrock (recommended)");
     expect(r.lastFrame()).toContain("○ openai");
     expect(r.lastFrame()).toContain("○ gemini");
     expect(r.lastFrame()).toContain("○ litellm");
-    expect(r.lastFrame()).toContain(DEFAULT_MODEL_ID);
+    expect(r.lastFrame()).not.toContain(DEFAULT_MODEL_ID);
     await r.press("return"); // focus model id
+    await waitForText(r.lastFrame, DEFAULT_MODEL_ID);
     await r.press("return"); // accept model id
 
     // Review: the summary names the project, type, model, and directory.
@@ -247,6 +248,32 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("reveals model fields only after enter and hides them again on escape", async () => {
+    const r = renderScreen("/agentcore/project/create");
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("ModelApp");
+    await r.press("return");
+    await r.press("down"); // harness
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model");
+
+    await r.press("down"); // openai
+    await waitForText(r.lastFrame, "● openai");
+    expect(r.lastFrame()).not.toContain("model ID");
+    expect(r.lastFrame()).not.toContain("API key ARN");
+
+    await r.press("return");
+    await waitForText(r.lastFrame, "model ID");
+    expect(r.lastFrame()).toContain("API key ARN");
+
+    await r.press("escape");
+    await waitFor(() => !(r.lastFrame() ?? "").includes("model ID"));
+    expect(r.lastFrame()).not.toContain("API key ARN");
+    expect(r.lastFrame()).toContain("● openai");
+    r.unmount();
+  });
+
   test("the model picker remains readable in an 80x24 terminal", async () => {
     const r = renderScreen("/agentcore/project/create");
     await r.resize(80, 24);
@@ -268,8 +295,8 @@ describe("project create wizard", () => {
     expect(frame).toContain("○ openai");
     expect(frame).toContain("○ gemini");
     expect(frame).toContain("○ litellm");
-    expect(frame).toContain("model ID");
-    expect(frame).toContain(DEFAULT_MODEL_ID);
+    expect(frame).not.toContain("model ID");
+    expect(frame).not.toContain(DEFAULT_MODEL_ID);
     expect(frame).toContain("[enter] continue");
     expect(frame).toContain("[esc] back");
     r.unmount();

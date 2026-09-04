@@ -867,8 +867,9 @@ function MemoryStep({
         helpText="how should the harness remember conversations?"
         options={MEMORY_OPTIONS}
         focusedIndex={index}
+        selectedIndex={editing ? index : undefined}
       />
-      {value.kind === "byo" && (
+      {editing && value.kind === "byo" && (
         <FormTextInput
           name="Memory ARN"
           helpText="the ARN of an existing AgentCore Memory"

@@ -672,28 +672,30 @@ function ModelStep({
           helpText="the provider and model that will power the harness"
           options={options}
           focusedIndex={providerIndex}
+          selectedIndex={focusedField !== null ? providerIndex : undefined}
         />
-        {fields.map((field, fieldIndex) => (
-          <FormTextInput
-            key={`${value.provider}.${field.key}`}
-            name={field.name}
-            helpText={field.helpText}
-            placeholder={field.placeholder}
-            errorText=""
-            value={config[field.key]}
-            onChange={(next) => {
-              onChange({
-                ...value,
-                configs: {
-                  ...value.configs,
-                  [value.provider]: { ...config, [field.key]: next },
-                },
-              });
-              setError(null);
-            }}
-            focused={focusedField === fieldIndex}
-          />
-        ))}
+        {focusedField !== null &&
+          fields.map((field, fieldIndex) => (
+            <FormTextInput
+              key={`${value.provider}.${field.key}`}
+              name={field.name}
+              helpText={field.helpText}
+              placeholder={field.placeholder}
+              errorText=""
+              value={config[field.key]}
+              onChange={(next) => {
+                onChange({
+                  ...value,
+                  configs: {
+                    ...value.configs,
+                    [value.provider]: { ...config, [field.key]: next },
+                  },
+                });
+                setError(null);
+              }}
+              focused={focusedField === fieldIndex}
+            />
+          ))}
         {error && (
           <Text key="error" color={theme.colors.error}>
             {error}

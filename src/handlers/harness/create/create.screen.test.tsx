@@ -323,7 +323,9 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     await r.press("down"); // bring your own
     await waitForText(r.lastFrame, "● bring your own");
+    expect(r.lastFrame()).not.toContain("Memory ARN");
     await r.press("return"); // focus the memory arn field
+    await waitForText(r.lastFrame, "Memory ARN");
     await r.press("return"); // empty → error
     await waitForText(r.lastFrame, "enter the ARN of an existing AgentCore Memory");
     await r.write("arn:aws:bedrock-agentcore:us-east-1:123:memory/m-1");
