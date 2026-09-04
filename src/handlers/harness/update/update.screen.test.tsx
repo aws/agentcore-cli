@@ -88,6 +88,7 @@ describe("harness update wizard", () => {
 
     // Managed memory is the current config and is preselected.
     await waitForText(r.lastFrame, "● managed");
+    expect(r.lastFrame()).not.toContain("(recommended)");
     await r.press("return");
 
     // Tools reflect the current config: browser on.

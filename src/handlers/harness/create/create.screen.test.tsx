@@ -49,6 +49,7 @@ describe("harness create wizard", () => {
     // enter a model id.
     await waitForText(r.lastFrame, "choose a model");
     expect(r.lastFrame()).toContain("● service default");
+    expect(r.lastFrame()).not.toContain("(recommended)");
     await r.press("down"); // bedrock
     await waitForText(r.lastFrame, "● bedrock");
     await r.press("return"); // focus the model id field
@@ -58,6 +59,7 @@ describe("harness create wizard", () => {
     // Step: memory — managed is preselected; keep it.
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     expect(r.lastFrame()).toContain("● managed");
+    expect(r.lastFrame()).not.toContain("(recommended)");
     await r.press("return");
 
     // Step: tools — browser is enabled by default; add a Gateway ARN.
