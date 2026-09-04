@@ -8,25 +8,15 @@ import type { DataTableColumn } from "./ui/data-table";
 
 interface RuntimeRow extends Record<string, unknown> {
   runtimeId: string;
-  runtimeName: string;
   runtimeVersion: string;
   status: string;
   lastUpdatedAt: string;
 }
 
-function runtimeIdSuffix(value: unknown): string {
-  const id = String(value ?? "");
-  return id.slice(id.lastIndexOf("-") + 1);
-}
-
+// Runtime IDs include their names, so separate name and suffix columns repeat
+// the same identity.
 export const runtimeColumns = [
-  { key: "runtimeName", header: "name", flex: true },
-  {
-    key: "runtimeId",
-    header: "ID suffix",
-    width: 10,
-    render: runtimeIdSuffix,
-  },
+  { key: "runtimeId", header: "ID", flex: true },
   { key: "runtimeVersion", header: "version", width: 7 },
   { key: "status", header: "status", width: 13 },
   {
@@ -38,10 +28,9 @@ export const runtimeColumns = [
 ] satisfies DataTableColumn<RuntimeRow>[];
 
 function toRow(runtime: AgentRuntime): RuntimeRow {
-  const runtimeId = runtime.agentRuntimeId ?? "";
+  const runtimeId = runtime.agentRuntimeId ?? runtime.agentRuntimeName ?? "";
   return {
     runtimeId,
-    runtimeName: runtime.agentRuntimeName ?? runtimeId,
     runtimeVersion: runtime.agentRuntimeVersion ?? "-",
     status: runtime.status ?? "-",
     lastUpdatedAt: runtime.lastUpdatedAt?.toISOString() ?? "-",

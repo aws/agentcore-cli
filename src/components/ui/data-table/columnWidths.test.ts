@@ -50,15 +50,15 @@ describe("computeColumnWidths", () => {
 
   test("drops fixed columns from right to left without truncating headers", () => {
     expect(computeColumnWidths(runtimeColumns, 40, { selectable: true, borderWidth: 0 })).toEqual({
-      widths: [19, 10, 7, undefined, undefined],
+      widths: [16, 7, 13, undefined],
       totalWidth: 40,
     });
     expect(computeColumnWidths(runtimeColumns, 60, { selectable: true, borderWidth: 0 })).toEqual({
-      widths: [25, 10, 7, 13, undefined],
+      widths: [19, 7, 13, 16],
       totalWidth: 60,
     });
     expect(computeColumnWidths(runtimeColumns, 80, { selectable: true, borderWidth: 0 })).toEqual({
-      widths: [28, 10, 7, 13, 16],
+      widths: [39, 7, 13, 16],
       totalWidth: 80,
     });
   });
@@ -106,7 +106,7 @@ describe("computeColumnWidths", () => {
       borderWidth: 0,
     });
 
-    expect(runtime.widths[2]).toBe(7);
+    expect(runtime.widths[1]).toBe(7);
     expect(harness.widths[1]).toBe(7);
     expect(endpoint.widths[1]).toBe(6);
     expect(endpoint.widths[2]).toBe(6);

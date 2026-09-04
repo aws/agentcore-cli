@@ -92,7 +92,7 @@ describe("Runtime invoke routing", () => {
       } as GetAgentRuntimeResponse);
     const screen = renderScreen("/agentcore/runtime/invoke", { core });
 
-    await waitForText(screen.lastFrame, "pick-runtime");
+    await waitForText(screen.lastFrame, runtimeId);
     await screen.press("return");
     await waitForText(screen.lastFrame, qualifier);
     await screen.press("return");
@@ -107,7 +107,7 @@ describe("Runtime invoke routing", () => {
   test("esc from an initial endpoint picker returns to the Runtime picker", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({ runtimeEndpoints: [endpoint()] }).setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "back-to-runtime-picker" })],
+      agentRuntimes: [runtime({ agentRuntimeId: "back-to-runtime-picker" })],
     });
     const screen = renderScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, { core });
 
@@ -794,7 +794,7 @@ describe("Runtime invoke JSON console", () => {
     await waitForText(screen.lastFrame, "Context user/JWT/1h");
     core.runtime.setGetResponse({ agentRuntimeArn: nextArn } as GetAgentRuntimeResponse);
     await screen.write("\x14");
-    await waitForText(screen.lastFrame, "next-runtime");
+    await waitForText(screen.lastFrame, nextRuntimeId);
     await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, nextQualifier);

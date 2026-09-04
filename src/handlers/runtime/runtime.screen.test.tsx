@@ -20,7 +20,7 @@ const runtimeEndpointUrl = "https://runtime.test";
 function runtime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
   return {
     agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-1",
-    agentRuntimeId: "runtime-1",
+    agentRuntimeId: "checkout-Ab12Cd34Ef",
     agentRuntimeVersion: "7",
     agentRuntimeName: "checkout",
     description: "Checkout Runtime",
@@ -84,14 +84,13 @@ describe("runtime picker", () => {
 
     await waitForText(r.lastFrame, "orders");
     const frame = r.lastFrame()!;
-    expect(frame).toContain("name");
     expect(frame).toContain("ID");
-    expect(frame).toContain("ID suffix");
     expect(frame).toContain("version");
     expect(frame).toContain("status");
     expect(frame).toContain("updated UTC");
-    expect(frame).toContain("AbCdEf1234");
-    expect(frame).not.toContain("orders-AbCdEf1234");
+    expect(frame).toContain("orders-AbCdEf1234");
+    expect(frame).not.toContain("name");
+    expect(frame).not.toContain("ID suffix");
     expect(frame).toContain("99999");
     expect(frame).toContain("CREATE_FAILED");
     expect(frame).toContain("2026-07-19 01:02");
@@ -149,7 +148,9 @@ describe("runtime picker", () => {
   });
 
   test("bare Runtime get redirects to the picker", async () => {
-    const core = coreWithRuntimes([runtime({ agentRuntimeName: "redirected" })]);
+    const core = coreWithRuntimes([
+      runtime({ agentRuntimeId: "redirected-Ab12Cd34Ef", agentRuntimeName: "redirected" }),
+    ]);
     const r = renderScreen("/agentcore/runtime/get", { core });
 
     await waitForText(r.lastFrame, "redirected");
@@ -237,7 +238,7 @@ describe("runtime hub", () => {
     );
     const r = renderScreen("/agentcore/runtime/list", { core });
 
-    await waitForText(r.lastFrame, "encoded-runtime");
+    await waitForText(r.lastFrame, runtimeId);
     await r.press("return");
     await waitForText(r.lastFrame, `agentcore → runtime → get → ${runtimeId}`);
     await waitFor(() =>
@@ -390,7 +391,7 @@ describe("runtime hub", () => {
     core.runtime.setGetResponse(getRuntimeResponse());
     const r = renderScreen("/agentcore/runtime/list", { core });
 
-    await waitForText(r.lastFrame, "checkout");
+    await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
     await waitForText(r.lastFrame, "show the full JSON definition");
     await r.press("escape");
@@ -402,7 +403,7 @@ describe("runtime hub", () => {
     core.runtime.setGetResponse(getRuntimeResponse());
     const r = renderScreen("/agentcore/runtime/list", { core });
 
-    await waitForText(r.lastFrame, "checkout");
+    await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
     await waitForText(r.lastFrame, "show the full JSON definition");
     for (let index = 0; index < 4; index += 1) await r.press("down");
@@ -435,7 +436,7 @@ describe("runtime hub", () => {
     });
     const r = renderScreen("/agentcore/runtime/list", { core });
 
-    await waitForText(r.lastFrame, "checkout");
+    await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
     await waitForText(r.lastFrame, "invoke this Runtime");
     const listCallsBeforeInvoke = core.runtime.calls.filter(
@@ -461,7 +462,7 @@ describe("runtime hub", () => {
     hubCore.runtime.getRuntime = async () => hubPending.promise;
     const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 
-    await waitForText(hub.lastFrame, "checkout");
+    await waitForText(hub.lastFrame, "runtime-123");
     await hub.press("return");
     await waitForText(hub.lastFrame, "loading Runtime…");
     await hub.press("escape");
@@ -475,7 +476,7 @@ describe("runtime hub", () => {
     };
     const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 
-    await waitForText(hub.lastFrame, "checkout");
+    await waitForText(hub.lastFrame, "runtime-123");
     await hub.press("return");
     await waitForText(hub.lastFrame, "hub failed");
     await hub.press("escape");
@@ -486,7 +487,7 @@ describe("runtime hub", () => {
     jsonCore.runtime.setGetResponse(getRuntimeResponse());
     const json = renderScreen("/agentcore/runtime/list", { core: jsonCore });
 
-    await waitForText(json.lastFrame, "checkout");
+    await waitForText(json.lastFrame, "runtime-123");
     await json.press("return");
     await waitForText(json.lastFrame, "show the full JSON definition");
     jsonCore.runtime.setError(new Error("json failed"));

@@ -356,8 +356,8 @@ describe("paginated table picker contract", () => {
     core.runtime.setListResponse({
       agentRuntimes: [
         runtime({
-          agentRuntimeId: "page-one",
-          agentRuntimeName: "matching-page-one",
+          agentRuntimeId: "matching-page-one",
+          agentRuntimeName: "page-one",
         }),
       ],
       nextToken: "t2",
@@ -366,8 +366,8 @@ describe("paginated table picker contract", () => {
       {
         agentRuntimes: [
           runtime({
-            agentRuntimeId: "page-two",
-            agentRuntimeName: "matching-page-two",
+            agentRuntimeId: "matching-page-two",
+            agentRuntimeName: "page-two",
           }),
         ],
       },
@@ -465,15 +465,20 @@ describe("paginated table picker contract", () => {
     for (const width of [100, 80, 60]) {
       if (width !== 100) await r.resize(width);
       const lines = (r.lastFrame() ?? "").split("\n");
-      const headerIndex = lines.findIndex((line) => line.includes("ID suffix"));
-      const rowLines = suffixes.map((suffix) => lines.find((line) => line.includes(suffix)));
+      const headerIndex = lines.findIndex((line) => line.includes("version"));
+      const rowLines = suffixes.map((_, index) =>
+        lines.find((line) => line.includes(`runtime_${index}`)),
+      );
 
       expect(headerIndex).toBeGreaterThanOrEqual(0);
       expect(stringWidth(lines[headerIndex + 1]!)).toBe(width);
       expect(rowLines.every((line) => line !== undefined)).toBe(true);
       expect(new Set(rowLines.map((line) => lines.indexOf(line!))).size).toBe(suffixes.length);
       expect(rowLines.every((line) => stringWidth(line!) <= width)).toBe(true);
-      expect(rowLines.every((line) => /[A-Za-z0-9]{10}\s+\d/.test(line!))).toBe(true);
+      expect(rowLines.every((line) => /runtime_\d-[A-Za-z0-9…]+\s+\d/.test(line!))).toBe(true);
+      if (width >= 80) {
+        expect(rowLines.every((line, index) => line!.includes(suffixes[index]!))).toBe(true);
+      }
     }
   });
 

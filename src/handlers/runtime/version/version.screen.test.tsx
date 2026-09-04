@@ -57,7 +57,7 @@ async function waitForRuntimePicker(lastFrame: () => string | undefined): Promis
     return (
       frame.includes("agentcore → runtime → version → list") &&
       !frame.includes("agentcore → runtime → version → list → runtime-123") &&
-      frame.includes("checkout")
+      frame.includes("runtime-123")
     );
   });
 }
@@ -74,7 +74,7 @@ describe("Runtime version flow", () => {
     });
     const r = renderScreen("/agentcore/runtime/version/list", { core });
 
-    await waitForText(r.lastFrame, "pick-runtime");
+    await waitForText(r.lastFrame, runtimeId);
     await r.press("return");
     await waitForText(r.lastFrame, "agentcore → runtime → version → list → runtime/blue one");
     await waitForText(r.lastFrame, "9");
@@ -220,7 +220,7 @@ describe("Runtime version flow", () => {
     const parent = renderScreen("/agentcore/runtime/version/list", {
       core: parentCore,
     });
-    await waitForText(parent.lastFrame, "checkout");
+    await waitForText(parent.lastFrame, "runtime-123");
     await parent.press("escape");
     await waitForText(
       parent.lastFrame,
@@ -237,7 +237,7 @@ describe("Runtime version flow", () => {
     });
     listCore.runtime.setGetVersionResponse(getVersionResponse());
     const list = renderScreen("/agentcore/runtime/version/list", { core: listCore });
-    await waitForText(list.lastFrame, "checkout");
+    await waitForText(list.lastFrame, "runtime-123");
     await list.press("return");
     await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
     await waitForText(list.lastFrame, "3");
@@ -258,7 +258,7 @@ describe("Runtime version flow", () => {
   test("bare version get redirects to parent selection", async () => {
     const core = new TestCoreClient();
     core.runtime.setListResponse({
-      agentRuntimes: [runtime({ agentRuntimeName: "redirect-parent" })],
+      agentRuntimes: [runtime({ agentRuntimeId: "redirect-parent" })],
     });
     const r = renderScreen("/agentcore/runtime/version/get", { core });
 
