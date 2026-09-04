@@ -9,6 +9,7 @@ import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
 import { PolicyClient } from "./policy";
 import { ObservabilityClient } from "./observability";
+import { CloudWatchClient } from "./observability/index";
 import { RuntimeClient } from "./runtime";
 import type { OpenRuntimeShell } from "./runtime";
 import { FsReadWriteJson } from "../io";
@@ -90,6 +91,7 @@ export class CoreClient implements AwsClients {
     this.createLogsClient = config.createLogsClient;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
+    const cloudWatch = new CloudWatchClient(this);
     this.fetch = fetch;
     this.runtime = new RuntimeClient(
       this,
@@ -108,12 +110,13 @@ export class CoreClient implements AwsClients {
       this.logger.child({ module: "eval" }),
       config.newSessionId,
       config.now,
+      cloudWatch,
     );
 
     // Observability resolves a project's deployed runtime from its stack
     // outputs, so it reads aws-targets.json through the same JSON layer the
     // project manager uses.
-    this.observability = new ObservabilityClient(this, {
+    this.observability = new ObservabilityClient(cloudWatch, {
       readJson: new FsReadWriteJson({
         logger: this.logger.child({ module: "observability" }),
       }),

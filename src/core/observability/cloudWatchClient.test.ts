@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   DescribeLogGroupsCommand,
   FilterLogEventsCommand,
+  GetLogEventsCommand,
   GetQueryResultsCommand,
   ResourceNotFoundException,
   StartLiveTailCommand,
@@ -9,6 +10,7 @@ import {
   type CloudWatchLogsClient,
   type StartLiveTailResponseStream,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { ResultTruncationError } from "../../errors";
 import type { ClientConfig } from "../types";
 import { CloudWatchClient } from "./cloudWatchClient";
 import type { CloudWatchLogEvent } from "./types";
@@ -16,6 +18,10 @@ import type { CloudWatchLogEvent } from "./types";
 const SOURCE = {
   provider: "cloudwatch" as const,
   logGroupName: "/aws/bedrock-agentcore/runtimes/runtime-1-DEFAULT",
+};
+const STREAM_SOURCE = {
+  logGroupName: SOURCE.logGroupName,
+  logStreamName: "batch-evaluation/results",
 };
 const OPTIONS = {
   region: "us-west-2",
@@ -41,6 +47,84 @@ async function collect(records: AsyncIterable<CloudWatchLogEvent>) {
   for await (const record of records) result.push(record);
   return result;
 }
+
+describe("CloudWatchClient.readLogStream", () => {
+  test("reads an exact stream until the forward token stops advancing", async () => {
+    const inputs: unknown[] = [];
+    const { client, configs } = clientWith(async (command) => {
+      expect(command).toBeInstanceOf(GetLogEventsCommand);
+      const input = (command as GetLogEventsCommand).input;
+      inputs.push(input);
+      if (input.nextToken === "page-1") {
+        return {
+          events: [{ timestamp: 2, ingestionTime: 3, message: "two" }],
+          nextForwardToken: "page-1",
+        };
+      }
+      return {
+        events: [{ timestamp: 1, message: "one" }],
+        nextForwardToken: "page-1",
+      };
+    });
+
+    const records = await collect(client.readLogStream(STREAM_SOURCE, {}, OPTIONS));
+
+    expect(configs).toEqual([{ region: "us-west-2", endpoint: "https://logs.test" }]);
+    expect(inputs).toEqual([
+      {
+        logGroupName: STREAM_SOURCE.logGroupName,
+        logStreamName: STREAM_SOURCE.logStreamName,
+        startFromHead: true,
+      },
+      {
+        logGroupName: STREAM_SOURCE.logGroupName,
+        logStreamName: STREAM_SOURCE.logStreamName,
+        startFromHead: true,
+        nextToken: "page-1",
+      },
+    ]);
+    expect(records).toEqual([
+      {
+        timestamp: new Date(1),
+        message: "one",
+        logStreamName: STREAM_SOURCE.logStreamName,
+      },
+      {
+        timestamp: new Date(2),
+        ingestionTime: new Date(3),
+        message: "two",
+        logStreamName: STREAM_SOURCE.logStreamName,
+      },
+    ]);
+  });
+
+  test("throws rather than returning a partial stream at the page ceiling", async () => {
+    let call = 0;
+    const { client } = clientWith(async () => ({
+      events: [{ timestamp: call, message: `event-${call}` }],
+      nextForwardToken: `page-${call++}`,
+    }));
+
+    const error = await collect(client.readLogStream(STREAM_SOURCE, { maxPages: 2 }, OPTIONS)).then(
+      () => undefined,
+      (caught) => caught,
+    );
+
+    expect(error).toBeInstanceOf(ResultTruncationError);
+    expect((error as Error).message).toContain("retrieved events are incomplete");
+    expect((error as ResultTruncationError).source).toBe("internal");
+  });
+
+  test("translates a missing stream into customer guidance", async () => {
+    const { client } = clientWith(async () => {
+      throw new ResourceNotFoundException({ message: "missing", $metadata: {} });
+    });
+
+    await expect(collect(client.readLogStream(STREAM_SOURCE, {}, OPTIONS))).rejects.toThrow(
+      `CloudWatch log stream ${STREAM_SOURCE.logStreamName} does not exist`,
+    );
+  });
+});
 
 describe("CloudWatchClient.searchLogs", () => {
   test("paginates, preserves provider metadata, and uses the configured client", async () => {

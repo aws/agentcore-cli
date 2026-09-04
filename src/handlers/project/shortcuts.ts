@@ -100,6 +100,17 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
+  "agent-typescript-vercel": {
+    runtimeName: "agent_typescript_vercel",
+    description: "minimal Vercel AI SDK agent on Bedrock, in TypeScript",
+    build: "CodeZip",
+    language: "TypeScript",
+    framework: "vercelai",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "NODE_22",
+  },
   "mcp-python-fastmcp": {
     runtimeName: "mcp_python_fastmcp",
     description: "MCP server exposing tools via FastMCP",
@@ -152,7 +163,8 @@ const LANGUAGE_ORDER: Record<ScaffoldRuntimeInput["language"], number> = {
 const FRAMEWORK_ORDER: Record<ScaffoldRuntimeInput["framework"], number> = {
   strands: 0,
   langchain: 1,
-  none: 2,
+  vercelai: 2,
+  none: 3,
 };
 const BUILD_ORDER: Record<ScaffoldRuntimeInput["build"], number> = { CodeZip: 0, Container: 1 };
 

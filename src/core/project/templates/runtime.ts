@@ -214,6 +214,23 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       ...(modelScaffold.envEntries.length > 0 && { envEntries: modelScaffold.envEntries }),
     };
   },
+  [buildResolverKey("vercelai", "TypeScript", "HTTP")]: async (input: RuntimeResourceConfig) => {
+    if (input.protocol !== undefined && input.protocol !== "HTTP")
+      throw new InputValidationError("the agent-typescript-vercel template only supports HTTP");
+    const context = { name: toNpmPackageName(input.name) };
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/agent-typescript-vercel" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) => templateRenderer.render(raw, context),
+      },
+    );
+    return {
+      tree,
+      spec: { runtimes: [{ ...buildRuntimeSpec(input), protocol: "HTTP" as const }] },
+    };
+  },
   [buildResolverKey("none", "Python", "MCP")]: async (input: RuntimeResourceConfig) => {
     if (input.scaffoldRuntimeInput.modelProvider !== undefined)
       throw new InputValidationError("an MCP runtime does not use a model provider");

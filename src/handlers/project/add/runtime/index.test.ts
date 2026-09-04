@@ -304,6 +304,7 @@ describe("project add runtime", () => {
     ["a2a-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
     ["agent-python-minimal", []],
     ["agent-python-langchain", []],
+    ["agent-typescript-vercel", []],
     ["mcp-python-fastmcp", []],
     ["agui-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
   ])("%s ships with its pre-configured memory", async (templateName, expectedStrategies) => {
@@ -348,6 +349,23 @@ describe("project add runtime", () => {
       "SUMMARIZATION",
       "EPISODIC",
     ]);
+  });
+
+  test("agent-typescript-vercel scaffolds a memory-free TypeScript runtime", async () => {
+    const projectRoot = await inProject();
+    await run(["add", "runtime", "--name", "my_agent", "--template", "agent-typescript-vercel"]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes).toContainEqual(
+      expect.objectContaining({
+        name: "my_agent",
+        entrypoint: "main.js",
+        build: "CodeZip",
+        runtimeVersion: "NODE_22",
+        protocol: "HTTP",
+      }),
+    );
+    expect(spec.memories ?? []).toEqual([]);
   });
 
   test.each<[string, string]>([
@@ -397,6 +415,17 @@ describe("project add runtime", () => {
     [
       "--api-key is not valid with the agent-python-minimal template",
       ["--name", "my_agent", "--template", "agent-python-minimal", "--api-key", "secret-key"],
+    ],
+    [
+      "--model-provider is not valid with the agent-typescript-vercel template",
+      [
+        "--name",
+        "my_agent",
+        "--template",
+        "agent-typescript-vercel",
+        "--model-provider",
+        "Anthropic",
+      ],
     ],
     [
       "--model-provider without a template requires agent-python-strands",

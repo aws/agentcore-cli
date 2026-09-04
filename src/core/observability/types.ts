@@ -5,12 +5,22 @@ export type LogSource = {
   logGroupName: string;
 };
 
+/** Exact CloudWatch log stream selected by a caller. */
+export type LogStreamSource = LogSource & {
+  logStreamName: string;
+};
+
 /** CloudWatch log event normalized at the AWS client boundary. */
 export type CloudWatchLogEvent = {
   timestamp: Date;
   message: string;
   ingestionTime?: Date;
   logStreamName?: string;
+};
+
+export type LogStreamQuery = {
+  /** Safety ceiling for callers that require a bounded stream read. */
+  maxPages?: number;
 };
 
 export type LogSearchQuery = {

@@ -116,6 +116,7 @@ import {
   sanitizeQueryValue,
   type InsightsRowLimit,
 } from "./observability";
+import { CloudWatchClient } from "./observability/index";
 import type {
   BatchEvaluationDetail,
   CodeBasedUpdate,
@@ -175,6 +176,7 @@ import {
   scopePolicyName,
 } from "./onlineEvalExecutionRole";
 import { accountIdFromArn, deleteAbTestRole, provisionAbTestRole } from "./abTestExecutionRole";
+import { harnessRuntimeFromResponse } from "./harness";
 
 const DEFAULT_INGESTION_WAIT_MS = 180_000;
 const DATASET_EXAMPLES_BATCH_LIMIT = 1000;
@@ -212,6 +214,7 @@ const EVAL_INSIGHTS_ROW_LIMIT: InsightsRowLimit = {
 };
 
 const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
+const BATCH_EVALUATION_RESULT_MAX_PAGES = 100;
 
 // noopLogger is the default for the optional logger arg so callers that don't
 // need batch-evaluation result-log diagnostics (e.g. dataset-only tests) can
@@ -235,6 +238,7 @@ export class EvalClient implements CoreEvalClient {
     private readonly logger: Logger = noopLogger,
     private readonly newSessionId: () => string = randomUUID,
     private readonly now: () => number = () => Date.now(),
+    private readonly cloudWatch: CloudWatchClient = new CloudWatchClient(clients),
   ) {}
 
   async createEvaluator(
@@ -434,9 +438,16 @@ export class EvalClient implements CoreEvalClient {
 
     try {
       detail.results = await readEvaluationResults(
-        this.clients.logs({ region: options.region }),
-        cw.logGroupName,
-        cw.logStreamName,
+        this.cloudWatch.readLogStream(
+          {
+            logGroupName: cw.logGroupName,
+            logStreamName: cw.logStreamName,
+          },
+          {
+            maxPages: BATCH_EVALUATION_RESULT_MAX_PAGES,
+          },
+          options,
+        ),
         this.logger,
       );
       return { detail };
@@ -1946,17 +1957,15 @@ async function resolveAgentToNameAndId(
   }
 
   const harness = await control.send(new GetHarnessCommand({ harnessId: agent }));
-  const environment = harness.harness?.environment;
-  const runtimeEnv =
-    environment && "agentCoreRuntimeEnvironment" in environment
-      ? environment.agentCoreRuntimeEnvironment
-      : undefined;
-  if (!runtimeEnv?.agentRuntimeId || !runtimeEnv?.agentRuntimeName) {
+  try {
+    return harnessRuntimeFromResponse(agent, harness);
+  } catch (error) {
+    if (!(error instanceof InputValidationError)) throw error;
     throw new InputValidationError(`"${agent}" does not exist as a runtime or a harness`, {
+      cause: error,
       meta: { agent },
     });
   }
-  return { runtimeId: runtimeEnv.agentRuntimeId, runtimeName: runtimeEnv.agentRuntimeName };
 }
 
 // agentDataSource builds the CloudWatch data source for an agent id, resolving it

@@ -111,7 +111,11 @@ import type {
   StartRecommendationResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
-import type { CoreHarnessClient, CreateHarnessInput } from "../handlers/harness/types";
+import type {
+  CoreHarnessClient,
+  CreateHarnessInput,
+  ResolvedHarnessRuntime,
+} from "../handlers/harness/types";
 import type {
   CoreGatewayClient,
   CreateGatewayInput,
@@ -241,6 +245,10 @@ const DEFAULT_UPDATE_ENDPOINT_RESPONSE: UpdateHarnessEndpointResponse =
   {} as UpdateHarnessEndpointResponse;
 const DEFAULT_DELETE_ENDPOINT_RESPONSE: DeleteHarnessEndpointResponse =
   {} as DeleteHarnessEndpointResponse;
+const DEFAULT_RESOLVED_HARNESS_RUNTIME: ResolvedHarnessRuntime = {
+  runtimeId: "harness_runtime-0000000000",
+  runtimeName: "harness_runtime",
+};
 const DEFAULT_CREATE_API_KEY_RESPONSE = {} as CreateApiKeyCredentialProviderResponse;
 const DEFAULT_GET_API_KEY_RESPONSE = {} as GetApiKeyCredentialProviderResponse;
 const DEFAULT_LIST_API_KEYS_RESPONSE: ListApiKeyCredentialProvidersResponse = {
@@ -380,6 +388,7 @@ export class TestHarnessClient implements CoreHarnessClient {
   private createEndpointResponse: CreateHarnessEndpointResponse = DEFAULT_CREATE_ENDPOINT_RESPONSE;
   private updateEndpointResponse: UpdateHarnessEndpointResponse = DEFAULT_UPDATE_ENDPOINT_RESPONSE;
   private deleteEndpointResponse: DeleteHarnessEndpointResponse = DEFAULT_DELETE_ENDPOINT_RESPONSE;
+  private resolvedRuntime: ResolvedHarnessRuntime = DEFAULT_RESOLVED_HARNESS_RUNTIME;
   private error?: Error;
 
   // setListResponse sets what listHarnesses resolves to (when not erroring).
@@ -393,6 +402,11 @@ export class TestHarnessClient implements CoreHarnessClient {
   // setGetResponse sets what getHarness resolves to (when not erroring).
   setGetResponse(response: GetHarnessResponse): this {
     this.getResponse = response;
+    return this;
+  }
+
+  setResolvedRuntime(runtime: ResolvedHarnessRuntime): this {
+    this.resolvedRuntime = runtime;
     return this;
   }
 
@@ -557,6 +571,16 @@ export class TestHarnessClient implements CoreHarnessClient {
     this.calls.push({ method: "getHarness", args: [id, options] });
     if (this.error) throw this.error;
     return this.getResponse;
+  }
+
+  async resolveRuntime(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<ResolvedHarnessRuntime> {
+    this.calls.push({ method: "resolveRuntime", args: [id, options, signal] });
+    if (this.error) throw this.error;
+    return this.resolvedRuntime;
   }
 
   async getHarnessVersion(

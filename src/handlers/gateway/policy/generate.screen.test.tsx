@@ -47,6 +47,22 @@ describe("gateway policy generate screen", () => {
     expect(frame).toContain("[enter] generate");
   });
 
+  test("escape returns the form through the picker to the Gateway menu", async () => {
+    const screen = renderScreen("/agentcore/gateway/policy/generate", {
+      core: coreWith(ENGINE_ARN),
+    });
+
+    await waitForText(screen.lastFrame, "checkout-gateway");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, PLACEHOLDER);
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Gateway to generate a policy for");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "manage AgentCore Gateways");
+    expect(screen.lastFrame()).toContain("policy");
+  });
+
   test("explains when the gateway has no engine and offers no prompt", async () => {
     const screen = renderScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
       core: coreWith(undefined),

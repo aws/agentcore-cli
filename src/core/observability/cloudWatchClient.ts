@@ -1,12 +1,14 @@
 import {
   DescribeLogGroupsCommand,
   FilterLogEventsCommand,
+  GetLogEventsCommand,
   ResourceNotFoundException,
   StartLiveTailCommand,
   type FilteredLogEvent,
   type LiveTailSessionLogEvent,
+  type OutputLogEvent,
 } from "@aws-sdk/client-cloudwatch-logs";
-import { ResourceNotFoundError } from "../../errors";
+import { ResourceNotFoundError, ResultTruncationError } from "../../errors";
 import type { AwsClients, CoreOptions } from "../types";
 import { toClientConfig } from "../utils";
 import { runInsightsQuery } from "./insights";
@@ -16,11 +18,68 @@ import type {
   InsightsQueryRow,
   LogSearchQuery,
   LogSource,
+  LogStreamQuery,
+  LogStreamSource,
   LogTailQuery,
 } from "./types";
 
 export class CloudWatchClient {
   constructor(private readonly clients: Pick<AwsClients, "logs">) {}
+
+  async *readLogStream(
+    source: LogStreamSource,
+    query: LogStreamQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): AsyncGenerator<CloudWatchLogEvent, void> {
+    if (query.maxPages !== undefined && query.maxPages <= 0) return;
+
+    const logs = this.clients.logs(toClientConfig(options));
+    let nextToken: string | undefined;
+    let pages = 0;
+
+    while (true) {
+      if (query.maxPages !== undefined && pages >= query.maxPages) {
+        throw new ResultTruncationError(
+          `CloudWatch log stream exceeded ${query.maxPages} pages; retrieved events are incomplete`,
+          {
+            meta: {
+              logGroupName: source.logGroupName,
+              logStreamName: source.logStreamName,
+              maxPages: query.maxPages,
+            },
+          },
+        );
+      }
+
+      const requestToken = nextToken;
+      let response;
+      try {
+        response = await logs.send(
+          new GetLogEventsCommand({
+            logGroupName: source.logGroupName,
+            logStreamName: source.logStreamName,
+            startFromHead: true,
+            ...(requestToken ? { nextToken: requestToken } : {}),
+          }),
+          { abortSignal: signal },
+        );
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) {
+          throw missingLogStreamError(source, error);
+        }
+        throw error;
+      }
+      pages++;
+
+      for (const event of response.events ?? []) {
+        yield toCloudWatchLogEvent(event, source.logStreamName);
+      }
+
+      nextToken = response.nextForwardToken;
+      if (!nextToken || nextToken === requestToken) return;
+    }
+  }
 
   async *searchLogs(
     source: LogSource,
@@ -162,13 +221,18 @@ export class CloudWatchClient {
 }
 
 function toCloudWatchLogEvent(
-  event: FilteredLogEvent | LiveTailSessionLogEvent,
+  event: FilteredLogEvent | LiveTailSessionLogEvent | OutputLogEvent,
+  logStreamName?: string,
 ): CloudWatchLogEvent {
   return {
     timestamp: new Date(event.timestamp ?? Date.now()),
     message: event.message ?? "",
     ...(event.ingestionTime !== undefined ? { ingestionTime: new Date(event.ingestionTime) } : {}),
-    ...(event.logStreamName ? { logStreamName: event.logStreamName } : {}),
+    ...("logStreamName" in event && event.logStreamName
+      ? { logStreamName: event.logStreamName }
+      : logStreamName
+        ? { logStreamName }
+        : {}),
   };
 }
 
@@ -177,5 +241,19 @@ function missingLogGroupError(source: LogSource, cause?: unknown): ResourceNotFo
     `CloudWatch log group ${source.logGroupName} does not exist. ` +
       "Has the resource been invoked or emitted logs yet?",
     { cause, meta: { logGroupName: source.logGroupName } },
+  );
+}
+
+function missingLogStreamError(source: LogStreamSource, cause?: unknown): ResourceNotFoundError {
+  return new ResourceNotFoundError(
+    `CloudWatch log stream ${source.logStreamName} does not exist in log group ` +
+      `${source.logGroupName}. Has the resource emitted results yet?`,
+    {
+      cause,
+      meta: {
+        logGroupName: source.logGroupName,
+        logStreamName: source.logStreamName,
+      },
+    },
   );
 }

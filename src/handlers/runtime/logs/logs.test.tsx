@@ -57,6 +57,25 @@ describe("runtime logs", () => {
     expect(io.stdout()).toBe("2024-03-02T14:50:00.000Z  tailed");
   });
 
+  test("uses the requested endpoint qualifier", async () => {
+    const { core, route } = testLogsCommand();
+
+    await route([
+      "runtime",
+      "logs",
+      "--id",
+      "my_agent-AbC123XyZ9",
+      "--qualifier",
+      "live",
+      "--since",
+      "1h",
+    ]);
+
+    expect(core.observability.calls[0]?.args[0]).toEqual({
+      logGroupName: "/aws/bedrock-agentcore/runtimes/my_agent-AbC123XyZ9-live",
+    });
+  });
+
   test("rejects --limit outside search mode", async () => {
     const { route } = testLogsCommand();
 

@@ -32,6 +32,11 @@ export type CreateHarnessInput = Omit<CreateHarnessRequest, "executionRoleArn"> 
   executionRoleArn?: string;
 };
 
+export type ResolvedHarnessRuntime = {
+  runtimeId: string;
+  runtimeName: string;
+};
+
 export interface CoreHarnessClient {
   createHarness(input: CreateHarnessInput, options: CoreOptions): Promise<CreateHarnessResponse>;
   updateHarness(
@@ -55,6 +60,11 @@ export interface CoreHarnessClient {
     options: CoreOptions,
   ): Promise<DeleteHarnessEndpointResponse>;
   getHarness(id: string, options: CoreOptions): Promise<GetHarnessResponse>;
+  resolveRuntime(
+    id: string,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<ResolvedHarnessRuntime>;
   getHarnessVersion(id: string, version: string, options: CoreOptions): Promise<GetHarnessResponse>;
   getHarnessEndpoint(
     id: string,

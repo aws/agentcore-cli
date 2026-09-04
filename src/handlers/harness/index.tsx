@@ -12,6 +12,8 @@ import { createInvokeHarnessHandler } from "./invoke";
 import { createExecHarnessHandler } from "./exec";
 import { createEndpointHandler } from "./endpoint";
 import { createVersionHandler } from "./version";
+import { createHarnessLogsHandler } from "./logs";
+import { createHarnessTracesHandler } from "./traces";
 
 export function createHarnessHandler(core: Core, io: AppIO): Router {
   const harness = new Router("harness", "manage AgentCore harnesses");
@@ -29,6 +31,8 @@ export function createHarnessHandler(core: Core, io: AppIO): Router {
   harness.handler(createDeleteHarnessHandler(core));
   harness.handler(createInvokeHarnessHandler(core, io));
   harness.handler(createExecHarnessHandler(core, io));
+  harness.handler(createHarnessLogsHandler(core, io));
+  harness.handler(createHarnessTracesHandler(core, io));
 
   // Endpoint and version commands live under their own sub-routers, e.g.
   // `agentcore harness endpoint create`.

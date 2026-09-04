@@ -9,6 +9,7 @@ describe("template order", () => {
       "agent-python-langchain",
       "agent-python-minimal",
       "agent-typescript-strands",
+      "agent-typescript-vercel",
       "a2a-python-strands",
       "agui-python-strands",
       "mcp-python-fastmcp",

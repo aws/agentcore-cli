@@ -7,8 +7,8 @@ import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/globalConfig";
 import { createRootHandler } from "../../index";
 import type { GetTraceQuery, ListTracesQuery } from "../../../core/observability/index";
+import { resolveTraceOutputPath } from "../../observability/traceOutputPath";
 import { formatTraceTable, formatTraceTimestamp } from "../../observability/traces";
-import { resolveTraceOutputPath } from "./outputPath";
 
 const REGION = "us-west-2";
 const SINCE_MS = 1_709_391_000_000;
@@ -83,6 +83,16 @@ describe("runtime traces list", () => {
     await route(["runtime", "traces", "list", "--id", "rt-1", "--since", `${SINCE_MS}`]);
 
     expect((core.observability.calls[0]!.args[1] as ListTracesQuery).limit).toBe(20);
+  });
+
+  test("uses the requested endpoint qualifier", async () => {
+    const { core, route } = testTracesCommand();
+
+    await route(["runtime", "traces", "list", "--id", "rt-1", "--qualifier", "canary"]);
+
+    expect(core.observability.calls[0]?.args[0]).toEqual({
+      logGroupName: "/aws/bedrock-agentcore/runtimes/rt-1-canary",
+    });
   });
 
   test("--json renders a single JSON document", async () => {

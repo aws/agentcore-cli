@@ -15,6 +15,8 @@ export type {
   ListTracesQuery,
   LogSearchQuery,
   LogSource,
+  LogStreamQuery,
+  LogStreamSource,
   LogTailQuery,
   TraceRecord,
   TraceSummary,

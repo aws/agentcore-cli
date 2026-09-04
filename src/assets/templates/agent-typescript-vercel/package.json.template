@@ -1,0 +1,24 @@
+{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "description": "AgentCore Runtime Application using the Vercel AI SDK",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch main.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "~4.0.0",
+    "@aws-sdk/credential-providers": "~3.1126.0",
+    "ai": "~6.0.0",
+    "bedrock-agentcore": "~0.3.0",
+    "tsx": "~4.19.0",
+    "zod": "~4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "~22.0.0",
+    "typescript": "~5.6.0"
+  }
+}
