@@ -146,12 +146,53 @@ async function main() {
 
     // Extract credentials from deployed state for this target
     const targetState = (deployedState as Record<string, unknown>)?.targets as
-      Record<string, Record<string, unknown>> | undefined;
+      | Record<string, Record<string, unknown>>
+      | undefined;
     const targetResources = target
       ? (targetState?.[target.name]?.resources as Record<string, unknown> | undefined)
       : undefined;
     const credentials = targetResources?.credentials as
-      Record<string, { credentialProviderArn: string; clientSecretArn?: string }> | undefined;
+      | Record<string, { credentialProviderArn: string; clientSecretArn?: string }>
+      | undefined;
+
+    // Payment credential provider ARNs live in the same credentials map as identity credentials
+    const paymentCredentials = credentials;
+
+    const paymentSpec = specAny.payments?.length
+      ? specAny.payments.map(
+          (p: {
+            name: string;
+            description?: string;
+            authorizerType: 'AWS_IAM' | 'CUSTOM_JWT';
+            authorizerConfiguration?: unknown;
+            autoPayment?: boolean;
+            paymentToolAllowlist?: string[];
+            networkPreferences?: string[];
+            connectors: { name: string; provider?: string; credentialName: string }[];
+          }) => ({
+            name: p.name,
+            description: p.description,
+            authorizerType: p.authorizerType,
+            authorizerConfiguration: p.authorizerConfiguration,
+            autoPayment: p.autoPayment,
+            paymentToolAllowlist: p.paymentToolAllowlist,
+            networkPreferences: p.networkPreferences,
+            connectors: p.connectors.map(c => {
+              const credentialProviderArn = paymentCredentials?.[c.credentialName]?.credentialProviderArn;
+              if (!credentialProviderArn) {
+                // Fail fast with an actionable message rather than passing an empty
+                // ARN that fails opaquely server-side at CreatePaymentConnector.
+                throw new Error(
+                  `Payment connector "${c.name}" on manager "${p.name}" references credential ` +
+                    `"${c.credentialName}", but no deployed credential provider was found for it. ` +
+                    `Run \`agentcore deploy\` so the credential provider is created first.`
+                );
+              }
+              return { name: c.name, provider: c.provider, credentialProviderArn };
+            }),
+          })
+        )
+      : undefined;
 
     new AgentCoreStack(app, stackName, {
       spec,
@@ -159,6 +200,7 @@ async function main() {
       credentials,
       connectorParametersByFile,
       harnesses: harnessConfigs.length > 0 ? harnessConfigs : undefined,
+      paymentSpec,
       env,
       description: target
         ? `AgentCore stack for ${spec.name} deployed to ${target.name} (${target.region})`
