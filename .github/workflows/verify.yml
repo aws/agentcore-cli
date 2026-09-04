@@ -1,4 +1,5 @@
-# Verifies a commit: static checks, a build with per-platform smoke tests, and unit tests on all platforms.
+# Verifies a commit on every platform in one job each: static checks (Linux only, they are
+# platform-independent), bundle, package, compile, smoke test, unit tests.
 name: verify
 on:
   workflow_call:
@@ -14,30 +15,8 @@ env:
   AGENTCORE_TELEMETRY_DISABLED: "1"
 
 jobs:
-  check:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run lint:check
-        if: always()
-      - run: bun run format:check
-        if: always()
-      - run: bun run typecheck
-        if: always()
-      - run: bun audit
-        if: always()
-      - run: bun run secrets:check
-        if: always()
-
-  build:
-    name: Build (${{ matrix.name }})
+  verify:
+    name: ${{ matrix.name }}
     runs-on: ${{ fromJSON(matrix.runner) }}
     permissions:
       contents: read
@@ -54,6 +33,7 @@ jobs:
             target: windows-x64
             binary: ./dist/bin/agentcore-windows-x64.exe
           # CodeBuild does not support macOS.
+          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
           - name: macOS
             runner: '["macos-latest"]'
             target: darwin-arm64
@@ -66,39 +46,23 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
+      - run: bun run lint:check
+        if: runner.os == 'Linux'
+      - run: bun run format:check
+        if: runner.os == 'Linux'
+      - run: bun run typecheck
+        if: runner.os == 'Linux'
+      - run: bun audit
+        if: runner.os == 'Linux'
+      - run: bun run secrets:check
+        if: runner.os == 'Linux'
+
       - run: bun run build
-
       - run: bun pm pack
-
       - run: bun run compile:${{ matrix.target }}
-
       - name: Smoke test binary
         run: ${{ matrix.binary }} --help
 
-  unit-test:
-    name: Test (${{ matrix.name }})
-    runs-on: ${{ fromJSON(matrix.runner) }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux
-            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}"]'
-          - name: Windows
-            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0"]'
-          # CodeBuild does not support macOS.
-          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
-          - name: macOS
-            runner: '["macos-latest"]'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
       # TODO: investigate sharding as repo grows:  https://bun.com/blog/release-notes/bun-v1.3.13#bun-test-shard-m-n-for-splitting-tests-across-ci-jobs
       - run: bun test --coverage --coverage-reporter=lcov
 

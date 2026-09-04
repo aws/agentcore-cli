@@ -23,9 +23,8 @@ An orchestrator calls jobs via `workflow_call`.
 
 ```
 ci.yml
-  `-- verify.yml     (check: lint, format, typecheck, audit, secret scan
-                      build: bundle, package, compile, smoke test per platform
-                      unit-test: Linux, Windows, macOS)
+  `-- verify.yml     (one job per platform: static checks on Linux, then bundle,
+                      package, compile, smoke test and unit tests)
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
