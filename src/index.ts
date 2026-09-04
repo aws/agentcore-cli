@@ -18,6 +18,7 @@ import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
+import { EnvFeatureFlags } from "./featureFlags";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -78,6 +79,9 @@ process.exit(
         io,
         logger: rootLogger,
         globalConfigAccessor,
+        // The only place the app reads the process environment for flags; read
+        // once here so a flag cannot flip partway through a command.
+        featureFlags: new EnvFeatureFlags(process.env),
       });
 
       const context = ValueContext.EmptyContext().withValue(

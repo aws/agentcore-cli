@@ -161,6 +161,25 @@ Global flags (declared at the root, available on every command):
 | `--debug`        | Debug logging.                                                       |
 | `--endpoint-url` | Override the service endpoint URL (e.g. for testing against a stub). |
 
+### Experimental features
+
+Some features ship behind a feature flag while they settle. A flag is an
+environment variable and is **enabled only when its trimmed value is exactly
+`1`**; any other value (`0`, `true`, `yes`, empty) leaves it off. Features
+behind a flag may change or vanish without notice, so scripts should not depend
+on them.
+
+| Variable                                       | Feature                                                 |
+| ---------------------------------------------- | ------------------------------------------------------- |
+| `AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY` | Reserved for imperative harness deployment (see below). |
+
+```bash
+AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1 agentcore project deploy
+```
+
+Flags are read once when the process starts; a debug log of a run
+(`~/.agentcore/logs/output`) records which were enabled.
+
 ### Invoke a project resource
 
 Run `agentcore project invoke` from inside a project to choose a deployed

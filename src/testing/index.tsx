@@ -34,3 +34,4 @@ export {
 } from "./renderScreen";
 export { createSilentLogger, assertLogsMatch, type LogQuery } from "./logging";
 export { TestGlobalConfigAccessor } from "./globalConfig";
+export { TestFeatureFlags } from "./featureFlags";

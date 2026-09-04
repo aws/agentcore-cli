@@ -8,6 +8,7 @@ import { Command, CommanderError } from "commander";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
+import type { FeatureFlags } from "../featureFlags";
 import { type MetricEvent } from "../telemetry";
 
 // CommandKey exposes the Commander Command for the executing leaf via context.
@@ -23,6 +24,11 @@ export const CommandRunMetricEventKey =
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
+
+// FeatureFlagsKey exposes the process's experimental switches. Pinned at the root
+// by withFeatureFlags, so a handler or screen anywhere in the tree can ask
+// `ctx.require(FeatureFlagsKey).isEnabled("...")`.
+export const FeatureFlagsKey: ContextKey<FeatureFlags> = contextKey<FeatureFlags>("featureFlags");
 
 // RoutedCommand keeps the compiled handler and Commander command tree together.
 // TUI consumers can therefore read handler metadata without module-level state.

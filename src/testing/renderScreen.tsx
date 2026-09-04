@@ -1,6 +1,6 @@
 import { render, cleanup } from "ink-testing-library";
 import { QueryClient } from "@tanstack/react-query";
-import { ValueContext, compile, CommandKey, type Context } from "../router";
+import { ValueContext, compile, CommandKey, FeatureFlagsKey, type Context } from "../router";
 import { RegionKey, JsonKey, DebugKey, EndpointKey } from "../handlers/keys";
 import { JsonRendererKey } from "../tui";
 import { createRootHandler } from "../handlers";
@@ -10,6 +10,8 @@ import { testIO } from "./testIO";
 import { tick, waitFor } from "./timing";
 import { createSilentLogger } from "./logging";
 import { TestGlobalConfigAccessor } from "./globalConfig";
+import { TestFeatureFlags } from "./featureFlags";
+import type { FeatureFlags } from "../featureFlags";
 
 // TUI test harness.
 //
@@ -27,22 +29,30 @@ import { TestGlobalConfigAccessor } from "./globalConfig";
 // RouterScreen walks it to resolve each menu's subcommands), the global flags
 // (region/json/debug), and a no-op JsonRenderer. Compiling the real handler tree
 // keeps the command menus faithful to the production command structure.
-function baseContext(core: TestCoreClient, endpointUrl?: string): Context {
+function baseContext(
+  core: TestCoreClient,
+  endpointUrl?: string,
+  featureFlags: FeatureFlags = new TestFeatureFlags(),
+): Context {
   const rootCommand = compile(
     createRootHandler(core, {
       io: testIO().io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor(),
+      featureFlags,
     }),
     ValueContext.EmptyContext(),
   );
 
+  // Screens read the flags off the context the same way handlers do, so the
+  // instance handed to the root handler is also pinned here.
   return ValueContext.EmptyContext()
     .withValue(CommandKey, rootCommand)
     .withValue(RegionKey, "us-east-1")
     .withValue(EndpointKey, endpointUrl)
     .withValue(JsonKey, false)
     .withValue(DebugKey, false)
+    .withValue(FeatureFlagsKey, featureFlags)
     .withValue(JsonRendererKey, { renderJson: () => {}, renderJsonLine: () => {} });
 }
 
@@ -67,6 +77,8 @@ export interface RenderScreenOptions {
   // exercise cache behavior.
   queryClient?: QueryClient;
   endpointUrl?: string;
+  // featureFlags turns experiments on for the screen under test; defaults to none.
+  featureFlags?: FeatureFlags;
 }
 
 export interface RenderScreenResult {
@@ -124,7 +136,7 @@ export function cleanupScreens(): void {
 // and returns handles to read frames and send input.
 export function renderScreen(path: string, options: RenderScreenOptions = {}): RenderScreenResult {
   const core = options.core ?? new TestCoreClient();
-  const base = options.ctx ?? baseContext(core, options.endpointUrl);
+  const base = options.ctx ?? baseContext(core, options.endpointUrl, options.featureFlags);
   const ctx = options.withContext?.(base) ?? base;
   const queryClient = options.queryClient ?? testQueryClient();
 

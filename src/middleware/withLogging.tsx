@@ -1,6 +1,6 @@
 import type { Logger } from "../logging";
 import type { Flag, Middleware } from "../router";
-import { LoggerKey, PathKey } from "../router";
+import { FeatureFlagsKey, LoggerKey, PathKey } from "../router";
 
 interface WithLoggingConfig {
   logger: Logger;
@@ -43,6 +43,13 @@ export function withLogging(config: WithLoggingConfig): Middleware {
       const safeFlags = redactSensitiveFlags(flags, h.flags());
 
       logger.child({ flags: safeFlags, args }).debug("executing command");
+      // Which experiments were on is the first thing a debug log of a run needs
+      // to answer; logged only when something is enabled so the common case
+      // adds no noise. Absent (no withFeatureFlags above this point) means none.
+      const featureFlags = ctx.value(FeatureFlagsKey)?.enabled() ?? [];
+      if (featureFlags.length > 0) {
+        logger.child({ featureFlags }).debug("experimental feature flags enabled");
+      }
       await h.handle(ctx.withValue<Logger>(LoggerKey, logger), flags, args);
       logger.debug("command executed successfully");
     },

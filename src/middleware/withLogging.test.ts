@@ -2,9 +2,10 @@ import { test, describe, beforeEach, afterEach } from "bun:test";
 import z from "zod";
 import { Router, createHandler, flag } from "../router";
 import { withLogging } from "./withLogging";
+import { withFeatureFlags } from "./withFeatureFlags";
 import { createFileLogger } from "../logging/fileLogger";
 import { LOG_LEVEL, type AsyncLogger } from "../logging/types";
-import { assertLogsMatch } from "../testing";
+import { assertLogsMatch, TestFeatureFlags } from "../testing";
 import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -81,6 +82,42 @@ describe("withLogging", () => {
           log.msg === "command executed successfully" && log.commandPath === "/myapp/happy",
         expectedCount: 1,
       },
+    ]);
+  });
+
+  // A debug log of a run has to answer "which experiments were on"; the line is
+  // written only when one is, so unflagged runs keep their existing log shape.
+  test("names the enabled feature flags once per command", async () => {
+    const app = new Router("myapp", "test app");
+    app.use(withFeatureFlags(new TestFeatureFlags(["imperativeDeploy"])));
+    app.use(withLogging({ logger }));
+    app.handler(createHandler({ name: "flagged", description: "runs", handle: async () => {} }));
+
+    await app.route(["node", "myapp", "flagged"]);
+
+    await assertLogsMatch(tempDir, [
+      {
+        filter: (log: any) =>
+          log.msg === "experimental feature flags enabled" &&
+          log.featureFlags?.length === 1 &&
+          log.featureFlags[0] === "imperativeDeploy" &&
+          log.commandPath === "/myapp/flagged",
+        expectedCount: 1,
+      },
+    ]);
+  });
+
+  test("writes no feature-flag line when nothing is enabled", async () => {
+    const app = new Router("myapp", "test app");
+    app.use(withFeatureFlags(new TestFeatureFlags()));
+    app.use(withLogging({ logger }));
+    app.handler(createHandler({ name: "plain", description: "runs", handle: async () => {} }));
+
+    await app.route(["node", "myapp", "plain"]);
+
+    await assertLogsMatch(tempDir, [
+      { filter: (log: any) => log.msg === "command executed successfully", expectedCount: 1 },
+      { filter: (log: any) => log.msg === "experimental feature flags enabled", expectedCount: 0 },
     ]);
   });
 });

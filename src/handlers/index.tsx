@@ -11,17 +11,29 @@ import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
 import { createUpdateHandler } from "./update/index.tsx";
 import { renderTui } from "../tui";
-import { withRegion, withJsonRenderer, withLogging, withGlobalConfigAccessor } from "../middleware";
+import {
+  withRegion,
+  withJsonRenderer,
+  withLogging,
+  withGlobalConfigAccessor,
+  withFeatureFlags,
+} from "../middleware";
 import type { AppIO } from "../io";
 import type { Core } from "./types.tsx";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
+import { EnvFeatureFlags, type FeatureFlags } from "../featureFlags";
 import { PACKAGE_VERSION } from "../constants";
 
 export interface RootHandlerConfig {
   io: AppIO;
   logger: Logger;
   globalConfigAccessor: GlobalConfigAccessor;
+  /**
+   * The process's experimental switches. Optional so the many test call sites
+   * that never touch a flag need no change; the default enables nothing.
+   */
+  featureFlags?: FeatureFlags;
 }
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
@@ -46,6 +58,10 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // Pin a JSON renderer wired to the configured stdout so leaf handlers can emit
   // machine-readable output without touching the process streams directly.
   root.use(withJsonRenderer(io));
+
+  // Pin the feature flags before the logger so withLogging can record which
+  // experiments were on for the command.
+  root.use(withFeatureFlags(config.featureFlags ?? new EnvFeatureFlags({})));
 
   // Inject a logger into each handler.
   root.use(withLogging({ logger }));
