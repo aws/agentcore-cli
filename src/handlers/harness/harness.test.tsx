@@ -29,16 +29,20 @@ const REGION = "us-west-2";
 // run builds a fresh handler tree (CoreClient carries per-run caches, so this
 // keeps tests isolated) over an in-memory io, routes `args` beneath `agentcore`,
 // and returns whatever the command wrote to stdout.
-async function run(args: string[]): Promise<string> {
+function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
     fixtureFactories(FIXTURES);
-  const core = new CoreClient({
+  return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
     logger: createSilentLogger(),
   });
+}
+
+async function run(args: string[]): Promise<string> {
+  const core = createFixtureCore();
   const io = testIO();
   const root = createRootHandler(core, {
     io: io.io,
@@ -76,6 +80,19 @@ describe("harness get", () => {
     // no arg; the get leaf throws its own required-option error. Assert the flow
     // surfaces it rather than printing output.
     await expect(run(["harness", "get", "--id", ""])).rejects.toThrow(/--id/);
+  });
+});
+
+describe("harness runtime resolution", () => {
+  test("resolves the underlying Runtime from a recorded harness response", async () => {
+    const core = createFixtureCore();
+
+    await expect(
+      core.harness.resolveRuntime("MyPDXHarness-rhkXkAE1IS", { region: REGION }),
+    ).resolves.toEqual({
+      runtimeId: "harness_MyPDXHarness-8WBKGfHzjg",
+      runtimeName: "harness_MyPDXHarness",
+    });
   });
 });
 
