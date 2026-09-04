@@ -169,9 +169,9 @@ environment variable and is **enabled only when its trimmed value is exactly
 behind a flag may change or vanish without notice, so scripts should not depend
 on them.
 
-| Variable                                       | Feature                                                 |
-| ---------------------------------------------- | ------------------------------------------------------- |
-| `AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY` | Reserved for imperative harness deployment (see below). |
+| Variable                                       | Feature                                    |
+| ---------------------------------------------- | ------------------------------------------ |
+| `AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY` | Imperative harness deployment (see below). |
 
 ```bash
 AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1 agentcore project deploy
@@ -179,6 +179,59 @@ AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1 agentcore project deploy
 
 Flags are read once when the process starts; a debug log of a run
 (`~/.agentcore/logs/output`) records which were enabled.
+
+#### Imperative harness deployment
+
+With `AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1`, `agentcore project deploy`
+in a **harness-only project** (one or more harnesses and no other resource)
+skips CloudFormation altogether. Instead of synthesizing and deploying the CDK
+app, the CLI calls the AgentCore control plane directly — `CreateHarness`,
+`UpdateHarness`, `GetHarness`, `DeleteHarness`, plus IAM for the default
+execution role — polls until each harness is `READY`, and records the result in
+`agentcore/.cli/deployed-state.json`. No Node.js, npm, or CDK bootstrap is
+needed. The CDK path is untouched when the variable is unset, and a project that
+declares anything besides harnesses always deploys through CDK (the command
+says so on stderr when the flag is set but does not apply).
+
+Each deploy is a plan of steps that read before they write, so the same command
+converges on the spec however many times it runs:
+
+- **Create** — a harness `agentcore.json` declares but the state does not
+  record is created (or adopted by name if one already exists in the account;
+  two harnesses with the same name is an error to resolve by hand).
+- **Update** — a harness whose `harness.json` or `system-prompt.md` changed is
+  updated once; the hash of the request the service last reached `READY` with
+  is recorded, and a redeploy with no changes issues no mutating call at all.
+  Collections owned by the spec (tools, skills, allowed tools, environment
+  variables) are always sent in full, so an entry removed locally is removed
+  on the service.
+- **Remove** — a harness recorded in state but no longer declared is deleted;
+  with the spec emptied (`project remove all`, or removing the last harness)
+  the deploy tears every recorded harness down after the same `--yes`
+  confirmation the CDK path asks for. An emptied project still counts as
+  harness-only for this purpose, so the teardown reaches the backend that
+  deployed the target.
+- **Self-healing** — a harness or execution-role policy deleted or changed out
+  of band reads as absent and is recreated or refreshed on the next deploy.
+
+The default execution role (`AgentCoreHarness-<name>`) is created and its
+inline policy kept in sync; a harness with an `executionRoleArn` in its
+`harness.json` uses that role as-is. `--json` output carries
+`harness.<name>.id` and `harness.<name>.arn` in `outputs`.
+
+`project status` and `project invoke harness` follow the mode recorded in
+`deployed-state.json`, not the variable, so they keep working on an
+imperatively deployed target after the variable is unset. A target is never
+deployed both ways: a deploy whose mode differs from the one recorded for the
+target refuses with a message explaining how to switch (set or unset the
+variable, or tear the target down first).
+
+Not supported by the imperative path, and rejected before any AWS call:
+`dockerfile` (needs the CodeBuild pipeline the CDK path provisions), `skills`
+entries of the `{ "path": … }` form (they must be baked into a container
+image), `skills[].auth.credentialName` (use `credentialArn`), and
+`memory.mode: "existing"` referenced by `name` rather than `arn` (a
+harness-only project has no memory sibling to resolve it against).
 
 ### Invoke a project resource
 
@@ -773,6 +826,19 @@ Conventions:
 
 Mount the new handler by adding `root.handler(create<Name>Handler(core))` in
 `src/handlers/index.tsx` (or on the appropriate parent router).
+
+## The plan engine
+
+Imperative deployments run through a small, generic engine in `src/core/plan/`,
+ported from an internal prototype. A `Plan` is a polytree of `Step`s, each with
+a `do()` that issues one mutating call and a `status()` that observes the world
+through a read call and reports `NOT_STARTED`, `WAITING`, `SUCCESSFUL`, or
+`FAILED`. The engine walks the graph breadth-first and in parallel — every root
+starts at once, a step with several parents waits for its last one — and drives
+each step by reading first and acting only on a `NOT_STARTED` reading, which is
+what makes a plan idempotent, self-healing, and resumable without bookkeeping of
+its own. On the first failure in-flight steps finish, nothing new starts, and
+the error lists every failed step.
 
 ## Core and dependency inversion
 

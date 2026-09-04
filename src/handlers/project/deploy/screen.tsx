@@ -10,6 +10,7 @@ import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { LoadingFrame, ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
+import { imperativeDeployNotApplicable, resolveDeploymentMode } from "../deploymentMode";
 import { declaresNothingDeployable, deployedMessage, teardownQuestion } from "./index";
 
 const BREADCRUMB = ["agentcore", "project", "deploy"];
@@ -144,11 +145,21 @@ function DeployConfirm({
   // disagrees with this preflight it reports the "re-run with --yes" error.
   const teardown = target !== undefined && declaresNothingDeployable(project);
 
+  // Same decision the command makes; the explanation the command prints to
+  // stderr is shown as a row here, since the screen owns the whole terminal.
+  const mode = resolveDeploymentMode(ctx, project);
+  const notApplicable = imperativeDeployNotApplicable(ctx, project);
+
   return (
     <ConfirmAction
       breadcrumb={BREADCRUMB}
       description={DESCRIPTION}
-      rows={{ project: project.name, target: targetName }}
+      rows={{
+        project: project.name,
+        target: targetName,
+        mode,
+        ...(notApplicable ? { note: notApplicable } : {}),
+      }}
       trigger={
         teardown
           ? { kind: "confirm", message: teardownQuestion(project.name, target) }
@@ -160,6 +171,7 @@ function DeployConfirm({
         const result = yield* core.projectManager.deploy(project, {
           target: targetName,
           region,
+          mode,
           confirmTeardown: async () => teardown,
         });
         // The title follows the result, not the preflight heuristic, which

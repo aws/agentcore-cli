@@ -1,9 +1,14 @@
 import {
   CreateRoleCommand,
   GetRoleCommand,
+  GetRolePolicyCommand,
   PutRolePolicyCommand,
   type IAMClient,
 } from "@aws-sdk/client-iam";
+import type {
+  ExecutionRoleProvisioner,
+  ExecutionRoleState,
+} from "./project/backends/imperative/types";
 
 // Default harness execution role provisioning.
 //
@@ -15,7 +20,7 @@ import {
 // role is reused and its inline policy refreshed — so repeated creates of the
 // same harness name converge on one role.
 
-const POLICY_NAME = "AgentCoreHarnessExecutionPolicy";
+export const EXECUTION_POLICY_NAME = "AgentCoreHarnessExecutionPolicy";
 
 // executionRoleName derives the default role's name from the harness name. IAM
 // role names cap at 64 characters; harness names are alphanumeric/underscore so
@@ -38,11 +43,33 @@ function trustPolicy(): string {
   });
 }
 
-// executionPolicy is the default permissions document, parameterized on the
-// caller's region/account and the harness name (scoping workload identities and
-// managed memory to this harness).
-function executionPolicy(region: string, accountId: string, harnessName: string): string {
-  return JSON.stringify({
+/**
+ * What a harness's configuration adds to the baseline policy. `harness create`
+ * passes nothing and gets the document it always did; the imperative deploy
+ * passes what it can read off the spec.
+ */
+export type ExecutionPolicyOptions = {
+  /**
+   * The harness owns a service-managed memory. Created through the API it is
+   * named after the harness (`<harnessName>-<id>`), which the baseline
+   * `memory/harness_*` grant does not cover, so the grant widens to it.
+   */
+  managedMemory?: boolean;
+};
+
+/**
+ * The default permissions document, parameterized on the caller's
+ * region/account and the harness name (scoping workload identities and managed
+ * memory to this harness). Returned as an object so a caller can compare it
+ * with what IAM holds; `executionPolicy` is its serialized form.
+ */
+export function desiredExecutionPolicy(
+  region: string,
+  accountId: string,
+  harnessName: string,
+  options: ExecutionPolicyOptions = {},
+): Record<string, unknown> {
+  return {
     Version: "2012-10-17",
     Statement: [
       {
@@ -207,7 +234,12 @@ function executionPolicy(region: string, accountId: string, harnessName: string)
           "bedrock-agentcore:ListEvents",
           "bedrock-agentcore:RetrieveMemoryRecords",
         ],
-        Resource: `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/harness_*`,
+        Resource: options.managedMemory
+          ? [
+              `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/harness_*`,
+              `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/${harnessName}-*`,
+            ]
+          : `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/harness_*`,
       },
       {
         Sid: "AgentCoreGatewayAccess",
@@ -216,13 +248,22 @@ function executionPolicy(region: string, accountId: string, harnessName: string)
         Resource: [`arn:aws:bedrock-agentcore:${region}:${accountId}:gateway/*`],
       },
     ],
-  });
+  };
+}
+
+function executionPolicy(
+  region: string,
+  accountId: string,
+  harnessName: string,
+  options?: ExecutionPolicyOptions,
+): string {
+  return JSON.stringify(desiredExecutionPolicy(region, accountId, harnessName, options));
 }
 
 // accountIdFromRoleArn extracts the account id from a role ARN
 // (arn:aws:iam::<account>:role/<name>), which saves an STS lookup: the account
 // only becomes relevant once we hold the role's ARN anyway.
-function accountIdFromRoleArn(arn: string): string {
+export function accountIdFromRoleArn(arn: string): string {
   const accountId = arn.split(":")[4];
   if (!accountId) {
     throw new Error(`Cannot extract an account id from role ARN "${arn}"`);
@@ -237,6 +278,7 @@ export async function ensureDefaultExecutionRole(
   iam: IAMClient,
   harnessName: string,
   region: string,
+  options?: ExecutionPolicyOptions,
 ): Promise<string> {
   const roleName = executionRoleName(harnessName);
 
@@ -259,10 +301,51 @@ export async function ensureDefaultExecutionRole(
   await iam.send(
     new PutRolePolicyCommand({
       RoleName: roleName,
-      PolicyName: POLICY_NAME,
-      PolicyDocument: executionPolicy(region, accountIdFromRoleArn(roleArn), harnessName),
+      PolicyName: EXECUTION_POLICY_NAME,
+      PolicyDocument: executionPolicy(region, accountIdFromRoleArn(roleArn), harnessName, options),
     }),
   );
 
   return roleArn;
+}
+
+/**
+ * The IAM-backed {@link ExecutionRoleProvisioner} an imperative deploy uses:
+ * `describe` is the read side (GetRole + GetRolePolicy) its status check
+ * compares against the desired document, `ensure` is the write side, which is
+ * `ensureDefaultExecutionRole` itself.
+ */
+export function createIamExecutionRoleProvisioner(
+  iamFor: (region: string) => IAMClient,
+): ExecutionRoleProvisioner {
+  return {
+    async describe(harnessName, region): Promise<ExecutionRoleState | undefined> {
+      const iam = iamFor(region);
+      const roleName = executionRoleName(harnessName);
+      let roleArn: string;
+      try {
+        const existing = await iam.send(new GetRoleCommand({ RoleName: roleName }));
+        roleArn = existing.Role!.Arn!;
+      } catch (error) {
+        if ((error as Error).name === "NoSuchEntityException") return undefined;
+        throw error;
+      }
+      try {
+        const policy = await iam.send(
+          new GetRolePolicyCommand({ RoleName: roleName, PolicyName: EXECUTION_POLICY_NAME }),
+        );
+        // IAM returns inline policy documents URL-encoded.
+        const document = policy.PolicyDocument
+          ? decodeURIComponent(policy.PolicyDocument)
+          : undefined;
+        return { roleArn, policyDocument: document };
+      } catch (error) {
+        if ((error as Error).name === "NoSuchEntityException") return { roleArn };
+        throw error;
+      }
+    },
+    ensure(harnessName, region, options) {
+      return ensureDefaultExecutionRole(iamFor(region), harnessName, region, options);
+    },
+  };
 }

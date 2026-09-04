@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import type {
   AddResourceInput,
   CreateProjectInput,
+  DeploymentMode,
   DeployProjectInput,
   DeployResult,
   ExportHarnessInput,
@@ -59,6 +60,7 @@ import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config"
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { enclosingProjectRoot, projectSpecPath } from "./fsUtils";
+import { HARNESS_SPEC_FILENAME, readHarnessDirectory } from "./harnessDir";
 import {
   AgentCoreCLIError,
   InputValidationError,
@@ -71,7 +73,13 @@ import {
 import z from "zod";
 import { CdkBackend } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import {
+  ImperativeBackend,
+  type ExecutionRoleProvisioner,
+  type HarnessCalls,
+} from "./backends/imperative";
 import type { ProjectBackend } from "./backends/types";
+import { readDeployedState, recordedDeploymentMode } from "./deployedState";
 import {
   AgentCoreRegionSchema,
   AwsDeploymentTargetSchema,
@@ -121,11 +129,21 @@ type ProjectManagerConfig = {
    * silently getting a client that talks to AWS.
    */
   identity: CoreIdentityClient;
+  /**
+   * Harness control-plane operations and the execution-role provisioner the
+   * default imperative backend deploys through. A manager built without them
+   * (and without `imperativeBackend`) refuses imperative deploys rather than
+   * reaching for AWS on its own.
+   */
+  harness?: HarnessCalls;
+  executionRoles?: ExecutionRoleProvisioner;
   source?: AssetSource;
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
+  /** The backend a deploy in imperative mode uses; defaults to the real ImperativeBackend. */
+  imperativeBackend?: ProjectBackend;
   templateRenderer?: TemplateRenderer;
   /**
    * Resolves the AWS account behind the active credentials (STS
@@ -146,6 +164,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
+  private readonly imperativeBackend: ProjectBackend;
   private readonly resolveAccount: (region: string) => Promise<string>;
 
   constructor(config: ProjectManagerConfig) {
@@ -164,6 +183,17 @@ export class FsProjectManager implements ProjectManager {
         json: config.json,
       }),
     };
+    this.imperativeBackend =
+      config.imperativeBackend ??
+      (config.harness && config.executionRoles
+        ? new ImperativeBackend({
+            logger: config.logger,
+            json: config.json,
+            harness: config.harness,
+            executionRoles: config.executionRoles,
+            resolveAccount: config.resolveAccount,
+          })
+        : unconfiguredImperativeBackend());
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
   }
@@ -713,7 +743,6 @@ export class FsProjectManager implements ProjectManager {
     let harnessName: string;
     let spec: z.output<typeof HarnessSpecSchema>;
     let systemPrompt: string;
-    let harnessDir: string | undefined;
     if (input.prefetched) {
       spec = input.prefetched.spec;
       harnessName = spec.name;
@@ -730,20 +759,13 @@ export class FsProjectManager implements ProjectManager {
             `Available harnesses: ${available || "none"}`,
         );
       }
-      harnessDir = join(project.rootPath, entry.path);
       yield {
         type: "step",
-        message: `Reading harness configuration from '${join(entry.path, "harness.json")}'`,
+        message: `Reading harness configuration from '${join(entry.path, HARNESS_SPEC_FILENAME)}'`,
       };
-      spec = await this.json.read(join(harnessDir, "harness.json"), HarnessSpecSchema);
-      const promptPath = join(harnessDir, "system-prompt.md");
-      const filePrompt = existsSync(promptPath)
-        ? (await readFile(promptPath, "utf-8")).trim()
-        : undefined;
-      systemPrompt =
-        filePrompt && filePrompt.length > 0
-          ? filePrompt
-          : (spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT);
+      const read = await readHarnessDirectory(this.json, project.rootPath, entry);
+      spec = read.spec;
+      systemPrompt = read.systemPrompt;
     }
 
     // Refuse to overwrite anything: the target name must be free in the spec
@@ -938,10 +960,38 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
-    return yield* this.backendFor(project).deploy(project, {
+    await this.guardDeploymentMode(project, target, input.mode);
+    const backend = input.mode === "imperative" ? this.imperativeBackend : this.backendFor(project);
+    return yield* backend.deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
     });
+  }
+
+  /**
+   * Refuses to deploy a target through a different path than the one that
+   * deployed it. The two paths do not know about each other's resources: a CDK
+   * deploy over an imperative one would create a second harness, and an
+   * imperative deploy over a CDK one would fight the stack for its harness.
+   */
+  private async guardDeploymentMode(
+    project: Project,
+    target: AwsDeploymentTarget,
+    requested: DeploymentMode,
+  ): Promise<void> {
+    const state = await readDeployedState(this.json, project.rootPath);
+    const recorded = recordedDeploymentMode(state.targets[target.name]);
+    if (!recorded || recorded === requested) return;
+    const how =
+      requested === "imperative"
+        ? "Unset AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY to keep deploying it through CDK"
+        : "Set AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1 to keep deploying it imperatively";
+    throw new ProjectStateError(
+      `Target '${target.name}' of project '${project.name}' was deployed in ${recorded} mode, ` +
+        `but this deploy would run in ${requested} mode. ${how}, or tear the target down first ` +
+        `('agentcore project remove all', then deploy in ${recorded} mode with --yes) before ` +
+        `switching.`,
+    );
   }
 
   // A read-only lookup, so callers (e.g. the deploy handler's up-front teardown
@@ -986,7 +1036,8 @@ export class FsProjectManager implements ProjectManager {
     input: ResolveDeployedResourcesInput,
   ): Promise<ResolvedDeployedResources> {
     const target = await this.resolveExistingTarget(project, input.target);
-    const resources = await this.backendFor(project).resolveDeployedResources(project, { target });
+    const backend = await this.backendForTarget(project, target);
+    const resources = await backend.resolveDeployedResources(project, { target });
     return { resources, target };
   }
 
@@ -995,8 +1046,24 @@ export class FsProjectManager implements ProjectManager {
     input: ResolveProjectResourcesInput,
   ): Promise<ResolvedProjectResources> {
     const target = await this.resolveExistingTarget(project, input.target);
-    const resources = await this.backendFor(project).resolveProjectResources(project, { target });
+    const backend = await this.backendForTarget(project, target);
+    const resources = await backend.resolveProjectResources(project, { target });
     return { resources, target };
+  }
+
+  /**
+   * The backend that deployed a target, from its recorded state. State, not the
+   * feature flag, decides after a deploy: status and invoke keep working on an
+   * imperatively deployed target after the variable is unset.
+   */
+  private async backendForTarget(
+    project: Project,
+    target: AwsDeploymentTarget,
+  ): Promise<ProjectBackend> {
+    const state = await readDeployedState(this.json, project.rootPath);
+    return recordedDeploymentMode(state.targets[target.name]) === "imperative"
+      ? this.imperativeBackend
+      : this.backendFor(project);
   }
 
   private async resolveExistingTarget(
@@ -1184,6 +1251,32 @@ export class FsProjectManager implements ProjectManager {
       }).finally(() => lines.flush());
     });
   }
+}
+
+/**
+ * The imperative backend a manager falls back to when it was built without the
+ * harness client and role provisioner the real one needs. It only has to exist:
+ * the app edge always supplies both, and tests inject a fake.
+ */
+function unconfiguredImperativeBackend(): ProjectBackend {
+  const refuse = (): never => {
+    throw new ProjectStateError(
+      "Imperative deploy is not configured for this project manager; it needs a harness " +
+        "client and an execution-role provisioner.",
+    );
+  };
+  return {
+    // eslint-disable-next-line require-yield
+    async *build() {
+      refuse();
+    },
+    // eslint-disable-next-line require-yield
+    async *deploy() {
+      return refuse();
+    },
+    resolveDeployedResources: async () => refuse(),
+    resolveProjectResources: async () => refuse(),
+  };
 }
 
 /** Map {@link ProjectResource} to keys in the project spec.

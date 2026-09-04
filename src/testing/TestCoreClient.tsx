@@ -1248,6 +1248,8 @@ type TestCoreClientOptions = {
   logger?: Logger;
   json?: ReadWriteJson;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
+  /** The backend an imperative-mode deploy reaches; defaults to one that refuses to run. */
+  imperativeBackend?: ProjectBackend;
   createCloudFormationClient?: CreateCloudFormationClient;
   resolveAccount?: (region: string) => Promise<string>;
 };
@@ -2490,6 +2492,9 @@ export class TestCoreClient implements Core {
       identity: this.identity,
       json: options?.json,
       backends: options?.backends,
+      // A test that exercises imperative deploys injects its own backend; the
+      // manager's fallback refuses to run, so no test reaches AWS by accident.
+      imperativeBackend: options?.imperativeBackend,
       runner: async (command, { cwd }) => {
         this.projectCommands.push({ command, cwd });
       },

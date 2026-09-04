@@ -7,9 +7,11 @@ import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
   TestCoreClient,
+  TestFeatureFlags,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
+import type { FeatureFlag } from "../../../featureFlags";
 import type { DeployBackendInput, ProjectBackend } from "../../../core/project";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { DeployResult, Project, ProjectEvent, TeardownConfirmationRequest } from "../types";
@@ -82,6 +84,8 @@ type TestDeployOptions = {
   /** Thrown by the fake backend after its events, to exercise failure paths. */
   failure?: Error;
   resolveAccount?: (region: string) => Promise<string>;
+  /** Experiments switched on for the command. */
+  featureFlags?: FeatureFlag[];
 };
 
 function testDeployCommand(
@@ -91,18 +95,22 @@ function testDeployCommand(
 ) {
   const io = testIO({ isTTY: options.isTTY, stdin: options.stdin });
   const fake = fakeBackend(result, events, options.teardown, options.failure);
+  const imperative = fakeBackend({ outputs: { "harness.orders.id": "orders-1" } });
   const core = new TestCoreClient({
     backends: { CDK: fake.backend },
+    imperativeBackend: imperative.backend,
     resolveAccount: options.resolveAccount,
   });
   const root = createRootHandler(core, {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
+    featureFlags: new TestFeatureFlags(options.featureFlags),
   });
 
   return {
     ...fake,
+    imperativeCalls: imperative.calls,
     io,
     run: (args: string[] = []) => root.route(["node", "agentcore", "project", "deploy", ...args]),
     create: (args: string[]) => root.route(["node", "agentcore", "project", ...args]),
@@ -139,6 +147,16 @@ async function inProjectWithTargets(
   await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), contents);
   process.chdir(projectRoot);
   return projectRoot;
+}
+
+/** Adds a memory next to the scaffolded harness, so the project is no longer harness-only. */
+async function addMemoryToSpec(projectRoot: string): Promise<void> {
+  const specPath = join(projectRoot, "agentcore", "agentcore.json");
+  const spec = await Bun.file(specPath).json();
+  await writeFile(
+    specPath,
+    JSON.stringify({ ...spec, memories: [{ name: "recall", eventExpiryDuration: 30 }] }),
+  );
 }
 
 /**
@@ -430,6 +448,54 @@ describe("project deploy handler", () => {
     expect(message).toContain("Could not load credentials from any providers");
     expect(message).toContain("aws configure");
     expect(subject.calls).toEqual([]);
+  });
+});
+
+// `project create` scaffolds a harness-only project, which is the one shape the
+// experiment applies to; adding any other resource routes the deploy back to CDK.
+describe("project deploy chooses the deployment mode", () => {
+  const NOT_APPLICABLE = "imperative deploy applies only to harness-only projects";
+
+  test("deploys a harness-only project imperatively when the flag is on", async () => {
+    const subject = testDeployCommand({ outputs: {} }, [], { featureFlags: ["imperativeDeploy"] });
+    await inProjectWithTargets(subject);
+
+    await subject.run(["--json"]);
+
+    expect(subject.calls).toEqual([]);
+    expect(subject.imperativeCalls).toHaveLength(1);
+    expect(subject.imperativeCalls[0]?.input.target).toEqual(DEFAULT_TARGET);
+    expect(subject.io.stderr()).not.toContain(NOT_APPLICABLE);
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      message: "Deployed project 'orders' to target 'default'",
+      outputs: { "harness.orders.id": "orders-1" },
+    });
+  });
+
+  test("deploys through CDK when the flag is off", async () => {
+    const subject = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets(subject);
+
+    await subject.run();
+
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.imperativeCalls).toEqual([]);
+    expect(subject.io.stderr()).not.toContain(NOT_APPLICABLE);
+  });
+
+  test("falls back to CDK, and says so, when the flag is on for a project with other resources", async () => {
+    const subject = testDeployCommand({ outputs: {} }, [], { featureFlags: ["imperativeDeploy"] });
+    const projectRoot = await inProjectWithTargets(subject);
+    await addMemoryToSpec(projectRoot);
+
+    await subject.run();
+
+    expect(subject.calls).toHaveLength(1);
+    expect(subject.imperativeCalls).toEqual([]);
+    expect(subject.io.stderr()).toContain(
+      "AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY is set, but " + NOT_APPLICABLE,
+    );
+    expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
   });
 });
 

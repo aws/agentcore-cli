@@ -42,7 +42,7 @@ import {
   stackArtifactForTarget,
   type StackArtifact,
 } from "./cdk/assembly";
-import { readDeployedState, removeTargetState, updateTargetState } from "./cdk/deployedState";
+import { readDeployedState, removeTargetState, updateTargetState } from "../deployedState";
 import {
   bootstrapStackReader,
   createCloudFormationStackReader,
@@ -284,7 +284,10 @@ export class CdkBackend implements ProjectBackend {
     // Persist the deployed stack's ARN so later commands read live resource state
     // from CloudFormation. Merged per target, so deploying one target never drops
     // another's recorded state.
-    await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
+    await updateTargetState(this.json, project.rootPath, target.name, {
+      stackArn,
+      deploymentMode: "cdk",
+    });
 
     return { outputs };
   }

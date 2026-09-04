@@ -431,6 +431,7 @@ describe("CdkBackend.deploy", () => {
           resources: { credentials: {} },
           stackArn:
             "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
+          deploymentMode: "cdk",
         },
       },
     });
@@ -466,6 +467,7 @@ describe("CdkBackend.deploy", () => {
         default: {
           stackArn:
             "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc",
+          deploymentMode: "cdk",
           resources: {
             credentials: { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } },
           },

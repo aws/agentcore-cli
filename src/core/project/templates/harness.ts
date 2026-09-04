@@ -5,7 +5,8 @@ import { FsTreeNode } from "./fsTree";
 import { InputValidationError } from "../../../errors/errors";
 import type { TemplateResolver } from "./types";
 
-const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant";
+/** The prompt a scaffolded harness starts with; consumers fall back to it when neither file nor spec carries one. */
+export const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant";
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
 /** Given a harness spec, resolve the {@link TemplateResolver} that renders its config directory **/

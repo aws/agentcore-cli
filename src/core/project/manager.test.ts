@@ -18,12 +18,15 @@ import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts
 import {
   type AddResourceInput,
   type CreateProjectInput,
+  type DeploymentMode,
   type DeployResult,
   type Project,
   type ProjectEvent,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
+import { FsReadWriteJson } from "../../io";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { updateTargetState } from "./deployedState";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python");
 const AGENT_PYTHON_CONTAINER = resolveRuntimeTemplateShortcut("agent-python", {
@@ -671,33 +674,49 @@ describe("FsProjectManager.build", () => {
 
 describe("FsProjectManager.deploy", () => {
   type DeployCall = { project: Project; input: DeployBackendInput };
+  const json = new FsReadWriteJson({ logger: createSilentLogger() });
 
   const STS_ACCOUNT = "999900001111";
 
-  function deployManager(options?: { account?: string | Error }) {
-    const calls: DeployCall[] = [];
-    const accountCalls: string[] = [];
-    const backend: ProjectBackend = {
+  function recordingBackend(
+    label: string,
+    calls: DeployCall[],
+    outputs: Record<string, string> = { RuntimeArn: "arn:runtime" },
+  ): ProjectBackend {
+    return {
       async *build() {},
       async *deploy(project, input) {
         calls.push({ project, input });
-        yield { type: "step" as const, message: "Backend deployment started" };
-        return { outputs: { RuntimeArn: "arn:runtime" } };
+        yield { type: "step" as const, message: `${label} deployment started` };
+        return { outputs };
       },
-      async resolveDeployedResources() {
-        return [];
+      async resolveDeployedResources(_project, { target }) {
+        return [{ resourceType: "harness", name: label, id: `${label}-id`, target }];
       },
       async resolveProjectResources() {
-        return [];
+        return [
+          { resourceType: "harness", name: label, deploymentState: "deployed", id: `${label}-id` },
+        ];
       },
     };
+  }
+
+  function deployManager(options?: { account?: string | Error }) {
+    const calls: DeployCall[] = [];
+    const imperativeCalls: DeployCall[] = [];
+    const accountCalls: string[] = [];
+    const backend = recordingBackend("Backend", calls);
     return {
       calls,
+      imperativeCalls,
       accountCalls,
       manager: new FsProjectManager({
         logger: createSilentLogger(),
         identity: new TestIdentityClient(),
         backends: { CDK: backend },
+        imperativeBackend: recordingBackend("Imperative", imperativeCalls, {
+          "harness.support.id": "support-1",
+        }),
         resolveAccount: async (region) => {
           accountCalls.push(region);
           const outcome = options?.account ?? STS_ACCOUNT;
@@ -729,11 +748,12 @@ describe("FsProjectManager.deploy", () => {
     manager: FsProjectManager,
     project: Project,
     target: string,
-    options: { region?: string } = {},
+    options: { region?: string; mode?: DeploymentMode } = {},
   ): Promise<{ events: ProjectEvent[]; result: DeployResult }> {
     const generator = manager.deploy(project, {
       target,
       region: options.region ?? "us-east-1",
+      mode: options.mode ?? "cdk",
       confirmTeardown: async () => false,
     });
     const events: ProjectEvent[] = [];
@@ -771,6 +791,83 @@ describe("FsProjectManager.deploy", () => {
     expect(deployed.result).toEqual({
       outputs: { RuntimeArn: "arn:runtime" },
     });
+  });
+
+  // The mode is the caller's decision (flag + project shape); the manager only
+  // routes on it, after the target has been resolved exactly as for CDK.
+  test("routes an imperative deploy to the imperative backend", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+
+    const deployed = await deploy(subject.manager, project, "prod", { mode: "imperative" });
+
+    expect(subject.calls).toHaveLength(0);
+    expect(subject.imperativeCalls).toHaveLength(1);
+    expect(subject.imperativeCalls[0]?.input.target).toEqual(targets[1]);
+    expect(deployed.events).toEqual([{ type: "step", message: "Imperative deployment started" }]);
+    expect(deployed.result).toEqual({ outputs: { "harness.support.id": "support-1" } });
+  });
+
+  test("refuses a CDK deploy of a target that was deployed imperatively", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+    await updateTargetState(json, root, "prod", { deploymentMode: "imperative" });
+
+    await expect(deploy(subject.manager, project, "prod", { mode: "cdk" })).rejects.toThrow(
+      /Target 'prod' of project 'example' was deployed in imperative mode, but this deploy would run in cdk mode.*AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1/s,
+    );
+    expect(subject.calls).toHaveLength(0);
+    expect(subject.imperativeCalls).toHaveLength(0);
+  });
+
+  test.each([
+    ["a recorded cdk mode", { deploymentMode: "cdk" as const, stackArn: "arn:stack" }],
+    ["a stack ARN written before modes were recorded", { stackArn: "arn:stack" }],
+  ])("refuses an imperative deploy of a target with %s", async (_label, state) => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+    await updateTargetState(json, root, "staging", state);
+
+    await expect(
+      deploy(subject.manager, project, "staging", { mode: "imperative" }),
+    ).rejects.toThrow(/was deployed in cdk mode, but this deploy would run in imperative mode/);
+    expect(subject.calls).toHaveLength(0);
+    expect(subject.imperativeCalls).toHaveLength(0);
+  });
+
+  test("lets a target keep deploying in the mode it was deployed with", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+    await updateTargetState(json, root, "prod", { deploymentMode: "imperative" });
+    await updateTargetState(json, root, "staging", { stackArn: "arn:stack" });
+
+    await deploy(subject.manager, project, "prod", { mode: "imperative" });
+    await deploy(subject.manager, project, "staging", { mode: "cdk" });
+
+    expect(subject.imperativeCalls.map((c) => c.input.target.name)).toEqual(["prod"]);
+    expect(subject.calls.map((c) => c.input.target.name)).toEqual(["staging"]);
+  });
+
+  // After a deploy, state (not the flag) decides which backend answers for a
+  // target, so status and invoke keep working once the variable is unset.
+  test("resolves resources through the backend recorded for the target", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+    await updateTargetState(json, root, "prod", { deploymentMode: "imperative" });
+    await updateTargetState(json, root, "staging", { stackArn: "arn:stack" });
+
+    const imperative = await subject.manager.resolveProjectResources(project, { target: "prod" });
+    const cdk = await subject.manager.resolveProjectResources(project, { target: "staging" });
+    const deployed = await subject.manager.resolveDeployedResources(project, { target: "prod" });
+
+    expect(imperative.resources.map((r) => r.name)).toEqual(["Imperative"]);
+    expect(cdk.resources.map((r) => r.name)).toEqual(["Backend"]);
+    expect(deployed.resources.map((r) => r.name)).toEqual(["Imperative"]);
   });
 
   test("rejects an unknown target before invoking the backend", async () => {

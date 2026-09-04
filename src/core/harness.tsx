@@ -210,8 +210,9 @@ export class HarnessClient implements CoreHarnessClient {
 // retryWhileRoleUnassumable retries `operation` while it fails with the
 // validation error AgentCore raises for an execution role it cannot yet assume
 // (fresh IAM roles propagate over several seconds). Any other failure — or
-// exhausting the attempts — rethrows.
-async function retryWhileRoleUnassumable<T>(
+// exhausting the attempts — rethrows. Exported for the imperative deploy, which
+// supplies the role ARN itself and so bypasses createHarness's own retry.
+export async function retryWhileRoleUnassumable<T>(
   operation: () => Promise<T>,
   attempts = 8,
   delayMs = 2000,

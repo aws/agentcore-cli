@@ -157,9 +157,18 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
+/**
+ * How a deploy reaches AWS: through the scaffolded CDK app and CloudFormation,
+ * or by calling the control plane directly (experimental; harness-only
+ * projects behind AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY=1).
+ */
+export type DeploymentMode = "cdk" | "imperative";
+
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
+  /** Which path deploys the project; see {@link DeploymentMode}. */
+  mode: DeploymentMode;
   /**
    * The effective AWS region the CLI already resolved (--region flag, env,
    * shared config file). Used to synthesize the default target when

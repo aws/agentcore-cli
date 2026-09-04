@@ -11,6 +11,7 @@ import {
   flatFrame,
   renderScreen,
   TestCoreClient,
+  TestFeatureFlags,
   TestGlobalConfigAccessor,
   testIO,
   waitForFlatText,
@@ -184,6 +185,57 @@ describe("project build screen", () => {
 });
 
 describe("project deploy screen", () => {
+  // The screen makes the same mode decision the command does and shows it as a
+  // row, with the command's stderr explanation as a note when CDK is the
+  // fallback for a flagged project.
+  test("shows the deployment mode and runs the imperative backend when the flag applies", async () => {
+    const { deploys } = fakeBackend();
+    const imperative = fakeBackend({ result: { outputs: { "harness.orders.id": "orders-1" } } });
+    const core = new TestCoreClient({
+      backends: { CDK: fakeBackend().backend },
+      imperativeBackend: imperative.backend,
+    });
+    await inProject(core);
+    const r = renderScreen("/agentcore/project/deploy", {
+      core,
+      featureFlags: new TestFeatureFlags(["imperativeDeploy"]),
+    });
+
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    const frame = flatFrame(r.lastFrame);
+    expect(frame).toContain("mode imperative");
+    expect(frame).not.toContain("note");
+    expect(deploys).toHaveLength(0);
+    expect(imperative.deploys).toHaveLength(1);
+    r.unmount();
+  });
+
+  test("shows the CDK mode with the note when the flag is on but does not apply", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const spec = await Bun.file(specPath).json();
+    await writeFile(
+      specPath,
+      JSON.stringify({ ...spec, memories: [{ name: "recall", eventExpiryDuration: 30 }] }),
+    );
+    const r = renderScreen("/agentcore/project/deploy", {
+      core,
+      featureFlags: new TestFeatureFlags(["imperativeDeploy"]),
+    });
+
+    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    const frame = flatFrame(r.lastFrame);
+    expect(frame).toContain("mode cdk");
+    // The note wraps inside the summary box, so match a fragment of one line.
+    expect(frame).toContain("note AGENTCORE_CLI_EXPERIMENTAL_IMPERATIVE_DEPLOY is set");
+    expect(frame).toContain("the CDK");
+    expect(deploys).toHaveLength(1);
+    expect(deploys[0]!.input.target.name).toBe("default");
+    r.unmount();
+  });
+
   test("one target: deploys to it at once, then the CLI's own success line", async () => {
     const { backend, deploys } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });

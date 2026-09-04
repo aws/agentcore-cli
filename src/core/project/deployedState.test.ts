@@ -3,11 +3,12 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FsReadWriteJson } from "../../../../io";
-import { createSilentLogger } from "../../../../testing";
+import { FsReadWriteJson } from "../../io";
+import { createSilentLogger } from "../../testing";
 import {
   DEPLOYED_STATE_RELATIVE_PATH,
   readDeployedState,
+  recordedDeploymentMode,
   removeTargetState,
   updateTargetState,
 } from "./deployedState";
@@ -163,5 +164,69 @@ describe("removeTargetState", () => {
     expect(await readRaw(root)).toEqual({
       targets: { prod: { stackArn: "arn:stack:prod" } },
     });
+  });
+});
+
+describe("harness state", () => {
+  test("round-trips a harness entry and replaces the map wholesale on update", async () => {
+    const root = await projectRoot();
+    await updateTargetState(json, root, "default", {
+      deploymentMode: "imperative",
+      resources: {
+        harnesses: {
+          a: { harnessId: "a-1", harnessArn: "arn:a", appliedRequestHash: "h1" },
+          b: { harnessId: "b-1", harnessArn: "arn:b" },
+        },
+      },
+    });
+
+    // Dropping b from the patch drops it from the file: a harness removed from
+    // the spec must stop being advertised, same as a credential.
+    await updateTargetState(json, root, "default", {
+      resources: {
+        harnesses: {
+          a: {
+            harnessId: "a-1",
+            harnessArn: "arn:a",
+            appliedRequestHash: "h2",
+            skills: { bucket: "bkt", prefix: "p/a/skills/", manifestHash: "m" },
+          },
+        },
+      },
+    });
+
+    expect(await readRaw(root)).toEqual({
+      targets: {
+        default: {
+          deploymentMode: "imperative",
+          resources: {
+            harnesses: {
+              a: {
+                harnessId: "a-1",
+                harnessArn: "arn:a",
+                appliedRequestHash: "h2",
+                skills: { bucket: "bkt", prefix: "p/a/skills/", manifestHash: "m" },
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+});
+
+describe("recordedDeploymentMode", () => {
+  test("is undefined for an undeployed target", () => {
+    expect(recordedDeploymentMode(undefined)).toBeUndefined();
+    expect(recordedDeploymentMode({})).toBeUndefined();
+  });
+
+  test("reads the recorded mode when present", () => {
+    expect(recordedDeploymentMode({ deploymentMode: "imperative" })).toBe("imperative");
+    expect(recordedDeploymentMode({ deploymentMode: "cdk", stackArn: "arn" })).toBe("cdk");
+  });
+
+  test("treats a stack ARN without a mode as a CDK deploy", () => {
+    expect(recordedDeploymentMode({ stackArn: "arn:stack" })).toBe("cdk");
   });
 });

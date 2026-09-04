@@ -25,6 +25,7 @@ import type {
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
+import { createIamExecutionRoleProvisioner } from "./executionRole";
 import { BedrockAgentImporter, type CoreBedrockAgentImporter } from "./project/bedrockAgentImport";
 
 export type {
@@ -116,6 +117,10 @@ export class CoreClient implements AwsClients {
       logger: this.logger.child({ module: "projectManager" }),
       createCloudFormationClient: config.createCloudFormationClient,
       identity: this.identity,
+      harness: this.harness,
+      // IAM is a global service; the region only selects the endpoint, and the
+      // agentcore endpoint override must not leak onto it.
+      executionRoles: createIamExecutionRoleProvisioner((region) => this.iam({ region })),
     });
     this.bedrockAgentImporter = config.bedrockAgentImporter ?? new BedrockAgentImporter();
   }

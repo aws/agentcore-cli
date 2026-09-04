@@ -8,6 +8,7 @@ import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
+import { imperativeDeployNotApplicable, resolveDeploymentMode } from "../deploymentMode";
 import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
 type DeployProjectHandlerConfig = {
@@ -80,9 +81,16 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         canPrompt === true,
       );
 
+      // Explained up front, on stderr like the rest of the progress, so a user
+      // who switched the experiment on is not left wondering why CDK ran.
+      const mode = resolveDeploymentMode(ctx, project);
+      const notApplicable = imperativeDeployNotApplicable(ctx, project);
+      if (notApplicable) config.io.stderr.write(`${notApplicable}\n`);
+
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
         region: ctx.require(RegionKey),
+        mode,
         confirmTeardown,
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
@@ -117,7 +125,28 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
  */
 export function declaresNothingDeployable(project: Project): boolean {
   const { spec } = project;
-  const collections = [
+  return (
+    spec.harnesses.length === 0 &&
+    nonHarnessCollections(project).every((collection) => collection.length === 0)
+  );
+}
+
+/**
+ * True when the spec declares at least one harness and nothing else: the shape
+ * the imperative deploy handles. Every other collection deploys through
+ * CloudFormation resources the imperative path does not model.
+ */
+export function isHarnessOnlyProject(project: Project): boolean {
+  return (
+    project.spec.harnesses.length >= 1 &&
+    nonHarnessCollections(project).every((collection) => collection.length === 0)
+  );
+}
+
+/** Every resource collection `removeAllResources` clears, apart from harnesses. */
+function nonHarnessCollections(project: Project): { length: number }[] {
+  const { spec } = project;
+  return [
     spec.runtimes,
     spec.memories,
     spec.knowledgeBases,
@@ -128,13 +157,11 @@ export function declaresNothingDeployable(project: Project): boolean {
     spec.policyEngines,
     spec.configBundles,
     spec.abTests,
-    spec.harnesses,
     spec.mcpRuntimeTools ?? [],
     spec.unassignedTargets ?? [],
     spec.datasets ?? [],
     spec.payments ?? [],
   ];
-  return collections.every((collection) => collection.length === 0);
 }
 
 /**
