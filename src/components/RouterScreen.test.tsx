@@ -121,10 +121,9 @@ describe("menu rendering", () => {
   });
 
   test("shows the brand banner only on the root menu", async () => {
-    const logoMarker = "█▀█ █▀▀ █▀▀";
     const version = `v${PACKAGE_VERSION}`;
     const root = renderScreen("/agentcore");
-    await waitForText(root.lastFrame, logoMarker);
+    await waitForText(root.lastFrame, version);
 
     expect(root.lastFrame()).toContain(version);
     root.unmount();
@@ -132,7 +131,6 @@ describe("menu rendering", () => {
     const nested = renderScreen("/agentcore/harness");
     await waitForText(nested.lastFrame, "agentcore → harness");
 
-    expect(nested.lastFrame()).not.toContain(logoMarker);
     expect(nested.lastFrame()).not.toContain(version);
     nested.unmount();
   });

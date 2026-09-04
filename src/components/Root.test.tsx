@@ -18,7 +18,7 @@ function screenCommands(command: Command, path: string[]): [string[], Command][]
     ]);
 }
 
-// menuHeader is the first line RouterScreen renders for a group at `path`.
+// menuHeader is the breadcrumb rendered by Header for a group at `path`.
 function menuHeader(path: string[], command: Command): string {
   return [...path, command.description()].join(" → ");
 }
@@ -37,8 +37,13 @@ function ancestorMenuHeaders(path: string[], command: Command): string[] {
   return headers;
 }
 
-function firstLine(frame: string | undefined): string {
-  return (frame ?? "").split("\n")[0]?.trim() ?? "";
+function renderedHeader(frame: string | undefined): string {
+  return (
+    (frame ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.includes(" → ")) ?? ""
+  );
 }
 
 const SCREENS = screenCommands(compiledRootCommand(), []);
@@ -60,11 +65,11 @@ describe("every command with a screen", () => {
       // Wide and tall enough that the header never wraps.
       await r.resize(220, 200);
       const menus = ancestorMenuHeaders(path, command);
-      expect(menus).not.toContain(firstLine(r.lastFrame()));
+      expect(menus).not.toContain(renderedHeader(r.lastFrame()));
 
       await r.press("escape");
-      await waitFor(() => menus.includes(firstLine(r.lastFrame()))).catch(() => {});
-      expect(menus).toContain(firstLine(r.lastFrame()));
+      await waitFor(() => menus.includes(renderedHeader(r.lastFrame()))).catch(() => {});
+      expect(menus).toContain(renderedHeader(r.lastFrame()));
       r.unmount();
     },
   );

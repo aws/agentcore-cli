@@ -1,8 +1,8 @@
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import { PACKAGE_VERSION } from "../constants";
-import { Badge } from "./ui/badge";
+import { Badge } from "./ui/badge/Badge";
 import { Divider } from "./ui/divider";
-import { GradientText } from "./ui/gradient-text";
+import { darkTheme, type InkUITheme } from "./ui/_core";
 
 const LOGO: string[] = [
   "█▀█ █▀▀ █▀▀ █▀█ ▀█▀ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █   ▀█▀",
@@ -10,23 +10,35 @@ const LOGO: string[] = [
   "▀ ▀ ▀▀▀ ▀▀▀ ▀ ▀  ▀  ▀▀▀ ▀▀▀ ▀ ▀ ▀▀▀   ▀▀▀ ▀▀▀ ▀▀▀",
 ];
 
-const LOGO_GRADIENT = ["#00ffff", "#ff00ff"] as const;
+export interface BrandBannerProps {
+  terminalProgram?: string;
+  theme?: InkUITheme;
+}
 
-export function BrandBanner() {
-  if (LOGO.length === 0) return null;
+export function shouldHideBrandBanner(terminalProgram: string | undefined): boolean {
+  return terminalProgram === "Apple_Terminal";
+}
 
-  const logoWidth = Math.max(...LOGO.map((line) => Array.from(line).length));
+export function BrandBanner({
+  terminalProgram = process.env.TERM_PROGRAM,
+  theme = darkTheme,
+}: BrandBannerProps = {}) {
+  if (shouldHideBrandBanner(terminalProgram)) return null;
+
+  const color = theme.colors.text;
 
   return (
     <Box flexDirection="column" flexShrink={0}>
       <Box paddingX={1} alignItems="flex-start">
         <Box flexDirection="column">
           {LOGO.map((line, index) => (
-            <GradientText key={index} text={line} colors={LOGO_GRADIENT} span={logoWidth} />
+            <Text key={index} color={color}>
+              {line}
+            </Text>
           ))}
         </Box>
         <Box marginLeft={1}>
-          <Badge>v{PACKAGE_VERSION}</Badge>
+          <Badge theme={theme}>v{PACKAGE_VERSION}</Badge>
         </Box>
       </Box>
       <Divider />

@@ -20,7 +20,7 @@ const borderStyle = {
 
 export function Badge({ children, theme = darkTheme }: BadgeProps) {
   const label = typeof children === "string" ? children.toUpperCase() : children;
-  const color = theme.colors.secondary;
+  const color = theme.colors.text;
 
   return (
     <Box borderStyle={borderStyle} borderColor={color} paddingX={1}>
