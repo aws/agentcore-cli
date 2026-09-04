@@ -706,6 +706,35 @@ test("command groups omit Commander's generated help subcommand", async () => {
   expect(out).not.toContain("help [command]");
 });
 
+test("command indexes show names without usage syntax", async () => {
+  const withOptions = createHandler({
+    name: "with-options",
+    description: "command with flags",
+    flags: [flag("format", "output format", z.string().optional())],
+    handle: async () => {},
+  });
+  const withArguments = createHandler({
+    name: "with-arguments",
+    description: "command with arguments",
+    arguments: [
+      argument("required", "required value", z.string()),
+      argument("optional", "optional value", z.string().optional()),
+    ],
+    handle: async () => {},
+  });
+  const nested = new Router("nested", "command group").handler(leaf("deep", () => {}));
+  const root = new Router("app").handler(withOptions).handler(withArguments).handler(nested);
+
+  const out = await helpOutput(root, ["app", "--help"]);
+
+  expect(out).toContain("Usage: app [options] [command]");
+  expect(out).toContain("with-options");
+  expect(out).not.toContain("with-options [options]");
+  expect(out).toContain("with-arguments");
+  expect(out).not.toContain("with-arguments <required> [optional]");
+  expect(out).not.toContain("nested [command]");
+});
+
 test("flags with long-form help render a Parameter details section", async () => {
   const create = createHandler({
     name: "create",

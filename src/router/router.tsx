@@ -166,6 +166,7 @@ export function compile(
   const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
   const c = new RoutedCommand(compiledNode);
   c.addHelpCommand(false);
+  c.configureHelp({ subcommandTerm: (command) => command.name() });
   c.description(node.description());
 
   const ownFlags = node.flags();
