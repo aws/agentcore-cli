@@ -295,7 +295,7 @@ describe('add agent command', () => {
   });
 
   describe('BYO path', () => {
-    it('registers BYO agent', async () => {
+    it('registers BYO agent without template-only options', async () => {
       const agentName = `ByoAgent${Date.now()}`;
       const codeDir = 'existing-agent';
 
@@ -315,10 +315,6 @@ describe('add agent command', () => {
           codeDir,
           '--language',
           'Python',
-          '--framework',
-          'Strands',
-          '--model-provider',
-          'Bedrock',
           '--json',
         ],
         projectDir
