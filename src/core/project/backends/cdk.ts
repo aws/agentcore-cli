@@ -402,8 +402,9 @@ export class CdkBackend implements ProjectBackend {
   ): Promise<ResolvedDeployedResource[]> {
     const { target } = input;
     const deployedState = await readDeployedState(this.json, project.rootPath);
-    const stackArn = deployedState.targets[target.name]?.stackArn;
-    if (!stackArn) {
+    const recorded = deployedState.targets[target.name];
+    const stackReference = recorded?.stackArn ?? recorded?.resources?.stackName;
+    if (!stackReference) {
       throw new ProjectStateError(
         `Project '${project.name}' is not deployed to target '${target.name}'. ` +
           `Run 'agentcore project deploy --target ${target.name}' first.`,
@@ -411,7 +412,7 @@ export class CdkBackend implements ProjectBackend {
     }
 
     const credentials = await this.credentialsForTarget(target);
-    const stack = await this.describeStack(target.region, credentials, stackArn);
+    const stack = await this.describeStack(target.region, credentials, stackReference);
     if (!stack) {
       throw new ProjectStateError(
         `Project '${project.name}' is not deployed to target '${target.name}'. ` +
@@ -437,14 +438,16 @@ export class CdkBackend implements ProjectBackend {
     const { spec } = project;
     const deployedState = await readDeployedState(this.json, project.rootPath);
     const recorded = deployedState.targets[target.name];
+    const stackReference = recorded?.stackArn ?? recorded?.resources?.stackName;
 
     // No recorded stack means nothing was ever deployed to this target, which
-    // every resource below reports as local-only.
-    const stack = recorded?.stackArn
+    // every resource below reports as local-only. Legacy projects record
+    // the stack name instead of target-level stack ARN.
+    const stack = stackReference
       ? await this.describeStack(
           target.region,
           await this.credentialsForTarget(target),
-          recorded.stackArn,
+          stackReference,
         )
       : undefined;
 

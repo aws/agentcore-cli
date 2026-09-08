@@ -39,6 +39,10 @@ const CredentialStateSchema = z
 const ResourceStateSchema = z
   .object({
     credentials: z.record(z.string(), CredentialStateSchema).optional(),
+    // The lwgact deployer recorded the CloudFormation stack name
+    // here. New deploys record the stack ARN instead. Keep this
+    // field so projects can be correctly inspected after upgrading.
+    stackName: z.string().optional(),
   })
   .passthrough();
 

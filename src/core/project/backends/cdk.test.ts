@@ -872,7 +872,43 @@ describe("CdkBackend.resolveDeployedResources", () => {
     expect(subject.stackReads).toHaveLength(1);
   });
 
-  test("fails without reading AWS when the target has no deployed stack ARN", async () => {
+  test("resolves resources from a legacy stack name when the target has no stack ARN", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      ...input.spec,
+      harnesses: [{ name: "support", path: "app/support" }],
+    });
+    await updateTargetState(json, input.rootPath, TARGET.name, {
+      resources: { stackName: "AgentCore-example-default" },
+    });
+    const subject = harness({
+      describedStack: {
+        StackName: "AgentCore-example-default",
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          {
+            ExportName: "AgentCore-example-default-Harness-support-Id",
+            OutputValue: "support-AbCdEf1234",
+          },
+        ],
+      },
+    });
+
+    await expect(
+      subject.backend.resolveDeployedResources(input, { target: TARGET }),
+    ).resolves.toEqual([
+      {
+        resourceType: "harness",
+        name: "support",
+        id: "support-AbCdEf1234",
+        target: TARGET,
+      },
+    ]);
+    expect(subject.stackReads[0]?.stackName).toBe("AgentCore-example-default");
+  });
+
+  test("fails without reading AWS when the target has no recorded stack", async () => {
     const input = await project();
     const subject = harness({ describedStack: null });
 
@@ -1040,6 +1076,37 @@ describe("CdkBackend.resolveProjectResources", () => {
       },
       { resourceType: "memory", name: "longTerm", deploymentState: "local-only" },
     ]);
+  });
+
+  test("reports legacy deployed harnesses using resources.stackName", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      harnesses: [{ name: "chat" }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, {
+      resources: { stackName: S },
+    });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [out(`${S}-Harness-chat-Arn`, "arn:harness/chat-1")],
+      },
+    });
+
+    await expect(
+      subject.backend.resolveProjectResources(input, { target: TARGET }),
+    ).resolves.toEqual([
+      {
+        resourceType: "harness",
+        name: "chat",
+        deploymentState: "deployed",
+        id: "arn:harness/chat-1",
+      },
+    ]);
+    expect(subject.stackReads[0]?.stackName).toBe(S);
   });
 
   test("reports local-only without reading AWS when the target has no recorded stack", async () => {
