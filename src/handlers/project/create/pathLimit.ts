@@ -1,14 +1,22 @@
 import { join } from "node:path";
 import { InputValidationError } from "../../../errors";
 
-const MAX_WINDOWS_PROJECT_PATH = 150;
+/**
+ Deepest file a fresh `npm install` under agentcore/cdk writes, measured from the project root:
+ `agentcore/cdk/node_modules/aws-cdk-lib/product-stack-snapshots/nested/<...>.v1.product.template.json`
+ is 155 characters (aws-cdk-lib ~2.266 with @aws/agentcore-cdk 0.1.0-alpha.53). The depth comes
+ from aws-cdk-lib's own shipped fixtures, so it does not move when the vended app changes.
+**/
+const DEEPEST_INSTALLED_PATH = 155;
 
 /**
- Windows caps paths at 260 characters unless long paths are enabled, and npm
- install under the CDK app needs about 100 of them, so a deep project root
- fails half way through scaffolding. Refusing up front leaves nothing behind.
- `alternative` names a way out the caller offers besides a shorter directory.
+ Windows caps paths at 260 characters unless long paths are enabled, so a project root longer
+ than 260 - 1 (separator) - DEEPEST_INSTALLED_PATH fails half way through scaffolding. Refusing
+ up front leaves nothing behind. `alternative` names a way out the caller offers besides a
+ shorter directory.
 **/
+const MAX_WINDOWS_PROJECT_PATH = 260 - 1 - DEEPEST_INSTALLED_PATH;
+
 export function assertProjectPathFits(
   name: string,
   platform: NodeJS.Platform,
