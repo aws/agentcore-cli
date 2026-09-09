@@ -11,6 +11,9 @@ on:
       CODECOV_TOKEN:
         required: false
 
+env:
+  AGENTCORE_TELEMETRY_DISABLED: "1"
+
 jobs:
   verify:
     name: ${{ matrix.name }}
