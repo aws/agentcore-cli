@@ -35,24 +35,29 @@ export async function initProject(options: InitProjectOptions = {}): Promise<Ini
     ...config
   } = options;
   const { path, cleanup } = await inTempDirectory(prefix);
-  const root = createRootHandler(core, {
-    io: testIO().io,
-    globalConfigAccessor: new TestGlobalConfigAccessor(),
-    logger: createSilentLogger(),
-    ...config,
-  });
-  await root.route([
-    "node",
-    "agentcore",
-    "project",
-    "create",
-    "--name",
-    name,
-    ...flags,
-    "--skip-install",
-    "--skip-git",
-  ]);
-  const projectRoot = join(path, name);
-  process.chdir(projectRoot);
-  return { projectName: name, projectRoot, cleanup };
+  try {
+    const root = createRootHandler(core, {
+      io: testIO().io,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      logger: createSilentLogger(),
+      ...config,
+    });
+    await root.route([
+      "node",
+      "agentcore",
+      "project",
+      "create",
+      "--name",
+      name,
+      ...flags,
+      "--skip-install",
+      "--skip-git",
+    ]);
+    const projectRoot = join(path, name);
+    process.chdir(projectRoot);
+    return { projectName: name, projectRoot, cleanup };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }
