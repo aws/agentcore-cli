@@ -3,41 +3,50 @@ import z from "zod";
 import { InputValidationError } from "../../errors";
 import { SourceResolver, type AppIO } from "../../io";
 import { flag, type Flag } from "../../router";
+import { HELP_GROUP } from "./helpGroups";
 import { assertMutuallyExclusiveFlags, parseJsonFlag } from "../utils";
 import type { SessionSourceValue, SessionWindow } from "./types";
 
 export class SessionSource {
+  // Declared source-arms first so `--help` lists the source heading above the
+  // filter heading: Commander orders headings by the first flag declared in each.
+  // The group names carry what the descriptions used to have to say ("source:",
+  // "filter:"), so those prefixes are gone.
   static readonly flags = [
-    flag("agent", "source: harness ID or Runtime ID whose sessions to use", z.string().optional()),
+    flag("agent", "harness ID or Runtime ID whose sessions to use", z.string().optional(), {
+      group: HELP_GROUP.sessionSourceExclusive,
+    }),
+    flag(
+      "online-eval",
+      "use sessions an online-eval config already sampled",
+      z.string().optional(),
+      { group: HELP_GROUP.sessionSourceExclusive },
+    ),
+    flag(
+      "data-source-config",
+      "raw DataSourceConfig JSON (inline, file://<path>, or -); escape hatch",
+      z.string().optional(),
+      { group: HELP_GROUP.sessionSourceExclusive },
+    ),
     flag(
       "endpoint",
       "Runtime endpoint qualifier (default DEFAULT; only with --agent)",
       z.string().optional(),
+      { group: HELP_GROUP.sourceFilters },
     ),
-    flag(
-      "online-eval",
-      "source: use sessions an online-eval config already sampled",
-      z.string().optional(),
-    ),
-    flag(
-      "data-source-config",
-      "source: raw DataSourceConfig JSON (inline, file://<path>, or -); escape hatch",
-      z.string().optional(),
-    ),
-    flag(
-      "start-time",
-      "time filter: window start (ISO-8601, with --end-time)",
-      z.string().optional(),
-    ),
-    flag(
-      "end-time",
-      "time filter: window end (ISO-8601, with --start-time)",
-      z.string().optional(),
-    ),
+    flag("start-time", "window start (ISO-8601, with --end-time)", z.string().optional(), {
+      group: HELP_GROUP.sourceFilters,
+    }),
+    flag("end-time", "window end (ISO-8601, with --start-time)", z.string().optional(), {
+      group: HELP_GROUP.sourceFilters,
+    }),
     flag(
       "session-ids",
-      "filter: specific session IDs (only with --agent)",
+      "specific session IDs (only with --agent)",
       z.array(z.string()).optional(),
+      {
+        group: HELP_GROUP.sourceFilters,
+      },
     ),
   ] as const;
 

@@ -6,55 +6,106 @@ import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { HELP_GROUP } from "../../helpGroups";
 
 export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
     description: "create an online evaluation config",
     flags: [
-      flag("name", "the name of the online evaluation config", z.string().optional()),
-      flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional()),
+      flag("name", "the name of the online evaluation config", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
       flag(
-        "endpoint",
-        "the agent endpoint qualifier to scope monitoring to (default DEFAULT)",
+        "description",
+        "a description of the config's monitoring purpose",
         z.string().optional(),
-      ),
-      flag(
-        "data-source-config",
-        "the traces to evaluate (JSON DataSourceConfig; inline, file://<path>, or - for stdin), as an alternative to --agent",
-        z.string().optional(),
-      ),
-      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).optional()),
-      flag(
-        "sampling-rate",
-        "percentage of sessions to sample (0.01-100)",
-        z.number().min(0.01).max(100).optional(),
-      ),
-      flag(
-        "session-timeout-minutes",
-        "minutes of inactivity before a session is considered complete (1-1440, default 15)",
-        z.number().int().min(1).max(1440).optional(),
-      ),
-      flag(
-        "filters",
-        "trace filters (JSON Filter[]; inline, file://<path>, or - for stdin)",
-        z.string().optional(),
-      ),
-      flag(
-        "role-arn",
-        "IAM role the online evaluation assumes (default auto-provisioned)",
-        z.string().optional(),
+        {
+          group: HELP_GROUP.configuration,
+        },
       ),
       flag(
         "enable-on-create",
         "whether to enable evaluation immediately (default true; pass false to create it paused)",
         z.enum(["true", "false"]).optional(),
+        { group: HELP_GROUP.configuration },
+      ),
+      flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional(), {
+        group: HELP_GROUP.sessionSourceExclusive,
+      }),
+      flag(
+        "data-source-config",
+        "the traces to evaluate (JSON DataSourceConfig; inline, file://<path>, or - for stdin), as an alternative to --agent",
+        z.string().optional(),
+        { group: HELP_GROUP.sessionSourceExclusive },
       ),
       flag(
-        "description",
-        "a description of the config's monitoring purpose",
+        "endpoint",
+        "the agent endpoint qualifier to scope monitoring to (default DEFAULT)",
         z.string().optional(),
+        { group: HELP_GROUP.sessionSourceExclusive },
       ),
+      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).optional(), {
+        group: HELP_GROUP.evaluation,
+      }),
+      flag(
+        "sampling-rate",
+        "percentage of sessions to sample (0.01-100)",
+        z.number().min(0.01).max(100).optional(),
+        { group: HELP_GROUP.evaluation },
+      ),
+      flag(
+        "session-timeout-minutes",
+        "minutes of inactivity before a session is considered complete (1-1440, default 15)",
+        z.number().int().min(1).max(1440).optional(),
+        { group: HELP_GROUP.evaluation },
+      ),
+      flag(
+        "filters",
+        "trace filters (JSON Filter[]; inline, file://<path>, or - for stdin)",
+        z.string().optional(),
+        { group: HELP_GROUP.evaluation },
+      ),
+      flag(
+        "role-arn",
+        "IAM role the online evaluation assumes (default auto-provisioned)",
+        z.string().optional(),
+        { group: HELP_GROUP.execution },
+      ),
+    ],
+    examples: [
+      {
+        description: "Sample 10% of a Runtime's traffic with two evaluators",
+        command: [
+          "agentcore eval online-eval create",
+          "--name production-quality",
+          "--agent my-runtime",
+          "--sampling-rate 10",
+          "--evaluators Builtin.Helpfulness Builtin.Correctness",
+        ],
+      },
+      {
+        description: "Sample traces from a raw DataSourceConfig held in a file",
+        command: [
+          "agentcore eval online-eval create",
+          "--name source-results",
+          "--data-source-config file://data-source-config.json",
+          "--sampling-rate 25",
+          "--evaluators Builtin.Helpfulness",
+        ],
+      },
+      {
+        description: "Create the config paused, to enable later with `resume`",
+        command: [
+          "agentcore eval online-eval create",
+          "--name staged-quality",
+          "--agent my-runtime",
+          "--endpoint BETA",
+          "--sampling-rate 5",
+          "--evaluators Builtin.Correctness",
+          "--enable-on-create false",
+        ],
+      },
     ],
     handle: async (ctx, flags) => {
       if (!flags["name"])

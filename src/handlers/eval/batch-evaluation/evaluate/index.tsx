@@ -7,22 +7,74 @@ import type { Core } from "../../../types";
 import type { SessionMetadataShape } from "@aws-sdk/client-bedrock-agentcore";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { SessionSource } from "../../sessionSource";
+import { HELP_GROUP } from "../../helpGroups";
 
 export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "evaluate",
     description: "evaluate existing sessions service-side (async; returns a job ID)",
     flags: [
+      flag("name", "batch evaluation name (must be unique in the account)", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
+      flag("description", "optional description", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
+      flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
       ...SessionSource.flags,
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+        group: HELP_GROUP.evaluation,
+      }),
       flag(
         "ground-truth",
         "session ground truth (JSON SessionMetadataShape[]; inline, file://<path>, or -)",
         z.string().optional(),
+        { group: HELP_GROUP.evaluation },
       ),
-      flag("name", "batch evaluation name (must be unique in the account)", z.string().optional()),
-      flag("description", "optional description", z.string().optional()),
-      flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional()),
+    ],
+    examples: [
+      {
+        description: "Evaluate a Runtime with multiple evaluators",
+        command: [
+          "agentcore eval batch-evaluation evaluate",
+          "--agent my-runtime",
+          "--evaluators Builtin.Helpfulness Builtin.Correctness",
+          "--name weekly-quality",
+        ],
+      },
+      {
+        description: "Evaluate sessions within a UTC time window",
+        command: [
+          "agentcore eval batch-evaluation evaluate",
+          "--agent my-runtime",
+          "--start-time 2026-09-01T00:00:00Z",
+          "--end-time 2026-09-08T00:00:00Z",
+          "--evaluators Builtin.Helpfulness",
+          "--name weekly-helpfulness",
+        ],
+      },
+      {
+        description: "Evaluate specific sessions from a named Runtime endpoint",
+        command: [
+          "agentcore eval batch-evaluation evaluate",
+          "--agent my-runtime",
+          "--endpoint BETA",
+          "--session-ids session-123 session-456",
+          "--evaluators Builtin.Correctness",
+          "--name selected-sessions",
+        ],
+      },
+      {
+        description: "Evaluate sessions an online evaluation already sampled",
+        command: [
+          "agentcore eval batch-evaluation evaluate",
+          "--online-eval online-eval-id",
+          "--evaluators Builtin.Helpfulness",
+          "--name sampled-sessions",
+        ],
+      },
     ],
     handle: async (ctx, flags) => {
       if (!flags["name"]) {

@@ -6,6 +6,7 @@ import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { SessionSource } from "../../sessionSource";
+import { HELP_GROUP } from "../../helpGroups";
 
 const DEFAULT_INSIGHT = "Builtin.Insight.FailureAnalysis";
 
@@ -14,16 +15,25 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
     name: "run",
     description: "start an asynchronous batch insights run over existing sessions",
     flags: [
+      flag("name", "batch insights name (must be unique in the account)", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
+      flag("description", "optional description", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
+      flag("kms-key-arn", "KMS key to encrypt insights data at rest", z.string().optional(), {
+        group: HELP_GROUP.configuration,
+      }),
       ...SessionSource.flags,
-      flag("insight", "insight ID(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT])),
+      flag("insight", "insight ID(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT]), {
+        group: HELP_GROUP.analysis,
+      }),
       flag(
         "evaluators",
         "optional evaluator ID(s) to run alongside the insights",
         z.array(z.string()).optional(),
+        { group: HELP_GROUP.analysis },
       ),
-      flag("name", "batch insights name (must be unique in the account)", z.string().optional()),
-      flag("description", "optional description", z.string().optional()),
-      flag("kms-key-arn", "KMS key to encrypt insights data at rest", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["name"]) {
