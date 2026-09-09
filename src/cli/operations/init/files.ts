@@ -43,8 +43,7 @@ export interface InitGitRepoResult {
  * Skips if already in a git repo or if git is not available.
  */
 export async function initGitRepo(projectRoot: string): Promise<InitGitRepoResult> {
-  // All git commands use shell: false to avoid Windows cmd argument parsing issues
-  const gitOptions = { cwd: projectRoot, stdio: 'pipe' as const, shell: false };
+  const gitOptions = { cwd: projectRoot, stdio: 'pipe' as const };
 
   // Check if git is available
   const gitCheck = await runSubprocessCapture('git', ['--version'], gitOptions);

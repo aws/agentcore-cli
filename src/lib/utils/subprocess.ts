@@ -1,6 +1,5 @@
-import { isWindows } from './platform';
-import { spawn, spawnSync } from 'child_process';
 import type { StdioOptions } from 'child_process';
+import crossSpawn from 'cross-spawn';
 
 /**
  * Subprocess utilities for AgentCore.
@@ -11,38 +10,21 @@ import type { StdioOptions } from 'child_process';
  * Sync functions (runSubprocessCaptureSync, checkSubprocessSync) block the event loop
  * and are ONLY safe in CDK bundling contexts (which run in a subprocess). They are
  * intentionally NOT exported from the public API to prevent accidental UI freezes.
+ *
+ * Nothing spawns through a shell. cross-spawn resolves Windows .cmd/.bat wrappers and
+ * escapes arguments so a metacharacter in an argument (an `&` in a path, say) reaches
+ * the child intact instead of being interpreted by cmd.exe.
  */
 
 export interface SubprocessOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   stdio?: StdioOptions;
-  shell?: boolean;
-}
-
-/**
- * When shell mode is enabled, merge args into the command string so that
- * Node.js does not receive both a non-empty args array and `shell: true`.
- * Passing both triggers DEP0190 on Node ≥ 22 (and a warning on earlier
- * versions) because the arguments are concatenated without escaping.
- */
-function resolveCommand(command: string, args: string[], useShell: boolean): { cmd: string; cmdArgs: string[] } {
-  if (useShell) {
-    return { cmd: [command, ...args].join(' '), cmdArgs: [] };
-  }
-  return { cmd: command, cmdArgs: args };
 }
 
 export async function runSubprocess(command: string, args: string[], options: SubprocessOptions = {}): Promise<void> {
-  const shell = options.shell ?? isWindows;
-  const { cmd, cmdArgs } = resolveCommand(command, args, shell);
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, cmdArgs, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: options.stdio ?? 'inherit',
-      shell,
-    });
+    const child = crossSpawn(command, args, { ...options, stdio: options.stdio ?? 'inherit' });
 
     child.on('error', reject);
     child.on('close', (code, signal) => {
@@ -61,15 +43,8 @@ export async function checkSubprocess(
   args: string[],
   options: SubprocessOptions = {}
 ): Promise<boolean> {
-  const shell = options.shell ?? isWindows;
-  const { cmd, cmdArgs } = resolveCommand(command, args, shell);
   return new Promise(resolve => {
-    const child = spawn(cmd, cmdArgs, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: options.stdio ?? 'ignore',
-      shell,
-    });
+    const child = crossSpawn(command, args, { ...options, stdio: options.stdio ?? 'ignore' });
 
     child.on('error', () => resolve(false));
     child.on('close', code => resolve(code === 0));
@@ -88,15 +63,8 @@ export async function runSubprocessCapture(
   args: string[],
   options: SubprocessOptions = {}
 ): Promise<SubprocessResult> {
-  const shell = options.shell ?? isWindows;
-  const { cmd, cmdArgs } = resolveCommand(command, args, shell);
   return new Promise(resolve => {
-    const child = spawn(cmd, cmdArgs, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: 'pipe',
-      shell,
-    });
+    const child = crossSpawn(command, args, { ...options, stdio: 'pipe' });
 
     let stdout = '';
     let stderr = '';
@@ -124,15 +92,7 @@ export function runSubprocessCaptureSync(
   args: string[],
   options: SubprocessOptions = {}
 ): SubprocessResult {
-  const shell = options.shell ?? isWindows;
-  const { cmd, cmdArgs } = resolveCommand(command, args, shell);
-  const result = spawnSync(cmd, cmdArgs, {
-    cwd: options.cwd,
-    env: options.env,
-    stdio: 'pipe',
-    shell,
-    encoding: 'utf-8',
-  });
+  const result = crossSpawn.sync(command, args, { ...options, stdio: 'pipe', encoding: 'utf-8' });
 
   return {
     stdout: result.stdout ?? '',
@@ -143,15 +103,8 @@ export function runSubprocessCaptureSync(
 }
 
 export function checkSubprocessSync(command: string, args: string[], options: SubprocessOptions = {}): boolean {
-  const shell = options.shell ?? isWindows;
-  const { cmd, cmdArgs } = resolveCommand(command, args, shell);
   try {
-    const result = spawnSync(cmd, cmdArgs, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: options.stdio ?? 'ignore',
-      shell,
-    });
+    const result = crossSpawn.sync(command, args, { ...options, stdio: options.stdio ?? 'ignore' });
     return result.status === 0;
   } catch {
     return false;
