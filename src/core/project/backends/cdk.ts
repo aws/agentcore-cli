@@ -76,7 +76,7 @@ type StackDescriber = typeof describeStack;
  */
 const MAX_ERROR_OUTPUT_LINES = 20;
 
-// Payment logical ids drop underscores the same way the template's toCdkId does.
+// Payment output keys drop underscores the same way AgentCorePayments' toCdkId does.
 function cdkId(name: string): string {
   return name.replace(/_/g, "");
 }
@@ -492,14 +492,14 @@ export class CdkBackend implements ProjectBackend {
         case "config-bundle":
           return byExportName("ConfigBundle", name, "Arn");
         case "payment-manager":
-          // The CLI template writes the payment outputs. It does not set an
-          // exportName on them. Therefore match on the OutputKey. The template
-          // makes that key from the manager name.
-          // See src/assets/cdk/lib/cdk-stack.ts
+          // @aws/agentcore-cdk's AgentCorePayments construct writes the payment
+          // outputs at stack scope without an exportName, under keys built from
+          // the manager name with underscores removed (its toCdkId). Therefore
+          // match on the OutputKey.
           return byOutputKey(`Payment${cdkId(name)}ManagerArn`);
         case "payment-connector":
-          // The same template does not set an exportName. Therefore match on the
-          // OutputKey. The template writes only a connector id, and never an ARN.
+          // The same construct writes only a connector id, never an ARN, again
+          // without an exportName. Therefore match on the OutputKey.
           return byOutputKey(`Payment${cdkId(owner ?? "")}${cdkId(name)}ConnectorId`);
         case "credential":
           // The CLI creates credential providers imperatively. The stack does not
