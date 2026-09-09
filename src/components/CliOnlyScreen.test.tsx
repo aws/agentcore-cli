@@ -61,10 +61,31 @@ describe("menus list command-line-only subcommands below a divider", () => {
     r.unmount();
   });
 
-  test("the divider is omitted when nothing is command line only", async () => {
+  test("the harness menu", async () => {
     const r = renderScreen("/agentcore/harness");
 
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "command line only");
+    expect(menuEntries(r.lastFrame()!)).toEqual({
+      screens: [
+        "create",
+        "get",
+        "list",
+        "update",
+        "delete",
+        "invoke",
+        "exec",
+        "endpoint",
+        "version",
+      ],
+      cliOnly: ["logs", "traces"],
+    });
+    r.unmount();
+  });
+
+  test("the divider is omitted when nothing is command line only", async () => {
+    const r = renderScreen("/agentcore/harness/endpoint");
+
+    await waitForText(r.lastFrame, "manage harness endpoints");
     expect(r.lastFrame()).not.toContain("command line only");
     r.unmount();
   });
