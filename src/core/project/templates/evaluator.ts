@@ -28,10 +28,6 @@ function buildManagedEvaluatorSpec(input: ManagedEvaluatorScaffoldInput): Evalua
   };
 }
 
-function buildRenderContext(input: ManagedEvaluatorScaffoldInput): Record<string, unknown> {
-  return { Name: toPythonPackageName(input.name) };
-}
-
 type GetEvaluatorTemplateResolverConfig = {
   assetSource: AssetSource;
   templateRenderer: TemplateRenderer;
@@ -47,7 +43,8 @@ export function getEvaluatorTemplateResolver(
         { assetDir: ASSET_DIR },
         {
           rootDirName: input.name,
-          transformContent: (raw) => config.templateRenderer.render(raw, buildRenderContext(input)),
+          transformContent: (raw) =>
+            config.templateRenderer.render(raw, { Name: toPythonPackageName(input.name) }),
         },
       );
       return { tree, spec: { evaluators: [buildManagedEvaluatorSpec(input)] } };
