@@ -42,7 +42,7 @@ jobs:
       pull-requests: write
       issues: write
       contents: read
-    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@51d084b0bf4585725bf370f31cd1e30c4dddfd93
     with:
       runner: codebuild
       pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
