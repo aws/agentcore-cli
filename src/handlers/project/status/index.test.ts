@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
@@ -7,11 +7,12 @@ import {
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
+  TestIdentityClient,
   testIO,
   ttyTestIO,
   waitFor,
 } from "../../../testing";
-import type { ProjectBackend } from "../../../core/project";
+import { CdkBackend, type ProjectBackend } from "../../../core/project";
 import { ProjectStateError } from "../../../errors";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { ResolvedProjectResource } from "../types";
@@ -48,21 +49,24 @@ function fakeBackend(deployed: ResolvedProjectResource[]) {
   return { targets, backend };
 }
 
-function testStatusCommand(deployed: ResolvedProjectResource[] = [], io = testIO()) {
-  const fake = fakeBackend(deployed);
-  const root = createRootHandler(new TestCoreClient({ backends: { CDK: fake.backend } }), {
+function statusCommand(backend: ProjectBackend, io = testIO()) {
+  const root = createRootHandler(new TestCoreClient({ backends: { CDK: backend } }), {
     io: io.io,
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
   });
 
   return {
-    ...fake,
     io,
     json: () => JSON.parse(io.stdout()),
     run: (args: string[] = []) => root.route(["node", "agentcore", "project", "status", ...args]),
     create: (args: string[]) => root.route(["node", "agentcore", "project", ...args]),
   };
+}
+
+function testStatusCommand(deployed: ResolvedProjectResource[] = [], io = testIO()) {
+  const fake = fakeBackend(deployed);
+  return { ...fake, ...statusCommand(fake.backend, io) };
 }
 
 const originalCwd = process.cwd();
@@ -88,10 +92,10 @@ afterEach(() => {
 });
 
 async function inProject(
-  subject: ReturnType<typeof testStatusCommand>,
+  subject: ReturnType<typeof statusCommand>,
   spec: Record<string, unknown> = {},
   targets: AwsDeploymentTarget[] = TARGETS,
-): Promise<void> {
+): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-status-"));
   tempDirectories.push(directory);
   process.chdir(directory);
@@ -102,6 +106,7 @@ async function inProject(
   const current = JSON.parse(await Bun.file(specPath).text());
   await writeFile(specPath, JSON.stringify({ ...current, ...spec }));
   process.chdir(projectRoot);
+  return projectRoot;
 }
 
 const deployed = (
@@ -133,6 +138,63 @@ const HARNESS_ROW = localOnly("harness", "orders");
 const memory = (name: string) => ({ name, eventExpiryDuration: 30 });
 const policy = (name: string) => ({ name, statement: "permit(principal, action, resource);" });
 describe("project status handler", () => {
+  test("reports resources deployed by a legacy CLI using resources.stackName", async () => {
+    const stackName = "AgentCore-orders-default";
+    const backend = new CdkBackend({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      resolveCredentials: async () => async () => ({
+        accessKeyId: "access-key",
+        secretAccessKey: "secret-key",
+      }),
+      resolveAccount: async () => DEFAULT_TARGET.account,
+      describeStack: async (_region, _credentials, reference) =>
+        reference === stackName
+          ? {
+              StackName: stackName,
+              CreationTime: new Date(0),
+              StackStatus: "CREATE_COMPLETE",
+              Outputs: [
+                {
+                  ExportName: `${stackName}-Harness-orders-Arn`,
+                  OutputValue: `${ARN}:harness/orders-1`,
+                },
+              ],
+            }
+          : undefined,
+    });
+    const subject = statusCommand(backend);
+    const projectRoot = await inProject(subject);
+    const stateDirectory = join(projectRoot, "agentcore", ".cli");
+    await mkdir(stateDirectory, { recursive: true });
+    await Bun.write(
+      join(stateDirectory, "deployed-state.json"),
+      JSON.stringify({
+        targets: {
+          default: {
+            resources: { stackName },
+          },
+        },
+      }),
+    );
+
+    await subject.run(["--json"]);
+
+    expect(subject.json()).toEqual({
+      projectName: "orders",
+      target: "default",
+      region: DEFAULT_TARGET.region,
+      resources: [
+        {
+          resourceType: "harness",
+          name: "orders",
+          deploymentState: "deployed",
+          id: `${ARN}:harness/orders-1`,
+        },
+      ],
+    });
+  });
+
   test("reports deployed resources by ARN, nesting children under their owner", async () => {
     const subject = testStatusCommand([
       HARNESS_ROW,
