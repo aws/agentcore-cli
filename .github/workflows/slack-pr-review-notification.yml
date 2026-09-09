@@ -17,5 +17,5 @@ permissions:
 
 jobs:
   call:
-    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-slack-pr-review-notification.yml@9e85985f68e365774c93ffe0f2d8e992b2a4578f
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-slack-pr-review-notification.yml@70f0e5036c431872a63c252e443242c267490dc4
     secrets: inherit
