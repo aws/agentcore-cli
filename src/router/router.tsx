@@ -1,10 +1,16 @@
 import type { Argument, Flag, GlobalFlag, Handler } from "./handler";
 import { type Middleware, type MiddlewareProvider, isMiddlewareProvider } from "./middleware";
 import { type Context, type ContextKey, ValueContext, contextKey } from "./context";
-import { applyGlobalFlags, formatParameterDetails, parseFlags, toOption } from "./flags";
+import {
+  applyGlobalFlags,
+  formatExamples,
+  formatParameterDetails,
+  parseFlags,
+  toOption,
+} from "./flags";
 import { parseArguments, toCommanderArgument } from "./args";
 
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 import { InputValidationError } from "../errors";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
@@ -48,6 +54,16 @@ export function commandParameterDetails(command: Command): string | undefined {
     : undefined;
 }
 
+// commandExamples is the worked-invocation block `--help` appends after the
+// parameter details; undefined when the command authors none. Same reason as
+// commandParameterDetails for existing: added help text is absent from
+// helpInformation(), so a TUI rendering has to ask for it separately.
+export function commandExamples(command: Command): string | undefined {
+  if (!(command instanceof RoutedCommand)) return undefined;
+  const examples = command.handler.examples?.();
+  return examples ? formatExamples(examples) : undefined;
+}
+
 interface TuiChildSupportProvider {
   supportsTuiCommand(commandName: string): boolean;
 }
@@ -63,6 +79,7 @@ function withEffectiveTuiSupport(handler: Handler, supported: boolean): Handler 
     flags: () => handler.flags(),
     arguments: () => handler.arguments(),
     doesSupportTui: () => supported,
+    examples: () => handler.examples?.(),
     handle: (ctx, flags, args) => handler.handle(ctx, flags, args),
     children: () => handler.children(),
   };
@@ -187,11 +204,28 @@ export function compile(
   declareFlags(c, ownFlags);
   declareArguments(c, node.arguments());
 
+  // A command that groups its own flags would otherwise leave Commander's
+  // generated `-h, --help` alone in the default "Options:" heading, reading as
+  // if it were the command's only ungrouped option. Give it its own heading so
+  // every listed flag sits under a deliberate one.
+  if (ownFlags.some((f) => f.group)) {
+    c.addHelpOption(
+      new Option("-h, --help", "display help for command").helpGroup("Other options:"),
+    );
+  }
+
   // Flags with long-form documentation get a "Parameter details" section after
-  // the option list in `--help` output.
+  // the option list in `--help` output. Examples follow it: Commander emits
+  // added help text in registration order, and the worked invocations read as
+  // the closing section.
   const parameterDetails = formatParameterDetails(ownFlags);
   if (parameterDetails) {
     c.addHelpText("after", parameterDetails);
+  }
+  const examples = node.examples?.();
+  const renderedExamples = examples ? formatExamples(examples) : undefined;
+  if (renderedExamples) {
+    c.addHelpText("after", renderedExamples);
   }
 
   const own = isMiddlewareProvider(node) ? node.middlewares() : [];
