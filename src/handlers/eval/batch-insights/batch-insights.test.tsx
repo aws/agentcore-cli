@@ -137,7 +137,7 @@ describe("eval batch-insights run", () => {
       "--insight",
       "Builtin.Insight.UserIntent",
       "Builtin.Insight.ExecutionSummary",
-      "--evaluator",
+      "--evaluators",
       "Builtin.Helpfulness",
       "--json",
     ]);

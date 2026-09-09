@@ -61,7 +61,7 @@ describe("eval ondemand evaluate (fixture-backed)", () => {
       WINDOW_START,
       "--end-time",
       WINDOW_END,
-      "--evaluator",
+      "--evaluators",
       "Builtin.Helpfulness",
     ]);
 
@@ -113,7 +113,7 @@ describe("eval ondemand evaluate (fixture-backed)", () => {
       '{"prompt":"{input}"}',
       "--dataset",
       SIMULATE_DATASET,
-      "--evaluator",
+      "--evaluators",
       "Builtin.Correctness",
       "--ingestion-wait-ms",
       isRecording() ? "150000" : "0",

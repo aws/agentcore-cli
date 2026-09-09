@@ -172,7 +172,7 @@ describe("eval batch-evaluation simulate", () => {
     '{"prompt":"{input}"}',
     "--dataset",
     "/tmp/ds.jsonl",
-    "--evaluator",
+    "--evaluators",
     "Builtin.Helpfulness",
     "--name",
     "sim-1",
@@ -181,18 +181,27 @@ describe("eval batch-evaluation simulate", () => {
   test.each<[RegExp, string[]]>([
     [
       /--runtime-id/,
-      ["--payload-template", "{}", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E", "--name", "n"],
+      [
+        "--payload-template",
+        "{}",
+        "--dataset",
+        "/tmp/ds.jsonl",
+        "--evaluators",
+        "E",
+        "--name",
+        "n",
+      ],
     ],
     [
       /--payload-template/,
-      ["--runtime-id", "r-1", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E", "--name", "n"],
+      ["--runtime-id", "r-1", "--dataset", "/tmp/ds.jsonl", "--evaluators", "E", "--name", "n"],
     ],
     [
       /--dataset/,
-      ["--runtime-id", "r-1", "--payload-template", "{}", "--evaluator", "E", "--name", "n"],
+      ["--runtime-id", "r-1", "--payload-template", "{}", "--evaluators", "E", "--name", "n"],
     ],
     [
-      /--evaluator/,
+      /--evaluators/,
       [
         "--runtime-id",
         "r-1",
@@ -213,7 +222,7 @@ describe("eval batch-evaluation simulate", () => {
         "{}",
         "--dataset",
         "/tmp/ds.jsonl",
-        "--evaluator",
+        "--evaluators",
         "E",
       ],
     ],

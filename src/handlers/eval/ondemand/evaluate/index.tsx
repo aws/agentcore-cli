@@ -19,7 +19,7 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
       ),
       flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
-      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag(
         "lookback-days",
         "time filter: evaluate sessions from the last N days",
@@ -51,9 +51,9 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
       if (!flags["agent"]) {
         throw new InputValidationError("on-demand requires '--agent'");
       }
-      if (!flags["evaluator"] || flags["evaluator"].length === 0) {
+      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
         throw new InputValidationError(
-          "required option '--evaluator <evaluator...>' not specified",
+          "required option '--evaluators <evaluators...>' not specified",
         );
       }
 
@@ -84,7 +84,7 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
       );
 
       const result = await core.eval.evaluate(
-        { traces, evaluatorIds: flags["evaluator"], groundTruth },
+        { traces, evaluatorIds: flags["evaluators"], groundTruth },
         opts,
       );
       ctx.require(JsonRendererKey).renderJson(result);

@@ -33,7 +33,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       flag("user-id", "Runtime user ID", z.string().optional()),
       flag("dataset", "dataset source: local JSONL path or a dataset ID", z.string().optional()),
       flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional()),
-      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag("name", "batch evaluation name (unique in the account)", z.string().optional()),
       flag("description", "description for the batch evaluation", z.string().optional()),
       flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional()),
@@ -51,9 +51,9 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       }
       if (!flags["dataset"])
         throw new InputValidationError("required option '--dataset' not specified");
-      if (!flags["evaluator"]?.length) {
+      if (!flags["evaluators"]?.length) {
         throw new InputValidationError(
-          "required option '--evaluator <evaluator...>' not specified",
+          "required option '--evaluators <evaluators...>' not specified",
         );
       }
       if (!flags["name"])
@@ -95,7 +95,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
           {
             name: flags["name"],
             description: flags["description"],
-            evaluatorIds: flags["evaluator"],
+            evaluatorIds: flags["evaluators"],
             source: {
               origin: "agent",
               agent: flags["runtime-id"],

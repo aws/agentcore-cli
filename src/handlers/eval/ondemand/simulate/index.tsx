@@ -34,7 +34,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
       flag("user-id", "Runtime user ID", z.string().optional()),
       flag("dataset", "dataset source: local JSONL path or a dataset ID", z.string().optional()),
       flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional()),
-      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag(
         "ingestion-wait-ms",
         "ms to wait for span ingestion before grading (default 180000; 0 to skip)",
@@ -49,16 +49,16 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
       }
       if (!flags["dataset"])
         throw new InputValidationError("required option '--dataset' not specified");
-      if (!flags["evaluator"]?.length) {
+      if (!flags["evaluators"]?.length) {
         throw new InputValidationError(
-          "required option '--evaluator <evaluator...>' not specified",
+          "required option '--evaluators <evaluators...>' not specified",
         );
       }
 
       const runtimeId = flags["runtime-id"];
       const payloadTemplate = flags["payload-template"];
       const dataset = flags["dataset"];
-      const evaluatorIds = flags["evaluator"];
+      const evaluatorIds = flags["evaluators"];
 
       await withUserCancellation(async (signal) => {
         const opts = coreOptsFromCtx(ctx);

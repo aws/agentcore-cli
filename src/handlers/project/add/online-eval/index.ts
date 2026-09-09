@@ -33,7 +33,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
         z.array(z.string()).optional(),
       ),
       flag(
-        "evaluator",
+        "evaluators",
         "evaluator name(s), Builtin.* IDs, or ARNs to apply",
         z.array(z.string()).optional(),
       ),
@@ -68,7 +68,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
         endpoint: flags["endpoint"],
         logGroupNames: flags["log-group-name"],
         serviceNames: flags["service-name"],
-        evaluators: flags["evaluator"],
+        evaluators: flags["evaluators"],
         samplingRate: flags["sampling-rate"],
         description: flags["description"],
         enableOnCreate:

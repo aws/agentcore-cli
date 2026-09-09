@@ -14,7 +14,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
     description: "evaluate existing sessions service-side (async; returns a job ID)",
     flags: [
       ...SessionSource.flags,
-      flag("evaluator", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
       flag(
         "ground-truth",
         "session ground truth (JSON SessionMetadataShape[]; inline, file://<path>, or -)",
@@ -28,9 +28,9 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       if (!flags["name"]) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
-      if (!flags["evaluator"] || flags["evaluator"].length === 0) {
+      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
         throw new InputValidationError(
-          "required option '--evaluator <evaluator...>' not specified",
+          "required option '--evaluators <evaluators...>' not specified",
         );
       }
 
@@ -46,7 +46,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         {
           name: flags["name"],
           description: flags["description"],
-          evaluatorIds: flags["evaluator"],
+          evaluatorIds: flags["evaluators"],
           source,
           groundTruth,
           kmsKeyArn: flags["kms-key-arn"],

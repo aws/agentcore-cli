@@ -137,7 +137,7 @@ describe("project remove", () => {
           "quality",
           "--agent",
           "agent_python_minimal",
-          "--evaluator",
+          "--evaluators",
           "Builtin.Correctness",
           "--sampling-rate",
           "5",

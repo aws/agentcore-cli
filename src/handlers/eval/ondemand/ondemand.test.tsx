@@ -141,7 +141,7 @@ async function runWithRealCore(options: LogsOptions, logger = createSilentLogger
     "evaluate",
     "--agent",
     RUNTIME_ID,
-    "--evaluator",
+    "--evaluators",
     "Builtin.Helpfulness",
     "--session-ids",
     "session-1",
@@ -163,7 +163,7 @@ const BASE = [
   "evaluate",
   "--agent",
   "a-1",
-  "--evaluator",
+  "--evaluators",
   "Builtin.Helpfulness",
 ];
 
@@ -195,22 +195,22 @@ describe("eval ondemand simulate", () => {
     '{"prompt":"{input}"}',
     "--dataset",
     "/tmp/ds.jsonl",
-    "--evaluator",
+    "--evaluators",
     "Builtin.Helpfulness",
   ];
 
   test.each<[RegExp, string[]]>([
     [
       /--runtime-id/,
-      ["--payload-template", "{}", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E"],
+      ["--payload-template", "{}", "--dataset", "/tmp/ds.jsonl", "--evaluators", "E"],
     ],
     [
       /--payload-template/,
-      ["--runtime-id", "r-1", "--dataset", "/tmp/ds.jsonl", "--evaluator", "E"],
+      ["--runtime-id", "r-1", "--dataset", "/tmp/ds.jsonl", "--evaluators", "E"],
     ],
-    [/--dataset/, ["--runtime-id", "r-1", "--payload-template", "{}", "--evaluator", "E"]],
+    [/--dataset/, ["--runtime-id", "r-1", "--payload-template", "{}", "--evaluators", "E"]],
     [
-      /--evaluator/,
+      /--evaluators/,
       ["--runtime-id", "r-1", "--payload-template", "{}", "--dataset", "/tmp/ds.jsonl"],
     ],
   ])("rejects when a required flag is missing (%s)", async (expected, args) => {
@@ -280,13 +280,21 @@ describe("eval ondemand evaluate validation", () => {
   test.each<[string, string[], RegExp]>([
     [
       "requires --agent",
-      ["eval", "ondemand", "evaluate", "--evaluator", "Builtin.Helpfulness", "--session-ids", "s1"],
+      [
+        "eval",
+        "ondemand",
+        "evaluate",
+        "--evaluators",
+        "Builtin.Helpfulness",
+        "--session-ids",
+        "s1",
+      ],
       /--agent/,
     ],
     [
-      "requires --evaluator",
+      "requires --evaluators",
       ["eval", "ondemand", "evaluate", "--agent", "a-1", "--session-ids", "s1"],
-      /--evaluator/,
+      /--evaluators/,
     ],
     ["rejects an empty session source", BASE, /session source/],
     [

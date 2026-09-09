@@ -30,7 +30,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
       ),
       flag(
-        "evaluator",
+        "evaluators",
         "the ID(s) of the evaluators to apply (replaces the existing list)",
         z.array(z.string()).optional(),
       ),
@@ -88,7 +88,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
             "filters",
             await source.resolveText("filters", flags["filters"]),
           ),
-          evaluatorIds: flags["evaluator"],
+          evaluatorIds: flags["evaluators"],
           agent: flags["agent"],
           endpoint: flags["endpoint"],
           clearEndpoint: flags["clear-endpoint"] === "true",

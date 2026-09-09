@@ -17,7 +17,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
       ...SessionSource.flags,
       flag("insight", "insight ID(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT])),
       flag(
-        "evaluator",
+        "evaluators",
         "optional evaluator ID(s) to run alongside the insights",
         z.array(z.string()).optional(),
       ),
@@ -36,7 +36,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
           name: flags["name"],
           description: flags["description"],
           insightIds: flags["insight"],
-          evaluatorIds: flags["evaluator"],
+          evaluatorIds: flags["evaluators"],
           source,
           kmsKeyArn: flags["kms-key-arn"],
         },

@@ -24,7 +24,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         "the traces to evaluate (JSON DataSourceConfig; inline, file://<path>, or - for stdin), as an alternative to --agent",
         z.string().optional(),
       ),
-      flag("evaluator", "the ID(s) of the evaluators to apply", z.array(z.string()).optional()),
+      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).optional()),
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
@@ -64,9 +64,9 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
           "required option '--sampling-rate <sampling-rate>' not specified",
         );
       }
-      if (!flags["evaluator"] || flags["evaluator"].length === 0) {
+      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
         throw new InputValidationError(
-          "required option '--evaluator <evaluator...>' not specified",
+          "required option '--evaluators <evaluators...>' not specified",
         );
       }
 
@@ -91,7 +91,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
           "filters",
           await source.resolveText("filters", flags["filters"]),
         ),
-        evaluatorIds: flags["evaluator"],
+        evaluatorIds: flags["evaluators"],
         evaluationExecutionRoleArn: flags["role-arn"],
         enableOnCreate:
           flags["enable-on-create"] === undefined
