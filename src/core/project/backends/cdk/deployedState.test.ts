@@ -9,6 +9,7 @@ import {
   DEPLOYED_STATE_RELATIVE_PATH,
   readDeployedState,
   removeTargetState,
+  stackReferenceOf,
   updateTargetState,
 } from "./deployedState";
 
@@ -55,6 +56,30 @@ describe("readDeployedState", () => {
 
   test("resolves the file under agentcore/.cli/", () => {
     expect(DEPLOYED_STATE_RELATIVE_PATH).toBe(join("agentcore", ".cli", "deployed-state.json"));
+  });
+});
+
+describe("stackReferenceOf", () => {
+  test("prefers the exact stack ARN over the legacy stack name", () => {
+    expect(
+      stackReferenceOf({
+        stackArn: "arn:stack:default",
+        resources: { stackName: "AgentCore-example-default" },
+      }),
+    ).toBe("arn:stack:default");
+  });
+
+  test("falls back to the legacy stack name", () => {
+    expect(
+      stackReferenceOf({
+        resources: { stackName: "AgentCore-example-default" },
+      }),
+    ).toBe("AgentCore-example-default");
+  });
+
+  test("returns undefined when no stack was recorded", () => {
+    expect(stackReferenceOf(undefined)).toBeUndefined();
+    expect(stackReferenceOf({})).toBeUndefined();
   });
 });
 

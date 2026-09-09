@@ -42,7 +42,12 @@ import {
   stackArtifactForTarget,
   type StackArtifact,
 } from "./cdk/assembly";
-import { readDeployedState, removeTargetState, updateTargetState } from "./cdk/deployedState";
+import {
+  readDeployedState,
+  removeTargetState,
+  stackReferenceOf,
+  updateTargetState,
+} from "./cdk/deployedState";
 import {
   bootstrapStackReader,
   createCloudFormationStackReader,
@@ -403,7 +408,7 @@ export class CdkBackend implements ProjectBackend {
     const { target } = input;
     const deployedState = await readDeployedState(this.json, project.rootPath);
     const recorded = deployedState.targets[target.name];
-    const stackReference = recorded?.stackArn ?? recorded?.resources?.stackName;
+    const stackReference = stackReferenceOf(recorded);
     if (!stackReference) {
       throw new ProjectStateError(
         `Project '${project.name}' is not deployed to target '${target.name}'. ` +
@@ -438,11 +443,10 @@ export class CdkBackend implements ProjectBackend {
     const { spec } = project;
     const deployedState = await readDeployedState(this.json, project.rootPath);
     const recorded = deployedState.targets[target.name];
-    const stackReference = recorded?.stackArn ?? recorded?.resources?.stackName;
+    const stackReference = stackReferenceOf(recorded);
 
     // No recorded stack means nothing was ever deployed to this target, which
-    // every resource below reports as local-only. Legacy projects record
-    // the stack name instead of target-level stack ARN.
+    // every resource below reports as local-only.
     const stack = stackReference
       ? await this.describeStack(
           target.region,
