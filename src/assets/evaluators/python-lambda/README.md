@@ -13,7 +13,11 @@ with your own logic.
 - `pyproject.toml` — Python dependencies, managed with
   [uv](https://docs.astral.sh/uv/).
 - `execution-role-policy.json` — extra IAM the evaluator Lambda gets at runtime.
-  Add statements here for anything your logic calls (DynamoDB, S3, …).
+  Add statements here for anything your logic calls (Bedrock, DynamoDB, S3, …).
+
+Third-party evaluation libraries are ordinary application dependencies. Add
+them to `pyproject.toml`, configure them in `lambda_function.py`, and grant any
+required permissions in `execution-role-policy.json`.
 
 ## Write your evaluator
 

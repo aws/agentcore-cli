@@ -1,17 +1,9 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
-import {
-  EvaluatorSchema,
-  EvaluationLevelSchema,
-  isValidBedrockModelId,
-} from "../../../../../projectSchemas/evaluator";
+import { EvaluatorSchema, EvaluationLevelSchema } from "../../../../../projectSchemas/evaluator";
 import { TagsSchema } from "../../../../../projectSchemas/tags";
-import {
-  EVALUATOR_LIBRARIES,
-  type EvaluatorLibrary,
-  type ManagedEvaluatorScaffoldInput,
-} from "../../../types";
+import type { ManagedEvaluatorScaffoldInput } from "../../../types";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource } from "../../shared";
@@ -20,24 +12,14 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
   createHandler({
     name: "code-based",
     description:
-      "add a code-based evaluator — a Lambda that scores a session. Pass a 3P metric, an existing Lambda, or neither to scaffold an empty evaluator you fill in",
+      "add a code-based evaluator — scaffold a Python Lambda with custom evaluation logic, or reference an existing Lambda with --lambda-arn",
     flags: [
       flag("name", "the name of the evaluator", z.string().optional()),
       flag("level", "what to score: SESSION, TRACE, or TOOL_CALL", z.string().optional()),
-      flag(
-        "metric",
-        "3P metric to scaffold as <library.Metric>, e.g. deepeval.FaithfulnessMetric or autoevals.Factuality",
-        z.string().optional(),
-      ),
-      flag(
-        "model",
-        "judge model for the 3P metric, e.g. bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0",
-        z.string().optional(),
-      ),
       flag("lambda-arn", "ARN of an existing Lambda that scores a session", z.string().optional()),
       flag(
         "timeout-seconds",
-        "Lambda timeout in seconds (1-300)",
+        "evaluator timeout in seconds (1-300)",
         z.number().int().min(1).max(300).optional(),
       ),
       flag("description", "a description of what this evaluator measures", z.string().optional()),
@@ -57,12 +39,7 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
       if (!levelParsed.success) throw new InputValidationError(z.prettifyError(levelParsed.error));
       const level = levelParsed.data;
 
-      const hasMetric = flags["metric"] !== undefined;
       const hasLambda = flags["lambda-arn"] !== undefined;
-      if (hasMetric && hasLambda)
-        throw new InputValidationError(
-          "provide either --metric (managed) or --lambda-arn (external), not both",
-        );
 
       const tags = parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema);
       const base = {
@@ -75,10 +52,8 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
       const project = ctx.require(ProjectKey);
 
       if (hasLambda) {
-        if (flags["metric"] || flags["model"] || flags["timeout-seconds"] !== undefined)
-          throw new InputValidationError(
-            "--metric, --model, and --timeout-seconds are managed-only and not valid with --lambda-arn",
-          );
+        if (flags["timeout-seconds"] !== undefined)
+          throw new InputValidationError("--timeout-seconds is not valid with --lambda-arn");
         const parsed = EvaluatorSchema.safeParse({
           ...base,
           config: { codeBased: { external: { lambdaArn: flags["lambda-arn"] } } },
@@ -97,12 +72,8 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         return;
       }
 
-      if (flags["model"] && !hasMetric) throw new InputValidationError("--model requires --metric");
-
       const scaffold: ManagedEvaluatorScaffoldInput = {
         ...base,
-        ...(hasMetric && { metric: parseMetric(flags["metric"]!) }),
-        ...(flags["model"] !== undefined && { model: resolveBedrockModel(flags["model"]) }),
         ...(flags["timeout-seconds"] !== undefined && { timeoutSeconds: flags["timeout-seconds"] }),
       };
 
@@ -117,37 +88,10 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         },
         `added evaluator '${flags["name"]}' to '${project.name}'`,
         {
-          notes: hasMetric
-            ? []
-            : [
-                `note: this evaluator returns Pass for every session until you implement app/${flags["name"]}/lambda_function.py`,
-              ],
+          notes: [
+            `note: this evaluator returns Pass for every session until you implement app/${flags["name"]}/lambda_function.py`,
+          ],
         },
       );
     },
   });
-
-function parseMetric(raw: string): { library: EvaluatorLibrary; metricClass: string } {
-  const dot = raw.indexOf(".");
-  const library = dot > 0 ? raw.slice(0, dot) : "";
-  const metricClass = dot > 0 ? raw.slice(dot + 1) : "";
-  if (!(EVALUATOR_LIBRARIES as readonly string[]).includes(library))
-    throw new InputValidationError(
-      `invalid --metric "${raw}": expected <library.Metric> where library is one of ${EVALUATOR_LIBRARIES.join(", ")} (e.g. deepeval.FaithfulnessMetric)`,
-    );
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(metricClass))
-    throw new InputValidationError(
-      `invalid metric class "${metricClass}" in --metric "${raw}": expected a single class name like FaithfulnessMetric`,
-    );
-  return { library: library as EvaluatorLibrary, metricClass };
-}
-
-function resolveBedrockModel(model: string | undefined): string | undefined {
-  if (!model) return undefined;
-  const id = model.startsWith("bedrock/") ? model.slice("bedrock/".length) : model;
-  if (!isValidBedrockModelId(id))
-    throw new InputValidationError(
-      `invalid --model "${model}": expected a Bedrock model ID (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0) or an inference-profile/foundation-model ARN, optionally prefixed with "bedrock/"`,
-    );
-  return id;
-}

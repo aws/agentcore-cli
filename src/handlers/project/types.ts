@@ -25,9 +25,6 @@ type CreateProjectInputBase = {
   skipGit?: boolean;
 };
 
-export const EVALUATOR_LIBRARIES = ["deepeval", "autoevals"] as const;
-export type EvaluatorLibrary = (typeof EVALUATOR_LIBRARIES)[number];
-
 /** Set of arguments needed to scaffold a managed code-based evaluator. */
 export type ManagedEvaluatorScaffoldInput = {
   name: string;
@@ -35,8 +32,6 @@ export type ManagedEvaluatorScaffoldInput = {
   description?: string;
   kmsKeyArn?: string;
   tags?: Record<string, string>;
-  metric?: { library: EvaluatorLibrary; metricClass: string };
-  model?: string;
   timeoutSeconds?: number;
 };
 

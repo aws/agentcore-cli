@@ -53,7 +53,7 @@ const evaluator = async (projectRoot: string, name: string) =>
   ((await spec(projectRoot)).evaluators ?? []).find((e: { name: string }) => e.name === name);
 
 describe("project add evaluator code-based", () => {
-  test("3P metric → managed config + scaffolded, rendered Lambda source", async () => {
+  test("scaffolds managed evaluator code with an explicit timeout", async () => {
     const projectRoot = await inProject();
     await run([
       "add",
@@ -63,10 +63,8 @@ describe("project add evaluator code-based", () => {
       "answer_faithfulness",
       "--level",
       "SESSION",
-      "--metric",
-      "deepeval.FaithfulnessMetric",
-      "--model",
-      "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0",
+      "--timeout-seconds",
+      "120",
     ]);
 
     expect(await evaluator(projectRoot, "answer_faithfulness")).toMatchObject({
@@ -77,7 +75,7 @@ describe("project add evaluator code-based", () => {
           managed: {
             codeLocation: "app/answer_faithfulness",
             entrypoint: "lambda_function.handler",
-            timeoutSeconds: 300,
+            timeoutSeconds: 120,
             additionalPolicies: ["execution-role-policy.json"],
           },
         },
@@ -86,38 +84,15 @@ describe("project add evaluator code-based", () => {
 
     const appDir = join(projectRoot, "app", "answer_faithfulness");
     const handler = await Bun.file(join(appDir, "lambda_function.py")).text();
-    expect(handler).toContain("FaithfulnessMetric");
-    expect(handler).toContain("AmazonBedrockModel");
-    expect(handler).toContain("anthropic.claude-3-5-sonnet-20240620-v1:0");
+    expect(handler).toContain("TODO");
+    expect(handler).toContain("custom_code_based_evaluator");
+    expect(await Bun.file(join(appDir, "README.md")).exists()).toBe(true);
+    expect(await Bun.file(join(appDir, "pyproject.toml")).exists()).toBe(true);
     expect(await Bun.file(join(appDir, "execution-role-policy.json")).exists()).toBe(true);
     expect(handler).not.toContain("{{");
   });
 
-  test("autoevals metric with default (non-bedrock) model", async () => {
-    const projectRoot = await inProject();
-    await run([
-      "add",
-      "evaluator",
-      "code-based",
-      "--name",
-      "factuality",
-      "--level",
-      "TRACE",
-      "--metric",
-      "autoevals.Factuality",
-    ]);
-
-    expect(
-      (await evaluator(projectRoot, "factuality")).config.codeBased.managed.timeoutSeconds,
-    ).toBe(60);
-    const handler = await Bun.file(
-      join(projectRoot, "app", "factuality", "lambda_function.py"),
-    ).text();
-    expect(handler).toContain("Factuality");
-    expect(handler).not.toContain("{{");
-  });
-
-  test("no metric, no lambda → empty managed stub", async () => {
+  test("no lambda → managed stub with the default timeout", async () => {
     const projectRoot = await inProject();
     await run(["add", "evaluator", "code-based", "--name", "custom_eval", "--level", "TOOL_CALL"]);
 
@@ -187,56 +162,7 @@ describe("project add evaluator code-based", () => {
     ["missing --name", ["--level", "SESSION"]],
     ["missing --level", ["--name", "x"]],
     [
-      "--metric and --lambda-arn together",
-      [
-        "--name",
-        "x",
-        "--level",
-        "SESSION",
-        "--metric",
-        "deepeval.FaithfulnessMetric",
-        "--lambda-arn",
-        "arn:aws:lambda:us-west-2:123456789012:function:f",
-      ],
-    ],
-    [
-      "unknown metric library",
-      ["--name", "x", "--level", "SESSION", "--metric", "ragas.Faithfulness"],
-    ],
-    ["metric without a class", ["--name", "x", "--level", "SESSION", "--metric", "deepeval"]],
-    [
-      "namespaced (multi-dot) metric class",
-      ["--name", "x", "--level", "SESSION", "--metric", "deepeval.metrics.Faithfulness"],
-    ],
-    [
-      "non-Bedrock --model",
-      [
-        "--name",
-        "x",
-        "--level",
-        "SESSION",
-        "--metric",
-        "deepeval.FaithfulnessMetric",
-        "--model",
-        "gpt-4o",
-      ],
-    ],
-    [
-      "--model bedrock with no slash/id",
-      [
-        "--name",
-        "x",
-        "--level",
-        "SESSION",
-        "--metric",
-        "autoevals.Factuality",
-        "--model",
-        "bedrock",
-      ],
-    ],
-    ["--model without --metric", ["--name", "x", "--level", "SESSION", "--model", "bedrock/foo"]],
-    [
-      "managed flag with --lambda-arn",
+      "--timeout-seconds with --lambda-arn",
       [
         "--name",
         "x",
@@ -257,24 +183,27 @@ describe("project add evaluator code-based", () => {
     );
   });
 
-  test("accepts a bare Bedrock inference-profile model id and renders it into the source", async () => {
+  test.each([
+    ["--metric", "deepeval.FaithfulnessMetric"],
+    ["--model", "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0"],
+  ])("rejects removed %s before writing", async (removedFlag, value) => {
     const projectRoot = await inProject();
-    await run([
-      "add",
-      "evaluator",
-      "code-based",
-      "--name",
-      "prof",
-      "--level",
-      "SESSION",
-      "--metric",
-      "deepeval.FaithfulnessMetric",
-      "--model",
-      "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    ]);
-    expect(await evaluator(projectRoot, "prof")).toBeDefined();
-    const src = await Bun.file(join(projectRoot, "app", "prof", "lambda_function.py")).text();
-    expect(src).toContain("us.anthropic.claude-sonnet-4-5-20250929-v1:0");
+    await expect(
+      run([
+        "add",
+        "evaluator",
+        "code-based",
+        "--name",
+        "removed",
+        "--level",
+        "SESSION",
+        removedFlag,
+        value,
+      ]),
+    ).rejects.toMatchObject({ code: "commander.unknownOption" });
+
+    expect(await evaluator(projectRoot, "removed")).toBeUndefined();
+    expect(await Bun.file(join(projectRoot, "app", "removed")).exists()).toBe(false);
   });
 
   test("rejects a duplicate evaluator name", async () => {
