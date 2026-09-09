@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -20,22 +19,8 @@ import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-remove-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function run(args: string[], ioOptions?: TestIOOptions) {
   const io = testIO(ioOptions);
@@ -47,22 +32,6 @@ async function run(args: string[], ioOptions?: TestIOOptions) {
   });
   await root.route(["node", "agentcore", "project", ...args]);
   return { io, core };
-}
-
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run([
-    "create",
-    "--name",
-    name,
-    "--template",
-    "agent-python-minimal",
-    "--skip-install",
-    "--skip-git",
-  ]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
 }
 
 type RemoveCase = {
@@ -177,7 +146,10 @@ describe("project remove", () => {
       expectedRemaining: [],
     },
   ])("$label", async ({ commands, specKey, expectedRemaining }) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
 
     for (const cmd of commands) {
       await run(cmd);
@@ -189,7 +161,10 @@ describe("project remove", () => {
   });
 
   test("removing a non-existent resource fails with a not-found error", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
 
     const removal = run(["remove", "harness", "--name", "ghost"]);
@@ -201,14 +176,18 @@ describe("project remove", () => {
   });
 
   test("removing a target of a non-existent gateway names the missing gateway", async () => {
-    await inProject();
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
     await expect(
       run(["remove", "gateway-target", "--gateway", "ghost", "--name", "t"]),
     ).rejects.toThrow(`no gateway named 'ghost' exists in this project`);
   });
 
   test("removing a credential deletes its .env.local entry and reports it", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
       stdin: "sekret",
     });
@@ -225,7 +204,10 @@ describe("project remove", () => {
   });
 
   test("--json reports a removal and its cleaned environment keys", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
       stdin: "sekret",
     });
@@ -244,7 +226,10 @@ describe("project remove", () => {
   });
 
   test("removing a secret-reference credential leaves .env.local alone", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run([
       "add",
       "credentials",
@@ -292,7 +277,10 @@ describe("project remove", () => {
       ],
     },
   ])("removes a nested $resource while preserving sibling Targets", async ({ resource, add }) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "gateway", "--name", "tools"]);
     await run([
       "add",
@@ -333,7 +321,10 @@ describe("project remove", () => {
   });
 
   test("removes a payment manager with its connectors while preserving reusable credentials", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "credentials", "payment", "--name", "shared", "--provider", "CoinbaseCDP"]);
     await run(["add", "payment-manager", "--name", "keep"]);
     await run(["add", "payment-manager", "--name", "remove"]);
@@ -364,7 +355,10 @@ describe("project remove", () => {
   });
 
   test("removes a nested payment connector while preserving siblings and credentials", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "credentials", "payment", "--name", "shared", "--provider", "CoinbaseCDP"]);
     await run(["add", "payment-manager", "--name", "payments"]);
     await run([
@@ -443,7 +437,8 @@ describe("project remove", () => {
       ["remove", "payment-manager", "--manager", "payments", "--name", "payments"],
     ],
   ])("%s", async (_label, args) => {
-    await inProject();
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
     await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
   });
 
@@ -464,7 +459,10 @@ describe("project remove", () => {
     ["with --engine", ["--engine", "Guardrails"]],
     ["resolving the engine from an unambiguous name", []],
   ])("removes a policy from its engine %s", async (_label, engineArgs) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "policy-engine", "--name", "Guardrails"]);
     await addPolicy("Guardrails", "DenyAll");
 
@@ -484,7 +482,10 @@ describe("project remove", () => {
   });
 
   test("rejects an ambiguous policy name without --engine", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "policy-engine", "--name", "First"]);
     await run(["add", "policy-engine", "--name", "Second"]);
     await addPolicy("First", "DenyAll");
@@ -500,7 +501,10 @@ describe("project remove", () => {
   });
 
   test("removing an engine strips gateway references", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "gateway", "--name", "tools"]);
     await run(["add", "policy-engine", "--name", "Guardrails", "--attach-to-gateways", "tools"]);
 
@@ -516,7 +520,10 @@ describe("project remove all", () => {
   // Fills a project with one of everything the CLI can add, plus an
   // unassignedTargets entry only reachable by editing the spec.
   async function populatedProject(): Promise<string> {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "harness", "--name", "my_harness"]);
     await run(["add", "gateway", "--name", "tools"]);
     await run([
@@ -620,7 +627,10 @@ describe("project remove all", () => {
   });
 
   test("prompts on a TTY and proceeds on 'y'", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
 
     const { io } = await run(["remove", "all"], { isTTY: true, stdin: "y\n" });
 
@@ -629,7 +639,10 @@ describe("project remove all", () => {
   });
 
   test("declining the prompt cancels without touching the spec", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
 
     await expect(run(["remove", "all"], { isTTY: true, stdin: "n\n" })).rejects.toBeInstanceOf(
@@ -640,7 +653,10 @@ describe("project remove all", () => {
   });
 
   test("without --yes and without a TTY it fails rather than proceeding", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
 
     const removal = run(["remove", "all"]);
@@ -651,14 +667,18 @@ describe("project remove all", () => {
   });
 
   test("rejects --name alongside all", async () => {
-    await inProject();
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
     await expect(run(["remove", "all", "--name", "x", "--yes"])).rejects.toThrow(
       "--name is not valid when removing all resources",
     );
   });
 
   test("is idempotent on an already-empty project", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["remove", "all", "--yes"]);
     await run(["remove", "all", "--yes"]);
 

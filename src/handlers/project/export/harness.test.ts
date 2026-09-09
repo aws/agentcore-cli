@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  initProject,
+  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -38,39 +38,18 @@ function testExportCommand() {
   return subject;
 }
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-export-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 /** Scaffolds a project with one harness named `exportme` and cds into it. */
 async function inProjectWithHarness(
   subject: ReturnType<typeof testExportCommand>,
 ): Promise<string> {
-  const directory = await inTempDirectory();
-  await subject.project([
-    "create",
-    "--name",
-    "orders",
-    "--template",
-    "agent-python-minimal",
-    "--skip-install",
-    "--skip-git",
-  ]);
-  const projectRoot = join(directory, "orders");
-  process.chdir(projectRoot);
+  const { projectRoot, cleanup } = await initProject({
+    name: "orders",
+    flags: ["--template", "agent-python-minimal"],
+  });
+  cleanups.push(cleanup);
   await subject.project([
     "add",
     "harness",
@@ -304,7 +283,7 @@ describe("project export harness handler", () => {
 
   test("validates the project before fetching from the service", async () => {
     const subject = testExportCommand();
-    await inTempDirectory(); // not a project
+    cleanups.push((await inTempDirectory()).cleanup); // not a project
 
     await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow(/No AgentCore project found/);
     expect(subject.core.harness.calls).toEqual([]);

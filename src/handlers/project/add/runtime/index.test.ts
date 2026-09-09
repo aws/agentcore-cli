@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -13,22 +12,8 @@ import { InputValidationError } from "../../../../errors";
 import type { BedrockAgentImportPlan } from "../../../../core/project/bedrockAgentImport";
 import { credentialEnvVarName } from "../../../../projectSchemas/credential";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-runtime-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
@@ -40,14 +25,6 @@ async function run(args: string[], opts?: { core?: TestCoreClient }) {
   });
   await root.route(["node", "agentcore", "project", ...args]);
   return { io, core };
-}
-
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
 }
 
 function translatedImportPlan(
@@ -283,7 +260,8 @@ describe("project add runtime", () => {
       ["--name", "configured_agent", ...template, ...allInfrastructureFlags],
     ],
   ])("%s — accepts flags", async (label, flags) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "runtime", ...flags]);
 
     const name = flags[flags.indexOf("--name") + 1]!;
@@ -308,7 +286,8 @@ describe("project add runtime", () => {
     ["mcp-python-fastmcp", []],
     ["agui-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
   ])("%s ships with its pre-configured memory", async (templateName, expectedStrategies) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "runtime", "--name", "my_agent", "--template", templateName]);
 
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -326,7 +305,8 @@ describe("project add runtime", () => {
   });
 
   test("agent-typescript-strands scaffolds a TypeScript agent", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "runtime", "--name", "my_agent", "--template", "agent-typescript-strands"]);
 
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -352,7 +332,8 @@ describe("project add runtime", () => {
   });
 
   test("agent-typescript-vercel scaffolds a memory-free TypeScript runtime", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "runtime", "--name", "my_agent", "--template", "agent-typescript-vercel"]);
 
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -375,7 +356,8 @@ describe("project add runtime", () => {
   ])(
     "scaffolds agent-python-strands for --model-provider %s with an API-key credential",
     async (flagValue, provider) => {
-      const projectRoot = await inProject();
+      const { projectRoot, cleanup } = await initProject();
+      cleanups.push(cleanup);
       const apiKeyPath = join(projectRoot, "api-key.txt");
       await Bun.write(apiKeyPath, "test-api-key");
 
@@ -438,12 +420,14 @@ describe("project add runtime", () => {
     ],
     ["runtime names are limited in length", ["--name", "x".repeat(43)]],
   ])("%s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "runtime", ...flags])).rejects.toBeInstanceOf(InputValidationError);
   });
 
   test("rejects an unknown --template value", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(
       run(["add", "runtime", "--name", "my_agent", "--template", "nonsense"]),
     ).rejects.toThrow();
@@ -467,7 +451,8 @@ describe("project add runtime --type import", () => {
   ];
 
   test("scaffolds owned runtime code translated from the selected agent version", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
 
@@ -508,7 +493,8 @@ describe("project add runtime --type import", () => {
   });
 
   test("--json reports import follow-up as a structured note", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
 
@@ -521,7 +507,8 @@ describe("project add runtime --type import", () => {
   });
 
   test("supports LangGraph translation", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan({
       framework: "langgraph",
@@ -544,7 +531,8 @@ describe("project add runtime --type import", () => {
   });
 
   test("documents required permissions instead of generating policies for a caller-owned role", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
     const roleArn = "arn:aws:iam::111122223333:role/ExistingRuntimeRole";
@@ -563,12 +551,14 @@ describe("project add runtime --type import", () => {
   });
 
   test("rejects a nonexistent agent with the describe error", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(importArgs)).rejects.toThrow(/no Bedrock Agent with id 'A1B2C3D4E5'/);
   });
 
   test("rejects an unsupported --region before any service call", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     const args = [...importArgs.slice(0, -2), "--region", "eu-north-1"];
     await expect(run(args, { core })).rejects.toThrow(/not a supported Bedrock Agent region/);
@@ -576,21 +566,24 @@ describe("project add runtime --type import", () => {
   });
 
   test("requires --agent-id and --agent-alias-id with --type import", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(
       run(["add", "runtime", "--name", "p", "--type", "import", "--region", "us-east-1"]),
     ).rejects.toThrow(/requires both --agent-id and --agent-alias-id/);
   });
 
   test("rejects --agent-id without --type import", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "runtime", "--name", "p", "--agent-id", "A1"])).rejects.toThrow(
       /--agent-id and --agent-alias-id require --type import/,
     );
   });
 
   test("accepts translation flags and rejects a template", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
     await expect(run([...importArgs, "--framework", "strands"], { core })).resolves.toBeDefined();

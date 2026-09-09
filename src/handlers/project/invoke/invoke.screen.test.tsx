@@ -4,14 +4,12 @@ import type {
   GetAgentRuntimeResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
 import {
   cleanupScreens,
   flatFrame,
+  inTempDirectory,
   renderScreen,
   TestCoreClient,
   waitForFlatText,
@@ -19,16 +17,9 @@ import {
 } from "../../../testing";
 import type { Project, ResolvedDeployedResource } from "../types";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
+const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 const project: Project = {
   name: "orders",
@@ -134,9 +125,8 @@ describe("project invoke picker", () => {
   });
 
   test("reports the CLI's own guidance outside a project", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "agentcore-no-project-"));
-    tempDirectories.push(directory);
-    process.chdir(directory);
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const screen = renderScreen("/agentcore/project/invoke", { core: core() });
 
     await waitForFlatText(screen.lastFrame, "No AgentCore project found");
