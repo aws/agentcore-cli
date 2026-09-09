@@ -29,6 +29,9 @@ async function run(
   return { io, core };
 }
 
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
+
 test("project status requires an AgentCore project", async () => {
   cleanups.push((await inTempDirectory()).cleanup);
   await expect(run(["status"])).rejects.toThrow(/No AgentCore project found/);
@@ -38,9 +41,6 @@ test("project dev requires an AgentCore project", async () => {
   cleanups.push((await inTempDirectory()).cleanup);
   await expect(run(["dev"])).rejects.toThrow(/No AgentCore project found/);
 });
-
-const cleanups: Array<() => Promise<void>> = [];
-afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 describe("project create", () => {
   test("--json returns the created project without human success text", async () => {
