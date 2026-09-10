@@ -1,6 +1,6 @@
 {
   "contentType": "text/event-stream; charset=utf-8",
-  "runtimeSessionId": "00000000-0000-4000-8000-4a4a72800001",
+  "runtimeSessionId": "00000000-0000-4000-8000-a0d9db080001",
   "response": {
     "$stream": "data: \"4\"\n\n"
   },

@@ -6,6 +6,7 @@ import type { AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
+import { BatchOutputConfig } from "../outputConfig";
 
 const RUNTIME_INVOCATION = "Runtime invocation:";
 const DATASET = "Dataset:";
@@ -23,7 +24,7 @@ Example:
 
 // Composes invokeDataset (replay) → startBatchEvaluation (grade). Invoke flags mirror
 // `runtime invoke`.
-export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
+export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "simulate",
     description: "replay a dataset against a Runtime, then batch-evaluate the resulting sessions",
@@ -31,7 +32,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional(), {
         group: RUNTIME_INVOCATION,
       }),
-      flag("qualifier", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
+      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
         group: RUNTIME_INVOCATION,
       }),
       flag(
@@ -77,6 +78,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
       flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
         group: "Evaluation:",
       }),
+      ...BatchOutputConfig.flags,
     ],
     handle: async (ctx, flags) => {
       if (!flags["runtime-id"])
@@ -96,6 +98,8 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
 
       // Ctrl-C aborts the run (invokes, the ingestion wait, the dataset download).
       // TODO(#1986): swap for the shared SIGINT/abort helper once it merges.
+      const outputConfig = await BatchOutputConfig.resolve(flags["output-config"], io);
+
       const controller = new AbortController();
       const interrupt = () => controller.abort();
       process.once("SIGINT", interrupt);
@@ -105,7 +109,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
         const r = await core.eval.invokeDataset(
           {
             runtimeId: flags["runtime-id"],
-            qualifier: flags["qualifier"],
+            qualifier: flags["endpoint"],
             payloadTemplate: flags["payload-template"],
             headers: parseRuntimeInvokeHeaders(flags["header"]),
             bearerToken: flags["bearer-token"],
@@ -134,7 +138,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
             source: {
               origin: "agent",
               agent: flags["runtime-id"],
-              endpoint: flags["qualifier"],
+              endpoint: flags["endpoint"],
               sessionIds: r.sessions.map((s) => s.sessionId),
             },
             groundTruth: r.sessions.map((s) => ({
@@ -143,6 +147,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
               ...(s.groundTruth && { groundTruth: { inline: s.groundTruth } }),
             })),
             kmsKeyArn: flags["kms-key-arn"],
+            outputConfig,
           },
           opts,
         );

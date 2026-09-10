@@ -1,0 +1,21 @@
+{
+  "batchEvaluationId": "golden_batch_simulate_endpoint1-120c119e26",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:batch-evaluate/golden_batch_simulate_endpoint1-120c119e26",
+  "batchEvaluationName": "golden_batch_simulate_endpoint1",
+  "status": "PENDING",
+  "createdAt": {
+    "$date": "2026-09-11T20:52:44.223Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logStreamName": "run-golden_batch_simulate_endpoint1-120c119e26",
+      "metricsNamespace": "Bedrock-AgentCore/Evaluations",
+      "resultDestination": "SOURCE_LOG_GROUP"
+    }
+  }
+}

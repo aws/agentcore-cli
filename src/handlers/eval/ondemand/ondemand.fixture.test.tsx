@@ -17,6 +17,9 @@ const FIXTURES = join(import.meta.dir, "__fixtures__");
 
 const FIXTURE_AGENT = "asdf_MyAgent-3s5axvBC6Q";
 const SIMULATE_DATASET = join(FIXTURES, "simulate-ds.jsonl");
+// A non-default endpoint: DEFAULT is what the command assumes when --endpoint
+// is omitted, so recording against it could not tell the flag from its absence.
+const FIXTURE_ENDPOINT = "BETA";
 const FIXTURE_SESSION_IDS = [
   "67ebf93b-65e3-4127-9e13-483b239f256a",
   "7f983b9f-9569-4a4d-bdc2-5c997ff346dd",
@@ -109,6 +112,8 @@ describe("eval ondemand evaluate (fixture-backed)", () => {
       "simulate",
       "--runtime-id",
       FIXTURE_AGENT,
+      "--endpoint",
+      FIXTURE_ENDPOINT,
       "--payload-template",
       '{"prompt":"{input}"}',
       "--dataset",

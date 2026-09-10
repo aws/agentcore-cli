@@ -44,6 +44,8 @@ const FIXTURE_EVAL_AGENT = "asdf_MyAgent-3s5axvBC6Q";
 const FIXTURE_EVAL_NAME = "golden_batch_evaluate_fixture685";
 
 const FIXTURE_SIMULATE_NAME = "golden_batch_simulate_fixture1";
+const FIXTURE_OUTPUT_CONFIG_NAME = "golden_batch_evaluate_outputconfig1";
+const FIXTURE_SIMULATE_ENDPOINT_NAME = "golden_batch_simulate_endpoint1";
 const FIXTURE_SIMULATE_DATASET = join(FIXTURES, "simulate-ds.jsonl");
 
 function createFixtureCore(): CoreClient {
@@ -184,5 +186,73 @@ describe("eval batch-evaluation (fixture-backed)", () => {
     ]);
 
     matchGolden(FIXTURES, "simulate.golden.json", io.stdout());
+  }, 180_000);
+
+  test("evaluate submits a job with a customer-supplied output config", async () => {
+    const stdout = await run([
+      "eval",
+      "batch-evaluation",
+      "evaluate",
+      "--agent",
+      FIXTURE_EVAL_AGENT,
+      "--evaluators",
+      "Builtin.Helpfulness",
+      "--name",
+      FIXTURE_OUTPUT_CONFIG_NAME,
+      "--output-config",
+      '{"cloudWatchConfig":{"resultDestination":"SOURCE_LOG_GROUP","metricsNamespace":"Company/AgentEvaluations"}}',
+      "--json",
+    ]);
+
+    matchGolden(FIXTURES, "evaluate-output-config.golden.json", stdout);
+  });
+
+  test("simulate passes --endpoint through and submits with an output config", async () => {
+    let n = 0;
+    const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+      fixtureFactories(FIXTURES);
+    const core = new CoreClient({
+      createControlClient,
+      createDataClient,
+      createIamClient,
+      createLogsClient,
+      logger: createSilentLogger(),
+      newSessionId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
+    });
+    const io = testIO();
+    const root = createRootHandler(core, {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+
+    await root.route([
+      "node",
+      "agentcore",
+      "eval",
+      "batch-evaluation",
+      "simulate",
+      "--runtime-id",
+      FIXTURE_EVAL_AGENT,
+      "--endpoint",
+      "DEFAULT",
+      "--payload-template",
+      '{"prompt":"{input}"}',
+      "--dataset",
+      FIXTURE_SIMULATE_DATASET,
+      "--evaluators",
+      "Builtin.Helpfulness",
+      "--name",
+      FIXTURE_SIMULATE_ENDPOINT_NAME,
+      "--output-config",
+      '{"cloudWatchConfig":{"resultDestination":"SOURCE_LOG_GROUP"}}',
+      "--ingestion-wait-ms",
+      "0",
+      "--json",
+      "--region",
+      REGION,
+    ]);
+
+    matchGolden(FIXTURES, "simulate-endpoint-output-config.golden.json", io.stdout());
   }, 180_000);
 });
