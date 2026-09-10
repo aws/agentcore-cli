@@ -1,4 +1,5 @@
 import type { InsightsRowLimit } from "./insights";
+import type { CoreOptions } from "../types";
 
 /** Explicit CloudWatch Logs location selected by a primitive handler. */
 export type LogSource = {
@@ -65,3 +66,37 @@ export type TraceSummary = {
 
 /** One telemetry record belonging to a trace */
 export type TraceRecord = Record<string, unknown>;
+
+/** Shared observability operations over an explicitly resolved log source. */
+export interface CoreObservabilityClient {
+  searchLogs(
+    source: LogSource,
+    query: LogSearchQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<CloudWatchLogEvent>;
+  tailLogs(
+    source: LogSource,
+    query: LogTailQuery,
+    options: CoreOptions,
+    signal: AbortSignal,
+  ): AsyncIterable<CloudWatchLogEvent>;
+  queryLogs(
+    source: LogSource,
+    query: InsightsQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InsightsQueryRow[]>;
+  listTraces(
+    source: LogSource,
+    query: ListTracesQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<TraceSummary[]>;
+  getTrace(
+    source: LogSource,
+    query: GetTraceQuery,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<TraceRecord[]>;
+}

@@ -1,5 +1,5 @@
 import z from "zod";
-import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../core/observability";
+import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../core/observability/index";
 import type { AppIO } from "../../../io";
 import { flag } from "../../../router";
 import { createLogsHandler } from "../../observability/logs";
@@ -13,6 +13,7 @@ const harnessFlags = [
 
 export const createHarnessLogsHandler = (core: Core, io: AppIO) =>
   createLogsHandler(io, {
+    name: "logs",
     description: "stream or search a harness's logs",
     flags: harnessFlags,
     read: async (ctx, flags, request, signal) => {
