@@ -38,6 +38,7 @@ vi.mock('../../../aws', () => ({
   buildAguiRunInput: vi.fn(),
   executeBashCommand: vi.fn(),
   invokeA2ARuntime: vi.fn(),
+  invokeA2ARuntimeStreaming: vi.fn(),
   invokeAguiRuntime: vi.fn(),
   mcpCallTool: vi.fn(),
   mcpInitSession: vi.fn(),

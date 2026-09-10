@@ -7,6 +7,7 @@ import {
   extractResult,
   getOrCreatePaymentSession,
   invokeA2ARuntime,
+  invokeA2ARuntimeStreaming,
   invokeAgentRuntime,
   invokeAgentRuntimeStreaming,
   invokeAguiRuntime,
@@ -480,20 +481,20 @@ export async function handleInvoke(context: InvokeContext, options: InvokeOption
     return { success: false, error: new ValidationError('No prompt provided. Usage: agentcore invoke "your prompt"') };
   }
 
-  // A2A protocol handling — send JSON-RPC message/send via InvokeAgentRuntime
+  // A2A protocol handling — send JSON-RPC via InvokeAgentRuntime
   if (agentSpec.protocol === 'A2A') {
     try {
-      const a2aResult = await invokeA2ARuntime(
-        {
-          region: targetConfig.region,
-          runtimeArn: runtimeArn,
-          userId: options.userId,
-          sessionId: options.sessionId,
-          headers: options.headers,
-          bearerToken: options.bearerToken,
-        },
-        options.prompt
-      );
+      const a2aOpts = {
+        region: targetConfig.region,
+        runtimeArn: runtimeArn,
+        userId: options.userId,
+        sessionId: options.sessionId,
+        headers: options.headers,
+        bearerToken: options.bearerToken,
+      };
+      const a2aResult = options.stream
+        ? await invokeA2ARuntimeStreaming(a2aOpts, options.prompt)
+        : await invokeA2ARuntime(a2aOpts, options.prompt);
       let response = '';
       for await (const chunk of a2aResult.stream) {
         response += chunk;
