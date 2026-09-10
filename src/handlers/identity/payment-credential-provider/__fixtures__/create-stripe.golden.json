@@ -1,0 +1,19 @@
+{
+  "name": "agentcore-cli-payment-fixture-stripe",
+  "credentialProviderVendor": "StripePrivy",
+  "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/agentcore-cli-payment-fixture-stripe",
+  "providerConfigurationOutput": {
+    "stripePrivyConfiguration": {
+      "appId": "agentcore-cli-fixture-app",
+      "appSecretArn": {
+        "secretArn": "arn:aws:secretsmanager:us-west-2:603141041947:secret:bedrock-agentcore-identity!default/payment/stripeprivy/agentcore-cli-payment-fixture-stripe-28e8771e/appsecret-Ns6m08"
+      },
+      "authorizationPrivateKeyArn": {
+        "secretArn": "arn:aws:secretsmanager:us-west-2:603141041947:secret:bedrock-agentcore-identity!default/payment/stripeprivy/agentcore-cli-payment-fixture-stripe-28e8771e/authprivkey-7sMU9C"
+      },
+      "authorizationId": "agentcore-cli-fixture-auth",
+      "appSecretSource": "MANAGED",
+      "authorizationPrivateKeySource": "MANAGED"
+    }
+  }
+}

@@ -12,7 +12,7 @@ import {
   validateAuthorizationPrivateKey,
   validatePaymentIdentifier,
   validateWalletSecret,
-} from "./validation";
+} from "../../../../identity/payment-credential-provider/validation";
 
 export const paymentCredentialInputFlags = [
   flag("api-key-id", "Coinbase CDP API key ID", z.string().optional()),

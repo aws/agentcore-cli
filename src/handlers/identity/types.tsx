@@ -77,8 +77,8 @@ export interface CoreIdentityClient {
 
   // Payment credential providers hold a payment vendor's own credentials (a Coinbase
   // CDP API key and wallet secret, or Privy app and authorization secrets). They back
-  // payment connectors and can be inspected with `identity payment-credential-provider`.
-  // Project deployment uses the write operations below.
+  // payment connectors and are managed by `agentcore identity
+  // payment-credential-provider` as well as provisioned by `project deploy`.
   createPaymentCredentialProvider(
     input: CreatePaymentCredentialProviderInput,
     options: CoreOptions,
