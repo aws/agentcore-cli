@@ -1,13 +1,19 @@
 import type { AppIO } from "./types";
 
+const DETACH_BYTE = 0x1d;
+
 export type TerminalFrame =
   { type: "stdout"; data: Uint8Array } | { type: "stderr"; data: Uint8Array };
 
 export interface InteractiveTerminalPeer extends AsyncIterable<TerminalFrame> {
   send(data: Uint8Array): Promise<void>;
   resize(columns: number, rows: number): Promise<void>;
-  close(): Promise<void>;
+  detach(): Promise<void>;
 }
+
+export type InteractiveTerminalResult = {
+  detached: boolean;
+};
 
 export type InteractiveTerminalConfig = {
   io: AppIO;
@@ -35,13 +41,16 @@ export class InteractiveTerminal {
       });
   }
 
-  async run(peer: InteractiveTerminalPeer, signal?: AbortSignal): Promise<void> {
+  async run(
+    peer: InteractiveTerminalPeer,
+    signal?: AbortSignal,
+  ): Promise<InteractiveTerminalResult> {
     if (this.stopCurrent) throw new Error("InteractiveTerminal is already running");
 
     const { stdin, stdout, stderr } = this.config.io;
     const wasPaused = stdin.isPaused();
     const wasRaw = (stdin as NodeJS.ReadStream & { isRaw?: boolean }).isRaw ?? false;
-    let closed = false;
+    let detached = false;
     let fail: (error: unknown) => void = () => {};
     let queuedFailure: unknown;
     let hasQueuedFailure = false;
@@ -56,15 +65,19 @@ export class InteractiveTerminal {
         fail(error);
       });
     };
-    const close = async () => {
-      if (closed) return;
-      closed = true;
-      await peer.close();
+    const detach = async () => {
+      if (detached) return;
+      detached = true;
+      await peer.detach();
     };
-    this.stopCurrent = close;
+    this.stopCurrent = detach;
 
     const onData = (chunk: Buffer | string) => {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
+      if (bytes.length === 1 && bytes[0] === DETACH_BYTE) {
+        enqueue(detach);
+        return;
+      }
       enqueue(() => peer.send(bytes));
     };
     const resize = () => {
@@ -74,7 +87,7 @@ export class InteractiveTerminal {
     const removeResize = this.onResize(resize);
     const abort = () => {
       enqueue(async () => {
-        await close();
+        await detach();
         throw signal?.reason ?? new Error("terminal interrupted");
       });
     };
@@ -96,6 +109,7 @@ export class InteractiveTerminal {
       await Promise.race([pump(), failure]);
       await pending;
       if (hasQueuedFailure) throw queuedFailure;
+      return { detached };
     } finally {
       signal?.removeEventListener("abort", abort);
       removeResize();
