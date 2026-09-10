@@ -8,6 +8,9 @@ import type { SessionMetadataShape } from "@aws-sdk/client-bedrock-agentcore";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { SessionSource } from "../../sessionSource";
 
+const CONFIGURATION = "Configuration:";
+const EVALUATION = "Evaluation:";
+
 const groundTruthHelp = `(JSON: list of objects)
 Expected answers for the sessions being evaluated, so an evaluator can score a
 response against a reference instead of judging it on its own. Each entry names
@@ -38,23 +41,23 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
     description: "evaluate existing sessions service-side (async; returns a job ID)",
     flags: [
       flag("name", "batch evaluation name (must be unique in the account)", z.string().optional(), {
-        group: "Configuration:",
+        group: CONFIGURATION,
       }),
       flag("description", "optional description", z.string().optional(), {
-        group: "Configuration:",
+        group: CONFIGURATION,
       }),
       flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional(), {
-        group: "Configuration:",
+        group: CONFIGURATION,
       }),
       ...SessionSource.flags,
       flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
-        group: "Evaluation:",
+        group: EVALUATION,
       }),
       flag(
         "ground-truth",
         "expected answers for the sessions (JSON SessionMetadataShape[])",
         z.string().optional(),
-        { group: "Evaluation:", help: groundTruthHelp },
+        { group: EVALUATION, help: groundTruthHelp },
       ),
     ],
     handle: async (ctx, flags) => {

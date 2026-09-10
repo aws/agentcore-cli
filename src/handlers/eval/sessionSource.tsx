@@ -6,6 +6,9 @@ import { flag, type Flag } from "../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlag } from "../utils";
 import type { SessionSourceValue, SessionWindow } from "./types";
 
+const SESSION_SOURCE = "Session source (choose exactly one):";
+const SOURCE_FILTERS = "Source filters:";
+
 const dataSourceConfigHelp = `(JSON: tagged union object)
 Where sessions and traces are read from, for sources the --agent and
 --online-eval convenience flags cannot express. Only top-level key:
@@ -37,38 +40,38 @@ Example:
 export class SessionSource {
   static readonly flags = [
     flag("agent", "harness ID or Runtime ID whose sessions to use", z.string().optional(), {
-      group: "Session source (choose exactly one):",
+      group: SESSION_SOURCE,
     }),
     flag(
       "online-eval",
       "use sessions an online-eval config already sampled",
       z.string().optional(),
-      { group: "Session source (choose exactly one):" },
+      { group: SESSION_SOURCE },
     ),
     flag(
       "data-source-config",
       "the traces to read (JSON DataSourceConfig); escape hatch",
       z.string().optional(),
-      { group: "Session source (choose exactly one):", help: dataSourceConfigHelp },
+      { group: SESSION_SOURCE, help: dataSourceConfigHelp },
     ),
     flag(
       "endpoint",
       "Runtime endpoint qualifier (default DEFAULT; only with --agent)",
       z.string().optional(),
-      { group: "Source filters:" },
+      { group: SOURCE_FILTERS },
     ),
     flag("start-time", "window start (ISO-8601, with --end-time)", z.string().optional(), {
-      group: "Source filters:",
+      group: SOURCE_FILTERS,
     }),
     flag("end-time", "window end (ISO-8601, with --start-time)", z.string().optional(), {
-      group: "Source filters:",
+      group: SOURCE_FILTERS,
     }),
     flag(
       "session-ids",
       "specific session IDs (only with --agent)",
       z.array(z.string()).optional(),
       {
-        group: "Source filters:",
+        group: SOURCE_FILTERS,
       },
     ),
   ] as const;

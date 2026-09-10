@@ -10,68 +10,74 @@ import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "..
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 
+const TARGET = "Target:";
+const SESSION_SOURCE = "Session source:";
+const SOURCE_FILTERS = "Source filters:";
+const EVALUATION = "Evaluation:";
+const EXECUTION = "Execution:";
+
 export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "update",
     description: "update an online evaluation config",
     flags: [
       flag("id", "the ID of the online evaluation config to update", z.string().optional(), {
-        group: "Target:",
+        group: TARGET,
       }),
       flag("agent", "repoint at a different harness ID or Runtime ID", z.string().optional(), {
-        group: "Session source:",
+        group: SESSION_SOURCE,
       }),
       flag(
         "data-source-config",
         "replace the traces to sample (JSON DataSourceConfig)",
         z.string().optional(),
-        { group: "Session source:", help: onlineEvalDataSourceConfigHelp },
+        { group: SESSION_SOURCE, help: onlineEvalDataSourceConfigHelp },
       ),
       flag(
         "endpoint",
         "re-scope monitoring to a different agent endpoint qualifier",
         z.string().optional(),
-        { group: "Source filters:" },
+        { group: SOURCE_FILTERS },
       ),
       flag(
         "clear-endpoint",
         "reset the endpoint scope to the default qualifier (pass true)",
         z.enum(["true", "false"]).optional(),
-        { group: "Source filters:" },
+        { group: SOURCE_FILTERS },
       ),
       flag(
         "evaluators",
         "the ID(s) of the evaluators to apply (replaces the existing list)",
         z.array(z.string()).optional(),
-        { group: "Evaluation:" },
+        { group: EVALUATION },
       ),
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
         z.number().min(0.01).max(100).optional(),
-        { group: "Evaluation:" },
+        { group: EVALUATION },
       ),
       flag(
         "session-timeout-minutes",
         "minutes of inactivity before a session is considered complete (1-1440)",
         z.number().int().min(1).max(1440).optional(),
-        { group: "Evaluation:" },
+        { group: EVALUATION },
       ),
       flag("filters", "replace the trace filters (JSON Filter[])", z.string().optional(), {
-        group: "Evaluation:",
+        group: EVALUATION,
         help: filtersHelp,
       }),
       flag(
         "role-arn",
         "replace the IAM role the online evaluation assumes",
         z.string().optional(),
-        { group: "Execution:" },
+        { group: EXECUTION },
       ),
       flag(
         "update-role",
         "whether to re-scope an auto-provisioned execution role when the data source changes (default true)",
         z.enum(["true", "false"]).optional(),
-        { group: "Execution:" },
+        { group: EXECUTION },
       ),
     ],
     handle: async (ctx, flags) => {
