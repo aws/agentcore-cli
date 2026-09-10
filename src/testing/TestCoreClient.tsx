@@ -148,14 +148,7 @@ import type {
   ListPaymentInstrumentsResponse,
   ListPaymentSessionsResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
-import type {
-  CorePaymentClient,
-  GetPaymentSessionInput,
-  ListPaymentSessionsInput,
-  GetPaymentInstrumentInput,
-  GetPaymentInstrumentBalanceInput,
-  ListPaymentInstrumentsInput,
-} from "../handlers/payment/types";
+import type { CorePaymentClient } from "../handlers/payment/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
   CloudWatchLogEvent,
@@ -282,23 +275,6 @@ const DEFAULT_UPDATE_PAYMENT_RESPONSE = {} as UpdatePaymentCredentialProviderRes
 const DEFAULT_DELETE_PAYMENT_RESPONSE = {} as DeletePaymentCredentialProviderResponse;
 const DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE: ListPaymentCredentialProvidersResponse = {
   credentialProviders: [],
-};
-const DEFAULT_GET_PAYMENT_MANAGER_RESPONSE = {} as GetPaymentManagerResponse;
-const DEFAULT_LIST_PAYMENT_MANAGERS_RESPONSE: ListPaymentManagersResponse = {
-  paymentManagers: [],
-};
-const DEFAULT_GET_PAYMENT_CONNECTOR_RESPONSE = {} as GetPaymentConnectorResponse;
-const DEFAULT_LIST_PAYMENT_CONNECTORS_RESPONSE: ListPaymentConnectorsResponse = {
-  paymentConnectors: [],
-};
-const DEFAULT_GET_PAYMENT_SESSION_RESPONSE = {} as GetPaymentSessionResponse;
-const DEFAULT_LIST_PAYMENT_SESSIONS_RESPONSE: ListPaymentSessionsResponse = {
-  paymentSessions: [],
-};
-const DEFAULT_GET_PAYMENT_INSTRUMENT_RESPONSE = {} as GetPaymentInstrumentResponse;
-const DEFAULT_GET_PAYMENT_INSTRUMENT_BALANCE_RESPONSE = {} as GetPaymentInstrumentBalanceResponse;
-const DEFAULT_LIST_PAYMENT_INSTRUMENTS_RESPONSE: ListPaymentInstrumentsResponse = {
-  paymentInstruments: [],
 };
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
@@ -1357,22 +1333,10 @@ export class TestIdentityClient implements CoreIdentityClient {
   private updateOauth2Response: UpdateOauth2CredentialProviderResponse =
     DEFAULT_UPDATE_OAUTH2_RESPONSE;
   private getPaymentResponse: GetPaymentCredentialProviderResponse = DEFAULT_GET_PAYMENT_RESPONSE;
-  private listPaymentResponses = new Map<
-    string | undefined,
-    ListPaymentCredentialProvidersResponse
-  >();
   private error?: Error;
 
   setGetPaymentResponse(response: GetPaymentCredentialProviderResponse): this {
     this.getPaymentResponse = response;
-    return this;
-  }
-
-  setListPaymentResponse(
-    response: ListPaymentCredentialProvidersResponse,
-    forNextToken?: string,
-  ): this {
-    this.listPaymentResponses.set(forNextToken, response);
     return this;
   }
 
@@ -1564,169 +1528,39 @@ export class TestIdentityClient implements CoreIdentityClient {
       args: [nextToken, maxResults, options],
     });
     if (this.error) throw this.error;
-    return this.listPaymentResponses.get(nextToken) ?? DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE;
+    return DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE;
   }
 }
 
-// TestPaymentClient is the payment sub-client of TestCoreClient. Managers and
-// connectors follow the harness shape (id arguments, list responses keyed by the
-// requesting nextToken); the data-plane methods take SDK requests and key their
-// list responses by the request's nextToken.
+// Payment command tests use real Core clients; configure a stub explicitly if a
+// future screen test needs one.
 export class TestPaymentClient implements CorePaymentClient {
-  readonly calls: RecordedCall[] = [];
-  private getManagerResponse = DEFAULT_GET_PAYMENT_MANAGER_RESPONSE;
-  private listManagersResponses = new Map<string | undefined, ListPaymentManagersResponse>();
-  private getConnectorResponse = DEFAULT_GET_PAYMENT_CONNECTOR_RESPONSE;
-  private listConnectorsResponses = new Map<string | undefined, ListPaymentConnectorsResponse>();
-  private getSessionResponse = DEFAULT_GET_PAYMENT_SESSION_RESPONSE;
-  private listSessionsResponses = new Map<string | undefined, ListPaymentSessionsResponse>();
-  private getInstrumentResponse = DEFAULT_GET_PAYMENT_INSTRUMENT_RESPONSE;
-  private getInstrumentBalanceResponse = DEFAULT_GET_PAYMENT_INSTRUMENT_BALANCE_RESPONSE;
-  private listInstrumentsResponses = new Map<string | undefined, ListPaymentInstrumentsResponse>();
-  private error?: Error;
-
-  setGetManagerResponse(response: GetPaymentManagerResponse): this {
-    this.getManagerResponse = response;
-    return this;
+  async getPaymentManager(): Promise<GetPaymentManagerResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setListManagersResponse(response: ListPaymentManagersResponse, forNextToken?: string): this {
-    this.listManagersResponses.set(forNextToken, response);
-    return this;
+  async listPaymentManagers(): Promise<ListPaymentManagersResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setGetConnectorResponse(response: GetPaymentConnectorResponse): this {
-    this.getConnectorResponse = response;
-    return this;
+  async getPaymentConnector(): Promise<GetPaymentConnectorResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setListConnectorsResponse(response: ListPaymentConnectorsResponse, forNextToken?: string): this {
-    this.listConnectorsResponses.set(forNextToken, response);
-    return this;
+  async listPaymentConnectors(): Promise<ListPaymentConnectorsResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setGetSessionResponse(response: GetPaymentSessionResponse): this {
-    this.getSessionResponse = response;
-    return this;
+  async getPaymentSession(): Promise<GetPaymentSessionResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setListSessionsResponse(response: ListPaymentSessionsResponse, forNextToken?: string): this {
-    this.listSessionsResponses.set(forNextToken, response);
-    return this;
+  async listPaymentSessions(): Promise<ListPaymentSessionsResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setGetInstrumentResponse(response: GetPaymentInstrumentResponse): this {
-    this.getInstrumentResponse = response;
-    return this;
+  async getPaymentInstrument(): Promise<GetPaymentInstrumentResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setGetInstrumentBalanceResponse(response: GetPaymentInstrumentBalanceResponse): this {
-    this.getInstrumentBalanceResponse = response;
-    return this;
+  async getPaymentInstrumentBalance(): Promise<GetPaymentInstrumentBalanceResponse> {
+    throw new Error("Unexpected payment call");
   }
-
-  setListInstrumentsResponse(
-    response: ListPaymentInstrumentsResponse,
-    forNextToken?: string,
-  ): this {
-    this.listInstrumentsResponses.set(forNextToken, response);
-    return this;
-  }
-
-  // setError makes every subsequent call reject with `error` (undefined clears).
-  setError(error: Error | undefined): this {
-    this.error = error;
-    return this;
-  }
-
-  async getPaymentManager(id: string, options: CoreOptions): Promise<GetPaymentManagerResponse> {
-    this.calls.push({ method: "getPaymentManager", args: [id, options] });
-    if (this.error) throw this.error;
-    return this.getManagerResponse;
-  }
-
-  async listPaymentManagers(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListPaymentManagersResponse> {
-    this.calls.push({ method: "listPaymentManagers", args: [nextToken, maxResults, options] });
-    if (this.error) throw this.error;
-    return this.listManagersResponses.get(nextToken) ?? DEFAULT_LIST_PAYMENT_MANAGERS_RESPONSE;
-  }
-
-  async getPaymentConnector(
-    managerId: string,
-    connectorId: string,
-    options: CoreOptions,
-  ): Promise<GetPaymentConnectorResponse> {
-    this.calls.push({ method: "getPaymentConnector", args: [managerId, connectorId, options] });
-    if (this.error) throw this.error;
-    return this.getConnectorResponse;
-  }
-
-  async listPaymentConnectors(
-    managerId: string,
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListPaymentConnectorsResponse> {
-    this.calls.push({
-      method: "listPaymentConnectors",
-      args: [managerId, nextToken, maxResults, options],
-    });
-    if (this.error) throw this.error;
-    return this.listConnectorsResponses.get(nextToken) ?? DEFAULT_LIST_PAYMENT_CONNECTORS_RESPONSE;
-  }
-
-  async getPaymentSession(
-    request: GetPaymentSessionInput,
-    options: CoreOptions,
-  ): Promise<GetPaymentSessionResponse> {
-    this.calls.push({ method: "getPaymentSession", args: [request, options] });
-    if (this.error) throw this.error;
-    return this.getSessionResponse;
-  }
-
-  async listPaymentSessions(
-    request: ListPaymentSessionsInput,
-    options: CoreOptions,
-  ): Promise<ListPaymentSessionsResponse> {
-    this.calls.push({ method: "listPaymentSessions", args: [request, options] });
-    if (this.error) throw this.error;
-    return (
-      this.listSessionsResponses.get(request.nextToken) ?? DEFAULT_LIST_PAYMENT_SESSIONS_RESPONSE
-    );
-  }
-
-  async getPaymentInstrument(
-    request: GetPaymentInstrumentInput,
-    options: CoreOptions,
-  ): Promise<GetPaymentInstrumentResponse> {
-    this.calls.push({ method: "getPaymentInstrument", args: [request, options] });
-    if (this.error) throw this.error;
-    return this.getInstrumentResponse;
-  }
-
-  async getPaymentInstrumentBalance(
-    request: GetPaymentInstrumentBalanceInput,
-    options: CoreOptions,
-  ): Promise<GetPaymentInstrumentBalanceResponse> {
-    this.calls.push({ method: "getPaymentInstrumentBalance", args: [request, options] });
-    if (this.error) throw this.error;
-    return this.getInstrumentBalanceResponse;
-  }
-
-  async listPaymentInstruments(
-    request: ListPaymentInstrumentsInput,
-    options: CoreOptions,
-  ): Promise<ListPaymentInstrumentsResponse> {
-    this.calls.push({ method: "listPaymentInstruments", args: [request, options] });
-    if (this.error) throw this.error;
-    return (
-      this.listInstrumentsResponses.get(request.nextToken) ??
-      DEFAULT_LIST_PAYMENT_INSTRUMENTS_RESPONSE
-    );
+  async listPaymentInstruments(): Promise<ListPaymentInstrumentsResponse> {
+    throw new Error("Unexpected payment call");
   }
 }
 

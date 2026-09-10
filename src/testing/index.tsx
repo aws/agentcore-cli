@@ -15,7 +15,6 @@ export {
   TestHarnessClient,
   TestIdentityClient,
   TestMemoryClient,
-  TestPaymentClient,
   TestRuntimeClient,
   TestEvalClient,
   type RecordedCall,
