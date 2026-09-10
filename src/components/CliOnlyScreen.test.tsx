@@ -46,17 +46,17 @@ describe("menus list command-line-only subcommands below a divider", () => {
     const r = renderScreen("/agentcore/eval");
 
     await waitForText(r.lastFrame, "command line only");
-    expect(menuEntries(r.lastFrame()!).cliOnly).toEqual(["ondemand", "recommendation"]);
+    expect(menuEntries(r.lastFrame()!).cliOnly).toEqual(["ondemand"]);
     r.unmount();
   });
 
   test("a menu whose every subcommand is command line only", async () => {
-    const r = renderScreen("/agentcore/eval/recommendation");
+    const r = renderScreen("/agentcore/eval/ondemand");
 
     await waitForText(r.lastFrame, "command line only");
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [],
-      cliOnly: ["start", "get", "list", "delete"],
+      cliOnly: ["evaluate", "simulate"],
     });
     r.unmount();
   });
