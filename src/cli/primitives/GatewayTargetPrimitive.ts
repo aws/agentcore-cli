@@ -277,16 +277,18 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
     const typeDescription =
       'Target type (required): mcp-server, api-gateway, open-api-schema, smithy-model, lambda-function-arn, http-runtime, connector, passthrough [non-interactive]';
 
-    // Reject repeated use of --exclude-domains. Domains must be passed as a
+    // Reject repeated use of the domain filters. Domains must be passed as a
     // single comma-separated value.
-    const excludeDomainsCoercer = (val: string, prev?: string) => {
+    const onceOnly = (flag: string) => (val: string, prev?: string) => {
       if (prev !== undefined) {
         throw new ValidationError(
-          '--exclude-domains may only be specified once. Pass all domains as a single comma-separated value.'
+          `${flag} may only be specified once. Pass all domains as a single comma-separated value.`
         );
       }
       return val;
     };
+    const includeDomainsCoercer = onceOnly('--include-domains');
+    const excludeDomainsCoercer = onceOnly('--exclude-domains');
 
     addCmd
       .command('gateway-target')
@@ -304,6 +306,11 @@ export class GatewayTargetPrimitive extends BasePrimitive<AddGatewayTargetOption
         'KB reference for connector type — either a project KB name (entry in knowledgeBases[]) or a 10-char Bedrock KB id for an external KB. [non-interactive]',
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
+      )
+      .option(
+        '--include-domains <list>',
+        'Comma-separated domains to restrict results to (for --connector web-search) [non-interactive]',
+        includeDomainsCoercer
       )
       .option(
         '--exclude-domains <list>',
@@ -411,6 +418,7 @@ Target types and their options:
   connector — Wire a managed AWS connector (bedrock-knowledge-bases, web-search)
     --connector <id>               bedrock-knowledge-bases or web-search
     --knowledge-base-id <id>       Project KB name or 10-char external KB id (for KB connectors)
+    --include-domains <list>       Comma-separated domains to restrict results to (for web-search connector)
     --exclude-domains <list>       Comma-separated domains to exclude (for web-search connector)
 
   passthrough — Route to an external HTTPS endpoint
@@ -638,24 +646,31 @@ Target types and their options:
 
             // Web search connector
             if (connectorId === 'web-search') {
-              const excludeDomains =
-                typeof cliOptions.excludeDomains === 'string'
-                  ? cliOptions.excludeDomains
+              const splitDomains = (value: unknown): string[] | undefined =>
+                typeof value === 'string'
+                  ? value
                       .split(',')
                       .map((d: string) => d.trim())
                       .filter((d: string) => d.length > 0)
                   : undefined;
+              const includeDomains = splitDomains(cliOptions.includeDomains);
+              const excludeDomains = splitDomains(cliOptions.excludeDomains);
               const config: WebSearchTargetConfig = {
                 targetType: 'webSearch',
                 name: cliOptions.name!,
                 gateway: cliOptions.gateway!,
+                ...(includeDomains && includeDomains.length > 0 ? { includeDomains } : {}),
                 ...(excludeDomains && excludeDomains.length > 0 ? { excludeDomains } : {}),
               };
               const result = await this.createWebSearchGatewayTarget(config);
               if (cliOptions.json) {
                 console.log(JSON.stringify({ success: true, toolName: result.toolName }));
               } else {
-                const suffix = config.excludeDomains ? ` (excludeDomains=${config.excludeDomains.join(',')})` : '';
+                const filters = [
+                  ...(config.includeDomains ? [`includeDomains=${config.includeDomains.join(',')}`] : []),
+                  ...(config.excludeDomains ? [`excludeDomains=${config.excludeDomains.join(',')}`] : []),
+                ];
+                const suffix = filters.length > 0 ? ` (${filters.join(', ')})` : '';
                 console.log(`Added web-search gateway target '${result.toolName}' on '${config.gateway}'${suffix}`);
               }
               return { ...telemetryAttrs, gateway_target_type: 'web-search' as const };
@@ -1226,7 +1241,7 @@ Target types and their options:
 
     const configurations = translateConnector({
       connectorId: 'web-search',
-      input: { excludeDomains: config.excludeDomains },
+      input: { includeDomains: config.includeDomains, excludeDomains: config.excludeDomains },
     });
 
     const target: AgentCoreGatewayTarget = {
