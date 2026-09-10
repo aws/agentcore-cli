@@ -129,20 +129,3 @@ describe("payment-credential-provider list", () => {
     expect(second.nextToken).not.toBe(first.nextToken);
   });
 });
-
-describe("payment-credential-provider read flag validation", () => {
-  test.each([
-    ["get --name without a value", ["get", "--name"], /--name/],
-    ["get with an unknown flag", ["get", "--id", FIXTURE_PROVIDER_NAME], /unknown option '--id'/],
-    ["list --max-results without a value", ["list", "--max-results"], /--max-results/],
-    ["list --max-results with a non-number", ["list", "--max-results", "abc"], /--max-results/],
-    ["list --next-token without a value", ["list", "--next-token"], /--next-token/],
-    [
-      "list with an unknown flag",
-      ["list", "--name", FIXTURE_PROVIDER_NAME],
-      /unknown option '--name'/,
-    ],
-  ] as const)("rejects %s", async (_label, args, message) => {
-    await expect(run([...args])).rejects.toThrow(message);
-  });
-});

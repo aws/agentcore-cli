@@ -6,9 +6,11 @@ import { createRootHandler } from "../index";
 import {
   createSilentLogger,
   fixtureFactories,
+  isRecording,
   matchGolden,
   TestGlobalConfigAccessor,
   testIO,
+  waitFor,
 } from "../../testing";
 
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -160,22 +162,40 @@ test("payment manager lifecycle replays default-role creation, update, and delet
   expect(manager.authorizerType).toBe("AWS_IAM");
   expect(manager.roleArn).toContain(paymentServiceRoleName(E2E_NAME, REGION));
   const scoped = ["--id", manager.paymentManagerId];
-  expect(JSON.parse(await run(["get", ...scoped])).status).toBe("READY");
+  await waitFor(
+    async () => JSON.parse(await run(["get", ...scoped])).status === "READY",
+    isRecording() ? 300_000 : 0,
+    5_000,
+  );
 
   const description = "Updated by the agentcore CLI end-to-end test";
   const updated = await run(["update", ...scoped, "--description", description]);
   matchGolden(FIXTURES, "manager-update.golden.json", updated);
-  expect(JSON.parse(await run(["get", ...scoped]))).toMatchObject({
-    status: "READY",
-    description,
-  });
+  await waitFor(
+    async () => {
+      const detail = JSON.parse(await run(["get", ...scoped]));
+      return detail.status === "READY" && detail.description === description;
+    },
+    isRecording() ? 300_000 : 0,
+    5_000,
+  );
 
   const deleted = await run(["delete", ...scoped]);
   matchGolden(FIXTURES, "manager-delete.golden.json", deleted);
   expect(JSON.parse(deleted).status).toBe("DELETING");
 
   // The same Get request has a separate post-delete fixture.
-  await expect(
-    run(["get", ...scoped], createFixtureCore(join(FIXTURES, "after-delete"))),
-  ).rejects.toThrow(/ResourceNotFound|not found/i);
-});
+  await waitFor(
+    async () => {
+      try {
+        await run(["get", ...scoped], createFixtureCore(join(FIXTURES, "after-delete")));
+        return false;
+      } catch (error) {
+        expect(error).toMatchObject({ name: "ResourceNotFoundException" });
+        return true;
+      }
+    },
+    isRecording() ? 300_000 : 0,
+    5_000,
+  );
+}, 1_800_000);

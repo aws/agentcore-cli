@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, mock, spyOn, test } from "bun:test";
-import { createPrivateKey, createPublicKey } from "node:crypto";
+import { createECDH, createPrivateKey, createPublicKey } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,9 +41,8 @@ const SECRET_REFERENCE_JSON = JSON.stringify(SECRET_REFERENCE);
 
 // Fixtures are keyed by a hash of the request, so the throwaway secrets must be identical on
 // every record and replay. They are derived from fixed bytes rather than committed as key
-// material. The service wants the Coinbase CDP form of an Ed25519 key (32-byte seed followed
-// by the 32-byte public key; a bare seed is rejected), and the P-256 key is assembled as SEC1
-// DER from a fixed scalar (the same encoding `openssl ecparam -genkey -outform DER` emits).
+// material. Coinbase CDP uses a 32-byte Ed25519 seed followed by the 32-byte public key;
+// the P-256 wallet keys use SEC1 DER.
 const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 
 function ed25519PrivateKey(fill: number): string {
@@ -57,35 +56,23 @@ function ed25519PrivateKey(fill: number): string {
   return Buffer.concat([seed, spki.subarray(spki.length - 32)]).toString("base64");
 }
 
-const P256_OID = Buffer.from([0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]);
-const EC_PUBLIC_KEY_OID = Buffer.from([0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]);
-
-function der(tag: number, body: Buffer): Buffer {
-  if (body.length > 127) throw new Error("single-byte DER lengths only");
-  return Buffer.concat([Buffer.from([tag, body.length]), body]);
-}
-
 function p256PrivateKey(fill: number): string {
   const scalar = Buffer.alloc(32, fill);
-  const bareKey = der(0x30, Buffer.concat([der(0x02, Buffer.from([1])), der(0x04, scalar)]));
-  const algorithm = der(0x30, Buffer.concat([EC_PUBLIC_KEY_OID, P256_OID]));
-  const pkcs8 = der(
-    0x30,
-    Buffer.concat([der(0x02, Buffer.from([0])), algorithm, der(0x04, bareKey)]),
-  );
-  const spki = createPublicKey(
-    createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" }),
-  ).export({ format: "der", type: "spki" }) as Buffer;
-  const point = spki.subarray(spki.length - 65);
-  return der(
-    0x30,
-    Buffer.concat([
-      der(0x02, Buffer.from([1])),
-      der(0x04, scalar),
-      der(0xa0, P256_OID),
-      der(0xa1, der(0x03, Buffer.concat([Buffer.from([0]), point]))),
-    ]),
-  ).toString("base64");
+  const ecdh = createECDH("prime256v1");
+  ecdh.setPrivateKey(scalar);
+  const point = ecdh.getPublicKey();
+  return createPrivateKey({
+    format: "jwk",
+    key: {
+      kty: "EC",
+      crv: "P-256",
+      d: scalar.toString("base64url"),
+      x: point.subarray(1, 33).toString("base64url"),
+      y: point.subarray(33).toString("base64url"),
+    },
+  })
+    .export({ format: "der", type: "sec1" })
+    .toString("base64");
 }
 
 const API_KEY_SECRET = ed25519PrivateKey(0x11);

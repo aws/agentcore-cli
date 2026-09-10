@@ -146,6 +146,21 @@ test("a provider ARN requires a vendor and skips name resolution", async () => {
   expect(identity.getPaymentCredentialProvider).not.toHaveBeenCalled();
 });
 
+test("Quick Create rejects vendors other than Coinbase before sending a request", async () => {
+  const { client, send } = setup();
+  await expect(
+    client.createPaymentConnector(
+      {
+        ...connector,
+        quickCreate: true,
+        type: "StripePrivy",
+      },
+      options,
+    ),
+  ).rejects.toThrow("Quick Create is available only for CoinbaseCDP");
+  expect(send).not.toHaveBeenCalled();
+});
+
 test("connector updates resolve replacement credentials but preserve omitted credentials", async () => {
   const { client, send, identity } = setup(async (command) =>
     command instanceof GetPaymentConnectorCommand ? { type: "CoinbaseCDP" } : {},

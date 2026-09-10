@@ -1,17 +1,22 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { GetPaymentConnectorCommand } from "@aws-sdk/client-bedrock-agentcore-control";
+import {
+  CreatePaymentConnectorCommand,
+  GetPaymentConnectorCommand,
+} from "@aws-sdk/client-bedrock-agentcore-control";
 import { CoreClient } from "../../../core";
 import type { ClientConfig } from "../../../core/types";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
   fixtureFactories,
+  isRecording,
   matchGolden,
   parse,
   TestGlobalConfigAccessor,
   testIO,
+  waitFor,
 } from "../../../testing";
 import quickCreateFixture from "../__fixtures__/connector/CreatePaymentConnectorCommand.3a23138a2103205b.json";
 import connectorGetFixture from "../__fixtures__/connector/GetPaymentConnectorCommand.9f8dfd59b8af870.json";
@@ -41,6 +46,22 @@ async function run(
   });
   await root.route(["node", "agentcore", "payment", "connector", ...args, ...regionArgs]);
   return io;
+}
+
+async function waitForDeletion(args: string[]) {
+  await waitFor(
+    async () => {
+      try {
+        await run(["get", ...args], { core: createFixtureCore(join(FIXTURES, "after-delete")) });
+        return false;
+      } catch (error) {
+        expect(error).toMatchObject({ name: "ResourceNotFoundException" });
+        return true;
+      }
+    },
+    isRecording() ? 300_000 : 0,
+    5_000,
+  );
 }
 
 describe("payment connector write inputs", () => {
@@ -152,7 +173,6 @@ describe("payment connector Quick Create hints", () => {
       const getRequests: GetPaymentConnectorCommand["input"][] = [];
       const createControlClient = mock((config: ClientConfig) => {
         const client = factories.createControlClient(config);
-        const replay = client.send.bind(client);
         spyOn(client, "send").mockImplementation(async (command) => {
           if (command instanceof GetPaymentConnectorCommand) {
             getRequests.push(command.input);
@@ -165,7 +185,10 @@ describe("payment connector Quick Create hints", () => {
               }),
             );
           }
-          return replay(command);
+          if (command instanceof CreatePaymentConnectorCommand) {
+            return parse(JSON.stringify(quickCreateFixture));
+          }
+          throw new Error("Unexpected SDK command in hint test");
         });
         return client;
       });
@@ -212,7 +235,11 @@ describe("payment connector Quick Create hints", () => {
   );
 
   test("--json keeps the authorization URL in stdout without a stderr hint", async () => {
-    const io = await run([...quickArgs, "--json"]);
+    const core = createFixtureCore();
+    spyOn(core.payment, "createPaymentConnector").mockResolvedValue(
+      parse(JSON.stringify(quickCreateFixture)),
+    );
+    const io = await run([...quickArgs, "--json"], { core });
     expect(JSON.parse(io.stdout()).authorizationUrl).toMatch(/^https:\/\//);
     expect(io.stderr()).toBe("");
   });
@@ -233,11 +260,23 @@ test("payment connector lifecycle replays named-provider creation, update, and d
   const connector = JSON.parse(created.stdout());
   expect(connector.type).toBe("CoinbaseCDP");
   const connectorArgs = [...scoped, "--connector-id", connector.paymentConnectorId];
-  expect(JSON.parse((await run(["get", ...connectorArgs])).stdout()).status).toBe("READY");
+  await waitFor(
+    async () => JSON.parse((await run(["get", ...connectorArgs])).stdout()).status === "READY",
+    isRecording() ? 300_000 : 0,
+    5_000,
+  );
 
   const description = "Updated by the agentcore CLI end-to-end test";
   const updated = await run(["update", ...connectorArgs, "--description", description]);
   matchGolden(FIXTURES, "connector-update.golden.json", updated.stdout());
+  await waitFor(
+    async () => {
+      const result = JSON.parse((await run(["get", ...connectorArgs])).stdout());
+      return result.status === "READY" && result.description === description;
+    },
+    isRecording() ? 300_000 : 0,
+    5_000,
+  );
   const detail = await run(["get", ...connectorArgs]);
   matchGolden(FIXTURES, "connector-get.golden.json", detail.stdout());
   expect(JSON.parse(detail.stdout())).toMatchObject({
@@ -249,10 +288,8 @@ test("payment connector lifecycle replays named-provider creation, update, and d
   const deleted = await run(["delete", ...connectorArgs]);
   matchGolden(FIXTURES, "connector-delete.golden.json", deleted.stdout());
   expect(JSON.parse(deleted.stdout()).status).toBe("DELETING");
-  await expect(
-    run(["get", ...connectorArgs], { core: createFixtureCore(join(FIXTURES, "after-delete")) }),
-  ).rejects.toThrow(/ResourceNotFound|not found/i);
-});
+  await waitForDeletion(connectorArgs);
+}, 1_800_000);
 
 test("payment connector Quick Create lifecycle returns consent instructions and deletes the pending connector", async () => {
   const created = await run(quickArgs);
@@ -270,7 +307,5 @@ test("payment connector Quick Create lifecycle returns consent instructions and 
   const deleted = await run(["delete", ...connectorArgs]);
   matchGolden(FIXTURES, "connector-quick-delete.golden.json", deleted.stdout());
   expect(JSON.parse(deleted.stdout()).status).toBe("DELETING");
-  await expect(
-    run(["get", ...connectorArgs], { core: createFixtureCore(join(FIXTURES, "after-delete")) }),
-  ).rejects.toThrow(/ResourceNotFound|not found/i);
-});
+  await waitForDeletion(connectorArgs);
+}, 600_000);
