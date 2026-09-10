@@ -1,0 +1,20 @@
+{
+  "name": "agentcore-cli-payment-fixture",
+  "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/agentcore-cli-payment-fixture",
+  "credentialProviderVendor": "CoinbaseCDP",
+  "providerConfigurationOutput": {
+    "coinbaseCdpConfiguration": {
+      "apiKeyId": "agentcore-cli-fixture-key",
+      "apiKeySecretArn": {
+        "secretArn": "arn:aws:secretsmanager:us-west-2:603141041947:secret:bedrock-agentcore-identity!default/payment/coinbasecdp/agentcore-cli-payment-fixture-541ff54c/apikey-eNjrnd"
+      },
+      "walletSecretArn": {
+        "secretArn": "arn:aws:secretsmanager:us-west-2:603141041947:secret:bedrock-agentcore-identity!default/payment/coinbasecdp/agentcore-cli-payment-fixture-541ff54c/wallet-DFZFS6"
+      },
+      "apiKeySecretSource": "MANAGED",
+      "walletSecretSource": "MANAGED"
+    }
+  },
+  "createdTime": "2026-09-08T20:16:25.544Z",
+  "lastUpdatedTime": "2026-09-08T20:16:25.544Z"
+}
