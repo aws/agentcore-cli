@@ -1,5 +1,5 @@
 import z from "zod";
-import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../core/observability";
+import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../core/observability/index";
 import type { AppIO } from "../../../io";
 import { flag } from "../../../router";
 import { createLogsHandler } from "../../observability/logs";
@@ -20,6 +20,7 @@ const runtimeFlags = [
  */
 export const createRuntimeLogsHandler = (core: Core, io: AppIO) =>
   createLogsHandler(io, {
+    name: "logs",
     description: "stream or search a Runtime's logs",
     flags: runtimeFlags,
     read: (ctx, flags, request, signal) => {

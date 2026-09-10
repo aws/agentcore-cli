@@ -1,5 +1,5 @@
-import { InputValidationError, ResourceNotFoundError } from "../../../errors";
-import type { Project, ProjectInvokableResource } from "../types";
+import { InputValidationError, ResourceNotFoundError } from "../../errors";
+import type { Project, ProjectInvokableResource } from "./types";
 
 export function projectResourceNames(
   project: Project,
@@ -14,6 +14,7 @@ export function selectProjectResource(
   project: Project,
   resourceType: ProjectInvokableResource,
   name: string | undefined,
+  operation: string,
 ): string {
   const names = projectResourceNames(project, resourceType);
   const label = resourceType === "runtime" ? "Runtime" : "Harness";
@@ -26,7 +27,7 @@ export function selectProjectResource(
   }
   if (names.length === 1) return names[0]!;
   if (names.length === 0) {
-    throw new InputValidationError(`This project has no ${label}s to invoke.`);
+    throw new InputValidationError(`This project has no ${label}s to ${operation}.`);
   }
   throw new InputValidationError(
     `Project has multiple ${label}s. Specify --name: ${names.join(", ")}.`,

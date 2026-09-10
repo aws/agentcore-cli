@@ -64,6 +64,7 @@ export type LogsReadResult = {
 export function createLogsHandler<F extends readonly Flag<string, unknown>[]>(
   io: AppIO,
   config: {
+    name: string;
     description: string;
     flags: F;
     read(
@@ -77,7 +78,7 @@ export function createLogsHandler<F extends readonly Flag<string, unknown>[]>(
   const flags = [...config.flags, ...logFlags] as const;
 
   return createHandler({
-    name: "logs",
+    name: config.name,
     description: config.description,
     flags,
     handle: async (ctx, values) => {
