@@ -139,9 +139,11 @@ agentcore                          # interactive TUI
 │   │   ├── runtime                # use the existing Runtime invoke experience
 │   │   └── harness                # use the existing Harness invoke experience
 │   ├── status                     # inspect deployed project resources (TUI when run bare)
-│   └── build                      # synthesize the project's CloudFormation templates
-│   └── log
-│       └── runtime                # resolve a project Runtime and inspect its logs
+│   ├── build                      # synthesize the project's CloudFormation templates
+│   ├── log
+│   │   └── runtime                # resolve a project Runtime and inspect its logs
+│   └── traces
+│       └── runtime
 └── config                         # read/write global config values
 ```
 
@@ -203,6 +205,21 @@ agentcore project log runtime --name checkout --since 1h --level error
 When the project declares exactly one Runtime, `--name` may be omitted. Use the
 imperative `agentcore runtime logs --id <runtimeId>` command when addressing a
 Runtime directly or working outside a project.
+
+### Inspect project Runtime traces
+
+Project tracing uses the same logical Runtime and deployment target resolution,
+then lists or downloads traces from the resolved Runtime's deployment region:
+
+```bash
+agentcore project traces runtime list
+agentcore project traces runtime list --name checkout --target production --since 30m
+agentcore project traces runtime get <traceId> --name checkout --output trace.json
+```
+
+When the project declares exactly one Runtime, `--name` may be omitted. Use the
+imperative `agentcore runtime traces` commands when addressing a Runtime by
+physical ID or working outside a project.
 
 ### Examples
 
@@ -280,6 +297,10 @@ agentcore runtime logs --id <runtimeId> --since 2026-08-30T12:00:00Z --until now
 # List recent traces (they take 2-3 minutes to appear), then download one
 agentcore runtime traces list --id <runtimeId> --since 30m
 agentcore runtime traces get <traceId> --id <runtimeId> --output trace.json
+
+# Resolve a project Runtime by logical name and deployment target
+agentcore project traces runtime list --name checkout --target production --since 30m
+agentcore project traces runtime get <traceId> --name checkout --output trace.json
 
 # Inspect AgentCore Memories without project configuration or deployment
 agentcore memory get --id <memoryId>
