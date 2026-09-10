@@ -110,3 +110,68 @@ test("gives identical policies the same name", () => {
     scopePolicyName(executionPolicy(REGION, ACCOUNT, ["/a*", "/b*"], [])),
   );
 });
+
+function writeStatement(policy: string) {
+  return statements(policy).find((s) => s.Sid === "WriteEvaluationResults");
+}
+
+const SERVICE_RESULTS = `arn:aws:logs:${REGION}:${ACCOUNT}:log-group:/aws/bedrock-agentcore/evaluations/*`;
+
+test("a config with no output destination keeps the service namespace as a bare string", () => {
+  const write = writeStatement(executionPolicy(REGION, ACCOUNT, LOG_GROUPS, []));
+
+  expect(write?.Resource).toBe(SERVICE_RESULTS);
+  expect(Array.isArray(write?.Resource)).toBe(false);
+});
+
+test("a customer-named dedicated group is granted alongside the service namespace", () => {
+  const write = writeStatement(
+    executionPolicy(REGION, ACCOUNT, LOG_GROUPS, [], {
+      cloudWatchConfig: {
+        logGroupName: "/company/agent-evaluations",
+        resultDestination: "DEDICATED_LOG_GROUP",
+      },
+    }),
+  );
+
+  expect(write?.Resource).toEqual([
+    SERVICE_RESULTS,
+    `arn:aws:logs:${REGION}:${ACCOUNT}:log-group:/company/agent-evaluations*`,
+  ]);
+  expect(write?.Action).toContain("logs:CreateLogGroup");
+});
+
+test("SOURCE_LOG_GROUP grants writes to the groups the traces are read from", () => {
+  const write = writeStatement(
+    executionPolicy(REGION, ACCOUNT, LOG_GROUPS, [], {
+      cloudWatchConfig: { resultDestination: "SOURCE_LOG_GROUP" },
+    }),
+  );
+
+  expect(write?.Resource).toEqual([
+    SERVICE_RESULTS,
+    `arn:aws:logs:${REGION}:${ACCOUNT}:log-group:/aws/bedrock-agentcore/runtimes/orders-agent-abc123*`,
+  ]);
+});
+
+test("a destination already inside the service namespace adds nothing", () => {
+  const write = writeStatement(
+    executionPolicy(REGION, ACCOUNT, LOG_GROUPS, [], {
+      cloudWatchConfig: {
+        logGroupName: "/aws/bedrock-agentcore/evaluations/online-evaluations/results/default",
+        resultDestination: "DEDICATED_LOG_GROUP",
+      },
+    }),
+  );
+
+  expect(write?.Resource).toBe(SERVICE_RESULTS);
+});
+
+test("changing the destination changes the policy name, so a re-scope is a new grant", () => {
+  const before = executionPolicy(REGION, ACCOUNT, LOG_GROUPS, []);
+  const after = executionPolicy(REGION, ACCOUNT, LOG_GROUPS, [], {
+    cloudWatchConfig: { logGroupName: "/company/agent-evaluations" },
+  });
+
+  expect(scopePolicyName(after)).not.toBe(scopePolicyName(before));
+});

@@ -8,6 +8,7 @@ import type { Core } from "../../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
+import { OnlineEvalOutputConfigFlag } from "../outputConfig";
 
 const SESSION_SOURCE = "Session source:";
 const SOURCE_FILTERS = "Source filters:";
@@ -22,6 +23,12 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       flag("id", "the ID of the online evaluation config to update", z.string().optional(), {
         group: "Target:",
       }),
+      flag(
+        "description",
+        "replace the description of the config's monitoring purpose",
+        z.string().optional(),
+        { group: "Configuration:" },
+      ),
       flag("agent", "repoint at a different harness ID or Runtime ID", z.string().optional(), {
         group: SESSION_SOURCE,
       }),
@@ -65,6 +72,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         group: EVALUATION,
         help: filtersHelp,
       }),
+      ...OnlineEvalOutputConfigFlag.flags,
       flag(
         "role-arn",
         "replace the IAM role the online evaluation assumes",
@@ -89,10 +97,16 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         );
       }
 
+      // One resolver shared across every stdin-capable flag (--filters,
+      // --data-source-config, --output-config) so a second `-` is rejected
+      // rather than reading empty after the first drains stdin.
       const source = new SourceResolver({ stdin: io.stdin });
+      const outputConfig = await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], source);
       const { response } = await core.eval.updateOnlineEvaluationConfig(
         flags["id"],
         {
+          description: flags["description"],
+          outputConfig,
           samplingRate: flags["sampling-rate"],
           sessionTimeoutMinutes: flags["session-timeout-minutes"],
           filters: parseJsonFlag<Filter[]>(
