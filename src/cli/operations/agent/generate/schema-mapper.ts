@@ -291,7 +291,7 @@ export async function mapGenerateConfigToRenderConfig(
 ): Promise<AgentRenderConfig> {
   const isMcp = config.protocol === 'MCP';
   const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
-  const enableOtel = !isMcp && config.language !== 'TypeScript';
+  const enableOtel = !isMcp;
 
   return {
     name: config.projectName,
