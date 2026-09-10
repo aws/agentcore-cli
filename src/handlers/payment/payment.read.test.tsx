@@ -177,8 +177,8 @@ const reads = [
   expected: object;
 }[];
 
-describe("payment read-only command tree", () => {
-  test("exposes exactly nine CLI-only leaves and no write commands", () => {
+describe("payment command tree", () => {
+  test("retains reads alongside mutation commands as CLI-only leaves", () => {
     const { root } = createCommandTest();
     const payment = compile(root, ValueContext.EmptyContext()).commands.find(
       (command) => command.name() === "payment",
@@ -193,13 +193,13 @@ describe("payment read-only command tree", () => {
         ]),
       ),
     ).toEqual({
-      manager: ["get", "list"],
-      connector: ["get", "list"],
-      session: ["get", "list"],
-      instrument: ["get", "list", "balance"],
+      manager: ["create", "get", "list", "update", "delete"],
+      connector: ["create", "get", "list", "update", "delete"],
+      session: ["create", "get", "list", "delete"],
+      instrument: ["create", "get", "list", "delete", "balance"],
     });
     const leaves = payment!.commands.flatMap((resource) => resource.commands);
-    expect(leaves).toHaveLength(9);
+    expect(leaves).toHaveLength(19);
     for (const command of [...payment!.commands, ...leaves]) {
       expect(isTuiCommandSupported(command)).toBe(false);
       expect(command.options.map((option) => option.long)).not.toContain("--wait");
@@ -516,7 +516,7 @@ describe("payment connector read-only hints", () => {
     "AUTHENTICATION_FAILED",
     "PENDING_AUTHENTICATION",
     "READY",
-  ] as const)("preserves %s without suggesting absent write commands", async (status) => {
+  ] as const)("preserves %s with actionable terminal-state guidance", async (status) => {
     for (const jsonFlags of [[], ["--json"]]) {
       const response = {
         ...parse<GetPaymentConnectorResponse>(JSON.stringify(connectorFixture)),
@@ -546,7 +546,9 @@ describe("payment connector read-only hints", () => {
       if (terminal && jsonFlags.length === 0) {
         expect(io.stderr()).toContain(status);
         expect(io.stderr()).toContain("cannot be renewed");
-        expect(io.stderr()).not.toMatch(/create|delete|update|--quick-create|browser|wait/i);
+        expect(io.stderr()).toContain(
+          "delete this connector and create it again with --quick-create",
+        );
       } else {
         expect(io.stderr()).toBe("");
       }

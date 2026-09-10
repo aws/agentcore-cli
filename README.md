@@ -69,8 +69,11 @@ agentcore                          # interactive TUI
 │   │   ├── update                 # update an OAuth2 credential provider
 │   │   └── delete                 # delete an OAuth2 credential provider
 │   └── payment-credential-provider
+│       ├── create                 # store Coinbase CDP or Stripe/Privy credentials for payment connectors
 │       ├── get                    # get a payment credential provider
-│       └── list                   # list payment credential providers
+│       ├── list                   # list payment credential providers
+│       ├── update                 # replace a payment credential provider's credentials
+│       └── delete                 # delete a payment credential provider
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
@@ -110,19 +113,29 @@ agentcore                          # interactive TUI
 │   │   └── list                   # list Rules under a Gateway
 │   └── policy
 │       └── generate               # generate Cedar for a Gateway from a prompt (TUI when run bare)
-├── payment                        # inspect AgentCore Payments (command line only for now)
+├── payment                        # manage AgentCore Payments (command line only for now)
 │   ├── manager
+│   │   ├── create                 # create a payment manager (auto-provisions a service role if none given)
 │   │   ├── get                    # get a payment manager by id
-│   │   └── list                   # list payment managers (server-side paginated)
+│   │   ├── list                   # list payment managers (server-side paginated)
+│   │   ├── update                 # update a payment manager
+│   │   └── delete                 # delete a payment manager (delete its connectors first)
 │   ├── connector                  # connectors under a payment manager
+│   │   ├── create                 # create a connector from a credential provider, or --quick-create for Coinbase
 │   │   ├── get                    # get a connector (shows the Quick Create authorization URL while pending)
-│   │   └── list                   # list a manager's connectors
+│   │   ├── list                   # list a manager's connectors
+│   │   ├── update                 # update a connector's description or credential provider
+│   │   └── delete                 # delete a connector
 │   ├── session                    # budget-limited payment contexts (data plane)
+│   │   ├── create                 # create a session with an expiry and optional spend limit
 │   │   ├── get
-│   │   └── list
+│   │   ├── list
+│   │   └── delete
 │   └── instrument                 # embedded crypto wallets (data plane)
+│       ├── create                 # create a wallet for a user on a connector
 │       ├── get
 │       ├── list
+│       ├── delete
 │       └── balance                # read token balance on an explicit chain (default token: USDC)
 ├── eval                           # evaluate and optimize AgentCore agents
 │   └── evaluator                  # manage AgentCore evaluators
@@ -203,27 +216,39 @@ agentcore project invoke harness \
 Use `--target` to select a deployment target. When a project declares exactly
 one resource of the requested type, `--name` may be omitted.
 
-### Inspect AgentCore Payments
+### Manage AgentCore Payments
 
 The `payment` commands call the Payments control and data planes directly, with
-no project involved. This command family currently provides read-only inspection
-of existing managers, connectors, sessions, instruments, and payment credential
-providers. It does not create IAM roles or change provider credentials.
+no project involved. A manager created without `--role-arn` gets a default
+service role named `AgentCorePayments-<region>-<name>` (long names have a stable
+hash suffix). Default roles are tagged with their CLI owner, manager name, and
+region; only matching roles are reused and have their service policy refreshed.
+An unowned role with the same name is not modified. Use `--role-arn` to supply an
+existing role, which the CLI never edits. Old regionless default roles are not
+migrated automatically, and manager deletion does not delete IAM roles.
+
+Default role provisioning requires IAM role read/create, tagging, and inline
+policy permissions, in addition to the service's role-passing requirements.
+For centrally managed IAM policies or stricter per-credential permissions,
+provision the service role separately and pass `--role-arn`.
 
 ```bash
-# Inspect managers and their connectors.
-agentcore payment manager list --json
-agentcore payment manager get --id <manager id>
-agentcore payment connector list --manager-id <manager id>
+# Create a manager, then a Coinbase connector through Quick Create. The create
+# returns PENDING_AUTHENTICATION and an authorizationUrl: open it within ten
+# minutes, then confirm the connector reached READY.
+agentcore payment manager create --name Checkout
+agentcore payment connector create --manager-id <manager id> --name Coinbase --quick-create
 agentcore payment connector get --manager-id <manager id> --connector-id <connector id>
 
-# Inspect provider metadata stored in AgentCore Identity.
-agentcore identity payment-credential-provider list --json
-agentcore identity payment-credential-provider get --name <provider name>
+# Or bring your own provider credentials, stored in AgentCore Identity, and
+# reference the provider by name (its vendor selects the connector type).
+agentcore identity payment-credential-provider create --name cdp-creds --vendor CoinbaseCDP \
+  --api-key-id <id> --api-key-secret file://api-key-secret.txt --wallet-secret file://wallet-secret.txt
+agentcore payment connector create --manager-id <manager id> --name Coinbase --credential-provider cdp-creds
 
 # Session and instrument commands take the parent manager ID and a user id.
-agentcore payment session list --manager-id <manager id> --user-id alice
-agentcore payment instrument list --manager-id <manager id> --user-id alice
+agentcore payment session create --manager-id <manager id> --user-id alice \
+  --expiry-minutes 60 --max-spend 10.00 --currency USD
 
 # Check funding on one chain. USDC is the default token.
 agentcore payment instrument balance --manager-id <manager id> --user-id alice \
