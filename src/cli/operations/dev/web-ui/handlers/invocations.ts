@@ -12,6 +12,21 @@ import { type IncomingMessage, type ServerResponse, request as httpRequest } fro
 let a2aRequestId = 1;
 
 /**
+ * Forward allowlisted custom headers from the incoming request.
+ * Currently forwards all `x-amzn-bedrock-agentcore-runtime-custom-*` headers
+ * which are the documented custom header prefix for AgentCore Runtime.
+ */
+function forwardCustomHeaders(req: IncomingMessage, headers: Record<string, string>): void {
+  if (req.headers) {
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (key.startsWith('x-amzn-bedrock-agentcore-runtime-custom-') && typeof value === 'string') {
+        headers[key] = value;
+      }
+    }
+  }
+}
+
+/**
  * POST /invocations — proxy to the selected agent.
  * Body must include agentName to route to the correct running agent.
  * When ?target=deployed is set, invokes the deployed runtime via the AWS SDK.
@@ -84,7 +99,7 @@ export async function handleInvocations(
 
   // AGUI agents need RunAgentInput body; SSE response is passed through raw
   if (agentProtocol === 'AGUI') {
-    return handleAguiInvocation(ctx, res, body, agentPort, sessionId, userId, origin);
+    return handleAguiInvocation(ctx, req, res, body, agentPort, sessionId, userId, origin);
   }
 
   return new Promise<void>((resolve, reject) => {
@@ -96,6 +111,8 @@ export async function handleInvocations(
     if (userId) {
       headers['x-amzn-bedrock-agentcore-runtime-user-id'] = userId;
     }
+    // Forward custom headers from the incoming request
+    forwardCustomHeaders(req, headers);
 
     const proxyReq = httpRequest(
       {
@@ -277,6 +294,7 @@ async function handleA2AInvocation(
  */
 async function handleAguiInvocation(
   ctx: RouteContext,
+  req: IncomingMessage,
   res: ServerResponse,
   rawBody: string,
   agentPort: number,
@@ -314,6 +332,8 @@ async function handleAguiInvocation(
     if (userId) {
       headers['x-amzn-bedrock-agentcore-runtime-user-id'] = userId;
     }
+    // Forward custom headers from the incoming request
+    forwardCustomHeaders(req, headers);
 
     const proxyReq = httpRequest(
       {
