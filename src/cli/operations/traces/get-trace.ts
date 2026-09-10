@@ -1,6 +1,7 @@
 import { ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
 import { runtimeLogGroup } from '../../aws/cloudwatch';
+import { SPANS_LOG_GROUP, TRACE_ID_PATTERN } from './constants';
 import { runInsightsQuery } from './insights-query';
 import type {
   CloudWatchSpanRecord,
@@ -9,14 +10,86 @@ import type {
   FetchTraceRecordsResult,
   GetTraceOptions,
   GetTraceResult,
+  QuerySpanRecordsOptions,
 } from './types';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SPANS_LOG_GROUP = 'aws/spans';
-const TRACE_ID_PATTERN = /^[a-fA-F0-9-]+$/;
+/**
+ * Queries structured span records for one trace from a single CloudWatch log group.
+ */
+export async function querySpanRecords(
+  options: QuerySpanRecordsOptions
+): Promise<Result<{ spans: CloudWatchSpanRecord[] }>> {
+  const { region, logGroupName, traceId, startTime, endTime } = options;
 
-async function fetchSpans(
+  if (!TRACE_ID_PATTERN.test(traceId)) {
+    return {
+      success: false,
+      error: new ValidationError('Invalid trace ID format. Expected a hex string (e.g., abc123def456).'),
+    };
+  }
+
+  const queryString = `fields traceId, spanId, parentSpanId, name, kind,
+  startTimeUnixNano, endTimeUnixNano, durationNano,
+  status.code as statusCode,
+  resource.attributes.service.name as serviceName,
+  resource.attributes.cloud.resource_id as cloudResourceId,
+  attributes.gen_ai.usage.input_tokens as inputTokens,
+  attributes.gen_ai.usage.output_tokens as outputTokens,
+  attributes.gen_ai.usage.total_tokens as totalTokens,
+  attributes.http.status_code as httpStatusCode,
+  attributes.session.id as sessionId,
+  attributes.gen_ai.operation.name as genAiOperation,
+  attributes.aws.endpoint.name as endpointName,
+  attributes.aws.agent.id as agentId,
+  attributes.traceloop.span.kind as traceloopSpanKind,
+  attributes.openinference.span.kind as openinferenceSpanKind,
+  attributes.gen_ai.request.model as requestModel,
+  attributes.gen_ai.response.model as responseModel
+| filter ispresent(traceId) and ispresent(resource.attributes.service.name)
+| filter resource.attributes.aws.service.type = "gen_ai_agent"
+| filter ispresent(kind)
+| filter traceId = '${traceId}'
+| sort startTimeUnixNano asc`;
+
+  const result = await runInsightsQuery({ region, logGroupName, queryString, startTime, endTime });
+  if (!result.success) {
+    return result;
+  }
+
+  const spans: CloudWatchSpanRecord[] = result.rows
+    .filter(row => row.traceId && row.spanId)
+    .map(row => ({
+      traceId: row.traceId!,
+      spanId: row.spanId!,
+      parentSpanId: row.parentSpanId ?? undefined,
+      name: row.name ?? undefined,
+      kind: row.kind ?? undefined,
+      startTimeUnixNano: row.startTimeUnixNano ?? undefined,
+      endTimeUnixNano: row.endTimeUnixNano ?? undefined,
+      durationNano: row.durationNano ?? undefined,
+      statusCode: row.statusCode ?? undefined,
+      serviceName: row.serviceName ?? undefined,
+      cloudResourceId: row.cloudResourceId ?? undefined,
+      inputTokens: row.inputTokens ? Number(row.inputTokens) : undefined,
+      outputTokens: row.outputTokens ? Number(row.outputTokens) : undefined,
+      totalTokens: row.totalTokens ? Number(row.totalTokens) : undefined,
+      httpStatusCode: row.httpStatusCode ? Number(row.httpStatusCode) : undefined,
+      sessionId: row.sessionId ?? undefined,
+      genAiOperation: row.genAiOperation ?? undefined,
+      endpointName: row.endpointName ?? undefined,
+      agentId: row.agentId ?? undefined,
+      traceloopSpanKind: row.traceloopSpanKind ?? undefined,
+      openinferenceSpanKind: row.openinferenceSpanKind ?? undefined,
+      requestModel: row.requestModel ?? undefined,
+      responseModel: row.responseModel ?? undefined,
+    }));
+
+  return { success: true, spans };
+}
+
+export async function fetchSpans(
   region: string,
   runtimeId: string,
   traceId: string,
@@ -30,57 +103,22 @@ async function fetchSpans(
     };
   }
 
-  const queryString = `fields traceId, spanId, parentSpanId, name, kind,
-  startTimeUnixNano, endTimeUnixNano, durationNano,
-  status.code as statusCode,
-  resource.attributes.service.name as serviceName,
-  attributes.gen_ai.usage.input_tokens as inputTokens,
-  attributes.gen_ai.usage.output_tokens as outputTokens,
-  attributes.gen_ai.usage.total_tokens as totalTokens,
-  attributes.http.status_code as httpStatusCode,
-  attributes.session.id as sessionId
-| filter ispresent(traceId) and ispresent(resource.attributes.service.name)
-| filter resource.attributes.aws.service.type = "gen_ai_agent"
-| filter ispresent(kind)
-| filter traceId = '${traceId}'
-| sort startTimeUnixNano asc`;
-
-  const queryOpts = { region, queryString, startTime, endTime };
+  const queryOpts = { region, traceId, startTime, endTime };
   const results = await Promise.all([
-    runInsightsQuery({ ...queryOpts, logGroupName: SPANS_LOG_GROUP }),
-    runInsightsQuery({ ...queryOpts, logGroupName: runtimeLogGroup(runtimeId) }),
+    querySpanRecords({ ...queryOpts, logGroupName: SPANS_LOG_GROUP }),
+    querySpanRecords({ ...queryOpts, logGroupName: runtimeLogGroup(runtimeId) }),
   ]);
 
-  const allRows: Record<string, string>[] = [];
+  const spans: CloudWatchSpanRecord[] = [];
   for (const result of results) {
     if (result.success) {
-      allRows.push(...result.rows);
+      spans.push(...result.spans);
     } else if (result.error instanceof ResourceNotFoundError) {
       continue;
     } else {
       return { success: false, error: result.error };
     }
   }
-
-  const spans: CloudWatchSpanRecord[] = allRows
-    .filter(row => row.traceId && row.spanId)
-    .map(row => ({
-      traceId: row.traceId!,
-      spanId: row.spanId!,
-      parentSpanId: row.parentSpanId ?? undefined,
-      name: row.name ?? undefined,
-      kind: row.kind ?? undefined,
-      startTimeUnixNano: row.startTimeUnixNano ?? undefined,
-      endTimeUnixNano: row.endTimeUnixNano ?? undefined,
-      durationNano: row.durationNano ?? undefined,
-      statusCode: row.statusCode ?? undefined,
-      serviceName: row.serviceName ?? undefined,
-      inputTokens: row.inputTokens ? Number(row.inputTokens) : undefined,
-      outputTokens: row.outputTokens ? Number(row.outputTokens) : undefined,
-      totalTokens: row.totalTokens ? Number(row.totalTokens) : undefined,
-      httpStatusCode: row.httpStatusCode ? Number(row.httpStatusCode) : undefined,
-      sessionId: row.sessionId ?? undefined,
-    }));
 
   return { success: true, spans };
 }

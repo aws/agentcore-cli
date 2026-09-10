@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockGetProjectRootMismatch,
+  mockHandleTracesCompare,
   mockHandleTracesGet,
   mockHandleTracesList,
   mockLoadConfig,
@@ -12,6 +13,7 @@ const {
   mockRequireProject,
 } = vi.hoisted(() => ({
   mockGetProjectRootMismatch: vi.fn(),
+  mockHandleTracesCompare: vi.fn(),
   mockHandleTracesGet: vi.fn(),
   mockHandleTracesList: vi.fn(),
   mockLoadConfig: vi.fn(),
@@ -21,8 +23,13 @@ const {
 }));
 
 vi.mock('../action', () => ({
+  handleTracesCompare: (...args: unknown[]) => mockHandleTracesCompare(...args),
   handleTracesGet: (...args: unknown[]) => mockHandleTracesGet(...args),
   handleTracesList: (...args: unknown[]) => mockHandleTracesList(...args),
+}));
+
+vi.mock('../../../telemetry/cli-command-run.js', () => ({
+  withCommandRunTelemetry: vi.fn((_command: unknown, _attrs: unknown, run: () => unknown) => run()),
 }));
 
 vi.mock('../../../operations/resolve-agent', () => ({
@@ -153,6 +160,84 @@ describe('traces JSON output', () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     expect(mockLoadConfig).not.toHaveBeenCalled();
     expect(mockRender).not.toHaveBeenCalled();
+  });
+
+  it('emits trace compare results as JSON', async () => {
+    const baseline = { traceId: 'trace-1', spanCount: 3, endToEndMs: 6600, timingSource: 'invocation-span' };
+    const candidate = { traceId: 'trace-2', spanCount: 3, endToEndMs: 5120, timingSource: 'invocation-span' };
+    mockHandleTracesCompare.mockResolvedValue({
+      success: true,
+      agentName: 'runtime-one',
+      targetName: 'default',
+      baseline,
+      candidate,
+      deltas: { endToEndMs: { baseline: 6600, candidate: 5120, delta: -1480, deltaPercent: -22.4 } },
+      warnings: [],
+    });
+
+    await program.parseAsync(['traces', 'compare', 'trace-1', 'trace-2', '--runtime', 'runtime-one', '--json'], {
+      from: 'user',
+    });
+
+    expect(JSON.parse(mockLog.mock.calls[0]![0])).toEqual({
+      success: true,
+      agentName: 'runtime-one',
+      targetName: 'default',
+      baseline,
+      candidate,
+      deltas: { endToEndMs: { baseline: 6600, candidate: 5120, delta: -1480, deltaPercent: -22.4 } },
+      warnings: [],
+    });
+    expect(mockHandleTracesCompare).toHaveBeenCalledWith(
+      expect.anything(),
+      'trace-1',
+      'trace-2',
+      expect.objectContaining({ runtime: 'runtime-one', json: true })
+    );
+    expect(mockRender).not.toHaveBeenCalled();
+  });
+
+  it('emits trace compare failures as JSON and exits 1', async () => {
+    mockHandleTracesCompare.mockResolvedValue({
+      success: false,
+      error: new Error('No spans found for baseline trace trace-1'),
+    });
+
+    await program.parseAsync(['traces', 'compare', 'trace-1', 'trace-2', '--json'], { from: 'user' });
+
+    expect(JSON.parse(mockLog.mock.calls[0]![0])).toEqual({
+      success: false,
+      error: 'No spans found for baseline trace trace-1',
+    });
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockRender).not.toHaveBeenCalled();
+  });
+
+  it('renders trace compare output with Ink for non-JSON runs', async () => {
+    mockHandleTracesCompare.mockResolvedValue({
+      success: true,
+      agentName: 'runtime-one',
+      targetName: 'default',
+      baseline: { traceId: 'trace-1', spanCount: 3, endToEndMs: 6600, timingSource: 'invocation-span' },
+      candidate: { traceId: 'trace-2', spanCount: 3, endToEndMs: 5120, timingSource: 'invocation-span' },
+      deltas: {
+        endToEndMs: { baseline: 6600, candidate: 5120, delta: -1480, deltaPercent: -22.4 },
+        llmMs: { baseline: 3620, candidate: 3040, delta: -580, deltaPercent: -16.0 },
+        toolMs: { baseline: 2850, candidate: 1710, delta: -1140, deltaPercent: -40.0 },
+        llmCalls: { baseline: 2, candidate: 2, delta: 0, deltaPercent: 0 },
+        toolCalls: { baseline: 1, candidate: 1, delta: 0, deltaPercent: 0 },
+        inputTokens: { baseline: 2849, candidate: 1912, delta: -937, deltaPercent: -32.9 },
+        outputTokens: { baseline: 315, candidate: 237, delta: -78, deltaPercent: -24.8 },
+        totalTokens: {},
+      },
+      warnings: ['LLM call counts differ (baseline 1, candidate 2); traces may not be directly comparable'],
+    });
+
+    await program.parseAsync(['traces', 'compare', 'trace-1', 'trace-2'], { from: 'user' });
+
+    expect(mockRender).toHaveBeenCalledOnce();
+    expect(mockLog).not.toHaveBeenCalled();
+    expect(mockExit).not.toHaveBeenCalled();
   });
 
   it('keeps Ink rendering for non-JSON output', async () => {
