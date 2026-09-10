@@ -919,13 +919,10 @@ test("grouped flags render under their headings, ungrouped ones under Options", 
 
   expect(out).toContain("Session source:");
   expect(out).toContain("Source filters:");
-  // Headings appear in the order their first flag was declared, and each flag
-  // sits under its own heading rather than in one flat list.
   expect(out.indexOf("Session source:")).toBeLessThan(out.indexOf("Source filters:"));
   expect(out.indexOf("--agent")).toBeGreaterThan(out.indexOf("Session source:"));
   expect(out.indexOf("--start-time")).toBeGreaterThan(out.indexOf("Source filters:"));
   expect(out.indexOf("--end-time")).toBeGreaterThan(out.indexOf("Source filters:"));
-  // An ungrouped flag keeps Commander's default heading.
   expect(out.indexOf("--name")).toBeGreaterThan(out.indexOf("Options:"));
 });
 
@@ -959,76 +956,4 @@ test("a command without grouped flags leaves the generated help in Options", asy
 
   expect(out).not.toContain("Other options:");
   expect(out).toContain("-h, --help");
-});
-
-test("handler examples render once, after the parameter details", async () => {
-  const create = createHandler({
-    name: "create",
-    description: "",
-    flags: [
-      flag("model", "model config (JSON)", z.string().optional(), {
-        help: `(JSON object)\nThe model configuration.`,
-      }),
-    ],
-    examples: [
-      { description: "Create with a Bedrock model", command: `app create --model '{"a":1}'` },
-    ],
-    handle: async () => {},
-  });
-  const root = new Router("app");
-  root.handler(create);
-
-  const out = await helpOutput(root, ["app", "create", "--help"]);
-
-  expect(out).toContain("Examples:");
-  expect(out).toContain("  Create with a Bedrock model:");
-  expect(out).toContain(`    app create --model '{"a":1}'`);
-  expect(out.indexOf("Examples:")).toBeGreaterThan(out.indexOf("Parameter details:"));
-  expect(out.split("Examples:").length - 1).toBe(1);
-});
-
-test("a multi-line example is joined with backslash continuations", async () => {
-  const evaluate = createHandler({
-    name: "evaluate",
-    description: "",
-    examples: [
-      {
-        description: "Evaluate a Runtime with two evaluators",
-        command: [
-          "app evaluate",
-          "--agent my-runtime",
-          "--evaluators Builtin.Helpfulness Builtin.Correctness",
-        ],
-      },
-      { description: "List what is already running", command: "app list" },
-    ],
-    handle: async () => {},
-  });
-  const root = new Router("app");
-  root.handler(evaluate);
-
-  const out = await helpOutput(root, ["app", "evaluate", "--help"]);
-
-  // The author supplies the shell command only; indentation and the trailing
-  // backslashes are the renderer's, so every command's examples line up.
-  expect(out).toContain(
-    [
-      "  Evaluate a Runtime with two evaluators:",
-      "",
-      "    app evaluate \\",
-      "      --agent my-runtime \\",
-      "      --evaluators Builtin.Helpfulness Builtin.Correctness",
-    ].join("\n"),
-  );
-  // A single-string command stays on one line.
-  expect(out).toContain("  List what is already running:\n\n    app list");
-});
-
-test("commands without examples have no Examples section", async () => {
-  const root = new Router("app");
-  root.handler(leaf("get", () => {}));
-
-  const out = await helpOutput(root, ["app", "get", "--help"]);
-
-  expect(out).not.toContain("Examples:");
 });

@@ -1,7 +1,7 @@
 import { Option } from "commander";
 import { InputValidationError } from "../errors";
 import type { Context } from "./context";
-import type { Example, Flag, GlobalFlag } from "./handler";
+import type { Flag, GlobalFlag } from "./handler";
 import { coerce, formatZodError, inspect } from "./schema";
 
 // toOption builds a Commander Option from a flag's schema. A boolean that defaults
@@ -54,30 +54,6 @@ export function formatParameterDetails(flags: Flag[]): string | undefined {
   });
 
   return `\nParameter details:\n\n${sections.join("\n\n")}\n`;
-}
-
-// Indentation of a rendered example: the description sits one level in, the
-// command another, and a continued command line one level deeper again so the
-// backslash-joined flags read as belonging to the line above.
-const EXAMPLE_DESCRIPTION_INDENT = "  ";
-const EXAMPLE_COMMAND_INDENT = "    ";
-const EXAMPLE_CONTINUATION_INDENT = "      ";
-
-// formatExamples renders a command's worked invocations into the block appended
-// after the option list (and after Parameter details, when present). Authors
-// supply the shell command only; the layout lives here so every command's
-// examples line up identically no matter who wrote them.
-export function formatExamples(examples: readonly Example[]): string | undefined {
-  if (examples.length === 0) return undefined;
-
-  const blocks = examples.map(({ description, command }) => {
-    const body = Array.isArray(command)
-      ? command.join(` \\\n${EXAMPLE_CONTINUATION_INDENT}`)
-      : command;
-    return `${EXAMPLE_DESCRIPTION_INDENT}${description}:\n\n${EXAMPLE_COMMAND_INDENT}${body}`;
-  });
-
-  return `\nExamples:\n\n${blocks.join("\n\n")}\n`;
 }
 
 // attributeName mirrors how Commander camelCases an option name into the key it

@@ -14,24 +14,9 @@ export interface Flag<N extends string = string, T = unknown> {
   // Its first line is the type annotation shown next to the flag name; the
   // remaining lines are the body — prose, JSON syntax, examples.
   help?: string;
-  // group is the `--help` heading this flag is listed under. Commands whose
-  // option list is long enough to skim past benefit from semantic headings
-  // ("Session source:", "Result output:") over one flat "Options:" block.
-  // Ungrouped flags stay in Commander's default section.
   group?: string;
   // sensitive flags are redacted from debug logs by the withLogging middleware.
   sensitive?: boolean;
-}
-
-// Example is one worked invocation shown in a command's `--help`. `command` is
-// authored as the shell command itself, with no indentation or line
-// continuations: a string renders on one line, and an array renders joined by
-// ` \` + newline. Splitting the array is how the author chooses where the breaks
-// fall — usually one flag per element — so the renderer never has to guess at a
-// terminal width, and the printed command still pastes into a shell verbatim.
-export interface Example {
-  description: string;
-  command: string | string[];
 }
 
 // GlobalFlag is a group-level flag that is *also* a typed ContextKey: declared on
@@ -108,11 +93,6 @@ export interface Handler {
   arguments(): Argument[];
   // Middleware must preserve this metadata when wrapping a handler.
   doesSupportTui(): boolean;
-  // examples are the worked invocations appended to `--help` after the option
-  // list. Optional because only the handler that authors examples needs to
-  // answer it: compile() reads it off the authored node, so the middleware
-  // wrappers (which only forward `handle`) never have to carry it.
-  examples?(): readonly Example[] | undefined;
   // At runtime `handle` receives the validated, coerced flags object. The precise
   // shape is supplied to authors via createHandler's generic; the interface keeps
   // it erased so middleware can forward it uniformly.
@@ -128,7 +108,6 @@ type CreateHandlerInput<
   description: string;
   flags?: F;
   arguments?: A;
-  examples?: readonly Example[];
   handle?: HandleFn<F, A>;
   children?: Handler[];
 };
@@ -140,7 +119,6 @@ class BaseHandler implements Handler {
   _description: string;
   _flags: Flag[];
   _arguments: Argument[];
-  _examples?: readonly Example[];
   _handle: HandleFn<any, any>;
   _children: Handler[];
 
@@ -151,7 +129,6 @@ class BaseHandler implements Handler {
     this._description = input.description;
     this._flags = (input.flags ?? []) as Flag[];
     this._arguments = (input.arguments ?? []) as Argument[];
-    this._examples = input.examples;
     this._handle = (input.handle ?? noOpHandler) as HandleFn<any, any>;
     this._children = input.children ?? [];
   }
@@ -174,10 +151,6 @@ class BaseHandler implements Handler {
 
   doesSupportTui(): boolean {
     return true;
-  }
-
-  examples(): readonly Example[] | undefined {
-    return this._examples;
   }
 
   async handle(ctx: Context, flags: any, args: any): Promise<void> {

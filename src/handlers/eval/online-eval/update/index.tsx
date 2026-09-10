@@ -7,7 +7,8 @@ import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
-import { HELP_GROUP } from "../../helpGroups";
+import { filtersHelp } from "../filtersHelp";
+import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 
 export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -15,88 +16,63 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
     description: "update an online evaluation config",
     flags: [
       flag("id", "the ID of the online evaluation config to update", z.string().optional(), {
-        group: HELP_GROUP.target,
+        group: "Target:",
       }),
       flag("agent", "repoint at a different harness ID or Runtime ID", z.string().optional(), {
-        group: HELP_GROUP.sessionSource,
+        group: "Session source:",
       }),
       flag(
         "data-source-config",
-        "replace the traces to evaluate (JSON DataSourceConfig; inline, file://<path>, or - for stdin)",
+        "replace the traces to sample (JSON DataSourceConfig)",
         z.string().optional(),
-        { group: HELP_GROUP.sessionSource },
+        { group: "Session source:", help: onlineEvalDataSourceConfigHelp },
       ),
       flag(
         "endpoint",
         "re-scope monitoring to a different agent endpoint qualifier",
         z.string().optional(),
-        { group: HELP_GROUP.sourceFilters },
+        { group: "Source filters:" },
       ),
       flag(
         "clear-endpoint",
         "reset the endpoint scope to the default qualifier (pass true)",
         z.enum(["true", "false"]).optional(),
-        { group: HELP_GROUP.sourceFilters },
+        { group: "Source filters:" },
       ),
       flag(
         "evaluators",
         "the ID(s) of the evaluators to apply (replaces the existing list)",
         z.array(z.string()).optional(),
-        { group: HELP_GROUP.evaluation },
+        { group: "Evaluation:" },
       ),
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
         z.number().min(0.01).max(100).optional(),
-        { group: HELP_GROUP.evaluation },
+        { group: "Evaluation:" },
       ),
       flag(
         "session-timeout-minutes",
         "minutes of inactivity before a session is considered complete (1-1440)",
         z.number().int().min(1).max(1440).optional(),
-        { group: HELP_GROUP.evaluation },
+        { group: "Evaluation:" },
       ),
-      flag(
-        "filters",
-        "trace filters (JSON Filter[]; inline, file://<path>, or - for stdin)",
-        z.string().optional(),
-        { group: HELP_GROUP.evaluation },
-      ),
+      flag("filters", "replace the trace filters (JSON Filter[])", z.string().optional(), {
+        group: "Evaluation:",
+        help: filtersHelp,
+      }),
       flag(
         "role-arn",
         "replace the IAM role the online evaluation assumes",
         z.string().optional(),
-        { group: HELP_GROUP.execution },
+        { group: "Execution:" },
       ),
       flag(
         "update-role",
         "whether to re-scope an auto-provisioned execution role when the data source changes (default true)",
         z.enum(["true", "false"]).optional(),
-        { group: HELP_GROUP.execution },
+        { group: "Execution:" },
       ),
-    ],
-    examples: [
-      {
-        description: "Change the evaluators and the sampling rate",
-        command: [
-          "agentcore eval online-eval update",
-          "--id online-eval-123",
-          "--sampling-rate 20",
-          "--evaluators Builtin.Helpfulness Builtin.Correctness",
-        ],
-      },
-      {
-        description: "Re-scope monitoring to a different Runtime endpoint",
-        command: ["agentcore eval online-eval update", "--id online-eval-123", "--endpoint BETA"],
-      },
-      {
-        description: "Bring your own execution role instead of the provisioned one",
-        command: [
-          "agentcore eval online-eval update",
-          "--id online-eval-123",
-          "--role-arn arn:aws:iam::123456789012:role/MyOnlineEvalRole",
-        ],
-      },
     ],
     handle: async (ctx, flags) => {
       if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
