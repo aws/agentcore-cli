@@ -1,0 +1,103 @@
+{
+  "paymentManagers": [
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/brf6410be0-56loajl19z",
+      "paymentManagerId": "brf6410be0-56loajl19z",
+      "name": "brf6410be0",
+      "authorizerType": "CUSTOM_JWT",
+      "roleArn": "arn:aws:iam::603141041947:role/pr3rolef6410be0",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-06-02T16:59:01.552Z"
+      },
+      "description": "r",
+      "createdAt": {
+        "$date": "2026-06-02T16:59:01.552Z"
+      }
+    },
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/cfn19maymgr-mncapbffse",
+      "paymentManagerId": "cfn19maymgr-mncapbffse",
+      "name": "cfn19maymgr",
+      "authorizerType": "AWS_IAM",
+      "roleArn": "arn:aws:iam::603141041947:role/payments-cfn-verify-PaymentMgrRole-MxByV7bxfBVy",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-05-19T18:43:39.589Z"
+      },
+      "createdAt": {
+        "$date": "2026-05-19T18:43:39.589Z"
+      }
+    },
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mgr1-mwpbvze4pu",
+      "paymentManagerId": "mgr1-mwpbvze4pu",
+      "name": "mgr1",
+      "authorizerType": "AWS_IAM",
+      "roleArn": "arn:aws:iam::603141041947:role/Edge2_PaymentRetrievalRole",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-05-05T15:35:08.042Z"
+      },
+      "createdAt": {
+        "$date": "2026-05-05T15:35:08.042Z"
+      }
+    },
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanager-o4ks3qfgtb",
+      "paymentManagerId": "mypaymentmanager-o4ks3qfgtb",
+      "name": "MyPaymentManager",
+      "authorizerType": "AWS_IAM",
+      "roleArn": "arn:aws:iam::603141041947:role/paytest_PaymentRetrievalRole",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-05-05T03:02:59.201Z"
+      },
+      "createdAt": {
+        "$date": "2026-05-05T03:02:59.201Z"
+      }
+    },
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanageraidandal-gx3nxzaira",
+      "paymentManagerId": "mypaymentmanageraidandal-gx3nxzaira",
+      "name": "MyPaymentManagerAidandal",
+      "authorizerType": "AWS_IAM",
+      "roleArn": "arn:aws:iam::603141041947:role/AgentCore-PayBash-default-PaymentMyPaymentManagerAi-gyKcmOGL9YyA",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-06-08T18:11:41.129Z"
+      },
+      "createdAt": {
+        "$date": "2026-06-08T18:11:41.129Z"
+      }
+    },
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/paymgr-tt8ivlyv76",
+      "paymentManagerId": "paymgr-tt8ivlyv76",
+      "name": "paymgr",
+      "authorizerType": "AWS_IAM",
+      "roleArn": "arn:aws:iam::603141041947:role/AgentCore-BugBashGW-defau-PaymentpaymgrResourceRetr-wv9Le7KK724Y",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-05-21T21:28:13.357Z"
+      },
+      "createdAt": {
+        "$date": "2026-05-21T21:28:13.357Z"
+      }
+    },
+    {
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/pmgr-amdytlqv7l",
+      "paymentManagerId": "pmgr-amdytlqv7l",
+      "name": "pmgr",
+      "authorizerType": "AWS_IAM",
+      "roleArn": "arn:aws:iam::603141041947:role/AgentCore-BugBashFresh-de-PaymentpmgrResourceRetrie-DJKtx7oJy58m",
+      "status": "READY",
+      "lastUpdatedAt": {
+        "$date": "2026-05-22T02:27:29.922Z"
+      },
+      "createdAt": {
+        "$date": "2026-05-22T02:27:29.922Z"
+      }
+    }
+  ]
+}
