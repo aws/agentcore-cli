@@ -5,6 +5,7 @@ import { createGatewayHandler } from "./gateway/index.tsx";
 import { createHarnessHandler } from "./harness/index.tsx";
 import { createIdentityHandler } from "./identity/index.tsx";
 import { createMemoryHandler } from "./memory/index.tsx";
+import { createPaymentHandler } from "./payment/index.tsx";
 import { createRuntimeHandler } from "./runtime/index.tsx";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
@@ -72,6 +73,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createRuntimeHandler(core, io));
   root.handler(createMemoryHandler(core, io));
   root.handler(createGatewayHandler(core, io));
+  root.handler(createPaymentHandler(core, io));
   root.handler(createEvalHandler(core, io));
   root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
