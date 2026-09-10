@@ -233,6 +233,34 @@ describe("eval ondemand simulate", () => {
     ).rejects.toThrow(/no examples could be invoked \(2 failed\).*first error: e1 — HTTP 500/);
   });
 
+  test("--endpoint reaches the Runtime invocation as the qualifier", async () => {
+    const { core } = await run([...BASE, "--endpoint", "BETA"], (c) =>
+      c.eval.setInvokeDatasetResponse({
+        sessions: [{ exampleId: "e1", sessionId: "s1" }],
+        invoked: 1,
+        failed: 0,
+        failures: [],
+      }),
+    );
+    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+    expect(invoke).toBeDefined();
+    expect((invoke!.args[0] as { qualifier?: string }).qualifier).toBe("BETA");
+  });
+
+  test("--endpoint is reused when fetching the traces to evaluate", async () => {
+    const { core } = await run([...BASE, "--endpoint", "BETA"], (c) =>
+      c.eval.setInvokeDatasetResponse({
+        sessions: [{ exampleId: "e1", sessionId: "s1" }],
+        invoked: 1,
+        failed: 0,
+        failures: [],
+      }),
+    );
+    const fetch = core.eval.calls.find((c) => c.method === "getTracesForAgent");
+    expect(fetch).toBeDefined();
+    expect((fetch!.args[0] as { endpoint?: string }).endpoint).toBe("BETA");
+  });
+
   test("passes --ingestion-wait-ms through to invokeDataset and renders failures", async () => {
     const { core, stdout } = await run([...BASE, "--ingestion-wait-ms", "0"], (c) =>
       c.eval.setInvokeDatasetResponse({

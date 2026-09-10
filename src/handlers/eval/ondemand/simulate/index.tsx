@@ -16,7 +16,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
     description: "replay a dataset against a Runtime, then evaluate the sessions client-side",
     flags: [
       flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional()),
-      flag("qualifier", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
+      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
       flag(
         "payload-template",
         'JSON payload template; {input} is the scenario input, e.g. {"prompt":"{input}"}',
@@ -66,7 +66,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
         const replay = await core.eval.invokeDataset(
           {
             runtimeId,
-            qualifier: flags["qualifier"],
+            qualifier: flags["endpoint"],
             payloadTemplate,
             headers: parseRuntimeInvokeHeaders(flags["header"]),
             bearerToken: flags["bearer-token"],
@@ -89,7 +89,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
         const traces = await core.eval.getTracesForAgent(
           {
             agent: runtimeId,
-            endpoint: flags["qualifier"],
+            endpoint: flags["endpoint"],
             sessionIds: replay.sessions.map((s) => s.sessionId),
           },
           opts,
