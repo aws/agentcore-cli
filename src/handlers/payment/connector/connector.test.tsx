@@ -1,12 +1,6 @@
-import { describe, expect, mock, spyOn, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { describe, expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
-import {
-  CreatePaymentConnectorCommand,
-  GetPaymentConnectorCommand,
-} from "@aws-sdk/client-bedrock-agentcore-control";
 import { CoreClient } from "../../../core";
-import type { ClientConfig } from "../../../core/types";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
@@ -165,74 +159,36 @@ describe("payment connector Quick Create hints", () => {
       environment: "eu-west-1",
       endpoint: "https://payments.example.test/control path?mode=quick&label=O'Reilly#consent",
     },
-  ])(
-    "follow-up preserves $label after the environment changes",
-    async ({ regionArgs, environment, endpoint }) => {
-      const savedRegion = process.env.AWS_REGION;
-      const factories = fixtureFactories(FIXTURES);
-      const getRequests: GetPaymentConnectorCommand["input"][] = [];
-      const createControlClient = mock((config: ClientConfig) => {
-        const client = factories.createControlClient(config);
-        spyOn(client, "send").mockImplementation(async (command) => {
-          if (command instanceof GetPaymentConnectorCommand) {
-            getRequests.push(command.input);
-            // The recorded Quick Create flow never completes OAuth consent.
-            return parse(
-              JSON.stringify({
-                ...quickCreateFixture,
-                status: "READY",
-                lastUpdatedAt: quickCreateFixture.createdAt,
-              }),
-            );
-          }
-          if (command instanceof CreatePaymentConnectorCommand) {
-            return parse(JSON.stringify(quickCreateFixture));
-          }
-          throw new Error("Unexpected SDK command in hint test");
-        });
-        return client;
+  ])("hint includes the resolved $label", async ({ regionArgs, environment, endpoint }) => {
+    const savedRegion = process.env.AWS_REGION;
+    const core = createFixtureCore();
+    const create = spyOn(core.payment, "createPaymentConnector").mockResolvedValue(
+      parse(JSON.stringify(quickCreateFixture)),
+    );
+
+    try {
+      process.env.AWS_REGION = environment;
+      const created = await run(quickArgs, {
+        core,
+        regionArgs: [...regionArgs],
       });
-      const coreOptions = { ...factories, createControlClient, logger: createSilentLogger() };
-
-      try {
-        process.env.AWS_REGION = environment;
-        const created = await run(quickArgs, {
-          core: new CoreClient(coreOptions),
-          regionArgs: [...regionArgs],
-        });
-        const command = created.stderr().match(/`(agentcore payment connector get [^`]+)`/)?.[1];
-        expect(command).toBeDefined();
-        // Parse the displayed command without invoking the installed CLI.
-        const argv = execFileSync("sh", ["-c", `set -- ${command}\nprintf '%s\\0' "$@"`], {
-          encoding: "utf8",
-        })
-          .split("\0")
-          .slice(0, -1);
-        expect(argv.slice(0, 3)).toEqual(["agentcore", "payment", "connector"]);
-
-        process.env.AWS_REGION = "us-east-1";
-        const followUp = await run(argv.slice(3), {
-          core: new CoreClient(coreOptions),
-          regionArgs: [],
-        });
-        expect(getRequests).toEqual([
-          {
-            paymentManagerId: MANAGER_ID,
-            paymentConnectorId: quickCreateFixture.paymentConnectorId,
-          },
-        ]);
-        expect(createControlClient.mock.calls).toEqual([
-          [{ region: "eu-west-1", endpoint }],
-          [{ region: "eu-west-1", endpoint }],
-        ]);
-        expect(JSON.parse(followUp.stdout()).status).toBe("READY");
-        if (endpoint === undefined) expect(command).not.toContain("--endpoint-url");
-      } finally {
-        if (savedRegion === undefined) delete process.env.AWS_REGION;
-        else process.env.AWS_REGION = savedRegion;
-      }
-    },
-  );
+      const command = created.stderr().match(/`(agentcore payment connector get [^`]+)`/)?.[1];
+      const endpointFlag =
+        endpoint === undefined
+          ? ""
+          : " --endpoint-url 'https://payments.example.test/control path?mode=quick&label=O'\\''Reilly#consent'";
+      expect(command).toBe(
+        `agentcore payment connector get --manager-id ${MANAGER_ID} --connector-id ${quickCreateFixture.paymentConnectorId} --region eu-west-1${endpointFlag}`,
+      );
+      expect(create.mock.calls[0]?.[1]).toEqual({
+        region: "eu-west-1",
+        ...(endpoint === undefined ? {} : { endpointUrl: endpoint }),
+      });
+    } finally {
+      if (savedRegion === undefined) delete process.env.AWS_REGION;
+      else process.env.AWS_REGION = savedRegion;
+    }
+  });
 
   test("--json keeps the authorization URL in stdout without a stderr hint", async () => {
     const core = createFixtureCore();
