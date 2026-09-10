@@ -235,7 +235,6 @@ describe('handleShellSession banner messages', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs as unknown as import('ws').default,
       shellId: 'test-shell-id',
-      reconnected: false,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -260,7 +259,6 @@ describe('handleShellSession banner messages', () => {
       return Promise.resolve({
         ws: mockWs as unknown as import('ws').default,
         shellId: 'test-shell-id',
-        reconnected: false,
       });
     });
 
@@ -321,31 +319,6 @@ describe('handleShellSession banner messages', () => {
     expect(stderrCalls.some(msg => msg.includes('[session closed · exit 0]'))).toBe(true);
     expect(result.success).toBe(true);
   });
-
-  it('writes "[info] Previous shell session has ended..." when shellId passed but reconnected=false', async () => {
-    vi.mocked(connectShell).mockResolvedValue({
-      ws: mockWs as unknown as import('ws').default,
-      shellId: 'new-shell-id',
-      reconnected: false,
-    });
-
-    const options: ExecOptions = {
-      runtimeArn: CTX.runtimeArn,
-      region: CTX.region,
-      shellId: 'old-shell-id',
-    };
-
-    const sessionPromise = handleShellSession(CTX, options);
-    await new Promise(r => setTimeout(r, 0));
-
-    const stderrCalls = (stderrSpy.mock.calls as [string][]).map(c => c[0]);
-    expect(stderrCalls.some(msg => msg.includes('[info]') && msg.includes('Previous shell session has ended'))).toBe(
-      true
-    );
-
-    (mockWs as unknown as { _fire: (e: string, ...a: unknown[]) => void })._fire('close', 0);
-    await sessionPromise;
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -381,7 +354,6 @@ describe('handleShellSession CLOSE frame (0xFF)', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs as unknown as import('ws').default,
       shellId: 'shell-abc',
-      reconnected: false,
     });
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     vi.mocked(startKeepalive).mockReturnValue(() => {});
@@ -440,7 +412,6 @@ describe('handleShellSession unknown channel byte', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs as unknown as import('ws').default,
       shellId: 'shell-xyz',
-      reconnected: false,
     });
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     vi.mocked(startKeepalive).mockReturnValue(() => {});
@@ -508,7 +479,6 @@ describe('handleShellSession startKeepalive integration', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs as unknown as import('ws').default,
       shellId: 'shell-keep',
-      reconnected: false,
     });
 
     stopKeepalive = vi.fn();
@@ -584,7 +554,7 @@ describe('handleShellSession reconnect callbacks wired to connectShell', () => {
     vi.mocked(connectShell).mockImplementation(opts => {
       capturedOnAttempt = opts.reconnect?.onAttempt;
       capturedWs = makeMockWsForCallbacks();
-      return Promise.resolve({ ws: capturedWs, shellId: 'shell-ra', reconnected: false });
+      return Promise.resolve({ ws: capturedWs, shellId: 'shell-ra' });
     });
 
     const options: ExecOptions = { runtimeArn: CTX.runtimeArn, region: CTX.region };
@@ -607,7 +577,7 @@ describe('handleShellSession reconnect callbacks wired to connectShell', () => {
     vi.mocked(connectShell).mockImplementation(opts => {
       capturedOnKicked = opts.reconnect?.onKicked;
       capturedWs = makeMockWsForCallbacks();
-      return Promise.resolve({ ws: capturedWs, shellId: 'shell-kick', reconnected: false });
+      return Promise.resolve({ ws: capturedWs, shellId: 'shell-kick' });
     });
 
     const options: ExecOptions = { runtimeArn: CTX.runtimeArn, region: CTX.region };
@@ -629,7 +599,7 @@ describe('handleShellSession reconnect callbacks wired to connectShell', () => {
     vi.mocked(connectShell).mockImplementation(opts => {
       capturedOnKicked = opts.reconnect?.onKicked;
       capturedWs = makeMockWsForCallbacks();
-      return Promise.resolve({ ws: capturedWs, shellId: 'shell-kick2', reconnected: false });
+      return Promise.resolve({ ws: capturedWs, shellId: 'shell-kick2' });
     });
 
     const options: ExecOptions = { runtimeArn: CTX.runtimeArn, region: CTX.region };
@@ -650,7 +620,7 @@ describe('handleShellSession reconnect callbacks wired to connectShell', () => {
     vi.mocked(connectShell).mockImplementation(opts => {
       capturedOnAttempt = opts.reconnect?.onAttempt;
       capturedWs = makeMockWsForCallbacks();
-      return Promise.resolve({ ws: capturedWs, shellId: 'shell-ra2', reconnected: false });
+      return Promise.resolve({ ws: capturedWs, shellId: 'shell-ra2' });
     });
 
     const options: ExecOptions = { runtimeArn: CTX.runtimeArn, region: CTX.region };
@@ -1202,7 +1172,6 @@ describe('handleShellSession WS close code 1000 → clean exit', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs as unknown as import('ws').default,
       shellId: 'shell-1000',
-      reconnected: false,
     });
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     vi.mocked(startKeepalive).mockReturnValue(() => {});
@@ -1238,10 +1207,11 @@ describe('handleShellSession WS close code 1000 → clean exit', () => {
     expect(stderrData).not.toMatch(/disconnected/);
   });
 
-  it('resolves success:true with exitCode 0 when WS closes with code 1006 and no STATUS frame', async () => {
-    // connectShell only resolves after STATUS confirmation, so any WS close without a STATUS
-    // termination frame (any close code) is treated as exit 0 — the shell ran to completion;
-    // the server just didn't send a termination frame.
+  it('resolves success:false with exitCode 1 when WS closes with abnormal code 1006 and no STATUS frame', async () => {
+    // connectShell now resolves as soon as the socket opens (the 0x03 confirmation-frame wait was
+    // removed), so an abnormal close such as 1006 can happen before the shell is usable. Without a
+    // STATUS termination frame, only code 1000 counts as a clean exit — any other code is a real
+    // failure and must NOT be reported as exit 0.
     const handlers2: Record<string, ((...args: unknown[]) => void)[]> = {};
     const fire2 = (event: string, ...args: unknown[]) => handlers2[event]?.forEach(fn => fn(...args));
     const mockWs2 = {
@@ -1261,7 +1231,6 @@ describe('handleShellSession WS close code 1000 → clean exit', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs2 as unknown as import('ws').default,
       shellId: 'shell-1006',
-      reconnected: false,
     });
 
     const options: ExecOptions = { runtimeArn: CTX.runtimeArn, region: CTX.region };
@@ -1271,9 +1240,9 @@ describe('handleShellSession WS close code 1000 → clean exit', () => {
     fire2('close', 1006);
     const result = await sessionPromise;
 
-    expect(result.success).toBe(true);
-    // exitCode is 0: session confirmed, no STATUS termination frame → treated as clean exit
-    expect(result.exitCode).toBe(0);
+    expect(result.success).toBe(false);
+    // exitCode is 1: abnormal close with no STATUS termination frame → treated as a failure
+    expect(result.exitCode).toBe(1);
   });
 });
 
@@ -1320,7 +1289,6 @@ describe('handleShellSession reconnect hint format', () => {
     vi.mocked(connectShell).mockResolvedValue({
       ws: mockWs2 as unknown as import('ws').default,
       shellId: 'shell-hint',
-      reconnected: false,
     });
 
     const stdinHandlers: Record<string, ((...args: unknown[]) => void)[]> = {};
