@@ -1,0 +1,19 @@
+{
+  "paymentInstrument": {
+    "paymentInstrumentId": "payment-instrument-CG2Tl7U1HnCGfHW",
+    "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanageraidandal-gx3nxzaira",
+    "paymentConnectorId": "mycdpconnectoraidandal-okve8guw4y",
+    "userId": "agentcore-cli-e2e",
+    "paymentInstrumentType": "EMBEDDED_CRYPTO_WALLET",
+    "paymentInstrumentDetails": {
+      "embeddedCryptoWallet": {
+        "network": "ETHEREUM",
+        "walletAddress": "0x93581aB831Cc862aA451E91fBf8365e098930859",
+        "redirectUrl": "https://hub.cdp.coinbase.com/e3eae6406a52"
+      }
+    },
+    "createdAt": "2026-09-08T20:24:40.849Z",
+    "status": "ACTIVE",
+    "updatedAt": "2026-09-08T20:24:41.673Z"
+  }
+}
