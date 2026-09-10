@@ -1,0 +1,13 @@
+{
+  "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanager-o4ks3qfgtb",
+  "paymentManagerId": "mypaymentmanager-o4ks3qfgtb",
+  "name": "MyPaymentManager",
+  "authorizerType": "AWS_IAM",
+  "roleArn": "arn:aws:iam::603141041947:role/paytest_PaymentRetrievalRole",
+  "createdAt": "2026-05-05T03:02:59.201Z",
+  "lastUpdatedAt": "2026-05-05T03:02:59.201Z",
+  "status": "READY",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:workload-identity-directory/default/workload-identity/mypaymentmanager-o4ks3qfgtb"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "paymentConnectors": [
+    {
+      "paymentConnectorId": "agentcorecliconnectore2e-6rodjuiuig",
+      "name": "AgentCoreCliConnectorE2E",
+      "type": "CoinbaseCDP",
+      "status": "READY"
+    },
+    {
+      "paymentConnectorId": "mycdpconnectoraidandal-okve8guw4y",
+      "name": "MyCdpConnectorAidandal",
+      "type": "CoinbaseCDP",
+      "status": "READY"
+    }
+  ]
+}

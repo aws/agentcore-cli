@@ -1,0 +1,18 @@
+{
+  "paymentManagerArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:payment-manager/agentcoreclipaymente2e-ktdwha51g1",
+  "paymentManagerId": "agentcoreclipaymente2e-ktdwha51g1",
+  "name": "AgentCoreCliPaymentE2E",
+  "authorizerType": "AWS_IAM",
+  "roleArn": "arn:aws:iam::603141041947:role/AgentCorePayments-us-east-1-AgentCoreCliPaymentE2E",
+  "createdAt": {
+    "$date": "2026-09-09T00:05:18.383Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-09-09T00:05:18.752Z"
+  },
+  "status": "READY",
+  "description": "Updated by the agentcore CLI end-to-end test",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:603141041947:workload-identity-directory/default/workload-identity/agentcoreclipaymente2e-ktdwha51g1"
+  }
+}
