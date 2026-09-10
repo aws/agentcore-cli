@@ -29,10 +29,18 @@ import type {
   ListApiKeyCredentialProvidersResponse,
   ListOauth2CredentialProvidersResponse,
   ListPaymentCredentialProvidersResponse,
+  CreatePaymentConnectorResponse,
+  CreatePaymentManagerResponse,
+  DeletePaymentConnectorRequest,
+  DeletePaymentConnectorResponse,
+  DeletePaymentManagerRequest,
+  DeletePaymentManagerResponse,
   GetPaymentConnectorResponse,
   GetPaymentManagerResponse,
   ListPaymentConnectorsResponse,
   ListPaymentManagersResponse,
+  UpdatePaymentConnectorResponse,
+  UpdatePaymentManagerResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
@@ -142,6 +150,10 @@ import type {
   UpdateOauth2CredentialProviderInput,
 } from "../handlers/identity/types";
 import type {
+  CreatePaymentInstrumentResponse,
+  CreatePaymentSessionResponse,
+  DeletePaymentInstrumentResponse,
+  DeletePaymentSessionResponse,
   GetPaymentInstrumentResponse,
   GetPaymentInstrumentBalanceResponse,
   GetPaymentSessionResponse,
@@ -150,11 +162,19 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   CorePaymentClient,
+  CreatePaymentConnectorInput,
+  CreatePaymentManagerInput,
+  CreatePaymentSessionInput,
   GetPaymentSessionInput,
   ListPaymentSessionsInput,
+  DeletePaymentSessionInput,
+  CreatePaymentInstrumentInput,
   GetPaymentInstrumentInput,
   GetPaymentInstrumentBalanceInput,
   ListPaymentInstrumentsInput,
+  DeletePaymentInstrumentInput,
+  UpdatePaymentConnectorInput,
+  UpdatePaymentManagerInput,
 } from "../handlers/payment/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
@@ -283,23 +303,33 @@ const DEFAULT_DELETE_PAYMENT_RESPONSE = {} as DeletePaymentCredentialProviderRes
 const DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE: ListPaymentCredentialProvidersResponse = {
   credentialProviders: [],
 };
+const DEFAULT_CREATE_PAYMENT_MANAGER_RESPONSE = {} as CreatePaymentManagerResponse;
 const DEFAULT_GET_PAYMENT_MANAGER_RESPONSE = {} as GetPaymentManagerResponse;
 const DEFAULT_LIST_PAYMENT_MANAGERS_RESPONSE: ListPaymentManagersResponse = {
   paymentManagers: [],
 };
+const DEFAULT_UPDATE_PAYMENT_MANAGER_RESPONSE = {} as UpdatePaymentManagerResponse;
+const DEFAULT_DELETE_PAYMENT_MANAGER_RESPONSE = {} as DeletePaymentManagerResponse;
+const DEFAULT_CREATE_PAYMENT_CONNECTOR_RESPONSE = {} as CreatePaymentConnectorResponse;
 const DEFAULT_GET_PAYMENT_CONNECTOR_RESPONSE = {} as GetPaymentConnectorResponse;
 const DEFAULT_LIST_PAYMENT_CONNECTORS_RESPONSE: ListPaymentConnectorsResponse = {
   paymentConnectors: [],
 };
+const DEFAULT_UPDATE_PAYMENT_CONNECTOR_RESPONSE = {} as UpdatePaymentConnectorResponse;
+const DEFAULT_DELETE_PAYMENT_CONNECTOR_RESPONSE = {} as DeletePaymentConnectorResponse;
+const DEFAULT_CREATE_PAYMENT_SESSION_RESPONSE = {} as CreatePaymentSessionResponse;
 const DEFAULT_GET_PAYMENT_SESSION_RESPONSE = {} as GetPaymentSessionResponse;
 const DEFAULT_LIST_PAYMENT_SESSIONS_RESPONSE: ListPaymentSessionsResponse = {
   paymentSessions: [],
 };
+const DEFAULT_DELETE_PAYMENT_SESSION_RESPONSE = {} as DeletePaymentSessionResponse;
+const DEFAULT_CREATE_PAYMENT_INSTRUMENT_RESPONSE = {} as CreatePaymentInstrumentResponse;
 const DEFAULT_GET_PAYMENT_INSTRUMENT_RESPONSE = {} as GetPaymentInstrumentResponse;
 const DEFAULT_GET_PAYMENT_INSTRUMENT_BALANCE_RESPONSE = {} as GetPaymentInstrumentBalanceResponse;
 const DEFAULT_LIST_PAYMENT_INSTRUMENTS_RESPONSE: ListPaymentInstrumentsResponse = {
   paymentInstruments: [],
 };
+const DEFAULT_DELETE_PAYMENT_INSTRUMENT_RESPONSE = {} as DeletePaymentInstrumentResponse;
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
 const DEFAULT_GET_EVENT_RESPONSE: GetEventOutput = { event: undefined };
@@ -1574,16 +1604,32 @@ export class TestIdentityClient implements CoreIdentityClient {
 // list responses by the request's nextToken.
 export class TestPaymentClient implements CorePaymentClient {
   readonly calls: RecordedCall[] = [];
+
+  private createManagerResponse = DEFAULT_CREATE_PAYMENT_MANAGER_RESPONSE;
   private getManagerResponse = DEFAULT_GET_PAYMENT_MANAGER_RESPONSE;
   private listManagersResponses = new Map<string | undefined, ListPaymentManagersResponse>();
+  private updateManagerResponse = DEFAULT_UPDATE_PAYMENT_MANAGER_RESPONSE;
+  private deleteManagerResponse = DEFAULT_DELETE_PAYMENT_MANAGER_RESPONSE;
+  private createConnectorResponse = DEFAULT_CREATE_PAYMENT_CONNECTOR_RESPONSE;
   private getConnectorResponse = DEFAULT_GET_PAYMENT_CONNECTOR_RESPONSE;
   private listConnectorsResponses = new Map<string | undefined, ListPaymentConnectorsResponse>();
+  private updateConnectorResponse = DEFAULT_UPDATE_PAYMENT_CONNECTOR_RESPONSE;
+  private deleteConnectorResponse = DEFAULT_DELETE_PAYMENT_CONNECTOR_RESPONSE;
+  private createSessionResponse = DEFAULT_CREATE_PAYMENT_SESSION_RESPONSE;
   private getSessionResponse = DEFAULT_GET_PAYMENT_SESSION_RESPONSE;
   private listSessionsResponses = new Map<string | undefined, ListPaymentSessionsResponse>();
+  private deleteSessionResponse = DEFAULT_DELETE_PAYMENT_SESSION_RESPONSE;
+  private createInstrumentResponse = DEFAULT_CREATE_PAYMENT_INSTRUMENT_RESPONSE;
   private getInstrumentResponse = DEFAULT_GET_PAYMENT_INSTRUMENT_RESPONSE;
   private getInstrumentBalanceResponse = DEFAULT_GET_PAYMENT_INSTRUMENT_BALANCE_RESPONSE;
   private listInstrumentsResponses = new Map<string | undefined, ListPaymentInstrumentsResponse>();
+  private deleteInstrumentResponse = DEFAULT_DELETE_PAYMENT_INSTRUMENT_RESPONSE;
   private error?: Error;
+
+  setCreateManagerResponse(response: CreatePaymentManagerResponse): this {
+    this.createManagerResponse = response;
+    return this;
+  }
 
   setGetManagerResponse(response: GetPaymentManagerResponse): this {
     this.getManagerResponse = response;
@@ -1592,6 +1638,21 @@ export class TestPaymentClient implements CorePaymentClient {
 
   setListManagersResponse(response: ListPaymentManagersResponse, forNextToken?: string): this {
     this.listManagersResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setUpdateManagerResponse(response: UpdatePaymentManagerResponse): this {
+    this.updateManagerResponse = response;
+    return this;
+  }
+
+  setDeleteManagerResponse(response: DeletePaymentManagerResponse): this {
+    this.deleteManagerResponse = response;
+    return this;
+  }
+
+  setCreateConnectorResponse(response: CreatePaymentConnectorResponse): this {
+    this.createConnectorResponse = response;
     return this;
   }
 
@@ -1605,6 +1666,21 @@ export class TestPaymentClient implements CorePaymentClient {
     return this;
   }
 
+  setUpdateConnectorResponse(response: UpdatePaymentConnectorResponse): this {
+    this.updateConnectorResponse = response;
+    return this;
+  }
+
+  setDeleteConnectorResponse(response: DeletePaymentConnectorResponse): this {
+    this.deleteConnectorResponse = response;
+    return this;
+  }
+
+  setCreateSessionResponse(response: CreatePaymentSessionResponse): this {
+    this.createSessionResponse = response;
+    return this;
+  }
+
   setGetSessionResponse(response: GetPaymentSessionResponse): this {
     this.getSessionResponse = response;
     return this;
@@ -1612,6 +1688,16 @@ export class TestPaymentClient implements CorePaymentClient {
 
   setListSessionsResponse(response: ListPaymentSessionsResponse, forNextToken?: string): this {
     this.listSessionsResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setDeleteSessionResponse(response: DeletePaymentSessionResponse): this {
+    this.deleteSessionResponse = response;
+    return this;
+  }
+
+  setCreateInstrumentResponse(response: CreatePaymentInstrumentResponse): this {
+    this.createInstrumentResponse = response;
     return this;
   }
 
@@ -1633,10 +1719,24 @@ export class TestPaymentClient implements CorePaymentClient {
     return this;
   }
 
+  setDeleteInstrumentResponse(response: DeletePaymentInstrumentResponse): this {
+    this.deleteInstrumentResponse = response;
+    return this;
+  }
+
   // setError makes every subsequent call reject with `error` (undefined clears).
   setError(error: Error | undefined): this {
     this.error = error;
     return this;
+  }
+
+  async createPaymentManager(
+    input: CreatePaymentManagerInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentManagerResponse> {
+    this.calls.push({ method: "createPaymentManager", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createManagerResponse;
   }
 
   async getPaymentManager(id: string, options: CoreOptions): Promise<GetPaymentManagerResponse> {
@@ -1653,6 +1753,33 @@ export class TestPaymentClient implements CorePaymentClient {
     this.calls.push({ method: "listPaymentManagers", args: [nextToken, maxResults, options] });
     if (this.error) throw this.error;
     return this.listManagersResponses.get(nextToken) ?? DEFAULT_LIST_PAYMENT_MANAGERS_RESPONSE;
+  }
+
+  async updatePaymentManager(
+    input: UpdatePaymentManagerInput,
+    options: CoreOptions,
+  ): Promise<UpdatePaymentManagerResponse> {
+    this.calls.push({ method: "updatePaymentManager", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.updateManagerResponse;
+  }
+
+  async deletePaymentManager(
+    request: DeletePaymentManagerRequest,
+    options: CoreOptions,
+  ): Promise<DeletePaymentManagerResponse> {
+    this.calls.push({ method: "deletePaymentManager", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.deleteManagerResponse;
+  }
+
+  async createPaymentConnector(
+    input: CreatePaymentConnectorInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentConnectorResponse> {
+    this.calls.push({ method: "createPaymentConnector", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.createConnectorResponse;
   }
 
   async getPaymentConnector(
@@ -1679,6 +1806,33 @@ export class TestPaymentClient implements CorePaymentClient {
     return this.listConnectorsResponses.get(nextToken) ?? DEFAULT_LIST_PAYMENT_CONNECTORS_RESPONSE;
   }
 
+  async updatePaymentConnector(
+    input: UpdatePaymentConnectorInput,
+    options: CoreOptions,
+  ): Promise<UpdatePaymentConnectorResponse> {
+    this.calls.push({ method: "updatePaymentConnector", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.updateConnectorResponse;
+  }
+
+  async deletePaymentConnector(
+    request: DeletePaymentConnectorRequest,
+    options: CoreOptions,
+  ): Promise<DeletePaymentConnectorResponse> {
+    this.calls.push({ method: "deletePaymentConnector", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.deleteConnectorResponse;
+  }
+
+  async createPaymentSession(
+    request: CreatePaymentSessionInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentSessionResponse> {
+    this.calls.push({ method: "createPaymentSession", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.createSessionResponse;
+  }
+
   async getPaymentSession(
     request: GetPaymentSessionInput,
     options: CoreOptions,
@@ -1697,6 +1851,24 @@ export class TestPaymentClient implements CorePaymentClient {
     return (
       this.listSessionsResponses.get(request.nextToken) ?? DEFAULT_LIST_PAYMENT_SESSIONS_RESPONSE
     );
+  }
+
+  async deletePaymentSession(
+    request: DeletePaymentSessionInput,
+    options: CoreOptions,
+  ): Promise<DeletePaymentSessionResponse> {
+    this.calls.push({ method: "deletePaymentSession", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.deleteSessionResponse;
+  }
+
+  async createPaymentInstrument(
+    request: CreatePaymentInstrumentInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentInstrumentResponse> {
+    this.calls.push({ method: "createPaymentInstrument", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.createInstrumentResponse;
   }
 
   async getPaymentInstrument(
@@ -1727,6 +1899,15 @@ export class TestPaymentClient implements CorePaymentClient {
       this.listInstrumentsResponses.get(request.nextToken) ??
       DEFAULT_LIST_PAYMENT_INSTRUMENTS_RESPONSE
     );
+  }
+
+  async deletePaymentInstrument(
+    request: DeletePaymentInstrumentInput,
+    options: CoreOptions,
+  ): Promise<DeletePaymentInstrumentResponse> {
+    this.calls.push({ method: "deletePaymentInstrument", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.deleteInstrumentResponse;
   }
 }
 

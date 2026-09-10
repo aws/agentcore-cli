@@ -73,7 +73,21 @@ function paymentClient(sends: { control?: Send; data?: Send } = {}) {
   const data = mock(
     (_config: ClientConfig) => ({ send: dataSend }) as unknown as ReturnType<AwsClients["data"]>,
   );
-  return { client: new PaymentClient({ control, data }), control, data, controlSend, dataSend };
+  const client = new PaymentClient(
+    {
+      control,
+      data,
+      iam: () => {
+        throw new Error("unexpected IAM client");
+      },
+    },
+    {
+      getPaymentCredentialProvider: async () => {
+        throw new Error("unexpected provider lookup");
+      },
+    },
+  );
+  return { client, control, data, controlSend, dataSend };
 }
 
 function serviceError(name: string, message: string): Error {
