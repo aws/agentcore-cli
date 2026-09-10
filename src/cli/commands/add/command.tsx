@@ -15,7 +15,7 @@ export function registerAdd(program: Command): Command {
     if (subcommand) {
       console.error(`error: '${subcommand}' is not a valid subcommand.`);
       cmd.outputHelp();
-      process.exit(1);
+      process.exit(0);
     }
 
     requireProject();
