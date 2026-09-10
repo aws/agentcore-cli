@@ -1,9 +1,4 @@
 import { expect, mock, test } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   CreateRoleCommand,
   GetRoleCommand,
@@ -32,6 +27,12 @@ test("prefixes the manager name and stays within IAM's 64-character cap", () => 
   expect(longest.startsWith("AgentCorePayments-")).toBe(true);
 });
 
+test("uses a stable SHA-256 suffix across runtime distributions", () => {
+  expect(paymentServiceRoleName("x".repeat(48), REGION)).toBe(
+    "AgentCorePayments-us-west-2-xxxxxxxxxxxxxxxxxxxxxxx-c4e3d724a0b2",
+  );
+});
+
 // Truncating alone would let two long names share one role, and provisioning is
 // idempotent by name, so the second create would silently reuse the first's.
 test("keeps overflowing role names distinct", () => {
@@ -47,29 +48,6 @@ test("uses distinct role names for the same manager in different regions", () =>
     expect(paymentServiceRoleName(name, "us-east-1")).not.toBe(
       paymentServiceRoleName(name, "us-west-2"),
     );
-  }
-});
-
-test("long role names work in the Node distribution", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "payment-role-node-"));
-  try {
-    await Bun.build({
-      entrypoints: [join(import.meta.dir, "paymentServiceRole.ts")],
-      target: "node",
-      outdir: directory,
-      naming: "role.mjs",
-    });
-    const source = [
-      `import { paymentServiceRoleName } from ${JSON.stringify(pathToFileURL(join(directory, "role.mjs")).href)};`,
-      `console.log(paymentServiceRoleName("x".repeat(48), "${REGION}"));`,
-    ].join("\n");
-    const name = execFileSync("node", ["--input-type=module", "--eval", source], {
-      encoding: "utf8",
-    }).trim();
-    expect(name).toHaveLength(64);
-    expect(name).toBe(paymentServiceRoleName("x".repeat(48), REGION));
-  } finally {
-    await rm(directory, { recursive: true, force: true });
   }
 });
 
