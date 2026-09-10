@@ -51,6 +51,7 @@ import type {
   InlineGroundTruth,
   EvaluationReferenceInput,
   EvaluationResultContent,
+  OutputConfig,
   DataSourceConfig as DataPlaneDataSourceConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
@@ -289,6 +290,7 @@ export type StartBatchEvaluationInput = {
   // Already-parsed --ground-truth (SessionMetadataShape[]) → evaluationMetadata.
   groundTruth?: SessionMetadataShape[];
   kmsKeyArn?: string;
+  outputConfig?: OutputConfig;
 };
 
 // Batch insights use the same service job API as batch evaluations, but remain

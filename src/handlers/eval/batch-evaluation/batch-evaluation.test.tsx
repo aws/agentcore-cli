@@ -34,10 +34,14 @@ const RESULTS: BatchEvaluationResultEntry[] = [
   { evaluatorId: "Builtin.Helpfulness", level: "Session", sessionId: "s1", score: 5 },
 ];
 
-async function run(args: string[], configure?: (core: TestCoreClient) => void) {
+async function run(
+  args: string[],
+  configure?: (core: TestCoreClient) => void,
+  ioOptions?: { stdin?: string },
+) {
   const core = new TestCoreClient();
   configure?.(core);
-  const io = testIO();
+  const io = testIO(ioOptions);
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
@@ -260,5 +264,141 @@ describe("eval batch-evaluation simulate", () => {
     expect(invoke).toBeDefined();
     expect((invoke!.args[0] as { waitIngestionMs?: number }).waitIngestionMs).toBe(0);
     expect(JSON.parse(stdout).failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
+  });
+});
+
+describe("eval batch-evaluation evaluate --output-config", () => {
+  const BASE = [
+    "eval",
+    "batch-evaluation",
+    "evaluate",
+    "--agent",
+    "r-1",
+    "--evaluators",
+    "Builtin.Helpfulness",
+    "--name",
+    "eval-1",
+  ];
+  const CONFIG = {
+    cloudWatchConfig: {
+      logGroupName: "/company/agent-evaluations",
+      metricsNamespace: "Company/AgentEvaluations",
+      resultDestination: "DEDICATED_LOG_GROUP",
+    },
+  };
+
+  function startInput(core: TestCoreClient) {
+    const call = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    expect(call).toBeDefined();
+    return call!.args[0] as { outputConfig?: unknown };
+  }
+
+  test("reaches the request unchanged from inline JSON", async () => {
+    const { core } = await run([...BASE, "--output-config", JSON.stringify(CONFIG)]);
+    expect(startInput(core).outputConfig).toEqual(CONFIG);
+  });
+
+  test("reaches the request unchanged from a file", async () => {
+    const path = `${process.env["TMPDIR"] ?? "/tmp"}/agentcore-output-config-${Bun.hash(JSON.stringify(CONFIG))}.json`;
+    await Bun.write(path, JSON.stringify(CONFIG));
+    const { core } = await run([...BASE, "--output-config", `file://${path}`]);
+    expect(startInput(core).outputConfig).toEqual(CONFIG);
+  });
+
+  test("reaches the request unchanged from stdin", async () => {
+    const { core } = await run([...BASE, "--output-config", "-"], undefined, {
+      stdin: JSON.stringify(CONFIG),
+    });
+    expect(startInput(core).outputConfig).toEqual(CONFIG);
+  });
+
+  test("is left undefined when omitted, so the service keeps its default destination", async () => {
+    const { core } = await run(BASE);
+    expect(startInput(core).outputConfig).toBeUndefined();
+  });
+
+  test("rejects malformed JSON before any SDK call", async () => {
+    const core = new TestCoreClient();
+    const io = testIO();
+    const root = createRootHandler(core, {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await expect(
+      root.route([
+        "node",
+        "agentcore",
+        ...BASE,
+        "--output-config",
+        "{not json",
+        "--region",
+        "us-west-2",
+      ]),
+    ).rejects.toThrow(/Invalid JSON for option '--output-config'/);
+    expect(core.eval.calls).toEqual([]);
+  });
+});
+
+describe("eval batch-evaluation simulate --endpoint and --output-config", () => {
+  const BASE = [
+    "eval",
+    "batch-evaluation",
+    "simulate",
+    "--runtime-id",
+    "r-1",
+    "--payload-template",
+    '{"prompt":"{input}"}',
+    "--dataset",
+    "/tmp/ds.jsonl",
+    "--evaluators",
+    "Builtin.Helpfulness",
+    "--name",
+    "sim-1",
+  ];
+  const invoked = (c: TestCoreClient) =>
+    c.eval.setInvokeDatasetResponse({
+      sessions: [{ exampleId: "e1", sessionId: "s1" }],
+      invoked: 1,
+      failed: 0,
+      failures: [],
+    });
+
+  test("--endpoint drives both the Runtime invocation and the graded session source", async () => {
+    const { core } = await run([...BASE, "--endpoint", "BETA"], invoked);
+    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+    expect((invoke!.args[0] as { qualifier?: string }).qualifier).toBe("BETA");
+    const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    expect((start!.args[0] as { source: { endpoint?: string } }).source.endpoint).toBe("BETA");
+  });
+
+  test("malformed --output-config aborts before any Runtime is invoked", async () => {
+    const core = new TestCoreClient();
+    invoked(core);
+    const io = testIO();
+    const root = createRootHandler(core, {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await expect(
+      root.route([
+        "node",
+        "agentcore",
+        ...BASE,
+        "--output-config",
+        "{not json",
+        "--region",
+        "us-west-2",
+      ]),
+    ).rejects.toThrow(/Invalid JSON for option '--output-config'/);
+    expect(core.eval.calls.map((c) => c.method)).not.toContain("invokeDataset");
+  });
+
+  test("a valid --output-config reaches the graded job", async () => {
+    const config = { cloudWatchConfig: { resultDestination: "SOURCE_LOG_GROUP" } };
+    const { core } = await run([...BASE, "--output-config", JSON.stringify(config)], invoked);
+    const start = core.eval.calls.find((c) => c.method === "startBatchEvaluation");
+    expect((start!.args[0] as { outputConfig?: unknown }).outputConfig).toEqual(config);
   });
 });
