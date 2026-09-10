@@ -1,0 +1,74 @@
+{
+  "credentialProviders": [
+    {
+      "name": "DeployTest-CdpConn-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/DeployTest-CdpConn-cdp",
+      "createdTime": "2026-05-14T15:48:17.857Z",
+      "lastUpdatedTime": "2026-05-14T15:48:17.857Z"
+    },
+    {
+      "name": "InvokeMgr-InvokeCdp-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/InvokeMgr-InvokeCdp-cdp",
+      "createdTime": "2026-05-20T19:09:36.566Z",
+      "lastUpdatedTime": "2026-05-20T19:09:36.566Z"
+    },
+    {
+      "name": "MyPaymentManager-MyCdpConnector-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/MyPaymentManager-MyCdpConnector-cdp",
+      "createdTime": "2026-05-05T03:02:59.583Z",
+      "lastUpdatedTime": "2026-05-21T19:22:56.053Z"
+    },
+    {
+      "name": "MyPaymentManager-MyStripePrivyConnector-stripe-privy",
+      "credentialProviderVendor": "StripePrivy",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/MyPaymentManager-MyStripePrivyConnector-stripe-privy",
+      "createdTime": "2026-05-21T19:22:56.308Z",
+      "lastUpdatedTime": "2026-05-21T19:22:56.308Z"
+    },
+    {
+      "name": "MyPaymentManagerAidandal-MyCdpConnectorAidandal-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/MyPaymentManagerAidandal-MyCdpConnectorAidandal-cdp",
+      "createdTime": "2026-06-08T18:10:19.508Z",
+      "lastUpdatedTime": "2026-06-08T18:10:19.508Z"
+    },
+    {
+      "name": "agentcore-cli-payment-fixture",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/agentcore-cli-payment-fixture",
+      "createdTime": "2026-09-08T20:16:25.544Z",
+      "lastUpdatedTime": "2026-09-08T20:16:25.544Z"
+    },
+    {
+      "name": "agentcore-cli-payment-fixture-2",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/agentcore-cli-payment-fixture-2",
+      "createdTime": "2026-09-08T20:16:26.070Z",
+      "lastUpdatedTime": "2026-09-08T20:16:26.070Z"
+    },
+    {
+      "name": "cdp-creds",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/cdp-creds",
+      "createdTime": "2026-05-12T21:18:46.009Z",
+      "lastUpdatedTime": "2026-05-12T21:33:40.066Z"
+    },
+    {
+      "name": "paymgr-cdp-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/paymgr-cdp-cdp",
+      "createdTime": "2026-05-21T21:19:41.791Z",
+      "lastUpdatedTime": "2026-05-22T04:40:50.491Z"
+    },
+    {
+      "name": "pmgr-cdp-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/pmgr-cdp-cdp",
+      "createdTime": "2026-05-22T01:59:54.168Z",
+      "lastUpdatedTime": "2026-05-22T02:42:24.884Z"
+    }
+  ]
+}
