@@ -2,6 +2,12 @@
 
 CLI tool for Amazon Bedrock AgentCore. Manages agent infrastructure lifecycle.
 
+## Learned Constraints
+
+Repository-specific constraints derived from completed agent runs live in `.agents/learnings/`. Consult relevant entries
+before changing or reviewing an affected area. New learnings require evidence and normal pull request review; see
+`.agents/learnings/README.md`.
+
 ## Package Structure
 
 ```
