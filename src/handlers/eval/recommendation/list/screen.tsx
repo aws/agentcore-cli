@@ -17,9 +17,17 @@ interface RecommendationRow extends Record<string, unknown> {
   updatedAt: string;
 }
 
+// Recommendation types are the verbose enum values SYSTEM_PROMPT_RECOMMENDATION /
+// TOOL_DESCRIPTION_RECOMMENDATION; the shared `_RECOMMENDATION` suffix is noise
+// that would otherwise force truncation, so drop it for display.
 const columns = [
   { key: "name", header: "name", flex: true },
-  { key: "type", header: "type", width: 22 },
+  {
+    key: "type",
+    header: "type",
+    width: 16,
+    render: (v) => String(v).replace(/_RECOMMENDATION$/, ""),
+  },
   { key: "status", header: "status", width: 14 },
   { key: "updatedAt", header: "updated UTC", width: 16, render: formatTimestamp },
 ] satisfies DataTableColumn<RecommendationRow>[];
