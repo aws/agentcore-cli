@@ -1,5 +1,8 @@
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+=*$/;
-const ED25519_KEY_LENGTHS = new Set([32, 64]);
+// Coinbase CDP hands out the 64-byte seed‖public-key form, and the service rejects a
+// bare 32-byte seed ("Expected base64-encoded Ed25519 private key"), so only the
+// 64-byte form is accepted here.
+const ED25519_KEY_LENGTHS = new Set([64]);
 const P256_MIN_BYTES = 100;
 const P256_MAX_BYTES = 200;
 const WALLET_AUTH_PREFIX = "wallet-auth:";

@@ -20,6 +20,9 @@ describe("payment credential key validation", () => {
   test("rejects invalid Coinbase key formats", () => {
     expect(validateApiKeySecret("not-base64")).toContain("Ed25519");
     expect(validateApiKeySecret(Buffer.alloc(48, 0x41).toString("base64"))).toContain("length");
+    // A bare 32-byte seed is a valid Ed25519 key in general, but the service
+    // rejects it, so fail fast on the same shape it enforces.
+    expect(validateApiKeySecret(Buffer.alloc(32, 0x41).toString("base64"))).toContain("length");
     expect(validateWalletSecret(ed25519Key)).toContain("P-256");
   });
 

@@ -40,8 +40,8 @@ async function run(args: string[]): Promise<string> {
   return io.stdout();
 }
 
-describe("payment-credential-provider read-only command hierarchy", () => {
-  test("registers get and list only, with no create, update, or delete commands", () => {
+describe("payment-credential-provider command hierarchy", () => {
+  test("retains get and list alongside the mutation commands", () => {
     const root = createRootHandler(createFixtureCore(), {
       io: testIO().io,
       logger: createSilentLogger(),
@@ -52,7 +52,13 @@ describe("payment-credential-provider read-only command hierarchy", () => {
       ?.children()
       .find((child) => child.name() === "payment-credential-provider");
 
-    expect(payment?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(payment?.children().map((child) => child.name())).toEqual([
+      "create",
+      "get",
+      "list",
+      "update",
+      "delete",
+    ]);
   });
 
   test("prints command help with --json", async () => {
