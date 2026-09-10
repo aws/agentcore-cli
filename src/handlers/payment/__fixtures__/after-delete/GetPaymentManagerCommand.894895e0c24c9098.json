@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "Payment manager not found: agentcoreclipaymente2e-ktdwha51g1"
+  }
+}
