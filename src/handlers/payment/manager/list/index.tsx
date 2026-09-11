@@ -7,7 +7,7 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createListPaymentManagersHandler = (core: Core) =>
   createHandler({
     name: "list",
-    description: "list payment managers (server-side paginated)",
+    description: "list payment managers",
     flags: [
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),

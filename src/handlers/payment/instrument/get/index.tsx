@@ -11,19 +11,23 @@ export const createGetPaymentInstrumentHandler = (core: Core) =>
     name: "get",
     description: "get a payment instrument by id",
     flags: [
-      flag("manager-id", "the payment manager ID that owns the instrument", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
+      flag("instrument-id", "the payment instrument ID (required)", z.string().optional()),
       flag(
         "user-id",
-        "the user the instrument belongs to (required for IAM-authenticated calls)",
+        "the application user ID associated with the instrument (required)",
         z.string().optional(),
       ),
-      flag("agent-name", "agent name recorded for observability", z.string().optional()),
       flag(
         "connector-id",
-        "restrict the lookup to instruments under this payment connector",
+        "optionally restrict the lookup to this payment connector",
         z.string().optional(),
       ),
-      flag("instrument-id", "the payment instrument id", z.string().optional()),
+      flag(
+        "agent-name",
+        "optional observability label, not an agent selector",
+        z.string().optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags["manager-id"]) {

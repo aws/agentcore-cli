@@ -8,9 +8,9 @@ import { coreOptsFromCtx } from "../../../utils";
 export const createListPaymentConnectorsHandler = (core: Core) =>
   createHandler({
     name: "list",
-    description: "list the connectors of a payment manager (server-side paginated)",
+    description: "list the connectors of a payment manager",
     flags: [
-      flag("manager-id", "the parent payment manager id", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),
     ],

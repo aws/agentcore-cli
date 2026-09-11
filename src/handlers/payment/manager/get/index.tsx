@@ -9,7 +9,7 @@ export const createGetPaymentManagerHandler = (core: Core) =>
   createHandler({
     name: "get",
     description: "get a payment manager by id",
-    flags: [flag("id", "the payment manager id", z.string().optional())],
+    flags: [flag("id", "the payment manager ID (required)", z.string().optional())],
     handle: async (ctx, flags) => {
       if (!flags.id) {
         throw new InputValidationError("required option '--id <id>' not specified");
