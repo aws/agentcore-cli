@@ -212,9 +212,10 @@ const describeStackOutputsWithSdk: DescribeStackOutputs = async (stackName, regi
 };
 
 // The vended CDK app names project stacks `AgentCore-<project>-<target>` with
-// underscores sanitized to hyphens (see src/assets/cdk/bin/cdk.ts). Deriving it
-// here lets deployed state be read live from CloudFormation without a local
-// state file.
+// underscores sanitized to hyphens; the rule lives in @aws/agentcore-cdk's
+// resolveTargetStacks (src/cdk/project/target-stacks.ts), which the vended
+// bin/cdk.ts calls. Deriving it here lets deployed state be read live from
+// CloudFormation without a local state file.
 function targetStackName(projectName: string, targetName: string): string {
   const sanitize = (name: string) => name.replace(/_/g, "-");
   return `AgentCore-${sanitize(projectName)}-${sanitize(targetName)}`;
