@@ -108,6 +108,7 @@ export function AddGatewayTargetScreen({
   const isPassthroughEndpointStep = wizard.step === 'passthrough-endpoint';
   const isPassthroughProtocolStep = wizard.step === 'passthrough-protocol';
   const isPassthroughStickinessStep = wizard.step === 'passthrough-stickiness';
+  const isIncludeDomainsStep = wizard.step === 'include-domains';
   const isExcludeDomainsStep = wizard.step === 'exclude-domains';
   const isConfirmStep = wizard.step === 'confirm';
   const isAuthStep = isOutboundAuthStep || isApiGatewayAuthStep;
@@ -425,6 +426,7 @@ export function AddGatewayTargetScreen({
             targetType: 'webSearch',
             name: c.name,
             gateway: c.gateway!,
+            ...(c.includeDomains && c.includeDomains.length > 0 ? { includeDomains: c.includeDomains } : {}),
             ...(c.excludeDomains && c.excludeDomains.length > 0 ? { excludeDomains: c.excludeDomains } : {}),
           });
         } else {
@@ -812,6 +814,22 @@ export function AddGatewayTargetScreen({
           />
         )}
 
+        {isIncludeDomainsStep && (
+          <TextInput
+            prompt="Restrict to domains (optional, comma-separated)"
+            placeholder="e.g. docs.aws.amazon.com, aws.amazon.com"
+            allowEmpty
+            onSubmit={(value: string) => {
+              const domains = value
+                .split(',')
+                .map(d => d.trim())
+                .filter(d => d.length > 0);
+              wizard.setIncludeDomains(domains.length > 0 ? domains : undefined);
+            }}
+            onCancel={() => wizard.goBack()}
+          />
+        )}
+
         {isExcludeDomainsStep && (
           <TextInput
             prompt="Exclude domains (optional, comma-separated)"
@@ -865,7 +883,10 @@ export function AddGatewayTargetScreen({
                   ]
                 : []),
               ...(wizard.config.connectorId === 'web-search'
-                ? [{ label: 'Exclude domains', value: wizard.config.excludeDomains?.join(', ') ?? '(none)' }]
+                ? [
+                    { label: 'Include domains', value: wizard.config.includeDomains?.join(', ') ?? '(none)' },
+                    { label: 'Exclude domains', value: wizard.config.excludeDomains?.join(', ') ?? '(none)' },
+                  ]
                 : []),
               ...(wizard.config.targetType === 'connector' && wizard.config.connectorId !== 'web-search'
                 ? [
