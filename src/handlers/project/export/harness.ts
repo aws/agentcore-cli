@@ -5,7 +5,7 @@ import { JsonRendererKey } from "../../../tui";
 import { JsonKey } from "../../keys";
 import { AgentNameSchema } from "../../../projectSchemas/runtime";
 import { formatExportNotes } from "../../../core/project/templates/export";
-import { coreOptsFromCtx } from "../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx } from "../../utils";
 import type { ExportHarnessInput } from "../types";
 import type { ExportProjectResourceConfig } from "./types";
 import { harnessIdFromArn, mapServiceHarnessToSpec, regionFromHarnessArn } from "./serviceHarness";
@@ -28,11 +28,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!!flags.name === !!flags.arn) {
-        throw new InputValidationError(
-          "specify exactly one of --name (in-project harness) or --arn (deployed harness)",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["name", "arn"], { exactlyOne: true });
 
       // withProject has already resolved and validated the enclosing project —
       // before any service fetch, so a broken project fails fast.

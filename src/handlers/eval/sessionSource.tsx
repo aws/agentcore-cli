@@ -3,7 +3,7 @@ import z from "zod";
 import { InputValidationError } from "../../errors";
 import { SourceResolver, type AppIO } from "../../io";
 import { flag, type Flag } from "../../router";
-import { parseJsonFlag } from "../utils";
+import { assertMutuallyExclusiveFlags, parseJsonFlag } from "../utils";
 import type { SessionSourceValue, SessionWindow } from "./types";
 
 export class SessionSource {
@@ -54,16 +54,12 @@ export class SessionSource {
     flags: SessionSourceFlags,
     rawDataSourceConfig: DataSourceConfig | undefined,
   ): SessionSourceValue {
-    const hasAgent = flags["agent"] !== undefined;
+    assertMutuallyExclusiveFlags(flags, ["agent", "online-eval", "data-source-config"], {
+      exactlyOne: true,
+    });
+
     const hasOnlineEval = flags["online-eval"] !== undefined;
     const hasRaw = rawDataSourceConfig !== undefined;
-
-    const armCount = [hasAgent, hasOnlineEval, hasRaw].filter(Boolean).length;
-    if (armCount !== 1) {
-      throw new InputValidationError(
-        "specify exactly one source: '--agent', '--online-eval', or '--data-source-config'",
-      );
-    }
 
     const hasIds = !!flags["session-ids"]?.length;
 

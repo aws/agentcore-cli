@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import type { InvokeHarnessRequest } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   GetAgentRuntimeResponse,
@@ -17,6 +16,7 @@ import {
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  inTempDirectory,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
 import { JsonKey, RegionKey } from "../../keys";
@@ -27,9 +27,8 @@ import { createProjectInvokeHandler } from ".";
 import { createProjectInvokeHarnessHandler } from "./harness";
 import { createProjectInvokeRuntimeHandler } from "./runtime";
 
-const originalCwd = process.cwd();
-const temporaryDirectories: string[] = [];
 const servers: HttpServerHandle[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 
 const TARGET = {
   name: "default",
@@ -66,8 +65,8 @@ async function inProject(
   },
   options: { writeTargets?: boolean } = {},
 ): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "agentcore-project-invoke-reduced-"));
-  temporaryDirectories.push(root);
+  const { path: root, cleanup } = await inTempDirectory("agentcore-project-invoke-reduced-");
+  cleanups.push(cleanup);
   await mkdir(join(root, "agentcore"), { recursive: true });
   const spec = ProjectSpecSchema.parse({
     name: "orders",
@@ -79,7 +78,6 @@ async function inProject(
   if (options.writeTargets !== false) {
     await writeFile(join(root, "agentcore", "aws-targets.json"), JSON.stringify([TARGET]));
   }
-  process.chdir(root);
 }
 
 function backend() {
@@ -171,13 +169,8 @@ function context(project: Project): Context {
 }
 
 afterEach(async () => {
-  process.chdir(originalCwd);
   await Promise.all(servers.splice(0).map((server) => server.close()));
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
+  await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
 
 describe("project invoke", () => {

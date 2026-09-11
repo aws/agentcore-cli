@@ -1,32 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../../../testing";
 import { InputValidationError } from "../../../../../errors";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-code-eval-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function run(args: string[]) {
   const io = testIO();
@@ -39,14 +25,6 @@ async function run(args: string[]) {
   return { io };
 }
 
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
-}
-
 const spec = (projectRoot: string) =>
   Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
 const evaluator = async (projectRoot: string, name: string) =>
@@ -54,7 +32,8 @@ const evaluator = async (projectRoot: string, name: string) =>
 
 describe("project add evaluator code-based", () => {
   test("scaffolds managed evaluator code with an explicit timeout", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run([
       "add",
       "evaluator",
@@ -93,7 +72,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("no lambda → managed stub with the default timeout", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "evaluator", "code-based", "--name", "custom_eval", "--level", "TOOL_CALL"]);
 
     expect((await evaluator(projectRoot, "custom_eval")).config.codeBased.managed).toMatchObject({
@@ -108,7 +88,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("--lambda-arn → external config, no scaffold", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const arn = "arn:aws:lambda:us-west-2:123456789012:function:refund-policy";
     await run([
       "add",
@@ -131,7 +112,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("persists description, kms key, and tags", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const kms = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012";
     await run([
       "add",
@@ -177,7 +159,8 @@ describe("project add evaluator code-based", () => {
     ["invalid --level", ["--name", "x", "--level", "NOPE"]],
     ["invalid --lambda-arn", ["--name", "x", "--level", "SESSION", "--lambda-arn", "not-an-arn"]],
   ])("%s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "evaluator", "code-based", ...flags])).rejects.toBeInstanceOf(
       InputValidationError,
     );
@@ -187,7 +170,8 @@ describe("project add evaluator code-based", () => {
     ["--metric", "deepeval.FaithfulnessMetric"],
     ["--model", "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0"],
   ])("rejects removed %s before writing", async (removedFlag, value) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(
       run([
         "add",
@@ -207,7 +191,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("rejects a duplicate evaluator name", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const flags = [
       "add",
       "evaluator",
@@ -224,7 +209,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("errors before writing when app/<name> already exists (cross-resource collision)", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const appDir = join(projectRoot, "app", "collide");
     await mkdir(appDir, { recursive: true });
     await Bun.write(join(appDir, "pyproject.toml"), "# pre-existing\n");
@@ -239,7 +225,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("empty stub warns it returns Pass until implemented", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run([
       "add",
       "evaluator",
@@ -253,7 +240,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("--json reports the empty stub guidance as a structured note", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run([
       "add",
       "evaluator",
@@ -272,7 +260,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("external mode prints no stub note", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run([
       "add",
       "evaluator",
@@ -288,7 +277,8 @@ describe("project add evaluator code-based", () => {
   });
 
   test("remove evaluator drops it from the spec", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "evaluator", "code-based", "--name", "gone", "--level", "SESSION"]);
     expect(await evaluator(projectRoot, "gone")).toBeDefined();
     await run(["remove", "evaluator", "--name", "gone"]);
