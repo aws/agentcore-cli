@@ -10,7 +10,6 @@ import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "..
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 
-const TARGET = "Target:";
 const SESSION_SOURCE = "Session source:";
 const SOURCE_FILTERS = "Source filters:";
 const EVALUATION = "Evaluation:";
@@ -22,7 +21,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
     description: "update an online evaluation config",
     flags: [
       flag("id", "the ID of the online evaluation config to update", z.string().optional(), {
-        group: TARGET,
+        group: "Target:",
       }),
       flag("agent", "repoint at a different harness ID or Runtime ID", z.string().optional(), {
         group: SESSION_SOURCE,

@@ -10,7 +10,6 @@ import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
 const RUNTIME_INVOCATION = "Runtime invocation:";
 const DATASET = "Dataset:";
 const CONFIGURATION = "Configuration:";
-const EVALUATION = "Evaluation:";
 
 const payloadTemplateHelp = `(JSON object)
 The request body sent to the Runtime for each dataset example. Every occurrence
@@ -76,7 +75,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, _io: AppIO) =>
         group: CONFIGURATION,
       }),
       flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
-        group: EVALUATION,
+        group: "Evaluation:",
       }),
     ],
     handle: async (ctx, flags) => {

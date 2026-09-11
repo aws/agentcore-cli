@@ -12,7 +12,6 @@ import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 const CONFIGURATION = "Configuration:";
 const SESSION_SOURCE = "Session source (choose exactly one):";
 const EVALUATION = "Evaluation:";
-const EXECUTION = "Execution:";
 
 export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -74,7 +73,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         "role-arn",
         "IAM role the online evaluation assumes (default auto-provisioned)",
         z.string().optional(),
-        { group: EXECUTION },
+        { group: "Execution:" },
       ),
     ],
     handle: async (ctx, flags) => {
