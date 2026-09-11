@@ -1,6 +1,0 @@
-{
-  "$error": {
-    "name": "NoSuchEntityException",
-    "message": "The role with name AgentCorePayments-us-east-1-AgentCoreCliPaymentE2E cannot be found."
-  }
-}

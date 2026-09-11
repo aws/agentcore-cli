@@ -1,6 +1,0 @@
-{
-  "$error": {
-    "name": "ResourceNotFoundException",
-    "message": "Payment connector not found: agentcorecliconnectore2e-6rodjuiuig"
-  }
-}

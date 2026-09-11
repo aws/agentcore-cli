@@ -41,7 +41,7 @@ function setup(resource = "manager", overrides: Partial<ReturnType<typeof fixtur
   };
 }
 
-test("registers reads and mutations as CLI-only commands", () => {
+test("registers the read-only command tree without TUI or mutation leaves", () => {
   const payment = compile(setup().root, ValueContext.EmptyContext()).commands.find(
     (c) => c.name() === "payment",
   )!;
@@ -50,10 +50,10 @@ test("registers reads and mutations as CLI-only commands", () => {
       payment.commands.map((resource) => [resource.name(), resource.commands.map((c) => c.name())]),
     ),
   ).toEqual({
-    manager: ["create", "get", "list", "update", "delete"],
-    connector: ["create", "get", "list", "update", "delete"],
-    session: ["create", "get", "list", "delete"],
-    instrument: ["create", "get", "list", "delete", "balance"],
+    manager: ["get", "list"],
+    connector: ["get", "list"],
+    session: ["get", "list"],
+    instrument: ["get", "list", "balance"],
   });
   for (const resource of payment.commands) {
     for (const command of resource.commands) expect(isTuiCommandSupported(command)).toBe(false);

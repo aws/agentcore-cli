@@ -103,9 +103,7 @@ export class CoreClient implements AwsClients {
     );
     this.gateway = new GatewayClient(this, fetch, this.logger.child({ module: "gateway" }));
     this.policy = new PolicyClient(this, this.logger.child({ module: "policy" }));
-    // Payment connectors resolve their credential provider through identity, so
-    // PaymentClient borrows the identity sub-client alongside the shared AWS clients.
-    this.payment = new PaymentClient(this, this.identity);
+    this.payment = new PaymentClient(this);
     // EvalClient shares the injected fetch: dataset content is served from a
     // presigned S3 URL, outside the SDK seam the other operations use. The logger
     // is used for batch-evaluation result-log diagnostics.
