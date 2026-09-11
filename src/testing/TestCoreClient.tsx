@@ -185,6 +185,7 @@ import type {
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
+  RoleScopeWarning,
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
@@ -1532,6 +1533,7 @@ export class TestEvalClient implements CoreEvalClient {
     DEFAULT_CREATE_ONLINE_EVAL_RESPONSE;
   private onlineEvalUpdateResponse: UpdateOnlineEvaluationConfigResponse =
     DEFAULT_UPDATE_ONLINE_EVAL_RESPONSE;
+  private onlineEvalRoleScopeWarning: RoleScopeWarning | undefined;
   private onlineEvalGetResponse: GetOnlineEvaluationConfigResponse =
     DEFAULT_GET_ONLINE_EVAL_RESPONSE;
   private onlineEvalDeleteResponse: DeleteOnlineEvaluationConfigResponse =
@@ -1665,6 +1667,11 @@ export class TestEvalClient implements CoreEvalClient {
   // setOnlineEvaluationExecutionStatus resolve to (when not erroring).
   setOnlineEvalUpdateResponse(response: UpdateOnlineEvaluationConfigResponse): this {
     this.onlineEvalUpdateResponse = response;
+    return this;
+  }
+
+  setOnlineEvalRoleScopeWarning(warning: RoleScopeWarning): this {
+    this.onlineEvalRoleScopeWarning = warning;
     return this;
   }
 
@@ -2122,10 +2129,16 @@ export class TestEvalClient implements CoreEvalClient {
     id: string,
     update: UpdateOnlineEvalInput,
     options: CoreOptions,
-  ): Promise<{ response: UpdateOnlineEvaluationConfigResponse }> {
+  ): Promise<{
+    response: UpdateOnlineEvaluationConfigResponse;
+    roleScopeWarning?: RoleScopeWarning;
+  }> {
     this.calls.push({ method: "updateOnlineEvaluationConfig", args: [id, update, options] });
     if (this.error) throw this.error;
-    return { response: this.onlineEvalUpdateResponse };
+    return {
+      response: this.onlineEvalUpdateResponse,
+      roleScopeWarning: this.onlineEvalRoleScopeWarning,
+    };
   }
 
   async getOnlineEvaluationConfig(

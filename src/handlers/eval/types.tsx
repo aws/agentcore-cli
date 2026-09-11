@@ -28,6 +28,7 @@ import type {
   UpdateConfigurationBundleResponse,
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
+  OutputConfig as OnlineEvalOutputConfig,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CreateABTestResponse,
@@ -157,6 +158,8 @@ export type CreateOnlineEvalInput = {
   evaluatorIds?: string[];
   evaluationExecutionRoleArn?: string;
   enableOnCreate?: boolean;
+  tags?: Record<string, string>;
+  outputConfig?: OnlineEvalOutputConfig;
 } & (
   | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
@@ -204,6 +207,7 @@ export type DeleteOnlineInsightResponse = DeleteOnlineEvaluationConfigResponse;
 // `rule` object); `clearEndpoint` nulls out the endpoint scope, falling back to
 // the agent's default log group.
 export type UpdateOnlineEvalInput = {
+  description?: string;
   samplingRate?: number;
   sessionTimeoutMinutes?: number;
   filters?: Rule["filters"];
@@ -219,20 +223,21 @@ export type UpdateOnlineEvalInput = {
   // Replaces the execution role. The CLI never edits the permissions of a role the
   // caller names here — it is theirs to manage.
   evaluationExecutionRoleArn?: string;
-  // Whether to re-scope a CLI-provisioned role when the data source moves
-  // (default true). Only meaningful for a managed role: the old policy grants
-  // query access to the previous log groups only.
+  outputConfig?: OnlineEvalOutputConfig;
   updateRole?: boolean;
 };
 
 // RoleScopeWarning reports that an execution role was left scoped to log groups
-// the config no longer samples, so the caller can surface it. Returned rather
-// than logged from Core so the handler owns how it is presented.
 export type RoleScopeWarning = {
   reason: "custom-role" | "update-declined" | "stale-scope";
   roleArn: string;
+  scope: RoleScopeKind;
   logGroupNames: string[];
 };
+
+export type RoleScopeKind = "input" | "output" | "input-and-output";
+
+export type { OnlineEvalOutputConfig };
 
 export type BundleRef = { configBundle: string; bundleVersion: string };
 

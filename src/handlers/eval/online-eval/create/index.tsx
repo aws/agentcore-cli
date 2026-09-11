@@ -5,9 +5,24 @@ import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
-import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import {
+  assertMutuallyExclusiveFlags,
+  coreOptsFromCtx,
+  parseJsonFlag,
+  parseJsonFlagWithSchema,
+} from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
+import { OnlineEvalOutputConfigFlag } from "../outputConfig";
+import { TagsSchema } from "../../../../projectSchemas/tags";
+
+const tagsHelp = `(JSON: map of string to string)
+Tags applied to the online evaluation configuration.
+
+Accepts inline JSON, file://<path>, or - to read stdin.
+
+Example:
+  --tags '{"team":"ml-platform","env":"prod"}'`;
 
 const CONFIGURATION = "Configuration:";
 const SESSION_SOURCE = "Session source (choose exactly one):";
@@ -35,6 +50,10 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.enum(["true", "false"]).optional(),
         { group: CONFIGURATION },
       ),
+      flag("tags", "resource tags (JSON object of key/value strings)", z.string().optional(), {
+        group: CONFIGURATION,
+        help: tagsHelp,
+      }),
       flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional(), {
         group: SESSION_SOURCE,
       }),
@@ -69,6 +88,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         group: EVALUATION,
         help: filtersHelp,
       }),
+      ...OnlineEvalOutputConfigFlag.flags,
       flag(
         "role-arn",
         "IAM role the online evaluation assumes (default auto-provisioned)",
@@ -98,9 +118,17 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
       }
 
       const source = new SourceResolver({ stdin: io.stdin });
+      const outputConfig = await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], io);
+      const tags = parseJsonFlagWithSchema(
+        "tags",
+        await source.resolveText("tags", flags["tags"]),
+        TagsSchema,
+      );
       const common = {
         name: flags["name"],
         description: flags["description"],
+        tags,
+        outputConfig,
         samplingRate: flags["sampling-rate"],
         sessionTimeoutMinutes: flags["session-timeout-minutes"],
         filters: parseJsonFlag<Filter[]>(

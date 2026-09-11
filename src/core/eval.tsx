@@ -123,6 +123,8 @@ import type {
   DatasetUpdateProgressEvent,
   DatasetUpdateResult,
   RoleScopeWarning,
+  RoleScopeKind,
+  OnlineEvalOutputConfig,
   CoreEvalClient,
   CreateConfigurationBundleInput,
   CreateConfigBasedABTestInput,
@@ -989,6 +991,9 @@ export class EvalClient implements CoreEvalClient {
           options.region,
           logGroupNamesOf(dataSourceConfig),
           await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
+          // Read only to widen the write scope to the chosen destination; the
+          // request object below still gets the caller's object untouched.
+          { outputConfig: input.outputConfig },
         )
       ).roleArn;
 
@@ -998,8 +1003,10 @@ export class EvalClient implements CoreEvalClient {
       rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
       dataSourceConfig,
       evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+      outputConfig: input.outputConfig,
       evaluationExecutionRoleArn,
       enableOnCreate: input.enableOnCreate ?? true,
+      tags: input.tags,
     });
 
     // A role provisioned moments ago may not be assumable yet (IAM is eventually
@@ -1237,6 +1244,11 @@ export class EvalClient implements CoreEvalClient {
         ? dataSourceConfig
         : undefined;
 
+    const outputMoved = update.outputConfig !== undefined;
+    const effectiveOutputConfig = update.outputConfig ?? current.outputConfig;
+    const scopeKind: RoleScopeKind =
+      movedTo !== undefined && outputMoved ? "input-and-output" : outputMoved ? "output" : "input";
+
     const configName = current.onlineEvaluationConfigName;
     const roleArn = update.evaluationExecutionRoleArn ?? current.evaluationExecutionRoleArn;
     const managedRoleName =
@@ -1246,26 +1258,33 @@ export class EvalClient implements CoreEvalClient {
       isManagedOnlineEvalRole(roleArn, configName)
         ? configName
         : undefined;
-    const refreshManagedRole = movedTo !== undefined && managedRoleName !== undefined;
+    const scopeChanged = movedTo !== undefined || outputMoved;
+    const refreshManagedRole = scopeChanged && managedRoleName !== undefined;
+    const affectedLogGroups = [
+      ...(movedTo !== undefined ? logGroupNamesOf(movedTo) : []),
+      ...(outputMoved ? destinationLogGroupNames(update.outputConfig, dataSourceConfig) : []),
+    ];
 
-    if (movedTo !== undefined && managedRoleName === undefined && roleArn) {
+    if (scopeChanged && managedRoleName === undefined && roleArn) {
       roleScopeWarning = {
         reason: "custom-role",
         roleArn,
-        logGroupNames: logGroupNamesOf(movedTo),
+        scope: scopeKind,
+        logGroupNames: affectedLogGroups,
       };
-    } else if (movedTo !== undefined && !refreshManagedRole && roleArn) {
+    } else if (scopeChanged && !refreshManagedRole && roleArn) {
       // managed role, but the caller declined the refresh
       roleScopeWarning = {
         reason: "update-declined",
         roleArn,
-        logGroupNames: logGroupNamesOf(movedTo),
+        scope: scopeKind,
+        logGroupNames: affectedLogGroups,
       };
     }
 
     if (refreshManagedRole && update.updateRole !== false) {
       const iam = this.clients.iam({ region: options.region });
-      const newLogGroups = logGroupNamesOf(movedTo);
+      const newLogGroups = dataSourceConfig ? logGroupNamesOf(dataSourceConfig) : [];
       const oldLogGroups = current.dataSourceConfig
         ? logGroupNamesOf(current.dataSourceConfig)
         : [];
@@ -1290,7 +1309,7 @@ export class EvalClient implements CoreEvalClient {
         options.region,
         newLogGroups,
         kmsKeys,
-        resourceNameFromArn(roleArn!),
+        { roleName: resourceNameFromArn(roleArn!), outputConfig: effectiveOutputConfig },
       );
       const oldPolicyName = scopePolicyName(
         executionPolicy(
@@ -1298,15 +1317,18 @@ export class EvalClient implements CoreEvalClient {
           accountIdFromRoleArn(managedRoleArn),
           oldLogGroups,
           kmsKeys,
+          current.outputConfig,
         ),
       );
 
       const response = await control.send(
         new UpdateOnlineEvaluationConfigCommand({
           onlineEvaluationConfigId: id,
+          description: update.description,
           rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
           dataSourceConfig,
           evaluators,
+          outputConfig: update.outputConfig,
         }),
       );
 
@@ -1323,6 +1345,7 @@ export class EvalClient implements CoreEvalClient {
           roleScopeWarning = {
             reason: "stale-scope",
             roleArn: roleArn!,
+            scope: scopeKind,
             logGroupNames: oldLogGroups,
           };
         }
@@ -1333,9 +1356,11 @@ export class EvalClient implements CoreEvalClient {
     const response = await control.send(
       new UpdateOnlineEvaluationConfigCommand({
         onlineEvaluationConfigId: id,
+        description: update.description,
         rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
         dataSourceConfig,
         evaluators,
+        outputConfig: update.outputConfig,
         evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
       }),
     );
@@ -2199,6 +2224,18 @@ function logGroupNamesOf(dataSourceConfig: DataSourceConfig): string[] {
   return "cloudWatchLogs" in dataSourceConfig
     ? (dataSourceConfig.cloudWatchLogs?.logGroupNames ?? [])
     : [];
+}
+
+function destinationLogGroupNames(
+  outputConfig: OnlineEvalOutputConfig | undefined,
+  dataSourceConfig: DataSourceConfig | undefined,
+): string[] {
+  const cloudWatch = outputConfig?.cloudWatchConfig;
+  if (!cloudWatch) return [];
+  if (cloudWatch.resultDestination === "SOURCE_LOG_GROUP") {
+    return dataSourceConfig ? logGroupNamesOf(dataSourceConfig) : [];
+  }
+  return cloudWatch.logGroupName ? [cloudWatch.logGroupName] : [];
 }
 
 // runtimeIdFromLogGroup recovers the runtime id embedded in a log group path

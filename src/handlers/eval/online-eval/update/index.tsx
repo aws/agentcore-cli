@@ -6,14 +6,30 @@ import { JsonKey } from "../../../keys";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
+import type { RoleScopeKind } from "../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
+import { OnlineEvalOutputConfigFlag } from "../outputConfig";
 
 const SESSION_SOURCE = "Session source:";
 const SOURCE_FILTERS = "Source filters:";
 const EVALUATION = "Evaluation:";
 const EXECUTION = "Execution:";
+
+const MOVED: Record<RoleScopeKind, string> = {
+  input: "data source",
+  output: "output destination",
+  "input-and-output": "data source and output destination",
+};
+
+const QUERY_ACTIONS = "logs:StartQuery and logs:GetQueryResults";
+const WRITE_ACTIONS = "logs:CreateLogGroup, logs:CreateLogStream and logs:PutLogEvents";
+const NEEDED: Record<RoleScopeKind, string> = {
+  input: QUERY_ACTIONS,
+  output: WRITE_ACTIONS,
+  "input-and-output": `${QUERY_ACTIONS}, plus ${WRITE_ACTIONS}`,
+};
 
 export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -23,6 +39,12 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       flag("id", "the ID of the online evaluation config to update", z.string().optional(), {
         group: "Target:",
       }),
+      flag(
+        "description",
+        "replace the description of the config's monitoring purpose",
+        z.string().optional(),
+        { group: "Configuration:" },
+      ),
       flag("agent", "repoint at a different harness ID or Runtime ID", z.string().optional(), {
         group: SESSION_SOURCE,
       }),
@@ -66,6 +88,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         group: EVALUATION,
         help: filtersHelp,
       }),
+      ...OnlineEvalOutputConfigFlag.flags,
       flag(
         "role-arn",
         "replace the IAM role the online evaluation assumes",
@@ -74,7 +97,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       ),
       flag(
         "update-role",
-        "whether to re-scope an auto-provisioned execution role when the data source changes (default true)",
+        "whether to re-scope an auto-provisioned execution role when the data source or output destination changes (default true)",
         z.enum(["true", "false"]).optional(),
         { group: EXECUTION },
       ),
@@ -97,9 +120,12 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       }
 
       const source = new SourceResolver({ stdin: io.stdin });
+      const outputConfig = await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], io);
       const { response, roleScopeWarning } = await core.eval.updateOnlineEvaluationConfig(
         flags["id"],
         {
+          description: flags["description"],
+          outputConfig,
           samplingRate: flags["sampling-rate"],
           sessionTimeoutMinutes: flags["session-timeout-minutes"],
           filters: parseJsonFlag<Filter[]>(
@@ -123,7 +149,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       // Suppressed under --json, matching runtime/invoke's advisory summary: a
       // scripted caller gets a machine-readable stdout and nothing else.
       if (roleScopeWarning && !ctx.require(JsonKey)) {
-        const { reason, roleArn, logGroupNames } = roleScopeWarning;
+        const { reason, roleArn, scope, logGroupNames } = roleScopeWarning;
         if (reason === "stale-scope") {
           // The update succeeded and the role grants the new data source; the
           // policy for the superseded one just could not be detached.
@@ -138,9 +164,9 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
               ? "it is not managed by the CLI"
               : "re-scoping was declined via --update-role false";
           io.stderr.write(
-            `warning: the data source moved but the execution role was not re-scoped because ${detail}.\n` +
+            `warning: the ${MOVED[scope]} moved but the execution role was not re-scoped because ${detail}.\n` +
               `  role: ${roleArn}\n` +
-              `  ensure it grants logs:StartQuery and logs:GetQueryResults on: ${logGroupNames.join(", ")}\n`,
+              `  ensure it grants ${NEEDED[scope]} on: ${logGroupNames.join(", ")}\n`,
           );
         }
       }
