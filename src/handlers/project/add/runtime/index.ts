@@ -3,7 +3,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
-import { type EnvVar } from "../../../../projectSchemas/runtime";
+import { RuntimeNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import { NetworkModeSchema } from "../../../../projectSchemas/constants";
 import { SourceResolver } from "../../../../io";
@@ -13,7 +13,7 @@ import {
   getDefaultMemorySpec,
   resolveRuntimeTemplateShortcut,
 } from "../../shortcuts";
-import { ModelProviderSchema, type ScaffoldRuntimeInput } from "../../types";
+import { ModelProviderSchema, type AddResourceInput, type ScaffoldRuntimeInput } from "../../types";
 import { RuntimeResourceConfigSchema, type ImportBedrockAgentInput } from "./types";
 import {
   importScaffoldRuntimeInput,
@@ -22,12 +22,37 @@ import {
 import { RegionKey } from "../../../keys";
 import { addProjectResource } from "../shared";
 
+// The infrastructure settings that arrive as JSON documents. They are parsed
+// but not yet validated when an entry point assembles a runtime, so they are
+// `unknown` until toAddRuntimeInput runs the schema over them.
+type JsonRuntimeField =
+  | "networkConfig"
+  | "authorizerConfiguration"
+  | "lifecycleConfiguration"
+  | "filesystemConfigurations";
+
+/** A runtime resource as an entry point assembles it, before validation. */
+export type RuntimeInput = Omit<z.input<typeof RuntimeResourceConfigSchema>, JsonRuntimeField> &
+  Partial<Record<JsonRuntimeField, unknown>>;
+
+/**
+ * toAddRuntimeInput is the one place a runtime is validated and wrapped for
+ * {@link ProjectManager.addResource}. Both the flag handler and the wizard call
+ * it, so neither can accept a runtime the other would reject.
+ */
+export function toAddRuntimeInput(input: RuntimeInput): AddResourceInput {
+  const result = RuntimeResourceConfigSchema.safeParse(input);
+  if (!result.success)
+    throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  return { resourceType: "runtime", resourceConfig: result.data };
+}
+
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "runtime",
     description: "add a Runtime to the current project",
     flags: [
-      flag("name", "the name of the Runtime", z.string().max(42).optional()),
+      flag("name", "the name of the Runtime", RuntimeNameSchema.optional()),
       flag("description", "an optional description of the Runtime", z.string().optional()),
       flag(
         "type",
@@ -220,19 +245,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         importBedrockAgent,
       };
 
-      const result = RuntimeResourceConfigSchema.safeParse(runtimeInput);
-      if (!result.success)
-        throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
-
       const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "runtime",
-          resourceConfig: result.data,
-        },
+        toAddRuntimeInput(runtimeInput),
         `added runtime '${flags.name}' to '${project.name}'`,
         { notes },
       );
