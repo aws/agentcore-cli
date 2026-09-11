@@ -27,8 +27,14 @@ function setup() {
   const data = mock(
     (_config: ClientConfig) => ({ send: dataSend }) as unknown as ReturnType<AwsClients["data"]>,
   );
+  const unexpected = () => {
+    throw new Error("Unexpected mutation dependency");
+  };
   return {
-    client: new PaymentClient({ control, data }),
+    client: new PaymentClient(
+      { control, data, iam: unexpected },
+      { getPaymentCredentialProvider: unexpected },
+    ),
     control,
     data,
     controlSend,

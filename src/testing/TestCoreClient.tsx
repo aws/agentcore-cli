@@ -33,6 +33,12 @@ import type {
   GetPaymentManagerResponse,
   ListPaymentConnectorsResponse,
   ListPaymentManagersResponse,
+  CreatePaymentManagerResponse,
+  UpdatePaymentManagerResponse,
+  DeletePaymentManagerResponse,
+  CreatePaymentConnectorResponse,
+  UpdatePaymentConnectorResponse,
+  DeletePaymentConnectorResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
@@ -1535,6 +1541,24 @@ export class TestIdentityClient implements CoreIdentityClient {
 // Payment command tests use real Core clients; configure a stub explicitly if a
 // future screen test needs one.
 export class TestPaymentClient implements CorePaymentClient {
+  async createPaymentManager(): Promise<CreatePaymentManagerResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async updatePaymentManager(): Promise<UpdatePaymentManagerResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async deletePaymentManager(): Promise<DeletePaymentManagerResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async createPaymentConnector(): Promise<CreatePaymentConnectorResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async updatePaymentConnector(): Promise<UpdatePaymentConnectorResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async deletePaymentConnector(): Promise<DeletePaymentConnectorResponse> {
+    throw new Error("Unexpected payment call");
+  }
   async getPaymentManager(): Promise<GetPaymentManagerResponse> {
     throw new Error("Unexpected payment call");
   }

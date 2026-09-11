@@ -113,13 +113,19 @@ agentcore                          # interactive TUI
 │   │   └── list                   # list Rules under a Gateway
 │   └── policy
 │       └── generate               # generate Cedar for a Gateway from a prompt (TUI when run bare)
-├── payment                        # inspect AgentCore Payments (command line only for now)
+├── payment                        # manage AgentCore Payments (command line only for now)
 │   ├── manager
+│   │   ├── create                 # create a payment manager (auto-provisions a service role if none given)
 │   │   ├── get                    # get a payment manager by id
-│   │   └── list                   # list payment managers (server-side paginated)
+│   │   ├── list                   # list payment managers (server-side paginated)
+│   │   ├── update                 # update a payment manager
+│   │   └── delete                 # delete a payment manager (delete its connectors first)
 │   ├── connector                  # connectors under a payment manager
+│   │   ├── create                 # create a connector from a credential provider, or --quick-create for Coinbase
 │   │   ├── get                    # get a connector (shows the Quick Create authorization URL while pending)
-│   │   └── list                   # list a manager's connectors
+│   │   ├── list                   # list a manager's connectors
+│   │   ├── update                 # update a connector's description or credential provider
+│   │   └── delete                 # delete a connector
 │   ├── session                    # budget-limited payment contexts (data plane)
 │   │   ├── get
 │   │   └── list
@@ -206,28 +212,35 @@ agentcore project invoke harness \
 Use `--target` to select a deployment target. When a project declares exactly
 one resource of the requested type, `--name` may be omitted.
 
-### Inspect AgentCore Payments
+### Manage AgentCore Payments
 
 The `payment` commands call the Payments control and data planes directly, with
-no project involved. This command family currently provides read-only inspection
-of existing managers, connectors, sessions, and instruments. It does not create IAM
-roles. The separate `identity payment-credential-provider` commands can create,
-inspect, replace, or delete stored Coinbase CDP and Stripe/Privy credentials.
+no project involved. A manager created without `--role-arn` gets a default
+service role named `AgentCorePayments-<region>-<name>` (long names have a stable
+hash suffix). Default roles are tagged with their CLI owner, manager name, and
+region; only matching roles are reused and have their service policy refreshed.
+An unowned role with the same name is not modified. Use `--role-arn` to supply an
+existing role, which the CLI never edits. Old regionless default roles are not
+migrated automatically, and manager deletion does not delete IAM roles.
+
+Default role provisioning requires IAM role read/create, tagging, and inline
+policy permissions, in addition to the service's role-passing requirements.
+For centrally managed IAM policies or stricter per-credential permissions,
+provision the service role separately and pass `--role-arn`.
 
 ```bash
-# Inspect managers and their connectors.
-agentcore payment manager list --json
-agentcore payment manager get --id <manager id>
-agentcore payment connector list --manager-id <manager id>
+# Create a manager, then a Coinbase connector through Quick Create. The create
+# returns PENDING_AUTHENTICATION and an authorizationUrl: open it within ten
+# minutes, then confirm the connector reached READY.
+agentcore payment manager create --name Checkout
+agentcore payment connector create --manager-id <manager id> --name Coinbase --quick-create
 agentcore payment connector get --manager-id <manager id> --connector-id <connector id>
 
-# Inspect provider metadata stored in AgentCore Identity.
-agentcore identity payment-credential-provider list --json
-agentcore identity payment-credential-provider get --name <provider name>
-
-# Store provider credentials from files, not inline command arguments.
+# Or bring your own provider credentials, stored in AgentCore Identity, and
+# reference the provider by name (its vendor selects the connector type).
 agentcore identity payment-credential-provider create --name cdp-creds --vendor CoinbaseCDP \
   --api-key-id <id> --api-key-secret file://api-key-secret.txt --wallet-secret file://wallet-secret.txt
+agentcore payment connector create --manager-id <manager id> --name Coinbase --credential-provider cdp-creds
 
 # Session and instrument commands take the parent manager ID and a user id.
 agentcore payment session list --manager-id <manager id> --user-id alice
