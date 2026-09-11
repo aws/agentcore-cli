@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "a2a-sdk[all] ~= 0.3.0",
-    "aws-opentelemetry-distro ~= 0.17.0",
+    "aws-opentelemetry-distro ~= 0.18.0",
     "bedrock-agentcore[a2a] ~= 1.9.1",
     "botocore[crt] ~= 1.43.0",
     "strands-agents ~= 1.15.0",
