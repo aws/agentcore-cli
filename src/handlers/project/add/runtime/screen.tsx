@@ -1,11 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ProjectKey } from "../../../../router";
-import {
-  ProjectRuntimeSchema,
-  RUNTIME_NAME_MAX_LENGTH,
-  RuntimeNameSchema,
-} from "../../../../projectSchemas/runtime";
+import { RUNTIME_NAME_MAX_LENGTH, RuntimeNameSchema } from "../../../../projectSchemas/runtime";
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
@@ -46,39 +42,36 @@ const TEMPLATE_CHOICES: Choice<RuntimeTemplateShortcutName>[] = [
 interface RuntimeFormValues {
   name: string;
   template: RuntimeTemplateShortcutName;
-  description: string;
 }
 
 // toRuntimeInput reads the form into the RuntimeInput toAddRuntimeInput
-// validates. The wizard scaffolds from a template and leaves the infrastructure
-// settings — the role, network, authorizer and lifecycle configuration — at
-// their defaults; those are JSON documents, so they stay on the flag path, as
-// does importing a Bedrock Agent version.
+// validates. The wizard asks only what it takes to scaffold a runtime and
+// leaves the rest at its defaults: the description, the role, the network,
+// authorizer and lifecycle configuration, and importing a Bedrock Agent version
+// all stay on the flag path.
 export function toRuntimeInput(values: RuntimeFormValues): RuntimeInput {
-  const name = values.name.trim();
-  const description = values.description.trim();
   return {
-    name,
-    ...(description !== "" && { description }),
+    name: values.name,
     envVars: [],
-    scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, { runtimeName: name }),
+    scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
+      runtimeName: values.name,
+    }),
   };
 }
 
 function summaryOf(values: RuntimeFormValues): Record<string, string> {
   const template = RUNTIME_TEMPLATE_SHORTCUTS[values.template];
   return {
-    runtime: values.name.trim(),
+    runtime: values.name,
     template: values.template,
     language: template.language,
     build: template.build,
-    ...(values.description.trim() === "" ? {} : { description: values.description.trim() }),
   };
 }
 
 // AddRuntimeScreen is the interactive flow behind a bare `agentcore project add
-// runtime`: name → template → description → review, then the add itself,
-// streaming the ProjectManager's progress events.
+// runtime`: name → template → review, then the add itself, streaming the
+// ProjectManager's progress events.
 export function AddRuntimeScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   return (
@@ -99,7 +92,6 @@ function AddRuntimeWizard({ project, core }: { project: Project; core: ScreenPro
   const [values, setValues] = useState<RuntimeFormValues>({
     name: "",
     template: DEFAULT_TEMPLATE,
-    description: "",
   });
   const set = (update: Partial<RuntimeFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
@@ -112,8 +104,8 @@ function AddRuntimeWizard({ project, core }: { project: Project; core: ScreenPro
       onSubmit={() =>
         core.projectManager.addResource(project, toAddRuntimeInput(toRuntimeInput(values)))
       }
-      runningLabel={`adding runtime ${values.name.trim()}…`}
-      successLabel={`added runtime '${values.name.trim()}' to '${project.name}'`}
+      runningLabel={`adding runtime ${values.name}…`}
+      successLabel={`added runtime '${values.name}' to '${project.name}'`}
       successHint="enter exits"
     >
       <Step name="name" question="what should this runtime be called?">
@@ -135,16 +127,6 @@ function AddRuntimeWizard({ project, core }: { project: Project; core: ScreenPro
           choices={TEMPLATE_CHOICES}
           value={values.template}
           onChange={(template) => set({ template })}
-        />
-      </Step>
-
-      <Step name="description" question="what is this runtime for? (optional)">
-        <TextField
-          label="description"
-          placeholder="answers questions about orders"
-          value={values.description}
-          onChange={(description) => set({ description })}
-          schema={ProjectRuntimeSchema.shape.description}
         />
       </Step>
 

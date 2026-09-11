@@ -54,7 +54,7 @@ async function runtimeInSpec(projectRoot: string, name: string) {
 }
 
 describe("project add runtime wizard", () => {
-  test("collects a name, template and description, then writes the runtime", async () => {
+  test("collects a name and a template, then writes the runtime", async () => {
     const projectRoot = await inProject();
     const r = renderScreen("/agentcore/project/add/runtime");
 
@@ -69,21 +69,15 @@ describe("project add runtime wizard", () => {
     expect(templateRows(r.lastFrame()!)[0]).toStartWith("● agent-python-minimal ");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "what is this runtime for?");
-    await r.write("answers questions about orders");
-    await r.press("return");
-
     await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
     const review = flatFrame(r.lastFrame);
     expect(review).toContain("runtime orders_agent");
     expect(review).toContain("template agent-python-minimal");
-    expect(review).toContain("description answers questions about orders");
     await r.press("return");
 
     await waitForText(r.lastFrame, "added runtime 'orders_agent' to 'TestProject'");
 
     expect(await runtimeInSpec(projectRoot, "orders_agent")).toMatchObject({
-      description: "answers questions about orders",
       build: "CodeZip",
       entrypoint: "main.py",
       codeLocation: "app/orders_agent",
@@ -105,10 +99,6 @@ describe("project add runtime wizard", () => {
     await selectTemplate(r, "agent-python-strands-container");
     await r.press("return");
 
-    // The description is optional, so a blank answer advances.
-    await waitForText(r.lastFrame, "what is this runtime for?");
-    await r.press("return");
-
     await waitForFlatText(r.lastFrame, "build Container");
     await r.press("return");
 
@@ -116,6 +106,7 @@ describe("project add runtime wizard", () => {
 
     const runtime = await runtimeInSpec(projectRoot, "packing_agent");
     expect(runtime).toMatchObject({ build: "Container", codeLocation: "app/packing_agent" });
+    // The wizard does not ask for a description; --description still sets one.
     expect(runtime.description).toBeUndefined();
     expect(await Bun.file(join(projectRoot, "app", "packing_agent", "Dockerfile")).exists()).toBe(
       true,
