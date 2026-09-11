@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ProjectKey } from "../../../../router";
-import { AgentNameSchema, ProjectRuntimeSchema } from "../../../../projectSchemas/runtime";
+import {
+  ProjectRuntimeSchema,
+  RUNTIME_NAME_MAX_LENGTH,
+  RuntimeNameSchema,
+} from "../../../../projectSchemas/runtime";
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
 import { ProjectGate } from "../../ProjectGate";
@@ -28,13 +32,16 @@ const ADD_MENU = "/agentcore/project/add";
 /** The template `add runtime` scaffolds when none is named, as on the flag path. */
 const DEFAULT_TEMPLATE: RuntimeTemplateShortcutName = "agent-python-minimal";
 
-const TEMPLATE_CHOICES: Choice<RuntimeTemplateShortcutName>[] = RUNTIME_TEMPLATE_SHORTCUT_NAMES.map(
-  (template) => ({
-    value: template,
-    label: template,
-    description: RUNTIME_TEMPLATE_SHORTCUTS[template].description,
-  }),
-);
+// The default is listed first, so the step opens on its first row rather than
+// partway down the list — the same place create's opens.
+const TEMPLATE_CHOICES: Choice<RuntimeTemplateShortcutName>[] = [
+  DEFAULT_TEMPLATE,
+  ...RUNTIME_TEMPLATE_SHORTCUT_NAMES.filter((template) => template !== DEFAULT_TEMPLATE),
+].map((template) => ({
+  value: template,
+  label: template,
+  description: RUNTIME_TEMPLATE_SHORTCUTS[template].description,
+}));
 
 interface RuntimeFormValues {
   name: string;
@@ -112,12 +119,12 @@ function AddRuntimeWizard({ project, core }: { project: Project; core: ScreenPro
       <Step name="name" question="what should this runtime be called?">
         <TextField
           label="Name"
-          help="also the directory under app/ · letters, digits and underscores, starting with a letter"
+          help={`also the directory under app/ · letters, digits and underscores, starting with a letter (max ${RUNTIME_NAME_MAX_LENGTH})`}
           placeholder="my_agent"
           value={values.name}
           onChange={(name) => set({ name })}
           required
-          schema={AgentNameSchema}
+          schema={RuntimeNameSchema}
           live
         />
       </Step>

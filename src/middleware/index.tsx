@@ -1,5 +1,5 @@
 export { withRegion } from "./withRegion";
-export { withTuiOnEmptyFlagsAndArgs } from "./withTuiOnEmptyFlagsAndArgs";
+export { withTuiOnEmptyFlagsAndArgs, withTuiWhenInteractive } from "./withTuiOnEmptyFlagsAndArgs";
 export { withJsonRenderer } from "./withJsonRenderer";
 export { withLogging } from "./withLogging";
 export { withGlobalConfigAccessor } from "./withGlobalConfigAccessor";

@@ -43,13 +43,17 @@ function validateEntry(
   value: string,
   { label, required, schema, json = false }: ValidateOptions,
 ): string | undefined {
-  const trimmed = value.trim();
-  if (trimmed === "") return required ? `${label} is required` : undefined;
+  // Blankness is the one thing judged on a trimmed copy: whitespace alone is
+  // nothing entered. Everything else is checked exactly as typed, so a field
+  // cannot pass a value its own caller then submits unchanged — " my_agent "
+  // is refused here rather than written to the project spec as a name with
+  // spaces in it. (JSON.parse ignores surrounding whitespace of its own accord.)
+  if (value.trim() === "") return required ? `${label} is required` : undefined;
 
-  let parsed: unknown = trimmed;
+  let parsed: unknown = value;
   if (json) {
     try {
-      parsed = JSON.parse(trimmed);
+      parsed = JSON.parse(value);
     } catch (cause) {
       return `${label} is not valid JSON: ${(cause as Error).message}`;
     }
@@ -74,7 +78,7 @@ export interface TextFieldProps {
   // before the TUI middleware can open a screen), so required-ness is stated
   // here the same way the handlers state it in their own bodies.
   required?: boolean;
-  // schema validates the trimmed value before advancing. Pass the schema the
+  // schema validates the value as typed before advancing. Pass the schema the
   // flag declares.
   schema?: z.ZodType;
   // json parses the value before validating it. A JSON flag belongs here rather
