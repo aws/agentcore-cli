@@ -32,7 +32,8 @@ const mockFailResult = vi.fn((...args: unknown[]) => ({
   logPath: 'test.log',
 }));
 
-vi.mock('../import-utils', () => ({
+vi.mock('../import-utils', async importOriginal => ({
+  ...(await importOriginal<typeof import('../import-utils')>()),
   resolveProjectContext: (...args: unknown[]) => mockResolveProjectContext(...args),
   resolveImportTarget: (...args: unknown[]) => mockResolveImportTarget(...args),
   resolveImportContext: (...args: unknown[]) => mockResolveImportContext(...args),

@@ -15,6 +15,20 @@ import * as path from 'node:path';
 
 const { green, reset } = ANSI;
 
+/**
+ * Drop AWS-managed reserved tags (aws:* keys) when importing an existing resource.
+ * CloudFormation stamps aws:cloudformation:{stack-id,stack-name,logical-id} on every
+ * resource it provisions; a runtime retained after its stack is deleted keeps them as
+ * orphans. They are not customer-writable, so persisting them into agentcore.json would
+ * fail TagKeySchema ("aws:" is reserved) and block the import.
+ * Returns undefined when nothing user-owned remains, so callers can omit the tags field.
+ */
+export function stripReservedTags(tags: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!tags) return undefined;
+  const userTags = Object.fromEntries(Object.entries(tags).filter(([key]) => !key.startsWith('aws:')));
+  return Object.keys(userTags).length > 0 ? userTags : undefined;
+}
+
 export interface ImportContext {
   ctx: ProjectContext;
   target: AwsDeploymentTarget;

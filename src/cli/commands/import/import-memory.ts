@@ -4,7 +4,7 @@ import type { MemoryDetail, MemorySummary } from '../../aws/agentcore-control';
 import { getMemoryDetail, listAllMemories } from '../../aws/agentcore-control';
 import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { parseAndValidateArn } from './import-utils';
+import { parseAndValidateArn, stripReservedTags } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -72,12 +72,14 @@ function toMemorySpec(memory: MemoryDetail, localName: string): Memory {
     })
     .filter(Boolean);
 
+  const tags = stripReservedTags(memory.tags);
+
   return {
     name: localName,
     eventExpiryDuration: Math.max(3, Math.min(365, memory.eventExpiryDuration)),
     strategies,
     ...(indexedKeys && indexedKeys.length > 0 && { indexedKeys }),
-    ...(memory.tags && Object.keys(memory.tags).length > 0 && { tags: memory.tags }),
+    ...(tags && { tags }),
     ...(memory.encryptionKeyArn && { encryptionKeyArn: memory.encryptionKeyArn }),
     ...(memory.executionRoleArn && { executionRoleArn: memory.executionRoleArn }),
   };

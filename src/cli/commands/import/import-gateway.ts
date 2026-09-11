@@ -27,6 +27,7 @@ import {
   findResourceInDeployedState,
   parseAndValidateArn,
   resolveImportContext,
+  stripReservedTags,
   toStackName,
 } from './import-utils';
 import { findLogicalIdByProperty, findLogicalIdsByType } from './template-utils';
@@ -310,6 +311,8 @@ export function toGatewaySpec(options: {
     };
   }
 
+  const tags = stripReservedTags(gateway.tags);
+
   return {
     name: localName,
     resourceName: gateway.name,
@@ -322,7 +325,7 @@ export function toGatewaySpec(options: {
     exceptionLevel,
     ...(policyEngineConfiguration && { policyEngineConfiguration }),
     ...(gateway.roleArn && { executionRoleArn: gateway.roleArn }),
-    ...(gateway.tags && Object.keys(gateway.tags).length > 0 && { tags: gateway.tags }),
+    ...(tags && { tags }),
   };
 }
 

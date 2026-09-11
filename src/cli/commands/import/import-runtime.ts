@@ -3,7 +3,7 @@ import type { AgentRuntimeDetail, AgentRuntimeSummary } from '../../aws/agentcor
 import { getAgentRuntimeDetail, listAllAgentRuntimes } from '../../aws/agentcore-control';
 import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { copyAgentSource, failResult, parseAndValidateArn } from './import-utils';
+import { copyAgentSource, failResult, parseAndValidateArn, stripReservedTags } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceResult, ResourceImportDescriptor, RuntimeImportOptions } from './types';
 import type { Command } from '@commander-js/extra-typings';
@@ -65,8 +65,9 @@ function toAgentEnvSpec(
     spec.envVars = Object.entries(runtime.environmentVariables).map(([name, value]) => ({ name, value }));
   }
 
-  if (runtime.tags && Object.keys(runtime.tags).length > 0) {
-    spec.tags = runtime.tags;
+  const tags = stripReservedTags(runtime.tags);
+  if (tags) {
+    spec.tags = tags;
   }
 
   if (runtime.lifecycleConfiguration) {

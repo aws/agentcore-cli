@@ -10,7 +10,7 @@ import {
 } from '../../aws/agentcore-control';
 import { ANSI } from '../../constants';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
-import { failResult, parseAndValidateArn } from './import-utils';
+import { failResult, parseAndValidateArn, stripReservedTags } from './import-utils';
 import { executeResourceImport } from './resource-import';
 import type { ImportResourceOptions, ImportResourceResult, ResourceImportDescriptor } from './types';
 import { ResourceNotFoundException } from '@aws-sdk/client-bedrock-agentcore-control';
@@ -51,6 +51,8 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
     );
   }
 
+  const tags = stripReservedTags(detail.tags);
+
   return {
     success: true,
     evaluator: {
@@ -59,7 +61,7 @@ export function toEvaluatorSpec(detail: GetEvaluatorResult, localName: string): 
       ...(detail.description && { description: detail.description }),
       config,
       ...(detail.kmsKeyArn && { kmsKeyArn: detail.kmsKeyArn }),
-      ...(detail.tags && Object.keys(detail.tags).length > 0 && { tags: detail.tags }),
+      ...(tags && { tags }),
     },
   };
 }
