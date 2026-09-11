@@ -1,6 +1,6 @@
 import z from "zod";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import { createHandler, flag, ProjectKey } from "../../../router";
+import { createHandler, flag, ProjectKey, type Middleware } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { ProjectManager, ResolvedProjectResource } from "../types";
 import { RegionKey } from "../../keys";
@@ -8,6 +8,7 @@ import { ProjectStateError } from "../../../errors";
 
 type StatusProjectHandlerConfig = {
   projectManager: ProjectManager;
+  middlewares?: Middleware[];
 };
 
 type ProjectStatus = {
@@ -21,6 +22,7 @@ export const createStatusProjectHandler = (config: StatusProjectHandlerConfig) =
   createHandler({
     name: "status",
     description: "show the status of the project's deployed resources",
+    middlewares: config.middlewares,
     flags: [
       flag(
         "target",

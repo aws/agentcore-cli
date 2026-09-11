@@ -1,9 +1,14 @@
 import type { Argument, Flag, GlobalFlag, Handler } from "./handler";
 import { type Middleware, type MiddlewareProvider, isMiddlewareProvider } from "./middleware";
 import { type Context, type ContextKey, ValueContext, contextKey } from "./context";
-import { applyGlobalFlags, formatParameterDetails, parseFlags, toOption } from "./flags";
+import {
+  applyGlobalFlags,
+  attributeName,
+  formatParameterDetails,
+  parseFlags,
+  toOption,
+} from "./flags";
 import { parseArguments, toCommanderArgument } from "./args";
-
 import { Command, CommanderError } from "commander";
 import { InputValidationError } from "../errors";
 import type { Logger } from "../logging";
@@ -99,6 +104,23 @@ function declareArguments(c: Command, args: Argument[]): void {
   }
 }
 
+function withValidation(ownFlags: Flag[]): Middleware {
+  return (node: Handler) => ({
+    name: () => node.name(),
+    description: () => node.description(),
+    flags: () => node.flags(),
+    arguments: () => node.arguments(),
+    doesSupportTui: () => node.doesSupportTui(),
+    children: () => node.children(),
+    handle: async (ctx) => {
+      const command = ctx.require(CommandKey);
+      const flags = parseFlags(ownFlags, command.optsWithGlobals());
+      const args = parseArguments(node.arguments(), command);
+      await node.handle(ctx, flags, args);
+    },
+  });
+}
+
 // attachAction wires `node` as the executing handler for command `c`. The
 // accumulated middleware `stack` wraps the node (ancestor-first, via reduceRight),
 // `globals` are validated and injected into the context under their keys, and the
@@ -112,13 +134,13 @@ function attachAction(
   globals: GlobalFlag[],
   ownFlags: Flag[],
 ): void {
-  const wrapped = stack.reduceRight((h, mw) => mw(h), node);
+  const wrapped = stack.reduceRight((h, mw) => mw(h), withValidation(ownFlags)(node));
   // `optsWithGlobals()` merges this command's options with all ancestors', so
   // group-level flags declared higher in the tree are visible here regardless
   // of where they appear on the command line.
   c.action(async (...actionArgs: unknown[]) => {
     const command = actionArgs[actionArgs.length - 1] as Command;
-    const merged = command.optsWithGlobals();
+    const allOptions = command.optsWithGlobals();
 
     recordCommandPath(ctx);
 
@@ -133,13 +155,16 @@ function attachAction(
 
     // Inherited group/global flags -> context (typed, read via ctx.value(key)).
     let leafCtx = ctx.withValue(CommandKey, command);
-    leafCtx = applyGlobalFlags(globals, merged, leafCtx);
+    leafCtx = applyGlobalFlags(globals, allOptions, leafCtx);
 
-    // Own flags -> the statically-typed object passed to handle.
-    const parsedFlags = parseFlags(ownFlags, merged);
-    const parsedArguments = parseArguments(node.arguments(), command);
+    const namedFlags = Object.fromEntries(
+      ownFlags.map((f) => [f.name, allOptions[attributeName(f.name)]]),
+    );
+    const namedArgs = Object.fromEntries(
+      node.arguments().map((a, i) => [a.name, command.processedArgs[i]]),
+    );
 
-    await wrapped.handle(leafCtx, parsedFlags, parsedArguments);
+    await wrapped.handle(leafCtx, namedFlags, namedArgs);
   });
 }
 

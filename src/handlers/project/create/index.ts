@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import z from "zod";
-import { createHandler, flag, PlatformKey } from "../../../router";
+import { createHandler, flag, PlatformKey, type Middleware } from "../../../router";
 import { assertProjectPathFits } from "./pathLimit";
 import { SourceResolver, type AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
@@ -31,6 +31,7 @@ import { projectReference, type ProjectMutationResult } from "../output";
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
+  middlewares?: Middleware[];
 };
 
 const ModelProviderFlagSchema = z.enum([...HarnessModelProviderSchema.options, "anthropic"]);
@@ -47,6 +48,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
   createHandler({
     name: "create",
     description: "create a new AgentCore project",
+    middlewares: config.middlewares,
     flags: [
       // Optional at the flag layer (and enforced in handle) so a bare
       // interactive `project create` reaches the TUI wizard middleware instead

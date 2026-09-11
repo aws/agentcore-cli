@@ -8,8 +8,7 @@ import { coerce, formatZodError, inspect } from "./schema";
 // to true is exposed as `--no-<name>`: the behavior is already on, so the only useful
 // action is turning it off, which Commander stores under the positive name (e.g.
 // `--no-traces` sets `traces=false`). A boolean that defaults off stays `--<name>`.
-// Everything else takes a value (`<name>` / variadic `<name...>`); a required
-// non-boolean flag is made mandatory; defaults are forwarded.
+// Everything else takes a value (`<name>` / variadic `<name...>`); defaults are forwarded.
 export function toOption(flag: Flag): Option {
   const info = inspect(flag.schema);
   const long = `--${flag.name}`;
@@ -23,14 +22,13 @@ export function toOption(flag: Flag): Option {
     token = `${long} <${flag.name}>`;
   }
 
-  const option = new Option(token, flag.description);
+  const description =
+    info.required && !info.boolean ? `${flag.description} (required)` : flag.description;
+  const option = new Option(token, description);
   if (info.hasDefault) {
     option.default(info.defaultValue);
   } else if (info.boolean) {
     option.default(false);
-  }
-  if (info.required && !info.boolean) {
-    option.makeOptionMandatory(true);
   }
   return option;
 }
@@ -55,7 +53,7 @@ export function formatParameterDetails(flags: Flag[]): string | undefined {
 
 // attributeName mirrors how Commander camelCases an option name into the key it
 // stores on the parsed options object (e.g. "harness-id" -> "harnessId").
-function attributeName(name: string): string {
+export function attributeName(name: string): string {
   return new Option(`--${name}`).attributeName();
 }
 
@@ -64,8 +62,14 @@ function attributeName(name: string): string {
 // `command.error`, which prints a message and exits (or, with exitOverride,
 // throws) — so this returns only on success.
 function validateFlag(flag: Flag, opts: Record<string, unknown>): unknown {
-  const result = flag.schema.safeParse(coerce(flag.schema, opts[attributeName(flag.name)]));
+  const raw = opts[attributeName(flag.name)];
+  const result = flag.schema.safeParse(coerce(flag.schema, raw));
   if (!result.success) {
+    if (raw === undefined) {
+      throw new InputValidationError(
+        `required option '--${flag.name} <${flag.name}>' not specified`,
+      );
+    }
     throw new InputValidationError(
       `Invalid value for option '--${flag.name}': ${formatZodError(result.error)}`,
       { cause: result.error },

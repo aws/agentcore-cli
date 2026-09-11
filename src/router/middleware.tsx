@@ -2,8 +2,8 @@ import type { Handler } from "./handler";
 
 export type Middleware = (handler: Handler) => Handler;
 
-// A node carries its own middleware when it can contribute to its subtree.
-// Routers implement this; plain leaf handlers don't need to.
+// A node may carry its own middleware, applied to it and its subtree. Routers
+// implement this via `use()`; leaf handlers via createHandler's `middlewares`.
 export interface MiddlewareProvider {
   middlewares(): Middleware[];
 }

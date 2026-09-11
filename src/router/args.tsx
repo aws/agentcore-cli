@@ -21,6 +21,9 @@ export function toCommanderArgument(arg: Argument): CommanderArgument {
 function validateArgument(argument: Argument, input: unknown | undefined): unknown {
   const result = argument.schema.safeParse(coerce(argument.schema, input));
   if (!result.success) {
+    if (input === undefined) {
+      throw new InputValidationError(`missing required argument '${argument.name}'`);
+    }
     throw new InputValidationError(
       `Invalid value for argument '${argument.name}': ${formatZodError(result.error)}`,
       { cause: result.error },
