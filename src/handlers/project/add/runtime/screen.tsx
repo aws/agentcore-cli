@@ -106,7 +106,10 @@ function AddRuntimeWizard({ project, core }: { project: Project; core: ScreenPro
       }
       runningLabel={`adding runtime ${values.name}…`}
       successLabel={`added runtime '${values.name}' to '${project.name}'`}
-      successHint="enter exits"
+      // Enter returns to the add menu rather than tearing the TUI down, so a
+      // second resource is one keystroke away — what build and deploy do too.
+      onDone={() => navigate(ADD_MENU)}
+      doneLabel="go back"
     >
       <Step name="name" question="what should this runtime be called?">
         <TextField

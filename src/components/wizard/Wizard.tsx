@@ -41,8 +41,11 @@ export interface WizardProps {
   // the same block ConfirmAction shows after a successful action.
   successNextSteps?: string[];
   // onDone runs when the success panel is acknowledged; defaults to tearing the
-  // TUI down, which is what a one-shot `project add ...` wants.
+  // TUI down, which is what a one-shot `project create` wants.
   onDone?: () => void;
+  // doneLabel names what enter does on the success panel. Pass "go back" with an
+  // onDone that navigates, the way build and deploy label theirs.
+  doneLabel?: string;
   // onError decides what a failure does. "exit" rejects the waitUntilExit()
   // that renderTuiAt awaits, so the error takes the normal CLI path and the
   // process exits nonzero — right for a one-shot command. "retry" reports the
@@ -65,6 +68,7 @@ export function Wizard({
   successHint,
   successNextSteps,
   onDone,
+  doneLabel = "continue",
   onError = "exit",
 }: WizardProps) {
   const { exit } = useApp();
@@ -162,7 +166,7 @@ export function Wizard({
     <Layout
       breadcrumb={breadcrumb}
       description={description}
-      keyHints={footerHints(phase, hints, retryable)}
+      keyHints={footerHints(phase, hints, retryable, doneLabel)}
     >
       <Box flexDirection="column">
         {phase.kind === "form" && (
@@ -226,9 +230,14 @@ function toError(error: unknown): Error {
 
 // footerHints appends the keys that mean the same thing on every step to
 // whatever the active field published.
-function footerHints(phase: Phase, fieldHints: KeyHint[], retryable: boolean): KeyHint[] {
+function footerHints(
+  phase: Phase,
+  fieldHints: KeyHint[],
+  retryable: boolean,
+  doneLabel: string,
+): KeyHint[] {
   if (phase.kind === "running") return [{ key: "ctrl+c", label: "quit" }];
-  if (phase.kind === "success") return [{ key: "enter", label: "continue" }];
+  if (phase.kind === "success") return [{ key: "enter", label: doneLabel }];
   if (phase.kind === "error") {
     return [
       ...(retryable ? [{ key: "r", label: "retry" }] : []),

@@ -76,6 +76,7 @@ describe("project add runtime wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "added runtime 'orders_agent' to 'TestProject'");
+    expect(r.lastFrame()).toContain("[enter] go back");
 
     expect(await runtimeInSpec(projectRoot, "orders_agent")).toMatchObject({
       build: "CodeZip",
@@ -84,6 +85,11 @@ describe("project add runtime wizard", () => {
       runtimeVersion: "PYTHON_3_14",
     });
     expect(await Bun.file(join(projectRoot, "app", "orders_agent", "main.py")).exists()).toBe(true);
+
+    // Enter on the success panel returns to the add menu instead of tearing the
+    // TUI down, so another resource can be added straight away.
+    await r.press("return");
+    await waitForText(r.lastFrame, "add project resources");
     r.unmount();
   });
 
