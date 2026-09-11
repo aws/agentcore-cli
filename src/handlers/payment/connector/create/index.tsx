@@ -5,7 +5,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import { JsonKey } from "../../../keys";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx } from "../../../utils";
 import type { CreatePaymentConnectorInput } from "../../types";
 
 export const createCreatePaymentConnectorHandler = (core: Core, io: AppIO) =>
@@ -42,11 +42,9 @@ export const createCreatePaymentConnectorHandler = (core: Core, io: AppIO) =>
       if (!flags.name) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
-      if (flags["quick-create"] === (flags["credential-provider"] !== undefined)) {
-        throw new InputValidationError(
-          "specify exactly one of '--quick-create' or '--credential-provider'",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["quick-create", "credential-provider"], {
+        exactlyOne: true,
+      });
 
       const input: CreatePaymentConnectorInput = {
         managerId: flags["manager-id"],
