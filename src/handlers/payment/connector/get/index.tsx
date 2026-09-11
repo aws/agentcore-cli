@@ -40,8 +40,7 @@ export const createGetPaymentConnectorHandler = (core: Core, io: AppIO) =>
           response.status === "AUTHENTICATION_FAILED")
       ) {
         io.stderr.write(
-          `warning: the authorization URL of a ${response.status} connector cannot be renewed; ` +
-            "delete this connector and create it again with --quick-create.\n",
+          `warning: connector status is ${response.status}; its authorization URL cannot be renewed.\n`,
         );
       }
     },

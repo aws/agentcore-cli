@@ -27,21 +27,14 @@ function setup() {
   const data = mock(
     (_config: ClientConfig) => ({ send: dataSend }) as unknown as ReturnType<AwsClients["data"]>,
   );
-  const client = new PaymentClient(
-    {
-      control,
-      data,
-      iam: () => {
-        throw new Error("unexpected IAM client");
-      },
-    },
-    {
-      getPaymentCredentialProvider: async () => {
-        throw new Error("unexpected provider lookup");
-      },
-    },
-  );
-  return { client, control, data, controlSend, dataSend, response };
+  return {
+    client: new PaymentClient({ control, data }),
+    control,
+    data,
+    controlSend,
+    dataSend,
+    response,
+  };
 }
 
 test("resolves the manager in the configured region and forwards the returned ARN and context", async () => {

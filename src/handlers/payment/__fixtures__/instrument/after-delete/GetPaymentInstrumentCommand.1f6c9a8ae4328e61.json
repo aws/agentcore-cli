@@ -1,6 +1,0 @@
-{
-  "$error": {
-    "name": "ResourceNotFoundException",
-    "message": "Payment instrument not found: payment-instrument-CG2Tl7U1HnCGfHW for the given user and manager."
-  }
-}

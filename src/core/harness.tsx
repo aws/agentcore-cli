@@ -44,7 +44,6 @@ import { InputValidationError } from "../errors";
 import type { AwsClients, CoreOptions } from "./types";
 import { abortable } from "./abortable";
 import { ensureDefaultExecutionRole } from "./executionRole";
-import { retryWhileRoleUnassumable } from "./roleRetry";
 import { toClientConfig } from "./utils";
 
 // HarnessClient implements the harness-facing operations on top of the shared AWS
@@ -243,4 +242,26 @@ export function harnessRuntimeFromResponse(
     runtimeId: runtime.agentRuntimeId,
     runtimeName: runtime.agentRuntimeName,
   };
+}
+
+// retryWhileRoleUnassumable retries `operation` while it fails with the
+// validation error AgentCore raises for an execution role it cannot yet assume
+// (fresh IAM roles propagate over several seconds). Any other failure — or
+// exhausting the attempts — rethrows.
+async function retryWhileRoleUnassumable<T>(
+  operation: () => Promise<T>,
+  attempts = 8,
+  delayMs = 2000,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const retryable =
+        (error as Error).name === "ValidationException" &&
+        /role|assume|trust/i.test((error as Error).message ?? "");
+      if (!retryable || attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 }
