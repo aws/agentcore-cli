@@ -15,7 +15,7 @@ dependencies = [
     {{/if}}{{#if (eq modelProvider "Gemini")}}"langchain-google-genai >= 2.0.0",
     "google-genai >= 1.0.0, < 2.0.0",
     {{/if}}{{#if (eq modelProvider "OpenAI")}}"langchain-openai >= 0.2.0",
-    {{/if}}"aws-opentelemetry-distro",
+    {{/if}}"aws-opentelemetry-distro ~= 0.18.0",
     "opentelemetry-instrumentation-langchain >= 0.59.0",
     "bedrock-agentcore[a2a-v1] >= 1.19.0",
     "botocore[crt] >= 1.35.0",
