@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     {{#if (eq modelProvider "Anthropic")}}"anthropic >= 0.30.0",
     {{/if}}"a2a-sdk[all] >= 0.3.0, < 0.4.0",
-    "aws-opentelemetry-distro",
+    "aws-opentelemetry-distro ~= 0.18.0",
     "bedrock-agentcore[a2a] >= 1.9.1",
     "botocore[crt] >= 1.35.0",
     {{#if (eq modelProvider "Gemini")}}"google-genai >= 1.0.0",
