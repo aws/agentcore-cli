@@ -190,36 +190,47 @@ agentcore project invoke harness \
 Use `--target` to select a deployment target. When a project declares exactly
 one resource of the requested type, `--name` may be omitted.
 
-### Inspect project Runtime logs
+### Inspect project logs
 
-Project logging resolves a logical Runtime name through the selected deployment
-target, so the physical Runtime ID and deployment region do not need to be
+Project logging resolves a logical resource name through the selected
+deployment target, so physical IDs and deployment regions do not need to be
 supplied:
 
 ```bash
 agentcore project log runtime
 agentcore project log runtime --name checkout --target production
 agentcore project log runtime --name checkout --since 1h --level error
+agentcore project log harness
+agentcore project log harness --name support --target production
+agentcore project log harness --name support --since 1h --level error
 ```
 
-When the project declares exactly one Runtime, `--name` may be omitted. Use the
-imperative `agentcore runtime logs --id <runtimeId>` command when addressing a
-Runtime directly or working outside a project.
+When the project declares exactly one resource of the requested type, `--name`
+may be omitted. For Harnesses, the CLI also resolves the managed Harness to its
+underlying Runtime before reading CloudWatch. Use the imperative
+`agentcore runtime logs` or `agentcore harness logs` commands when addressing a
+physical resource directly or working outside a project.
 
-### Inspect project Runtime traces
+### Inspect project traces
 
-Project tracing uses the same logical Runtime and deployment target resolution,
-then lists or downloads traces from the resolved Runtime's deployment region:
+Project tracing uses the same logical resource and deployment target
+resolution, then lists or downloads traces from the resolved Runtime's
+deployment region:
 
 ```bash
 agentcore project traces runtime list
 agentcore project traces runtime list --name checkout --target production --since 30m
 agentcore project traces runtime get <traceId> --name checkout --output trace.json
+agentcore project traces harness list
+agentcore project traces harness list --name support --target production --since 30m
+agentcore project traces harness get <traceId> --name support --output trace.json
 ```
 
-When the project declares exactly one Runtime, `--name` may be omitted. Use the
-imperative `agentcore runtime traces` commands when addressing a Runtime by
-physical ID or working outside a project.
+When the project declares exactly one resource of the requested type, `--name`
+may be omitted. For Harnesses, the CLI resolves the underlying Runtime before
+querying its traces. Use the imperative `agentcore runtime traces` or
+`agentcore harness traces` commands when addressing a physical resource
+directly or working outside a project.
 
 ### Examples
 
@@ -298,9 +309,12 @@ agentcore runtime logs --id <runtimeId> --since 2026-08-30T12:00:00Z --until now
 agentcore runtime traces list --id <runtimeId> --since 30m
 agentcore runtime traces get <traceId> --id <runtimeId> --output trace.json
 
-# Resolve a project Runtime by logical name and deployment target
+# Resolve project resources by logical name and deployment target
+agentcore project log harness --name support --target production --since 1h
 agentcore project traces runtime list --name checkout --target production --since 30m
 agentcore project traces runtime get <traceId> --name checkout --output trace.json
+agentcore project traces harness list --name support --target production --since 30m
+agentcore project traces harness get <traceId> --name support --output trace.json
 
 # Inspect AgentCore Memories without project configuration or deployment
 agentcore memory get --id <memoryId>
