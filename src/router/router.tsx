@@ -4,7 +4,7 @@ import { type Context, type ContextKey, ValueContext, contextKey } from "./conte
 import { applyGlobalFlags, formatParameterDetails, parseFlags, toOption } from "./flags";
 import { parseArguments, toCommanderArgument } from "./args";
 
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 import { InputValidationError } from "../errors";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
@@ -186,6 +186,12 @@ export function compile(
   const ownFlags = node.flags();
   declareFlags(c, ownFlags);
   declareArguments(c, node.arguments());
+
+  if (ownFlags.some((f) => f.group)) {
+    c.addHelpOption(
+      new Option("-h, --help", "display help for command").helpGroup("Other options:"),
+    );
+  }
 
   // Flags with long-form documentation get a "Parameter details" section after
   // the option list in `--help` output.

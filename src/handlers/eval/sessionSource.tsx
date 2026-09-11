@@ -6,38 +6,73 @@ import { flag, type Flag } from "../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlag } from "../utils";
 import type { SessionSourceValue, SessionWindow } from "./types";
 
+const SESSION_SOURCE = "Session source (choose exactly one):";
+const SOURCE_FILTERS = "Source filters:";
+
+const dataSourceConfigHelp = `(JSON: tagged union object)
+Where sessions and traces are read from, for sources the --agent and
+--online-eval convenience flags cannot express. Only top-level key:
+cloudWatchLogs.
+
+Accepts inline JSON, file://<path>, or - to read stdin.
+
+JSON syntax:
+  {
+    "cloudWatchLogs": {
+      "logGroupNames": ["string", ...],  // [required] groups holding the traces
+      "serviceNames": ["string", ...],   // e.g. "my_agent.DEFAULT"
+      "filterConfig": {
+        "sessionIds": ["string", ...],
+        "sessionFilterConfig": {
+          "startTime": "timestamp",
+          "endTime": "timestamp"
+        }
+      }
+    }
+  }
+
+API reference:
+  https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_DataSourceConfig.html
+
+Example:
+  --data-source-config '{"cloudWatchLogs":{"logGroupNames":["/aws/bedrock-agentcore/runtimes/support_agent-AbC123XyZ9-DEFAULT"],"serviceNames":["support_agent.DEFAULT"],"filterConfig":{"sessionIds":["session-123"]}}}'`;
+
 export class SessionSource {
   static readonly flags = [
-    flag("agent", "source: harness ID or Runtime ID whose sessions to use", z.string().optional()),
+    flag("agent", "harness ID or Runtime ID whose sessions to use", z.string().optional(), {
+      group: SESSION_SOURCE,
+    }),
+    flag(
+      "online-eval",
+      "use sessions an online-eval config already sampled",
+      z.string().optional(),
+      { group: SESSION_SOURCE },
+    ),
+    flag(
+      "data-source-config",
+      "the traces to read (JSON DataSourceConfig); escape hatch",
+      z.string().optional(),
+      { group: SESSION_SOURCE, help: dataSourceConfigHelp },
+    ),
     flag(
       "endpoint",
       "Runtime endpoint qualifier (default DEFAULT; only with --agent)",
       z.string().optional(),
+      { group: SOURCE_FILTERS },
     ),
-    flag(
-      "online-eval",
-      "source: use sessions an online-eval config already sampled",
-      z.string().optional(),
-    ),
-    flag(
-      "data-source-config",
-      "source: raw DataSourceConfig JSON (inline, file://<path>, or -); escape hatch",
-      z.string().optional(),
-    ),
-    flag(
-      "start-time",
-      "time filter: window start (ISO-8601, with --end-time)",
-      z.string().optional(),
-    ),
-    flag(
-      "end-time",
-      "time filter: window end (ISO-8601, with --start-time)",
-      z.string().optional(),
-    ),
+    flag("start-time", "window start (ISO-8601, with --end-time)", z.string().optional(), {
+      group: SOURCE_FILTERS,
+    }),
+    flag("end-time", "window end (ISO-8601, with --start-time)", z.string().optional(), {
+      group: SOURCE_FILTERS,
+    }),
     flag(
       "session-ids",
-      "filter: specific session IDs (only with --agent)",
+      "specific session IDs (only with --agent)",
       z.array(z.string()).optional(),
+      {
+        group: SOURCE_FILTERS,
+      },
     ),
   ] as const;
 

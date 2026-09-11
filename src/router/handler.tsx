@@ -14,6 +14,7 @@ export interface Flag<N extends string = string, T = unknown> {
   // Its first line is the type annotation shown next to the flag name; the
   // remaining lines are the body — prose, JSON syntax, examples.
   help?: string;
+  group?: string;
   // sensitive flags are redacted from debug logs by the withLogging middleware.
   sensitive?: boolean;
 }
@@ -34,9 +35,16 @@ export function flag<N extends string, T>(
   name: N,
   description: string,
   schema: z.ZodType<T>,
-  options?: { help?: string; sensitive?: boolean },
+  options?: { help?: string; group?: string; sensitive?: boolean },
 ): Flag<N, T> {
-  return { name, description, schema, help: options?.help, sensitive: options?.sensitive };
+  return {
+    name,
+    description,
+    schema,
+    help: options?.help,
+    group: options?.group,
+    sensitive: options?.sensitive,
+  };
 }
 
 // globalFlag constructs a GlobalFlag. The returned value doubles as the typed

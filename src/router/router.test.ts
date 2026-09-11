@@ -899,3 +899,61 @@ test("--version is an unknown option on a router without a version", async () =>
     code: "commander.unknownOption",
   });
 });
+
+test("grouped flags render under their headings, ungrouped ones under Options", async () => {
+  const evaluate = createHandler({
+    name: "evaluate",
+    description: "",
+    flags: [
+      flag("agent", "the agent", z.string().optional(), { group: "Session source:" }),
+      flag("start-time", "window start", z.string().optional(), { group: "Source filters:" }),
+      flag("end-time", "window end", z.string().optional(), { group: "Source filters:" }),
+      flag("name", "the name", z.string().optional()),
+    ],
+    handle: async () => {},
+  });
+  const root = new Router("app");
+  root.handler(evaluate);
+
+  const out = await helpOutput(root, ["app", "evaluate", "--help"]);
+
+  expect(out).toContain("Session source:");
+  expect(out).toContain("Source filters:");
+  expect(out.indexOf("Session source:")).toBeLessThan(out.indexOf("Source filters:"));
+  expect(out.indexOf("--agent")).toBeGreaterThan(out.indexOf("Session source:"));
+  expect(out.indexOf("--start-time")).toBeGreaterThan(out.indexOf("Source filters:"));
+  expect(out.indexOf("--end-time")).toBeGreaterThan(out.indexOf("Source filters:"));
+  expect(out.indexOf("--name")).toBeGreaterThan(out.indexOf("Options:"));
+});
+
+test("a command that groups its flags moves the generated help into Other options", async () => {
+  const grouped = createHandler({
+    name: "grouped",
+    description: "",
+    flags: [flag("agent", "the agent", z.string().optional(), { group: "Session source:" })],
+    handle: async () => {},
+  });
+  const root = new Router("app");
+  root.handler(grouped);
+
+  const out = await helpOutput(root, ["app", "grouped", "--help"]);
+
+  expect(out).toContain("Other options:");
+  expect(out.indexOf("-h, --help")).toBeGreaterThan(out.indexOf("Other options:"));
+});
+
+test("a command without grouped flags leaves the generated help in Options", async () => {
+  const plain = createHandler({
+    name: "plain",
+    description: "",
+    flags: [flag("id", "the id", z.string().optional())],
+    handle: async () => {},
+  });
+  const root = new Router("app");
+  root.handler(plain);
+
+  const out = await helpOutput(root, ["app", "plain", "--help"]);
+
+  expect(out).not.toContain("Other options:");
+  expect(out).toContain("-h, --help");
+});

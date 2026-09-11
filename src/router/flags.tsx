@@ -32,6 +32,9 @@ export function toOption(flag: Flag): Option {
   if (info.required && !info.boolean) {
     option.makeOptionMandatory(true);
   }
+  if (flag.group) {
+    option.helpGroup(flag.group);
+  }
   return option;
 }
 

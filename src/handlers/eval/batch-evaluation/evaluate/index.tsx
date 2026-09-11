@@ -8,21 +8,57 @@ import type { SessionMetadataShape } from "@aws-sdk/client-bedrock-agentcore";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { SessionSource } from "../../sessionSource";
 
+const CONFIGURATION = "Configuration:";
+const EVALUATION = "Evaluation:";
+
+const groundTruthHelp = `(JSON: list of objects)
+Expected answers for the sessions being evaluated, so an evaluator can score a
+response against a reference instead of judging it on its own. Each entry names
+one session; omit an entry for a session that has no reference answer.
+
+Accepts inline JSON, file://<path>, or - to read stdin.
+
+JSON syntax:
+  [
+    {
+      "sessionId": "string",         // [required] the session the reference applies to
+      "testScenarioId": "string",    // groups sessions replaying the same scenario
+      "groundTruth": {
+        "inline": "string"           // the expected answer
+      }
+    },
+    ...
+  ]
+
+Example:
+  --ground-truth '[{"sessionId":"session-123","groundTruth":{"inline":"The order shipped on Tuesday."}}]'
+
+  --ground-truth file://ground-truth.json`;
+
 export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "evaluate",
     description: "evaluate existing sessions service-side (async; returns a job ID)",
     flags: [
+      flag("name", "batch evaluation name (must be unique in the account)", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
+      flag("description", "optional description", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
+      flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
       ...SessionSource.flags,
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+        group: EVALUATION,
+      }),
       flag(
         "ground-truth",
-        "session ground truth (JSON SessionMetadataShape[]; inline, file://<path>, or -)",
+        "expected answers for the sessions (JSON SessionMetadataShape[])",
         z.string().optional(),
+        { group: EVALUATION, help: groundTruthHelp },
       ),
-      flag("name", "batch evaluation name (must be unique in the account)", z.string().optional()),
-      flag("description", "optional description", z.string().optional()),
-      flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["name"]) {
