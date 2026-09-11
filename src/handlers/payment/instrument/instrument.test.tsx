@@ -62,7 +62,8 @@ async function capture(args: string[], stdin?: string): Promise<CreatePaymentIns
 
 describe("payment instrument wallet inputs", () => {
   test.each([
-    { flags: shorthand, conflict: "network" },
+    { flags: ["--network", "ETHEREUM"], conflict: "network" },
+    { flags: ["--email", EMAIL], conflict: "email" },
     { flags: ["--phone-number", "+15555550100"], conflict: "phone-number" },
   ])(
     "rejects shorthand $flags alongside JSON before reading stdin",
