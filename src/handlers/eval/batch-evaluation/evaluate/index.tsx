@@ -7,6 +7,7 @@ import type { Core } from "../../../types";
 import type { SessionMetadataShape } from "@aws-sdk/client-bedrock-agentcore";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { SessionSource } from "../../sessionSource";
+import { BatchOutputConfig } from "../outputConfig";
 
 const CONFIGURATION = "Configuration:";
 const EVALUATION = "Evaluation:";
@@ -59,6 +60,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
         { group: EVALUATION, help: groundTruthHelp },
       ),
+      ...BatchOutputConfig.flags,
     ],
     handle: async (ctx, flags) => {
       if (!flags["name"]) {
@@ -78,6 +80,8 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         await resolver.resolveText("ground-truth", flags["ground-truth"]),
       );
 
+      const outputConfig = await BatchOutputConfig.resolve(flags["output-config"], io);
+
       const response = await core.eval.startBatchEvaluation(
         {
           name: flags["name"],
@@ -86,6 +90,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
           source,
           groundTruth,
           kmsKeyArn: flags["kms-key-arn"],
+          outputConfig,
         },
         coreOptsFromCtx(ctx),
       );

@@ -679,6 +679,7 @@ export class EvalClient implements CoreEvalClient {
         dataSourceConfig,
         evaluationMetadata: input.groundTruth ? { sessionMetadata: input.groundTruth } : undefined,
         kmsKeyArn: input.kmsKeyArn,
+        outputConfig: input.outputConfig,
       }),
     );
   }
