@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -46,29 +44,16 @@ function testBuildCommand(options: TestBuildOptions = {}) {
   return {
     io,
     run: (args: string[] = []) => root.route(["node", "agentcore", "project", "build", ...args]),
-    create: (args: string[]) => root.route(["node", "agentcore", "project", ...args]),
   };
 }
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 /** Scaffolds a project named 'orders' and cds into it. */
-async function inProject(subject: ReturnType<typeof testBuildCommand>): Promise<void> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-build-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
-  // symlink), matching the paths the manager derives from process.cwd().
-  await subject.create(["create", "--name", "orders", "--skip-install", "--skip-git"]);
-  process.chdir(join(process.cwd(), "orders"));
+async function inProject(): Promise<void> {
+  const { cleanup } = await initProject({ name: "orders" });
+  cleanups.push(cleanup);
 }
 
 describe("project build handler", () => {
@@ -79,7 +64,7 @@ describe("project build handler", () => {
         { type: "output", line: "synth chatter" },
       ],
     });
-    await inProject(subject);
+    await inProject();
 
     await subject.run();
 
@@ -92,7 +77,7 @@ describe("project build handler", () => {
 
   test("renders the success message as JSON with --json", async () => {
     const subject = testBuildCommand();
-    await inProject(subject);
+    await inProject();
 
     await subject.run(["--json"]);
 
@@ -102,7 +87,7 @@ describe("project build handler", () => {
   test("renders a build failure as JSON without changing the thrown error", async () => {
     const failure = new Error("cdk synth exploded");
     const subject = testBuildCommand({ failure });
-    await inProject(subject);
+    await inProject();
 
     await expect(subject.run(["--json"])).rejects.toThrow("cdk synth exploded");
 
@@ -112,7 +97,7 @@ describe("project build handler", () => {
 
   test("keeps stdout empty on failure without --json", async () => {
     const subject = testBuildCommand({ failure: new Error("cdk synth exploded") });
-    await inProject(subject);
+    await inProject();
 
     await expect(subject.run()).rejects.toThrow("cdk synth exploded");
 

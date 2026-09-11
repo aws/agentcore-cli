@@ -177,7 +177,7 @@ describe("oauth2-credential-provider flag validation", () => {
         "--client-secret-reference",
         '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"k"}',
       ],
-      /mutually exclusive/,
+      /specify exactly one of --client-secret, --client-secret-reference/,
     ],
     [
       "create: --provider-configuration with guided flags",

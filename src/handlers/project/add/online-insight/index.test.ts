@@ -1,32 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../../testing";
 import { DeserializationError, InputValidationError } from "../../../../errors";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-online-insight-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
@@ -38,22 +23,6 @@ async function run(args: string[], opts?: { core?: TestCoreClient }) {
   });
   await root.route(["node", "agentcore", "project", ...args]);
   return { io, core };
-}
-
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run([
-    "create",
-    "--name",
-    name,
-    "--template",
-    "agent-python-minimal",
-    "--skip-install",
-    "--skip-git",
-  ]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
 }
 
 const INSIGHT = "Builtin.Insight.FailureAnalysis";
@@ -158,7 +127,10 @@ describe("project add online-insight", () => {
       { description: "monitor prod", enableOnCreate: false, tags: { team: "ml" } },
     ],
   ])("%s", async (_label, flags, expected) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
     await run(["add", "online-insight", ...flags]);
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -167,7 +139,8 @@ describe("project add online-insight", () => {
   });
 
   test("rejects a duplicate online-insight name", async () => {
-    await inProject();
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
     const flags = [
       "--name",
       "x",
@@ -185,7 +158,10 @@ describe("project add online-insight", () => {
   });
 
   test("rejects when the existing spec is invalid", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
 
     const specPath = join(projectRoot, "agentcore", "agentcore.json");
     const spec = await Bun.file(specPath).json();
@@ -262,7 +238,8 @@ describe("project add online-insight", () => {
       ],
     ],
   ])("%s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
     await expect(run(["add", "online-insight", ...flags])).rejects.toBeInstanceOf(
       InputValidationError,
     );

@@ -1,18 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
-import { createRootHandler } from "../index";
 import {
   cleanupScreens,
-  createSilentLogger,
   flatFrame,
+  initProject,
+  inTempDirectory,
   renderScreen,
   TestCoreClient,
-  TestGlobalConfigAccessor,
-  testIO,
   waitForFlatText,
   waitForText,
 } from "../../testing";
@@ -66,16 +63,9 @@ function fakeBackend(options: FakeBackendOptions = {}) {
   return { backend, deploys };
 }
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
+const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 /** Scaffolds project 'orders' with a default target and cds into it. */
 const STAGING = { name: "staging", account: "444455556666", region: "eu-west-1" } as const;
@@ -84,25 +74,8 @@ async function inProject(
   core: TestCoreClient,
   options: { empty?: boolean; targets?: boolean; staging?: boolean } = {},
 ): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-build-deploy-screen-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  const root = createRootHandler(core, {
-    io: testIO().io,
-    globalConfigAccessor: new TestGlobalConfigAccessor(),
-    logger: createSilentLogger(),
-  });
-  await root.route([
-    "node",
-    "agentcore",
-    "project",
-    "create",
-    "--name",
-    "orders",
-    "--skip-install",
-    "--skip-git",
-  ]);
-  const projectRoot = join(process.cwd(), "orders");
+  const { projectRoot, cleanup } = await initProject({ name: "orders", core });
+  cleanups.push(cleanup);
   if (options.targets !== false) {
     await writeFile(
       join(projectRoot, "agentcore", "aws-targets.json"),
@@ -119,7 +92,6 @@ async function inProject(
       JSON.stringify({ name: "orders", version: 1 }),
     );
   }
-  process.chdir(projectRoot);
   return projectRoot;
 }
 
@@ -169,9 +141,7 @@ describe("project build screen", () => {
   });
 
   test("reports the CLI's own guidance outside a project", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "agentcore-no-project-"));
-    tempDirectories.push(directory);
-    process.chdir(directory);
+    cleanups.push((await inTempDirectory()).cleanup);
     const r = renderScreen("/agentcore/project/build");
 
     await waitForFlatText(r.lastFrame, "No AgentCore project found");

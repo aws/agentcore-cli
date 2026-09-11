@@ -56,7 +56,7 @@ describe("eval batch-insights run", () => {
       /--name/,
     );
     await expect(run(["eval", "batch-insights", "run", "--name", "insights_run"])).rejects.toThrow(
-      /exactly one source/,
+      /specify exactly one of --agent, --online-eval, --data-source-config/,
     );
     await expect(
       run([
@@ -70,7 +70,7 @@ describe("eval batch-insights run", () => {
         "--online-eval",
         "online-1",
       ]),
-    ).rejects.toThrow(/exactly one source/);
+    ).rejects.toThrow(/specify exactly one of --agent, --online-eval, --data-source-config/);
   });
 
   test("uses failure analysis by default and passes the resolved agent source", async () => {

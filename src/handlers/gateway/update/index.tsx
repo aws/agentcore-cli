@@ -12,7 +12,7 @@ import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
 import {
-  assertMutuallyExclusiveInputs,
+  assertMutuallyExclusiveFlags,
   coreOptsFromCtx,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
@@ -77,44 +77,21 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--id <id>' not specified");
       }
 
-      assertMutuallyExclusiveInputs([
-        [
-          "description",
-          flags.description,
-          "clear-description",
-          flags["clear-description"] || undefined,
-        ],
-        [
-          "protocol-configuration",
-          flags["protocol-configuration"],
-          "clear-protocol-configuration",
-          flags["clear-protocol-configuration"] || undefined,
-        ],
-        [
-          "custom-transform-configuration",
-          flags["custom-transform-configuration"],
-          "clear-custom-transform-configuration",
-          flags["clear-custom-transform-configuration"] || undefined,
-        ],
-        [
-          "interceptor-configurations",
-          flags["interceptor-configurations"],
-          "clear-interceptor-configurations",
-          flags["clear-interceptor-configurations"] || undefined,
-        ],
-        [
-          "exception-level",
-          flags["exception-level"],
-          "clear-exception-level",
-          flags["clear-exception-level"] || undefined,
-        ],
-        [
-          "waf-configuration",
-          flags["waf-configuration"],
-          "clear-waf-configuration",
-          flags["clear-waf-configuration"] || undefined,
-        ],
+      assertMutuallyExclusiveFlags(flags, ["description", "clear-description"]);
+      assertMutuallyExclusiveFlags(flags, [
+        "protocol-configuration",
+        "clear-protocol-configuration",
       ]);
+      assertMutuallyExclusiveFlags(flags, [
+        "custom-transform-configuration",
+        "clear-custom-transform-configuration",
+      ]);
+      assertMutuallyExclusiveFlags(flags, [
+        "interceptor-configurations",
+        "clear-interceptor-configurations",
+      ]);
+      assertMutuallyExclusiveFlags(flags, ["exception-level", "clear-exception-level"]);
+      assertMutuallyExclusiveFlags(flags, ["waf-configuration", "clear-waf-configuration"]);
       if (
         flags["clear-policy-engine"] &&
         (flags["policy-engine-arn"] !== undefined || flags["policy-engine-mode"] !== undefined)

@@ -3,7 +3,7 @@ import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx } from "../../../utils";
 import { parseMemoryMetadataFilters } from "../../metadataFilters";
 
 export const createListMemoryRecordsHandler = (core: Core) =>
@@ -24,13 +24,7 @@ export const createListMemoryRecordsHandler = (core: Core) =>
         throw new InputValidationError("required option '--id <id>' not specified");
       }
 
-      const hasNamespace = flags.namespace !== undefined;
-      const hasNamespacePath = flags["namespace-path"] !== undefined;
-      if (hasNamespace === hasNamespacePath) {
-        throw new InputValidationError(
-          "exactly one of '--namespace' or '--namespace-path' must be specified",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["namespace", "namespace-path"], { exactlyOne: true });
 
       const metadataFilters = parseMemoryMetadataFilters(flags["metadata-filters"]);
       const response = await core.memory.listMemoryRecords(

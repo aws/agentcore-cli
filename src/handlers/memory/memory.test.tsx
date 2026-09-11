@@ -749,7 +749,7 @@ describe("memory record commands", () => {
 
     await expect(
       command.route(["memory", "record", "list", "--id", EVENT_MEMORY_ID, ...selectors]),
-    ).rejects.toThrow("exactly one of '--namespace' or '--namespace-path' must be specified");
+    ).rejects.toThrow("specify exactly one of --namespace, --namespace-path");
     expect(command.core.memory.calls).toEqual([]);
   });
 

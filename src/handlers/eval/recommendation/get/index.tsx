@@ -18,3 +18,5 @@ export const createGetRecommendationHandler = (core: Core) =>
         .renderJson(await core.eval.getRecommendation(flags["id"], coreOptsFromCtx(ctx)));
     },
   });
+
+export { RecommendationGetJsonScreen } from "./screen.tsx";

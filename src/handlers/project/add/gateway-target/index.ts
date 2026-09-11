@@ -8,7 +8,7 @@ import {
   type OutboundAuth,
 } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
-import { parseJsonFlagWithSchema } from "../../../utils";
+import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
 import type { Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
@@ -52,16 +52,9 @@ Use project add gateway-connector for curated Connector shortcuts.`,
       if (!flags.gateway) {
         throw new InputValidationError("required option '--gateway <gateway>' not specified");
       }
-      const modes = [
-        ["--endpoint", flags.endpoint],
-        ["--runtime", flags.runtime],
-        ["--target-configuration", flags["target-configuration"]],
-      ].filter(([, value]) => value !== undefined);
-      if (modes.length !== 1) {
-        throw new InputValidationError(
-          "specify exactly one of '--endpoint', '--runtime', or '--target-configuration'",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["endpoint", "runtime", "target-configuration"], {
+        exactlyOne: true,
+      });
       if (flags["runtime-endpoint"] !== undefined && flags.runtime === undefined) {
         throw new InputValidationError("--runtime-endpoint requires --runtime");
       }

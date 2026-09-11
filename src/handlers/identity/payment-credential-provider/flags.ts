@@ -8,6 +8,7 @@ import type {
 import { InputValidationError } from "../../../errors";
 import { type AppIO, SourceResolver } from "../../../io";
 import { flag } from "../../../router";
+import { assertMutuallyExclusiveFlags } from "../../utils";
 import { parseSecretReference } from "../parser";
 import {
   stripWalletAuthPrefix,
@@ -258,14 +259,11 @@ export class PaymentProviderConfigurationResolver {
     const referenceFlagName = `${flagName}-reference` as const;
     const source = this.flags[flagName];
     const reference = this.flags[referenceFlagName];
-    if (source !== undefined && reference !== undefined) {
-      throw new InputValidationError(
-        `--${flagName} and --${referenceFlagName} are mutually exclusive`,
-      );
-    }
-    if (source === undefined && reference === undefined) {
-      throw new InputValidationError(`either --${flagName} or --${referenceFlagName} is required`);
-    }
+    assertMutuallyExclusiveFlags(
+      { [flagName]: source, [referenceFlagName]: reference },
+      [flagName, referenceFlagName],
+      { exactlyOne: true },
+    );
     if (source !== undefined) return { flagName, kind: "inline", source };
     return {
       flagName,
