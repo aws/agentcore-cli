@@ -6,9 +6,6 @@ import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
-// The Identity list APIs cap maxResults at 20
-const MAX_PAGE_SIZE = 20;
-
 interface Oauth2ProviderRow extends Record<string, unknown> {
   name: string;
   vendor: string;
@@ -55,7 +52,6 @@ export function Oauth2CredentialProviderListScreen({ ctx, core }: ScreenProps) {
         navigate(`/agentcore/identity/oauth2-credential-provider/get/${encodeURIComponent(name)}`)
       }
       onBack={() => navigate("/agentcore/identity/oauth2-credential-provider")}
-      maxPageSize={MAX_PAGE_SIZE}
       loadingMessage="loading OAuth2 credential providers…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No OAuth2 credential providers found in this Region."
