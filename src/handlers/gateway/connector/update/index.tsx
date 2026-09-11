@@ -11,7 +11,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import {
-  assertMutuallyExclusiveInputs,
+  assertMutuallyExclusiveFlags,
   coreOptsFromCtx,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
@@ -70,33 +70,17 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
       if (!flags.id) {
         throw new InputValidationError("required option '--id <id>' not specified");
       }
-      assertMutuallyExclusiveInputs([
-        ["connector", flags.connector, "connector-configuration", flags["connector-configuration"]],
-        [
-          "description",
-          flags.description,
-          "clear-description",
-          flags["clear-description"] || undefined,
-        ],
-        [
-          "credential-provider-configurations",
-          flags["credential-provider-configurations"],
-          "clear-credential-provider-configurations",
-          flags["clear-credential-provider-configurations"] || undefined,
-        ],
-        [
-          "metadata-configuration",
-          flags["metadata-configuration"],
-          "clear-metadata-configuration",
-          flags["clear-metadata-configuration"] || undefined,
-        ],
-        [
-          "private-endpoint",
-          flags["private-endpoint"],
-          "clear-private-endpoint",
-          flags["clear-private-endpoint"] || undefined,
-        ],
+      assertMutuallyExclusiveFlags(flags, ["connector", "connector-configuration"]);
+      assertMutuallyExclusiveFlags(flags, ["description", "clear-description"]);
+      assertMutuallyExclusiveFlags(flags, [
+        "credential-provider-configurations",
+        "clear-credential-provider-configurations",
       ]);
+      assertMutuallyExclusiveFlags(flags, [
+        "metadata-configuration",
+        "clear-metadata-configuration",
+      ]);
+      assertMutuallyExclusiveFlags(flags, ["private-endpoint", "clear-private-endpoint"]);
       if (
         flags.connector === "bedrock-knowledge-bases" &&
         flags["knowledge-base-id"] === undefined

@@ -64,7 +64,7 @@ describe("payment connector write inputs", () => {
     { args: ["--quick-create", "--credential-provider", CREDENTIAL_PROVIDER] },
   ])("requires exactly one credential source: $args", async ({ args }) => {
     await expect(run(["create", ...scoped, "--name", MANUAL_NAME, ...args])).rejects.toThrow(
-      "specify exactly one of '--quick-create' or '--credential-provider'",
+      "specify exactly one of --quick-create, --credential-provider",
     );
   });
 

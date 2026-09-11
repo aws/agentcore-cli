@@ -1,13 +1,13 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import {
   renderScreen,
   waitForText,
   cleanupScreens,
   createSilentLogger,
+  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -20,29 +20,13 @@ import type { AppIO } from "../../../io";
 import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 
+const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
 
 // The wizard scaffolds into process.cwd() exactly like the flag-driven path,
 // so creation tests run inside a temp directory (same pattern as
 // project.test.ts / manager.test.ts).
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-create-wizard-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
-  // symlink), matching the paths the manager derives from process.cwd().
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 // spyOnCreate records every CreateProjectInput handed to the manager while
 // still running the real FsProjectManager underneath, so a test can assert
@@ -62,7 +46,8 @@ const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-4-6";
 
 describe("project create wizard", () => {
   test("harness flow: name → type → model → review → created", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -129,7 +114,7 @@ describe("project create wizard", () => {
   }, 10000);
 
   test("an edited model id flows into the harness input", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -164,7 +149,8 @@ describe("project create wizard", () => {
   }, 10000);
 
   test("a provider API key ARN flows through the existing harness input", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -303,7 +289,8 @@ describe("project create wizard", () => {
   });
 
   test("template flow: strands goes straight to review (no memory question)", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -353,7 +340,8 @@ describe("project create wizard", () => {
   }, 10000);
 
   test("template flow: the minimal template scaffolds without memory", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -388,7 +376,7 @@ describe("project create wizard", () => {
   }, 10000);
 
   test("template flow: the LangChain template hands the preset to create", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -423,7 +411,8 @@ describe("project create wizard", () => {
   }, 10000);
 
   test("template flow: the empty template creates a project with no runtime", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
     const r = renderScreen("/agentcore/project/create", { core });
@@ -569,7 +558,7 @@ describe("project create wizard", () => {
   });
 
   test("a create() error offers r to retry only before anything was written, esc returns to review with the input kept", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     const core = new TestCoreClient();
     const created: CreateProjectInput[] = [];
     const real = core.projectManager.create.bind(core.projectManager);
@@ -621,7 +610,9 @@ describe("project create wizard", () => {
   });
 
   test("on Windows a deep project root is refused before anything is written", async () => {
-    const deep = join(await inTempDirectory(), "n".repeat(120));
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const deep = join(path, "n".repeat(120));
     await mkdir(deep);
     process.chdir(deep);
     const r = renderScreen("/agentcore/project/create", { platform: "win32" });
@@ -657,7 +648,7 @@ describe("project create dispatch", () => {
   }
 
   test("bare create in a TTY session opens the wizard", async () => {
-    await inTempDirectory(); // hygiene: nothing must be created outside a temp dir
+    cleanups.push((await inTempDirectory()).cleanup); // hygiene: nothing must be created outside a temp dir
     const { streams, stdin } = ttyTestIO();
     const root = buildRoot(streams.io);
 
@@ -728,7 +719,8 @@ describe("project create dispatch", () => {
   });
 
   test("flag-driven create still runs headless in a TTY session", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const { streams } = ttyTestIO();
     const root = buildRoot(streams.io);
 

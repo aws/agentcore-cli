@@ -7,7 +7,7 @@ import {
   type ConnectorId,
 } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
-import { parseJsonFlagWithSchema } from "../../../utils";
+import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
 
@@ -38,11 +38,9 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       if (!flags.gateway) {
         throw new InputValidationError("required option '--gateway <gateway>' not specified");
       }
-      if ((flags.connector === undefined) === (flags["connector-configuration"] === undefined)) {
-        throw new InputValidationError(
-          "specify exactly one of '--connector' or '--connector-configuration'",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["connector", "connector-configuration"], {
+        exactlyOne: true,
+      });
 
       const usesConfiguration = flags["connector-configuration"] !== undefined;
       if (usesConfiguration && flags.name !== undefined) {

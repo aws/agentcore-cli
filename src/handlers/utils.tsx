@@ -88,18 +88,26 @@ export function parseJsonArrayFlag<T>(name: string, raw: string | undefined): T[
   return parsed as T[];
 }
 
-export function assertMutuallyExclusiveInputs(
-  pairs: readonly (readonly [
-    leftName: string,
-    leftValue: unknown,
-    rightName: string,
-    rightValue: unknown,
-  ])[],
+/**
+ * Given flag names and the flags object, asserts that at most one flag is
+ * defined (or exactly one with the `exactlyOne` option). A flag counts as
+ * defined when its value is neither `undefined` nor `false`.
+ */
+export function assertMutuallyExclusiveFlags(
+  flags: Record<string, unknown>,
+  names: readonly string[],
+  options: { exactlyOne?: boolean } = {},
 ): void {
-  for (const [leftName, leftValue, rightName, rightValue] of pairs) {
-    if (leftValue !== undefined && rightValue !== undefined) {
-      throw new InputValidationError(`--${leftName} and --${rightName} are mutually exclusive`);
-    }
+  const definedFlags = names.filter((name) => flags[name] !== undefined && flags[name] !== false);
+  if (options.exactlyOne && definedFlags.length !== 1) {
+    throw new InputValidationError(
+      `specify exactly one of ${names.map((name) => `--${name}`).join(", ")}`,
+    );
+  }
+  if (definedFlags.length > 1) {
+    throw new InputValidationError(
+      `${definedFlags.map((name) => `--${name}`).join(", ")} are mutually exclusive`,
+    );
   }
 }
 

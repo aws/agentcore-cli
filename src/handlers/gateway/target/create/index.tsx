@@ -11,7 +11,12 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
+import {
+  assertMutuallyExclusiveFlags,
+  coreOptsFromCtx,
+  parseJsonArrayFlag,
+  parseJsonObjectFlag,
+} from "../../../utils";
 import type { CreateGatewayTargetInput } from "../../types";
 
 export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
@@ -58,11 +63,9 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
       if (!flags["gateway-id"]) {
         throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
       }
-      if ((flags.endpoint === undefined) === (flags["target-configuration"] === undefined)) {
-        throw new InputValidationError(
-          "specify exactly one of '--endpoint' or '--target-configuration'",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["endpoint", "target-configuration"], {
+        exactlyOne: true,
+      });
       if (flags["tool-schema"] !== undefined && flags.endpoint === undefined) {
         throw new InputValidationError("--tool-schema requires --endpoint");
       }

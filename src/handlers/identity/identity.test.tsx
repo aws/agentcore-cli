@@ -268,7 +268,7 @@ describe("api-key-credential-provider CRUDL", () => {
         "--api-key-secret-reference",
         '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"apiKey"}',
       ],
-      /mutually exclusive/,
+      /specify exactly one of --api-key, --api-key-secret-reference/,
     ],
     [
       "create: --api-key-secret-reference missing secretId",
@@ -309,7 +309,7 @@ describe("api-key-credential-provider CRUDL", () => {
         "--api-key-secret-reference",
         '{"secretId":"arn:aws:secretsmanager:us-west-2:123:secret:s","jsonKey":"apiKey"}',
       ],
-      /mutually exclusive/,
+      /specify exactly one of --api-key, --api-key-secret-reference/,
     ],
     [
       "create: --api-key with an inline value",

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   TestIdentityClient,
@@ -60,7 +60,6 @@ function statusCommand(backend: ProjectBackend, io = testIO()) {
     io,
     json: () => JSON.parse(io.stdout()),
     run: (args: string[] = []) => root.route(["node", "agentcore", "project", "status", ...args]),
-    create: (args: string[]) => root.route(["node", "agentcore", "project", ...args]),
   };
 }
 
@@ -69,15 +68,8 @@ function testStatusCommand(deployed: ResolvedProjectResource[] = [], io = testIO
   return { ...fake, ...statusCommand(fake.backend, io) };
 }
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 // The report is refused when the ambient region is not the target's, so pin
 // the ambient region to the default target's rather than leave it to the
@@ -92,20 +84,15 @@ afterEach(() => {
 });
 
 async function inProject(
-  subject: ReturnType<typeof statusCommand>,
   spec: Record<string, unknown> = {},
   targets: AwsDeploymentTarget[] = TARGETS,
 ): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-status-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  await subject.create(["create", "--name", "orders", "--skip-install", "--skip-git"]);
-  const projectRoot = join(process.cwd(), "orders");
+  const { projectRoot, cleanup } = await initProject({ name: "orders" });
+  cleanups.push(cleanup);
   await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), JSON.stringify(targets));
   const specPath = join(projectRoot, "agentcore", "agentcore.json");
   const current = JSON.parse(await Bun.file(specPath).text());
   await writeFile(specPath, JSON.stringify({ ...current, ...spec }));
-  process.chdir(projectRoot);
   return projectRoot;
 }
 
@@ -164,7 +151,7 @@ describe("project status handler", () => {
           : undefined,
     });
     const subject = statusCommand(backend);
-    const projectRoot = await inProject(subject);
+    const projectRoot = await inProject();
     const stateDirectory = join(projectRoot, "agentcore", ".cli");
     await mkdir(stateDirectory, { recursive: true });
     await Bun.write(
@@ -204,7 +191,7 @@ describe("project status handler", () => {
       ]),
       localOnly("policy-engine", "empty"),
     ]);
-    await inProject(subject, {
+    await inProject({
       memories: [memory("shortTerm")],
       policyEngines: [
         { name: "guards", policies: [policy("noPii")] },
@@ -251,7 +238,7 @@ describe("project status handler", () => {
       deployed("memory", "shortTerm", `${ARN}:memory/shortTerm-1`),
       localOnly("memory", "longTerm"),
     ]);
-    await inProject(subject, { memories: [memory("shortTerm"), memory("longTerm")] });
+    await inProject({ memories: [memory("shortTerm"), memory("longTerm")] });
 
     await subject.run();
 
@@ -269,7 +256,7 @@ describe("project status handler", () => {
 
   test("reports every resource local-only when nothing is deployed", async () => {
     const subject = testStatusCommand([HARNESS_ROW, localOnly("memory", "shortTerm")]);
-    await inProject(subject, { memories: [memory("shortTerm")] });
+    await inProject({ memories: [memory("shortTerm")] });
 
     await subject.run();
 
@@ -286,7 +273,7 @@ describe("project status handler", () => {
 
   test("rejects a project that declares no targets, without reaching the backend", async () => {
     const subject = testStatusCommand([localOnly("memory", "shortTerm")]);
-    await inProject(subject, { memories: [memory("shortTerm")] }, []);
+    await inProject({ memories: [memory("shortTerm")] }, []);
 
     await expect(subject.run()).rejects.toThrow(
       /No deployment targets are configured for project 'orders'\. Please deploy your project using 'agentcore project deploy'\./,
@@ -296,7 +283,7 @@ describe("project status handler", () => {
 
   test("--target selects another target, and an unknown one is rejected", async () => {
     const subject = testStatusCommand([]);
-    await inProject(subject);
+    await inProject();
 
     await subject.run(["--region", STAGING_TARGET.region, "--target", "staging"]);
 
@@ -310,7 +297,7 @@ describe("project status handler", () => {
 
   test("refuses a target deployed outside the ambient region", async () => {
     const subject = testStatusCommand([HARNESS_ROW]);
-    await inProject(subject);
+    await inProject();
 
     // The ambient region is the default target's (pinned above); staging's is not.
     const outcome = subject.run(["--target", "staging"]);
@@ -331,7 +318,7 @@ describe("project status dispatch", () => {
   test("bare status in a TTY session opens the TUI instead of printing JSON", async () => {
     const tty = ttyTestIO();
     const subject = testStatusCommand([HARNESS_ROW], tty.streams);
-    await inProject(subject);
+    await inProject();
 
     // outcome never rejects, so a mid-pump failure cannot trip bun's
     // unhandled-rejection detection before the final assertion.
@@ -360,7 +347,7 @@ describe("project status dispatch", () => {
 
   test("an explicitly passed --target stays headless even in a TTY", async () => {
     const subject = testStatusCommand([HARNESS_ROW], ttyTestIO().streams);
-    await inProject(subject);
+    await inProject();
 
     await subject.run(["--target", "default"]);
 
@@ -369,7 +356,7 @@ describe("project status dispatch", () => {
 
   test("--json stays headless even in a TTY", async () => {
     const subject = testStatusCommand([HARNESS_ROW], ttyTestIO().streams);
-    await inProject(subject);
+    await inProject();
 
     await subject.run(["--json"]);
 

@@ -3,6 +3,7 @@ import { InputValidationError } from "../../../../errors";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
+import { assertMutuallyExclusiveFlags } from "../../../utils";
 
 export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -22,10 +23,7 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
         throw new InputValidationError("required option '--name <name>' not specified");
       }
 
-      const modes = [flags.credential !== undefined, flags["quick-create"]].filter(Boolean);
-      if (modes.length !== 1) {
-        throw new InputValidationError("specify exactly one of '--credential' or '--quick-create'");
-      }
+      assertMutuallyExclusiveFlags(flags, ["credential", "quick-create"], { exactlyOne: true });
 
       const project = ctx.require(ProjectKey);
       let provider: "CoinbaseCDP" | "StripePrivy";

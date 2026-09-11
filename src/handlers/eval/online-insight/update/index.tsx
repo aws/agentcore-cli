@@ -5,7 +5,7 @@ import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 
 const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
 const ARN_PREFIX = "arn:";
@@ -65,10 +65,7 @@ export const createUpdateOnlineInsightHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError(
           "'--endpoint' and '--clear-endpoint' are mutually exclusive",
         );
-      if (flags["data-source-config"] && flags["agent"])
-        throw new InputValidationError(
-          "'--agent' and '--data-source-config' are mutually exclusive",
-        );
+      assertMutuallyExclusiveFlags(flags, ["agent", "data-source-config"]);
       if (flags["data-source-config"] && (flags["endpoint"] || flags["clear-endpoint"] === "true"))
         throw new InputValidationError(
           "'--endpoint' cannot be combined with '--data-source-config'",

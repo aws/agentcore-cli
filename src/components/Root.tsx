@@ -58,6 +58,9 @@ import {
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
+import { RecommendationScreen } from "../handlers/eval/recommendation/screen.tsx";
+import { RecommendationListScreen } from "../handlers/eval/recommendation/list/screen.tsx";
+import { RecommendationGetJsonScreen } from "../handlers/eval/recommendation/get/screen.tsx";
 import { BatchInsightsScreen } from "../handlers/eval/batch-insights/screen.tsx";
 import { BatchInsightsListScreen } from "../handlers/eval/batch-insights/list/screen.tsx";
 import { BatchInsightsGetJsonScreen } from "../handlers/eval/batch-insights/get/screen.tsx";
@@ -617,6 +620,24 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/batch-evaluation/get/:batchEvaluationId"
             element={<BatchEvaluationGetJsonScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/recommendation"
+            element={<RecommendationScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/recommendation/list"
+            element={<RecommendationListScreen ctx={ctx} core={core} />}
+          />
+          {/* Bare `get` (no id) has nothing to show — send the user to the list. */}
+          <Route
+            path="agentcore/eval/recommendation/get"
+            element={<Navigate to="/agentcore/eval/recommendation/list" replace />}
+          />
+          {/* get is raw JSON only — no metadata hub, so :id is the JSON view. */}
+          <Route
+            path="agentcore/eval/recommendation/get/:recommendationId"
+            element={<RecommendationGetJsonScreen ctx={ctx} core={core} />}
           />
           <Route path="agentcore/eval/ab-test" element={<AbTestScreen ctx={ctx} core={core} />} />
           <Route

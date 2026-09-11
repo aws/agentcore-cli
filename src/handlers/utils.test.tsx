@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { parseJsonArrayFlag, parseJsonObjectFlag, parseTags } from "./utils";
+import {
+  assertMutuallyExclusiveFlags,
+  parseJsonArrayFlag,
+  parseJsonObjectFlag,
+  parseTags,
+} from "./utils";
 
 describe("structured JSON flags", () => {
   test("parses object and array values", () => {
@@ -63,5 +68,50 @@ describe("parseTags", () => {
 
   test("rejects bare value without equals", () => {
     expect(() => parseTags(["noequals"])).toThrow("expected key=value");
+  });
+});
+
+describe("assertMutuallyExclusiveFlags", () => {
+  test.each([
+    ["nothing set", ["a", "b"], {}, {}],
+    ["a single flag set", ["a", "b"], { a: "x" }, {}],
+    ["a false boolean flag alongside one set", ["a", "c"], { a: "x", c: false }, {}],
+    ["a single flag set with exactlyOne", ["a", "b"], { a: "x" }, { exactlyOne: true }],
+  ] as const)("permits %s", (_label, names, flags, options) => {
+    expect(() => assertMutuallyExclusiveFlags(flags, names, options)).not.toThrow();
+  });
+
+  test.each([
+    ["two flags set", ["a", "b"], { a: "x", b: "y" }, {}, "--a, --b are mutually exclusive"],
+    [
+      "a true boolean flag alongside one set",
+      ["a", "c"],
+      { a: "x", c: true },
+      {},
+      "--a, --c are mutually exclusive",
+    ],
+    [
+      "only the set flags listed",
+      ["a", "b", "c"],
+      { a: "x", c: "z" },
+      {},
+      "--a, --c are mutually exclusive",
+    ],
+    [
+      "nothing set with exactlyOne",
+      ["a", "b"],
+      {},
+      { exactlyOne: true },
+      "specify exactly one of --a, --b",
+    ],
+    [
+      "many set with exactlyOne",
+      ["a", "b", "c"],
+      { a: "x", b: "y" },
+      { exactlyOne: true },
+      "specify exactly one of --a, --b, --c",
+    ],
+  ] as const)("rejects %s", (_label, names, flags, options, message) => {
+    expect(() => assertMutuallyExclusiveFlags(flags, names, options)).toThrow(message);
   });
 });

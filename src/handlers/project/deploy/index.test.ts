@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { UserCancellationError } from "../../../errors/errors";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -105,39 +105,17 @@ function testDeployCommand(
     ...fake,
     io,
     run: (args: string[] = []) => root.route(["node", "agentcore", "project", "deploy", ...args]),
-    create: (args: string[]) => root.route(["node", "agentcore", "project", ...args]),
   };
 }
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-deploy-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
-  // symlink), matching the paths the manager derives from process.cwd().
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 /** Scaffolds a project whose aws-targets.json holds exactly `contents`, and cds into it. */
-async function inProjectWithTargets(
-  subject: ReturnType<typeof testDeployCommand>,
-  contents: string = JSON.stringify(TARGETS),
-): Promise<string> {
-  const directory = await inTempDirectory();
-  await subject.create(["create", "--name", "orders", "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, "orders");
+async function inProjectWithTargets(contents: string = JSON.stringify(TARGETS)): Promise<string> {
+  const { projectRoot, cleanup } = await initProject({ name: "orders" });
+  cleanups.push(cleanup);
   await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), contents);
-  process.chdir(projectRoot);
   return projectRoot;
 }
 
@@ -162,7 +140,7 @@ describe("project deploy handler", () => {
         { type: "step", message: "Deploying stack" },
       ],
     );
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await subject.run();
 
@@ -179,7 +157,7 @@ describe("project deploy handler", () => {
   test("passes an explicit target and renders the result as JSON", async () => {
     const result = { outputs: { ServiceUrl: "https://service.example" } };
     const subject = testDeployCommand(result);
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await subject.run(["--target", "staging", "--json"]);
 
@@ -193,7 +171,7 @@ describe("project deploy handler", () => {
 
   test("renders a teardown result as JSON with the removal message", async () => {
     const subject = testDeployCommand({ outputs: {}, tornDown: true });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await subject.run(["--yes", "--json"]);
 
@@ -208,7 +186,7 @@ describe("project deploy handler", () => {
     const subject = testDeployCommand({ outputs: {} }, [], {
       failure: new Error("The stack failed creation: ROLLBACK_COMPLETE"),
     });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await expect(subject.run(["--json"])).rejects.toThrow("ROLLBACK_COMPLETE");
 
@@ -225,7 +203,7 @@ describe("project deploy handler", () => {
       stdin: "\n",
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await subject.run(["--yes"]);
 
@@ -242,7 +220,7 @@ describe("project deploy handler", () => {
       stdin: "yes\n",
       teardown: TEARDOWN,
     });
-    const projectRoot = await inProjectWithTargets(subject);
+    const projectRoot = await inProjectWithTargets();
     await emptyProjectSpec(projectRoot);
 
     await subject.run();
@@ -262,7 +240,7 @@ describe("project deploy handler", () => {
       stdin,
       teardown: TEARDOWN,
     });
-    const projectRoot = await inProjectWithTargets(subject);
+    const projectRoot = await inProjectWithTargets();
     await emptyProjectSpec(projectRoot);
 
     await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
@@ -279,7 +257,7 @@ describe("project deploy handler", () => {
       stdin: "",
       teardown: TEARDOWN,
     });
-    const projectRoot = await inProjectWithTargets(subject);
+    const projectRoot = await inProjectWithTargets();
     await emptyProjectSpec(projectRoot);
 
     await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
@@ -297,7 +275,7 @@ describe("project deploy handler", () => {
       stdin: "yes\n",
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await expect(subject.run()).rejects.toThrow(/--yes/);
 
@@ -310,7 +288,7 @@ describe("project deploy handler", () => {
       stdin: "yes\n",
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await expect(subject.run()).rejects.toThrow(/--yes/);
 
@@ -324,7 +302,7 @@ describe("project deploy handler", () => {
       stdin: "yes\n",
       teardown: TEARDOWN,
     });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await expect(subject.run(["--json"])).rejects.toThrow(/--yes/);
 
@@ -341,7 +319,7 @@ describe("project deploy handler", () => {
       isTTY: true,
       stdin: "yes\n",
     });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await subject.run();
 
@@ -352,7 +330,7 @@ describe("project deploy handler", () => {
     const subject = testDeployCommand({ outputs: {}, tornDown: true }, [
       { type: "step", message: "Removing stack AgentCore-orders-default" },
     ]);
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await subject.run(["--yes"]);
 
@@ -364,7 +342,7 @@ describe("project deploy handler", () => {
 
   test("rejects an unknown target without invoking the backend", async () => {
     const subject = testDeployCommand({ outputs: {} });
-    await inProjectWithTargets(subject);
+    await inProjectWithTargets();
 
     await expect(subject.run(["--target", "nope"])).rejects.toThrow(
       /no deployment target named 'nope'/,
@@ -374,7 +352,7 @@ describe("project deploy handler", () => {
 
   test("requires deployment targets to be configured for a named target", async () => {
     const subject = testDeployCommand({ outputs: {} });
-    await inProjectWithTargets(subject, JSON.stringify([]));
+    await inProjectWithTargets(JSON.stringify([]));
 
     await expect(subject.run(["--target", "staging"])).rejects.toThrow(
       /No deployment targets are configured/,
@@ -386,7 +364,7 @@ describe("project deploy handler", () => {
   // the first deploy must invent the default target rather than demand edits.
   test("creates the default target from the environment on first deploy", async () => {
     const subject = testDeployCommand({ outputs: { RuntimeArn: "arn:runtime" } });
-    const projectRoot = await inProjectWithTargets(subject, JSON.stringify([]));
+    const projectRoot = await inProjectWithTargets(JSON.stringify([]));
 
     await subject.run(["--region", "us-west-2"]);
 
@@ -407,7 +385,7 @@ describe("project deploy handler", () => {
 
   test("rejects an unsupported region instead of writing an invalid target", async () => {
     const subject = testDeployCommand({ outputs: {} });
-    const projectRoot = await inProjectWithTargets(subject, JSON.stringify([]));
+    const projectRoot = await inProjectWithTargets(JSON.stringify([]));
 
     const message = await messageFrom(subject.run(["--region", "us-west-1"]));
 
@@ -423,7 +401,7 @@ describe("project deploy handler", () => {
         throw new Error("Could not load credentials from any providers");
       },
     });
-    await inProjectWithTargets(subject, JSON.stringify([]));
+    await inProjectWithTargets(JSON.stringify([]));
 
     const message = await messageFrom(subject.run(["--region", "us-east-1"]));
 
@@ -447,7 +425,6 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
   test("names the offending field for an unsupported region", async () => {
     const subject = testDeployCommand({ outputs: {} });
     await inProjectWithTargets(
-      subject,
       JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-11" }]),
     );
 
@@ -461,7 +438,7 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
 
   test("surfaces the duplicate target name", async () => {
     const subject = testDeployCommand({ outputs: {} });
-    await inProjectWithTargets(subject, JSON.stringify([DEFAULT_TARGET, DEFAULT_TARGET]));
+    await inProjectWithTargets(JSON.stringify([DEFAULT_TARGET, DEFAULT_TARGET]));
 
     await expect(subject.run()).rejects.toThrow(/Duplicate deployment target name: default/);
     expect(subject.calls).toEqual([]);
@@ -470,7 +447,6 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
   test("surfaces the account id rule", async () => {
     const subject = testDeployCommand({ outputs: {} });
     await inProjectWithTargets(
-      subject,
       JSON.stringify([{ name: "default", account: "123", region: "us-east-1" }]),
     );
 
@@ -480,7 +456,7 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
 
   test("surfaces the parse error for malformed json", async () => {
     const subject = testDeployCommand({ outputs: {} });
-    await inProjectWithTargets(subject, '[{ "name": "default", }]');
+    await inProjectWithTargets('[{ "name": "default", }]');
 
     await expect(subject.run()).rejects.toThrow(/JSON Parse error/);
     expect(subject.calls).toEqual([]);

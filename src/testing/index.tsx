@@ -35,3 +35,5 @@ export {
 } from "./renderScreen";
 export { createSilentLogger, assertLogsMatch, type LogQuery } from "./logging";
 export { TestGlobalConfigAccessor } from "./globalConfig";
+export { inTempDirectory, type TempDirectory } from "./fs";
+export { initProject, type InitProjectOptions, type InitializedProject } from "./projects";

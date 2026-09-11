@@ -35,3 +35,5 @@ export const createListRecommendationsHandler = (core: Core) =>
       ctx.require(JsonRendererKey).renderJson(response);
     },
   });
+
+export { RecommendationListScreen } from "./screen.tsx";

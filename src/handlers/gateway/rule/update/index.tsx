@@ -5,7 +5,7 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { assertMutuallyExclusiveInputs, coreOptsFromCtx, parseJsonArrayFlag } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonArrayFlag } from "../../../utils";
 import type { GatewayRuleUpdateInput } from "../../types";
 
 export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
@@ -40,14 +40,7 @@ export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
       if (!flags["rule-id"]) {
         throw new InputValidationError("required option '--rule-id <rule-id>' not specified");
       }
-      assertMutuallyExclusiveInputs([
-        [
-          "conditions",
-          flags.conditions,
-          "clear-conditions",
-          flags["clear-conditions"] || undefined,
-        ],
-      ]);
+      assertMutuallyExclusiveFlags(flags, ["conditions", "clear-conditions"]);
       if (flags.description === "") {
         throw new InputValidationError("Rule description cannot be empty or cleared");
       }

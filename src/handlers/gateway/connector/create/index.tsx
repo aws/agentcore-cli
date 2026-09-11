@@ -10,7 +10,12 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag } from "../../../utils";
+import {
+  assertMutuallyExclusiveFlags,
+  coreOptsFromCtx,
+  parseJsonArrayFlag,
+  parseJsonObjectFlag,
+} from "../../../utils";
 import type { CreateGatewayTargetInput } from "../../types";
 import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
@@ -60,11 +65,9 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
       if (!flags.name) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
-      if ((flags.connector === undefined) === (flags["connector-configuration"] === undefined)) {
-        throw new InputValidationError(
-          "specify exactly one of '--connector' or '--connector-configuration'",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["connector", "connector-configuration"], {
+        exactlyOne: true,
+      });
       if (
         flags.connector === "bedrock-knowledge-bases" &&
         flags["knowledge-base-id"] === undefined

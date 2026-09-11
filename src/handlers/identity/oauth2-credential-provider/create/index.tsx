@@ -5,7 +5,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import type { AppIO } from "../../../../io";
-import { coreOptsFromCtx, parseTags } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseTags } from "../../../utils";
 import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../parser";
 import {
@@ -56,19 +56,11 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
       }
 
       const vendor = flags.vendor as CredentialProviderVendorType;
+      assertMutuallyExclusiveFlags(flags, ["client-secret", "client-secret-reference"], {
+        exactlyOne: true,
+      });
       const hasClientSecret = flags["client-secret"] !== undefined;
       const hasSecretRef = flags["client-secret-reference"] !== undefined;
-
-      if (hasClientSecret && hasSecretRef) {
-        throw new InputValidationError(
-          "--client-secret and --client-secret-reference are mutually exclusive",
-        );
-      }
-      if (!hasClientSecret && !hasSecretRef) {
-        throw new InputValidationError(
-          "either --client-secret or --client-secret-reference is required",
-        );
-      }
 
       const providerConfigMode = parseProviderConfigFlags({
         clientId: flags["client-id"],

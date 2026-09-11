@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -13,24 +12,8 @@ import {
 import { InputValidationError } from "../../../../errors";
 import { MEMORY_DESCRIPTION_MAX_LENGTH } from "../../../../projectSchemas/memory";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-memory-"));
-  tempDirectories.push(directory);
-  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
-  // symlink), matching the paths the manager derives from process.cwd().
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 // Ink writes cursor/erase sequences around each frame; the TTY assertions
 // below care about frame text, not terminal control. Built without a
@@ -53,18 +36,10 @@ async function run(args: string[], opts?: { core?: TestCoreClient; isTTY?: boole
   return { io, core };
 }
 
-/** Scaffolds a project and cds into it so withProject resolves it. */
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
-}
-
 describe("project add memory", () => {
   test("--json returns a structured project mutation result", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run(["add", "memory", "--name", "customer_memory", "--json"]);
 
     expect(JSON.parse(io.stdout())).toEqual({
@@ -78,7 +53,8 @@ describe("project add memory", () => {
   // The same progress driver create, build, and deploy use: a TTY gets the live
   // step list with every step marked done, and the success line follows it.
   test("renders a live step list on a TTY", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run(["add", "memory", "--name", "customer_memory"], { isTTY: true });
 
     const frames = stripAnsi(io.stderr());
@@ -89,7 +65,8 @@ describe("project add memory", () => {
   });
 
   test("--json on a TTY keeps the plain step lines so no ANSI reaches stderr", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run(["add", "memory", "--name", "customer_memory", "--json"], {
       isTTY: true,
     });
@@ -276,7 +253,8 @@ describe("project add memory", () => {
     ],
     ["tags", ["--name", "x", "--tags", '{"team":"ml"}'], { tags: { team: "ml" } }],
   ])("%s", async (_label, flags, expected) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "memory", ...flags]);
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -285,14 +263,16 @@ describe("project add memory", () => {
   });
 
   test("adds no files under app/", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "memory", "--name", "x"]);
 
     expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
   });
 
   test("rejects a duplicate memory name", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "memory", "--name", "x"]);
     await expect(run(["add", "memory", "--name", "x"])).rejects.toBeInstanceOf(
       InputValidationError,
@@ -403,7 +383,8 @@ describe("project add memory", () => {
     ],
     ["malformed --strategies JSON", ["--name", "x", "--strategies", "[{"]],
   ])("%s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "memory", ...flags])).rejects.toBeInstanceOf(InputValidationError);
   });
 
@@ -513,7 +494,8 @@ describe("project add memory", () => {
       /Invalid value for option '--tags'/,
     ],
   ])("%s", async (_label, flags, error) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "memory", ...flags])).rejects.toThrow(error);
   });
 });

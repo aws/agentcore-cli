@@ -1,32 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../../../testing";
 import { DeserializationError, InputValidationError } from "../../../../../errors";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-evaluator-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
@@ -40,19 +26,12 @@ async function run(args: string[], opts?: { core?: TestCoreClient }) {
   return { io, core };
 }
 
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
-}
-
 const MODEL = "anthropic.claude-3-5-sonnet-20240620-v1:0";
 
 describe("project add evaluator llm-as-a-judge", () => {
   test("writes a numerical preset evaluator into the spec", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run([
       "add",
       "evaluator",
@@ -86,7 +65,8 @@ describe("project add evaluator llm-as-a-judge", () => {
   });
 
   test("writes a categorical preset evaluator", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run([
       "add",
       "evaluator",
@@ -112,7 +92,8 @@ describe("project add evaluator llm-as-a-judge", () => {
   });
 
   test("reads instructions from a file:// source", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const instructionsPath = join(projectRoot, "instructions.txt");
     await writeFile(instructionsPath, "Evaluate factual accuracy.\n");
 
@@ -138,7 +119,8 @@ describe("project add evaluator llm-as-a-judge", () => {
   });
 
   test("accepts an inline JSON rating scale on --rating-scale", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     await run([
       "add",
@@ -170,7 +152,8 @@ describe("project add evaluator llm-as-a-judge", () => {
   });
 
   test("persists description, kms key, and tags", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const kms = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012";
     await run([
       "add",
@@ -204,7 +187,8 @@ describe("project add evaluator llm-as-a-judge", () => {
   });
 
   test("rejects a duplicate evaluator name", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const flags = [
       "add",
       "evaluator",
@@ -225,7 +209,8 @@ describe("project add evaluator llm-as-a-judge", () => {
   });
 
   test("rejects when the existing spec is invalid", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const specPath = join(projectRoot, "agentcore", "agentcore.json");
     const spec = await Bun.file(specPath).json();
     spec.unknownField = "bad";
@@ -341,7 +326,8 @@ describe("project add evaluator llm-as-a-judge", () => {
       ["--name", "x", "--level", "SESSION", "--model", MODEL, "--instructions", "i"],
     ],
   ])("%s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "evaluator", "llm-as-a-judge", ...flags])).rejects.toBeInstanceOf(
       InputValidationError,
     );
