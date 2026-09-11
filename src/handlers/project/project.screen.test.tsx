@@ -75,7 +75,7 @@ describe("project menu: command-line-only subcommands", () => {
     const r = renderScreen("/agentcore/project");
 
     await waitForText(r.lastFrame, "command line only");
-    const withScreens = ["create", "deploy", "invoke", "build", "status"];
+    const withScreens = ["create", "deploy", "invoke", "build", "status", "add"];
     const { screens, cliOnly } = menuEntries(r.lastFrame()!);
     expect(screens.toSorted()).toEqual(withScreens.toSorted());
     expect(cliOnly.toSorted()).toEqual(
@@ -126,8 +126,10 @@ describe("project menu: command-line-only subcommands", () => {
     r.unmount();
   });
 
+  // These three exercise the help viewport, so they need a command-line-only
+  // resource whose help is longer than the terminal: `add payment-manager`.
   test("growing the terminal after scrolling to the bottom pulls the content back into view", async () => {
-    const r = renderScreen("/agentcore/project/add/runtime");
+    const r = renderScreen("/agentcore/project/add/payment-manager");
     await r.resize(80, 24);
     await waitForText(r.lastFrame, "this command runs from the command line");
     for (let i = 0; i < 80; i++) await r.press("down");
@@ -138,12 +140,12 @@ describe("project menu: command-line-only subcommands", () => {
     // reflows the content, which would mask a clamp that read a stale height.
     await r.resize(80, 120);
     await waitForText(r.lastFrame, "this command runs from the command line");
-    expect(r.lastFrame()).toContain("--role-arn");
+    expect(r.lastFrame()).toContain("--default-spend-limit");
     r.unmount();
   });
 
   test("a key that fills its column still stands clear of its value", async () => {
-    const r = renderScreen("/agentcore/project/add/runtime");
+    const r = renderScreen("/agentcore/project/add/payment-manager");
     await r.resize(40, 60);
     // Narrow enough that the intro wraps and the key column hits its cap.
     await waitForFlatText(r.lastFrame, "this command runs from the command line");
@@ -157,7 +159,7 @@ describe("project menu: command-line-only subcommands", () => {
   });
 
   test("every option is reachable on a small terminal", async () => {
-    const r = renderScreen("/agentcore/project/add/runtime");
+    const r = renderScreen("/agentcore/project/add/payment-manager");
     await r.resize(80, 24);
     await waitForText(r.lastFrame, "this command runs from the command line");
 
@@ -170,7 +172,7 @@ describe("project menu: command-line-only subcommands", () => {
       await r.press("down");
       collect();
     }
-    const compiled = projectCommand("add", "runtime");
+    const compiled = projectCommand("add", "payment-manager");
     for (const option of compiled.options) {
       if (option.long && option.long !== "--help") expect(seen).toContain(option.long);
     }

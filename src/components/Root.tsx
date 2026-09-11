@@ -118,6 +118,7 @@ import { BuildProjectScreen } from "../handlers/project/build/screen.tsx";
 import { DeployProjectScreen } from "../handlers/project/deploy/screen.tsx";
 import { ProjectCreateScreen } from "../handlers/project/create/screen.tsx";
 import { ProjectInvokePickerScreen } from "../handlers/project/invoke/screen.tsx";
+import { AddRuntimeScreen } from "../handlers/project/add/runtime/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
@@ -810,6 +811,10 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/project/status"
             element={<ProjectStatusScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/add/runtime"
+            element={<AddRuntimeScreen ctx={ctx} core={core} />}
           />
           {/* Every known command without a screen of its own: a group opens its
               menu and a leaf its interactive help. Unknown routes retain the

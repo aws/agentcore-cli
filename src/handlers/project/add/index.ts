@@ -18,7 +18,10 @@ import { createAddPaymentConnectorHandler } from "./payment-connector";
 import { createAddPaymentManagerHandler } from "./payment-manager";
 
 export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
-  const projectAdd = new Router("add", "add project resources");
+  // The resources with a wizard of their own. Every other resource is listed in
+  // the add menu as command line only and opens its help instead (see
+  // CliOnlyScreen).
+  const projectAdd = new Router("add", "add project resources").supportedTuiCommands("runtime");
   projectAdd.use(withProject({ projectManager: config.projectManager, cwd: process.cwd() }));
   projectAdd.handler(createAddConfigBundleHandler(config));
   projectAdd.handler(createAddHarnessHandler(config));
