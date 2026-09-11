@@ -19,7 +19,8 @@ import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 
-const { cleanup, inProject, projectSpec } = createGatewayProjectTestHarness("add-runtime-wizard");
+const { cleanup, inProject, projectSpec, run } =
+  createGatewayProjectTestHarness("add-runtime-wizard");
 
 afterEach(cleanup);
 afterEach(cleanupScreens);
@@ -173,6 +174,33 @@ describe("project add runtime wizard", () => {
     expect(await runtimeInSpec(projectRoot, " orders_agent ")).toBeUndefined();
     r.unmount();
   });
+
+  test("a rejected add reports itself and hands the form back", async () => {
+    const projectRoot = await inProject();
+    // The name is taken, so addResource refuses it — the realistic failure, and
+    // one the user can fix without starting over.
+    await run(["add", "runtime", "--name", "orders_agent"]);
+    const r = renderScreen("/agentcore/project/add/runtime");
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("orders_agent");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
+    await r.press("return");
+
+    await waitForFlatText(r.lastFrame, "a runtime with name 'orders_agent' already exists");
+    // esc, not a dead TUI: the failure is reported inside the wizard, which then
+    // returns to the form with every answer still in it.
+    await r.press("escape");
+    await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
+    expect(flatFrame(r.lastFrame)).toContain("runtime orders_agent");
+
+    // The refused add wrote nothing beyond the runtime that was already there.
+    expect((await projectSpec(projectRoot)).runtimes).toHaveLength(2);
+    r.unmount();
+  }, 15000);
 
   test("esc on the first step returns to the add menu", async () => {
     await inProject();

@@ -110,6 +110,10 @@ function AddRuntimeWizard({ project, core }: { project: Project; core: ScreenPro
       // second resource is one keystroke away — what build and deploy do too.
       onDone={() => navigate(ADD_MENU)}
       doneLabel="go back"
+      // A failure reports itself and hands the form back, for the same reason
+      // success returns to the menu: the user navigated here, so tearing the TUI
+      // down over a rejected name would lose every other answer with it.
+      onError="retry"
     >
       <Step name="name" question="what should this runtime be called?">
         <TextField
