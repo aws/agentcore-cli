@@ -7,6 +7,7 @@ import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
 import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
+import { PaymentClient } from "./payment";
 import { PolicyClient } from "./policy";
 import { ObservabilityClient } from "./observability";
 import { CloudWatchClient } from "./observability/index";
@@ -79,6 +80,7 @@ export class CoreClient implements AwsClients {
   readonly eval: EvalClient;
   readonly observability: ObservabilityClient;
   readonly policy: PolicyClient;
+  readonly payment: PaymentClient;
 
   readonly projectManager: ProjectManager;
   readonly bedrockAgentImporter: CoreBedrockAgentImporter;
@@ -101,6 +103,7 @@ export class CoreClient implements AwsClients {
     );
     this.gateway = new GatewayClient(this, fetch, this.logger.child({ module: "gateway" }));
     this.policy = new PolicyClient(this, this.logger.child({ module: "policy" }));
+    this.payment = new PaymentClient(this);
     // EvalClient shares the injected fetch: dataset content is served from a
     // presigned S3 URL, outside the SDK seam the other operations use. The logger
     // is used for batch-evaluation result-log diagnostics.

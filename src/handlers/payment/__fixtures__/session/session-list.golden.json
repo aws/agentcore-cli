@@ -1,0 +1,12 @@
+{
+  "paymentSessions": [
+    {
+      "paymentSessionId": "payment-session-nq812U4e1BJIfw1",
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanageraidandal-gx3nxzaira",
+      "userId": "agentcore-cli-e2e",
+      "expiryTimeInMinutes": 15,
+      "createdAt": "2026-09-08T20:20:28.618Z",
+      "updatedAt": "2026-09-08T20:20:28.618Z"
+    }
+  ]
+}
