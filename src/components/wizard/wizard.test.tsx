@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { useState } from "react";
+import z from "zod";
 import { render } from "ink-testing-library";
 import { render as inkRender } from "ink";
 import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
@@ -19,6 +20,10 @@ interface HarnessOptions {
   onError?: "exit" | "retry";
   onDone?: () => void;
 }
+
+// A schema with a shape a stray space breaks, the way a resource-name schema
+// does: it is what makes "validated as typed" observable.
+const NAME_SCHEMA = z.string().regex(/^[A-Za-z]+$/, "letters only");
 
 const YES_NO = [
   { value: false, label: "no", description: "skip the extra question" },
@@ -45,7 +50,7 @@ function TestWizard({ onSubmit, onCancel, onError, onDone }: HarnessOptions) {
       successHint="enter exits"
     >
       <Step name="name" question="what is your name?">
-        <TextField label="name" value={name} onChange={setName} required />
+        <TextField label="name" value={name} onChange={setName} required schema={NAME_SCHEMA} />
       </Step>
 
       <Step name="branch" question="want the extra question?">
@@ -284,6 +289,26 @@ describe("Wizard shell", () => {
     // Back on the review step, with the answers intact.
     await waitForFrame(d, "review");
     expect(d.lastFrame()).toContain("Ada");
+    d.unmount();
+  });
+
+  test("a field validates what it would submit, not a trimmed copy of it", async () => {
+    let submitted: string | undefined;
+    const d = drive({
+      onSubmit: async () => {
+        submitted = "reached";
+      },
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write(" Ada ");
+    await d.press("return");
+
+    // The step keeps the value as typed, so it must refuse it here rather than
+    // pass a trimmed copy and submit the padded one.
+    await waitForFrame(d, "letters only");
+    expect(d.lastFrame()).toContain("what is your name?");
+    expect(submitted).toBeUndefined();
     d.unmount();
   });
 

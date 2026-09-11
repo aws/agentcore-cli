@@ -3,7 +3,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
-import { type EnvVar } from "../../../../projectSchemas/runtime";
+import { RuntimeNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import { NetworkModeSchema } from "../../../../projectSchemas/constants";
 import { SourceResolver } from "../../../../io";
@@ -52,7 +52,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
     name: "runtime",
     description: "add a Runtime to the current project",
     flags: [
-      flag("name", "the name of the Runtime", z.string().max(42).optional()),
+      flag("name", "the name of the Runtime", RuntimeNameSchema.optional()),
       flag("description", "an optional description of the Runtime", z.string().optional()),
       flag(
         "type",

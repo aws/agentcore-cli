@@ -54,3 +54,27 @@ export function withTuiOnEmptyFlagsAndArgs(core: Core, io: AppIO): Middleware {
     },
   });
 }
+
+// withTuiWhenInteractive is withTuiOnEmptyFlagsAndArgs behind a TTY gate: a bare
+// invocation opens the TUI only in an interactive session. The gate sits here
+// rather than inside renderTui so that a piped or CI run stays headless and
+// reports a missing required flag as the usage error it is, instead of
+// renderTui's "interactive mode requires a TTY".
+export function withTuiWhenInteractive(core: Core, io: AppIO): Middleware {
+  const withTui = withTuiOnEmptyFlagsAndArgs(core, io);
+  const isInteractive = () => io.stdin.isTTY === true && io.stdout.isTTY === true;
+
+  return (h) => {
+    const interactive = withTui(h);
+    return {
+      name: () => h.name(),
+      description: () => h.description(),
+      flags: () => h.flags(),
+      arguments: () => h.arguments(),
+      doesSupportTui: () => h.doesSupportTui(),
+      children: () => h.children(),
+      handle: (ctx, flags, args) =>
+        isInteractive() ? interactive.handle(ctx, flags, args) : h.handle(ctx, flags, args),
+    };
+  };
+}
