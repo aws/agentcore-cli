@@ -61,15 +61,18 @@ async function capture(args: string[], stdin?: string): Promise<CreatePaymentIns
 }
 
 describe("payment instrument wallet inputs", () => {
-  test.each([{ flags: shorthand }, { flags: ["--phone-number", "+15555550100"] }])(
+  test.each([
+    { flags: shorthand, conflict: "network" },
+    { flags: ["--phone-number", "+15555550100"], conflict: "phone-number" },
+  ])(
     "rejects shorthand $flags alongside JSON before reading stdin",
-    async ({ flags }) => {
+    async ({ flags, conflict }) => {
       const core = createFixtureCore();
       const create = spyOn(core.payment, "createPaymentInstrument");
       const io = testIO({ stdin: "{}" });
       await expect(
         run(["create", ...connectorScoped, ...flags, "--instrument-details", "-"], core, io),
-      ).rejects.toThrow("--instrument-details is mutually exclusive with");
+      ).rejects.toThrow(`--instrument-details, --${conflict} are mutually exclusive`);
       expect(create).not.toHaveBeenCalled();
       expect(io.io.stdin.readableLength).toBe(2);
     },

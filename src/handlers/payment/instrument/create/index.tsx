@@ -10,7 +10,7 @@ import { type AppIO, SourceResolver } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonObjectFlag } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonObjectFlag } from "../../../utils";
 import type { CreatePaymentInstrumentInput } from "../../types";
 
 // Pinning these lists against the SDK types turns a new enum value into a
@@ -113,15 +113,11 @@ async function resolveWallet(
   flags: WalletFlags,
   source: SourceResolver,
 ): Promise<EmbeddedCryptoWallet> {
-  const shorthandUsed =
-    flags.network !== undefined || flags.email !== undefined || flags["phone-number"] !== undefined;
+  for (const name of ["network", "email", "phone-number"]) {
+    assertMutuallyExclusiveFlags(flags, ["instrument-details", name]);
+  }
 
   if (flags["instrument-details"] !== undefined) {
-    if (shorthandUsed) {
-      throw new InputValidationError(
-        "--instrument-details is mutually exclusive with --network, --email, and --phone-number",
-      );
-    }
     return parseJsonObjectFlag<EmbeddedCryptoWallet>(
       "instrument-details",
       await source.resolveText("instrument-details", flags["instrument-details"]),
