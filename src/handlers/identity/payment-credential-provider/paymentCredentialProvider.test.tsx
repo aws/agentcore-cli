@@ -236,12 +236,12 @@ describe("payment-credential-provider flag validation", () => {
     [
       "CoinbaseCDP without an api key secret",
       ["create", ...COINBASE_FLAGS],
-      "either --api-key-secret or --api-key-secret-reference is required",
+      "specify exactly one of --api-key-secret, --api-key-secret-reference",
     ],
     [
       "CoinbaseCDP without a wallet secret",
       ["create", ...COINBASE_FLAGS, "--api-key-secret", "-"],
-      "either --wallet-secret or --wallet-secret-reference is required",
+      "specify exactly one of --wallet-secret, --wallet-secret-reference",
     ],
     [
       "CoinbaseCDP with both api key secret forms",
@@ -255,12 +255,12 @@ describe("payment-credential-provider flag validation", () => {
         "--wallet-secret-reference",
         SECRET_REFERENCE_JSON,
       ],
-      "--api-key-secret and --api-key-secret-reference are mutually exclusive",
+      "specify exactly one of --api-key-secret, --api-key-secret-reference",
     ],
     [
       "StripePrivy without an app secret",
       ["create", ...STRIPE_FLAGS, "--authorization-private-key-reference", SECRET_REFERENCE_JSON],
-      "either --app-secret or --app-secret-reference is required",
+      "specify exactly one of --app-secret, --app-secret-reference",
     ],
     [
       "StripePrivy with both authorization private key forms",
@@ -274,7 +274,7 @@ describe("payment-credential-provider flag validation", () => {
         "--authorization-private-key-reference",
         SECRET_REFERENCE_JSON,
       ],
-      "--authorization-private-key and --authorization-private-key-reference are mutually exclusive",
+      "specify exactly one of --authorization-private-key, --authorization-private-key-reference",
     ],
     [
       "inline api key secret value",
