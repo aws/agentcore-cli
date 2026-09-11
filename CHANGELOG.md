@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.29.0] - 2026-09-11
+
+### Added
+- feat(schema): add ap-south-2 (HYD) and us-west-1 (SFO) to region allowlist (#2132) (543a6da3)
+- feat(capacity-provider): complete CLI DevEx for journeys 2-4 (attach, volumes, TUI wizard, J4 delete-session) (#2133) (cbce8621)
+- feat(capacity-provider): restore Journey 1 (#2114) (df5a4061)
+
+### Fixed
+- fix(security): harden Windows subprocess argument handling (#2252) (d7c0add1)
+
+### Other Changes
+- Bump aws-opentelemetry-distro to ~= 0.18.0 in Python templates (#2287) (86f9ae0b)
+- Move PR-review Slack notifications to CodeBuild runner (#2261) (5b7a0405)
+- Bump agentcore-devx-devtools reusable workflow pin (#2260) (f0c0ceaf)
+- ci(release): placeholder release-prepare workflow so refactor's can be dispatched (#2226) (31e98b7a)
+
 ## [0.28.1] - 2026-08-27
 
 ### Added

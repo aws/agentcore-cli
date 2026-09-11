@@ -535,6 +535,32 @@
                   },
                   "required": ["s3FilesAccessPoint"],
                   "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "capacityProviderVolume": {
+                      "type": "object",
+                      "properties": {
+                        "volumeName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 48,
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,47}$"
+                        },
+                        "mountPath": {
+                          "type": "string",
+                          "minLength": 6,
+                          "maxLength": 200,
+                          "pattern": "^\\/mnt\\/[a-zA-Z0-9._-]+\\/?$"
+                        }
+                      },
+                      "required": ["volumeName", "mountPath"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["capacityProviderVolume"],
+                  "additionalProperties": false
                 }
               ]
             }
@@ -740,6 +766,22 @@
               "required": ["to"],
               "additionalProperties": false
             }
+          },
+          "capacityProviderConfiguration": {
+            "type": "object",
+            "properties": {
+              "capacityProviderArn": {
+                "type": "string",
+                "pattern": "^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\\d{12}:capacity-provider\\/[a-zA-Z][a-zA-Z0-9_]{0,47}-[a-zA-Z0-9]{10}$"
+              },
+              "capacityProviderName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 48,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": ["name", "build", "entrypoint", "codeLocation"],
@@ -3124,6 +3166,181 @@
           }
         },
         "required": ["name", "schemaType", "config"],
+        "additionalProperties": false
+      }
+    },
+    "capacityProviders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "operatorRoleArn": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "pattern": "^arn:[^:]+:iam::([0-9]{12})?:role\\/.+$"
+          },
+          "computeConfiguration": {
+            "type": "object",
+            "properties": {
+              "ec2Configuration": {
+                "type": "object",
+                "properties": {
+                  "launchTemplateSource": {
+                    "type": "object",
+                    "properties": {
+                      "launchParameters": {
+                        "type": "object",
+                        "properties": {
+                          "operatingSystem": {
+                            "type": "string",
+                            "enum": ["LINUX_X86_64", "LINUX_ARM64"]
+                          },
+                          "instanceRequirements": {
+                            "type": "object",
+                            "properties": {
+                              "allowedInstanceTypes": {
+                                "minItems": 1,
+                                "maxItems": 30,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 255
+                                }
+                              }
+                            },
+                            "required": ["allowedInstanceTypes"],
+                            "additionalProperties": false
+                          },
+                          "instanceProfileArn": {
+                            "type": "string",
+                            "pattern": "^arn:[^:]+:iam::[0-9]{12}:instance-profile\\/.+$"
+                          }
+                        },
+                        "required": ["operatingSystem", "instanceRequirements"],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": ["launchParameters"],
+                    "additionalProperties": false
+                  },
+                  "vpcConfiguration": {
+                    "type": "object",
+                    "properties": {
+                      "subnets": {
+                        "minItems": 1,
+                        "maxItems": 16,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^subnet-[0-9a-zA-Z]{8,17}$"
+                        }
+                      },
+                      "securityGroups": {
+                        "minItems": 1,
+                        "maxItems": 16,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^sg-[0-9a-zA-Z]{8,17}$"
+                        }
+                      }
+                    },
+                    "required": ["subnets", "securityGroups"],
+                    "additionalProperties": false
+                  },
+                  "volumes": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ebsConfiguration": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 48,
+                              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,47}$"
+                            },
+                            "sizeGiB": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 65536
+                            },
+                            "volumeType": {
+                              "type": "string",
+                              "enum": ["standard", "io1", "io2", "gp2", "sc1", "st1", "gp3"]
+                            },
+                            "encrypted": {
+                              "type": "boolean"
+                            },
+                            "kmsKeyId": {
+                              "type": "string",
+                              "pattern": "^arn:[^:]+:kms:[a-z0-9-]+:[0-9]{12}:key\\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                            }
+                          },
+                          "required": ["name", "sizeGiB"],
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": ["ebsConfiguration"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "lifecycleConfiguration": {
+                    "type": "object",
+                    "properties": {
+                      "idleInstanceTimeout": {
+                        "type": "integer",
+                        "minimum": 60,
+                        "maximum": 1209600
+                      },
+                      "maxLifetime": {
+                        "type": "integer",
+                        "minimum": 60,
+                        "maximum": 1209600
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["launchTemplateSource", "vpcConfiguration"],
+                "additionalProperties": {}
+              }
+            },
+            "required": ["ec2Configuration"],
+            "additionalProperties": false
+          },
+          "tags": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
+            }
+          }
+        },
+        "required": ["name", "computeConfiguration"],
         "additionalProperties": false
       }
     },
