@@ -12,28 +12,32 @@ export const createGetPaymentInstrumentBalanceHandler = (core: Core) =>
     name: "balance",
     description: "get a payment instrument's token balance on a specific chain",
     flags: [
-      flag("manager-id", "the payment manager ID that owns the instrument", z.string().optional()),
-      flag(
-        "user-id",
-        "the user the instrument belongs to (required for IAM-authenticated calls)",
-        z.string().optional(),
-      ),
-      flag("agent-name", "agent name recorded for observability", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
       flag(
         "connector-id",
-        "the payment connector the instrument was created under",
+        "the instrument's payment connector ID (required)",
         z.string().optional(),
       ),
-      flag("instrument-id", "the payment instrument id", z.string().optional()),
+      flag("instrument-id", "the payment instrument ID (required)", z.string().optional()),
+      flag(
+        "user-id",
+        "the application user ID associated with the instrument (required)",
+        z.string().optional(),
+      ),
       flag(
         "chain",
-        `the blockchain chain to query (${Object.values(BlockchainChainId).join(" | ")})`,
+        `the blockchain chain to query (required; ${Object.values(BlockchainChainId).join(" | ")})`,
         z.enum(BlockchainChainId).optional(),
       ),
       flag(
         "token",
-        `the token to query (${Object.values(InstrumentBalanceToken).join(" | ")}; default USDC)`,
+        `the token to query (${Object.values(InstrumentBalanceToken).join(" | ")})`,
         z.enum(InstrumentBalanceToken).default(InstrumentBalanceToken.USDC),
+      ),
+      flag(
+        "agent-name",
+        "optional observability label, not an agent selector",
+        z.string().optional(),
       ),
     ],
     handle: async (ctx, flags) => {

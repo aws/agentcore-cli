@@ -9,17 +9,21 @@ import type { ListPaymentSessionsInput } from "../../types";
 export const createListPaymentSessionsHandler = (core: Core) =>
   createHandler({
     name: "list",
-    description: "list a user's payment sessions under a payment manager (server-side paginated)",
+    description: "list an application user's payment sessions under a payment manager",
     flags: [
-      flag("manager-id", "the payment manager ID that owns the sessions", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
       flag(
         "user-id",
-        "the user whose sessions to list (required for IAM-authenticated calls)",
+        "the application user ID to list sessions for (required)",
         z.string().optional(),
       ),
-      flag("agent-name", "agent name recorded for observability", z.string().optional()),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),
+      flag(
+        "agent-name",
+        "optional observability label, not an agent selector",
+        z.string().optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags["manager-id"]) {

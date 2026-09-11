@@ -12,8 +12,8 @@ export const createGetPaymentConnectorHandler = (core: Core, io: AppIO) =>
     name: "get",
     description: "get a payment connector by id",
     flags: [
-      flag("manager-id", "the parent payment manager id", z.string().optional()),
-      flag("connector-id", "the payment connector id", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
+      flag("connector-id", "the payment connector ID (required)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags["manager-id"]) {

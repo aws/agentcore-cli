@@ -210,28 +210,48 @@ no project involved. This command family currently provides read-only inspection
 of existing managers, connectors, sessions, instruments, and payment credential
 providers. It does not create IAM roles or change provider credentials.
 
+Choose a manager from `manager list` and use its `paymentManagerId` below:
+
 ```bash
-# Inspect managers and their connectors.
 agentcore payment manager list --json
-agentcore payment manager get --id <manager id>
-agentcore payment connector list --manager-id <manager id>
-agentcore payment connector get --manager-id <manager id> --connector-id <connector id>
-
-# Inspect provider metadata stored in AgentCore Identity.
-agentcore identity payment-credential-provider list --json
-agentcore identity payment-credential-provider get --name <provider name>
-
-# Session and instrument commands take the parent manager ID and a user id.
-agentcore payment session list --manager-id <manager id> --user-id alice
-agentcore payment instrument list --manager-id <manager id> --user-id alice
-
-# Check funding on one chain. USDC is the default token.
-agentcore payment instrument balance --manager-id <manager id> --user-id alice \
-  --connector-id <connector id> --instrument-id <instrument id> --chain BASE_SEPOLIA
+MANAGER_ID='<paymentManagerId from manager list>'
+agentcore payment manager get --id "$MANAGER_ID"
+agentcore payment connector list --manager-id "$MANAGER_ID"
 ```
 
+`--user-id` is the application user ID used when the session or instrument was
+created, not an IAM username or AWS profile. Session and instrument reads require
+it with IAM authentication; their lists return that user's resources, not every
+user's resources under the manager.
+
+```bash
+USER_ID='alice' # Use the application user ID associated with the resources.
+agentcore payment session list --manager-id "$MANAGER_ID" --user-id "$USER_ID"
+agentcore payment instrument list --manager-id "$MANAGER_ID" --user-id "$USER_ID"
+
+# Use paymentInstrumentId and paymentConnectorId from the same instrument list item.
+INSTRUMENT_ID='<paymentInstrumentId>'
+CONNECTOR_ID='<paymentConnectorId>'
+agentcore payment instrument get --manager-id "$MANAGER_ID" \
+  --instrument-id "$INSTRUMENT_ID" --user-id "$USER_ID"
+agentcore payment instrument balance --manager-id "$MANAGER_ID" \
+  --connector-id "$CONNECTOR_ID" --instrument-id "$INSTRUMENT_ID" \
+  --user-id "$USER_ID" --chain BASE_SEPOLIA
+```
+
+To inspect connector or credential provider metadata:
+
+```bash
+agentcore payment connector get --manager-id "$MANAGER_ID" --connector-id "$CONNECTOR_ID"
+agentcore identity payment-credential-provider list --json
+agentcore identity payment-credential-provider get --name '<provider name>'
+```
+
+The optional `--agent-name` on session and instrument reads labels the request for
+observability. It does not select an AgentCore agent or filter the results.
+
 `instrument get` returns instrument metadata without querying balances. `balance`
-requires an explicit chain and accepts `--token USDC`; wallet network families
+requires an explicit chain and defaults to `--token USDC`; wallet network families
 such as ETHEREUM do not identify whether to query mainnet or a testnet. The JSON
 response retains the raw atomic amount string and decimals. A service error is
 reported as an error, never converted to a zero balance.

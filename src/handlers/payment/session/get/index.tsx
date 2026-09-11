@@ -11,14 +11,18 @@ export const createGetPaymentSessionHandler = (core: Core) =>
     name: "get",
     description: "get a payment session by id",
     flags: [
-      flag("manager-id", "the payment manager ID that owns the session", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
+      flag("session-id", "the payment session ID (required)", z.string().optional()),
       flag(
         "user-id",
-        "the user the session is scoped to (required for IAM-authenticated calls)",
+        "the application user ID associated with the session (required)",
         z.string().optional(),
       ),
-      flag("agent-name", "agent name recorded for observability", z.string().optional()),
-      flag("session-id", "the payment session id", z.string().optional()),
+      flag(
+        "agent-name",
+        "optional observability label, not an agent selector",
+        z.string().optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       if (!flags["manager-id"]) {
