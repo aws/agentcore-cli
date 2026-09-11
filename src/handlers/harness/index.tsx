@@ -22,6 +22,17 @@ export function createHarnessHandler(core: Core, io: AppIO): Router {
   harness.use(withTuiOnEmptyFlagsAndArgs(core, io));
   // Open the TUI at this root, i.e., `agentcore harness`
   harness.default(renderTui(core, io));
+  harness.supportedTuiCommands(
+    "create",
+    "get",
+    "list",
+    "update",
+    "delete",
+    "invoke",
+    "exec",
+    "endpoint",
+    "version",
+  );
 
   // Register handlers
   harness.handler(createCreateHarnessHandler(core));

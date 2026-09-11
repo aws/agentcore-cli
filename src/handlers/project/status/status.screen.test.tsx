@@ -4,15 +4,13 @@ import type {
   GetHarnessResponse,
   GetMemoryOutput,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
 import { RegionKey } from "../../keys";
 import {
   cleanupScreens,
   flatFrame,
+  inTempDirectory,
   renderScreen,
   TestCoreClient,
   waitForFlatText,
@@ -20,16 +18,9 @@ import {
 } from "../../../testing";
 import type { Project, ResolvedProjectResource } from "../types";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
+const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 // The target region differs from the base context's us-east-1 on purpose, so
 // the detail screens are linked with the region the project deployed in.
@@ -301,9 +292,7 @@ describe("project status screen", () => {
   });
 
   test("reports the CLI's own guidance outside a project", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "agentcore-status-no-project-"));
-    tempDirectories.push(directory);
-    process.chdir(directory);
+    cleanups.push((await inTempDirectory()).cleanup);
     const screen = renderScreen("/agentcore/project/status", { core: core() });
 
     await waitForFlatText(screen.lastFrame, "No AgentCore project found");

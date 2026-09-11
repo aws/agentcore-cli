@@ -259,7 +259,7 @@ describe("flag validation", () => {
         "--role-arn",
         FIXTURE_ROLE_ARN,
       ]),
-    ).rejects.toThrow(/exactly one of '--agent' or '--data-source-config'/);
+    ).rejects.toThrow(/exactly one of --agent, --data-source-config/);
   });
 
   test("create rejects both --agent and --data-source-config", async () => {
@@ -281,7 +281,7 @@ describe("flag validation", () => {
         "--role-arn",
         FIXTURE_ROLE_ARN,
       ]),
-    ).rejects.toThrow(/exactly one of '--agent' or '--data-source-config'/);
+    ).rejects.toThrow(/exactly one of --agent, --data-source-config/);
   });
 
   test("create rejects --endpoint without --agent", async () => {
@@ -355,7 +355,7 @@ describe("flag validation", () => {
         "--data-source-config",
         '{"cloudWatchLogs":{"logGroupNames":["/custom"],"serviceNames":["svc"]}}',
       ]),
-    ).rejects.toThrow(/'--agent' and '--data-source-config' are mutually exclusive/);
+    ).rejects.toThrow(/--agent, --data-source-config are mutually exclusive/);
   });
 
   test("update rejects --endpoint together with --data-source-config", async () => {

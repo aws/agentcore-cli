@@ -4,7 +4,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import type { AppIO } from "../../../../io";
-import { coreOptsFromCtx, parseTags } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseTags } from "../../../utils";
 import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../parser";
 
@@ -31,20 +31,11 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
       if (!flags.name) {
         throw new InputValidationError("required option '--name <name>' not specified");
       }
+      assertMutuallyExclusiveFlags(flags, ["api-key", "api-key-secret-reference"], {
+        exactlyOne: true,
+      });
       const hasApiKey = flags["api-key"] !== undefined;
       const hasSecretRef = flags["api-key-secret-reference"] !== undefined;
-
-      if (hasApiKey && hasSecretRef) {
-        throw new InputValidationError(
-          "--api-key and --api-key-secret-reference are mutually exclusive",
-        );
-      }
-
-      if (!hasApiKey && !hasSecretRef) {
-        throw new InputValidationError(
-          "either --api-key or --api-key-secret-reference is required",
-        );
-      }
 
       const resolver = new SourceResolver({ stdin: io.stdin });
       const apiKey = await resolver.resolveSecret("api-key", flags["api-key"]);

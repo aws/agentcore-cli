@@ -5,7 +5,7 @@ import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 
 export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -70,13 +70,9 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         );
       }
 
+      assertMutuallyExclusiveFlags(flags, ["agent", "data-source-config"], { exactlyOne: true });
       const hasAgent = flags["agent"] !== undefined;
       const hasDataSource = flags["data-source-config"] !== undefined;
-      if (hasAgent === hasDataSource) {
-        throw new InputValidationError(
-          "specify exactly one of '--agent' or '--data-source-config'",
-        );
-      }
       if (hasDataSource && flags["endpoint"]) {
         throw new InputValidationError("'--endpoint' can only be used with '--agent'");
       }

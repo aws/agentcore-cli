@@ -1,9 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -21,8 +20,7 @@ export async function writeProjectSpec(projectRoot: string, spec: unknown): Prom
 }
 
 export function createGatewayProjectTestHarness(directoryPrefix: string) {
-  const originalCwd = process.cwd();
-  const tempDirectories: string[] = [];
+  const cleanups: Array<() => Promise<void>> = [];
 
   async function run(args: string[], stdin?: string) {
     const io = testIO();
@@ -37,33 +35,25 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
   }
 
   async function inProject(name = "TestProject"): Promise<string> {
-    const directory = await mkdtemp(join(tmpdir(), `agentcore-${directoryPrefix}-`));
-    tempDirectories.push(directory);
-    process.chdir(directory);
-    await run([
-      "create",
-      "--name",
+    const { projectRoot, cleanup } = await initProject({
       name,
-      "--template",
-      "agent-python-minimal",
-      "--skip-install",
-      "--skip-git",
-    ]);
-    const projectRoot = join(directory, name);
-    process.chdir(projectRoot);
-    return process.cwd();
+      flags: ["--template", "agent-python-minimal"],
+      prefix: `agentcore-${directoryPrefix}-`,
+    });
+    cleanups.push(cleanup);
+    return projectRoot;
   }
 
   async function addGateway(name = "tools"): Promise<void> {
     await run(["add", "gateway", "--name", name]);
   }
 
-  async function cleanup(): Promise<void> {
-    process.chdir(originalCwd);
-    await Promise.all(
-      tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-    );
-  }
-
-  return { addGateway, cleanup, inProject, projectSpec, run, writeProjectSpec };
+  return {
+    addGateway,
+    cleanup: () => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())),
+    inProject,
+    projectSpec,
+    run,
+    writeProjectSpec,
+  };
 }

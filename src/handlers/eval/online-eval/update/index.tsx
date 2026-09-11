@@ -6,7 +6,7 @@ import { JsonKey } from "../../../keys";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 
 export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -64,11 +64,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
           "'--endpoint' and '--clear-endpoint' are mutually exclusive",
         );
       }
-      if (flags["data-source-config"] && flags["agent"]) {
-        throw new InputValidationError(
-          "'--agent' and '--data-source-config' are mutually exclusive",
-        );
-      }
+      assertMutuallyExclusiveFlags(flags, ["agent", "data-source-config"]);
       if (
         flags["data-source-config"] &&
         (flags["endpoint"] || flags["clear-endpoint"] === "true")

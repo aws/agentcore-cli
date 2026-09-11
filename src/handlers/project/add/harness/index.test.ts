@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../../../index";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -13,22 +12,8 @@ import {
 import { DeserializationError, InputValidationError } from "../../../../errors";
 import { FsReadWriteJson, type ReadWriteJson } from "../../../../io";
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-harness-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function run(args: string[], opts?: { core?: TestCoreClient }) {
   const io = testIO();
@@ -40,14 +25,6 @@ async function run(args: string[], opts?: { core?: TestCoreClient }) {
   });
   await root.route(["node", "agentcore", "project", ...args]);
   return { io, core };
-}
-
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
 }
 
 describe("project add harness", () => {
@@ -434,7 +411,8 @@ describe("project add harness", () => {
       { maxIterations: 10, maxTokens: 4096, timeoutSeconds: 60 },
     ],
   ])("%s", async (_label, flags, expected) => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "harness", ...flags]);
 
     const harnessJson = await Bun.file(join(projectRoot, "app", "x", "harness.json")).json();
@@ -448,7 +426,8 @@ describe("project add harness", () => {
   });
 
   test("--system-prompt overrides the default system-prompt.md", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "harness", "--name", "x", "--system-prompt", "You are a pirate."]);
 
     const prompt = await Bun.file(join(projectRoot, "app", "x", "system-prompt.md")).text();
@@ -459,7 +438,8 @@ describe("project add harness", () => {
   });
 
   test("--dockerfile copies the file into the harness directory and stores the relative path", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     const dockerfilePath = join(projectRoot, "Dockerfile");
     await Bun.write(dockerfilePath, "FROM python:3.12-slim\nCOPY . /app\n");
@@ -474,7 +454,8 @@ describe("project add harness", () => {
   });
 
   test("--dockerfile with VPC mode succeeds when vpcId is in network-config", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     const dockerfilePath = join(projectRoot, "Dockerfile");
     await Bun.write(dockerfilePath, "FROM python:3.12-slim\n");
@@ -505,7 +486,8 @@ describe("project add harness", () => {
   });
 
   test("--dockerfile with VPC mode fails without vpcId in network-config", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     const dockerfilePath = join(projectRoot, "Dockerfile");
     await Bun.write(dockerfilePath, "FROM python:3.12-slim\n");
@@ -527,7 +509,8 @@ describe("project add harness", () => {
   });
 
   test("rejects a duplicate harness name", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "harness", "--name", "x"]);
     await expect(run(["add", "harness", "--name", "x"])).rejects.toBeInstanceOf(
       InputValidationError,
@@ -535,7 +518,8 @@ describe("project add harness", () => {
   });
 
   test("cleans up scaffolded files when the spec write fails", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const logger = createSilentLogger();
     const realJson = new FsReadWriteJson({ logger });
 
@@ -554,7 +538,8 @@ describe("project add harness", () => {
   });
 
   test("rejects when the existing spec is invalid", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     const specPath = join(projectRoot, "agentcore", "agentcore.json");
     const spec = await Bun.file(specPath).json();
@@ -631,7 +616,8 @@ describe("project add harness", () => {
       ],
     ],
   ])("%s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);
   });
 });

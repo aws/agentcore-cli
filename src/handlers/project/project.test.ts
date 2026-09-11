@@ -1,11 +1,12 @@
 import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
 import {
   createSilentLogger,
+  initProject,
+  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -28,47 +29,23 @@ async function run(
   return { io, core };
 }
 
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
+
 test("project status requires an AgentCore project", async () => {
-  await inTempDirectory();
+  cleanups.push((await inTempDirectory()).cleanup);
   await expect(run(["status"])).rejects.toThrow(/No AgentCore project found/);
 });
 
 test("project dev requires an AgentCore project", async () => {
-  await inTempDirectory();
+  cleanups.push((await inTempDirectory()).cleanup);
   await expect(run(["dev"])).rejects.toThrow(/No AgentCore project found/);
 });
 
-const originalCwd = process.cwd();
-const tempDirectories: string[] = [];
-
-async function inTempDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "agentcore-project-"));
-  tempDirectories.push(directory);
-  process.chdir(directory);
-  // cwd is the realpath (macOS tmpdir lives behind a /var -> /private/var
-  // symlink), matching the paths the manager derives from process.cwd().
-  return process.cwd();
-}
-
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
-
-/** Scaffolds a project and cds into it so withProject resolves it. */
-async function inProject(name = "TestProject"): Promise<string> {
-  const directory = await inTempDirectory();
-  await run(["create", "--name", name, "--skip-install", "--skip-git"]);
-  const projectRoot = join(directory, name);
-  process.chdir(projectRoot);
-  return projectRoot;
-}
-
 describe("project create", () => {
   test("--json returns the created project without human success text", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const { io } = await run([
       "create",
       "--name",
@@ -88,7 +65,8 @@ describe("project create", () => {
   });
 
   test("scaffolds a harness project by default, named for the project", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run(["create", "--name", "MyAgent"]);
 
     const projectRoot = join(directory, "MyAgent");
@@ -108,7 +86,9 @@ describe("project create", () => {
   });
 
   test("refuses a project root that would exceed MAX_PATH on Windows, leaving nothing behind", async () => {
-    const deep = join(await inTempDirectory(), "n".repeat(120));
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const deep = join(path, "n".repeat(120));
     await mkdir(deep);
     process.chdir(deep);
 
@@ -122,7 +102,8 @@ describe("project create", () => {
   });
 
   test("a harness create installs CDK dependencies and git only (no uv sync)", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const { core } = await run(["create", "--name", "MyAgent"]);
 
     const projectRoot = join(directory, "MyAgent");
@@ -136,7 +117,8 @@ describe("project create", () => {
   });
 
   test("the empty template scaffolds a project with no runtime and no harness", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -155,21 +137,22 @@ describe("project create", () => {
   });
 
   test("rejects --model-provider with the empty template", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(
       run(["create", "--name", "MyAgent", "--template", "empty", "--model-provider", "anthropic"]),
     ).rejects.toThrow(/--model-provider only applies to runtime templates/);
   });
 
   test("rejects --model-provider without a template", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(
       run(["create", "--name", "MyAgent", "--model-provider", "anthropic"]),
     ).rejects.toThrow(/--model-provider only applies to runtime templates/);
   });
 
   test("rejects --api-key with a template that does not support it", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await expect(
       run(
         [
@@ -190,7 +173,7 @@ describe("project create", () => {
   });
 
   test("rejects --model-provider with a template that does not support it", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(
       run([
         "create",
@@ -207,7 +190,8 @@ describe("project create", () => {
   });
 
   test("runs the post-scaffold steps and reports progress on stderr", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const { io, core } = await run([
       "create",
       "--name",
@@ -234,14 +218,15 @@ describe("project create", () => {
   });
 
   test("--skip-install and --skip-git run no commands", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     const { core } = await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
 
     expect(core.projectCommands).toEqual([]);
   });
 
   test("scaffolds the strands template with longAndShortTerm memory pre-configured", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -274,7 +259,8 @@ describe("project create", () => {
   });
 
   test("scaffolds a keyless LiteLLM runtime with no credential", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -299,7 +285,8 @@ describe("project create", () => {
     ["gemini", "agent_python_strandsGeminiApiKey"],
     ["lite_llm", "agent_python_strandsLiteLLMApiKey"],
   ])("scaffolds a runtime with a %s API-key credential", async (provider, credentialName) => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const apiKeyPath = join(directory, "api-key.txt");
     await Bun.write(apiKeyPath, "test-api-key");
 
@@ -328,7 +315,8 @@ describe("project create", () => {
   });
 
   test("scaffolds a Container agent from the strands -container template", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -354,7 +342,8 @@ describe("project create", () => {
   });
 
   test("omits the Dockerfile from a CodeZip strands template", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -371,7 +360,8 @@ describe("project create", () => {
   });
 
   test("generates uv.lock for a Container scaffold even with --skip-install", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     const { core } = await run([
       "create",
       "--name",
@@ -389,7 +379,8 @@ describe("project create", () => {
   });
 
   test("scaffolds an MCP server from the mcp-python-fastmcp template (CodeZip default)", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -418,7 +409,8 @@ describe("project create", () => {
   });
 
   test("scaffolds the minimal Python template", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -444,7 +436,8 @@ describe("project create", () => {
   });
 
   test("renders the LangChain template's pyproject name and no credentials", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -465,7 +458,8 @@ describe("project create", () => {
   });
 
   test("scaffolds a TypeScript strands runtime with memory pre-configured", async () => {
-    const directory = await inTempDirectory();
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
     await run([
       "create",
       "--name",
@@ -495,17 +489,17 @@ describe("project create", () => {
   });
 
   test("rejects an invalid --name", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["create", "--name", "1-bad"])).rejects.toThrow();
   });
 
   test("rejects a reserved --name", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["create", "--name", "test"])).rejects.toThrow(/conflicts with/);
   });
 
   test("rejects an unknown --template value", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["create", "--name", "MyAgent", "--template", "nonsense"])).rejects.toThrow();
   });
 });
@@ -521,7 +515,8 @@ describe("project add config-bundle", () => {
   };
 
   test("adds a configuration bundle to agentcore.json", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run([
       "add",
       "config-bundle",
@@ -544,7 +539,8 @@ describe("project add config-bundle", () => {
   });
 
   test("stores optional configuration bundle fields", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const kmsKeyArn = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012";
 
     await run([
@@ -577,7 +573,8 @@ describe("project add config-bundle", () => {
   });
 
   test("reads components from a file", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const componentsPath = join(projectRoot, "components.json");
     await Bun.write(componentsPath, JSON.stringify(components));
 
@@ -595,7 +592,8 @@ describe("project add config-bundle", () => {
   });
 
   test("adds no files under app", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     await run([
       "add",
@@ -610,7 +608,8 @@ describe("project add config-bundle", () => {
   });
 
   test("rejects a duplicate configuration bundle name", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const args = [
       "add",
       "config-bundle",
@@ -690,7 +689,8 @@ describe("project add config-bundle", () => {
       ],
     ],
   ])("rejects %s", async (_label, flags) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "config-bundle", ...flags])).rejects.toBeInstanceOf(
       InputValidationError,
     );
@@ -699,7 +699,8 @@ describe("project add config-bundle", () => {
 
 describe("project add credentials", () => {
   test("--json reports the credential without exposing its secret", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const keyPath = join(projectRoot, "key.txt");
     await Bun.write(keyPath, "sk-secret-value\n");
 
@@ -724,7 +725,8 @@ describe("project add credentials", () => {
   });
 
   test("api-key with a file:// secret records the spec entry and stores the trailing-newline-stripped key in .env.local", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const keyPath = join(projectRoot, "key.txt");
     // The trailing newline mirrors `echo` and editor output; it must not reach the value.
     await Bun.write(keyPath, "sk-123\n");
@@ -750,7 +752,8 @@ describe("project add credentials", () => {
   });
 
   test("api-key without a secret writes a commented placeholder and tells the user to fill it", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run(["add", "credentials", "api-key", "--name", "svc-key"]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
@@ -762,7 +765,8 @@ describe("project add credentials", () => {
   });
 
   test("--json reports credential setup guidance as structured notes", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     const { io } = await run(["add", "credentials", "api-key", "--name", "svc-key", "--json"]);
 
     expect(JSON.parse(io.stdout()).notes).toEqual([
@@ -772,7 +776,8 @@ describe("project add credentials", () => {
   });
 
   test("api-key with an external secret reference records it in the spec and skips .env.local", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const secretRef = {
       secretId: "arn:aws:secretsmanager:us-west-2:123456789012:secret:s",
       jsonKey: "apiKey",
@@ -799,7 +804,8 @@ describe("project add credentials", () => {
   const discoveryUrl = "https://idp.example.com/.well-known/openid-configuration";
 
   test("oauth custom with guided flags and a stdin secret records the spec entry and the secret", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     await run(
       [
@@ -838,7 +844,8 @@ describe("project add credentials", () => {
   });
 
   test("oauth vendored with --provider-configuration records the config and a secret placeholder", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
 
     const { io } = await run([
       "add",
@@ -870,7 +877,8 @@ describe("project add credentials", () => {
   });
 
   test("preserves existing .env.local content and never overwrites an existing key", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const envPath = join(projectRoot, "agentcore", ".env.local");
     const original = await Bun.file(envPath).text();
     await Bun.write(envPath, `${original}AGENTCORE_CREDENTIAL_SVC_KEY=user-managed\n`);
@@ -885,7 +893,8 @@ describe("project add credentials", () => {
   });
 
   test("creates .env.local when the project lacks one", async () => {
-    const projectRoot = await inProject();
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
     const envPath = join(projectRoot, "agentcore", ".env.local");
     await rm(envPath);
 
@@ -896,7 +905,8 @@ describe("project add credentials", () => {
   });
 
   test("rejects a duplicate credential name across credential types", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "credentials", "api-key", "--name", "dup"]);
     await expect(
       run(["add", "credentials", "oauth", "--name", "dup", "--discovery-url", discoveryUrl]),
@@ -904,7 +914,8 @@ describe("project add credentials", () => {
   });
 
   test("rejects two names that derive the same environment variable", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await run(["add", "credentials", "api-key", "--name", "svc-key"]);
     await expect(run(["add", "credentials", "api-key", "--name", "svc_key"])).rejects.toThrow(
       /same environment variable/,
@@ -912,7 +923,8 @@ describe("project add credentials", () => {
   });
 
   test("rejects different credential types that collide on one secret variable", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     // OAuth 'foo' → AGENTCORE_CREDENTIAL_FOO_CLIENT_SECRET; api-key 'foo_client_secret' → the same.
     await run(["add", "credentials", "oauth", "--name", "foo", "--discovery-url", discoveryUrl]);
     await expect(
@@ -921,7 +933,8 @@ describe("project add credentials", () => {
   });
 
   test("rejects a name ending in a field suffix even with nothing to collide with", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     // Nothing in the spec derives AGENTCORE_CREDENTIAL_SVC_CLIENT_ID, but a pre-0.29
     // OAuth credential named 'svc' would read it as its client id.
     await expect(run(["add", "credentials", "api-key", "--name", "svc-client-id"])).rejects.toThrow(
@@ -1010,7 +1023,8 @@ describe("project add credentials", () => {
       /secret material/,
     ],
   ])("rejects %s", async (_label, args, message) => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["add", "credentials", ...args], { stdin: "line1\nline2" })).rejects.toThrow(
       message,
     );
@@ -1019,7 +1033,8 @@ describe("project add credentials", () => {
 
 describe("project build", () => {
   async function inBuildableProject(): Promise<string> {
-    const projectRoot = await inProject("MyAgent");
+    const { projectRoot, cleanup } = await initProject({ name: "MyAgent" });
+    cleanups.push(cleanup);
     // create --skip-install leaves no node_modules, which build requires.
     await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
     return projectRoot;
@@ -1061,7 +1076,7 @@ describe("project build", () => {
   });
 
   test("fails with actionable guidance outside a project", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["build"])).rejects.toThrow(/No AgentCore project found/);
   });
 
@@ -1075,7 +1090,7 @@ describe("project build", () => {
 
 describe("project deploy", () => {
   test("requires an AgentCore project", async () => {
-    await inTempDirectory();
+    cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["deploy"])).rejects.toThrow(/No AgentCore project found/);
   });
 
@@ -1083,7 +1098,8 @@ describe("project deploy", () => {
   // of rejecting (covered with a stubbed backend in deploy/index.test.ts); only
   // a named target still demands configuration.
   test("rejects a project with no deployment targets for a named target", async () => {
-    await inProject();
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
     await expect(run(["deploy", "--target", "staging"])).rejects.toThrow(
       /No deployment targets are configured/,
     );
