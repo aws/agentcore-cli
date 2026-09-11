@@ -1,5 +1,5 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
 import { GatewayAuthorizerConfigSchema } from "../../../../projectSchemas/auth";
 import type { AgentCoreGateway } from "../../../../projectSchemas/gateway";
@@ -84,8 +84,8 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         flags["policy-engine-name"] &&
         !project.spec.policyEngines.some((engine) => engine.name === flags["policy-engine-name"])
       ) {
-        throw new InputValidationError(
-          `policy engine '${flags["policy-engine-name"]}' does not exist in policyEngines[]`,
+        throw new ResourceNotFoundError(
+          `no policy-engine named '${flags["policy-engine-name"]}' exists in this project`,
         );
       }
 

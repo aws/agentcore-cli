@@ -10,7 +10,11 @@ import {
   type AgentActionGroup,
   type AgentVersion,
 } from "@aws-sdk/client-bedrock-agent";
-import { InputValidationError, MalformedServiceResponseError } from "../../../errors";
+import {
+  InputValidationError,
+  MalformedServiceResponseError,
+  ResourceNotFoundError,
+} from "../../../errors";
 import type {
   BedrockAgentImportNote,
   BedrockAgentSnapshot,
@@ -140,8 +144,8 @@ export class BedrockAgentSnapshotLoader {
       ));
     } catch (error) {
       if (isNamedError(error, "ResourceNotFoundException")) {
-        throw new InputValidationError(
-          `Bedrock Agent '${input.agentId}' has no version '${input.agentVersion}' in ${input.region}`,
+        throw new ResourceNotFoundError(
+          `no version '${input.agentVersion}' exists for Bedrock Agent '${input.agentId}' in ${input.region}`,
           { cause: error },
         );
       }

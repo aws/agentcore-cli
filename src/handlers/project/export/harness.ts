@@ -1,5 +1,5 @@
 import z from "zod";
-import { InputValidationError } from "../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../errors";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import { JsonKey } from "../../keys";
@@ -45,7 +45,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
         const region = regionFromHarnessArn(flags.arn);
         const response = await config.core.harness.getHarness(harnessId, { ...coreOpts, region });
         if (!response.harness) {
-          throw new InputValidationError(`the service returned no harness for "${flags.arn}"`);
+          throw new ResourceNotFoundError(`no harness exists for '${flags.arn}'`);
         }
         const { spec, systemPrompt, notes } = mapServiceHarnessToSpec(response.harness);
         input = {

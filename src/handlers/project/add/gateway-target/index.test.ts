@@ -316,7 +316,7 @@ describe("project add gateway-target", () => {
     [
       "unknown credential",
       endpointFlags("--outbound-auth", "oauth", "--credential-name", "missing"),
-      "does not exist in credentials[]",
+      "no credential named 'missing' exists in this project",
     ],
     [
       "credential with wrong type",
@@ -326,7 +326,7 @@ describe("project add gateway-target", () => {
     [
       "unknown Gateway",
       ["--gateway", "missing", "--name", "target", "--endpoint", ENDPOINT],
-      "does not exist in this project; check agentCoreGateways in agentcore.json",
+      "no gateway named 'missing' exists in this project",
     ],
   ])("rejects %s", async (_label, flags, message) => {
     await projectWithCredentials();

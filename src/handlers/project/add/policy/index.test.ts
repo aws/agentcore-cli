@@ -120,7 +120,7 @@ describe("project add policy", () => {
     [
       "unknown engine",
       ["add", "policy", "--engine", "Missing", "--name", "P", "--statement", FORBID_ALL],
-      "policy engine 'Missing' does not exist",
+      "no policy-engine named 'Missing' exists in this project",
     ],
   ])("rejects %s", async (_label, args, message) => {
     await withEngine();

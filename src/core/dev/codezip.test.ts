@@ -102,7 +102,7 @@ describe("CodeZipDevRunner", () => {
     tempDirectories.push(root);
 
     await expect(collect(harness().runner.run(input(root, runtime())))).rejects.toThrow(
-      /runtime code directory not found/,
+      /no runtime code directory exists at/,
     );
   });
 

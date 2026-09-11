@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AssetSource } from "../source";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../../../errors";
-import { InputValidationError, ProjectStateError } from "../../../errors/errors";
+import { ProjectStateError, ResourceNotFoundError } from "../../../errors/errors";
 
 /**
  * FsTreeNode represents a tree of directories and files.
@@ -64,7 +64,7 @@ export class FsTreeNode {
   static fromTextFile(name: string, sourcePath: string): FsTreeNode {
     return FsTreeNode.createFile(name, async () => {
       if (!existsSync(sourcePath)) {
-        throw new InputValidationError(`file not found: '${sourcePath}'`);
+        throw new ResourceNotFoundError(`no source file exists at ${sourcePath}`);
       }
       return readFile(sourcePath, "utf-8");
     });

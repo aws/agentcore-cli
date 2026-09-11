@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import { InputValidationError, InvalidEnvironmentError } from "../../errors";
+import { InputValidationError, InvalidEnvironmentError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -518,8 +518,8 @@ describe("ContainerDevRunner", () => {
 
     const promise = collect(runner.run(input(root, runtime())));
 
-    await expect(promise).rejects.toBeInstanceOf(InputValidationError);
-    await expect(promise).rejects.toThrow(/build context directory not found/);
+    await expect(promise).rejects.toBeInstanceOf(ResourceNotFoundError);
+    await expect(promise).rejects.toThrow(/no container build context directory exists at/);
     expect(probes).toHaveLength(0);
     expect(calls).toHaveLength(0);
   });
@@ -539,8 +539,8 @@ describe("ContainerDevRunner", () => {
 
     const promise = collect(runner.run(input(root, projectRuntime)));
 
-    await expect(promise).rejects.toBeInstanceOf(InputValidationError);
-    await expect(promise).rejects.toThrow(/Dockerfile not found/);
+    await expect(promise).rejects.toBeInstanceOf(ResourceNotFoundError);
+    await expect(promise).rejects.toThrow(/no container Dockerfile exists at/);
     expect(probes).toHaveLength(0);
     expect(calls).toHaveLength(0);
   });

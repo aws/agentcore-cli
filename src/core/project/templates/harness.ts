@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { ZodError, z } from "zod";
 import { HarnessSpecSchema } from "../../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
-import { InputValidationError } from "../../../errors/errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../errors/errors";
 import type { TemplateResolver } from "./types";
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant";
@@ -43,7 +43,7 @@ export function getHarnessTemplateResolver(): TemplateResolver<z.input<typeof Ha
 
 export function validateHarnessTemplateSource(spec: z.input<typeof HarnessSpecSchema>): void {
   if (spec.dockerfile && !existsSync(spec.dockerfile)) {
-    throw new InputValidationError(`dockerfile not found: '${spec.dockerfile}'`);
+    throw new ResourceNotFoundError(`no dockerfile exists at ${spec.dockerfile}`);
   }
 }
 

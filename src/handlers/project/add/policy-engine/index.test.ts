@@ -109,7 +109,7 @@ describe("project add policy-engine", () => {
     const projectRoot = await inProject();
     await expect(
       run(["add", "policy-engine", "--name", "Guardrails", "--attach-to-gateways", "missing"]),
-    ).rejects.toThrow("gateway 'missing' does not exist");
+    ).rejects.toThrow("no gateway named 'missing' exists in this project");
     expect((await projectSpec(projectRoot)).policyEngines ?? []).toEqual([]);
   });
 

@@ -3,7 +3,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { InputValidationError, InvalidEnvironmentError } from "../../errors";
+import { InputValidationError, InvalidEnvironmentError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -80,7 +80,7 @@ export class ContainerDevRunner implements DevRunner {
       input.runtime.buildContextPath ?? input.runtime.codeLocation,
     );
     if (!isDirectory(context)) {
-      throw new InputValidationError(`container build context directory not found: ${context}`);
+      throw new ResourceNotFoundError(`no container build context directory exists at ${context}`);
     }
 
     resolvePathWithinProject(input.projectRoot, context, "container build context");
@@ -88,7 +88,7 @@ export class ContainerDevRunner implements DevRunner {
     const dockerfile = input.runtime.dockerfile ?? DOCKERFILE_NAME;
     const dockerfilePath = join(context, dockerfile);
     if (!isFile(dockerfilePath)) {
-      throw new InputValidationError(`container Dockerfile not found: ${dockerfilePath}`);
+      throw new ResourceNotFoundError(`no container Dockerfile exists at ${dockerfilePath}`);
     }
 
     const hasAwsCredentials = Boolean(

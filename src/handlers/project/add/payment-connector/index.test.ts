@@ -107,7 +107,7 @@ describe("project add payment-connector", () => {
         "connector",
         "--quick-create",
       ]),
-    ).rejects.toThrow("does not exist");
+    ).rejects.toThrow("no payment-manager named 'missing' exists in this project");
     await expect(
       run([
         "add",
@@ -119,7 +119,7 @@ describe("project add payment-connector", () => {
         "--credential",
         "missing",
       ]),
-    ).rejects.toThrow("does not exist in credentials[]");
+    ).rejects.toThrow("no credential named 'missing' exists in this project");
 
     expect((await projectSpec(projectRoot)).payments[0].connectors).toEqual([]);
   });

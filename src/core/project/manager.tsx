@@ -308,8 +308,8 @@ export class FsProjectManager implements ProjectManager {
         (candidate) => candidate.name === input.managerName,
       );
       if (!manager) {
-        throw new InputValidationError(
-          `payment manager '${input.managerName}' does not exist in this project`,
+        throw new ResourceNotFoundError(
+          `no payment-manager named '${input.managerName}' exists in this project`,
         );
       }
       if (manager.connectors.some((connector) => connector.name === input.resourceConfig.name)) {
@@ -432,8 +432,8 @@ export class FsProjectManager implements ProjectManager {
             (candidate) => candidate.name === gatewayName,
           );
           if (!gateway) {
-            throw new InputValidationError(
-              `gateway '${gatewayName}' does not exist in this project; check agentCoreGateways in agentcore.json`,
+            throw new ResourceNotFoundError(
+              `no gateway named '${gatewayName}' exists in this project`,
             );
           }
           gateway.policyEngineConfiguration = {
@@ -448,8 +448,8 @@ export class FsProjectManager implements ProjectManager {
           (candidate) => candidate.name === input.engineName,
         );
         if (!engine) {
-          throw new InputValidationError(
-            `policy engine '${input.engineName}' does not exist in this project; check policyEngines in agentcore.json`,
+          throw new ResourceNotFoundError(
+            `no policy-engine named '${input.engineName}' exists in this project`,
           );
         }
         engine.policies.push(parseResource(PolicySchema, input.resourceConfig));
@@ -460,8 +460,8 @@ export class FsProjectManager implements ProjectManager {
           (gateway) => gateway.name === input.gatewayName,
         );
         if (gatewayIndex < 0) {
-          throw new InputValidationError(
-            `gateway '${input.gatewayName}' does not exist in this project; check agentCoreGateways in agentcore.json`,
+          throw new ResourceNotFoundError(
+            `no gateway named '${input.gatewayName}' exists in this project`,
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
-import { InputValidationError } from "../../errors";
+import { ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   runProcess,
@@ -32,7 +32,7 @@ export class CodeZipDevRunner implements DevRunner {
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
     const directory = resolve(input.projectRoot, input.runtime.codeLocation);
     if (!isDirectory(directory)) {
-      throw new InputValidationError(`runtime code directory not found: ${directory}`);
+      throw new ResourceNotFoundError(`no runtime code directory exists at ${directory}`);
     }
     resolvePathWithinProject(input.projectRoot, directory, "runtime code directory");
 
@@ -46,7 +46,7 @@ export class CodeZipDevRunner implements DevRunner {
         : entrypoint!;
     const entrypointPath = resolve(directory, devEntrypoint);
     if (!isFile(entrypointPath)) {
-      throw new InputValidationError(`runtime entrypoint not found: ${entrypointPath}`);
+      throw new ResourceNotFoundError(`no runtime entrypoint exists at ${entrypointPath}`);
     }
     resolvePathWithinProject(input.projectRoot, entrypointPath, "runtime entrypoint");
 

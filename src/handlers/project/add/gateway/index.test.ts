@@ -179,7 +179,7 @@ describe("project add gateway", () => {
         "--policy-engine-mode",
         "enforce",
       ],
-      "does not exist in policyEngines[]",
+      "no policy-engine named 'Missing' exists in this project",
     ],
     [
       "CUSTOM_JWT without configuration",

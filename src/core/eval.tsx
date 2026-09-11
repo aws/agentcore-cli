@@ -1961,7 +1961,7 @@ async function resolveAgentToNameAndId(
     return harnessRuntimeFromResponse(agent, harness);
   } catch (error) {
     if (!(error instanceof InputValidationError)) throw error;
-    throw new InputValidationError(`"${agent}" does not exist as a runtime or a harness`, {
+    throw new ResourceNotFoundError(`no runtime or harness named '${agent}' exists`, {
       cause: error,
       meta: { agent },
     });

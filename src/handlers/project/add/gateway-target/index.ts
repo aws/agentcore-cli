@@ -1,5 +1,5 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
 import type { Credential } from "../../../../projectSchemas/credential";
 import {
@@ -180,7 +180,7 @@ function validateTargetCredential(project: Project, target: AgentCoreGatewayTarg
 function requireCredential(project: Project, name: string): Credential {
   const credential = project.spec.credentials.find((candidate) => candidate.name === name);
   if (!credential) {
-    throw new InputValidationError(`credential '${name}' does not exist in credentials[]`);
+    throw new ResourceNotFoundError(`no credential named '${name}' exists in this project`);
   }
   return credential;
 }

@@ -271,7 +271,7 @@ describe("FsProjectManager.create", () => {
           dockerfile,
         },
       }),
-    ).rejects.toThrow(`dockerfile not found: '${dockerfile}'`);
+    ).rejects.toThrow(`no dockerfile exists at ${dockerfile}`);
 
     expect(existsSync(join(directory, "example"))).toBe(false);
   });

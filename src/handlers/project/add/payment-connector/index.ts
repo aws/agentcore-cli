@@ -1,5 +1,5 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
@@ -37,8 +37,8 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
           (candidate) => candidate.name === credentialName,
         );
         if (!credential) {
-          throw new InputValidationError(
-            `credential '${credentialName}' does not exist in credentials[]`,
+          throw new ResourceNotFoundError(
+            `no credential named '${credentialName}' exists in this project`,
           );
         }
         if (credential.authorizerType !== "PaymentCredentialProvider") {
