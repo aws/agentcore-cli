@@ -52,8 +52,8 @@ test("registers reads and mutations as CLI-only commands", () => {
   ).toEqual({
     manager: ["create", "get", "list", "update", "delete"],
     connector: ["create", "get", "list", "update", "delete"],
-    session: ["get", "list"],
-    instrument: ["get", "list", "balance"],
+    session: ["create", "get", "list", "delete"],
+    instrument: ["create", "get", "list", "delete", "balance"],
   });
   for (const resource of payment.commands) {
     for (const command of resource.commands) expect(isTuiCommandSupported(command)).toBe(false);

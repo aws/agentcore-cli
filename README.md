@@ -127,11 +127,15 @@ agentcore                          # interactive TUI
 │   │   ├── update                 # update a connector's description or credential provider
 │   │   └── delete                 # delete a connector
 │   ├── session                    # budget-limited payment contexts (data plane)
+│   │   ├── create                 # create a session with an expiry and optional spend limit
 │   │   ├── get
-│   │   └── list
+│   │   ├── list
+│   │   └── delete
 │   └── instrument                 # embedded crypto wallets (data plane)
+│       ├── create                 # create a wallet for a user on a connector
 │       ├── get
 │       ├── list
+│       ├── delete
 │       └── balance                # read token balance on an explicit chain (default token: USDC)
 ├── eval                           # evaluate and optimize AgentCore agents
 │   └── evaluator                  # manage AgentCore evaluators
@@ -243,8 +247,8 @@ agentcore identity payment-credential-provider create --name cdp-creds --vendor 
 agentcore payment connector create --manager-id <manager id> --name Coinbase --credential-provider cdp-creds
 
 # Session and instrument commands take the parent manager ID and a user id.
-agentcore payment session list --manager-id <manager id> --user-id alice
-agentcore payment instrument list --manager-id <manager id> --user-id alice
+agentcore payment session create --manager-id <manager id> --user-id alice \
+  --expiry-minutes 60 --max-spend 10.00 --currency USD
 
 # Check funding on one chain. USDC is the default token.
 agentcore payment instrument balance --manager-id <manager id> --user-id alice \

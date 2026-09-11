@@ -17,6 +17,14 @@ import type {
   UpdatePaymentManagerResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
+  CreatePaymentInstrumentRequest,
+  CreatePaymentInstrumentResponse,
+  CreatePaymentSessionRequest,
+  CreatePaymentSessionResponse,
+  DeletePaymentInstrumentRequest,
+  DeletePaymentInstrumentResponse,
+  DeletePaymentSessionRequest,
+  DeletePaymentSessionResponse,
   GetPaymentInstrumentRequest,
   GetPaymentInstrumentResponse,
   GetPaymentInstrumentBalanceRequest,
@@ -66,12 +74,17 @@ export type UpdatePaymentConnectorInput = {
 };
 
 type WithPaymentManagerId<T> = Omit<T, "paymentManagerArn"> & { managerId: string };
+
+export type CreatePaymentSessionInput = WithPaymentManagerId<CreatePaymentSessionRequest>;
 export type GetPaymentSessionInput = WithPaymentManagerId<GetPaymentSessionRequest>;
 export type ListPaymentSessionsInput = WithPaymentManagerId<ListPaymentSessionsRequest>;
+export type DeletePaymentSessionInput = WithPaymentManagerId<DeletePaymentSessionRequest>;
+export type CreatePaymentInstrumentInput = WithPaymentManagerId<CreatePaymentInstrumentRequest>;
 export type GetPaymentInstrumentInput = WithPaymentManagerId<GetPaymentInstrumentRequest>;
 export type GetPaymentInstrumentBalanceInput =
   WithPaymentManagerId<GetPaymentInstrumentBalanceRequest>;
 export type ListPaymentInstrumentsInput = WithPaymentManagerId<ListPaymentInstrumentsRequest>;
+export type DeletePaymentInstrumentInput = WithPaymentManagerId<DeletePaymentInstrumentRequest>;
 
 export interface CorePaymentClient {
   createPaymentManager(
@@ -116,6 +129,12 @@ export interface CorePaymentClient {
     request: DeletePaymentConnectorRequest,
     options: CoreOptions,
   ): Promise<DeletePaymentConnectorResponse>;
+
+  // Core resolves the selected manager ID to the ARN required by the data plane.
+  createPaymentSession(
+    request: CreatePaymentSessionInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentSessionResponse>;
   getPaymentSession(
     request: GetPaymentSessionInput,
     options: CoreOptions,
@@ -124,6 +143,15 @@ export interface CorePaymentClient {
     request: ListPaymentSessionsInput,
     options: CoreOptions,
   ): Promise<ListPaymentSessionsResponse>;
+  deletePaymentSession(
+    request: DeletePaymentSessionInput,
+    options: CoreOptions,
+  ): Promise<DeletePaymentSessionResponse>;
+
+  createPaymentInstrument(
+    request: CreatePaymentInstrumentInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentInstrumentResponse>;
   getPaymentInstrument(
     request: GetPaymentInstrumentInput,
     options: CoreOptions,
@@ -136,4 +164,8 @@ export interface CorePaymentClient {
     request: ListPaymentInstrumentsInput,
     options: CoreOptions,
   ): Promise<ListPaymentInstrumentsResponse>;
+  deletePaymentInstrument(
+    request: DeletePaymentInstrumentInput,
+    options: CoreOptions,
+  ): Promise<DeletePaymentInstrumentResponse>;
 }

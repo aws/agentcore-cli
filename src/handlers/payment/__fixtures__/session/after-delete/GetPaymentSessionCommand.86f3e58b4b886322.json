@@ -1,0 +1,6 @@
+{
+  "$error": {
+    "name": "ResourceNotFoundException",
+    "message": "Payment session not found: payment-session-nq812U4e1BJIfw1"
+  }
+}

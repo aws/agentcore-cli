@@ -25,12 +25,20 @@ import {
   type UpdatePaymentManagerResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  CreatePaymentInstrumentCommand,
+  CreatePaymentSessionCommand,
+  DeletePaymentInstrumentCommand,
+  DeletePaymentSessionCommand,
   GetPaymentInstrumentBalanceCommand,
   GetPaymentInstrumentCommand,
   GetPaymentSessionCommand,
   ListPaymentInstrumentsCommand,
   ListPaymentSessionsCommand,
   type BedrockAgentCoreClient,
+  type CreatePaymentInstrumentResponse,
+  type CreatePaymentSessionResponse,
+  type DeletePaymentInstrumentResponse,
+  type DeletePaymentSessionResponse,
   type GetPaymentInstrumentResponse,
   type GetPaymentInstrumentBalanceResponse,
   type GetPaymentSessionResponse,
@@ -48,11 +56,15 @@ import type {
   CorePaymentClient,
   CreatePaymentConnectorInput,
   CreatePaymentManagerInput,
+  CreatePaymentSessionInput,
   GetPaymentSessionInput,
   ListPaymentSessionsInput,
+  DeletePaymentSessionInput,
+  CreatePaymentInstrumentInput,
   GetPaymentInstrumentInput,
   GetPaymentInstrumentBalanceInput,
   ListPaymentInstrumentsInput,
+  DeletePaymentInstrumentInput,
   UpdatePaymentConnectorInput,
   UpdatePaymentManagerInput,
 } from "../handlers/payment/types";
@@ -248,6 +260,18 @@ export class PaymentClient implements CorePaymentClient {
       .send(new DeletePaymentConnectorCommand({ ...request }));
   }
 
+  // ─── payment sessions (data plane) ──────────────────────────────────────────
+
+  async createPaymentSession(
+    input: CreatePaymentSessionInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentSessionResponse> {
+    const { managerId, ...request } = input;
+    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+      data.send(new CreatePaymentSessionCommand({ paymentManagerArn, ...request })),
+    );
+  }
+
   async getPaymentSession(
     input: GetPaymentSessionInput,
     options: CoreOptions,
@@ -265,6 +289,28 @@ export class PaymentClient implements CorePaymentClient {
     const { managerId, ...request } = input;
     return this.sendData(managerId, options, (data, paymentManagerArn) =>
       data.send(new ListPaymentSessionsCommand({ paymentManagerArn, ...request })),
+    );
+  }
+
+  async deletePaymentSession(
+    input: DeletePaymentSessionInput,
+    options: CoreOptions,
+  ): Promise<DeletePaymentSessionResponse> {
+    const { managerId, ...request } = input;
+    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+      data.send(new DeletePaymentSessionCommand({ paymentManagerArn, ...request })),
+    );
+  }
+
+  // ─── payment instruments (data plane) ───────────────────────────────────────
+
+  async createPaymentInstrument(
+    input: CreatePaymentInstrumentInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentInstrumentResponse> {
+    const { managerId, ...request } = input;
+    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+      data.send(new CreatePaymentInstrumentCommand({ paymentManagerArn, ...request })),
     );
   }
 
@@ -295,6 +341,16 @@ export class PaymentClient implements CorePaymentClient {
     const { managerId, ...request } = input;
     return this.sendData(managerId, options, (data, paymentManagerArn) =>
       data.send(new ListPaymentInstrumentsCommand({ paymentManagerArn, ...request })),
+    );
+  }
+
+  async deletePaymentInstrument(
+    input: DeletePaymentInstrumentInput,
+    options: CoreOptions,
+  ): Promise<DeletePaymentInstrumentResponse> {
+    const { managerId, ...request } = input;
+    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+      data.send(new DeletePaymentInstrumentCommand({ paymentManagerArn, ...request })),
     );
   }
 

@@ -153,6 +153,10 @@ import type {
   GetPaymentSessionResponse,
   ListPaymentInstrumentsResponse,
   ListPaymentSessionsResponse,
+  CreatePaymentSessionResponse,
+  DeletePaymentSessionResponse,
+  CreatePaymentInstrumentResponse,
+  DeletePaymentInstrumentResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CorePaymentClient } from "../handlers/payment/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
@@ -1557,6 +1561,18 @@ export class TestPaymentClient implements CorePaymentClient {
     throw new Error("Unexpected payment call");
   }
   async deletePaymentConnector(): Promise<DeletePaymentConnectorResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async createPaymentSession(): Promise<CreatePaymentSessionResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async deletePaymentSession(): Promise<DeletePaymentSessionResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async createPaymentInstrument(): Promise<CreatePaymentInstrumentResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async deletePaymentInstrument(): Promise<DeletePaymentInstrumentResponse> {
     throw new Error("Unexpected payment call");
   }
   async getPaymentManager(): Promise<GetPaymentManagerResponse> {
