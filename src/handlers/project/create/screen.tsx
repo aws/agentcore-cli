@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Box, Text, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
@@ -16,17 +16,19 @@ import {
   type TemplateName,
 } from "../shortcuts";
 import { HARNESS_DEFAULT_MODEL_IDS, resolveScaffoldHarnessInput } from "./index";
-import { Layout } from "../../../components/Layout";
-import { ErrorPanel } from "../../../components/ErrorPanel";
 import { FormTextInput } from "../../../components/FormTextInput";
 import { FormRadioGroup, type FormRadioOption } from "../../../components/FormRadioGroup";
-import { KeyValueTable } from "../../../components/KeyValueTable";
-import { Stepper, type Step } from "../../../components/ui/stepper";
-import { Spinner } from "../../../components/ui/spinner";
-import { TaskList, type Task } from "../../../components/ui/task-list";
-import { Divider } from "../../../components/ui/divider";
-import { driveProgress } from "../../../tui/progress";
-import { darkTheme, glyphs } from "../../../components/ui/_core.js";
+import {
+  ChoiceField,
+  Step,
+  Summary,
+  TextField,
+  Wizard,
+  useKeyHints,
+  useWizard,
+  type Choice,
+} from "../../../components/wizard";
+import { darkTheme } from "../../../components/ui/_core.js";
 
 const theme = darkTheme;
 
@@ -104,14 +106,14 @@ function emptyCreateProjectForm(): CreateProjectFormValues {
   };
 }
 
-const PROJECT_KIND_OPTIONS: { kind: ProjectKind; label: string; description: string }[] = [
+const PROJECT_KIND_CHOICES: Choice<ProjectKind>[] = [
   {
-    kind: "agent",
+    value: "agent",
     label: "agent code",
     description: "generate runnable agent code from a template",
   },
   {
-    kind: "harness",
+    value: "harness",
     label: "harness",
     description: "a managed agent configured by spec — no agent-loop code to maintain",
   },
@@ -119,8 +121,8 @@ const PROJECT_KIND_OPTIONS: { kind: ProjectKind; label: string; description: str
 
 const DEFAULT_TEMPLATE: TemplateName = "agent-python-strands";
 
-const TEMPLATE_OPTIONS = PROJECT_TEMPLATE_NAMES.map((template) => ({
-  template,
+const TEMPLATE_CHOICES: Choice<TemplateName>[] = PROJECT_TEMPLATE_NAMES.map((template) => ({
+  value: template,
   label: template,
   description:
     template === EMPTY_TEMPLATE_NAME
@@ -189,10 +191,7 @@ function providerLabel(provider: HarnessModelProvider): string {
   return MODEL_PROVIDERS.find((candidate) => candidate.provider === provider)!.label;
 }
 
-// ─── wizard shell ─────────────────────────────────────────────────────────────
-
-type WizardPhase =
-  { kind: "form" } | { kind: "running" } | { kind: "success" } | { kind: "error"; error: Error };
+// ─── wizard ───────────────────────────────────────────────────────────────────
 
 // ProjectCreateScreen is the interactive flow behind a bare `agentcore project
 // create`: name → type → (model | template) → review, then the
@@ -202,304 +201,85 @@ type WizardPhase =
 // working directory, npm install and git init included.
 export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
-  const { exit } = useApp();
-
   const [values, setValues] = useState<CreateProjectFormValues>(emptyCreateProjectForm);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [phase, setPhase] = useState<WizardPhase>({ kind: "form" });
-  const [tasks, setTasks] = useState<Task[]>([]);
 
-  // The step list is dynamic: the branch chosen on the type step decides
-  // whether the model or the template question follows.
-  const steps: Step[] = useMemo(() => {
-    const branch: Step[] =
-      values.kind === "harness"
-        ? [{ key: "model", title: "model" }]
-        : [{ key: "template", title: "template" }];
-    return [
-      { key: "name", title: "name" },
-      { key: "type", title: "type" },
-      ...branch,
-      { key: "review", title: "review" },
-    ];
-  }, [values.kind]);
-
-  const stepKey = steps[stepIndex]!.key;
   const patch = (update: Partial<CreateProjectFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
 
-  const next = () => setStepIndex((i) => Math.min(steps.length - 1, i + 1));
-  const back = () => {
-    // Esc from the first step leaves the wizard for the project menu, the
-    // same place RouterScreen's esc goes; deeper steps step backwards.
-    if (stepIndex === 0) navigate("/agentcore/project");
-    else setStepIndex((i) => i - 1);
-  };
-
-  const submit = async () => {
-    let input: CreateProjectInput;
-    try {
-      assertProjectPathFits(values.name, ctx.require(PlatformKey));
-      input = buildCreateInput(values);
-    } catch (error) {
-      setPhase({ kind: "error", error: toError(error) });
-      return;
-    }
-    setPhase({ kind: "running" });
-    setTasks([]);
-    try {
-      await driveProgress(core.projectManager.create(input), setTasks);
-      setPhase({ kind: "success" });
-    } catch (error) {
-      setPhase({ kind: "error", error: toError(error) });
-    }
-  };
-
   return (
-    <Layout
+    <Wizard
       breadcrumb={["agentcore", "project", "create"]}
       description="create a new AgentCore project"
-      keyHints={hintsFor(stepKey, phase, tasks.length === 0)}
+      // Esc from the first step leaves the wizard for the project menu, the
+      // same place RouterScreen's esc goes.
+      onCancel={() => navigate("/agentcore/project")}
+      onSubmit={() => {
+        // Both of these throw before anything is written, so the wizard reports
+        // them the way it reports a failed create — with the retry still on
+        // offer, because nothing has to be cleaned up first.
+        assertProjectPathFits(values.name, ctx.require(PlatformKey));
+        return core.projectManager.create(buildCreateInput(values));
+      }}
+      onError="retry"
+      runningLabel={`creating ${values.name}…`}
+      successLabel={`project created in ./${values.name}`}
+      successNextSteps={[`cd ${values.name}`, "agentcore project deploy"]}
+      successHint="enter exits"
     >
-      <Box flexDirection="column">
-        {phase.kind === "form" && (
-          <>
-            <Box paddingX={1} flexShrink={0}>
-              <Stepper
-                steps={steps}
-                currentStep={stepKey}
-                completedSteps={steps.slice(0, stepIndex).map((step) => step.key)}
-              />
-            </Box>
-            <Divider />
-            <WizardStep
-              stepKey={stepKey}
-              values={values}
-              patch={patch}
-              onNext={next}
-              onBack={back}
-              onSubmit={submit}
-            />
-          </>
-        )}
-        {phase.kind !== "form" && (
-          <Box flexDirection="column" paddingX={1}>
-            <TaskList tasks={tasks} />
-            {phase.kind === "running" && tasks.length === 0 && (
-              <Spinner label={`creating ${values.name}…`} />
-            )}
-            {phase.kind === "success" && (
-              <SuccessPanel name={values.name} onContinue={() => exit()} />
-            )}
-            {phase.kind === "error" && (
-              <ErrorPanel
-                message={phase.error.message}
-                onRetry={tasks.length === 0 ? submit : undefined}
-                onBack={() => setPhase({ kind: "form" })}
-              />
-            )}
-          </Box>
-        )}
-      </Box>
-    </Layout>
-  );
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-// A retry is only offered while nothing has been written yet: once a step has
-// run, the scaffolded directory exists and re-submitting would fail on it.
-function hintsFor(
-  stepKey: string,
-  phase: WizardPhase,
-  retryable: boolean,
-): { key: string; label: string }[] {
-  if (phase.kind === "running") return [{ key: "ctrl+c", label: "quit" }];
-  if (phase.kind === "success") return [{ key: "enter", label: "exit" }];
-  if (phase.kind === "error")
-    return [
-      ...(retryable ? [{ key: "r", label: "retry" }] : []),
-      { key: "esc", label: "back" },
-      { key: "ctrl+c", label: "quit" },
-    ];
-  const base = [
-    { key: "esc", label: "back" },
-    { key: "ctrl+c", label: "quit" },
-  ];
-  switch (stepKey) {
-    case "name":
-      return [{ key: "enter", label: "continue" }, ...base];
-    case "model":
-      return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
-    case "type":
-    case "template":
-    case "memory":
-      return [{ key: "↑↓", label: "navigate" }, { key: "enter", label: "continue" }, ...base];
-    case "review":
-      return [{ key: "enter", label: "create" }, ...base];
-    default:
-      return base;
-  }
-}
-
-// ─── steps ────────────────────────────────────────────────────────────────────
-
-interface WizardStepProps {
-  stepKey: string;
-  values: CreateProjectFormValues;
-  patch: (update: Partial<CreateProjectFormValues>) => void;
-  onNext: () => void;
-  onBack: () => void;
-  onSubmit: () => void;
-}
-
-function WizardStep({ stepKey, values, patch, onNext, onBack, onSubmit }: WizardStepProps) {
-  switch (stepKey) {
-    case "name":
-      return (
-        <NameStep
+      <Step name="name" question="name your project">
+        {/* The label is the schema's own subject, so a blank name is refused
+            with the message the flag-driven path prints for it. */}
+        <TextField
+          label="Project name"
+          help="also the directory name · 1–23 letters and digits, starting with a letter"
+          placeholder="MyAssistant"
           value={values.name}
           onChange={(name) => patch({ name })}
-          onNext={onNext}
-          onBack={onBack}
+          schema={ProjectNameSchema}
+          required
+          live
         />
-      );
-    case "type":
-      return (
-        <RadioStep
-          name="what should the project be built around?"
-          helpText="a project deploys either a managed harness or your own agent code"
-          options={PROJECT_KIND_OPTIONS}
-          focusedIndex={PROJECT_KIND_OPTIONS.findIndex((option) => option.kind === values.kind)}
-          onSelect={(index) => patch({ kind: PROJECT_KIND_OPTIONS[index]!.kind })}
-          onNext={onNext}
-          onBack={onBack}
+      </Step>
+
+      <Step name="type" question="what should the project be built around?">
+        <ChoiceField
+          help="a project deploys either a managed harness or your own agent code"
+          choices={PROJECT_KIND_CHOICES}
+          value={values.kind}
+          onChange={(kind) => patch({ kind })}
         />
-      );
-    case "model":
-      return (
-        <ModelStep
-          value={values.model}
-          onChange={(model) => patch({ model })}
-          onNext={onNext}
-          onBack={onBack}
-        />
-      );
-    case "template":
-      return (
-        <RadioStep
-          name="choose a template"
-          helpText="the agent code scaffolded into the project"
-          options={TEMPLATE_OPTIONS}
-          focusedIndex={TEMPLATE_OPTIONS.findIndex((option) => option.template === values.template)}
-          onSelect={(index) => patch({ template: TEMPLATE_OPTIONS[index]!.template })}
-          onNext={onNext}
-          onBack={onBack}
-        />
-      );
-    case "review":
-      return <ReviewStep values={values} onSubmit={onSubmit} onBack={onBack} />;
-    default:
-      return null;
-  }
-}
+      </Step>
 
-// NameStep validates against ProjectNameSchema — the schema the flag-driven
-// path enforces — showing the schema's own messages inline as the user types.
-function NameStep({
-  value,
-  onChange,
-  onNext,
-  onBack,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  const [submitted, setSubmitted] = useState(false);
+      {values.kind === "harness" && (
+        <Step name="model" question="choose a model">
+          <ModelField value={values.model} onChange={(model) => patch({ model })} />
+        </Step>
+      )}
 
-  const validation = ProjectNameSchema.safeParse(value);
-  const showError = !validation.success && (value !== "" || submitted);
-  const errorMessage = showError ? validation.error.issues[0]?.message : undefined;
+      {values.kind === "agent" && (
+        <Step name="template" question="choose a template">
+          <ChoiceField
+            help="the agent code scaffolded into the project"
+            choices={TEMPLATE_CHOICES}
+            value={values.template}
+            onChange={(template) => patch({ template })}
+          />
+        </Step>
+      )}
 
-  useInput((_input, key) => {
-    if (key.escape) {
-      onBack();
-      return;
-    }
-    if (key.return) {
-      if (validation.success) onNext();
-      else setSubmitted(true);
-    }
-  });
-
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <FormTextInput
-        name="name your project"
-        helpText="also the directory name · 1–23 letters and digits, starting with a letter"
-        placeholder="MyAssistant"
-        errorText=""
-        value={value}
-        onChange={(next) => {
-          onChange(next);
-          setSubmitted(false);
-        }}
-      />
-      {errorMessage && <Text color={theme.colors.error}>{errorMessage}</Text>}
-    </Box>
+      <Step name="review" question="this project will be created">
+        <Summary items={summaryOf(values)} />
+        <Box marginTop={1}>
+          <Text color={theme.colors.muted}>
+            enter scaffolds the project, installs dependencies, and initializes git
+          </Text>
+        </Box>
+      </Step>
+    </Wizard>
   );
 }
 
-// RadioStep is a single-choice step: the parent owns the selection, this owns
-// the arrow/enter/esc handling around a FormRadioGroup.
-function RadioStep({
-  name,
-  helpText,
-  options,
-  focusedIndex,
-  onSelect,
-  onNext,
-  onBack,
-}: {
-  name: string;
-  helpText: string;
-  options: FormRadioOption[];
-  focusedIndex: number;
-  onSelect: (index: number) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  useInput((_input, key) => {
-    if (key.escape) {
-      onBack();
-      return;
-    }
-    if (key.upArrow) {
-      onSelect(Math.max(0, focusedIndex - 1));
-      return;
-    }
-    if (key.downArrow) {
-      onSelect(Math.min(options.length - 1, focusedIndex + 1));
-      return;
-    }
-    if (key.return) onNext();
-  });
-
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <FormRadioGroup
-        name={name}
-        helpText={helpText}
-        options={options}
-        focusedIndex={focusedIndex}
-      />
-    </Box>
-  );
-}
+// ─── the model step ───────────────────────────────────────────────────────────
 
 type ModelFieldKey = keyof ProjectModelConfig;
 
@@ -558,17 +338,18 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
   return fields;
 }
 
-function ModelStep({
+// ModelField is a compound field: one useInput over a provider list and the
+// per-provider inputs the choice reveals. The wizard shell has no notion of
+// focus, so the two levels are managed here — the provider list until enter,
+// then the fields, with esc stepping back out.
+function ModelField({
   value,
   onChange,
-  onNext,
-  onBack,
 }: {
   value: ProjectModelValues;
   onChange: (value: ProjectModelValues) => void;
-  onNext: () => void;
-  onBack: () => void;
 }) {
+  const { advance, back } = useWizard();
   const providerIndex = MODEL_PROVIDERS.findIndex((option) => option.provider === value.provider);
   const fields = modelFields(value.provider);
   const config = value.configs[value.provider];
@@ -597,10 +378,15 @@ function ModelStep({
     keepFocusedFieldVisible();
   }, [keepFocusedFieldVisible, value.provider, error]);
 
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "enter", label: "continue" },
+  ]);
+
   useInput((_input, key) => {
     if (focusedField === null) {
       if (key.escape) {
-        onBack();
+        back();
         return;
       }
       if (key.upArrow || key.downArrow) {
@@ -648,7 +434,7 @@ function ModelStep({
         setError(fields[missing]!.requiredError);
         return;
       }
-      onNext();
+      advance();
     }
   });
 
@@ -658,7 +444,7 @@ function ModelStep({
   }));
 
   return (
-    <Box flexDirection="column" paddingX={1} flexGrow={1} minHeight={0}>
+    <Box flexDirection="column" flexGrow={1} minHeight={0}>
       <ScrollView
         ref={scrollRef}
         flexGrow={1}
@@ -668,7 +454,6 @@ function ModelStep({
       >
         <FormRadioGroup
           key="provider"
-          name="choose a model"
           helpText="the provider and model that will power the harness"
           options={options}
           focusedIndex={providerIndex}
@@ -702,66 +487,6 @@ function ModelStep({
           </Text>
         )}
       </ScrollView>
-    </Box>
-  );
-}
-
-function ReviewStep({
-  values,
-  onSubmit,
-  onBack,
-}: {
-  values: CreateProjectFormValues;
-  onSubmit: () => void;
-  onBack: () => void;
-}) {
-  useInput((_input, key) => {
-    if (key.escape) {
-      onBack();
-      return;
-    }
-    if (key.return) onSubmit();
-  });
-
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text color={theme.colors.text}>this project will be created</Text>
-      <Box
-        borderStyle="single"
-        borderColor={theme.colors.border}
-        borderLeft={false}
-        borderRight={false}
-        borderBottom={false}
-      >
-        <KeyValueTable items={summaryOf(values)} />
-      </Box>
-      <Box marginTop={1}>
-        <Text color={theme.colors.muted}>
-          enter scaffolds the project, installs dependencies, and initializes git
-        </Text>
-      </Box>
-    </Box>
-  );
-}
-
-// ─── result panels ────────────────────────────────────────────────────────────
-
-function SuccessPanel({ name, onContinue }: { name: string; onContinue: () => void }) {
-  useInput((_input, key) => {
-    if (key.return || key.escape) onContinue();
-  });
-
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Text color={theme.colors.success} bold>
-        {glyphs.check} project created in ./{name}
-      </Text>
-      <Box flexDirection="column">
-        <Text color={theme.colors.text}>next steps</Text>
-        <Text color={theme.colors.primary}>{`  cd ${name}`}</Text>
-        <Text color={theme.colors.primary}>{"  agentcore project deploy"}</Text>
-      </Box>
-      <Text color={theme.colors.muted}>enter exits</Text>
     </Box>
   );
 }

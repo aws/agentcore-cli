@@ -13,7 +13,10 @@ export interface KeyValueTableProps {
 // legibly instead of squeezing it into the margin. The gap is inside the
 // column, so a key that fills the cap still stands clear of its value. Capped
 // by layout rather than by reading the terminal width: a resize re-lays out
-// without re-rendering, so a width computed in render would go stale.
+// without re-rendering, so a width computed in render would go stale. The table
+// grows into the space it is given for the same reason — a percentage cap needs
+// a parent whose width it can be a share of, and a table laid out as a row item
+// would otherwise be sized from its own content and wrap its keys mid-word.
 const MAX_KEY_SHARE = "50%";
 const GAP = 2;
 
@@ -23,7 +26,7 @@ export function KeyValueTable({ items }: KeyValueTableProps) {
   // Two boxes rather than one padded string, so a value that wraps continues
   // under itself, not under the key.
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {Object.entries(items).map(([key, value]) => (
         <Box key={key}>
           <Box
