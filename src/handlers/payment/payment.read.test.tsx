@@ -41,7 +41,7 @@ function setup(resource = "manager", overrides: Partial<ReturnType<typeof fixtur
   };
 }
 
-test("registers the read-only command tree without TUI or mutation leaves", () => {
+test("registers reads and mutations as CLI-only commands", () => {
   const payment = compile(setup().root, ValueContext.EmptyContext()).commands.find(
     (c) => c.name() === "payment",
   )!;
@@ -50,8 +50,8 @@ test("registers the read-only command tree without TUI or mutation leaves", () =
       payment.commands.map((resource) => [resource.name(), resource.commands.map((c) => c.name())]),
     ),
   ).toEqual({
-    manager: ["get", "list"],
-    connector: ["get", "list"],
+    manager: ["create", "get", "list", "update", "delete"],
+    connector: ["create", "get", "list", "update", "delete"],
     session: ["get", "list"],
     instrument: ["get", "list", "balance"],
   });

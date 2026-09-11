@@ -1,8 +1,20 @@
 import type {
+  CreatePaymentConnectorResponse,
+  CreatePaymentManagerRequest,
+  CreatePaymentManagerResponse,
+  DeletePaymentConnectorRequest,
+  DeletePaymentConnectorResponse,
+  DeletePaymentManagerRequest,
+  DeletePaymentManagerResponse,
   GetPaymentConnectorResponse,
   GetPaymentManagerResponse,
   ListPaymentConnectorsResponse,
   ListPaymentManagersResponse,
+  PaymentConnectorType,
+  UpdatePaymentConnectorRequest,
+  UpdatePaymentConnectorResponse,
+  UpdatePaymentManagerRequest,
+  UpdatePaymentManagerResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   GetPaymentInstrumentRequest,
@@ -18,8 +30,42 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
 
-type WithPaymentManagerId<T> = Omit<T, "paymentManagerArn"> & { managerId: string };
+// CreatePaymentManagerInput is CreatePaymentManagerRequest with the service role
+// made optional: when omitted, Core provisions the default service role in IAM and
+// creates the manager with it.
+export type CreatePaymentManagerInput = Omit<CreatePaymentManagerRequest, "roleArn"> & {
+  roleArn?: string;
+};
 
+export type UpdatePaymentManagerInput = UpdatePaymentManagerRequest;
+
+// CreatePaymentConnectorInput names a credential provider instead of carrying the
+// SDK's configuration list. Core resolves a provider name to its ARN and vendor
+// through identity, derives the connector type from that vendor when the caller
+// omits it, and builds the single-entry union the service expects. Quick Create
+// sends no credentials; the service provisions them after OAuth consent.
+export type CreatePaymentConnectorInput = {
+  managerId: string;
+  name: string;
+  description?: string;
+  type?: PaymentConnectorType;
+  // A payment credential provider name or ARN. Required unless quickCreate is set.
+  credentialProvider?: string;
+  quickCreate?: boolean;
+  clientToken?: string;
+};
+
+// UpdatePaymentConnectorInput omits `type`: the service rejects any change to a
+// connector's type after creation, so the CLI does not offer it.
+export type UpdatePaymentConnectorInput = {
+  managerId: string;
+  connectorId: string;
+  description?: UpdatePaymentConnectorRequest["description"];
+  credentialProvider?: string;
+  clientToken?: string;
+};
+
+type WithPaymentManagerId<T> = Omit<T, "paymentManagerArn"> & { managerId: string };
 export type GetPaymentSessionInput = WithPaymentManagerId<GetPaymentSessionRequest>;
 export type ListPaymentSessionsInput = WithPaymentManagerId<ListPaymentSessionsRequest>;
 export type GetPaymentInstrumentInput = WithPaymentManagerId<GetPaymentInstrumentRequest>;
@@ -28,12 +74,29 @@ export type GetPaymentInstrumentBalanceInput =
 export type ListPaymentInstrumentsInput = WithPaymentManagerId<ListPaymentInstrumentsRequest>;
 
 export interface CorePaymentClient {
+  createPaymentManager(
+    input: CreatePaymentManagerInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentManagerResponse>;
   getPaymentManager(id: string, options: CoreOptions): Promise<GetPaymentManagerResponse>;
   listPaymentManagers(
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListPaymentManagersResponse>;
+  updatePaymentManager(
+    input: UpdatePaymentManagerInput,
+    options: CoreOptions,
+  ): Promise<UpdatePaymentManagerResponse>;
+  deletePaymentManager(
+    request: DeletePaymentManagerRequest,
+    options: CoreOptions,
+  ): Promise<DeletePaymentManagerResponse>;
+
+  createPaymentConnector(
+    input: CreatePaymentConnectorInput,
+    options: CoreOptions,
+  ): Promise<CreatePaymentConnectorResponse>;
   getPaymentConnector(
     managerId: string,
     connectorId: string,
@@ -45,8 +108,14 @@ export interface CorePaymentClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListPaymentConnectorsResponse>;
-
-  // Core resolves the selected manager ID to the ARN required by the data plane.
+  updatePaymentConnector(
+    input: UpdatePaymentConnectorInput,
+    options: CoreOptions,
+  ): Promise<UpdatePaymentConnectorResponse>;
+  deletePaymentConnector(
+    request: DeletePaymentConnectorRequest,
+    options: CoreOptions,
+  ): Promise<DeletePaymentConnectorResponse>;
   getPaymentSession(
     request: GetPaymentSessionInput,
     options: CoreOptions,
