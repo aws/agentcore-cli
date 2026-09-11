@@ -267,7 +267,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<CreatePaymentSessionResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new CreatePaymentSessionCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -277,7 +277,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<GetPaymentSessionResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new GetPaymentSessionCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -287,7 +287,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<ListPaymentSessionsResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new ListPaymentSessionsCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -297,7 +297,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<DeletePaymentSessionResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new DeletePaymentSessionCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -309,7 +309,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<CreatePaymentInstrumentResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new CreatePaymentInstrumentCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -319,7 +319,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<GetPaymentInstrumentResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new GetPaymentInstrumentCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -329,7 +329,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<GetPaymentInstrumentBalanceResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new GetPaymentInstrumentBalanceCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -339,7 +339,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<ListPaymentInstrumentsResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new ListPaymentInstrumentsCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -349,7 +349,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<DeletePaymentInstrumentResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new DeletePaymentInstrumentCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -428,7 +428,7 @@ export class PaymentClient implements CorePaymentClient {
     return { arn, type: vendor };
   }
 
-  private async sendData<T>(
+  private async withPaymentManagerArn<T>(
     managerId: string,
     options: CoreOptions,
     send: (data: BedrockAgentCoreClient, paymentManagerArn: string) => Promise<T>,
