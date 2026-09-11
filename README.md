@@ -191,7 +191,7 @@ one resource of the requested type, `--name` may be omitted.
 ### Inspect project Runtime logs
 
 Project logging resolves a logical Runtime name through the selected deployment
-target, so the physical Runtime ID and deployment region do not need to be
+target, so the Runtime ID and deployment region do not need to be
 supplied:
 
 ```bash
@@ -269,7 +269,7 @@ agentcore runtime version list --id <runtimeId> --max-results 20
 agentcore runtime endpoint get --id <runtimeId> --qualifier DEFAULT
 agentcore runtime endpoint list --id <runtimeId> --max-results 20
 
-# Follow a Runtime's logs live by physical ID (Ctrl+C to stop)
+# Follow a Runtime's logs live by resource ID (Ctrl+C to stop)
 agentcore runtime logs --id <runtimeId>
 agentcore runtime logs --id <runtimeId> --level error --query "database"
 
