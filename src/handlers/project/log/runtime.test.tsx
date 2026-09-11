@@ -1,20 +1,19 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import type { ProjectBackend, ResolveDeployedResourcesBackendInput } from "../../../core/project";
 import type { LogSource } from "../../../core/observability/index";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
 
-const originalCwd = process.cwd();
-const temporaryDirectories: string[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 const DEFAULT_TARGET = {
   name: "default",
   account: "111122223333",
@@ -42,30 +41,25 @@ const RUNTIMES = [
   },
 ] as const;
 
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function inProject(
   runtimes: readonly unknown[],
   targets = [DEFAULT_TARGET, PRODUCTION_TARGET],
 ) {
-  const root = await mkdtemp(join(tmpdir(), "agentcore-project-log-"));
-  temporaryDirectories.push(root);
-  await mkdir(join(root, "agentcore"), { recursive: true });
+  const { projectRoot, cleanup } = await initProject({
+    name: "orders",
+    flags: ["--template", "empty"],
+    prefix: "agentcore-project-log-",
+  });
+  cleanups.push(cleanup);
   const spec = ProjectSpecSchema.parse({
     name: "orders",
     version: 1,
     runtimes,
   });
-  await writeFile(join(root, "agentcore", "agentcore.json"), JSON.stringify(spec));
-  await writeFile(join(root, "agentcore", "aws-targets.json"), JSON.stringify(targets));
-  process.chdir(root);
+  await writeFile(join(projectRoot, "agentcore", "agentcore.json"), JSON.stringify(spec));
+  await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), JSON.stringify(targets));
 }
 
 function backend(options: { deployed?: boolean } = {}) {
