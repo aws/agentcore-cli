@@ -139,6 +139,7 @@ import type {
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
   CloudWatchLogEvent,
+  CoreObservabilityClient,
   GetTraceQuery,
   InsightsQuery,
   InsightsQueryRow,
@@ -150,9 +151,7 @@ import type {
   TraceSummary,
 } from "../core/observability/types";
 import type {
-  CoreObservabilityClient,
   CoreRuntimeClient,
-  DeployedRuntime,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
   RuntimeShellRequest,
@@ -189,7 +188,7 @@ import type {
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
 import type { CoreFetch, CoreOptions, CreateCloudFormationClient } from "../core/types";
-import type { Project, ProjectManager } from "../handlers/project/types";
+import type { ProjectManager } from "../handlers/project/types";
 import type {
   CorePolicyClient,
   GeneratePolicyInput,
@@ -2379,26 +2378,14 @@ export class TestEvalClient implements CoreEvalClient {
 }
 
 // TestObservabilityClient is a controllable CoreObservabilityClient: seed
-// `logEvents` / `resolveDeployedRuntimeResponse`, or set `error` to force the
-// next call to throw. Every call is recorded on `calls`.
+// `logEvents`, or set `error` to force the next call to throw. Every call is
+// recorded on `calls`.
 export class TestObservabilityClient implements CoreObservabilityClient {
   calls: { method: string; args: unknown[] }[] = [];
   error: Error | undefined;
 
-  resolveDeployedRuntimeResponse: DeployedRuntime = {
-    runtimeId: "project_runtime-0000000000",
-    region: "us-west-2",
-    stackName: "AgentCore-project-default",
-    targetName: "default",
-  };
   logEvents: CloudWatchLogEvent[] = [];
   queryRows: InsightsQueryRow[] = [];
-
-  async resolveDeployedRuntime(project: Project, targetName: string): Promise<DeployedRuntime> {
-    this.calls.push({ method: "resolveDeployedRuntime", args: [project, targetName] });
-    if (this.error) throw this.error;
-    return this.resolveDeployedRuntimeResponse;
-  }
 
   async *searchLogs(
     source: LogSource,

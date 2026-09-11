@@ -1,5 +1,5 @@
 import z from "zod";
-import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../../core/observability";
+import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../../core/observability/index";
 import type { AppIO } from "../../../../io";
 import { flag } from "../../../../router";
 import { createListTracesHandler } from "../../../observability/traces";

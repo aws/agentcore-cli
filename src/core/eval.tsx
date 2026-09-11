@@ -115,8 +115,8 @@ import {
   runtimeLogGroup,
   sanitizeQueryValue,
   type InsightsRowLimit,
-} from "./observability";
-import { CloudWatchClient } from "./observability/index";
+  CloudWatchClient,
+} from "./observability/index";
 import type {
   BatchEvaluationDetail,
   CodeBasedUpdate,
