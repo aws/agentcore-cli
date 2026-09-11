@@ -9,6 +9,7 @@ import {
   computeColumnWidths,
   resolveBorderWidth,
   SELECTION_MARKER_WIDTH,
+  TERMINAL_RIGHT_GUTTER_WIDTH,
 } from "./columnWidths.js";
 import type { ColumnSizing } from "./columnWidths.js";
 
@@ -200,7 +201,8 @@ export function DataTable<T extends Record<string, unknown>>({
     left: borderLeft,
     right: borderRight,
   });
-  const computedWidths = computeColumnWidths(columns, terminalWidth, {
+  const tableWidth = Math.max(0, terminalWidth - TERMINAL_RIGHT_GUTTER_WIDTH);
+  const computedWidths = computeColumnWidths(columns, tableWidth, {
     selectable,
     borderWidth,
   });

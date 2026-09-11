@@ -471,11 +471,12 @@ describe("paginated table picker contract", () => {
       );
 
       expect(headerIndex).toBeGreaterThanOrEqual(0);
-      expect(stringWidth(lines[headerIndex + 1]!)).toBe(width);
+      expect(stringWidth(lines[headerIndex + 1]!)).toBe(width - 1);
       expect(rowLines.every((line) => line !== undefined)).toBe(true);
       expect(new Set(rowLines.map((line) => lines.indexOf(line!))).size).toBe(suffixes.length);
-      expect(rowLines.every((line) => stringWidth(line!) <= width)).toBe(true);
+      expect(rowLines.every((line) => stringWidth(line!) <= width - 1)).toBe(true);
       expect(rowLines.every((line) => /runtime_\d-[A-Za-z0-9…]+\s+\d/.test(line!))).toBe(true);
+      expect(rowLines.every((line) => line!.includes("2026-07-19 01:02"))).toBe(true);
       if (width >= 80) {
         expect(rowLines.every((line, index) => line!.includes(suffixes[index]!))).toBe(true);
       }

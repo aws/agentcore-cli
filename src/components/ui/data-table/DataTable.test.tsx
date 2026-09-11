@@ -3,6 +3,7 @@ import { Box } from "ink";
 import { cleanup, render } from "ink-testing-library";
 import stringWidth from "string-width";
 import { DataTable, type DataTableColumn } from "./DataTable";
+import { TERMINAL_RIGHT_GUTTER_WIDTH } from "./columnWidths";
 
 afterEach(cleanup);
 
@@ -40,6 +41,16 @@ function renderTableAt(columnsWide: number) {
 }
 
 describe("DataTable layout", () => {
+  test("reserves a one-column gutter at the terminal's right edge", () => {
+    const terminalWidth = 60;
+    const divider = renderTableAt(terminalWidth)
+      .split("\n")
+      .find((line) => /^─+$/.test(line));
+
+    expect(divider).toBeDefined();
+    expect(stringWidth(divider!)).toBe(terminalWidth - TERMINAL_RIGHT_GUTTER_WIDTH);
+  });
+
   test("keeps the selection marker and each logical row on one line at 12 columns", () => {
     const lines = renderTableAt(12).split("\n");
     const rowLines = lines.filter(

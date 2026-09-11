@@ -1,6 +1,7 @@
 export const COLUMN_GAP = 1;
 export const FLEX_MIN_WIDTH = 16;
 export const SELECTION_MARKER_WIDTH = 1;
+export const TERMINAL_RIGHT_GUTTER_WIDTH = 1;
 
 export type ColumnSizing =
   | { flex: true; width?: never; minWidth?: never }
