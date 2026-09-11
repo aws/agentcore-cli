@@ -25,7 +25,10 @@ export function createAddProjectResourceHandler(
   // The resources with a wizard of their own. Every other resource is listed in
   // the add menu as command line only and opens its help instead (see
   // CliOnlyScreen).
-  const projectAdd = new Router("add", "add project resources").supportedTuiCommands("runtime");
+  const projectAdd = new Router("add", "add project resources").supportedTuiCommands(
+    "runtime",
+    "config-bundle",
+  );
   // withProject first, so it is the outermost wrapper: a resource added outside
   // a project gets the CLI's own not-found guidance, and the resolved project
   // seeds the wizard through ProjectKey. withTuiWhenInteractive then opens that

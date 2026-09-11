@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type z from "zod";
 import { FormTextInput } from "../FormTextInput";
+import { FormTextArea } from "../FormTextArea";
 import { FormRadioGroup } from "../FormRadioGroup";
 import { KeyValueTable } from "../KeyValueTable";
 import { darkTheme } from "../ui/_core.js";
@@ -154,6 +155,81 @@ export function TextField({
               ? validateEntry(next, { label, required, schema, json })
               : undefined,
           );
+        }}
+      />
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
+  );
+}
+
+export interface TextAreaFieldProps {
+  // label names the value in validation messages ("<label> is required").
+  label: string;
+  help?: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  // schema validates the parsed JSON when `json` is set, and the raw text
+  // otherwise — the same rules TextField applies.
+  schema?: z.ZodType;
+  // json parses the value before validating, and reports malformed JSON.
+  json?: boolean;
+  // example is a dimmed line above the editor, kept on screen while the user
+  // types, for a value whose shape is easier to copy than to remember.
+  example?: string;
+}
+
+// TextAreaField collects a value that arrives multi-line: pasted JSON, an
+// agent's instructions. Enter inserts a newline and ctrl+d continues, which is
+// what the hand-written harness wizard's prompt step already did — the cost of
+// multi-line paste is that enter can no longer mean "continue".
+export function TextAreaField({
+  label,
+  help = "",
+  placeholder = "",
+  value,
+  onChange,
+  required = false,
+  schema,
+  json = false,
+  example,
+}: TextAreaFieldProps) {
+  const { advance, back, isLast } = useWizard();
+  const [error, setError] = useState<string>();
+
+  useKeyHints([
+    { key: "enter", label: "newline" },
+    { key: "ctrl+d", label: isLast ? "submit" : "continue" },
+  ]);
+
+  useInput((input, key) => {
+    if (key.escape) {
+      back();
+      return;
+    }
+    if (!(key.ctrl && input === "d")) return;
+
+    const issue = validateEntry(value, { label, required, schema, json });
+    if (issue !== undefined) {
+      setError(issue);
+      return;
+    }
+    setError(undefined);
+    advance();
+  });
+
+  return (
+    <Box flexDirection="column">
+      {example !== undefined && <Text color={theme.colors.muted}>{`for example  ${example}`}</Text>}
+      <FormTextArea
+        name=""
+        helpText={help}
+        placeholder={placeholder}
+        value={value}
+        onChange={(next) => {
+          onChange(next);
+          setError(undefined);
         }}
       />
       {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}

@@ -117,6 +117,8 @@ function setWindowSize(stdout: ResizableStdout, columns: number, rows: number): 
 
 // keys maps friendly names to the escape sequences Ink decodes into key events.
 export const keys = {
+  // The end-of-transmission control character, which Ink reports as ctrl+d.
+  "ctrl+d": "\u0004",
   return: "\r",
   escape: "\u001B[27u",
   up: "[A",

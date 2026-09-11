@@ -6,7 +6,7 @@ import { render as inkRender } from "ink";
 import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
 import { Wizard, type WizardSubmitResult } from "./Wizard";
 import { Step } from "./Step";
-import { ChoiceField, Summary, TextField } from "./fields";
+import { ChoiceField, Summary, TextAreaField, TextField } from "./fields";
 
 afterEach(cleanupScreens);
 
@@ -320,6 +320,91 @@ describe("Wizard shell", () => {
 
     await waitForFrame(d, "name is required");
     expect(d.lastFrame()).toContain("what is your name?");
+    d.unmount();
+  });
+});
+
+// TextAreaField has its own harness because its key handling is the opposite of
+// every other field's: enter belongs to the value, so continuing needs ctrl+d.
+describe("TextAreaField", () => {
+  function driveTextArea(onSubmit: () => WizardSubmitResult) {
+    function Harness() {
+      const [blob, setBlob] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={onSubmit}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step name="blob" question="paste the configuration">
+            <TextAreaField
+              label="configuration"
+              value={blob}
+              onChange={setBlob}
+              required
+              json
+              schema={z.object({ ok: z.boolean() })}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter builds up the value and ctrl+d submits it", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea(async () => {
+      submitted = "reached";
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("ctrl+d"), 1000);
+    // The step is last, so on any other field this enter would submit.
+    await d.write('{"ok":');
+    await d.press("return");
+    await d.write("true}");
+    expect(submitted).toBeUndefined();
+    expect(d.lastFrame()).toContain("paste the configuration");
+
+    await d.press("ctrl+d");
+    await waitFor(() => submitted !== undefined, 1000);
+    d.unmount();
+  });
+
+  test("ctrl+d on a value the schema rejects stays on the step", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea(async () => {
+      submitted = "reached";
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("paste the configuration"), 1000);
+    await d.write('{"ok": "yes"}');
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("ok: Invalid input"), 1000);
+    expect(submitted).toBeUndefined();
     d.unmount();
   });
 });
