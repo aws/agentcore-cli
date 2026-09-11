@@ -92,7 +92,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<GetPaymentSessionResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new GetPaymentSessionCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -102,7 +102,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<ListPaymentSessionsResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new ListPaymentSessionsCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -114,7 +114,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<GetPaymentInstrumentResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new GetPaymentInstrumentCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -124,7 +124,7 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<GetPaymentInstrumentBalanceResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new GetPaymentInstrumentBalanceCommand({ paymentManagerArn, ...request })),
     );
   }
@@ -134,14 +134,14 @@ export class PaymentClient implements CorePaymentClient {
     options: CoreOptions,
   ): Promise<ListPaymentInstrumentsResponse> {
     const { managerId, ...request } = input;
-    return this.sendData(managerId, options, (data, paymentManagerArn) =>
+    return this.withPaymentManagerArn(managerId, options, (data, paymentManagerArn) =>
       data.send(new ListPaymentInstrumentsCommand({ paymentManagerArn, ...request })),
     );
   }
 
   // ─── helpers ────────────────────────────────────────────────────────────────
 
-  private async sendData<T>(
+  private async withPaymentManagerArn<T>(
     managerId: string,
     options: CoreOptions,
     send: (data: BedrockAgentCoreClient, paymentManagerArn: string) => Promise<T>,
