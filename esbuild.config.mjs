@@ -56,7 +56,7 @@ await esbuild.build({
   banner: {
     js: `import { createRequire } from 'module'; import { fileURLToPath as __ef } from 'url'; import { dirname as __ed } from 'path'; const require = createRequire(import.meta.url); const __filename = __ef(import.meta.url); const __dirname = __ed(__filename);`,
   },
-  external: ['fsevents', '@aws-cdk/toolkit-lib', '@napi-rs/keyring'],
+  external: ['esbuild', 'fsevents', '@aws-cdk/toolkit-lib', '@napi-rs/keyring'],
   plugins: [optionalDepsPlugin, textLoaderPlugin],
 });
 
