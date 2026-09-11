@@ -1,0 +1,438 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { useState } from "react";
+import z from "zod";
+import { render } from "ink-testing-library";
+import { render as inkRender } from "ink";
+import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
+import { Wizard, type WizardSubmitResult } from "./Wizard";
+import { Step } from "./Step";
+import { ChoiceField, Summary, TextAreaField, TextField } from "./fields";
+
+afterEach(cleanupScreens);
+
+// The wizard shell is exercised through a synthetic flow rather than one of the
+// real screens, so these tests describe the shell's own behaviour: how it
+// derives steps from children, moves between them, and reports outcomes.
+
+interface HarnessOptions {
+  onSubmit?: () => WizardSubmitResult;
+  onCancel?: () => void;
+  onError?: "exit" | "retry";
+  onDone?: () => void;
+}
+
+// A schema with a shape a stray space breaks, the way a resource-name schema
+// does: it is what makes "validated as typed" observable.
+const NAME_SCHEMA = z.string().regex(/^[A-Za-z]+$/, "letters only");
+
+const YES_NO = [
+  { value: false, label: "no", description: "skip the extra question" },
+  { value: true, label: "yes", description: "ask the extra question" },
+];
+
+// TestWizard has one conditional step, so the branch behaviour under test is
+// expressed the way a screen expresses it: `{condition && <Step/>}`.
+function TestWizard({ onSubmit, onCancel, onError, onDone }: HarnessOptions) {
+  const [name, setName] = useState("");
+  const [wantsExtra, setWantsExtra] = useState(false);
+  const [extra, setExtra] = useState("");
+
+  return (
+    <Wizard
+      breadcrumb={["agentcore", "test"]}
+      description="a synthetic flow"
+      onCancel={onCancel ?? (() => {})}
+      onSubmit={onSubmit ?? (async () => {})}
+      onError={onError}
+      onDone={onDone}
+      runningLabel="working…"
+      successLabel="all done"
+      successHint="enter exits"
+    >
+      <Step name="name" question="what is your name?">
+        <TextField label="name" value={name} onChange={setName} required schema={NAME_SCHEMA} />
+      </Step>
+
+      <Step name="branch" question="want the extra question?">
+        <ChoiceField choices={YES_NO} value={wantsExtra} onChange={setWantsExtra} />
+      </Step>
+
+      {wantsExtra && (
+        <Step name="extra" question="the extra question">
+          <TextField label="extra" value={extra} onChange={setExtra} />
+        </Step>
+      )}
+
+      <Step name="review" question="review">
+        <Summary items={{ name, extra: extra === "" ? "(none)" : extra }} />
+      </Step>
+    </Wizard>
+  );
+}
+
+interface Driver {
+  lastFrame: () => string | undefined;
+  write: (input: string) => Promise<void>;
+  press: (key: keyof typeof keys) => Promise<void>;
+  // pressTwice delivers two discrete key events in one drain, with no render in
+  // between — what a fast typist produces. A single "\r\r" chunk would not do:
+  // Ink reports a multi-character chunk with key.return false, so it never
+  // reaches a return handler at all.
+  pressTwice: (key: keyof typeof keys) => Promise<void>;
+  unmount: () => void;
+}
+
+function drive(options: HarnessOptions = {}): Driver {
+  const instance = render(<></>);
+  Object.defineProperties(instance.stdout, {
+    columns: { configurable: true, value: 100 },
+    rows: { configurable: true, value: 40 },
+  });
+  instance.rerender(<TestWizard {...options} />);
+
+  return {
+    lastFrame: instance.lastFrame,
+    write: async (input) => {
+      await tick();
+      instance.stdin.write(input);
+      await tick();
+    },
+    press: async (key) => {
+      await tick();
+      instance.stdin.write(keys[key]);
+      await tick();
+    },
+    pressTwice: async (key) => {
+      await tick();
+      instance.stdin.write(keys[key]);
+      instance.stdin.write(keys[key]);
+      await tick();
+    },
+    unmount: instance.unmount,
+  };
+}
+
+function waitForFrame(driver: Driver, text: string): Promise<void> {
+  return waitFor(() => (driver.lastFrame() ?? "").includes(text), 1000);
+}
+
+describe("Wizard shell", () => {
+  test("derives the stepper from its Step children", async () => {
+    const d = drive();
+
+    await waitForFrame(d, "what is your name?");
+    const frame = d.lastFrame()!;
+    expect(frame).toContain("● name");
+    expect(frame).toContain("○ branch");
+    expect(frame).toContain("○ review");
+    // The conditional step is not offered while its condition is false.
+    expect(frame).not.toContain("○ extra");
+    d.unmount();
+  });
+
+  test("a step appears mid-flow when its condition turns true", async () => {
+    const d = drive();
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+
+    await waitForFrame(d, "want the extra question?");
+    expect(d.lastFrame()).not.toContain("○ extra");
+
+    // Choosing "yes" inserts the step between here and review.
+    await d.press("down");
+    await waitForFrame(d, "○ extra");
+    await d.press("return");
+
+    await waitForFrame(d, "the extra question");
+    d.unmount();
+  });
+
+  test("enter advances and esc goes back, keeping answers", async () => {
+    const d = drive();
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+
+    await waitForFrame(d, "want the extra question?");
+    await d.press("escape");
+
+    await waitForFrame(d, "what is your name?");
+    expect(d.lastFrame()).toContain("Ada");
+    d.unmount();
+  });
+
+  test("esc on the first step cancels out of the wizard", async () => {
+    let cancelled = 0;
+    const d = drive({ onCancel: () => cancelled++ });
+
+    await waitForFrame(d, "what is your name?");
+    await d.press("escape");
+
+    expect(cancelled).toBe(1);
+    d.unmount();
+  });
+
+  test("the footer hints come from the active field", async () => {
+    const d = drive();
+
+    // A text field offers enter; a choice field also offers the arrows.
+    await waitForFrame(d, "what is your name?");
+    expect(d.lastFrame()).toContain("[enter] continue");
+    expect(d.lastFrame()).not.toContain("[↑↓] choose");
+
+    await d.write("Ada");
+    await d.press("return");
+
+    await waitForFrame(d, "want the extra question?");
+    expect(d.lastFrame()).toContain("[↑↓] choose");
+    d.unmount();
+  });
+
+  test("enter on the last step submits and reports success", async () => {
+    let submits = 0;
+    const d = drive({
+      onSubmit: async () => {
+        submits++;
+      },
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+    await waitForFrame(d, "want the extra question?");
+    await d.press("return");
+    await waitForFrame(d, "review");
+    expect(d.lastFrame()).toContain("[enter] submit");
+    await d.press("return");
+
+    await waitForFrame(d, "✔ all done");
+    expect(submits).toBe(1);
+    d.unmount();
+  });
+
+  test("a streamed submit renders its steps through the shared TaskList", async () => {
+    // The pauses let Ink paint between events: a generator that runs to
+    // completion in one batch would only ever produce the final frame, and the
+    // tail under a running step is exactly what that frame no longer shows.
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 5));
+    async function* progress() {
+      yield { type: "step", message: "wrote agentcore.json" } as const;
+      await pause();
+      yield { type: "output", line: "a line tailing the running step" } as const;
+      await pause();
+      yield { type: "step", message: "updated the deploy target" } as const;
+    }
+    const d = drive({ onSubmit: () => progress() });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+    await waitForFrame(d, "want the extra question?");
+    await d.press("return");
+    await waitForFrame(d, "review");
+    await d.press("return");
+
+    // An output line tails the step it belongs to while that step runs, and
+    // collapses with it — TaskList's behaviour everywhere else in the CLI.
+    await waitForFrame(d, "│ a line tailing the running step");
+
+    await waitForFrame(d, "✔ all done");
+    const frame = d.lastFrame()!;
+    expect(frame).toContain("✓ wrote agentcore.json");
+    expect(frame).toContain("✓ updated the deploy target");
+    expect(frame).not.toContain("a line tailing the running step");
+    d.unmount();
+  });
+
+  test("a buffered second enter does not submit twice", async () => {
+    let submits = 0;
+    const d = drive({
+      onSubmit: async () => {
+        submits++;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      },
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+    await waitForFrame(d, "want the extra question?");
+    await d.press("return");
+    await waitForFrame(d, "review");
+    await d.pressTwice("return");
+
+    await waitForFrame(d, "✔ all done");
+    expect(submits).toBe(1);
+    d.unmount();
+  });
+
+  test("onError retry reports the failure and returns to the form", async () => {
+    const d = drive({
+      onError: "retry",
+      onSubmit: () => Promise.reject(new Error("the service said no")),
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+    await waitForFrame(d, "want the extra question?");
+    await d.press("return");
+    await waitForFrame(d, "review");
+    await d.press("return");
+
+    await waitForFrame(d, "✗ the service said no");
+    await d.press("escape");
+
+    // Back on the review step, with the answers intact.
+    await waitForFrame(d, "review");
+    expect(d.lastFrame()).toContain("Ada");
+    d.unmount();
+  });
+
+  test("a field validates what it would submit, not a trimmed copy of it", async () => {
+    let submitted: string | undefined;
+    const d = drive({
+      onSubmit: async () => {
+        submitted = "reached";
+      },
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write(" Ada ");
+    await d.press("return");
+
+    // The step keeps the value as typed, so it must refuse it here rather than
+    // pass a trimmed copy and submit the padded one.
+    await waitForFrame(d, "letters only");
+    expect(d.lastFrame()).toContain("what is your name?");
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("a required field blocks the step until it is filled", async () => {
+    const d = drive();
+
+    await waitForFrame(d, "what is your name?");
+    await d.press("return");
+
+    await waitForFrame(d, "name is required");
+    expect(d.lastFrame()).toContain("what is your name?");
+    d.unmount();
+  });
+});
+
+// TextAreaField has its own harness because its key handling is the opposite of
+// every other field's: enter belongs to the value, so continuing needs ctrl+d.
+describe("TextAreaField", () => {
+  function driveTextArea(onSubmit: () => WizardSubmitResult) {
+    function Harness() {
+      const [blob, setBlob] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={onSubmit}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step name="blob" question="paste the configuration">
+            <TextAreaField
+              label="configuration"
+              value={blob}
+              onChange={setBlob}
+              required
+              json
+              schema={z.object({ ok: z.boolean() })}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter builds up the value and ctrl+d submits it", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea(async () => {
+      submitted = "reached";
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("ctrl+d"), 1000);
+    // The step is last, so on any other field this enter would submit.
+    await d.write('{"ok":');
+    await d.press("return");
+    await d.write("true}");
+    expect(submitted).toBeUndefined();
+    expect(d.lastFrame()).toContain("paste the configuration");
+
+    await d.press("ctrl+d");
+    await waitFor(() => submitted !== undefined, 1000);
+    d.unmount();
+  });
+
+  test("ctrl+d on a value the schema rejects stays on the step", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea(async () => {
+      submitted = "reached";
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("paste the configuration"), 1000);
+    await d.write('{"ok": "yes"}');
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("ok: Invalid input"), 1000);
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+});
+
+describe("Wizard authoring guards", () => {
+  // Ink's own render rather than ink-testing-library: a render-time throw
+  // reaches Ink's error boundary and rejects waitUntilExit, which the testing
+  // library does not expose.
+  test("two steps sharing a name are rejected at render", async () => {
+    const { streams } = ttyTestIO();
+    const { waitUntilExit } = inkRender(
+      <Wizard
+        breadcrumb={["agentcore", "test"]}
+        onCancel={() => {}}
+        onSubmit={async () => {}}
+        runningLabel="working…"
+        successLabel="all done"
+      >
+        <Step name="name" question="first">
+          <Summary items={{}} />
+        </Step>
+        <Step name="name" question="second">
+          <Summary items={{}} />
+        </Step>
+      </Wizard>,
+      { stdin: streams.io.stdin, stdout: streams.io.stdout, stderr: streams.io.stderr },
+    );
+
+    await expect(waitUntilExit()).rejects.toThrow('duplicate <Step name="name">');
+  });
+});
