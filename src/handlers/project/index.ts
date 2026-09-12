@@ -18,6 +18,7 @@ import type { ProjectManager } from "./types";
 import { createAddProjectResourceHandler } from "./add";
 import { createExportProjectResourceHandler } from "./export";
 import { createProjectInvokeHandler } from "./invoke";
+import { createProjectLogHandler } from "./log";
 
 type ProjectHandlerConfig = {
   core: Core;
@@ -99,6 +100,7 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
     ),
   );
   project.handler(createProjectInvokeHandler(core, io));
+  project.handler(createProjectLogHandler(core, io));
   // A bare `agentcore project status` in an interactive session opens the TUI
   // linked-resources screen; any user-supplied flag, --json, or a non-TTY
   // invocation keeps the headless JSON report (same dispatch shape as create).

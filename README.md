@@ -140,6 +140,8 @@ agentcore                          # interactive TUI
 │   │   └── harness                # use the existing Harness invoke experience
 │   ├── status                     # inspect deployed project resources (TUI when run bare)
 │   └── build                      # synthesize the project's CloudFormation templates
+│   └── log
+│       └── runtime                # resolve a project Runtime and inspect its logs
 └── config                         # read/write global config values
 ```
 
@@ -185,6 +187,22 @@ agentcore project invoke harness \
 
 Use `--target` to select a deployment target. When a project declares exactly
 one resource of the requested type, `--name` may be omitted.
+
+### Inspect project Runtime logs
+
+Project logging resolves a logical Runtime name through the selected deployment
+target, so the Runtime ID and deployment region do not need to be
+supplied:
+
+```bash
+agentcore project log runtime
+agentcore project log runtime --name checkout --target production
+agentcore project log runtime --name checkout --since 1h --level error
+```
+
+When the project declares exactly one Runtime, `--name` may be omitted. Use the
+imperative `agentcore runtime logs --id <runtimeId>` command when addressing a
+Runtime directly or working outside a project.
 
 ### Examples
 
@@ -251,7 +269,7 @@ agentcore runtime version list --id <runtimeId> --max-results 20
 agentcore runtime endpoint get --id <runtimeId> --qualifier DEFAULT
 agentcore runtime endpoint list --id <runtimeId> --max-results 20
 
-# Follow a Runtime's logs live (Ctrl+C to stop); inside a project --id is optional
+# Follow a Runtime's logs live by resource ID (Ctrl+C to stop)
 agentcore runtime logs --id <runtimeId>
 agentcore runtime logs --id <runtimeId> --level error --query "database"
 
