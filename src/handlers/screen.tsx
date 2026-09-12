@@ -1,11 +1,12 @@
 import { Text, useApp } from "ink";
 import { useEffect } from "react";
 import { CommandKey } from "../router";
+import { BrandBanner } from "../components/BrandBanner";
 import { RouterScreen } from "../components/RouterScreen";
 import type { ScreenProps } from "./types";
 
 export function RootScreen(props: ScreenProps) {
-  return <RouterScreen {...props} path={["agentcore"]} />;
+  return <RouterScreen {...props} banner={<BrandBanner />} path={["agentcore"]} />;
 }
 
 // HelpScreen is the final safety net for a route that does not resolve to an
