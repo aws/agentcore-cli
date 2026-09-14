@@ -20,6 +20,7 @@ const FIXTURES = join(import.meta.dir, "__fixtures__");
 // service assigns are captured from the recorded create responses, which keeps
 // the dependent fixtures (keyed by request input) stable on replay.
 const LLAJ_NAME = "agentcore_cli_eval_fixture_llaj";
+const OPEN_RESPONSES_NAME = "agentcore_cli_eval_fixture_openresponses";
 const CODE_BASED_NAME = "agentcore_cli_eval_fixture_code";
 // Evaluator ids must match `[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}`. An id that
 // fails the pattern is rejected as a ValidationException before any lookup happens,
@@ -206,6 +207,43 @@ describe("evaluator CRUDL", () => {
     expect(llajId).toBeString();
   });
 
+  // Self-contained lifecycle for an OpenResponses judge: create → get → delete in
+  // one test so the recording leaves no residue and can be re-recorded in
+  // isolation (RECORD=1 ... -t OpenResponses) without touching the Bedrock
+  // fixtures. Proves the CLI sends the responsesEvaluatorModelConfig arm end to
+  // end, which the Bedrock-only fixtures above cannot.
+  test("creates, reads, and deletes an OpenResponses LLM-as-a-Judge evaluator", async () => {
+    const createStdout = await run([
+      "eval",
+      "evaluator",
+      "llm-as-a-judge",
+      "create",
+      "--name",
+      OPEN_RESPONSES_NAME,
+      "--level",
+      "SESSION",
+      "--model-provider",
+      "OpenResponses",
+      "--model",
+      "openai.gpt-5.4",
+      "--instructions",
+      FIXTURE_INSTRUCTIONS,
+      "--rating-scale",
+      "1-5-quality",
+    ]);
+    matchGolden(FIXTURES, "openresponses-create.golden.json", createStdout);
+    const openResponsesId = JSON.parse(createStdout).evaluatorId;
+    expect(openResponsesId).toBeString();
+
+    const after = JSON.parse(await run(["eval", "evaluator", "get", "--id", openResponsesId]));
+    const model = after.evaluatorConfig.llmAsAJudge.modelConfig.responsesEvaluatorModelConfig;
+    expect(model.modelId).toBe("openai.gpt-5.4");
+    expect(model.maxOutputTokens).toBe(4096);
+    expect(model.temperature).toBe(0);
+
+    await run(["eval", "evaluator", "delete", "--id", openResponsesId]);
+  });
+
   test("creates a code-based evaluator", async () => {
     const stdout = await run([
       "eval",
@@ -349,6 +387,23 @@ describe("evaluator CRUDL", () => {
     await expect(
       run(["eval", "evaluator", "llm-as-a-judge", "update", "--id", codeBasedId, "--model", "m"]),
     ).rejects.toThrow(/is not an LLM-as-a-Judge evaluator/);
+  });
+
+  // A model id from one provider's API is not valid for the other, so switching
+  // provider must require a new --model rather than reuse the existing id.
+  test("rejects switching model provider without a new --model", async () => {
+    await expect(
+      run([
+        "eval",
+        "evaluator",
+        "llm-as-a-judge",
+        "update",
+        "--id",
+        llajId,
+        "--model-provider",
+        "OpenResponses",
+      ]),
+    ).rejects.toThrow(/requires a new --model/);
   });
 
   test("deletes the LLM-as-a-Judge evaluator", async () => {

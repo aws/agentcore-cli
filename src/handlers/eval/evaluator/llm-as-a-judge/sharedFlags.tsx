@@ -1,5 +1,5 @@
 import z from "zod";
-import type { RatingScale } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { EvaluatorModelConfig, RatingScale } from "@aws-sdk/client-bedrock-agentcore-control";
 import { flag } from "../../../../router";
 import { parseJsonFlag } from "../../../utils";
 import {
@@ -7,7 +7,38 @@ import {
   isRatingScalePreset,
   ratingScaleFromPreset,
 } from "../../ratingScale";
+import {
+  EvaluatorModelProviderSchema,
+  type EvaluatorModelProvider,
+} from "../../../../projectSchemas/evaluator";
 import type { SourceResolver } from "../../../../io";
+
+// The token budget and temperature the old CLI's project deployment applies to
+// an OpenResponses judge. topP is deliberately omitted so behavior matches it.
+const OPEN_RESPONSES_DEFAULTS = { maxOutputTokens: 4096, temperature: 0 } as const;
+
+// The enum schema validates the value at parse time (the router rejects anything
+// other than Bedrock/OpenResponses), so no handler-side check is needed. Optional,
+// not defaulted: create treats an omitted provider as Bedrock, while update treats
+// it as "keep the evaluator's current provider".
+export const modelProviderFlag = flag(
+  "model-provider",
+  "model provider for the judge: Bedrock (default) or OpenResponses",
+  EvaluatorModelProviderSchema.optional(),
+);
+
+// buildEvaluatorModelConfig selects the SDK modelConfig union arm for the
+// resolved provider. OpenResponses carries the deployment token/temperature
+// defaults; Bedrock passes the model id alone (the service supplies its own).
+export function buildEvaluatorModelConfig(
+  provider: EvaluatorModelProvider,
+  modelId: string,
+): EvaluatorModelConfig {
+  if (provider === "OpenResponses") {
+    return { responsesEvaluatorModelConfig: { modelId, ...OPEN_RESPONSES_DEFAULTS } };
+  }
+  return { bedrockEvaluatorModelConfig: { modelId } };
+}
 
 export const instructionsFlag = flag(
   "instructions",

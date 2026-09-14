@@ -5,7 +5,13 @@ import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../sharedFlags";
+import {
+  buildEvaluatorModelConfig,
+  instructionsFlag,
+  modelProviderFlag,
+  ratingScaleFlag,
+  resolveRatingScale,
+} from "../sharedFlags";
 import { LEVELS } from "../../levels";
 
 export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
@@ -13,9 +19,14 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create an LLM-as-a-Judge evaluator",
     flags: [
-      flag("name", "the name of the evaluator", z.string().optional()),
-      flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
-      flag("model", "the Bedrock model ID used to judge", z.string().optional()),
+      flag("name", "the name of the evaluator", z.string()),
+      flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS)),
+      modelProviderFlag,
+      flag(
+        "model",
+        "judge model: a Bedrock model ID / ARN, or an OpenResponses model ID",
+        z.string(),
+      ),
       instructionsFlag,
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
@@ -26,12 +37,8 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["level"])
-        throw new InputValidationError("required option '--level <level>' not specified");
-      if (!flags["model"])
-        throw new InputValidationError("required option '--model <model>' not specified");
+      // An omitted provider defaults to Bedrock, matching the old CLI.
+      const modelProvider = flags["model-provider"] ?? "Bedrock";
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);
@@ -59,7 +66,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
             llmAsAJudge: {
               instructions,
               ratingScale,
-              modelConfig: { bedrockEvaluatorModelConfig: { modelId: flags["model"] } },
+              modelConfig: buildEvaluatorModelConfig(modelProvider, flags["model"]),
             },
           },
           kmsKeyArn: flags["kms-key-arn"],

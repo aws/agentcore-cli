@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { SourceResolver } from "../../../../io";
 import { testIO } from "../../../../testing";
 import { ratingScaleFromPreset } from "../../ratingScale";
-import { resolveRatingScale } from "./sharedFlags";
+import { buildEvaluatorModelConfig, resolveRatingScale } from "./sharedFlags";
 
 // resolveRatingScale is the only branching logic behind --rating-scale: a value is
 // either a known preset id or a source-aware JSON RatingScale. These cases never
@@ -57,5 +57,31 @@ describe("resolveRatingScale", () => {
     await expect(resolveRatingScale("{not json", sourceWith())).rejects.toThrow(
       /Invalid JSON for option '--rating-scale'/,
     );
+  });
+});
+
+describe("buildEvaluatorModelConfig", () => {
+  test("Bedrock selects the bedrock arm with only the model id", () => {
+    expect(
+      buildEvaluatorModelConfig("Bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+    ).toEqual({
+      bedrockEvaluatorModelConfig: { modelId: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" },
+    });
+  });
+
+  test("OpenResponses selects the responses arm with the deployment defaults and no topP", () => {
+    const config = buildEvaluatorModelConfig("OpenResponses", "openai.gpt-5.4");
+    expect(config).toEqual({
+      responsesEvaluatorModelConfig: {
+        modelId: "openai.gpt-5.4",
+        maxOutputTokens: 4096,
+        temperature: 0,
+      },
+    });
+    expect("bedrockEvaluatorModelConfig" in config).toBe(false);
+    expect(
+      (config as { responsesEvaluatorModelConfig: { topP?: number } }).responsesEvaluatorModelConfig
+        .topP,
+    ).toBeUndefined();
   });
 });

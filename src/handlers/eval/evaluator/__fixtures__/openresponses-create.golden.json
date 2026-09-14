@@ -1,0 +1,6 @@
+{
+  "evaluatorArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:evaluator/agentcore_cli_eval_fixture_openresponses-H7N1QS76vQ",
+  "evaluatorId": "agentcore_cli_eval_fixture_openresponses-H7N1QS76vQ",
+  "createdAt": "2026-09-18T16:11:46.584Z",
+  "status": "ACTIVE"
+}
