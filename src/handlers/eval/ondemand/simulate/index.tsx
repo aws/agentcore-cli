@@ -10,35 +10,63 @@ import { coreOptsFromCtx } from "../../../utils";
 import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
 import { withUserCancellation } from "../../../../runnable";
 
+const TARGET = "Target:";
+const INVOCATION = "Invocation:";
+const DATASET = "Dataset:";
+const EVALUATION = "Evaluation:";
+
+const payloadTemplateHelp = `(JSON object)
+The request body sent to the Runtime for each dataset example. Every occurrence
+of {input} is replaced with that example's input, so the template describes the
+shape your agent expects and {input} marks where the prompt goes.
+
+Example:
+  --payload-template '{"prompt":"{input}"}'
+
+  --payload-template '{"messages":[{"role":"user","content":"{input}"}],"stream":false}'`;
+
 export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
   createHandler({
     name: "simulate",
     description: "replay a dataset against a Runtime, then evaluate the sessions client-side",
     flags: [
-      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional()),
-      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
+      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional(), {
+        group: TARGET,
+      }),
+      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
+        group: TARGET,
+      }),
       flag(
         "payload-template",
-        'JSON payload template; {input} is the scenario input, e.g. {"prompt":"{input}"}',
+        "request body per example (JSON object); {input} is replaced with the input",
         z.string().optional(),
+        { group: INVOCATION, help: payloadTemplateHelp },
       ),
       flag("header", "an ordered application header (repeatable)", z.array(z.string()).optional(), {
         sensitive: true,
+        group: INVOCATION,
       }),
       flag(
         "bearer-token",
         "CUSTOM_JWT bearer token (for JWT-auth Runtimes)",
         z.string().optional(),
-        { sensitive: true },
+        { sensitive: true, group: INVOCATION },
       ),
-      flag("user-id", "Runtime user ID", z.string().optional()),
-      flag("dataset", "dataset source: local JSONL path or a dataset ID", z.string().optional()),
-      flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional()),
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
+      flag("user-id", "Runtime user ID", z.string().optional(), { group: INVOCATION }),
+      flag("dataset", "local JSONL path or a dataset ID", z.string().optional(), {
+        group: DATASET,
+      }),
+      flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional(), {
+        group: DATASET,
+      }),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+        group: EVALUATION,
+      }),
       flag(
         "ingestion-wait-ms",
         "ms to wait for span ingestion before grading (default 180000; 0 to skip)",
         z.coerce.number().int().nonnegative().optional(),
+        { group: EVALUATION },
       ),
     ],
     handle: async (ctx, flags) => {

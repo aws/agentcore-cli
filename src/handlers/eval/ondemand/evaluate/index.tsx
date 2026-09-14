@@ -8,43 +8,81 @@ import type { EvaluationReferenceInput } from "@aws-sdk/client-bedrock-agentcore
 import { coreOptsFromCtx, parseJsonArrayFlag } from "../../../utils";
 import type { SessionWindow } from "../../types";
 
+const SESSION_SOURCE = "Session source:";
+const SESSION_FILTERS = "Session filters:";
+const EVALUATION = "Evaluation:";
+
+const groundTruthHelp = `(JSON: list of objects)
+Expected answers for the sessions being evaluated, so an evaluator can score a
+response against a reference instead of judging it on its own. Each entry is an
+EvaluationReferenceInput bound to a session (and optionally a trace) by its span
+context; omit an entry for a session that has no reference answer.
+
+Accepts inline JSON, file://<path>, or - to read stdin.
+
+JSON syntax:
+  [
+    {
+      "context": {                        // [required] what this reference applies to
+        "spanContext": {
+          "sessionId": "string",          // [required]
+          "traceId": "string"             // set for a trace-level reference
+        }
+      },
+      "expectedResponse": { "text": "string" },   // trace-level; needs a traceId
+      "assertions": [                              // session-level
+        { "text": "string" },
+        ...
+      ],
+      "expectedTrajectory": {                      // session-level
+        "toolNames": ["string", ...]    // tools the agent should have called
+      }
+    },
+    ...
+  ]
+
+Example:
+  --ground-truth '[{"context":{"spanContext":{"sessionId":"session-123"}},"assertions":[{"text":"acknowledges the shipping delay"}]}]'
+
+  --ground-truth file://ground-truth.json`;
+
 export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "evaluate",
     description: "evaluate existing sessions client-side (synchronous; prints scores)",
     flags: [
-      flag(
-        "agent",
-        "source: harness ID or Runtime ID whose sessions to evaluate",
-        z.string().optional(),
-      ),
-      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional()),
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional()),
-      flag(
-        "lookback-days",
-        "time filter: evaluate sessions from the last N days",
-        z.number().optional(),
-      ),
-      flag(
-        "start-time",
-        "time filter: window start (ISO-8601, with --end-time)",
-        z.string().optional(),
-      ),
-      flag(
-        "end-time",
-        "time filter: window end (ISO-8601, with --start-time)",
-        z.string().optional(),
-      ),
-      flag("session-ids", "filter: specific session IDs", z.array(z.string()).optional()),
+      flag("agent", "harness ID or Runtime ID whose sessions to evaluate", z.string().optional(), {
+        group: SESSION_SOURCE,
+      }),
+      flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
+        group: SESSION_SOURCE,
+      }),
+      flag("lookback-days", "evaluate sessions from the last N days", z.number().optional(), {
+        group: SESSION_FILTERS,
+      }),
+      flag("start-time", "window start (ISO-8601, with --end-time)", z.string().optional(), {
+        group: SESSION_FILTERS,
+      }),
+      flag("end-time", "window end (ISO-8601, with --start-time)", z.string().optional(), {
+        group: SESSION_FILTERS,
+      }),
+      flag("session-ids", "specific session IDs", z.array(z.string()).optional(), {
+        group: SESSION_FILTERS,
+      }),
       flag(
         "trace-id",
-        "filter: a single trace ID (session ID is read off the span)",
+        "a single trace ID (session ID is read off the span)",
         z.string().optional(),
+        { group: SESSION_FILTERS },
       ),
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+        group: EVALUATION,
+      }),
       flag(
         "ground-truth",
-        "ground truth (JSON EvaluationReferenceInput[]; inline, file://<path>, or -)",
+        "expected answers (JSON EvaluationReferenceInput[])",
         z.string().optional(),
+        { group: EVALUATION, help: groundTruthHelp },
       ),
     ],
     handle: async (ctx, flags) => {
