@@ -15,7 +15,10 @@ import { WizardProvider, type KeyHint, type WizardControls } from "./context";
 export type WizardSubmitResult = ProgressResult<unknown>;
 
 type Phase =
-  { kind: "form" } | { kind: "running" } | { kind: "success" } | { kind: "error"; message: string };
+  | { kind: "form" }
+  | { kind: "running" }
+  | { kind: "success" }
+  | { kind: "error"; error: AgentCoreCLIError };
 
 export interface WizardProps {
   breadcrumb: string[];
@@ -88,7 +91,7 @@ export function Wizard({
     } catch (error) {
       setPhase({
         kind: "error",
-        message: error instanceof Error ? error.message : String(error),
+        error: AgentCoreCLIError.fromError(error),
       });
     } finally {
       submitting.current = false;
@@ -154,7 +157,7 @@ export function Wizard({
             )}
             {phase.kind === "error" && (
               <ErrorPanel
-                message={phase.message}
+                message={phase.error.message}
                 onRetry={retryable ? () => void submit() : undefined}
                 onBack={() => setPhase({ kind: "form" })}
               />
