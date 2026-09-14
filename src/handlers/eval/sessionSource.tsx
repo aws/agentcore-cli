@@ -23,7 +23,7 @@ JSON syntax:
       "serviceNames": ["string", ...],   // e.g. "my_agent.DEFAULT"
       "filterConfig": {
         "sessionIds": ["string", ...],
-        "sessionFilterConfig": {
+        "timeRange": {
           "startTime": "timestamp",
           "endTime": "timestamp"
         }

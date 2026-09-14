@@ -21,17 +21,33 @@ Accepts inline JSON, file://<path>, or - to read stdin.
 JSON syntax:
   [
     {
-      "sessionId": "string",         // [required] the session the reference applies to
-      "testScenarioId": "string",    // groups sessions replaying the same scenario
-      "groundTruth": {
-        "inline": "string"           // the expected answer
-      }
+      "sessionId": "string",              // [required] the session this applies to
+      "testScenarioId": "string",         // groups sessions replaying one scenario
+      "groundTruth": {                    // exactly one key; only inline today
+        "inline": {
+          "turns": [                      // the expected exchange, in order
+            {
+              "input": { "prompt": "string" },
+              "expectedResponse": { "text": "string" }
+            },
+            ...
+          ],
+          "assertions": [                 // statements the response must satisfy
+            { "text": "string" },
+            ...
+          ],
+          "expectedTrajectory": {
+            "toolNames": ["string", ...]  // tools the agent should have called
+          }
+        }
+      },
+      "metadata": { "string": "string", ... }
     },
     ...
   ]
 
 Example:
-  --ground-truth '[{"sessionId":"session-123","groundTruth":{"inline":"The order shipped on Tuesday."}}]'
+  --ground-truth '[{"sessionId":"session-123","groundTruth":{"inline":{"turns":[{"input":{"prompt":"Where is my order?"},"expectedResponse":{"text":"It shipped on Tuesday."}}]}}}]'
 
   --ground-truth file://ground-truth.json`;
 
