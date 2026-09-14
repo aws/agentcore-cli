@@ -12,53 +12,71 @@ import type { Core } from "../../types";
 import { coreOptsFromCtx, parseJsonArrayFlag, parseJsonObjectFlag, parseTags } from "../../utils";
 import type { CreateGatewayInput } from "../types";
 
+const CONFIGURATION = "Configuration:";
+const PROTOCOL = "Protocol:";
+const AUTHORIZER = "Authorizer:";
+const POLICY_ENGINE = "Policy engine:";
+
 export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
     description: "create an AgentCore Gateway",
     flags: [
-      flag("name", "the Gateway name", z.string().optional()),
-      flag("role-arn", "IAM role the Gateway assumes", z.string().optional()),
+      flag("name", "the Gateway name", z.string().optional(), { group: CONFIGURATION }),
+      flag("role-arn", "IAM role the Gateway assumes", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
+      flag("description", "Gateway description", z.string().optional(), { group: CONFIGURATION }),
+      flag("kms-key-arn", "KMS key ARN", z.string().optional(), { group: CONFIGURATION }),
+      flag("exception-level", "exception detail level: debug", z.enum(["debug"]).optional(), {
+        group: CONFIGURATION,
+      }),
+      flag(
+        "tags",
+        "tags as repeated key=value or a JSON object (inline, file://<path>, or - for stdin)",
+        z.array(z.string()).optional(),
+        { group: CONFIGURATION },
+      ),
+      flag("client-token", "idempotency token", z.string().optional(), { group: CONFIGURATION }),
       flag(
         "protocol",
         "restrict Target protocols to MCP; omitted allows every Target protocol",
         z.enum(["mcp"]).optional(),
+        { group: PROTOCOL },
+      ),
+      flag(
+        "protocol-configuration",
+        "MCP protocol configuration (JSON; inline, file://<path>, or - for stdin)",
+        z.string().optional(),
+        { group: PROTOCOL },
       ),
       flag(
         "authorizer-type",
         "inbound authorizer: AWS_IAM, CUSTOM_JWT, NONE, or AUTHENTICATE_ONLY",
         z.enum(["AWS_IAM", "CUSTOM_JWT", "NONE", "AUTHENTICATE_ONLY"]).optional(),
-      ),
-      flag("description", "Gateway description", z.string().optional()),
-      flag(
-        "protocol-configuration",
-        "MCP protocol configuration (JSON; inline, file://<path>, or - for stdin)",
-        z.string().optional(),
+        { group: AUTHORIZER },
       ),
       flag(
         "authorizer-configuration",
         "authorizer configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: AUTHORIZER },
       ),
-      flag("kms-key-arn", "KMS key ARN", z.string().optional()),
       flag(
         "interceptor-configurations",
         "interceptor configurations (JSON array; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: "Interceptors:" },
       ),
-      flag("policy-engine-arn", "Policy Engine ARN", z.string().optional()),
+      flag("policy-engine-arn", "Policy Engine ARN", z.string().optional(), {
+        group: POLICY_ENGINE,
+      }),
       flag(
         "policy-engine-mode",
         "Policy Engine mode: log-only or enforce",
         z.enum(["log-only", "enforce"]).optional(),
+        { group: POLICY_ENGINE },
       ),
-      flag("exception-level", "exception detail level: debug", z.enum(["debug"]).optional()),
-      flag(
-        "tags",
-        "tags as repeated key=value or a JSON object (inline, file://<path>, or - for stdin)",
-        z.array(z.string()).optional(),
-      ),
-      flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
       if (!flags.name) {

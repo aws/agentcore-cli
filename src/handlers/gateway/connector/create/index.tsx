@@ -19,43 +19,53 @@ import {
 import type { CreateGatewayTargetInput } from "../../types";
 import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
+const TARGET = "Target:";
+const CONNECTOR = "Connector:";
+const CREDENTIALS = "Credentials & networking:";
+
 export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
     description: "create a connector-backed Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("name", "Connector Target name", z.string().optional()),
-      flag("description", "Connector Target description", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().optional(), { group: TARGET }),
+      flag("name", "Connector Target name", z.string().optional(), { group: TARGET }),
+      flag("description", "Connector Target description", z.string().optional(), { group: TARGET }),
       flag(
         "connector-configuration",
         "connector-backed Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CONNECTOR },
       ),
       flag(
         "connector",
         "curated connector",
         z.enum(["web-search", "bedrock-knowledge-bases", "bedrock-mantle"]).optional(),
+        { group: CONNECTOR },
       ),
       flag(
         "knowledge-base-id",
         "Knowledge Base ID for the bedrock-knowledge-bases connector",
         z.string().optional(),
+        { group: CONNECTOR },
       ),
       flag(
         "credential-provider-configurations",
         "one outbound credential configuration (JSON array; inline, file://<path>, or - for stdin); required with --connector-configuration and defaults to GATEWAY_IAM_ROLE with --connector",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "metadata-configuration",
         "metadata propagation (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "private-endpoint",
         "private endpoint (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
     ],
     handle: async (ctx, flags) => {
