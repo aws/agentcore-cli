@@ -16,6 +16,7 @@ import { createAddPolicyHandler } from "./policy";
 import type { AddProjectResourceConfig } from "./types";
 import { createAddPaymentConnectorHandler } from "./payment-connector";
 import { createAddPaymentManagerHandler } from "./payment-manager";
+import { createAddRuntimeEndpointHandler } from "./runtime-endpoint";
 
 export function createAddProjectResourceHandler(config: AddProjectResourceConfig): Router {
   const projectAdd = new Router("add", "add project resources");
@@ -35,5 +36,6 @@ export function createAddProjectResourceHandler(config: AddProjectResourceConfig
   projectAdd.handler(createAddPolicyHandler(config));
   projectAdd.handler(createAddPaymentManagerHandler(config));
   projectAdd.handler(createAddPaymentConnectorHandler(config));
+  projectAdd.handler(createAddRuntimeEndpointHandler(config));
   return projectAdd;
 }

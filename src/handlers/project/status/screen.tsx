@@ -55,6 +55,13 @@ function routeFor(
     const gatewayId = encodeURIComponent(serviceIdFromArn(parent.id));
     return `/agentcore/gateway/target/get/${gatewayId}/${encodeURIComponent(resource.id)}`;
   }
+  // An endpoint's detail (runtime endpoint get) keys off the parent runtime's id
+  // plus the endpoint name as qualifier, not the endpoint's own ARN.
+  if (resource.resourceType === "runtime-endpoint") {
+    if (parent?.deploymentState !== "deployed") return undefined;
+    const runtimeId = encodeURIComponent(serviceIdFromArn(parent.id));
+    return `/agentcore/runtime/endpoint/get/${runtimeId}/${encodeURIComponent(resource.name)}`;
+  }
   return DETAIL_ROUTES[resource.resourceType]?.(serviceIdFromArn(resource.id));
 }
 

@@ -28,6 +28,11 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         z.string().min(1).optional(),
       ),
       flag(
+        "runtime",
+        "name of the parent runtime for a runtime-endpoint",
+        z.string().min(1).optional(),
+      ),
+      flag(
         "yes",
         "skip the confirmation prompt when removing all resources",
         z.boolean().default(false),
@@ -54,6 +59,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             "policy",
             "payment-manager",
             "payment-connector",
+            "runtime-endpoint",
             "all",
           ])
           .optional(),
@@ -73,6 +79,9 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       }
       if (flags.manager && resource !== "payment-connector") {
         throw new InputValidationError(`--manager is valid only when removing a payment-connector`);
+      }
+      if (flags.runtime && resource !== "runtime-endpoint") {
+        throw new InputValidationError(`--runtime is valid only when removing a runtime-endpoint`);
       }
 
       const project = ctx.require(ProjectKey);
@@ -123,6 +132,15 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         input = {
           resourceType: "payment-connector",
           managerName: flags.manager,
+          name,
+        };
+      } else if (resource === "runtime-endpoint") {
+        if (!flags.runtime) {
+          throw new InputValidationError(`--runtime is required option`);
+        }
+        input = {
+          resourceType: "runtime-endpoint",
+          runtimeName: flags.runtime,
           name,
         };
       } else {

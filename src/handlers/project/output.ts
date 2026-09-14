@@ -5,7 +5,8 @@ export type ProjectMutationResourceType = AddResourceInput["resourceType"] | "ga
 type ProjectMutationParent =
   | { type: "gateway"; name: string }
   | { type: "policy-engine"; name: string }
-  | { type: "payment-manager"; name: string };
+  | { type: "payment-manager"; name: string }
+  | { type: "runtime"; name: string };
 
 type ProjectMutationResource = {
   type: ProjectMutationResourceType;
@@ -59,6 +60,8 @@ function parentFor(
       return input.engineName ? { type: "policy-engine", name: input.engineName } : undefined;
     case "payment-connector":
       return { type: "payment-manager", name: input.managerName };
+    case "runtime-endpoint":
+      return { type: "runtime", name: input.runtimeName };
     default:
       return undefined;
   }

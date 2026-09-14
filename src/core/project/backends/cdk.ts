@@ -508,6 +508,9 @@ export class CdkBackend implements ProjectBackend {
           // The same template does not set an exportName. Therefore match on the
           // OutputKey. The template writes only a connector id, and never an ARN.
           return byOutputKey(`Payment${cdkId(owner ?? "")}${cdkId(name)}ConnectorId`);
+        case "runtime-endpoint":
+          // ExportName: <StackName>-Endpoint-<runtimeName>-<endpointName>-Arn
+          return byExportName("Endpoint", owner ?? "", name, "Arn");
         case "credential":
           // The CLI creates credential providers imperatively. The stack does not
           // contain them. Therefore read the ARN from the deployed state file.
@@ -538,7 +541,13 @@ export class CdkBackend implements ProjectBackend {
     };
 
     return [
-      ...spec.runtimes.map(({ name }) => resolve("runtime", name)),
+      ...spec.runtimes.map((runtime) =>
+        resolve("runtime", runtime.name, {
+          children: Object.keys(runtime.endpoints ?? {}).map((endpointName) =>
+            resolve("runtime-endpoint", endpointName, { owner: runtime.name }),
+          ),
+        }),
+      ),
       ...spec.harnesses.map(({ name }) => resolve("harness", name)),
       ...spec.memories.map(({ name }) => resolve("memory", name)),
       ...spec.knowledgeBases.map(({ name }) => resolve("knowledge-base", name)),
