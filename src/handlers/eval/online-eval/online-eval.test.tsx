@@ -431,15 +431,15 @@ describe("execution role KMS scoping", () => {
 });
 
 describe("execution role scoping on update", () => {
-  const WARN_CONFIG_NAME = "agentcore_cli_online_eval_role_warn";
+  const CONFIG_NAME = "agentcore_cli_online_eval_role_warn";
 
-  test("warns when a custom role is left scoped to the old log groups", async () => {
+  test("leaves the execution role untouched when the data source moves", async () => {
     const created = await run([
       "eval",
       "online-eval",
       "create",
       "--name",
-      WARN_CONFIG_NAME,
+      CONFIG_NAME,
       "--agent",
       FIXTURE_AGENT_ID,
       "--evaluators",
@@ -451,11 +451,12 @@ describe("execution role scoping on update", () => {
       "--enable-on-create",
       "false",
     ]);
-    const warnConfigId = JSON.parse(created).onlineEvaluationConfigId;
+    const configId = JSON.parse(created).onlineEvaluationConfigId;
     await settle();
 
-    // Repointing at a different agent moves the log groups, but the role came from
-    // --role-arn, so the CLI must not touch its permissions — only report it.
+    // Repointing at a different agent moves the log groups. Like `harness update`,
+    // the CLI must not provision or re-scope the role — it just forwards the update
+    // and emits no advisory about the role's scope.
     const io = testIO();
     const root = createRootHandler(createFixtureCore(), {
       io: io.io,
@@ -469,45 +470,17 @@ describe("execution role scoping on update", () => {
       "online-eval",
       "update",
       "--id",
-      warnConfigId,
+      configId,
       "--agent",
       "ABVfyLatest_ABVfyLatest-PFLr353QVA",
       "--region",
       REGION,
     ]);
 
-    // Human-readable mode: the advisory goes to stderr, leaving stdout alone.
-    expect(io.stderr()).toContain("not managed by the CLI");
-    expect(io.stderr()).toContain(FIXTURE_ROLE_ARN);
+    expect(io.stderr()).toBe("");
+    expect(JSON.parse(io.stdout()).onlineEvaluationConfigId).toBe(configId);
 
     await settle();
-
-    // --json suppresses the advisory, matching runtime/invoke's summary: a scripted
-    // caller gets machine-readable stdout and an empty stderr.
-    const jsonIo = testIO();
-    const jsonRoot = createRootHandler(createFixtureCore(), {
-      io: jsonIo.io,
-      logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor(),
-    });
-    await jsonRoot.route([
-      "node",
-      "agentcore",
-      "eval",
-      "online-eval",
-      "update",
-      "--id",
-      warnConfigId,
-      "--agent",
-      FIXTURE_AGENT_ID,
-      "--region",
-      REGION,
-      "--json",
-    ]);
-    expect(jsonIo.stderr()).toBe("");
-    expect(JSON.parse(jsonIo.stdout()).onlineEvaluationConfigId).toBe(warnConfigId);
-
-    await settle();
-    await run(["eval", "online-eval", "delete", "--id", warnConfigId]);
+    await run(["eval", "online-eval", "delete", "--id", configId]);
   }, 90_000);
 });
