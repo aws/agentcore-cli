@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import {
   CreateRoleCommand,
-  DeleteRolePolicyCommand,
   GetRoleCommand,
   PutRolePolicyCommand,
   type IAMClient,
 } from "@aws-sdk/client-iam";
-import { parseArn, resourceNameFromArn } from "./arn";
+import { parseArn } from "./arn";
 
 // Default online-evaluation execution role provisioning, mirroring
 // core/executionRole.tsx's pattern for harnesses: CreateOnlineEvaluationConfig
@@ -48,16 +47,6 @@ export function onlineEvalExecutionRoleName(configName: string): string {
 function truncatedRolePrefix(configName: string): string {
   const room = ROLE_NAME_MAX - ROLE_NAME_PREFIX.length - NAME_HASH_LENGTH - 1;
   return `${ROLE_NAME_PREFIX}${configName.slice(0, room)}-`;
-}
-
-// isManagedOnlineEvalRole recognises the CLI's default role for a config. Roles
-// created before the hash moved off Bun.hash carry a different suffix, so a
-// truncated name is matched on its prefix rather than recomputed.
-export function isManagedOnlineEvalRole(roleArn: string, configName: string): boolean {
-  const roleName = resourceNameFromArn(roleArn);
-  const full = `${ROLE_NAME_PREFIX}${configName}`;
-  if (full.length <= ROLE_NAME_MAX) return roleName === full;
-  return roleName.startsWith(truncatedRolePrefix(configName));
 }
 
 function trustPolicy(): string {
@@ -245,21 +234,4 @@ export async function grantOnlineEvalScope(
   );
 
   return { roleArn, policyName };
-}
-
-// revokeOnlineEvalScope detaches a scope's inline policy, dropping the access it
-// granted. Returns false when no policy of that name was attached, which is how a
-// policy written under a legacy name shows up: still granted, not removable here.
-export async function revokeOnlineEvalScope(
-  iam: IAMClient,
-  roleName: string,
-  policyName: string,
-): Promise<boolean> {
-  try {
-    await iam.send(new DeleteRolePolicyCommand({ RoleName: roleName, PolicyName: policyName }));
-    return true;
-  } catch (error) {
-    if ((error as Error).name !== "NoSuchEntityException") throw error;
-    return false;
-  }
 }
