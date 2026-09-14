@@ -21,7 +21,7 @@ export interface FormRadioGroupProps {
 // FormRadioGroup renders a column of radio rows. It is fully controlled: the
 // parent owns the focused index and the key handling that moves it.
 export function FormRadioGroup({
-  name,
+  name = "",
   helpText,
   options,
   focusedIndex,
@@ -31,10 +31,14 @@ export function FormRadioGroup({
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column">
-        {name && <Text color={theme.colors.text}>{name}</Text>}
-        <Text color={theme.colors.muted}>{helpText}</Text>
-      </Box>
+      {/* Either row is omitted when empty, so a caller whose surrounding
+          context already asks the question renders just the options. */}
+      {(name !== "" || helpText !== "") && (
+        <Box flexDirection="column">
+          {name !== "" && <Text color={theme.colors.text}>{name}</Text>}
+          {helpText !== "" && <Text color={theme.colors.muted}>{helpText}</Text>}
+        </Box>
+      )}
       <Box
         flexDirection="column"
         paddingX={1}

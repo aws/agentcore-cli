@@ -21,6 +21,18 @@ export const AgentNameSchema = z
     /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
     "Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)",
   );
+// RUNTIME_NAME_MAX_LENGTH is six characters short of the 48 a name may hold,
+// because a runtime scaffolds a memory called `${runtimeName}Memory` (see
+// getDefaultMemorySpec) and MemoryNameSchema caps that at 48.
+export const RUNTIME_NAME_MAX_LENGTH = 42;
+
+// RuntimeNameSchema is the one runtime-name rule: the `--name` flag and the
+// interactive wizard both validate against it, so neither accepts a name the
+// other rejects.
+export const RuntimeNameSchema = AgentNameSchema.max(
+  RUNTIME_NAME_MAX_LENGTH,
+  `Must be at most ${RUNTIME_NAME_MAX_LENGTH} characters`,
+);
 export const EnvVarNameSchema = z
   .string()
   .min(1)
