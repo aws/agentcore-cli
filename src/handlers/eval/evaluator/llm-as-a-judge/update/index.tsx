@@ -5,7 +5,13 @@ import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
-import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../sharedFlags";
+import {
+  instructionsFlag,
+  modelProviderFlag,
+  ratingScaleFlag,
+  resolveModelProvider,
+  resolveRatingScale,
+} from "../sharedFlags";
 
 export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -14,7 +20,12 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
     flags: [
       flag("id", "the ID of the evaluator to update", z.string().optional()),
       instructionsFlag,
-      flag("model", "the Bedrock model ID used to judge", z.string().optional()),
+      modelProviderFlag,
+      flag(
+        "model",
+        "judge model: a Bedrock model ID / ARN, or an OpenResponses model ID (required when changing provider)",
+        z.string().optional(),
+      ),
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
     ],
@@ -30,6 +41,12 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
         {
           instructions,
           model: flags["model"],
+          // Only forward the provider when the caller set it, so an update that
+          // leaves it out preserves the evaluator's existing provider.
+          modelProvider:
+            flags["model-provider"] !== undefined
+              ? resolveModelProvider(flags["model-provider"])
+              : undefined,
           ratingScale,
           kmsKeyArn: flags["kms-key-arn"],
         },
