@@ -57,12 +57,15 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
 
   const table = (rows: [string, string][]) => Object.fromEntries(rows);
   // --help is Commander's own and means nothing on a screen that is the help.
-  const options = table(
-    help
-      .visibleOptions(command)
-      .filter((option) => option.long !== "--help")
-      .map((option) => [help.optionTerm(option), help.optionDescription(option)]),
-  );
+  const optionGroups: [string, [string, string][]][] = [];
+  for (const option of help.visibleOptions(command)) {
+    if (option.long === "--help") continue;
+    const title = sectionTitle(option.helpGroupHeading);
+    const row: [string, string] = [help.optionTerm(option), help.optionDescription(option)];
+    const group = optionGroups.find(([existing]) => existing === title);
+    if (group) group[1].push(row);
+    else optionGroups.push([title, [row]]);
+  }
   const args = table(
     help
       .visibleArguments(command)
@@ -96,11 +99,11 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
               <KeyValueTable items={args} />
             </Section>
           )}
-          {Object.keys(options).length > 0 && (
-            <Section title="options">
-              <KeyValueTable items={options} />
+          {optionGroups.map(([title, rows]) => (
+            <Section key={title} title={title}>
+              <KeyValueTable items={table(rows)} />
             </Section>
-          )}
+          ))}
           {details !== undefined && (
             // formatParameterDetails already carries its own heading and layout.
             <Text color={theme.colors.muted}>{details.trim()}</Text>
@@ -110,6 +113,9 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
     </Layout>
   );
 }
+
+const sectionTitle = (group: string | undefined) =>
+  group ? group.replace(/:$/, "").toLowerCase() : "options";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
