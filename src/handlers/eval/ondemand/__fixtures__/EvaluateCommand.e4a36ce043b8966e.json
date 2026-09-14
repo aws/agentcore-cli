@@ -1,0 +1,23 @@
+{
+  "evaluationResults": [
+    {
+      "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Helpfulness",
+      "evaluatorId": "Builtin.Helpfulness",
+      "evaluatorName": "Builtin.Helpfulness",
+      "context": {
+        "spanContext": {
+          "sessionId": "81a5dfcb-9d79-4369-b5a2-479a52ca4bf4",
+          "traceId": "6aa82cf32f590bb018df44b95178fe81"
+        }
+      },
+      "explanation": "The user asked a simple factual question: 'What is the capital of France?' The assistant directly answered the question with 'Paris' and then provided additional context about Paris being the largest city in France and mentioning several famous landmarks and its global significance. The core question was answered immediately and clearly. The additional information, while not strictly necessary, is relevant and enriching without being excessive or misleading. This response directly addresses the user's goal (knowing the capital of France) and provides some bonus context that could be useful. It doesn't quite reach 'Above and Beyond' since the question was simple and the extra information, while nice, doesn't significantly advance any deeper goal. It's a very helpful response that fully answers the question.",
+      "value": 0.83,
+      "label": "Very Helpful",
+      "tokenUsage": {
+        "inputTokens": 887,
+        "outputTokens": 172,
+        "totalTokens": 1059
+      }
+    }
+  ]
+}

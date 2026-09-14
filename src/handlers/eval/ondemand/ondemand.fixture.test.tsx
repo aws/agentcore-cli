@@ -20,12 +20,16 @@ const SIMULATE_DATASET = join(FIXTURES, "simulate-ds.jsonl");
 // A non-default endpoint: DEFAULT is what the command assumes when --endpoint
 // is omitted, so recording against it could not tell the flag from its absence.
 const FIXTURE_ENDPOINT = "BETA";
+// Recorded sessions and the window containing them. The `aws/spans` log group
+// holding the traces has 30-day retention, so re-recording needs sessions
+// invoked within the last 30 days and a window around them — bump all three
+// together, or StartQuery fails with MalformedQueryException.
 const FIXTURE_SESSION_IDS = [
-  "67ebf93b-65e3-4127-9e13-483b239f256a",
-  "7f983b9f-9569-4a4d-bdc2-5c997ff346dd",
+  "81a5dfcb-9d79-4369-b5a2-479a52ca4bf4",
+  "12f1f7a2-987b-4448-8f40-dd3da6558611",
 ];
-const WINDOW_START = "2026-08-12T00:00:00Z";
-const WINDOW_END = "2026-08-13T00:00:00Z";
+const WINDOW_START = "2026-09-14T00:00:00Z";
+const WINDOW_END = "2026-09-15T00:00:00Z";
 
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
