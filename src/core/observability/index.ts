@@ -1,6 +1,6 @@
 export { CloudWatchClient } from "./cloudWatchClient";
 export { ObservabilityClient } from "./client";
-export { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "./runtime";
+export { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "./runtimeLogGroup";
 export {
   INSIGHTS_MAX_ROWS,
   runInsightsQuery,
