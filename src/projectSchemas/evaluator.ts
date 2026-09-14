@@ -45,9 +45,25 @@ const BEDROCK_ARN_PATTERN =
 export function isValidBedrockModelId(value: string): boolean {
   return BEDROCK_MODEL_ID_PATTERN.test(value) || BEDROCK_ARN_PATTERN.test(value);
 }
-export const BedrockModelIdSchema = z.string().min(1, "Model ID is required");
+// The evaluator's judge model provider. Bedrock is the default and stays
+// implicit in project config; OpenResponses is persisted explicitly.
+export const EvaluatorModelProviderSchema = z.enum(["Bedrock", "OpenResponses"]);
+export type EvaluatorModelProvider = z.infer<typeof EvaluatorModelProviderSchema>;
+// OpenResponses model ids are opaque, provider-defined strings, so we only
+// require a non-empty printable identifier with no spaces rather than enforce a
+// catalog (a hard-coded list would reject valid models the moment the provider
+// adds one).
+const OPEN_RESPONSES_MODEL_ID_PATTERN = /^[\x21-\x7e]+$/;
+export function isValidOpenResponsesModelId(value: string): boolean {
+  return OPEN_RESPONSES_MODEL_ID_PATTERN.test(value);
+}
+// Provider-neutral: the schema stores whatever model id the resolved provider
+// accepts; per-provider format checks live in the handler where the provider is
+// known.
+export const EvaluatorModelIdSchema = z.string().min(1, "Model ID is required");
 export const LlmAsAJudgeConfigSchema = z.object({
-  model: BedrockModelIdSchema,
+  modelProvider: EvaluatorModelProviderSchema.optional(),
+  model: EvaluatorModelIdSchema,
   instructions: z.string().min(1, "Evaluation instructions are required"),
   ratingScale: RatingScaleSchema,
 });

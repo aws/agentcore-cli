@@ -64,6 +64,171 @@ describe("project add evaluator llm-as-a-judge", () => {
     expect(evaluator.config.llmAsAJudge.ratingScale.categorical).toBeUndefined();
   });
 
+  test("omits modelProvider for the default Bedrock provider", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "evaluator",
+      "llm-as-a-judge",
+      "--name",
+      "bedrock_default",
+      "--level",
+      "SESSION",
+      "--model",
+      MODEL,
+      "--instructions",
+      "Judge the answer.",
+      "--rating-scale",
+      "pass-fail",
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const llaj = spec.evaluators.find((e: { name: string }) => e.name === "bedrock_default").config
+      .llmAsAJudge;
+    expect(llaj.model).toBe(MODEL);
+    expect(llaj.modelProvider).toBeUndefined();
+  });
+
+  test("explicit Bedrock behaves identically to the default", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "evaluator",
+      "llm-as-a-judge",
+      "--name",
+      "bedrock_explicit",
+      "--level",
+      "SESSION",
+      "--model-provider",
+      "Bedrock",
+      "--model",
+      MODEL,
+      "--instructions",
+      "Judge the answer.",
+      "--rating-scale",
+      "pass-fail",
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const llaj = spec.evaluators.find((e: { name: string }) => e.name === "bedrock_explicit").config
+      .llmAsAJudge;
+    expect(llaj.modelProvider).toBeUndefined();
+  });
+
+  test("persists modelProvider for OpenResponses", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "evaluator",
+      "llm-as-a-judge",
+      "--name",
+      "openresponses",
+      "--level",
+      "SESSION",
+      "--model-provider",
+      "OpenResponses",
+      "--model",
+      "openai.gpt-5.4",
+      "--instructions",
+      "Judge the answer using {context}.",
+      "--rating-scale",
+      "pass-fail",
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const llaj = spec.evaluators.find((e: { name: string }) => e.name === "openresponses").config
+      .llmAsAJudge;
+    expect(llaj.modelProvider).toBe("OpenResponses");
+    expect(llaj.model).toBe("openai.gpt-5.4");
+  });
+
+  test.each<[string, string[]]>([
+    [
+      "invalid --model-provider",
+      [
+        "--name",
+        "x",
+        "--level",
+        "SESSION",
+        "--model-provider",
+        "OpenAI",
+        "--model",
+        MODEL,
+        "--instructions",
+        "i",
+        "--rating-scale",
+        "pass-fail",
+      ],
+    ],
+    [
+      "invalid Bedrock --model",
+      [
+        "--name",
+        "x",
+        "--level",
+        "SESSION",
+        "--model",
+        "not a model",
+        "--instructions",
+        "i",
+        "--rating-scale",
+        "pass-fail",
+      ],
+    ],
+    [
+      "invalid OpenResponses --model (contains a space)",
+      [
+        "--name",
+        "x",
+        "--level",
+        "SESSION",
+        "--model-provider",
+        "OpenResponses",
+        "--model",
+        "bad model",
+        "--instructions",
+        "i",
+        "--rating-scale",
+        "pass-fail",
+      ],
+    ],
+  ])("rejects %s", async (_label, flags) => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(run(["add", "evaluator", "llm-as-a-judge", ...flags])).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+
+  test("accepts a valid OpenResponses model id", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "evaluator",
+      "llm-as-a-judge",
+      "--name",
+      "or_ok",
+      "--level",
+      "SESSION",
+      "--model-provider",
+      "OpenResponses",
+      "--model",
+      "openai.gpt-5.4",
+      "--instructions",
+      "Judge using {context}.",
+      "--rating-scale",
+      "pass-fail",
+    ]);
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(
+      spec.evaluators.find((e: { name: string }) => e.name === "or_ok").config.llmAsAJudge.model,
+    ).toBe("openai.gpt-5.4");
+  });
+
   test("writes a categorical preset evaluator", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);

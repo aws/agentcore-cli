@@ -2,9 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
   CodeBasedConfigSchema,
   EvaluatorConfigSchema,
+  EvaluatorModelProviderSchema,
+  LlmAsAJudgeConfigSchema,
   RatingScaleSchema,
   isValidBedrockModelId,
   isValidKmsKeyArn,
+  isValidOpenResponsesModelId,
 } from "./evaluator";
 const numerical = [{ value: 1, label: "bad", definition: "Bad response" }];
 const categorical = [{ label: "pass", definition: "Passes" }];
@@ -28,6 +31,36 @@ describe("evaluator custom validation", () => {
     const codeBased = { managed: { codeLocation: "./evaluator" } };
     expect(EvaluatorConfigSchema.safeParse({ llmAsAJudge }).success).toBe(true);
     expect(EvaluatorConfigSchema.safeParse({ llmAsAJudge, codeBased }).success).toBe(false);
+  });
+  it("keeps modelProvider optional and defaults existing Bedrock configs unchanged", () => {
+    const bedrockNoProvider = {
+      model: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      instructions: "Judge",
+      ratingScale: { numerical },
+    };
+    expect(LlmAsAJudgeConfigSchema.safeParse(bedrockNoProvider).success).toBe(true);
+    expect(
+      LlmAsAJudgeConfigSchema.safeParse({ ...bedrockNoProvider, modelProvider: "Bedrock" }).success,
+    ).toBe(true);
+    expect(
+      LlmAsAJudgeConfigSchema.safeParse({
+        modelProvider: "OpenResponses",
+        model: "openai.gpt-5.4",
+        instructions: "Judge",
+        ratingScale: { numerical },
+      }).success,
+    ).toBe(true);
+  });
+  it("rejects unknown model providers", () => {
+    expect(EvaluatorModelProviderSchema.safeParse("Bedrock").success).toBe(true);
+    expect(EvaluatorModelProviderSchema.safeParse("OpenResponses").success).toBe(true);
+    expect(EvaluatorModelProviderSchema.safeParse("OpenAI").success).toBe(false);
+  });
+  it("validates OpenResponses model ids as non-empty printable identifiers without spaces", () => {
+    expect(isValidOpenResponsesModelId("openai.gpt-5.4")).toBe(true);
+    expect(isValidOpenResponsesModelId("some/model-id_v2")).toBe(true);
+    expect(isValidOpenResponsesModelId("has space")).toBe(false);
+    expect(isValidOpenResponsesModelId("")).toBe(false);
   });
   it("validates model identifiers and KMS key ARNs through owned helpers", () => {
     expect(isValidBedrockModelId("anthropic.claude-v2:1")).toBe(true);
