@@ -5,11 +5,13 @@
  * Extracted from the legacy post-deploy-ab-tests.ts so the AB-test job handler's create()
  * can own role + ARN resolution at start time (the config-as-code deploy path is removed).
  */
+import { readGlobalConfig } from '../../../../lib/schemas/io/global-config';
 import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import type { ABTestEvaluationConfig, ABTestVariant } from '../../../aws/agentcore-ab-tests';
 import { validateIamRoleTrustPolicy } from '../../../aws/iam';
 import { arnPrefix } from '../../../aws/partition';
+import { resolvePermissionsBoundary, toPermissionsBoundaryArn } from '../../../aws/permissions-boundary';
 import {
   CreateRoleCommand,
   DeleteRoleCommand,
@@ -48,6 +50,8 @@ export interface CreateABTestRoleOptions {
   projectName: string;
   testName: string;
   gatewayArn: string;
+  /** `iam.permissionsBoundary` from agentcore.json (policy name or ARN). */
+  permissionsBoundary?: string;
   /** Injectable propagation delay (tests). */
   propagationDelayMs?: number;
 }
@@ -61,6 +65,15 @@ export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): P
   // Account id from gateway ARN: arn:aws:bedrock-agentcore:REGION:ACCOUNT:gateway/ID
   const accountId = gatewayArn.split(':')[4] ?? '*';
   const roleName = generateRoleName(projectName, testName);
+
+  // CreateRole needs a fully expanded ARN; unlike CloudFormation it cannot resolve a bare
+  // policy name. Accounts that force a boundary reject this call outright without it.
+  const globalRead = await readGlobalConfig();
+  const boundary = resolvePermissionsBoundary({
+    configured: options.permissionsBoundary,
+    global: globalRead.success ? globalRead.config.permissionsBoundary : undefined,
+  });
+  const permissionsBoundaryArn = boundary ? toPermissionsBoundaryArn(boundary, { region, accountId }) : undefined;
 
   const trustPolicyDocument = {
     Version: '2012-10-17',
@@ -85,6 +98,7 @@ export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): P
         RoleName: roleName,
         AssumeRolePolicyDocument: trustPolicy,
         Description: `Auto-created execution role for AgentCore AB test: ${testName}`,
+        ...(permissionsBoundaryArn && { PermissionsBoundary: permissionsBoundaryArn }),
         Tags: [
           { Key: 'agentcore:created-by', Value: 'agentcore-cli' },
           { Key: 'agentcore:project-name', Value: projectName },
