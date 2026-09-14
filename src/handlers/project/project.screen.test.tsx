@@ -106,18 +106,18 @@ describe("project menu: command-line-only subcommands", () => {
   });
 
   test("help longer than the terminal scrolls, and the parameter details are reachable", async () => {
-    // `add memory` has ten options plus a long --strategies write-up, which
-    // `--help` appends as "Parameter details"; at 80×24 most of it is below
-    // the fold.
-    const r = renderScreen("/agentcore/project/add/memory");
+    // `add gateway-target` has ten options plus a long --target-configuration
+    // write-up, which `--help` appends as "Parameter details"; at 80×24 most of
+    // it is below the fold.
+    const r = renderScreen("/agentcore/project/add/gateway-target");
     await r.resize(80, 24);
     await waitForText(r.lastFrame, "this command runs from the command line");
-    expect(r.lastFrame()).not.toContain("reflectionNamespaceTemplates");
+    expect(r.lastFrame()).not.toContain("curated Connector shortcuts");
 
-    // Scroll to the end: the write-up's example is the last thing on the page.
+    // Scroll to the end: the write-up's last line is the last thing on the page.
     for (let i = 0; i < 80; i++) await r.press("down");
     const bottom = r.lastFrame()!.replace(/\s+/g, " ");
-    expect(bottom).toContain('"reflectionNamespaceTemplates": ["/episodes/{actorId}"]');
+    expect(bottom).toContain("Use project add gateway-connector for curated Connector shortcuts.");
     // …and the heading was on the way.
     expect(r.frames.some((frame) => frame.includes("Parameter details:"))).toBe(true);
 

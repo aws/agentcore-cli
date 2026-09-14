@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import type z from "zod";
 import { FormTextInput } from "../FormTextInput";
 import { FormRadioGroup } from "../FormRadioGroup";
+import { FormCheckboxMultiSelect } from "../FormCheckboxMultiSelect";
 import { KeyValueTable } from "../KeyValueTable";
 import { darkTheme } from "../ui/_core.js";
 import { useKeyHints, useWizard } from "./context";
@@ -21,14 +22,19 @@ interface ValidateOptions {
   label: string;
   required: boolean;
   schema?: z.ZodType;
+  // number validates the number the answer parses to rather than the text, so a
+  // numeric flag's own schema can bound the field.
+  number?: boolean;
 }
 
 function validateEntry(
   value: string,
-  { label, required, schema }: ValidateOptions,
+  { label, required, schema, number = false }: ValidateOptions,
 ): string | undefined {
   if (value.trim() === "") return required ? `${label} is required` : undefined;
-  return schema ? firstIssue(schema, value) : undefined;
+  if (number && !/^\d+$/.test(value)) return `${label} must be a whole number`;
+  if (!schema) return undefined;
+  return firstIssue(schema, number ? Number(value) : value);
 }
 
 export interface TextFieldProps {
@@ -40,6 +46,7 @@ export interface TextFieldProps {
   required?: boolean;
   schema?: z.ZodType;
   live?: boolean;
+  number?: boolean;
 }
 
 export function TextField({
@@ -51,6 +58,7 @@ export function TextField({
   required = false,
   schema,
   live = false,
+  number = false,
 }: TextFieldProps) {
   const { advance, back, isLast } = useWizard();
   const [error, setError] = useState<string>();
@@ -64,7 +72,7 @@ export function TextField({
     }
     if (!key.return) return;
 
-    const issue = validateEntry(value, { label, required, schema });
+    const issue = validateEntry(value, { label, required, schema, number });
     if (issue !== undefined) {
       setError(issue);
       return;
@@ -85,7 +93,7 @@ export function TextField({
           onChange(next);
           setError(
             live && next.trim() !== ""
-              ? validateEntry(next, { label, required, schema })
+              ? validateEntry(next, { label, required, schema, number })
               : undefined,
           );
         }}
@@ -144,6 +152,70 @@ export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFi
         description: choice.description ?? "",
       }))}
       focusedIndex={index}
+    />
+  );
+}
+
+export interface MultiChoiceFieldProps<T> {
+  help?: string;
+  choices: Choice<T>[];
+  value: T[];
+  onChange: (value: T[]) => void;
+}
+
+// MultiChoiceField answers with a subset of its choices, always ordered as the
+// choices are, so the review and the resource read the same either way.
+export function MultiChoiceField<T>({
+  help = "",
+  choices,
+  value,
+  onChange,
+}: MultiChoiceFieldProps<T>) {
+  const { advance, back, isLast } = useWizard();
+  const [cursor, setCursor] = useState(0);
+
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "space", label: "toggle" },
+    { key: "enter", label: isLast ? "submit" : "continue" },
+  ]);
+
+  useInput((input, key) => {
+    if (key.escape) {
+      back();
+      return;
+    }
+    if (key.upArrow) {
+      setCursor((current) => Math.max(0, current - 1));
+      return;
+    }
+    if (key.downArrow) {
+      setCursor((current) => Math.min(choices.length - 1, current + 1));
+      return;
+    }
+    if (input === " ") {
+      const toggled = choices[cursor]!.value;
+      const selected = value.includes(toggled)
+        ? value.filter((entry) => entry !== toggled)
+        : [...value, toggled];
+      onChange(
+        choices.filter((choice) => selected.includes(choice.value)).map((choice) => choice.value),
+      );
+      return;
+    }
+    if (key.return) advance();
+  });
+
+  return (
+    <FormCheckboxMultiSelect
+      name=""
+      helpText={help}
+      options={choices.map((choice) => ({
+        label: choice.label,
+        description: choice.description ?? "",
+        checked: value.includes(choice.value),
+      }))}
+      cursorIndex={cursor}
     />
   );
 }

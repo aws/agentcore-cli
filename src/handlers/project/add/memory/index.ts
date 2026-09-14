@@ -7,16 +7,36 @@ import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
   IndexedKeySchema,
+  MemorySchema,
   MemoryStrategySchema,
   MemoryStrategyTypeSchema,
   StreamContentLevelSchema,
   type MemoryStrategy,
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
+import type { AddResourceInput } from "../../types";
 import { addProjectResource } from "../shared";
 
 // The service default for raw event retention
-const DEFAULT_EVENT_EXPIRY_DURATION = 30;
+export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
+
+/** The bounds the service puts on raw event retention, in days. */
+export const EventExpiryDurationSchema = z.number().int().min(3).max(365);
+
+/** A memory resource as an entry point assembles it, before validation. */
+export type MemoryInput = z.input<typeof MemorySchema>;
+
+/**
+ * toAddMemoryInput is the one place a memory is validated and wrapped for
+ * {@link ProjectManager.addResource}. Both the flag handler and the wizard call
+ * it, so neither can accept a memory the other would reject.
+ */
+export function toAddMemoryInput(input: MemoryInput): AddResourceInput {
+  const result = MemorySchema.safeParse(input);
+  if (!result.success)
+    throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  return { resourceType: "memory", resourceConfig: result.data };
+}
 
 function projectMemoryObject<T extends z.ZodRawShape>(shape: T, label: string) {
   const supportedFields = new Set(Object.keys(shape));
@@ -115,7 +135,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       flag(
         "event-expiry-duration",
         "how long raw events are retained, in days (3-365)",
-        z.number().int().min(3).max(365).default(DEFAULT_EVENT_EXPIRY_DURATION),
+        EventExpiryDurationSchema.default(DEFAULT_EVENT_EXPIRY_DURATION),
       ),
       flag(
         "strategies",
@@ -177,10 +197,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         ctx,
         config,
         project,
-        {
-          resourceType: "memory",
-          resourceConfig: memoryConfig,
-        },
+        toAddMemoryInput(memoryConfig),
         `added memory '${flags["name"]}' to '${project.name}'`,
       );
     },
@@ -204,7 +221,7 @@ function toStrategies(raw: string): MemoryStrategy[] {
 }
 
 /** Expands a bare strategy type into a strategy carrying its default namespaces. */
-function toDefaultStrategy(type: string): MemoryStrategy {
+export function toDefaultStrategy(type: string): MemoryStrategy {
   const parsed = MemoryStrategyTypeSchema.safeParse(type);
   if (!parsed.success)
     throw new InputValidationError(

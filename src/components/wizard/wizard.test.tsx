@@ -7,7 +7,7 @@ import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
 import { AgentCoreCLIError } from "../../errors";
 import { Wizard, type WizardSubmitResult } from "./Wizard";
 import { Step } from "./Step";
-import { ChoiceField, Summary, TextField } from "./fields";
+import { ChoiceField, MultiChoiceField, Summary, TextField } from "./fields";
 
 afterEach(cleanupScreens);
 
@@ -318,6 +318,124 @@ describe("Wizard shell", () => {
 
     await waitForFrame(d, "name is required");
     expect(d.lastFrame()).toContain("what is your name?");
+    d.unmount();
+  });
+});
+
+// MultiChoiceField and a numeric TextField have their own harness: one answers
+// with a set rather than a single value, and the other validates the number its
+// text parses to.
+describe("MultiChoiceField and numeric TextField", () => {
+  const COLOURS = [
+    { value: "red", label: "red", description: "the first" },
+    { value: "green", label: "green", description: "the second" },
+    { value: "blue", label: "blue", description: "the third" },
+  ];
+
+  function driveFields(onSubmit: (summary: string) => void) {
+    function Harness() {
+      const [colours, setColours] = useState<string[]>([]);
+      const [days, setDays] = useState("30");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => onSubmit(`${colours.join(",")}|${days}`)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="colours" prompt="pick some colours">
+            <MultiChoiceField choices={COLOURS} value={colours} onChange={setColours} />
+          </Step>
+          <Step stepKey="days" prompt="how many days?">
+            <TextField
+              label="Days"
+              value={days}
+              onChange={setDays}
+              required
+              number
+              schema={z.number().int().min(3).max(365)}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("space toggles a choice and enter continues with the ones checked", async () => {
+    let submitted: string | undefined;
+    const d = driveFields((summary) => {
+      submitted = summary;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("pick some colours"), 1000);
+    // Checked bottom-up; the answer still reads in the order the choices are
+    // drawn, so a review and the resource behind it agree.
+    await d.press("down");
+    await d.press("down");
+    await d.write(" ");
+    await d.press("up");
+    await d.press("up");
+    await d.write(" ");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("how many days?"), 1000);
+    await d.press("return");
+
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("red,blue|30");
+    d.unmount();
+  });
+
+  test("a number outside the schema's range keeps the step", async () => {
+    let submitted: string | undefined;
+    const d = driveFields((summary) => {
+      submitted = summary;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("pick some colours"), 1000);
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("how many days?"), 1000);
+    // The prefilled 30 typed out to 3000.
+    await d.write("00");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("<=365"), 1000);
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("a numeric field refuses an answer that is not a whole number", async () => {
+    const d = driveFields(() => {});
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("pick some colours"), 1000);
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("how many days?"), 1000);
+    await d.write(".5");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Days must be a whole number"), 1000);
     d.unmount();
   });
 });
