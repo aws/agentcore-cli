@@ -1,6 +1,10 @@
 export { CloudWatchClient } from "./cloudWatchClient";
 export { ObservabilityClient } from "./client";
-export { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "./runtime";
+export const DEFAULT_ENDPOINT_QUALIFIER = "DEFAULT";
+
+export function runtimeLogGroup(runtimeId: string, endpoint: string): string {
+  return `/aws/bedrock-agentcore/runtimes/${runtimeId}-${endpoint}`;
+}
 export {
   INSIGHTS_MAX_ROWS,
   runInsightsQuery,
