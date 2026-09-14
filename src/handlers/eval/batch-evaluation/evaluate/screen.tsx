@@ -7,6 +7,7 @@ import type { StartBatchEvaluationResponse } from "@aws-sdk/client-bedrock-agent
 import type { EvaluatorSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
+import { BatchEvaluationNameSchema } from "../../../../projectSchemas/batch-evaluation";
 import {
   Step,
   Summary,
@@ -23,9 +24,6 @@ const BREADCRUMB = ["agentcore", "eval", "batch-evaluation", "evaluate"];
 const DESCRIPTION = "evaluate existing sessions service-side";
 const MENU = "/agentcore/eval/batch-evaluation";
 
-// The service caps a name to non-empty; uniqueness is enforced server-side, so
-// the field only guards against an empty submission.
-const NameSchema = z.string().min(1);
 const LookbackSchema = z.coerce.number().int().positive();
 
 interface EvaluateFormValues {
@@ -91,11 +89,13 @@ export function BatchEvaluationEvaluateScreen({ ctx, core }: ScreenProps) {
       <Step stepKey="name" prompt="name your batch evaluation">
         <TextField
           label="Name"
-          placeholder="my-batch-evaluation"
+          help="letters, digits and underscores, starting with a letter (max 48)"
+          placeholder="nightly_regression"
           value={values.name}
           onChange={(name) => set({ name })}
           required
-          schema={NameSchema}
+          schema={BatchEvaluationNameSchema}
+          live
         />
       </Step>
 
