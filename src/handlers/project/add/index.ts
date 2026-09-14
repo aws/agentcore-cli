@@ -1,5 +1,6 @@
 import { withProject, withTuiWhenInteractive } from "../../../middleware/";
 import { Router } from "../../../router";
+import { renderTui } from "../../../tui";
 import type { Core } from "../../types";
 import { createAddConfigBundleHandler } from "./config-bundle";
 import { createAddCredentialsHandler } from "./credentials";
@@ -26,6 +27,7 @@ export function createAddProjectResourceHandler(
   // the add menu as command line only and opens its help instead (see
   // CliOnlyScreen).
   const projectAdd = new Router("add", "add project resources").supportedTuiCommands("runtime");
+  projectAdd.default(renderTui(core, config.io));
   // withProject first, so it is the outermost wrapper: a resource added outside
   // a project gets the CLI's own not-found guidance, and the resolved project
   // seeds the wizard through ProjectKey. withTuiWhenInteractive then opens that

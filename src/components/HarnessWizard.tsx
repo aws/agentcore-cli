@@ -1172,6 +1172,7 @@ function SuccessPanel({
           : "  the new version is deploying · enter opens the harness"}
       </Text>
       <Box
+        flexDirection="column"
         borderStyle="single"
         borderColor={theme.colors.border}
         borderLeft={false}

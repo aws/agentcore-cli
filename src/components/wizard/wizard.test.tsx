@@ -4,6 +4,7 @@ import z from "zod";
 import { render } from "ink-testing-library";
 import { render as inkRender } from "ink";
 import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
+import { AgentCoreCLIError } from "../../errors";
 import { Wizard, type WizardSubmitResult } from "./Wizard";
 import { Step } from "./Step";
 import { ChoiceField, Summary, TextField } from "./fields";
@@ -17,7 +18,6 @@ afterEach(cleanupScreens);
 interface HarnessOptions {
   onSubmit?: () => WizardSubmitResult;
   onCancel?: () => void;
-  onError?: "exit" | "retry";
   onDone?: () => void;
 }
 
@@ -32,7 +32,7 @@ const YES_NO = [
 
 // TestWizard has one conditional step, so the branch behaviour under test is
 // expressed the way a screen expresses it: `{condition && <Step/>}`.
-function TestWizard({ onSubmit, onCancel, onError, onDone }: HarnessOptions) {
+function TestWizard({ onSubmit, onCancel, onDone }: HarnessOptions) {
   const [name, setName] = useState("");
   const [wantsExtra, setWantsExtra] = useState(false);
   const [extra, setExtra] = useState("");
@@ -43,27 +43,26 @@ function TestWizard({ onSubmit, onCancel, onError, onDone }: HarnessOptions) {
       description="a synthetic flow"
       onCancel={onCancel ?? (() => {})}
       onSubmit={onSubmit ?? (async () => {})}
-      onError={onError}
       onDone={onDone}
       runningLabel="working…"
       successLabel="all done"
       successHint="enter exits"
     >
-      <Step name="name" question="what is your name?">
+      <Step stepKey="name" prompt="what is your name?">
         <TextField label="name" value={name} onChange={setName} required schema={NAME_SCHEMA} />
       </Step>
 
-      <Step name="branch" question="want the extra question?">
+      <Step stepKey="branch" prompt="want the extra question?">
         <ChoiceField choices={YES_NO} value={wantsExtra} onChange={setWantsExtra} />
       </Step>
 
       {wantsExtra && (
-        <Step name="extra" question="the extra question">
+        <Step stepKey="extra" prompt="the extra question">
           <TextField label="extra" value={extra} onChange={setExtra} />
         </Step>
       )}
 
-      <Step name="review" question="review">
+      <Step stepKey="review" prompt="review">
         <Summary items={{ name, extra: extra === "" ? "(none)" : extra }} />
       </Step>
     </Wizard>
@@ -187,7 +186,7 @@ describe("Wizard shell", () => {
     await d.press("return");
 
     await waitForFrame(d, "want the extra question?");
-    expect(d.lastFrame()).toContain("[↑↓] choose");
+    expect(d.lastFrame()).toContain("[↑↓] navigate");
     d.unmount();
   });
 
@@ -269,9 +268,8 @@ describe("Wizard shell", () => {
     d.unmount();
   });
 
-  test("onError retry reports the failure and returns to the form", async () => {
+  test("reports a failure and returns to the form", async () => {
     const d = drive({
-      onError: "retry",
       onSubmit: () => Promise.reject(new Error("the service said no")),
     });
 
@@ -328,7 +326,7 @@ describe("Wizard authoring guards", () => {
   // Ink's own render rather than ink-testing-library: a render-time throw
   // reaches Ink's error boundary and rejects waitUntilExit, which the testing
   // library does not expose.
-  test("two steps sharing a name are rejected at render", async () => {
+  test("two steps sharing a step key are rejected at render", async () => {
     const { streams } = ttyTestIO();
     const { waitUntilExit } = inkRender(
       <Wizard
@@ -338,16 +336,22 @@ describe("Wizard authoring guards", () => {
         runningLabel="working…"
         successLabel="all done"
       >
-        <Step name="name" question="first">
+        <Step stepKey="name" prompt="first">
           <Summary items={{}} />
         </Step>
-        <Step name="name" question="second">
+        <Step stepKey="name" prompt="second">
           <Summary items={{}} />
         </Step>
       </Wizard>,
       { stdin: streams.io.stdin, stdout: streams.io.stdout, stderr: streams.io.stderr },
     );
 
-    await expect(waitUntilExit()).rejects.toThrow('duplicate <Step name="name">');
+    const error = await waitUntilExit().then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(AgentCoreCLIError);
+    expect((error as AgentCoreCLIError).source).toBe("internal");
+    expect((error as Error).message).toBe('duplicate <Step stepKey="name">');
   });
 });

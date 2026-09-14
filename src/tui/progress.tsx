@@ -10,6 +10,14 @@ import type { AppIO } from "../io";
  */
 export type ProgressEvent = { type: "step"; message: string } | { type: "output"; line: string };
 
+export type ProgressResult<T> = Promise<T> | AsyncGenerator<ProgressEvent, T>;
+
+export function isProgressGenerator<T>(
+  result: ProgressResult<T>,
+): result is AsyncGenerator<ProgressEvent, T> {
+  return typeof (result as AsyncGenerator<ProgressEvent, T>)[Symbol.asyncIterator] === "function";
+}
+
 export type RunWithProgressOptions = {
   io: AppIO;
   /** Lines of live output kept under the running step (default 5). */

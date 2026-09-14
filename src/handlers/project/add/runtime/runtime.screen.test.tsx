@@ -1,5 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { join } from "node:path";
+import { QueryClient } from "@tanstack/react-query";
 import {
   renderScreen,
   waitForText,
@@ -15,9 +16,11 @@ import {
   type RenderScreenResult,
 } from "../../../../testing";
 import { createRootHandler } from "../../../index";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, InvalidEnvironmentError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { projectQueryKey } from "../../ProjectGate";
+import type { Project } from "../../types";
 
 const { cleanup, inProject, projectSpec, run } =
   createGatewayProjectTestHarness("add-runtime-wizard");
@@ -57,7 +60,10 @@ async function runtimeInSpec(projectRoot: string, name: string) {
 describe("project add runtime wizard", () => {
   test("collects a name and a template, then writes the runtime", async () => {
     const projectRoot = await inProject();
-    const r = renderScreen("/agentcore/project/add/runtime");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },
+    });
+    const r = renderScreen("/agentcore/project/add/runtime", { queryClient });
 
     await waitForText(r.lastFrame, "what should this runtime be called?");
     await r.write("orders_agent");
@@ -86,6 +92,11 @@ describe("project add runtime wizard", () => {
       runtimeVersion: "PYTHON_3_14",
     });
     expect(await Bun.file(join(projectRoot, "app", "orders_agent", "main.py")).exists()).toBe(true);
+    expect(
+      queryClient
+        .getQueryData<Project>(projectQueryKey())
+        ?.spec.runtimes.some((runtime) => runtime.name === "orders_agent"),
+    ).toBe(true);
 
     // Enter on the success panel returns to the add menu instead of tearing the
     // TUI down, so another resource can be added straight away.
@@ -146,16 +157,26 @@ describe("project add runtime wizard", () => {
     r.unmount();
   });
 
-  test("the name is held to the same length limit as --name", async () => {
+  test("accepts a 48-character name", async () => {
     await inProject();
     const r = renderScreen("/agentcore/project/add/runtime");
 
     await waitForText(r.lastFrame, "what should this runtime be called?");
-    // 43 characters: one past what the flag path accepts, and what its own
-    // test rejects there.
-    await r.write("a".repeat(43));
+    await r.write("a".repeat(48));
+    await r.press("return");
 
-    await waitForText(r.lastFrame, "Must be at most 42 characters");
+    await waitForText(r.lastFrame, "choose a template");
+    r.unmount();
+  });
+
+  test("rejects a name longer than 48 characters", async () => {
+    await inProject();
+    const r = renderScreen("/agentcore/project/add/runtime");
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("a".repeat(49));
+
+    await waitForText(r.lastFrame, "Must be at most 48 characters");
     r.unmount();
   });
 
@@ -269,6 +290,21 @@ describe("project add runtime dispatch", () => {
     expect(await outcome).toEqual({ ok: true });
     expect(streams.stderr()).not.toContain("required option");
   }, 10000);
+
+  test("bare project add routes to the resource menu", async () => {
+    await inProject();
+    const io = testIO();
+
+    const error = await buildRoot(io.io)
+      .route(["node", "agentcore", "project", "add"])
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+    expect(error).toBeInstanceOf(InvalidEnvironmentError);
+    expect(io.stdout()).toBe("");
+  });
 
   test("bare add runtime without a TTY stays headless and reports the missing --name", async () => {
     await inProject();

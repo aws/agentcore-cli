@@ -95,10 +95,11 @@ export const MemoryStrategySchema = z
 export type MemoryStrategy = z.infer<typeof MemoryStrategySchema>;
 export const MemoryTypeSchema = z.literal("AgentCoreMemory");
 export type MemoryType = z.infer<typeof MemoryTypeSchema>;
+export const MEMORY_NAME_MAX_LENGTH = 48;
 export const MemoryNameSchema = z
   .string()
   .min(1, "Name is required")
-  .max(48)
+  .max(MEMORY_NAME_MAX_LENGTH)
   .regex(
     /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
     "Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)",

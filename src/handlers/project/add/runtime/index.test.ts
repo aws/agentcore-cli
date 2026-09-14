@@ -418,7 +418,7 @@ describe("project add runtime", () => {
       "invalid JSON in --network-config",
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
     ],
-    ["runtime names are limited in length", ["--name", "x".repeat(43)]],
+    ["runtime names are limited in length", ["--name", "x".repeat(49)]],
   ])("%s", async (_label, flags) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);

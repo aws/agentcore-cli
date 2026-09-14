@@ -6,8 +6,9 @@ import { Spinner } from "./ui/spinner";
 import { Confirm } from "./ui/confirm";
 import { TaskList, type Task } from "./ui/task-list";
 import { KeyValueTable } from "./KeyValueTable";
+import { SuccessBody } from "./SuccessBody";
 import { darkTheme, glyphs } from "./ui/_core.js";
-import { driveProgress, type ProgressEvent } from "../tui/progress";
+import { driveProgress, isProgressGenerator, type ProgressResult } from "../tui/progress";
 
 const theme = darkTheme;
 
@@ -41,7 +42,7 @@ export interface ConfirmActionProps {
   // optionally with a title overriding successTitle for an outcome only known
   // afterwards. A progress generator (what runWithProgress drives) may be
   // returned instead; its steps render as a live TaskList while it runs.
-  action: () => Promise<ActionResult> | AsyncGenerator<ProgressEvent, ActionResult>;
+  action: () => ProgressResult<ActionResult>;
   // successTitle heads the success panel (e.g. "Harness deleted") unless the
   // action's result carries its own.
   successTitle: string;
@@ -198,60 +199,6 @@ export function ConfirmAction({
         </Box>
       )}
     </Layout>
-  );
-}
-
-// A promise has no Symbol.asyncIterator, so this is a safe discriminator.
-function isProgressGenerator(
-  result: Promise<ActionResult> | AsyncGenerator<ProgressEvent, ActionResult>,
-): result is AsyncGenerator<ProgressEvent, ActionResult> {
-  return (
-    typeof (result as AsyncGenerator<ProgressEvent, ActionResult>)[Symbol.asyncIterator] ===
-    "function"
-  );
-}
-
-function SuccessBody({
-  title,
-  rows,
-  nextSteps,
-  onDone,
-  doneLabel,
-}: {
-  title: string;
-  rows: SummaryRows;
-  nextSteps?: string[];
-  onDone: () => void;
-  doneLabel: string;
-}) {
-  useInput((_input, key) => {
-    if (key.return || key.escape) onDone();
-  });
-
-  return (
-    <Box flexDirection="column">
-      <Text color={theme.colors.success} bold>
-        {glyphs.check} {title}
-      </Text>
-      {Object.keys(rows).length > 0 && (
-        <Box flexDirection="column" marginTop={1} marginLeft={2}>
-          <KeyValueTable items={rows} />
-        </Box>
-      )}
-      {nextSteps !== undefined && nextSteps.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.colors.text}>next steps</Text>
-          {nextSteps.map((step) => (
-            <Text key={step} color={theme.colors.primary}>{`  ${step}`}</Text>
-          ))}
-        </Box>
-      )}
-      <Box marginTop={1}>
-        <Text color={theme.colors.muted}>
-          press <Text color={theme.colors.focus}>enter</Text> to {doneLabel}
-        </Text>
-      </Box>
-    </Box>
   );
 }
 

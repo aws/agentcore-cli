@@ -11,6 +11,10 @@ import type { Project } from "./types";
 
 const theme = darkTheme;
 
+export function projectQueryKey(from = process.cwd()) {
+  return ["project", from] as const;
+}
+
 // useProject resolves the project enclosing the cwd for a TUI screen. Screens
 // resolve it themselves because withProject wraps `handle` only, and navigating
 // between screens never executes a command — ProjectKey is set only when the
@@ -18,7 +22,7 @@ const theme = darkTheme;
 export function useProject(core: Core, seed?: Project): UseQueryResult<Project> {
   const from = process.cwd();
   return useQuery({
-    queryKey: ["project", from],
+    queryKey: projectQueryKey(from),
     queryFn: async () => {
       const project = await core.projectManager.resolve({ filePath: from });
       if (!project) throw new ProjectStateError(projectNotFoundMessage(from));

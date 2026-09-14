@@ -220,13 +220,13 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         assertProjectPathFits(values.name, ctx.require(PlatformKey));
         return core.projectManager.create(buildCreateInput(values));
       }}
-      onError="retry"
       runningLabel={`creating ${values.name}…`}
       successLabel={`project created in ./${values.name}`}
       successNextSteps={[`cd ${values.name}`, "agentcore project deploy"]}
       successHint="enter exits"
+      doneLabel="exit"
     >
-      <Step name="name" question="name your project">
+      <Step stepKey="name" prompt="name your project">
         {/* The label is the schema's own subject, so a blank name is refused
             with the message the flag-driven path prints for it. */}
         <TextField
@@ -241,7 +241,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         />
       </Step>
 
-      <Step name="type" question="what should the project be built around?">
+      <Step stepKey="type" prompt="what should the project be built around?">
         <ChoiceField
           help="a project deploys either a managed harness or your own agent code"
           choices={PROJECT_KIND_CHOICES}
@@ -251,13 +251,13 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       </Step>
 
       {values.kind === "harness" && (
-        <Step name="model" question="choose a model">
+        <Step stepKey="model" prompt="choose a model">
           <ModelField value={values.model} onChange={(model) => patch({ model })} />
         </Step>
       )}
 
       {values.kind === "agent" && (
-        <Step name="template" question="choose a template">
+        <Step stepKey="template" prompt="choose a template">
           <ChoiceField
             help="the agent code scaffolded into the project"
             choices={TEMPLATE_CHOICES}
@@ -267,7 +267,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         </Step>
       )}
 
-      <Step name="review" question="this project will be created">
+      <Step stepKey="review" prompt="this project will be created">
         <Summary items={summaryOf(values)} />
         <Box marginTop={1}>
           <Text color={theme.colors.muted}>
