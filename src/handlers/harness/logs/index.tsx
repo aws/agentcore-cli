@@ -6,9 +6,13 @@ import { createLogsHandler } from "../../observability/logs";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
+const LOG_SOURCE = "Log source:";
+
 const harnessFlags = [
-  flag("id", "the ID of the harness", z.string().min(1).max(48)),
-  flag("qualifier", "the harness endpoint qualifier", z.string().min(1).optional()),
+  flag("id", "the ID of the harness", z.string().min(1).max(48), { group: LOG_SOURCE }),
+  flag("qualifier", "the harness endpoint qualifier", z.string().min(1).optional(), {
+    group: LOG_SOURCE,
+  }),
 ] as const;
 
 export const createHarnessLogsHandler = (core: Core, io: AppIO) =>
