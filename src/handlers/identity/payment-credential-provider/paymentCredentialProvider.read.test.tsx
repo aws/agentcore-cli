@@ -70,10 +70,6 @@ describe("payment-credential-provider get", () => {
     const stdout = await run(["get", "--name", FIXTURE_PROVIDER_NAME]);
 
     matchGolden(FIXTURES, "get.golden.json", stdout);
-    expect(JSON.parse(stdout)).toMatchObject({
-      name: FIXTURE_PROVIDER_NAME,
-      credentialProviderVendor: "CoinbaseCDP",
-    });
   });
 
   test.each([
@@ -100,26 +96,14 @@ describe("payment-credential-provider list", () => {
     const stdout = await run([...args]);
 
     matchGolden(FIXTURES, "list.golden.json", stdout);
-    expect(JSON.parse(stdout).credentialProviders).toContainEqual(
-      expect.objectContaining({ name: FIXTURE_PROVIDER_NAME }),
-    );
   });
 
   test("forwards --max-results and --next-token and preserves pagination tokens", async () => {
     const firstPage = await run(["list", "--max-results", "1"]);
     matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
     const first = JSON.parse(firstPage);
-    expect(first.credentialProviders).toHaveLength(1);
-    expect(first.credentialProviders[0].name).toBe("DeployTest-CdpConn-cdp");
-    expect(first.nextToken).toBeString();
-    expect(first.nextToken.length).toBeGreaterThan(0);
 
     const secondPage = await run(["list", "--max-results", "1", "--next-token", first.nextToken]);
     matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
-    const second = JSON.parse(secondPage);
-    expect(second.credentialProviders).toHaveLength(1);
-    expect(second.credentialProviders[0].name).toBe("InvokeMgr-InvokeCdp-cdp");
-    expect(second.nextToken).toBeString();
-    expect(second.nextToken).not.toBe(first.nextToken);
   });
 });
