@@ -300,6 +300,32 @@ describe("eval batch-evaluation evaluate --output-config", () => {
     ).rejects.toThrow(/Invalid JSON for option '--output-config'/);
     expect(core.eval.calls).toEqual([]);
   });
+
+  test("rejects a second option reading from stdin, before any SDK call", async () => {
+    // --ground-truth and --output-config share one resolver, so the second `-`
+    // is a conflict rather than an empty read after the first drains stdin.
+    const core = new TestCoreClient();
+    const io = testIO({ stdin: "{}" });
+    const root = createRootHandler(core, {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await expect(
+      root.route([
+        "node",
+        "agentcore",
+        ...BASE,
+        "--ground-truth",
+        "-",
+        "--output-config",
+        "-",
+        "--region",
+        "us-west-2",
+      ]),
+    ).rejects.toThrow(/only one option may read from stdin.*'--output-config'.*'--ground-truth'/);
+    expect(core.eval.calls).toEqual([]);
+  });
 });
 
 describe("eval batch-evaluation simulate --endpoint and --output-config", () => {

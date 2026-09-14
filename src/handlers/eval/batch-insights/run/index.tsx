@@ -1,6 +1,6 @@
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
-import type { AppIO } from "../../../../io";
+import { SourceResolver, type AppIO } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -42,7 +42,8 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--name <name>' not specified");
       }
 
-      const source = await SessionSource.resolve(flags, io);
+      const resolver = new SourceResolver({ stdin: io.stdin });
+      const source = await SessionSource.resolve(flags, resolver);
       const response = await core.eval.startBatchInsights(
         {
           name: flags["name"],

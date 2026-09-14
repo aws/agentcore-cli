@@ -1,6 +1,6 @@
 import type { OutputConfig } from "@aws-sdk/client-bedrock-agentcore";
 import z from "zod";
-import { SourceResolver, type AppIO } from "../../../io";
+import { SourceResolver } from "../../../io";
 import { flag } from "../../../router";
 import { parseJsonFlag } from "../../utils";
 
@@ -44,8 +44,12 @@ export class BatchOutputConfig {
     ),
   ] as const;
 
-  static async resolve(value: string | undefined, io: AppIO): Promise<OutputConfig | undefined> {
-    const resolver = new SourceResolver({ stdin: io.stdin });
+  // Takes a shared SourceResolver so the single-stdin guard spans every
+  // stdin-capable flag on the command, not just this one.
+  static async resolve(
+    value: string | undefined,
+    resolver: SourceResolver,
+  ): Promise<OutputConfig | undefined> {
     return parseJsonFlag<OutputConfig>(
       "output-config",
       await resolver.resolveText("output-config", value),

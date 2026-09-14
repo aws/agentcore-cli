@@ -1,7 +1,7 @@
 import type { DataSourceConfig } from "@aws-sdk/client-bedrock-agentcore";
 import z from "zod";
 import { InputValidationError } from "../../errors";
-import { SourceResolver, type AppIO } from "../../io";
+import { SourceResolver } from "../../io";
 import { flag, type Flag } from "../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlag } from "../utils";
 import type { SessionSourceValue, SessionWindow } from "./types";
@@ -76,8 +76,14 @@ export class SessionSource {
     ),
   ] as const;
 
-  static async resolve(flags: SessionSourceFlags, io: AppIO): Promise<SessionSourceValue> {
-    const resolver = new SourceResolver({ stdin: io.stdin });
+  // Takes a caller-provided SourceResolver rather than building its own, so a
+  // command that resolves several stdin-capable flags (e.g. evaluate's
+  // --data-source-config, --ground-truth, --output-config) shares one resolver
+  // and its single-stdin guard fires across all of them.
+  static async resolve(
+    flags: SessionSourceFlags,
+    resolver: SourceResolver,
+  ): Promise<SessionSourceValue> {
     const rawDataSourceConfig = parseJsonFlag<DataSourceConfig>(
       "data-source-config",
       await resolver.resolveText("data-source-config", flags["data-source-config"]),

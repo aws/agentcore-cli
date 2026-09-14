@@ -2,7 +2,7 @@ import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
-import type { AppIO } from "../../../../io";
+import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 import { parseRuntimeInvokeHeaders } from "../../../runtime/invoke/request";
@@ -98,7 +98,8 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
 
       // Ctrl-C aborts the run (invokes, the ingestion wait, the dataset download).
       // TODO(#1986): swap for the shared SIGINT/abort helper once it merges.
-      const outputConfig = await BatchOutputConfig.resolve(flags["output-config"], io);
+      const resolver = new SourceResolver({ stdin: io.stdin });
+      const outputConfig = await BatchOutputConfig.resolve(flags["output-config"], resolver);
 
       const controller = new AbortController();
       const interrupt = () => controller.abort();
