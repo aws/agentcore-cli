@@ -25,7 +25,9 @@ def _make_conversation_manager():
 
 @lru_cache(maxsize=128)
 def _get_agent(session_id: str, actor_id: str) -> Agent:
-    """Cache Agents per session/actor to skip repeat identity fetches and keep turn history in dev."""
+    """Given a session_id and actor_id, return or construct the corresponding Strands agent.
+    Note: caching helps avoid repeated identity fetches on non-bedrock model loads
+    and supports in-memory session management for local dev."""
     return Agent(
         model=load_model(),
         session_manager=get_memory_session_manager(session_id, actor_id),
