@@ -10,6 +10,7 @@ import {
   GetPaymentCredentialProviderCommand,
   ListApiKeyCredentialProvidersCommand,
   ListOauth2CredentialProvidersCommand,
+  ListPaymentCredentialProvidersCommand,
   UpdateApiKeyCredentialProviderCommand,
   UpdateOauth2CredentialProviderCommand,
   UpdatePaymentCredentialProviderCommand,
@@ -26,6 +27,7 @@ import {
   type CreatePaymentCredentialProviderResponse,
   type DeletePaymentCredentialProviderResponse,
   type GetPaymentCredentialProviderResponse,
+  type ListPaymentCredentialProvidersResponse,
   type UpdatePaymentCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
@@ -153,6 +155,16 @@ export class IdentityClient implements CoreIdentityClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new GetPaymentCredentialProviderCommand({ name }));
+  }
+
+  async listPaymentCredentialProviders(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListPaymentCredentialProvidersResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListPaymentCredentialProvidersCommand({ nextToken, maxResults }));
   }
 
   async updatePaymentCredentialProvider(

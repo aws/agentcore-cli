@@ -1,0 +1,12 @@
+{
+  "credentialProviders": [
+    {
+      "name": "DeployTest-CdpConn-cdp",
+      "credentialProviderVendor": "CoinbaseCDP",
+      "credentialProviderArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:token-vault/default/paymentcredentialprovider/DeployTest-CdpConn-cdp",
+      "createdTime": "2026-05-14T15:48:17.857Z",
+      "lastUpdatedTime": "2026-05-14T15:48:17.857Z"
+    }
+  ],
+  "nextToken": "eyJBY2NvdW50QW5kVHlwZUdzaVBrIjp7InZhbHVlU3RyIjoiNjAzMTQxMDQxOTQ3I1BBWU1FTlQiLCJhdHRyaWJ1dGVUeXBlIjoiUyJ9LCJTSyI6eyJ2YWx1ZVN0ciI6IkRlcGxveVRlc3QtQ2RwQ29ubi1jZHAiLCJhdHRyaWJ1dGVUeXBlIjoiUyJ9LCJQSyI6eyJ2YWx1ZVN0ciI6IlBBWU1FTlRfQ1JFRF9QUk9WSURFUiM2MDMxNDEwNDE5NDcjZGVmYXVsdCNEZXBsb3lUZXN0LUNkcENvbm4tY2RwIiwiYXR0cmlidXRlVHlwZSI6IlMifX0="
+}

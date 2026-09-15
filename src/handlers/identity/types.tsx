@@ -17,6 +17,7 @@ import type {
   CreatePaymentCredentialProviderResponse,
   DeletePaymentCredentialProviderResponse,
   GetPaymentCredentialProviderResponse,
+  ListPaymentCredentialProvidersResponse,
   UpdatePaymentCredentialProviderRequest,
   UpdatePaymentCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -75,8 +76,9 @@ export interface CoreIdentityClient {
   ): Promise<DeleteOauth2CredentialProviderResponse>;
 
   // Payment credential providers hold a payment vendor's own credentials (a Coinbase
-  // CDP API key and wallet secret, or Privy app and authorization secrets). They are
-  // provisioned by `project deploy` rather than an `agentcore identity` subcommand.
+  // CDP API key and wallet secret, or Privy app and authorization secrets). They back
+  // payment connectors and can be inspected with `identity payment-credential-provider`.
+  // Project deployment uses the write operations below.
   createPaymentCredentialProvider(
     input: CreatePaymentCredentialProviderInput,
     options: CoreOptions,
@@ -85,6 +87,11 @@ export interface CoreIdentityClient {
     name: string,
     options: CoreOptions,
   ): Promise<GetPaymentCredentialProviderResponse>;
+  listPaymentCredentialProviders(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListPaymentCredentialProvidersResponse>;
   updatePaymentCredentialProvider(
     input: UpdatePaymentCredentialProviderInput,
     options: CoreOptions,
