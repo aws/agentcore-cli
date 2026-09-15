@@ -437,12 +437,16 @@ export async function validateAddGatewayTargetOptions(options: AddGatewayTargetO
   }
   options.type = mappedType;
 
-  // --exclude-domains only applies to the web-search connector.
-  if (options.excludeDomains && !(mappedType === 'connector' && options.connector === 'web-search')) {
-    return {
-      valid: false,
-      error: '--exclude-domains only applies to --connector web-search',
-    };
+  // The domain filters only apply to the web-search connector.
+  const isWebSearchConnector = mappedType === 'connector' && options.connector === 'web-search';
+  for (const flag of ['includeDomains', 'excludeDomains'] as const) {
+    if (options[flag] && !isWebSearchConnector) {
+      const name = flag === 'includeDomains' ? '--include-domains' : '--exclude-domains';
+      return {
+        valid: false,
+        error: `${name} only applies to --connector web-search`,
+      };
+    }
   }
 
   // Gateway is required — a gateway target must be attached to a gateway

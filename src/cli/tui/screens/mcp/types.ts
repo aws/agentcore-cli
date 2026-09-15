@@ -106,6 +106,7 @@ export type AddGatewayTargetStep =
   | 'passthrough-stickiness'
   | 'signing-service'
   | 'signing-region'
+  | 'include-domains'
   | 'exclude-domains'
   | 'confirm';
 
@@ -159,6 +160,8 @@ export interface GatewayTargetWizardState {
   signingService?: string;
   /** SigV4 signing region for passthrough GATEWAY_IAM_ROLE auth */
   signingRegion?: string;
+  /** Optional list of domains to restrict results to (webSearch target type only). */
+  includeDomains?: string[];
   /** Optional list of domains to exclude (webSearch target type only). */
   excludeDomains?: string[];
 }
@@ -263,6 +266,8 @@ export interface WebSearchTargetConfig {
   targetType: 'webSearch';
   name: string;
   gateway: string;
+  /** Optional list of domains to restrict web search results to. */
+  includeDomains?: string[];
   /** Optional list of domains to exclude from web search results. */
   excludeDomains?: string[];
 }
@@ -301,6 +306,7 @@ export const MCP_TOOL_STEP_LABELS: Record<AddGatewayTargetStep, string> = {
   'passthrough-stickiness': 'Stickiness',
   'signing-service': 'Signing Service',
   'signing-region': 'Signing Region',
+  'include-domains': 'Include Domains',
   'exclude-domains': 'Exclude Domains',
   confirm: 'Confirm',
 };

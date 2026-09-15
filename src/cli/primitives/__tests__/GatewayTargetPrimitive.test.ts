@@ -357,6 +357,38 @@ describe('GatewayTargetPrimitive — createWebSearchGatewayTarget', () => {
     ]);
   });
 
+  it('persists includeDomains in configurations when provided', async () => {
+    const { primitive, getProject } = makePrimitive(emptyProject());
+    await primitive.createWebSearchGatewayTarget({
+      targetType: 'webSearch',
+      name: 'ws',
+      gateway: 'main-gw',
+      includeDomains: ['docs.aws.amazon.com', 'aws.amazon.com'],
+    });
+    const target = getProject().agentCoreGateways[0]?.targets[0];
+    const wsConfig = (target?.configurations ?? []).find(c => c.name === 'WebSearch');
+    expect((wsConfig?.parameterValues as any)?.domainFilter).toEqual({
+      include: ['docs.aws.amazon.com', 'aws.amazon.com'],
+    });
+  });
+
+  it('persists both domain lists in one domainFilter when both are given', async () => {
+    const { primitive, getProject } = makePrimitive(emptyProject());
+    await primitive.createWebSearchGatewayTarget({
+      targetType: 'webSearch',
+      name: 'ws',
+      gateway: 'main-gw',
+      includeDomains: ['aws.amazon.com'],
+      excludeDomains: ['internal.example.com'],
+    });
+    const target = getProject().agentCoreGateways[0]?.targets[0];
+    const wsConfig = (target?.configurations ?? []).find(c => c.name === 'WebSearch');
+    expect((wsConfig?.parameterValues as any)?.domainFilter).toEqual({
+      include: ['aws.amazon.com'],
+      exclude: ['internal.example.com'],
+    });
+  });
+
   it('rejects a duplicate target name on the same gateway', async () => {
     const { primitive } = makePrimitive(emptyProject());
     await primitive.createWebSearchGatewayTarget({
