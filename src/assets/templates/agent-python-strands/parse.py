@@ -26,11 +26,11 @@ def _strip_trailing_tool_use(messages: Any) -> list[dict]:
 
 def parse_payload(payload: dict):
     """Accept a caller-supplied message history or a plain prompt string."""
-    actor_id = payload.get("actor_id", "default")
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object")
+    actor_id = payload.get("actor_id", "default")
     if "messages" in payload:
-        return strip_trailing_tool_use(payload["messages"]), actor_id
+        return _strip_trailing_tool_use(payload["messages"]), actor_id
     prompt = payload.get("prompt", "")
     if not isinstance(prompt, str):
         raise ValueError("prompt must be a string")
