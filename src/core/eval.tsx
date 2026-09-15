@@ -41,6 +41,7 @@ import {
   type DeleteOnlineEvaluationConfigResponse,
   type DatasetStatus,
   type EvaluatorConfig,
+  type EvaluatorModelConfig,
   type GetConfigurationBundleResponse,
   type GetConfigurationBundleVersionResponse,
   type GetDatasetResponse,
@@ -162,6 +163,7 @@ import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResult
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
 import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
+import type { EvaluatorModelProvider } from "../projectSchemas/evaluator";
 import type { Logger } from "../logging";
 import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
@@ -264,14 +266,35 @@ export class EvalClient implements CoreEvalClient {
 
     const instructions = update.instructions ?? existing?.instructions;
     const ratingScale = update.ratingScale ?? existing?.ratingScale;
-    // Preserve the existing Bedrock model config (inferenceConfig,
-    // additionalModelRequestFields, ...) and override only the model id, so an
-    // update that touches other fields does not drop model tuning.
-    const existingModel =
+
+    // Detect the current provider from whichever union arm is set, so an update
+    // that never mentions the provider stays on it. Each arm carries
+    // provider-specific tuning (Bedrock inferenceConfig, OpenResponses
+    // temperature/topP/reasoning, ...) preserved by spreading it below.
+    const existingBedrock =
       existing?.modelConfig && "bedrockEvaluatorModelConfig" in existing.modelConfig
         ? existing.modelConfig.bedrockEvaluatorModelConfig
         : undefined;
-    const modelId = update.model ?? existingModel?.modelId;
+    const existingResponses =
+      existing?.modelConfig && "responsesEvaluatorModelConfig" in existing.modelConfig
+        ? existing.modelConfig.responsesEvaluatorModelConfig
+        : undefined;
+    const currentProvider: EvaluatorModelProvider = existingResponses ? "OpenResponses" : "Bedrock";
+    const targetProvider = update.modelProvider ?? currentProvider;
+    const providerChanged = targetProvider !== currentProvider;
+
+    // A model id from one provider's API is not valid for the other, so a
+    // provider switch cannot reuse the existing id — require a fresh one.
+    if (providerChanged && !update.model) {
+      throw new InputValidationError(
+        `Changing evaluator "${id}" to the ${targetProvider} provider requires a new --model`,
+        { meta: { evaluatorId: id } },
+      );
+    }
+
+    const modelId =
+      update.model ??
+      (targetProvider === "OpenResponses" ? existingResponses?.modelId : existingBedrock?.modelId);
 
     if (!instructions || !ratingScale || !modelId) {
       throw new InputValidationError(
@@ -281,11 +304,23 @@ export class EvalClient implements CoreEvalClient {
       );
     }
 
+    // On a provider switch there is no same-provider tuning to keep, so start
+    // from the OpenResponses deployment defaults (Bedrock supplies its own).
+    const modelConfig: EvaluatorModelConfig =
+      targetProvider === "OpenResponses"
+        ? {
+            responsesEvaluatorModelConfig: {
+              ...(providerChanged ? { maxOutputTokens: 4096, temperature: 0 } : existingResponses),
+              modelId,
+            },
+          }
+        : { bedrockEvaluatorModelConfig: { ...(providerChanged ? {} : existingBedrock), modelId } };
+
     const evaluatorConfig: EvaluatorConfig = {
       llmAsAJudge: {
         instructions,
         ratingScale,
-        modelConfig: { bedrockEvaluatorModelConfig: { ...existingModel, modelId } },
+        modelConfig,
       },
     };
 

@@ -5,7 +5,14 @@ import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-import { instructionsFlag, ratingScaleFlag, resolveRatingScale } from "../sharedFlags";
+import {
+  buildEvaluatorModelConfig,
+  instructionsFlag,
+  modelProviderFlag,
+  ratingScaleFlag,
+  resolveModelProvider,
+  resolveRatingScale,
+} from "../sharedFlags";
 import { LEVELS } from "../../levels";
 
 export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
@@ -15,7 +22,12 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
     flags: [
       flag("name", "the name of the evaluator", z.string().optional()),
       flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
-      flag("model", "the Bedrock model ID used to judge", z.string().optional()),
+      modelProviderFlag,
+      flag(
+        "model",
+        "judge model: a Bedrock model ID / ARN, or an OpenResponses model ID",
+        z.string().optional(),
+      ),
       instructionsFlag,
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
@@ -32,6 +44,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("required option '--level <level>' not specified");
       if (!flags["model"])
         throw new InputValidationError("required option '--model <model>' not specified");
+      const modelProvider = resolveModelProvider(flags["model-provider"]);
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);
@@ -59,7 +72,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
             llmAsAJudge: {
               instructions,
               ratingScale,
-              modelConfig: { bedrockEvaluatorModelConfig: { modelId: flags["model"] } },
+              modelConfig: buildEvaluatorModelConfig(modelProvider, flags["model"]),
             },
           },
           kmsKeyArn: flags["kms-key-arn"],

@@ -1,13 +1,54 @@
 import z from "zod";
-import type { RatingScale } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { EvaluatorModelConfig, RatingScale } from "@aws-sdk/client-bedrock-agentcore-control";
 import { flag } from "../../../../router";
+import { InputValidationError } from "../../../../errors";
 import { parseJsonFlag } from "../../../utils";
 import {
   RATING_SCALE_PRESET_IDS,
   isRatingScalePreset,
   ratingScaleFromPreset,
 } from "../../ratingScale";
+import {
+  EvaluatorModelProviderSchema,
+  type EvaluatorModelProvider,
+} from "../../../../projectSchemas/evaluator";
 import type { SourceResolver } from "../../../../io";
+
+// The token budget and temperature the old CLI's project deployment applies to
+// an OpenResponses judge. topP is deliberately omitted so behavior matches it.
+const OPEN_RESPONSES_DEFAULTS = { maxOutputTokens: 4096, temperature: 0 } as const;
+
+export const modelProviderFlag = flag(
+  "model-provider",
+  "model provider for the judge: Bedrock (default) or OpenResponses",
+  z.string().optional(),
+);
+
+// resolveModelProvider turns the raw --model-provider value into a provider,
+// defaulting to Bedrock when the flag is omitted so existing invocations are
+// unchanged.
+export function resolveModelProvider(value: string | undefined): EvaluatorModelProvider {
+  if (value === undefined) return "Bedrock";
+  const parsed = EvaluatorModelProviderSchema.safeParse(value);
+  if (!parsed.success)
+    throw new InputValidationError(
+      `invalid --model-provider "${value}": expected Bedrock or OpenResponses`,
+    );
+  return parsed.data;
+}
+
+// buildEvaluatorModelConfig selects the SDK modelConfig union arm for the
+// resolved provider. OpenResponses carries the deployment token/temperature
+// defaults; Bedrock passes the model id alone (the service supplies its own).
+export function buildEvaluatorModelConfig(
+  provider: EvaluatorModelProvider,
+  modelId: string,
+): EvaluatorModelConfig {
+  if (provider === "OpenResponses") {
+    return { responsesEvaluatorModelConfig: { modelId, ...OPEN_RESPONSES_DEFAULTS } };
+  }
+  return { bedrockEvaluatorModelConfig: { modelId } };
+}
 
 export const instructionsFlag = flag(
   "instructions",
