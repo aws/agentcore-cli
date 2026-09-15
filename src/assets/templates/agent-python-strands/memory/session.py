@@ -1,5 +1,4 @@
 import os
-import uuid
 from typing import Optional
 
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
@@ -8,14 +7,11 @@ from bedrock_agentcore.memory.integrations.strands.session_manager import AgentC
 MEMORY_ID = os.getenv("{{memoryEnvVarName}}")
 REGION = os.getenv("AWS_REGION")
 
-
 def get_memory_session_manager(
-    session_id: Optional[str], actor_id: str
+        session_id: str, actor_id: str, 
 ) -> Optional[AgentCoreMemorySessionManager]:
     if not MEMORY_ID:
         return None
-
-    session_id = session_id or uuid.uuid4().hex
 
     retrieval_config = {
         f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
