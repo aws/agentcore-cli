@@ -28,9 +28,9 @@ def parse_payload(payload: dict):
     """Accept a caller-supplied message history or a plain prompt string."""
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object")
-    actor_id = payload.get("actor_id", "default")
+    actor_id = payload.get("actorId", "default")
     if not isinstance(actor_id, str):
-        raise ValueError("actor_id must be a string")
+        raise ValueError("actorId must be a string")
     if not actor_id:
         actor_id = "default"
     if "messages" in payload:
