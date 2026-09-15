@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { PassThrough } from "node:stream";
 import { rm } from "node:fs/promises";
-import { normalizeRuntimeShellRequest, resolveRuntimeShellBearerToken } from "./request";
+import {
+  normalizeRuntimeShellRequest,
+  resolveRuntimeShellBearerToken,
+  validateRuntimeShellIds,
+} from "./request";
 
 const RUNTIME_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/checkout-AbCdEf1234";
 
@@ -31,11 +35,13 @@ describe("normalizeRuntimeShellRequest", () => {
       normalizeRuntimeShellRequest(runtime(), {
         qualifier: "prod",
         runtimeSessionId: "session-012345678901234567890123456789",
+        shellId: "shell-1",
       }),
     ).toEqual({
       runtimeArn: RUNTIME_ARN,
       qualifier: "prod",
       runtimeSessionId: "session-012345678901234567890123456789",
+      shellId: "shell-1",
     });
   });
 
@@ -82,6 +88,21 @@ describe("normalizeRuntimeShellRequest", () => {
         qualifier: "DEFAULT",
       }),
     ).toThrow("Runtime returned an invalid ARN");
+  });
+});
+
+describe("validateRuntimeShellIds", () => {
+  test("requires session ID when shell ID is supplied", () => {
+    expect(() => validateRuntimeShellIds(undefined, "shell-1")).toThrow(
+      "--shell-id requires --session-id",
+    );
+  });
+
+  test("accepts both IDs or neither", () => {
+    expect(() => validateRuntimeShellIds(undefined, undefined)).not.toThrow();
+    expect(() =>
+      validateRuntimeShellIds("session-012345678901234567890123456789", "shell-1"),
+    ).not.toThrow();
   });
 });
 
