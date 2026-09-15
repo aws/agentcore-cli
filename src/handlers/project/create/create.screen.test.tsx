@@ -2,6 +2,7 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { parse } from "yaml";
 import {
   renderScreen,
   waitForText,
@@ -203,12 +204,14 @@ describe("project create wizard", () => {
     const root = join(directory, "OpenAIApp");
     const spec = await Bun.file(join(root, "agentcore", "agentcore.json")).json();
     expect(spec.credentials).toEqual([]);
-    const harness = await Bun.file(join(root, "app", "OpenAIApp", "harness.json")).json();
+    const harness = parse(await Bun.file(join(root, "app", "OpenAIApp", "harness.yaml")).text());
     expect(harness.model).toEqual({
       provider: "open_ai",
       modelId: "gpt-5",
       apiKeyArn,
     });
+    expect(harness.memory).toEqual({ mode: "managed" });
+    expect(harness.systemPrompt).toBe("file://./system-prompt.md");
     r.unmount();
   }, 10000);
 

@@ -2,6 +2,7 @@ import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { parse } from "yaml";
 import { createRootHandler } from "../index";
 import {
   createSilentLogger,
@@ -74,12 +75,18 @@ describe("project create", () => {
     expect(spec.harnesses).toEqual([{ name: "MyAgent", path: "app/MyAgent" }]);
     expect(spec.runtimes).toEqual([]);
 
-    const harness = await Bun.file(join(projectRoot, "app", "MyAgent", "harness.json")).json();
+    const harness = parse(
+      await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
+    );
     expect(harness.model).toEqual({
       provider: "bedrock",
       modelId: "global.anthropic.claude-sonnet-4-6",
     });
-    expect(harness.memory).toBeUndefined();
+    expect(harness.memory).toEqual({ mode: "managed" });
+    expect(harness.systemPrompt).toBe("file://./system-prompt.md");
+    expect(harness.tools).toBeUndefined();
+    expect(harness.skills).toBeUndefined();
+    expect(existsSync(join(projectRoot, "app", "MyAgent", "harness.json"))).toBe(false);
     expect(await Bun.file(join(projectRoot, "app", "MyAgent", "system-prompt.md")).exists()).toBe(
       true,
     );

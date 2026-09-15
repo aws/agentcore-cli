@@ -42,9 +42,9 @@ export interface ExportNoteLine {
 export interface HarnessExportInput {
   harnessName: string;
   targetAgentName: string;
-  /** The parsed harness spec (from app/<name>/harness.json or the service). */
+  /** The parsed harness spec (from app/<name>/harness.yaml or the service). */
   spec: HarnessSpec;
-  /** The resolved system prompt text (system-prompt.md > spec.systemPrompt > default). */
+  /** The resolved system prompt text (explicit prompt > conventional file > default). */
   systemPrompt: string;
   /** The current project spec, for memory lookups and credential dedup. */
   projectSpec: ProjectSpec;

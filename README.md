@@ -159,6 +159,73 @@ pre-built container image or a custom Dockerfile, that is reported in
 `EXPORT_NOTES.md` rather than rebuilt. Path-based skills are not supported,
 since the exported agent has no container filesystem to read them from.
 
+### Harness Project Files
+
+`project create` (without `--template`) and `project add harness` share the same
+scaffolding flow. Each harness has `app/<name>/harness.yaml` and
+`app/<name>/system-prompt.md`. YAML is the harness configuration format.
+The YAML contains the supplied settings and
+commented optional examples. Tools are opt-in. Newly scaffolded harnesses
+explicitly use `memory: { mode: managed }` unless another memory configuration
+was supplied. Reading an existing file with no `memory` setting still means
+disabled memory; reading never adds the scaffold default.
+
+```yaml
+name: assistant
+model:
+  provider: bedrock
+  modelId: global.anthropic.claude-sonnet-4-6
+systemPrompt: file://./system-prompt.md
+memory:
+  mode: managed
+```
+
+Only `systemPrompt` and
+`truncation.config.summarization.summarizationSystemPrompt` resolve local
+`file://` references. The prefix is removed and the remaining filesystem path
+is resolved relative to **the YAML file's directory**, not the shell's working
+directory. `file://./prompt.md`, `file://../shared/prompt.md`, and absolute
+filesystem paths are supported. Paths use native filesystem spelling (including
+Windows drive paths), not URL host or percent-encoding rules; spaces, `#`, and
+`%` in a filename stay literal. YAML quoting preserves special characters.
+
+```yaml
+systemPrompt: |
+  You are a concise assistant.
+truncation:
+  strategy: summarization
+  config:
+    summarization:
+      summarizationSystemPrompt: "file://../shared/summary #1.md"
+```
+
+Both build/deploy and local export resolve these files to literal text before
+schema validation. Explicit prompt text or a reference takes precedence over
+`system-prompt.md`. That conventional file is used only when `systemPrompt` is
+omitted. A bad explicit reference never falls back silently. Referenced files
+must be readable, nonempty UTF-8 text of at most **1 MiB each**; whitespace-only
+files are rejected. Inline text and file contents preserve their whitespace.
+File contents are not interpreted as further references.
+Plain strings such as `README.md`, `./instructions.md`, and HTTPS URLs are
+literal prompt text, not file references.
+
+`project add harness --system-prompt file://./selected.md` preserves that
+reference in the generated YAML. Scaffolding validates reference syntax without
+reading or copying the selected file; build and export resolve it from the new
+harness directory. A literal `--system-prompt` is written to `system-prompt.md`.
+
+Skills are unchanged: skill paths refer to the **runtime/container filesystem**,
+not local files to package. Other fields do not support local includes.
+Malformed YAML, duplicate keys, and existing schema violations fail the read.
+Unknown fields at the harness root and directly inside `model` are rejected,
+not silently removed or corrected. Nested configurations keep their existing
+validation contracts; this is not a recursive unknown-field check. Free-form
+maps such as headers, tags, environment variables, `additionalParams`, and
+`inputSchema` still accept arbitrary keys.
+Build, deploy, and export do not rewrite harness YAML or remove its comments.
+`agentcore.json`, deployment targets, JSON CLI flags/output, and service payloads
+are unchanged.
+
 Global flags (declared at the root, available on every command):
 
 | Flag             | Purpose                                                              |

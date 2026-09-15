@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "test": "jest",
+    "test": "npm run build && jest",
     "cdk": "npm run build && cdk",
     "clean": "rm -rf dist",
     "format": "prettier --write .",
@@ -25,6 +25,8 @@
   "dependencies": {
     "@aws/agentcore-cdk": "0.1.0-alpha.53",
     "aws-cdk-lib": "~2.266.0",
-    "constructs": "~10.7.0"
+    "constructs": "~10.7.0",
+    "yaml": "^2.8.1",
+    "zod": "^4.4.3"
   }
 }

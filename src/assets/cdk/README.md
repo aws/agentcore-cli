@@ -11,7 +11,7 @@ This CDK project is managed by the AgentCore CLI. It deploys your agent infrastr
 ## Useful commands
 
 - `npm run build` compile TypeScript to JavaScript
-- `npm run test` run unit tests
+- `npm run test` compile the app and run unit tests
 - `npx cdk synth` emit the synthesized CloudFormation template
 - `npx cdk deploy` deploy this stack to your default AWS account/region
 - `npx cdk diff` compare deployed stack with current state

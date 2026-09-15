@@ -473,7 +473,6 @@ describe("mapHarnessToExportPlan skills", () => {
   test("maps s3 and git skills and generates the S3 read policy", () => {
     const result = plan({
       spec: harness({
-        build: undefined,
         skills: [
           { s3Uri: "s3://skills-bucket/team/" },
           { gitUrl: "https://github.com/example/skills.git", path: "subdir" },

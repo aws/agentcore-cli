@@ -51,6 +51,7 @@ export const HarnessModelSchema = z
     apiBase: z.string().min(1).max(MAX_LITE_LLM_API_BASE_LENGTH).optional(),
     additionalParams: z.record(z.string(), z.unknown()).optional(),
   })
+  .strict()
   .superRefine((model, ctx) => {
     if (model.topK !== undefined && model.provider !== "gemini") {
       ctx.addIssue({
@@ -435,11 +436,6 @@ export const AllowedToolSchema = z
   .min(1)
   .max(64)
   .regex(/^(\*|@?[^/]+(\/[^/]+)?)$/, 'Must be "*" or a tool name pattern (max 64 chars)');
-export function looksLikeLegacyPromptPath(value: string): boolean {
-  const v = value.trim();
-  if (!/^\S+$/.test(v)) return false;
-  return /^\.\.?\//.test(v) || /\.(md|txt)$/i.test(v);
-}
 export const HarnessSpecSchema = z
   .object({
     name: HarnessNameSchema,
@@ -448,10 +444,6 @@ export const HarnessSpecSchema = z
       .string()
       .refine((val) => val.trim().length > 0, {
         message: "systemPrompt must not be empty or whitespace-only",
-      })
-      .refine((val) => !looksLikeLegacyPromptPath(val), {
-        message:
-          "systemPrompt looks like a file path. It is now always literal text — put file-backed prompts in a `system-prompt.md` in the harness directory (auto-discovered), or inline the prompt text here.",
       })
       .optional(),
     tools: z
@@ -501,6 +493,7 @@ export const HarnessSpecSchema = z
     connections: z.array(ConnectionSchema).optional(),
     tags: TagsSchema.optional(),
   })
+  .strict()
   .superRefine((data, ctx) => {
     if (data.containerUri !== undefined && data.dockerfile !== undefined) {
       ctx.addIssue({

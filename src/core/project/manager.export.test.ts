@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import z from "zod";
+import { parse, stringify } from "yaml";
 import { FsProjectManager } from "./manager";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
@@ -71,6 +72,7 @@ async function projectWithHarness(
         name: "assistant",
         model: { provider: "bedrock", modelId: "us.amazon.nova-lite-v1:0" },
         systemPrompt: "You are a terse assistant.",
+        memory: { mode: "disabled" },
         ...harness,
       } as z.input<typeof HarnessSpecSchema>,
     }),
@@ -316,6 +318,53 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 });
 
 describe("FsProjectManager.exportHarness side effects", () => {
+  test.each(["literal", "file", "fallback"] as const)(
+    "exports the %s prompt and resolved summary without rewriting YAML",
+    async (source) => {
+      const { manager: subject } = manager();
+      const project = await projectWithHarness(subject);
+      const dir = join(project.rootPath, "app", "assistant");
+      const configPath = join(dir, "harness.yaml");
+      const config = parse(await Bun.file(configPath).text());
+      const prompt = "  Explicit prompt.\nKeep its whitespace.\n";
+      await Bun.write(
+        join(dir, "system-prompt.md"),
+        source === "fallback" ? prompt : "Conventional prompt loses.",
+      );
+      await Bun.write(join(dir, "chosen #1%.md"), prompt);
+      await Bun.write(join(dir, "summary.md"), "  Keep the decisions.\n");
+      if (source === "fallback") delete config.systemPrompt;
+      else config.systemPrompt = source === "literal" ? prompt : "file://./chosen #1%.md";
+      config.truncation = {
+        strategy: "summarization",
+        config: { summarization: { summarizationSystemPrompt: "file://./summary.md" } },
+      };
+      const yaml = "# Keep this customer comment.\n" + stringify(config);
+      await Bun.write(configPath, yaml);
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      const main = await Bun.file(join(result.agentPath, "main.py")).text();
+      expect(main).toContain(prompt);
+      expect(main).toContain("Keep the decisions.");
+      expect(main).not.toContain("file://");
+      expect(main).not.toContain("Conventional prompt loses.");
+      expect(await Bun.file(configPath).text()).toBe(yaml);
+    },
+  );
+
+  test("reports schema errors with the YAML path before creating export output", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    const configPath = join(project.rootPath, "app", "assistant", "harness.yaml");
+    await Bun.write(
+      configPath,
+      "name: assistant\nmodel: {provider: bedrock, modelId: example}\nmaxIterations: 0\n",
+    );
+    await expect(drain(subject.exportHarness(project, exportInput()))).rejects.toThrow(
+      /Invalid harness.yaml.*maxIterations/s,
+    );
+    expect(existsSync(join(project.rootPath, "app", "assistantAgent"))).toBe(false);
+  });
+
   test("writes MCP header secrets to .env.local and registers their credentials", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {

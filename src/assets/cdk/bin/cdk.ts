@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
-import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
+import { ConfigIO, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
 import * as fs from 'fs';
+import { HarnessConfigReader } from '../io/harnessConfig';
+import { HarnessSpecSchema } from '../lib/harness-schema';
 
 function toEnvironment(target: AwsDeploymentTarget): Environment {
   return {
@@ -67,13 +69,13 @@ function resolveConnectorParametersByFile(
 // Synthesize a HarnessConfig for each harness entry in the spec. The full validated
 // spec drives the AWS::BedrockAgentCore::Harness CFN resource; the role-scoped
 // fields drive the IAM role + container build.
-function resolveHarnessConfigs(spec: SpecWithLatestFields, projectRoot: string): HarnessConfig[] {
+async function resolveHarnessConfigs(spec: SpecWithLatestFields, projectRoot: string): Promise<HarnessConfig[]> {
   const harnessConfigs: HarnessConfig[] = [];
   for (const entry of spec.harnesses ?? []) {
     const harnessDir = path.resolve(projectRoot, entry.path);
-    const harnessPath = path.resolve(harnessDir, 'harness.json');
+    const harnessPath = path.resolve(harnessDir, 'harness.yaml');
     try {
-      const harnessSpec = HarnessSpecSchema.parse(JSON.parse(fs.readFileSync(harnessPath, 'utf-8')));
+      const harnessSpec = HarnessSpecSchema.parse(await new HarnessConfigReader().read(harnessPath));
       harnessConfigs.push({
         name: entry.name,
         executionRoleArn: harnessSpec.executionRoleArn,
@@ -96,7 +98,7 @@ function resolveHarnessConfigs(spec: SpecWithLatestFields, projectRoot: string):
       });
     } catch (err) {
       throw new Error(
-        `Could not read harness.json for "${entry.name}" at ${harnessPath}: ${err instanceof Error ? err.message : err}`
+        `Could not read harness.yaml for "${entry.name}" at ${harnessPath}: ${err instanceof Error ? err.message : err}`
       );
     }
   }
@@ -122,7 +124,7 @@ async function main() {
 
   const mcpSpec = resolveMcpSpec(specAny);
   const connectorParametersByFile = resolveConnectorParametersByFile(specAny, projectRoot);
-  const harnessConfigs = resolveHarnessConfigs(specAny, projectRoot);
+  const harnessConfigs = await resolveHarnessConfigs(specAny, projectRoot);
 
   // Read deployed state for credential ARNs (populated by pre-deploy identity setup).
   // Under agentcore/.cli/ to match the released CLI's location.

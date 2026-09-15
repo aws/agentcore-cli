@@ -68,7 +68,7 @@ function routeFor(
 // env var for every declared memory into every runtime (see
 // src/core/project/templates/runtime.ts), so each declared memory is reachable
 // from each runtime agent. A harness's memory binding lives in its own
-// harness.json (HarnessMemoryRefSchema), not in the project spec this report is
+// harness.yaml (HarnessMemoryRefSchema), not in the project spec this report is
 // built from — a managed one is provisioned inside the harness and never
 // appears here — so harness groups list just the harness itself and memories a
 // harness may reference by name stay visible under the project group.

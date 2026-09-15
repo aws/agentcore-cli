@@ -46,6 +46,7 @@ import {
   mapHarnessToExportPlan,
 } from "./templates/export";
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import { HarnessConfigReader } from "../../io/harnessConfig";
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
@@ -737,17 +738,18 @@ export class FsProjectManager implements ProjectManager {
       harnessDir = join(project.rootPath, entry.path);
       yield {
         type: "step",
-        message: `Reading harness configuration from '${join(entry.path, "harness.json")}'`,
+        message: `Reading harness configuration from '${join(entry.path, "harness.yaml")}'`,
       };
-      spec = await this.json.read(join(harnessDir, "harness.json"), HarnessSpecSchema);
-      const promptPath = join(harnessDir, "system-prompt.md");
-      const filePrompt = existsSync(promptPath)
-        ? (await readFile(promptPath, "utf-8")).trim()
-        : undefined;
-      systemPrompt =
-        filePrompt && filePrompt.length > 0
-          ? filePrompt
-          : (spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT);
+      const harnessPath = join(harnessDir, "harness.yaml");
+      const parsed = HarnessSpecSchema.safeParse(await new HarnessConfigReader().read(harnessPath));
+      if (!parsed.success) {
+        throw new InputValidationError(
+          `Invalid harness.yaml at '${harnessPath}': ${z.prettifyError(parsed.error)}`,
+          { cause: parsed.error },
+        );
+      }
+      spec = parsed.data;
+      systemPrompt = spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT;
     }
 
     // Refuse to overwrite anything: the target name must be free in the spec
