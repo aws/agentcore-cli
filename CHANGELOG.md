@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.30.0] - 2026-09-15
+
+### Fixed
+- fix(import): strip reserved aws: tags from imported resources (#2289) (fdee4e34)
+
 ## [0.29.0] - 2026-09-11
 
 ### Added
