@@ -1,6 +1,6 @@
 {
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-vYkaD93sFk",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-vYkaD93sFk",
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-5gZw987afd",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-5gZw987afd",
   "onlineEvaluationConfigName": "agentcore_cli_online_eval_fixture",
   "rule": {
     "samplingConfig": {
@@ -12,18 +12,19 @@
   },
   "dataSourceConfig": {
     "cloudWatchLogs": {
-      "logGroupNames": [
-        "/aws/bedrock-agentcore/runtimes/testAgent_Agent-wm9hYBD93Y-DEFAULT"
-      ],
       "serviceNames": [
         "testAgent_Agent.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/runtimes/testAgent_Agent-wm9hYBD93Y-DEFAULT"
       ]
     }
   },
   "status": "ACTIVE",
   "executionStatus": "DISABLED",
-  "createdAt": "2026-08-03T21:29:43.069Z",
-  "updatedAt": "2026-08-03T21:29:44.358Z",
+  "createdAt": "2026-09-15T15:11:21.000Z",
+  "updatedAt": "2026-09-15T15:11:22.528Z",
+  "description": "quality monitor for prod traffic",
   "evaluators": [
     {
       "evaluatorId": "Builtin.Helpfulness"
@@ -31,7 +32,7 @@
   ],
   "outputConfig": {
     "cloudWatchConfig": {
-      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_fixture-vYkaD93sFk"
+      "resultDestination": "SOURCE_LOG_GROUP"
     }
   },
   "evaluationExecutionRoleArn": "arn:aws:iam::725476964917:role/AgentCoreOnlineEval-agentcore_cli_online_eval_fixture"

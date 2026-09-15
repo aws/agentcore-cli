@@ -10,13 +10,13 @@
     "$date": "2026-06-17T22:09:21.093Z"
   },
   "roleArn": "arn:aws:iam::725476964917:role/AgentCore-ABVfyLatest-def-ApplicationAgentABVfyLate-b6b570G88FJ3",
-  "networkConfiguration": {
-    "networkMode": "PUBLIC"
-  },
   "status": "READY",
   "lifecycleConfiguration": {
     "idleRuntimeSessionTimeout": 900,
     "maxLifetime": 28800
+  },
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
   },
   "description": "AgentCore Runtime: ABVfyLatest_ABVfyLatest",
   "workloadIdentityDetails": {

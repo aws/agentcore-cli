@@ -10,13 +10,13 @@
     "$date": "2026-03-24T16:13:08.198Z"
   },
   "roleArn": "arn:aws:iam::725476964917:role/AgentCore-myimport-defaul-ApplicationAgentTestAgent-tJFjyd6jLIOn",
-  "networkConfiguration": {
-    "networkMode": "PUBLIC"
-  },
   "status": "READY",
   "lifecycleConfiguration": {
     "idleRuntimeSessionTimeout": 900,
     "maxLifetime": 28800
+  },
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
   },
   "description": "AgentCore Runtime: myimport_testAgent_Agent",
   "workloadIdentityDetails": {
