@@ -3,9 +3,12 @@ import { createHandler, flag, ProjectKey } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
 import { SourceResolver } from "../../../../../io";
 import {
+  EvaluatorModelProviderSchema,
   EvaluatorSchema,
   isValidBedrockModelId,
+  isValidOpenResponsesModelId,
   RatingScaleSchema,
+  type EvaluatorModelProvider,
   type RatingScale,
 } from "../../../../../projectSchemas/evaluator";
 import { TagsSchema } from "../../../../../projectSchemas/tags";
@@ -27,8 +30,13 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       flag("name", "the name of the evaluator", z.string().optional()),
       flag("level", "what to score: SESSION, TRACE, or TOOL_CALL", z.string().optional()),
       flag(
+        "model-provider",
+        "model provider for the judge: Bedrock (default) or OpenResponses",
+        z.string().optional(),
+      ),
+      flag(
         "model",
-        "Bedrock model ID or inference-profile/foundation-model ARN for the judge",
+        "judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID",
         z.string().optional(),
       ),
       flag(
@@ -65,10 +73,8 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
           "required option '--rating-scale <rating-scale>' not specified",
         );
 
-      if (!isValidBedrockModelId(flags["model"]))
-        throw new InputValidationError(
-          `invalid --model "${flags["model"]}": expected a Bedrock model ID (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0) or an inference-profile/foundation-model ARN`,
-        );
+      const modelProvider = resolveModelProvider(flags["model-provider"]);
+      validateModel(modelProvider, flags["model"]);
 
       const ratingScale = resolveRatingScale(flags["rating-scale"]);
 
@@ -81,6 +87,9 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
         description: flags["description"],
         config: {
           llmAsAJudge: {
+            // Bedrock is the default and stays implicit so existing Bedrock
+            // agentcore.json files are unchanged; only OpenResponses is written.
+            ...(modelProvider === "OpenResponses" ? { modelProvider } : {}),
             model: flags["model"],
             instructions,
             ratingScale,
@@ -106,6 +115,30 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       );
     },
   });
+
+function resolveModelProvider(value: string | undefined): EvaluatorModelProvider {
+  if (value === undefined) return "Bedrock";
+  const parsed = EvaluatorModelProviderSchema.safeParse(value);
+  if (!parsed.success)
+    throw new InputValidationError(
+      `invalid --model-provider "${value}": expected Bedrock or OpenResponses`,
+    );
+  return parsed.data;
+}
+
+function validateModel(provider: EvaluatorModelProvider, model: string): void {
+  if (provider === "Bedrock") {
+    if (!isValidBedrockModelId(model))
+      throw new InputValidationError(
+        `invalid --model "${model}": expected a Bedrock model ID (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0) or an inference-profile/foundation-model ARN`,
+      );
+    return;
+  }
+  if (!isValidOpenResponsesModelId(model))
+    throw new InputValidationError(
+      `invalid --model "${model}": expected an OpenResponses model ID (a non-empty identifier without spaces, e.g. openai.gpt-5.4)`,
+    );
+}
 
 // A preset name expands to a fresh copy of the shared table; anything else is
 // treated as an inline JSON rating scale and validated against the schema.
