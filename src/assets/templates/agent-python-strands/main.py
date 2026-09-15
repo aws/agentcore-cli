@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from strands import Agent, tool
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -21,6 +23,17 @@ tools.append(add_numbers)
 def _make_conversation_manager():
     return NullConversationManager()
 
+@lru_cache(maxsize=128)
+def _get_agent(session_id: str, actor_id: str) -> Agent:
+    """Cache Agents per session/actor to skip repeat identity fetches and keep turn history in dev."""
+    return Agent(
+        model=load_model(),
+        session_manager=get_memory_session_manager(session_id, actor_id),
+        conversation_manager=_make_conversation_manager(),
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
+        tools=tools,
+    )
+
 def create_app():
     app = BedrockAgentCoreApp()
     log = app.logger
@@ -33,13 +46,7 @@ def create_app():
         prompt, actor_id = parse_payload(payload)
 
         log.info(f"Invoking with session_id={session_id} and actor_id={actor_id}")
-        agent = Agent(
-            model=load_model(),
-            session_manager=get_memory_session_manager(session_id, actor_id),
-            conversation_manager=_make_conversation_manager(),
-            system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools,
-        )
+        agent = _get_agent(session_id, actor_id)
 
         async for event in agent.stream_async(prompt):
             if not isinstance(event, dict) or "event" not in event:
