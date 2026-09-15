@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline/promises";
-import { argument, createHandler, flag, ProjectKey } from "../../../router";
+import { argument, createHandler, flag, ProjectKey, type Middleware } from "../../../router";
 import { InputValidationError, UserCancellationError } from "../../../errors";
 import z from "zod";
 import type { AppIO } from "../../../io";
@@ -12,12 +12,14 @@ import { projectMutationResource, projectReference, type ProjectMutationResult }
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
   io: AppIO;
+  middlewares?: Middleware[];
 };
 
 export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) =>
   createHandler({
     name: "remove",
     description: "remove a resource from the project",
+    middlewares: config.middlewares,
     flags: [
       flag("name", "name of the resource to remove", z.string().min(1).optional()),
       flag("gateway", "name of the parent Gateway for a Target", z.string().min(1).optional()),

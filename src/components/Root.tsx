@@ -121,6 +121,7 @@ import { ProjectInvokePickerScreen } from "../handlers/project/invoke/screen.tsx
 import { AddRuntimeScreen } from "../handlers/project/add/runtime/screen.tsx";
 import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
+import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
 import type { Context } from "../router";
 
@@ -820,6 +821,18 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/project/add/memory"
             element={<AddMemoryScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/remove"
+            element={<ProjectRemoveScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/remove/:resourceType"
+            element={<ProjectRemoveScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/project/remove/:resourceType/:resourceIndex"
+            element={<ProjectRemoveScreen ctx={ctx} core={core} />}
           />
           {/* Every known command without a screen of its own: a group opens its
               menu and a leaf its interactive help. Unknown routes retain the

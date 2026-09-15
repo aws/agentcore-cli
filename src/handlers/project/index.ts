@@ -39,6 +39,7 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
     "deploy",
     "status",
     "add",
+    "remove",
   );
 
   // Without a default, a bare `agentcore project` falls back to Commander's help
@@ -59,9 +60,14 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
   project.handler(createAddProjectResourceHandler(config, core));
   project.handler(createExportProjectResourceHandler({ projectManager, core, io }));
   project.handler(
-    withProject({ projectManager: config.projectManager })(
-      createRemoveProjectHandler({ projectManager: config.projectManager, io: config.io }),
-    ),
+    createRemoveProjectHandler({
+      projectManager: config.projectManager,
+      io: config.io,
+      middlewares: [
+        withProject({ projectManager: config.projectManager }),
+        withTuiWhenInteractive(core, io),
+      ],
+    }),
   );
   project.handler(
     withProject({ projectManager: config.projectManager })(
