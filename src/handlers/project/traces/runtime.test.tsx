@@ -25,6 +25,10 @@ const PRODUCTION_TARGET = {
   account: "111122223333",
   region: "ap-southeast-2",
 } as const;
+const TARGET_CREDENTIAL_PROVIDER = async () => ({
+  accessKeyId: "target-access-key",
+  secretAccessKey: "target-secret-key",
+});
 const RUNTIMES = [
   {
     name: "checkout",
@@ -84,6 +88,7 @@ function backend() {
         name,
         id: `${name}-AbCdEf1234`,
         target: input.target,
+        credentialProvider: TARGET_CREDENTIAL_PROVIDER,
       }));
     },
     async resolveProjectResources() {
@@ -140,7 +145,11 @@ describe("project traces runtime", () => {
       logGroupName: "/aws/bedrock-agentcore/runtimes/checkout-AbCdEf1234-DEFAULT",
     });
     expect(call.args[1] as ListTracesQuery).toMatchObject({ limit: 20 });
-    expect(call.args[2]).toEqual({ region: DEFAULT_TARGET.region, endpointUrl: undefined });
+    expect(call.args[2]).toEqual({
+      region: DEFAULT_TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIAL_PROVIDER,
+    });
     expect(subject.io.stdout()).toContain("abc123");
   });
 
@@ -169,7 +178,11 @@ describe("project traces runtime", () => {
       logGroupName: "/aws/bedrock-agentcore/runtimes/inventory-AbCdEf1234-BLUE",
     });
     expect(call.args[1] as ListTracesQuery).toMatchObject({ limit: 5 });
-    expect(call.args[2]).toEqual({ region: PRODUCTION_TARGET.region, endpointUrl: undefined });
+    expect(call.args[2]).toEqual({
+      region: PRODUCTION_TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIAL_PROVIDER,
+    });
   });
 
   test("downloads a trace from the resolved Runtime", async () => {
@@ -188,7 +201,11 @@ describe("project traces runtime", () => {
       logGroupName: "/aws/bedrock-agentcore/runtimes/checkout-AbCdEf1234-DEFAULT",
     });
     expect(call.args[1] as GetTraceQuery).toMatchObject({ traceId: "abc123def456" });
-    expect(call.args[2]).toEqual({ region: DEFAULT_TARGET.region, endpointUrl: undefined });
+    expect(call.args[2]).toEqual({
+      region: DEFAULT_TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIAL_PROVIDER,
+    });
 
     const output = join(process.cwd(), "traces", "trace.json");
     expect(subject.io.stdout()).toBe(output);
