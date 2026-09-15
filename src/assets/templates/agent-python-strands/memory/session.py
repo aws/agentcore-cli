@@ -8,7 +8,7 @@ MEMORY_ID = os.getenv("{{memoryEnvVarName}}")
 REGION = os.getenv("AWS_REGION")
 
 def get_memory_session_manager(
-        session_id: str, actor_id: str, 
+        session_id: str, actor_id: str,
 ) -> Optional[AgentCoreMemorySessionManager]:
     if not MEMORY_ID:
         return None

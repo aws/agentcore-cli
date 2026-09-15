@@ -23,22 +23,23 @@ def _make_conversation_manager():
 
 def create_app():
     app = BedrockAgentCoreApp()
-    log = app.logger 
+    log = app.logger
 
     @app.entrypoint
     async def invoke(payload, context):
         log.info("Invoking Agent.....")
 
-        session_id = getattr(context, "session_id", None) or "default-session" 
+        session_id = getattr(context, "session_id", None) or "default-session"
         prompt, actor_id = parse_payload(payload)
 
         log.info(f"Invoking with session_id={session_id} and actor_id={actor_id}")
         agent = Agent(
-                model=load_model(),
-                session_manager=get_memory_session_manager(session_id, actor_id),
-                conversation_manager=_make_conversation_manager(),
-                system_prompt=DEFAULT_SYSTEM_PROMPT,
-                tools=tools)
+            model=load_model(),
+            session_manager=get_memory_session_manager(session_id, actor_id),
+            conversation_manager=_make_conversation_manager(),
+            system_prompt=DEFAULT_SYSTEM_PROMPT,
+            tools=tools,
+        )
 
         async for event in agent.stream_async(prompt):
             if not isinstance(event, dict) or "event" not in event:
