@@ -47,5 +47,7 @@
     "$date": "2024-10-22T00:00:00.000Z"
   },
   "description": "Response Quality Metric. Evaluates from user's perspective how useful and valuable the agent's response is",
+  "evaluatorType": "Builtin",
+  "provider": "AWS",
   "lockedForModification": true
 }

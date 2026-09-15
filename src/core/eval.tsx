@@ -980,6 +980,9 @@ export class EvalClient implements CoreEvalClient {
           options.region,
           logGroupNamesOf(dataSourceConfig),
           await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
+          // Read only to widen the write scope to the chosen destination; the
+          // request object below still gets the caller's object untouched.
+          { outputConfig: input.outputConfig },
         )
       ).roleArn;
 
@@ -989,8 +992,10 @@ export class EvalClient implements CoreEvalClient {
       rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
       dataSourceConfig,
       evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+      outputConfig: input.outputConfig,
       evaluationExecutionRoleArn,
       enableOnCreate: input.enableOnCreate ?? true,
+      tags: input.tags,
     });
 
     // A role provisioned moments ago may not be assumable yet (IAM is eventually
@@ -1220,9 +1225,11 @@ export class EvalClient implements CoreEvalClient {
     const response = await control.send(
       new UpdateOnlineEvaluationConfigCommand({
         onlineEvaluationConfigId: id,
+        description: update.description,
         rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
         dataSourceConfig,
         evaluators,
+        outputConfig: update.outputConfig,
         evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
       }),
     );

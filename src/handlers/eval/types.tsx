@@ -28,6 +28,7 @@ import type {
   UpdateConfigurationBundleResponse,
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
+  OutputConfig as OnlineEvalOutputConfig,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CreateABTestResponse,
@@ -157,6 +158,8 @@ export type CreateOnlineEvalInput = {
   evaluatorIds?: string[];
   evaluationExecutionRoleArn?: string;
   enableOnCreate?: boolean;
+  tags?: Record<string, string>;
+  outputConfig?: OnlineEvalOutputConfig;
 } & (
   | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
@@ -204,6 +207,7 @@ export type DeleteOnlineInsightResponse = DeleteOnlineEvaluationConfigResponse;
 // `rule` object); `clearEndpoint` nulls out the endpoint scope, falling back to
 // the agent's default log group.
 export type UpdateOnlineEvalInput = {
+  description?: string;
   samplingRate?: number;
   sessionTimeoutMinutes?: number;
   filters?: Rule["filters"];
@@ -219,7 +223,10 @@ export type UpdateOnlineEvalInput = {
   // Replaces the execution role. Like `harness update`, the CLI never provisions
   // or re-scopes a role here — a role named here is the caller's to manage.
   evaluationExecutionRoleArn?: string;
+  outputConfig?: OnlineEvalOutputConfig;
 };
+
+export type { OnlineEvalOutputConfig };
 
 export type BundleRef = { configBundle: string; bundleVersion: string };
 

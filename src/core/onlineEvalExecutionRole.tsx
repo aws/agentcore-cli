@@ -14,7 +14,6 @@ import { parseArn } from "./arn";
 // evaluation results back to CloudWatch. When the caller doesn't bring one,
 // OnlineEvalClient provisions a per-config default here, scoped to the log
 // group(s) being sampled. Idempotent: an existing role is reused.
-//
 // Each scope is stored as its own inline policy, named after a fingerprint of the
 // scope, so granting a new scope never overwrites the policy backing the current
 // one. IAM unions Allows across a role's inline policies, which lets an update
@@ -72,10 +71,35 @@ function runtimeLogGroupPrefix(logGroupName: string): string {
   return match?.[1] ?? logGroupName;
 }
 
+const SERVICE_RESULT_PREFIX = "/aws/bedrock-agentcore/evaluations/";
+
+function resultWriteArns(
+  logs: string,
+  sampledArns: string[],
+  outputConfig: OnlineEvalResultDestination | undefined,
+): string | string[] {
+  const arns = [`${logs}:${SERVICE_RESULT_PREFIX}*`];
+  const cloudWatch = outputConfig?.cloudWatchConfig;
+
+  if (cloudWatch?.resultDestination === "SOURCE_LOG_GROUP") {
+    arns.push(...sampledArns);
+  } else if (
+    cloudWatch?.logGroupName &&
+    !cloudWatch.logGroupName.startsWith(SERVICE_RESULT_PREFIX)
+  ) {
+    arns.push(`${logs}:${cloudWatch.logGroupName}*`);
+  }
+
+  return arns.length === 1 ? arns[0]! : arns;
+}
+
+export type OnlineEvalResultDestination = {
+  cloudWatchConfig?: { logGroupName?: string; resultDestination?: string } | undefined;
+};
+
 // executionPolicy grants the permissions CreateOnlineEvaluationConfig validates
 // at creation time. Exported for assertion: the policy body is not observable
 // through the recorded IAM fixtures, whose responses are empty.
-//
 // at creation time: Logs Insights query access over the sampled log groups plus
 // the `aws/spans` group that carries the actual trace spans, Bedrock model
 // invocation for LLM-as-a-Judge evaluators, Lambda invocation for code-based
@@ -87,6 +111,7 @@ export function executionPolicy(
   accountId: string,
   logGroupNames: string[],
   kmsKeyArns: string[],
+  outputConfig?: OnlineEvalResultDestination,
 ): string {
   const logs = `arn:aws:logs:${region}:${accountId}:log-group`;
   const spansArn = `${logs}:aws/spans`;
@@ -123,6 +148,8 @@ export function executionPolicy(
         Resource: [`${spansArn}*`, ...sampledArns],
       },
       {
+        // logs:CreateLogGroup is needed because the service creates a
+        // customer-named result group that does not exist yet.
         Sid: "WriteEvaluationResults",
         Effect: "Allow",
         Action: [
@@ -131,7 +158,7 @@ export function executionPolicy(
           "logs:DescribeLogStreams",
           "logs:PutLogEvents",
         ],
-        Resource: `${logs}:/aws/bedrock-agentcore/evaluations/*`,
+        Resource: resultWriteArns(logs, sampledArns, outputConfig),
       },
       {
         Sid: "IndexSpans",
@@ -190,6 +217,11 @@ export function scopePolicyName(policyDocument: string): string {
   return `${POLICY_PREFIX}-${fingerprint(policyDocument)}`;
 }
 
+export type GrantScopeOptions = {
+  roleName?: string;
+  outputConfig?: OnlineEvalResultDestination;
+};
+
 // grantOnlineEvalScope creates the execution role for `configName` if it does not
 // exist and attaches the inline policy for this scope, returning the role ARN and
 // the policy name written. The caller revokes the superseded scope once whatever
@@ -200,7 +232,7 @@ export async function grantOnlineEvalScope(
   region: string,
   logGroupNames: string[],
   kmsKeyArns: string[] = [],
-  roleName = onlineEvalExecutionRoleName(configName),
+  { roleName = onlineEvalExecutionRoleName(configName), outputConfig }: GrantScopeOptions = {},
 ): Promise<{ roleArn: string; policyName: string }> {
   let roleArn: string;
   try {
@@ -223,6 +255,7 @@ export async function grantOnlineEvalScope(
     accountIdFromRoleArn(roleArn),
     logGroupNames,
     kmsKeyArns,
+    outputConfig,
   );
   const policyName = scopePolicyName(policyDocument);
   await iam.send(

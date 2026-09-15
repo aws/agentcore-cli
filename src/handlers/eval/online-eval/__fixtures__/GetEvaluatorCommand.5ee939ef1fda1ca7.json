@@ -2,6 +2,26 @@
   "evaluatorArn": "arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness",
   "evaluatorId": "Builtin.Correctness",
   "evaluatorName": "Builtin.Correctness",
+  "evaluatorConfig": {
+    "llmAsAJudge": {
+      "ratingScale": {
+        "numerical": [
+          {
+            "value": 0,
+            "label": "Incorrect"
+          },
+          {
+            "value": 0.5,
+            "label": "Partially correct"
+          },
+          {
+            "value": 1,
+            "label": "Correct"
+          }
+        ]
+      }
+    }
+  },
   "level": "TRACE",
   "status": "ACTIVE",
   "createdAt": {
@@ -10,5 +30,8 @@
   "updatedAt": {
     "$date": "2024-10-22T00:00:00.000Z"
   },
-  "kmsKeyArn": "arn:aws:kms:us-west-2:725476964917:key/31a2dd2f-c8a0-42b8-9f52-12e5ecb22468"
+  "description": "Response Quality Metric. Evaluates whether the information in the agent's response is factually accurate",
+  "evaluatorType": "Builtin",
+  "provider": "AWS",
+  "lockedForModification": true
 }
