@@ -89,17 +89,40 @@ describe('validate', () => {
   afterEach(() => vi.clearAllMocks());
 
   describe('validateAddAgentOptions', () => {
+    it('accepts BYO options without a framework or model provider', () => {
+      const options: AddAgentOptions = {
+        ...validAgentOptionsByo,
+        framework: undefined,
+        modelProvider: undefined,
+      };
+
+      expect(validateAddAgentOptions(options)).toEqual({ valid: true });
+      expect(options.modelProvider).toBe('Bedrock');
+    });
+
     // AC1: All required fields validated
-    it('returns error for missing required fields', () => {
+    it('returns error for missing path-independent required fields', () => {
       const requiredFields: { field: keyof AddAgentOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
-        { field: 'framework', error: '--framework is required' },
-        { field: 'modelProvider', error: '--model-provider is required' },
         { field: 'language', error: '--language is required' },
       ];
 
       for (const { field, error } of requiredFields) {
         const opts = { ...validAgentOptionsByo, [field]: undefined };
+        const result = validateAddAgentOptions(opts);
+        expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
+        expect(result.error).toBe(error);
+      }
+    });
+
+    it('requires a framework and model provider for the create path', () => {
+      const requiredFields: { field: keyof AddAgentOptions; error: string }[] = [
+        { field: 'framework', error: '--framework is required' },
+        { field: 'modelProvider', error: '--model-provider is required' },
+      ];
+
+      for (const { field, error } of requiredFields) {
+        const opts = { ...validAgentOptionsCreate, [field]: undefined };
         const result = validateAddAgentOptions(opts);
         expect(result.valid, `Should fail for missing ${String(field)}`).toBe(false);
         expect(result.error).toBe(error);
@@ -153,7 +176,7 @@ describe('validate', () => {
     // AC3: Framework/model provider compatibility
     it('returns error for incompatible framework and model provider', () => {
       const result = validateAddAgentOptions({
-        ...validAgentOptionsByo,
+        ...validAgentOptionsCreate,
         framework: 'GoogleADK',
         modelProvider: 'Bedrock',
       });
