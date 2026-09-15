@@ -6,9 +6,6 @@ import type { DataTableColumn } from "../../../../components/ui/data-table";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
-// identity list APIs cap maxResults at 20
-const MAX_PAGE_SIZE = 20;
-
 interface ApiKeyProviderRow extends Record<string, unknown> {
   name: string;
   createdAt: string;
@@ -52,7 +49,6 @@ export function ApiKeyCredentialProviderListScreen({ ctx, core }: ScreenProps) {
         navigate(`/agentcore/identity/api-key-credential-provider/get/${encodeURIComponent(name)}`)
       }
       onBack={() => navigate("/agentcore/identity/api-key-credential-provider")}
-      maxPageSize={MAX_PAGE_SIZE}
       loadingMessage="loading API key credential providers…"
       errorMessage={(error) => `Error: ${error.message}`}
       emptyMessage="No API key credential providers found in this Region."
