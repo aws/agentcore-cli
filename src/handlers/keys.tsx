@@ -1,5 +1,6 @@
 import z from "zod";
-import { globalFlag } from "../router";
+import type { AwsCredentials } from "../core/types";
+import { contextKey, globalFlag } from "../router";
 
 // These keys are group-level flags declared on the root router. Because a
 // GlobalFlag is also a typed ContextKey, handlers read its validated value back
@@ -18,3 +19,6 @@ export const EndpointKey = globalFlag(
   "endpoint URL override",
   z.string().optional(),
 );
+
+/** Explicit credentials pinned by project target resolution. */
+export const AwsCredentialsKey = contextKey<AwsCredentials>("aws.credentials");

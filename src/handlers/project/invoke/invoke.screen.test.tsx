@@ -55,10 +55,26 @@ function endpoint(name: string): AgentRuntimeEndpoint {
 }
 
 const TARGET = { name: "default", account: "111122223333", region: "eu-west-1" } as const;
+const TARGET_CREDENTIALS = async () => ({
+  accessKeyId: "target-access-key",
+  secretAccessKey: "target-secret-key",
+});
 
 const DEPLOYED_RESOURCES: ResolvedDeployedResource[] = [
-  { resourceType: "runtime", name: "checkout", id: "runtime-123", target: TARGET },
-  { resourceType: "harness", name: "support", id: "harness-123", target: TARGET },
+  {
+    resourceType: "runtime",
+    name: "checkout",
+    id: "runtime-123",
+    target: TARGET,
+    credentials: TARGET_CREDENTIALS,
+  },
+  {
+    resourceType: "harness",
+    name: "support",
+    id: "harness-123",
+    target: TARGET,
+    credentials: TARGET_CREDENTIALS,
+  },
 ];
 
 function core(resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES): TestCoreClient {
@@ -68,6 +84,7 @@ function core(resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES): TestC
     name: input.name,
     id: input.resourceType === "runtime" ? "runtime-123" : "harness-123",
     target: TARGET,
+    credentials: TARGET_CREDENTIALS,
   });
   value.projectManager.resolveDeployedResources = async () => ({ resources, target: TARGET });
   value.runtime
@@ -88,7 +105,15 @@ function core(resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES): TestC
 describe("project invoke picker", () => {
   test("lists only resources present in the deployed target", async () => {
     const screen = renderScreen("/agentcore/project/invoke", {
-      core: core([{ resourceType: "harness", name: "support", id: "harness-123", target: TARGET }]),
+      core: core([
+        {
+          resourceType: "harness",
+          name: "support",
+          id: "harness-123",
+          target: TARGET,
+          credentials: TARGET_CREDENTIALS,
+        },
+      ]),
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
     });
 
@@ -164,8 +189,9 @@ describe("project invoke picker", () => {
   });
 
   test("opens the selected Harness chat in the same TUI", async () => {
+    const value = core();
     const screen = renderScreen("/agentcore/project/invoke", {
-      core: core(),
+      core: value,
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
     });
 
@@ -174,11 +200,17 @@ describe("project invoke picker", () => {
     await screen.press("return");
     await waitForText(screen.lastFrame, "send a message…");
     expect(screen.lastFrame()).toContain("harness-123");
+    expect(value.harness.calls.find(({ method }) => method === "getHarness")?.args[1]).toEqual({
+      region: TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIALS,
+    });
   });
 
   test("uses the existing Runtime endpoint picker before its JSON console", async () => {
+    const value = core();
     const screen = renderScreen("/agentcore/project/invoke", {
-      core: core(),
+      core: value,
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
     });
 
@@ -188,5 +220,12 @@ describe("project invoke picker", () => {
     await screen.press("return");
     await waitForText(screen.lastFrame, "Enter JSON payload");
     expect(screen.lastFrame()).not.toContain("Enter prompt");
+    expect(
+      value.runtime.calls.find(({ method }) => method === "listRuntimeEndpoints")?.args[3],
+    ).toEqual({
+      region: TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIALS,
+    });
   });
 });

@@ -3,7 +3,7 @@ import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey, renderTuiAt } from "../../../tui";
-import { JsonKey, RegionKey } from "../../keys";
+import { AwsCredentialsKey, JsonKey, RegionKey } from "../../keys";
 import { invokeHarnessTurn } from "../../harness/invoke/operation";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
@@ -40,7 +40,9 @@ export const createProjectInvokeHarnessHandler = (
         resourceType: "harness",
         name,
       });
-      const invokeCtx = ctx.withValue(RegionKey, deployed.target.region);
+      const invokeCtx = ctx
+        .withValue(RegionKey, deployed.target.region)
+        .withValue(AwsCredentialsKey, deployed.credentials);
 
       if (!flags.prompt) {
         if (invokeCtx.require(JsonKey)) {

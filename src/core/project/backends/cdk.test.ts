@@ -861,12 +861,14 @@ describe("CdkBackend.resolveDeployedResources", () => {
         name: "checkout_agent",
         id: "checkout_agent-AbCdEf1234",
         target: TARGET,
+        credentials: subject.credentials,
       },
       {
         resourceType: "harness",
         name: "support_agent",
         id: "support_agent-AbCdEf1234",
         target: TARGET,
+        credentials: subject.credentials,
       },
     ]);
     expect(subject.stackReads).toHaveLength(1);
@@ -903,6 +905,7 @@ describe("CdkBackend.resolveDeployedResources", () => {
         name: "support",
         id: "support-AbCdEf1234",
         target: TARGET,
+        credentials: subject.credentials,
       },
     ]);
     expect(subject.stackReads[0]?.stackName).toBe("AgentCore-example-default");

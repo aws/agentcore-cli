@@ -19,7 +19,7 @@ import {
   inTempDirectory,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
-import { JsonKey, RegionKey } from "../../keys";
+import { AwsCredentialsKey, JsonKey, RegionKey } from "../../keys";
 import { RuntimeInvokeLaunchContextKey } from "../../runtime/invoke/launchContext";
 import type { RuntimeInvokeRequest } from "../../runtime/types";
 import type { Project } from "../types";
@@ -35,6 +35,10 @@ const TARGET = {
   account: "111122223333",
   region: "eu-west-1",
 } as const;
+const TARGET_CREDENTIALS = async () => ({
+  accessKeyId: "target-access-key",
+  secretAccessKey: "target-secret-key",
+});
 const RUNTIME_ID = "checkout-AbCdEf1234";
 const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}:runtime/${RUNTIME_ID}`;
 const HARNESS_ID = "support-AbCdEf1234";
@@ -96,12 +100,14 @@ function backend() {
           name,
           id: RUNTIME_ID,
           target: input.target,
+          credentials: TARGET_CREDENTIALS,
         })),
         ...project.spec.harnesses.map(({ name }) => ({
           resourceType: "harness" as const,
           name,
           id: HARNESS_ID,
           target: input.target,
+          credentials: TARGET_CREDENTIALS,
         })),
       ];
     },
@@ -382,7 +388,10 @@ describe("project invoke", () => {
     expect(new TextDecoder().decode(request.payload)).toBe(payload);
     expect(request.contentType).toBe("application/custom+json");
     expect(request.runtimeUserId).toBe("default");
-    expect(core.runtime.calls.at(-1)!.args[1]).toEqual({ region: TARGET.region });
+    expect(core.runtime.calls.at(-1)!.args[1]).toEqual({
+      region: TARGET.region,
+      credentials: TARGET_CREDENTIALS,
+    });
     expect(io.stdout()).toBe("runtime response");
     expect(resolved.calls).toEqual([{ target: TARGET }]);
   });
@@ -399,7 +408,10 @@ describe("project invoke", () => {
       qualifier: "DEFAULT",
       messages: [{ role: "user", content: [{ text: "hello" }] }],
     });
-    expect(core.harness.calls.at(-1)!.args[1]).toEqual({ region: TARGET.region });
+    expect(core.harness.calls.at(-1)!.args[1]).toEqual({
+      region: TARGET.region,
+      credentials: TARGET_CREDENTIALS,
+    });
     expect(JSON.parse(io.stdout()).transcript).toContainEqual({
       kind: "text",
       text: "harness response",
@@ -453,6 +465,7 @@ describe("project invoke", () => {
 
     expect(launches[0]!.path).toBe(`/agentcore/runtime/invoke/${RUNTIME_ID}`);
     expect(launches[0]!.context.require(RegionKey)).toBe(TARGET.region);
+    expect(launches[0]!.context.require(AwsCredentialsKey)).toBe(TARGET_CREDENTIALS);
     expect(launches[0]!.context.require(RuntimeInvokeLaunchContextKey)).toMatchObject({
       runtimeId: RUNTIME_ID,
     });
@@ -498,6 +511,7 @@ describe("project invoke", () => {
 
     expect(launches[0]!.path).toBe(`/agentcore/harness/invoke/${HARNESS_ID}?qualifier=prod`);
     expect(launches[0]!.context.require(RegionKey)).toBe(TARGET.region);
+    expect(launches[0]!.context.require(AwsCredentialsKey)).toBe(TARGET_CREDENTIALS);
   });
 
   test("bare project invoke opens the project resource picker", async () => {

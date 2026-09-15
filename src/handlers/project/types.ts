@@ -15,6 +15,7 @@ import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSche
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
+import type { AwsCredentials } from "../../core/types";
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -213,6 +214,8 @@ export type ResolvedDeployedResource = {
   name: string;
   id: string;
   target: AwsDeploymentTarget;
+  /** Credential provider used to resolve and access this target. */
+  credentials: AwsCredentials;
 };
 
 export type ResolvedDeployedResources = {
@@ -459,7 +462,7 @@ export interface ProjectManager {
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;
 
-  /** Resolve a logical project resource to its deployed physical ID and target. */
+  /** Resolve a logical project resource to its deployed physical ID, target, and credentials. */
   resolveDeployedResource(
     project: Project,
     input: ResolveDeployedResourceInput,
