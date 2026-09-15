@@ -23,24 +23,32 @@ const levelSchema = z
   )
   .optional();
 
+const TIME_WINDOW = "Time window:";
+const FILTERING = "Filtering:";
+
 const logFlags = [
   flag(
     "since",
     'search window start: "5m", "1h", ISO 8601, epoch ms, or "now"',
     z.string().min(1).optional(),
+    { group: TIME_WINDOW },
   ),
   flag(
     "until",
     'search window end: "5m", "1h", ISO 8601, epoch ms, or "now"',
     z.string().min(1).optional(),
+    { group: TIME_WINDOW },
   ),
-  flag("tail", "tail new log records", z.boolean().default(false)),
-  flag("level", `filter by log level (${LOG_LEVELS.join(", ")})`, levelSchema),
-  flag("query", "CloudWatch Logs filter pattern", z.string().optional()),
+  flag("tail", "tail new log records", z.boolean().default(false), { group: TIME_WINDOW }),
+  flag("level", `filter by log level (${LOG_LEVELS.join(", ")})`, levelSchema, {
+    group: FILTERING,
+  }),
+  flag("query", "CloudWatch Logs filter pattern", z.string().optional(), { group: FILTERING }),
   flag(
     "limit",
     "maximum number of log records to return in search mode",
     z.number().int().positive().optional(),
+    { group: FILTERING },
   ),
 ] as const;
 

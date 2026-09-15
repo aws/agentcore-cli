@@ -16,77 +16,95 @@ import { JsonRendererKey } from "../../../tui";
 import { InputValidationError } from "../../../errors";
 import { parameterHelp } from "../parameterHelp.tsx";
 
+const CONFIGURATION = "Configuration:";
+const AGENT = "Agent:";
+const COMPUTE = "Compute environment:";
+const ACCESS = "Access:";
+const LIMITS = "Limits:";
+
 export const createCreateHarnessHandler = (core: Core) =>
   createHandler({
     name: "create",
     description: "create a harness",
     flags: [
-      flag("name", "the name of the harness", z.string().optional(), { help: parameterHelp.name }),
+      flag("name", "the name of the harness", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
       flag(
         "execution-role-arn",
         "IAM role the harness assumes; a default role is created when omitted",
         z.string().optional(),
-        { help: parameterHelp.executionRoleArn },
+        { group: CONFIGURATION },
       ),
+      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional(), {
+        help: parameterHelp.tags,
+        group: CONFIGURATION,
+      }),
       flag("system-prompt", "the agent's system prompt", z.string().optional(), {
-        help: parameterHelp.systemPrompt,
+        group: AGENT,
       }),
       flag("model", "model configuration (JSON HarnessModelConfiguration)", z.string().optional(), {
         help: parameterHelp.model,
+        group: AGENT,
       }),
       flag("tools", "tools available to the agent (JSON HarnessTool[])", z.string().optional(), {
         help: parameterHelp.tools,
+        group: AGENT,
       }),
       flag("skills", "skills available to the agent (JSON HarnessSkill[])", z.string().optional(), {
         help: parameterHelp.skills,
+        group: AGENT,
       }),
       flag(
         "allowed-tools",
         "tool allowlist patterns (e.g. * or @serverName/toolName)",
         z.array(z.string()).optional(),
-        { help: parameterHelp.allowedTools },
+        { help: parameterHelp.allowedTools, group: AGENT },
       ),
       flag(
         "memory",
         "memory configuration (JSON HarnessMemoryConfiguration)",
         z.string().optional(),
-        { help: parameterHelp.memory },
+        { help: parameterHelp.memory, group: AGENT },
       ),
       flag(
         "truncation",
         "context truncation configuration (JSON HarnessTruncationConfiguration)",
         z.string().optional(),
-        { help: parameterHelp.truncation },
+        { help: parameterHelp.truncation, group: AGENT },
       ),
       flag(
         "environment",
         "compute environment configuration (JSON HarnessEnvironmentProviderRequest)",
         z.string().optional(),
-        { help: parameterHelp.environment },
+        { help: parameterHelp.environment, group: COMPUTE },
       ),
       flag(
         "environment-artifact",
         "environment artifact, e.g. a container image (JSON HarnessEnvironmentArtifact)",
         z.string().optional(),
-        { help: parameterHelp.environmentArtifact },
+        { help: parameterHelp.environmentArtifact, group: COMPUTE },
       ),
       flag(
         "environment-variables",
         "environment variables (JSON object of key/value strings)",
         z.string().optional(),
-        { help: parameterHelp.environmentVariables },
+        { help: parameterHelp.environmentVariables, group: COMPUTE },
       ),
       flag(
         "authorizer-configuration",
         "inbound authorizer configuration (JSON AuthorizerConfiguration)",
         z.string().optional(),
-        { help: parameterHelp.authorizerConfiguration },
+        { help: parameterHelp.authorizerConfiguration, group: ACCESS },
       ),
-      flag("max-iterations", "max agent loop iterations per invocation", z.number().optional()),
-      flag("max-tokens", "max total output tokens per invocation", z.number().optional()),
-      flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
-      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional(), {
-        help: parameterHelp.tags,
+      flag("max-iterations", "max agent loop iterations per invocation", z.number().optional(), {
+        group: LIMITS,
+      }),
+      flag("max-tokens", "max total output tokens per invocation", z.number().optional(), {
+        group: LIMITS,
+      }),
+      flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional(), {
+        group: LIMITS,
       }),
     ],
     handle: async (ctx, flags) => {

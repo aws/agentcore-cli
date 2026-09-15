@@ -17,39 +17,92 @@ import { writeRuntimeInvokeResponse } from "./response";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 import { invokeRuntimeTarget } from "./operation";
 
+const TARGET = "Target:";
+const PAYLOAD = "Payload:";
+const SESSION = "Session:";
+const MCP = "MCP:";
+const TRACING = "Tracing:";
+
 export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "invoke",
     description: "invoke a Runtime",
     flags: [
-      flag("id", "the ID of the Runtime", runtimeIdSchema.optional()),
+      flag("id", "the ID of the Runtime", runtimeIdSchema.optional(), { group: TARGET }),
+      flag("qualifier", "the Runtime endpoint qualifier", z.string().optional(), {
+        group: TARGET,
+      }),
       flag("payload", "the inline payload to send", z.string().optional(), {
         sensitive: true,
+        group: PAYLOAD,
       }),
-      flag("qualifier", "the Runtime endpoint qualifier", z.string().optional()),
-      flag("content-type", "the payload content type", z.string().optional()),
-      flag("accept", "the accepted response content type", z.string().optional()),
-      flag("session-id", "the Runtime session ID", z.string().optional()),
-      flag("user-id", 'the Runtime user ID (default "default")', z.string().optional()),
-      flag("header", "an ordered application header", z.array(z.string()).optional(), {
-        sensitive: true,
+      flag("content-type", "the payload content type", z.string().optional(), { group: PAYLOAD }),
+      flag("accept", "the accepted response content type", z.string().optional(), {
+        group: PAYLOAD,
       }),
-      flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
-        sensitive: true,
-      }),
-      flag("mcp-session-id", "the MCP session ID", z.string().optional()),
-      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
-      flag("mcp-method", "the MCP method", z.string().optional()),
-      flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional()),
-      flag("trace-id", "the X-Ray trace ID", z.string().optional()),
-      flag("trace-parent", "the W3C trace parent", z.string().optional()),
-      flag("trace-state", "the W3C trace state", z.string().optional()),
-      flag("baggage", "the W3C baggage", z.string().optional()),
       flag(
         "output-file",
         "the response output file",
         z.string().min(1, "requires a nonempty path").optional(),
+        { group: PAYLOAD },
       ),
+      flag("session-id", "the Runtime session ID", z.string().optional(), { group: SESSION }),
+      flag("user-id", 'the Runtime user ID (default "default")', z.string().optional(), {
+        group: SESSION,
+      }),
+      flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
+        sensitive: true,
+        group: "Authentication:",
+      }),
+      flag("header", "an ordered application header", z.array(z.string()).optional(), {
+        sensitive: true,
+        group: "Application headers:",
+      }),
+      flag("mcp-session-id", "the MCP session ID", z.string().optional(), { group: MCP }),
+      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional(), {
+        group: MCP,
+      }),
+      flag("mcp-method", "the MCP method", z.string().optional(), { group: MCP }),
+      flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional(), {
+        group: MCP,
+      }),
+      flag("trace-id", "the X-Ray trace ID", z.string().optional(), {
+        group: TRACING,
+        help: `(string)
+The AWS X-Ray trace ID to associate this invocation with, sent as the
+X-Amzn-Trace-Id header. Format: 1-<8 hex digits>-<24 hex digits>.
+
+Example:
+  --trace-id 1-5759e988-bd862e3fe1be46a994272793`,
+      }),
+      flag("trace-parent", "the W3C trace parent", z.string().optional(), {
+        group: TRACING,
+        help: `(string)
+The W3C Trace Context traceparent header identifying the parent span.
+Format: <version>-<trace-id>-<parent-id>-<trace-flags>.
+
+Example:
+  --trace-parent 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01`,
+      }),
+      flag("trace-state", "the W3C trace state", z.string().optional(), {
+        group: TRACING,
+        help: `(string)
+The W3C Trace Context tracestate header carrying vendor-specific trace
+data. Format: a comma-separated list of key=value pairs.
+
+Example:
+  --trace-state vendor1=opaqueValue1,vendor2=opaqueValue2`,
+      }),
+      flag("baggage", "the W3C baggage", z.string().optional(), {
+        group: TRACING,
+        help: `(string)
+The W3C Baggage header carrying application-defined key=value context
+propagated across the request. Format: a comma-separated list of key=value
+pairs.
+
+Example:
+  --baggage userId=alice,sessionId=abc123`,
+      }),
     ],
     handle: async (ctx, flags) => {
       if (flags.id === undefined) {

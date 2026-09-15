@@ -7,9 +7,13 @@ import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { runtimeIdSchema } from "../invoke/request";
 
+const LOG_SOURCE = "Log source:";
+
 const runtimeFlags = [
-  flag("id", "the ID of the Runtime", runtimeIdSchema),
-  flag("qualifier", "the Runtime endpoint qualifier", z.string().min(1).optional()),
+  flag("id", "the ID of the Runtime", runtimeIdSchema, { group: LOG_SOURCE }),
+  flag("qualifier", "the Runtime endpoint qualifier", z.string().min(1).optional(), {
+    group: LOG_SOURCE,
+  }),
 ] as const;
 
 /**

@@ -24,87 +24,106 @@ function updated<T>(value: T | undefined, clear: boolean): { optionalValue?: T }
   return value !== undefined ? { optionalValue: value } : undefined;
 }
 
+const AGENT = "Agent:";
+const COMPUTE = "Compute environment:";
+const ACCESS = "Access:";
+const LIMITS = "Limits:";
+
 export const createUpdateHarnessHandler = (core: Core) =>
   createHandler({
     name: "update",
     description: "update a harness (creates a new version)",
     flags: [
-      flag("id", "the ID of the harness to update", z.string().max(48).optional()),
+      flag("id", "the ID of the harness to update", z.string().max(48).optional(), {
+        group: "Target:",
+      }),
       flag("execution-role-arn", "IAM role the harness assumes", z.string().optional(), {
-        help: parameterHelp.executionRoleArn,
+        group: "Configuration:",
       }),
       flag("system-prompt", "the agent's system prompt", z.string().optional(), {
-        help: parameterHelp.systemPrompt,
+        group: AGENT,
       }),
       flag("model", "model configuration (JSON HarnessModelConfiguration)", z.string().optional(), {
         help: parameterHelp.model,
+        group: AGENT,
       }),
       flag("tools", "tools available to the agent (JSON HarnessTool[])", z.string().optional(), {
         help: parameterHelp.tools,
+        group: AGENT,
       }),
       flag("skills", "skills available to the agent (JSON HarnessSkill[])", z.string().optional(), {
         help: parameterHelp.skills,
+        group: AGENT,
       }),
       flag(
         "allowed-tools",
         "tool allowlist patterns (e.g. * or @serverName/toolName)",
         z.array(z.string()).optional(),
-        { help: parameterHelp.allowedTools },
+        { help: parameterHelp.allowedTools, group: AGENT },
       ),
       flag(
         "memory",
         "memory configuration (JSON HarnessMemoryConfiguration)",
         z.string().optional(),
-        { help: parameterHelp.memory },
+        { help: parameterHelp.memory, group: AGENT },
       ),
       flag(
         "clear-memory",
         "clear the memory configuration (pass true)",
         z.enum(["true", "false"]).optional(),
+        { group: AGENT },
       ),
       flag(
         "truncation",
         "context truncation configuration (JSON HarnessTruncationConfiguration)",
         z.string().optional(),
-        { help: parameterHelp.truncation },
+        { help: parameterHelp.truncation, group: AGENT },
       ),
       flag(
         "environment",
         "compute environment configuration (JSON HarnessEnvironmentProviderRequest)",
         z.string().optional(),
-        { help: parameterHelp.environment },
+        { help: parameterHelp.environment, group: COMPUTE },
       ),
       flag(
         "environment-artifact",
         "environment artifact, e.g. a container image (JSON HarnessEnvironmentArtifact)",
         z.string().optional(),
-        { help: parameterHelp.environmentArtifact },
+        { help: parameterHelp.environmentArtifact, group: COMPUTE },
       ),
       flag(
         "clear-environment-artifact",
         "clear the environment artifact (pass true)",
         z.enum(["true", "false"]).optional(),
+        { group: COMPUTE },
       ),
       flag(
         "environment-variables",
         "environment variables (JSON object; replaces all existing)",
         z.string().optional(),
-        { help: parameterHelp.environmentVariables },
+        { help: parameterHelp.environmentVariables, group: COMPUTE },
       ),
       flag(
         "authorizer-configuration",
         "inbound authorizer configuration (JSON AuthorizerConfiguration)",
         z.string().optional(),
-        { help: parameterHelp.authorizerConfiguration },
+        { help: parameterHelp.authorizerConfiguration, group: ACCESS },
       ),
       flag(
         "clear-authorizer-configuration",
         "clear the authorizer configuration (pass true)",
         z.enum(["true", "false"]).optional(),
+        { group: ACCESS },
       ),
-      flag("max-iterations", "max agent loop iterations per invocation", z.number().optional()),
-      flag("max-tokens", "max total output tokens per invocation", z.number().optional()),
-      flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
+      flag("max-iterations", "max agent loop iterations per invocation", z.number().optional(), {
+        group: LIMITS,
+      }),
+      flag("max-tokens", "max total output tokens per invocation", z.number().optional(), {
+        group: LIMITS,
+      }),
+      flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional(), {
+        group: LIMITS,
+      }),
     ],
     handle: async (ctx, flags) => {
       // Required at runtime but declared optional so that a bare
