@@ -34,6 +34,7 @@ async function resolveProjectRuntime(core: Core, ctx: Context, flags: ProjectRun
     options: {
       ...coreOptsFromCtx(ctx),
       region: deployed.target.region,
+      credentials: deployed.credentialProvider,
     },
   };
 }
