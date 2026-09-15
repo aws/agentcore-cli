@@ -30,7 +30,7 @@ def create_app():
     async def invoke(payload, context):
         log.info("Invoking Agent.....")
 
-        session_id = getattr(context, "session_id", None) or uuid.uuid4().hex 
+        session_id = getattr(context, "session_id", None) or "default-session" 
         prompt, actor_id = parse_payload(payload)
 
         log.info(f"Invoking with session_id={session_id} and actor_id={actor_id}")
