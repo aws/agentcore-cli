@@ -27,5 +27,5 @@ Environment variables for local development go in `agentcore/.env.local`
 
 ```bash
 agentcore project deploy
-agentcore project invoke runtime --payload '{"prompt":"Hello!", "actor_id": "insert namespace here"}'
+agentcore project invoke runtime --payload '{"prompt":"Hello!"}'
 ```

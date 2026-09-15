@@ -19,6 +19,20 @@ Validate invocation input before forwarding it to Strands. Keep plain prompts ty
 caller-supplied message history, retain `strip_trailing_tool_use()`, which normalizes the history tail before
 invoking the agent.
 
+## Payload
+
+The Runtime accepts a JSON object. `parse_payload()` reads:
+
+- `prompt` (string) — a single user message. Used when `messages` is absent; defaults to `""`.
+- `messages` (array) — a full conversation history (`[{"role": ..., "content": [...]}]`). Takes precedence over `prompt`; trailing `toolUse` blocks are stripped before the agent runs.
+- `actor_id` (string, optional) — identifies the end user for Memory scoping (e.g. `/users/{actor_id}/facts`). Defaults to `"default"`.
+
+Provide either `prompt` or `messages`. The `session_id` is not in the body — it comes from the `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header (`context.session_id`); reuse it to continue a conversation.
+
+```json
+{ "prompt": "What's the weather?", "actor_id": "user-123" }
+```
+
 ## Environment Variables
 
 | Variable | Required | Description |
