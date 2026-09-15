@@ -48,6 +48,7 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
     "app/agent_python_strands/memory/session.py",
     "app/agent_python_strands/model/__init__.py",
     "app/agent_python_strands/model/load.py",
+    "app/agent_python_strands/parse.py",
     "app/agent_python_strands/pyproject.toml",
   ],
   "memories": [
