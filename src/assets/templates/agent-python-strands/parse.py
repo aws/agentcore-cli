@@ -29,6 +29,8 @@ def parse_payload(payload: dict):
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object")
     actor_id = payload.get("actor_id", "default")
+    if not isinstance(actor_id, str):
+        raise ValueError("actor_id must be a string")
     if "messages" in payload:
         return _strip_trailing_tool_use(payload["messages"]), actor_id
     prompt = payload.get("prompt", "")
