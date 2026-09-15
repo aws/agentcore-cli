@@ -66,14 +66,14 @@ const DEPLOYED_RESOURCES: ResolvedDeployedResource[] = [
     name: "checkout",
     id: "runtime-123",
     target: TARGET,
-    credentials: TARGET_CREDENTIALS,
+    credentialProvider: TARGET_CREDENTIALS,
   },
   {
     resourceType: "harness",
     name: "support",
     id: "harness-123",
     target: TARGET,
-    credentials: TARGET_CREDENTIALS,
+    credentialProvider: TARGET_CREDENTIALS,
   },
 ];
 
@@ -84,7 +84,7 @@ function core(resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES): TestC
     name: input.name,
     id: input.resourceType === "runtime" ? "runtime-123" : "harness-123",
     target: TARGET,
-    credentials: TARGET_CREDENTIALS,
+    credentialProvider: TARGET_CREDENTIALS,
   });
   value.projectManager.resolveDeployedResources = async () => ({ resources, target: TARGET });
   value.runtime
@@ -111,7 +111,7 @@ describe("project invoke picker", () => {
           name: "support",
           id: "harness-123",
           target: TARGET,
-          credentials: TARGET_CREDENTIALS,
+          credentialProvider: TARGET_CREDENTIALS,
         },
       ]),
       withContext: (ctx) => ctx.withValue(ProjectKey, project),

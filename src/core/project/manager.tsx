@@ -975,8 +975,8 @@ export class FsProjectManager implements ProjectManager {
     );
     // The declared target wins over the copy on the item: the manager resolved it
     // from aws-targets.json, and both invoke handlers pin the AWS region from this
-    // value while reusing the backend's verified credentials. Trusting a backend's
-    // target echo would let it redirect the call.
+    // value while reusing the backend's verified credential provider. Trusting a
+    // backend's target echo would let it redirect the call.
     if (resource) return { ...resource, target: resolved.target };
 
     const label = input.resourceType === "runtime" ? "Runtime" : "Harness";

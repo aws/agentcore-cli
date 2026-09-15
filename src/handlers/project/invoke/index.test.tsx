@@ -19,7 +19,7 @@ import {
   inTempDirectory,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
-import { AwsCredentialsKey, JsonKey, RegionKey } from "../../keys";
+import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
 import { RuntimeInvokeLaunchContextKey } from "../../runtime/invoke/launchContext";
 import type { RuntimeInvokeRequest } from "../../runtime/types";
 import type { Project } from "../types";
@@ -100,14 +100,14 @@ function backend() {
           name,
           id: RUNTIME_ID,
           target: input.target,
-          credentials: TARGET_CREDENTIALS,
+          credentialProvider: TARGET_CREDENTIALS,
         })),
         ...project.spec.harnesses.map(({ name }) => ({
           resourceType: "harness" as const,
           name,
           id: HARNESS_ID,
           target: input.target,
-          credentials: TARGET_CREDENTIALS,
+          credentialProvider: TARGET_CREDENTIALS,
         })),
       ];
     },
@@ -465,7 +465,7 @@ describe("project invoke", () => {
 
     expect(launches[0]!.path).toBe(`/agentcore/runtime/invoke/${RUNTIME_ID}`);
     expect(launches[0]!.context.require(RegionKey)).toBe(TARGET.region);
-    expect(launches[0]!.context.require(AwsCredentialsKey)).toBe(TARGET_CREDENTIALS);
+    expect(launches[0]!.context.require(AwsCredentialProviderKey)).toBe(TARGET_CREDENTIALS);
     expect(launches[0]!.context.require(RuntimeInvokeLaunchContextKey)).toMatchObject({
       runtimeId: RUNTIME_ID,
     });
@@ -511,7 +511,7 @@ describe("project invoke", () => {
 
     expect(launches[0]!.path).toBe(`/agentcore/harness/invoke/${HARNESS_ID}?qualifier=prod`);
     expect(launches[0]!.context.require(RegionKey)).toBe(TARGET.region);
-    expect(launches[0]!.context.require(AwsCredentialsKey)).toBe(TARGET_CREDENTIALS);
+    expect(launches[0]!.context.require(AwsCredentialProviderKey)).toBe(TARGET_CREDENTIALS);
   });
 
   test("bare project invoke opens the project resource picker", async () => {

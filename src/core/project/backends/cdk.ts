@@ -431,7 +431,7 @@ export class CdkBackend implements ProjectBackend {
     ];
     return resources.flatMap((resource) => {
       const id = findDeployedResourceId(stack, resource);
-      return id ? [{ ...resource, id, target, credentials }] : [];
+      return id ? [{ ...resource, id, target, credentialProvider: credentials }] : [];
     });
   }
 

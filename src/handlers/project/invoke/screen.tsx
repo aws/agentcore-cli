@@ -8,7 +8,7 @@ import { Spinner } from "../../../components/ui/spinner";
 import { glyphs } from "../../../components/ui/_core.js";
 import { ProjectKey, type Context } from "../../../router";
 import { HarnessChat } from "../../harness/invoke/screen";
-import { AwsCredentialsKey, RegionKey } from "../../keys";
+import { AwsCredentialProviderKey, RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
 import type { Project, ResolvedDeployedResources } from "../types";
@@ -112,7 +112,7 @@ function ProjectInvokePicker({
       id: row.id,
       ctx: ctx
         .withValue(RegionKey, deployed.target.region)
-        .withValue(AwsCredentialsKey, row.credentials),
+        .withValue(AwsCredentialProviderKey, row.credentialProvider),
     });
   };
 

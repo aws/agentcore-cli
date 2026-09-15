@@ -5,20 +5,20 @@ import type { CoreOptions } from "../core/types";
 import type { AppIO } from "../io";
 import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
 import { formatZodError } from "../router/schema";
-import { AwsCredentialsKey, EndpointKey, JsonKey, RegionKey } from "./keys";
+import { AwsCredentialProviderKey, EndpointKey, JsonKey, RegionKey } from "./keys";
 import { JsonRendererKey } from "../tui";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
 // the values pinned on the context: the resolved region (always present, see the
 // withRegion middleware), the optional --endpoint-url override, and any explicit
-// credentials selected for a project target. Shared by every handler that calls
-// into a Core sub-client.
+// credential provider selected for a project target. Shared by every handler
+// that calls into a Core sub-client.
 export function coreOptsFromCtx(ctx: Context): CoreOptions {
-  const credentials = ctx.value(AwsCredentialsKey);
+  const credentialProvider = ctx.value(AwsCredentialProviderKey);
   return {
     region: ctx.require(RegionKey),
     endpointUrl: ctx.value(EndpointKey),
-    ...(credentials ? { credentials } : {}),
+    ...(credentialProvider ? { credentials: credentialProvider } : {}),
   };
 }
 

@@ -10,6 +10,7 @@ import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@smit
 // default credential chain leave it unset. Every v3 client accepts this same shape,
 // so it comes from the shared Smithy types rather than any one client's config.
 export type AwsCredentials = AwsCredentialIdentity | AwsCredentialIdentityProvider;
+export type AwsCredentialProvider = AwsCredentialIdentityProvider;
 
 // CoreOptions is the standard trailing argument for Core operations. It carries
 // the per-call settings a handler resolves from context (the AWS region and an

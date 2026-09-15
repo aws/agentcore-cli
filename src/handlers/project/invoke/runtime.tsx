@@ -6,7 +6,7 @@ import type { AppIO } from "../../../io";
 import { ExitCode, withUserCancellation } from "../../../runnable";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { renderTuiAt } from "../../../tui";
-import { AwsCredentialsKey, JsonKey, RegionKey } from "../../keys";
+import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
 import { RuntimeInvokeLaunchContextKey } from "../../runtime/invoke/launchContext";
 import { invokeRuntimeTarget } from "../../runtime/invoke/operation";
 import {
@@ -138,7 +138,7 @@ export const createProjectInvokeRuntimeHandler = (
       });
       const invokeCtx = ctx
         .withValue(RegionKey, deployed.target.region)
-        .withValue(AwsCredentialsKey, deployed.credentials);
+        .withValue(AwsCredentialProviderKey, deployed.credentialProvider);
 
       if (flags.payload === undefined) {
         const hasHeadlessOnlyFlag = Object.entries(flags).some(

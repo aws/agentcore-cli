@@ -82,7 +82,7 @@ function backend(options: { deployed?: boolean } = {}) {
         name,
         id: `${name}-AbCdEf1234`,
         target: input.target,
-        credentials: TARGET_CREDENTIALS,
+        credentialProvider: TARGET_CREDENTIALS,
       }));
     },
     async resolveProjectResources() {

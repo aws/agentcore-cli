@@ -1,5 +1,5 @@
 import z from "zod";
-import type { AwsCredentials } from "../core/types";
+import type { AwsCredentialProvider } from "../core/types";
 import { contextKey, globalFlag } from "../router";
 
 // These keys are group-level flags declared on the root router. Because a
@@ -20,5 +20,5 @@ export const EndpointKey = globalFlag(
   z.string().optional(),
 );
 
-/** Explicit credentials pinned by project target resolution. */
-export const AwsCredentialsKey = contextKey<AwsCredentials>("aws.credentials");
+/** Explicit credential provider pinned by project target resolution. */
+export const AwsCredentialProviderKey = contextKey<AwsCredentialProvider>("aws.credentialProvider");
