@@ -50,6 +50,7 @@ These options are available on all commands:
 - `logs evals` - Stream or search online eval logs
 - `traces list` - List recent traces for a deployed agent
 - `traces get` - Download a trace to a JSON file
+- `traces compare` - Compare latency and token metrics of two traces
 - `package` - Package agent artifacts without deploying (zip for CodeZip, container image build for Container)
 - `validate` - Validate configuration files
 - `update` - Check for CLI updates
