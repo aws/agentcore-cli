@@ -24,6 +24,10 @@ const PRODUCTION_TARGET = {
   account: "111122223333",
   region: "ap-southeast-2",
 } as const;
+const TARGET_CREDENTIALS = async () => ({
+  accessKeyId: "target-access-key",
+  secretAccessKey: "target-secret-key",
+});
 const RUNTIMES = [
   {
     name: "checkout",
@@ -78,6 +82,7 @@ function backend(options: { deployed?: boolean } = {}) {
         name,
         id: `${name}-AbCdEf1234`,
         target: input.target,
+        credentials: TARGET_CREDENTIALS,
       }));
     },
     async resolveProjectResources() {
@@ -131,7 +136,11 @@ describe("project log runtime", () => {
       logGroupName: "/aws/bedrock-agentcore/runtimes/checkout-AbCdEf1234-DEFAULT",
     });
     expect(call.args[1]).toEqual({ filterPattern: undefined });
-    expect(call.args[2]).toEqual({ region: DEFAULT_TARGET.region, endpointUrl: undefined });
+    expect(call.args[2]).toEqual({
+      region: DEFAULT_TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIALS,
+    });
     expect(subject.io.stderr()).toContain(
       "Streaming logs for Runtime 'checkout' on target 'default'... (Ctrl+C to stop)",
     );
@@ -163,7 +172,11 @@ describe("project log runtime", () => {
       logGroupName: "/aws/bedrock-agentcore/runtimes/inventory-AbCdEf1234-BLUE",
     });
     expect(call.args[1]).toMatchObject({ limit: 25 });
-    expect(call.args[2]).toEqual({ region: PRODUCTION_TARGET.region, endpointUrl: undefined });
+    expect(call.args[2]).toEqual({
+      region: PRODUCTION_TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIALS,
+    });
   });
 
   test("requires --name when the project declares several Runtimes", async () => {

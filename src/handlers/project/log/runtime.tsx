@@ -30,6 +30,7 @@ export const createProjectRuntimeLogHandler = (core: Core, io: AppIO) =>
       const options = {
         ...coreOptsFromCtx(ctx),
         region: deployed.target.region,
+        credentials: deployed.credentials,
       };
       const source = {
         logGroupName: runtimeLogGroup(deployed.id, flags.qualifier ?? DEFAULT_ENDPOINT_QUALIFIER),
