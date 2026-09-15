@@ -13,11 +13,11 @@ tools = []
 
 # Define a simple function tool
 @tool
-def _add_numbers(a: int, b: int) -> int:
+def add_numbers(a: int, b: int) -> int:
     """Return the sum of two numbers"""
     return a + b
 
-tools.append(_add_numbers)
+tools.append(add_numbers)
 
 def _make_conversation_manager():
     return NullConversationManager()
@@ -30,7 +30,7 @@ def create_app():
     async def invoke(payload, context):
         log.info("Invoking Agent.....")
 
-        session_id = getattr(context, "session_id", uuid.uuid4().hex) 
+        session_id = getattr(context, "session_id", None) or uuid.uuid4().hex 
         prompt, actor_id = parse_payload(payload)
 
         log.info(f"Invoking with session_id={session_id} and actor_id={actor_id}")
