@@ -75,7 +75,7 @@ function project(): Project {
           ],
         },
       ],
-      mcpRuntimeTools: [
+      toolRuntimes: [
         {
           name: "search-tool",
           toolDefinition: {

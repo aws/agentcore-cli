@@ -710,7 +710,7 @@ export class FsProjectManager implements ProjectManager {
       configBundles: [],
       abTests: [],
       harnesses: [],
-      mcpRuntimeTools: undefined,
+      toolRuntimes: undefined,
       unassignedTargets: undefined,
       datasets: undefined,
       httpGateways: undefined,

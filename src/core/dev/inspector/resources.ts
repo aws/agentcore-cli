@@ -42,9 +42,9 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
         targetType: target.targetType,
       })),
     })),
-    mcpRuntimeTools: (spec.mcpRuntimeTools ?? []).map((tool) => ({
-      name: tool.name,
-      bindings: tool.bindings ?? [],
+    mcpRuntimeTools: (spec.toolRuntimes ?? []).map((toolRuntime) => ({
+      name: toolRuntime.name,
+      bindings: toolRuntime.bindings ?? [],
     })),
     evaluators: spec.evaluators.map((evaluator) => ({
       name: evaluator.name,

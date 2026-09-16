@@ -33,7 +33,7 @@ function resolveMcpSpec(spec: SpecWithLatestFields) {
   return spec.agentCoreGateways?.length
     ? {
         agentCoreGateways: spec.agentCoreGateways,
-        mcpRuntimeTools: spec.mcpRuntimeTools,
+        toolRuntimes: spec.toolRuntimes,
         unassignedTargets: spec.unassignedTargets,
       }
     : undefined;

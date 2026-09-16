@@ -592,7 +592,7 @@ describe("project remove all", () => {
       expect(spec[collection]).toEqual([]);
     }
     for (const collection of [
-      "mcpRuntimeTools",
+      "toolRuntimes",
       "unassignedTargets",
       "datasets",
       "httpGateways",
