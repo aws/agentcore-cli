@@ -178,22 +178,3 @@ test.each([
 ] as const)("rejects incomplete or obsolete selectors: %j", async (args, message) => {
   await expect(setup().run([...args])).rejects.toThrow(message);
 });
-
-test.each(["AUTHENTICATION_EXPIRED", "AUTHENTICATION_FAILED"] as const)(
-  "connector get reports %s on stderr, except with --json",
-  async (status) => {
-    const { core, run, io } = setup("connector");
-    const call = spyOn(core.payment, "getPaymentConnector").mockResolvedValue({ status } as never);
-    try {
-      const args = ["connector", "get", "--manager-id", MANAGER_ID, "--connector-id", CONNECTOR_ID];
-      await run(args);
-      expect(io.stderr()).toContain("cannot be renewed");
-      expect(JSON.parse(io.stdout())).toEqual({ status });
-      const stderr = io.stderr();
-      await run([...args, "--json"]);
-      expect(io.stderr()).toBe(stderr);
-    } finally {
-      call.mockRestore();
-    }
-  },
-);

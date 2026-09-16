@@ -8,6 +8,6 @@ import { createListPaymentConnectorsHandler } from "./list";
 export function createPaymentConnectorHandler(core: Core, io: AppIO): Router {
   return new Router("connector", "manage connectors under a payment manager")
     .default(renderTui(core, io))
-    .handler(createGetPaymentConnectorHandler(core, io))
+    .handler(createGetPaymentConnectorHandler(core))
     .handler(createListPaymentConnectorsHandler(core));
 }
