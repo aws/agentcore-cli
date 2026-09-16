@@ -13,6 +13,7 @@ import { createRootHandler } from "../index";
 
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 const MANAGER_ID = "mypaymentmanageraidandal-gx3nxzaira";
+const MANAGER_ARN = `arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/${MANAGER_ID}`;
 const CONNECTOR_ID = "agentcorecliconnectore2e-6rodjuiuig";
 const INSTRUMENT_CONNECTOR_ID = "mycdpconnectoraidandal-okve8guw4y";
 const SESSION_ID = "payment-session-nq812U4e1BJIfw1";
@@ -112,7 +113,7 @@ test.each([
       ...expected,
       ...(isData
         ? {
-            paymentManagerArn: `arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/${MANAGER_ID}`,
+            paymentManagerArn: MANAGER_ARN,
           }
         : {}),
       nextToken: "page+2/=",
@@ -172,9 +173,40 @@ test.each([
   [["instrument", "get", ...scope], "--instrument-id"],
   [["session", "list", "--manager-id", MANAGER_ID], "--user-id"],
   [
+    ["session", "list", "--manager-id", MANAGER_ARN, "--user-id", "user"],
+    "use a payment manager ID, not an ARN",
+  ],
+  [
     ["instrument", "get", ...scope, "--instrument-id", INSTRUMENT_ID, "--manager-arn", "arn:old"],
     "unknown option",
   ],
 ] as const)("rejects incomplete or obsolete selectors: %j", async (args, message) => {
   await expect(setup().run([...args])).rejects.toThrow(message);
 });
+
+test.each([
+  [{ paymentManagerArn: MANAGER_ARN, authorizerType: "CUSTOM_JWT" }, "CUSTOM_JWT"],
+  [{ authorizerType: "AWS_IAM" }, "returned no ARN"],
+] as const)("rejects an unusable manager: %j", async (manager, message) => {
+  const { run } = setup("session", {
+    createControlClient: () => ({ send: async () => manager }) as never,
+    createDataClient: () => {
+      throw new Error("Unexpected data-plane access");
+    },
+  });
+  await expect(run(["session", "list", ...scope])).rejects.toThrow(message);
+});
+
+test.each(["createControlClient", "createDataClient"] as const)(
+  "preserves a payment service failure from %s",
+  async (factory) => {
+    const error = new Error("Payment request denied");
+    const send = mock(async () => {
+      throw error;
+    });
+    const { run, io } = setup("session", { [factory]: () => ({ send }) as never });
+    await expect(run(["session", "list", ...scope])).rejects.toBe(error);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(io.stdout()).toBe("");
+  },
+);
