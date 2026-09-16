@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -10,15 +9,11 @@ export const createListPaymentConnectorsHandler = (core: Core) =>
     name: "list",
     description: "list the connectors of a payment manager",
     flags: [
-      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
+      flag("manager-id", "the parent payment manager ID", z.string().min(1)),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["manager-id"]) {
-        throw new InputValidationError("required option '--manager-id <manager-id>' not specified");
-      }
-
       ctx
         .require(JsonRendererKey)
         .renderJson(
