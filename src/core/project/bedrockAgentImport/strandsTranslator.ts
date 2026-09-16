@@ -243,7 +243,7 @@ def retrieve_${pythonIdentifier(knowledgeBase.name)}(query: str):
 }
 
 function generateStrandsMemoryModule(request: BedrockAgentImportRequest): string {
-  const memoryEnv = `MEMORY_${request.runtimeName
+  const memoryEnv = `AGENTCORE_MEMORY_${request.runtimeName
     .replace(/[^a-zA-Z0-9]/g, "_")
     .toUpperCase()}MEMORY_ID`;
   const retrievalConfig =

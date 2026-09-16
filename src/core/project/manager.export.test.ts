@@ -133,7 +133,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const result = await drain(subject.exportHarness(project, exportInput()));
 
     const session = await Bun.file(join(result.agentPath, "memory", "session.py")).text();
-    expect(session).toContain('MEMORY_ID = os.getenv("MEMORY_CHAT_HISTORY_ID")');
+    expect(session).toContain('MEMORY_ID = os.getenv("AGENTCORE_MEMORY_CHAT_HISTORY_ID")');
     expect(await Bun.file(join(result.agentPath, "main.py")).text()).toContain(
       "from memory.session import get_memory_session_manager",
     );

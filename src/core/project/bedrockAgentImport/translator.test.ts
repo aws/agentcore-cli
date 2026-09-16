@@ -83,7 +83,7 @@ describe("StrandsBedrockAgentTranslator", () => {
     expect(plan.files["main.py"]).not.toContain("client.invoke_agent");
     expect(plan.files["main.py"]).not.toContain("bedrock:InvokeAgent");
     expect(plan.files["memory.py"]).toContain(
-      'MEMORY_ID = os.getenv("MEMORY_IMPORTEDSUPPORTMEMORY_ID")',
+      'MEMORY_ID = os.getenv("AGENTCORE_MEMORY_IMPORTEDSUPPORTMEMORY_ID")',
     );
     // Knowledge-base access is documented as manual follow-up, not generated as an IAM policy.
     expect(Object.keys(plan.files)).not.toContain("bedrock-knowledge-base-policy.json");

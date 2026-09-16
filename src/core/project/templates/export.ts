@@ -472,7 +472,7 @@ function resolveMemory(
       provider: {
         name: entry.name,
         // Must match the env var the CDK injects for project memories.
-        envVarName: `MEMORY_${entry.name.toUpperCase()}_ID`,
+        envVarName: `AGENTCORE_MEMORY_${entry.name.toUpperCase()}_ID`,
         strategies: entry.strategies.map(({ type }) => type),
       },
       actorId: memory.actorId,
