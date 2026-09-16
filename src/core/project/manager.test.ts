@@ -206,6 +206,21 @@ describe("FsProjectManager.create", () => {
     expect(spec.memories).toMatchObject([{ name: "a2a_python_strandsMemory" }]);
   });
 
+  test("renders the Strands memory session reading the deploy-injected memory id", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+    });
+
+    const session = await Bun.file(
+      join(directory, "example", "app", "agent_python_strands", "memory", "session.py"),
+    ).text();
+    expect(session).toContain(
+      'MEMORY_ID = os.getenv("AGENTCORE_MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")',
+    );
+  });
+
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
