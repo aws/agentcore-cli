@@ -13,6 +13,7 @@ const DEFAULT_GROUPS = [
   { id: "runtime", title: "Runtime commands", commands: ["runtime"] },
   { id: "memory", title: "Memory commands", commands: ["memory"] },
   { id: "gateway", title: "Gateway commands", commands: ["gateway"] },
+  { id: "payment", title: "Payment commands", commands: ["payment"] },
   { id: "evaluation", title: "Evaluation commands", commands: ["eval"] },
   {
     id: "settings",
@@ -34,7 +35,12 @@ function getArg(flag) {
 function commandHelp(path) {
   const result = Bun.spawnSync({
     cmd: [BIN, ...BIN_PREFIX_ARGS, ...path, "--help"],
-    env: { ...process.env, NO_COLOR: "1", CI: "1" },
+    env: {
+      ...process.env,
+      NO_COLOR: "1",
+      CI: "1",
+      AGENTCORE_TELEMETRY_DISABLED: "1",
+    },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",

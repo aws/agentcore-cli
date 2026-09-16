@@ -89,6 +89,9 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.2`.
       - [`agentcore identity oauth2-credential-provider list`](#agentcore-identity-oauth2-credential-provider-list)
       - [`agentcore identity oauth2-credential-provider update`](#agentcore-identity-oauth2-credential-provider-update)
       - [`agentcore identity oauth2-credential-provider delete`](#agentcore-identity-oauth2-credential-provider-delete)
+    - [`agentcore identity payment-credential-provider`](#agentcore-identity-payment-credential-provider)
+      - [`agentcore identity payment-credential-provider get`](#agentcore-identity-payment-credential-provider-get)
+      - [`agentcore identity payment-credential-provider list`](#agentcore-identity-payment-credential-provider-list)
 - [Runtime commands](#runtime-commands)
   - [`agentcore runtime`](#agentcore-runtime)
     - [`agentcore runtime get`](#agentcore-runtime-get)
@@ -147,6 +150,21 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.2`.
       - [`agentcore gateway rule delete`](#agentcore-gateway-rule-delete)
     - [`agentcore gateway policy`](#agentcore-gateway-policy)
       - [`agentcore gateway policy generate`](#agentcore-gateway-policy-generate)
+- [Payment commands](#payment-commands)
+  - [`agentcore payment`](#agentcore-payment)
+    - [`agentcore payment manager`](#agentcore-payment-manager)
+      - [`agentcore payment manager get`](#agentcore-payment-manager-get)
+      - [`agentcore payment manager list`](#agentcore-payment-manager-list)
+    - [`agentcore payment connector`](#agentcore-payment-connector)
+      - [`agentcore payment connector get`](#agentcore-payment-connector-get)
+      - [`agentcore payment connector list`](#agentcore-payment-connector-list)
+    - [`agentcore payment session`](#agentcore-payment-session)
+      - [`agentcore payment session get`](#agentcore-payment-session-get)
+      - [`agentcore payment session list`](#agentcore-payment-session-list)
+    - [`agentcore payment instrument`](#agentcore-payment-instrument)
+      - [`agentcore payment instrument get`](#agentcore-payment-instrument-get)
+      - [`agentcore payment instrument list`](#agentcore-payment-instrument-list)
+      - [`agentcore payment instrument balance`](#agentcore-payment-instrument-balance)
 - [Evaluation commands](#evaluation-commands)
   - [`agentcore eval`](#agentcore-eval)
     - [`agentcore eval evaluator`](#agentcore-eval-evaluator)
@@ -1449,6 +1467,39 @@ delete an OAuth2 credential provider
 
 - `--name <name>`: the name of the OAuth2 credential provider
 
+#### `agentcore identity payment-credential-provider`
+
+```text
+agentcore identity payment-credential-provider [options] [command]
+```
+
+manage payment credential providers
+
+##### `agentcore identity payment-credential-provider get`
+
+```text
+agentcore identity payment-credential-provider get [options]
+```
+
+get a payment credential provider
+
+**Options**
+
+- `--name <name>`: the payment credential provider name (required)
+
+##### `agentcore identity payment-credential-provider list`
+
+```text
+agentcore identity payment-credential-provider list [options]
+```
+
+list payment credential providers
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
 ## Runtime commands
 
 ### `agentcore runtime`
@@ -2239,6 +2290,182 @@ generate a Cedar policy for a Gateway from a natural-language prompt
 - `--policy-engine-id <policy-engine-id>`: the ID or ARN of the Policy Engine (default the Gateway's attached engine)
 - `--prompt <prompt>`: what the policy should allow or deny (inline, file://&lt;path&gt;, or - for stdin)
 - `--name <name>`: name of the generation request (default cli\_generation\_&lt;timestamp&gt;)
+
+## Payment commands
+
+### `agentcore payment`
+
+```text
+agentcore payment [options] [command]
+```
+
+manage AgentCore Payments
+
+#### `agentcore payment manager`
+
+```text
+agentcore payment manager [options] [command]
+```
+
+manage AgentCore payment managers
+
+##### `agentcore payment manager get`
+
+```text
+agentcore payment manager get [options]
+```
+
+get a payment manager by id
+
+**Options**
+
+- `--id <id>`: the payment manager ID (required)
+
+##### `agentcore payment manager list`
+
+```text
+agentcore payment manager list [options]
+```
+
+list payment managers
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore payment connector`
+
+```text
+agentcore payment connector [options] [command]
+```
+
+manage connectors under a payment manager
+
+##### `agentcore payment connector get`
+
+```text
+agentcore payment connector get [options]
+```
+
+get a payment connector by id
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--connector-id <connector-id>`: the payment connector ID (required)
+
+##### `agentcore payment connector list`
+
+```text
+agentcore payment connector list [options]
+```
+
+list the connectors of a payment manager
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore payment session`
+
+```text
+agentcore payment session [options] [command]
+```
+
+manage payment sessions (budget-limited payment contexts)
+
+##### `agentcore payment session get`
+
+```text
+agentcore payment session get [options]
+```
+
+get a payment session by id
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--session-id <session-id>`: the payment session ID (required)
+- `--user-id <user-id>`: the application user ID associated with the session (required)
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+##### `agentcore payment session list`
+
+```text
+agentcore payment session list [options]
+```
+
+list an application user's payment sessions under a payment manager
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--user-id <user-id>`: the application user ID to list sessions for (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+#### `agentcore payment instrument`
+
+```text
+agentcore payment instrument [options] [command]
+```
+
+manage payment instruments (embedded crypto wallets)
+
+##### `agentcore payment instrument get`
+
+```text
+agentcore payment instrument get [options]
+```
+
+get a payment instrument by id
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--instrument-id <instrument-id>`: the payment instrument ID (required)
+- `--user-id <user-id>`: the application user ID associated with the instrument (required)
+- `--connector-id <connector-id>`: optionally restrict the lookup to this payment connector
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+##### `agentcore payment instrument list`
+
+```text
+agentcore payment instrument list [options]
+```
+
+list an application user's payment instruments under a payment manager
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--user-id <user-id>`: the application user ID to list instruments for (required)
+- `--connector-id <connector-id>`: optionally filter instruments by this payment connector
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+##### `agentcore payment instrument balance`
+
+```text
+agentcore payment instrument balance [options]
+```
+
+get a payment instrument's token balance on a specific chain
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--connector-id <connector-id>`: the instrument's payment connector ID (required)
+- `--instrument-id <instrument-id>`: the payment instrument ID (required)
+- `--user-id <user-id>`: the application user ID associated with the instrument (required)
+- `--chain <chain>`: the blockchain chain to query (BASE | BASE\_SEPOLIA | ETHEREUM | SOLANA | SOLANA\_DEVNET) (required)
+- `--token <token>`: the token to query (USDC) (default: "USDC")
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
 
 ## Evaluation commands
 
