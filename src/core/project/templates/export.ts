@@ -471,7 +471,6 @@ function resolveMemory(
     return {
       provider: {
         name: entry.name,
-        // Must match the env var the CDK injects for project memories.
         envVarName: memoryEnvVarName(entry.name),
         strategies: entry.strategies.map(({ type }) => type),
       },

@@ -184,6 +184,7 @@ export const MemorySchema = z
   });
 export type Memory = z.infer<typeof MemorySchema>;
 
+/** Derives the env var name the CDK backend injects with the deployed memory id. */
 export function memoryEnvVarName(memoryName: string): string {
   return `AGENTCORE_MEMORY_${memoryName.toUpperCase()}_ID`;
 }

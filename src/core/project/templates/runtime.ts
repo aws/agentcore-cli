@@ -147,7 +147,6 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toPythonPackageName(input.name),
       modelProvider: input.scaffoldRuntimeInput.modelProvider ?? "Bedrock",
-      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
       memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
       enableOtel: true,
@@ -187,7 +186,6 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const modelScaffold = resolveModelProviderScaffold(input);
     const context = {
       name: toNpmPackageName(input.name),
-      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
       memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
     };
@@ -295,7 +293,6 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const modelScaffold = resolveModelProviderScaffold(input);
     const context = {
       name: toPythonPackageName(input.name),
-      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
       memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
       sessionStorageMountPath,
@@ -336,7 +333,6 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const memory = input.scaffoldRuntimeInput.memory;
     const context = {
       name: toPythonPackageName(input.name),
-      // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
       memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       // The AgentCore Runtime requires OTEL dependencies to be present; the AG-UI
       // app binds uvicorn on port 8080 under opentelemetry-instrument.
