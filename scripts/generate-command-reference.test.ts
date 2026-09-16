@@ -43,6 +43,8 @@ test("renders nested commands, arguments, options, and normalized prose", () => 
 
   expect(markdown).toContain("## Table of contents");
   expect(markdown).toContain("- [Project commands](#project-commands)");
+  expect(markdown).toContain("  - [`agentcore project`](#agentcore-project)");
+  expect(markdown).toContain("    - [`agentcore project create`](#agentcore-project-create)");
   expect(markdown).toContain("## Project commands");
   expect(markdown).toContain("### `agentcore project`");
   expect(markdown).toContain("#### `agentcore project create`");

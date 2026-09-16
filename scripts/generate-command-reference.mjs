@@ -31,6 +31,15 @@ function markdownAnchor(heading) {
     .replace(/\s+/g, "-");
 }
 
+function renderTableOfContentsCommand(entry, depth, output) {
+  const indentation = "  ".repeat(depth);
+  output.push(`${indentation}- [\`${entry.name}\`](#${markdownAnchor(entry.name)})`);
+
+  for (const member of entry.members || []) {
+    renderTableOfContentsCommand(member, depth + 1, output);
+  }
+}
+
 function renderParameters(params, output) {
   const argumentsList = params.filter((param) => !param.name.startsWith("-"));
   const options = params.filter((param) => param.name.startsWith("-"));
@@ -81,9 +90,15 @@ export function renderMarkdown(model) {
     "",
     "## Table of contents",
     "",
-    ...model.groups.map((group) => `- [${group.title}](#${markdownAnchor(group.title)})`),
-    "",
   ];
+
+  for (const group of model.groups) {
+    output.push(`- [${group.title}](#${markdownAnchor(group.title)})`);
+    for (const entry of group.entries) {
+      renderTableOfContentsCommand(entry, 1, output);
+    }
+  }
+  output.push("");
 
   for (const group of model.groups) {
     output.push(`## ${group.title}`, "");
