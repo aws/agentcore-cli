@@ -96,6 +96,25 @@ export const CDK_PROJECT_DIR = 'cdk';
  */
 export const CDK_APP_ENTRY = 'dist/bin/cdk.js';
 
+/** ARN scheme prefix, partition-agnostic. */
+export const ARN_PREFIX = 'arn:';
+
+/**
+ * CDK context key that makes aws-cdk-lib attach a permissions boundary to every
+ * `AWS::IAM::Role` and `AWS::IAM::User` in a stack.
+ *
+ * Mirrors `PERMISSIONS_BOUNDARY_CONTEXT_KEY` from aws-cdk-lib. It is duplicated here because
+ * aws-cdk-lib is a dev/peer dependency of the CLI (it belongs to the vended CDK project, which
+ * runs as a separate process) and must not be imported at CLI runtime.
+ */
+export const CDK_PERMISSIONS_BOUNDARY_CONTEXT_KEY = '@aws-cdk/core:permissionsBoundary';
+
+/**
+ * Overrides `iam.permissionsBoundary` from agentcore.json. Useful in CI, and for accounts
+ * whose boundary ARN differs from the one committed to the project config.
+ */
+export const PERMISSIONS_BOUNDARY_ENV_VAR = 'AGENTCORE_PERMISSIONS_BOUNDARY';
+
 /**
  * Max length AWS BedrockAgentCore allows for a runtime name (combined projectName_agentName).
  */

@@ -129,6 +129,7 @@ export const ErrorName = z.enum([
   'MissingProjectFileError',
   'NoProjectError',
   'PackagingError',
+  'PermissionsBoundaryRequiredError',
   'PollExhaustedError',
   'PollTimeoutError',
   'ResourceNotFoundError',

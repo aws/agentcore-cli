@@ -35,6 +35,16 @@
         "pattern": "^[\\p{L}\\p{N}\\s_.:/=+\\-@]*$"
       }
     },
+    "iam": {
+      "type": "object",
+      "properties": {
+        "permissionsBoundary": {
+          "type": "string",
+          "pattern": "^(?:arn:[^:]+:iam::[^:]*:policy\\/.+|[\\w+=,.@-]{1,128})$"
+        }
+      },
+      "additionalProperties": false
+    },
     "runtimes": {
       "default": [],
       "type": "array",

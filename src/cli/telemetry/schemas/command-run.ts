@@ -146,6 +146,8 @@ const DeployAttrs = safeSchema({
   policy_engine_count: Count,
   policy_count: Count,
   deploy_mode: DeployModeSchema,
+  /** Whether an IAM permissions boundary was applied to the deployed roles. */
+  permissions_boundary: z.boolean().optional(),
   dep_sync_outcome: DepSyncOutcome.optional(),
   dep_sync_changed_count: Count.optional(),
   dep_sync_migrated: z.boolean().optional(),
