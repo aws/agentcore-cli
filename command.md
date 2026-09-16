@@ -43,10 +43,14 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.2`.
       - [`agentcore project invoke harness`](#agentcore-project-invoke-harness)
     - [`agentcore project log`](#agentcore-project-log)
       - [`agentcore project log runtime`](#agentcore-project-log-runtime)
+      - [`agentcore project log harness`](#agentcore-project-log-harness)
     - [`agentcore project traces`](#agentcore-project-traces)
       - [`agentcore project traces runtime`](#agentcore-project-traces-runtime)
         - [`agentcore project traces runtime list`](#agentcore-project-traces-runtime-list)
         - [`agentcore project traces runtime get`](#agentcore-project-traces-runtime-get)
+      - [`agentcore project traces harness`](#agentcore-project-traces-harness)
+        - [`agentcore project traces harness list`](#agentcore-project-traces-harness-list)
+        - [`agentcore project traces harness get`](#agentcore-project-traces-harness-get)
     - [`agentcore project status`](#agentcore-project-status)
     - [`agentcore project build`](#agentcore-project-build)
 - [Harness commands](#harness-commands)
@@ -825,6 +829,26 @@ stream or search logs for a Runtime in the current project
 - `--query <query>`: CloudWatch Logs filter pattern
 - `--limit <limit>`: maximum number of log records to return in search mode
 
+##### `agentcore project log harness`
+
+```text
+agentcore project log harness [options]
+```
+
+stream or search logs for a Harness in the current project
+
+**Options**
+
+- `--name <name>`: the logical project Harness name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Harness endpoint qualifier
+- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--tail`: tail new log records (default: false)
+- `--level <level>`: filter by log level (error, warn, info, debug)
+- `--query <query>`: CloudWatch Logs filter pattern
+- `--limit <limit>`: maximum number of log records to return in search mode
+
 #### `agentcore project traces`
 
 ```text
@@ -875,6 +899,52 @@ download a trace's log records to a JSON file
 - `--name <name>`: the logical project Runtime name
 - `--target <target>`: project deployment target (default: "default")
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+##### `agentcore project traces harness`
+
+```text
+agentcore project traces harness [options] [command]
+```
+
+inspect a Harness's traces
+
+###### `agentcore project traces harness list`
+
+```text
+agentcore project traces harness list [options]
+```
+
+list a Harness's recent traces
+
+**Options**
+
+- `--name <name>`: the logical project Harness name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Harness endpoint qualifier
+- `--limit <limit>`: maximum number of traces to display (default: 20)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+###### `agentcore project traces harness get`
+
+```text
+agentcore project traces harness get [options] <trace-id>
+```
+
+download a Harness trace's log records to a JSON file
+
+**Arguments**
+
+- `trace-id` (required): the trace ID to download
+
+**Options**
+
+- `--name <name>`: the logical project Harness name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Harness endpoint qualifier
 - `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
 - `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
 - `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)

@@ -26,6 +26,8 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       - uses: actions/create-github-app-token@v3
         id: app-token
         with:
@@ -55,6 +57,9 @@ jobs:
             exit 1
           fi
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate command reference
+        run: bun scripts/generate-command-reference.mjs
 
       - run: bun scripts/sync-vended-cdk.ts
 
