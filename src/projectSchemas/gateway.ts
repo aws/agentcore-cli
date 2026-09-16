@@ -173,7 +173,7 @@ const InstrumentationSchema = z.object({
 });
 const CodeZipRuntimeConfigSchema = z
   .object({
-    artifact: z.literal("CodeZip"),
+    build: z.literal("CodeZip"),
     pythonVersion: PythonRuntimeSchema,
     name: AgentRuntimeNameSchema,
     entrypoint: PythonEntrypointSchema,
