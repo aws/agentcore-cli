@@ -23,6 +23,14 @@ function normalizeText(text) {
     .replaceAll(">", "&gt;");
 }
 
+function markdownAnchor(heading) {
+  return heading
+    .toLowerCase()
+    .replace(/[^a-z0-9 -]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
 function renderParameters(params, output) {
   const argumentsList = params.filter((param) => !param.name.startsWith("-"));
   const options = params.filter((param) => param.name.startsWith("-"));
@@ -70,6 +78,10 @@ export function renderMarkdown(model) {
     "# AgentCore CLI command reference",
     "",
     `This reference was generated from \`agentcore --help\` for version \`${model.version}\`.`,
+    "",
+    "## Table of contents",
+    "",
+    ...model.groups.map((group) => `- [${group.title}](#${markdownAnchor(group.title)})`),
     "",
   ];
 

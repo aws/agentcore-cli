@@ -4,6 +4,18 @@
 
 This reference was generated from `agentcore --help` for version `1.0.0-rc.2`.
 
+## Table of contents
+
+- [Global options](#global-options)
+- [Project commands](#project-commands)
+- [Harness commands](#harness-commands)
+- [Identity commands](#identity-commands)
+- [Runtime commands](#runtime-commands)
+- [Memory commands](#memory-commands)
+- [Gateway commands](#gateway-commands)
+- [Evaluation commands](#evaluation-commands)
+- [CLI settings and feedback](#cli-settings-and-feedback)
+
 ## Global options
 
 ### `agentcore`
