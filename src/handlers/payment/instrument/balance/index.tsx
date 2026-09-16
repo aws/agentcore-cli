@@ -1,6 +1,5 @@
 import { BlockchainChainId, InstrumentBalanceToken } from "@aws-sdk/client-bedrock-agentcore";
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -12,22 +11,14 @@ export const createGetPaymentInstrumentBalanceHandler = (core: Core) =>
     name: "balance",
     description: "get a payment instrument's token balance on a specific chain",
     flags: [
-      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
-      flag(
-        "connector-id",
-        "the instrument's payment connector ID (required)",
-        z.string().optional(),
-      ),
-      flag("instrument-id", "the payment instrument ID (required)", z.string().optional()),
-      flag(
-        "user-id",
-        "the application user ID associated with the instrument (required)",
-        z.string().optional(),
-      ),
+      flag("manager-id", "the parent payment manager ID", z.string().min(1)),
+      flag("connector-id", "the instrument's payment connector ID", z.string().min(1)),
+      flag("instrument-id", "the payment instrument ID", z.string().min(1)),
+      flag("user-id", "the application user ID associated with the instrument", z.string().min(1)),
       flag(
         "chain",
-        `the blockchain chain to query (required; ${Object.values(BlockchainChainId).join(" | ")})`,
-        z.enum(BlockchainChainId).optional(),
+        `the blockchain chain to query (${Object.values(BlockchainChainId).join(" | ")})`,
+        z.enum(BlockchainChainId),
       ),
       flag(
         "token",
@@ -41,26 +32,6 @@ export const createGetPaymentInstrumentBalanceHandler = (core: Core) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["manager-id"]) {
-        throw new InputValidationError("required option '--manager-id <manager-id>' not specified");
-      }
-      if (!flags["user-id"]) {
-        throw new InputValidationError("required option '--user-id <user-id>' not specified");
-      }
-      if (!flags["connector-id"]) {
-        throw new InputValidationError(
-          "required option '--connector-id <connector-id>' not specified",
-        );
-      }
-      if (!flags["instrument-id"]) {
-        throw new InputValidationError(
-          "required option '--instrument-id <instrument-id>' not specified",
-        );
-      }
-      if (!flags["chain"]) {
-        throw new InputValidationError("required option '--chain <chain>' not specified");
-      }
-
       const request: GetPaymentInstrumentBalanceInput = {
         managerId: flags["manager-id"],
         userId: flags["user-id"],

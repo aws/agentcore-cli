@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -11,13 +10,9 @@ export const createGetPaymentInstrumentHandler = (core: Core) =>
     name: "get",
     description: "get a payment instrument by id",
     flags: [
-      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
-      flag("instrument-id", "the payment instrument ID (required)", z.string().optional()),
-      flag(
-        "user-id",
-        "the application user ID associated with the instrument (required)",
-        z.string().optional(),
-      ),
+      flag("manager-id", "the parent payment manager ID", z.string().min(1)),
+      flag("instrument-id", "the payment instrument ID", z.string().min(1)),
+      flag("user-id", "the application user ID associated with the instrument", z.string().min(1)),
       flag(
         "connector-id",
         "optionally restrict the lookup to this payment connector",
@@ -30,18 +25,6 @@ export const createGetPaymentInstrumentHandler = (core: Core) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["manager-id"]) {
-        throw new InputValidationError("required option '--manager-id <manager-id>' not specified");
-      }
-      if (!flags["user-id"]) {
-        throw new InputValidationError("required option '--user-id <user-id>' not specified");
-      }
-      if (!flags["instrument-id"]) {
-        throw new InputValidationError(
-          "required option '--instrument-id <instrument-id>' not specified",
-        );
-      }
-
       const request: GetPaymentInstrumentInput = {
         managerId: flags["manager-id"],
         userId: flags["user-id"],

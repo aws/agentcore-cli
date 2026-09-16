@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -11,12 +10,8 @@ export const createListPaymentInstrumentsHandler = (core: Core) =>
     name: "list",
     description: "list an application user's payment instruments under a payment manager",
     flags: [
-      flag("manager-id", "the parent payment manager ID (required)", z.string().optional()),
-      flag(
-        "user-id",
-        "the application user ID to list instruments for (required)",
-        z.string().optional(),
-      ),
+      flag("manager-id", "the parent payment manager ID", z.string().min(1)),
+      flag("user-id", "the application user ID to list instruments for", z.string().min(1)),
       flag(
         "connector-id",
         "optionally filter instruments by this payment connector",
@@ -31,13 +26,6 @@ export const createListPaymentInstrumentsHandler = (core: Core) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["manager-id"]) {
-        throw new InputValidationError("required option '--manager-id <manager-id>' not specified");
-      }
-      if (!flags["user-id"]) {
-        throw new InputValidationError("required option '--user-id <user-id>' not specified");
-      }
-
       const request: ListPaymentInstrumentsInput = {
         managerId: flags["manager-id"],
         userId: flags["user-id"],
