@@ -53,6 +53,12 @@ is the merge of a `release/v*` PR opened by `agentcore-devx-automation[bot]` (ac
 ordinary merges, fork PRs, and pushes without a matching release PR skip verification and
 publishing. Every job uses the pushed SHA, so later commits cannot change what is released.
 
+npm publish authenticates with trusted publishing: the package's npm settings list this repository
+and `release-publish.yml` as a trusted publisher, and the publish job exchanges its GitHub OIDC token
+for a short-lived npm token. There is no npm secret in the repository. npm checks the filename of the
+top-level workflow, so the publish step must stay in `release-publish.yml` rather than move into a
+reusable workflow.
+
 The prepare, check-release, and publish jobs use `aws-release-4-core`. The `release-publish.yml`
 allowlist currently covers `refactor` only. After the workflow lands on `main`, have a
 runner-group administrator add its `main` entry before switching the publish branch filter.

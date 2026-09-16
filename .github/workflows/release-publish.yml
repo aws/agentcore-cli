@@ -64,6 +64,8 @@ jobs:
         with:
           node-version: 20.x
           registry-url: https://registry.npmjs.org
+      # npm trusted publishing needs npm 11.5.1 or newer, Node 20 bundles npm 10.
+      - run: npm install -g npm@11
       - run: bun install --frozen-lockfile
 
       - name: Resolve release
@@ -93,7 +95,6 @@ jobs:
       - run: bun run compile
 
       - env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.release.outputs.version }}
           DIST_TAG: ${{ steps.release.outputs.dist_tag }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
