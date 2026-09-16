@@ -12,6 +12,7 @@ import type {
   BedrockAgentImportRequest,
   BedrockAgentSnapshot,
 } from "./types";
+import { memoryEnvVarName } from "../../../projectSchemas/memory";
 
 export class LangGraphBedrockAgentTranslator extends BaseBedrockAgentTranslator {
   translate(): BedrockAgentImportPlan {
@@ -286,9 +287,7 @@ def retrieve_${pythonIdentifier(knowledgeBase.name)}(query: str) -> str:
 }
 
 function generateLangGraphMemoryCode(request: BedrockAgentImportRequest): string {
-  const memoryEnv = `AGENTCORE_MEMORY_${request.runtimeName
-    .replace(/[^a-zA-Z0-9]/g, "_")
-    .toUpperCase()}MEMORY_ID`;
+  const memoryEnv = memoryEnvVarName(`${request.runtimeName.replace(/[^a-zA-Z0-9]/g, "_")}Memory`);
   const retrieval =
     request.memory === "longAndShortTerm"
       ? `    memories = []

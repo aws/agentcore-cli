@@ -6,6 +6,7 @@ import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
 import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
+import { memoryEnvVarName } from "../../../projectSchemas/memory";
 import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
 
@@ -147,7 +148,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       name: toPythonPackageName(input.name),
       modelProvider: input.scaffoldRuntimeInput.modelProvider ?? "Bedrock",
       // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
-      memoryEnvVarName: memory ? `AGENTCORE_MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
       enableOtel: true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
@@ -187,7 +188,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toNpmPackageName(input.name),
       // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
-      memoryEnvVarName: memory ? `AGENTCORE_MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
     };
     const tree = await FsTreeNode.fromAssetSource(
@@ -295,7 +296,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toPythonPackageName(input.name),
       // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
-      memoryEnvVarName: memory ? `AGENTCORE_MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
       sessionStorageMountPath,
       efsMounts,
@@ -336,7 +337,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toPythonPackageName(input.name),
       // the CDK injects this env var corresponding to the actual ID once its resolved on deployment.
-      memoryEnvVarName: memory ? `AGENTCORE_MEMORY_${memory.name.toUpperCase()}_ID` : undefined,
+      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       // The AgentCore Runtime requires OTEL dependencies to be present; the AG-UI
       // app binds uvicorn on port 8080 under opentelemetry-instrument.
       enableOtel: true,

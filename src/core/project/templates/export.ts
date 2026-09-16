@@ -15,7 +15,7 @@ import type {
 } from "../../../projectSchemas/harness";
 import type { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { credentialEnvVarName, type Credential } from "../../../projectSchemas/credential";
-import type { Memory } from "../../../projectSchemas/memory";
+import { memoryEnvVarName, type Memory } from "../../../projectSchemas/memory";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors/errors";
 import { toPythonPackageName } from "../fsUtils";
@@ -472,7 +472,7 @@ function resolveMemory(
       provider: {
         name: entry.name,
         // Must match the env var the CDK injects for project memories.
-        envVarName: `AGENTCORE_MEMORY_${entry.name.toUpperCase()}_ID`,
+        envVarName: memoryEnvVarName(entry.name),
         strategies: entry.strategies.map(({ type }) => type),
       },
       actorId: memory.actorId,
