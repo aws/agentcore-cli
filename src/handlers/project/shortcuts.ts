@@ -2,7 +2,7 @@ import z from "zod";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
-  MEMORY_NAME_MAX_LENGTH,
+  defaultMemoryName,
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
@@ -10,10 +10,8 @@ import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInp
 
 /** The default memory that templates ship with. */
 export function getDefaultMemorySpec(runtimeName: string): Memory {
-  const suffix = "Memory";
-  const name = `${runtimeName.slice(0, MEMORY_NAME_MAX_LENGTH - suffix.length)}${suffix}`;
   return {
-    name,
+    name: defaultMemoryName(runtimeName),
     eventExpiryDuration: 30,
     strategies: (["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"] as const).map(
       (type) => ({
