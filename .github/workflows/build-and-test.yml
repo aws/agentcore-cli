@@ -58,6 +58,8 @@ jobs:
           agentcore --version
           agentcore create --name sanitytest --language Python --framework Strands --model-provider Bedrock --memory none --json
           test -f sanitytest/agentcore/agentcore.json
+          agentcore package --directory integ-tests/fixtures/typescript-package
+          test -f integ-tests/fixtures/typescript-package/agentcore/TestRuntime.zip
       - name: Upload tarball artifact
         if: matrix.node-version == '20.x'
         uses: actions/upload-artifact@v7

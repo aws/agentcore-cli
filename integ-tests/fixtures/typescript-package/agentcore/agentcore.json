@@ -1,0 +1,14 @@
+{
+  "name": "PackageTest",
+  "version": 1,
+  "runtimes": [
+    {
+      "name": "TestRuntime",
+      "build": "CodeZip",
+      "entrypoint": "main.ts",
+      "codeLocation": "./app/TestRuntime",
+      "runtimeVersion": "NODE_22",
+      "protocol": "HTTP"
+    }
+  ]
+}
