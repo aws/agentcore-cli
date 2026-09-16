@@ -20,6 +20,10 @@ const DEFAULT_TARGET = {
   account: "111122223333",
   region: "eu-west-1",
 } as const;
+const TARGET_CREDENTIAL_PROVIDER = async () => ({
+  accessKeyId: "target-access-key",
+  secretAccessKey: "target-secret-key",
+});
 const HARNESS = { name: "support", path: "app/support" } as const;
 
 afterEach(async () => {
@@ -60,6 +64,7 @@ function backend() {
         name,
         id: `${name}-AbCdEf1234`,
         target: input.target,
+        credentialProvider: TARGET_CREDENTIAL_PROVIDER,
       }));
     },
     async resolveProjectResources() {

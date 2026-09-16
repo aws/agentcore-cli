@@ -1,20 +1,19 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { GetTraceQuery, ListTracesQuery, LogSource } from "../../../core/observability/index";
 import type { ProjectBackend, ResolveDeployedResourcesBackendInput } from "../../../core/project";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import {
   createSilentLogger,
+  initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
 
-const originalCwd = process.cwd();
-const temporaryDirectories: string[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 const DEFAULT_TARGET = {
   name: "default",
   account: "111122223333",
@@ -46,31 +45,25 @@ const RUNTIMES = [
   },
 ] as const;
 
-afterEach(async () => {
-  process.chdir(originalCwd);
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 async function inProject(
   runtimes: readonly unknown[],
   targets = [DEFAULT_TARGET, PRODUCTION_TARGET],
 ) {
-  const root = await mkdtemp(join(tmpdir(), "agentcore-project-traces-"));
-  temporaryDirectories.push(root);
-  await mkdir(join(root, "agentcore"), { recursive: true });
+  const { projectRoot, cleanup } = await initProject({
+    name: "orders",
+    flags: ["--template", "empty"],
+    prefix: "agentcore-project-traces-",
+  });
+  cleanups.push(cleanup);
   const spec = ProjectSpecSchema.parse({
     name: "orders",
     version: 1,
     runtimes,
   });
-  await writeFile(join(root, "agentcore", "agentcore.json"), JSON.stringify(spec));
-  await writeFile(join(root, "agentcore", "aws-targets.json"), JSON.stringify(targets));
-  process.chdir(root);
-  return root;
+  await writeFile(join(projectRoot, "agentcore", "agentcore.json"), JSON.stringify(spec));
+  await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), JSON.stringify(targets));
 }
 
 function backend() {
