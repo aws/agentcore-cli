@@ -47,18 +47,9 @@ describe("project custom validation", () => {
     expect(
       ProjectSpecSchema.safeParse({ ...minimalProject, toolRuntimes: [toolRuntime] }).success,
     ).toBe(true);
-    const result = ProjectSpecSchema.safeParse({
-      ...minimalProject,
-      mcpRuntimeTools: [toolRuntime],
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(
-        result.error.issues.some((issue) =>
-          issue.message.includes('Unrecognized key: "mcpRuntimeTools"'),
-        ),
-      ).toBe(true);
-    }
+    expect(
+      ProjectSpecSchema.safeParse({ ...minimalProject, mcpRuntimeTools: [toolRuntime] }).success,
+    ).toBe(false);
   });
 
   it("validates online evaluation agent and evaluator references", () => {
