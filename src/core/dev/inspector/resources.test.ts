@@ -143,7 +143,7 @@ describe("GET /api/resources", () => {
       ],
       credentials: [{ name: "stripe-key", type: "ApiKeyCredentialProvider" }],
       gateways: [{ name: "gw", targets: [{ name: "lookup", targetType: "lambda" }] }],
-      mcpRuntimeTools: [
+      toolRuntimes: [
         { name: "search-tool", bindings: [{ runtimeName: "orders", envVarName: "SEARCH_URL" }] },
       ],
       evaluators: [
