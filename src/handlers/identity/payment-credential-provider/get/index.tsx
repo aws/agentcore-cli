@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -9,12 +8,8 @@ export const createGetPaymentCredentialProviderHandler = (core: Core) =>
   createHandler({
     name: "get",
     description: "get a payment credential provider",
-    flags: [flag("name", "the payment credential provider name (required)", z.string().optional())],
+    flags: [flag("name", "the payment credential provider name", z.string().min(1))],
     handle: async (ctx, flags) => {
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-
       ctx
         .require(JsonRendererKey)
         .renderJson(

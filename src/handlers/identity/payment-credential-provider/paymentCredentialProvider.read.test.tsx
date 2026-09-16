@@ -73,11 +73,11 @@ describe("payment-credential-provider get", () => {
   });
 
   test.each([
-    ["omitted", ["get"]],
-    ["omitted with --json", ["get", "--json"]],
-    ["empty", ["get", "--name", ""]],
-  ] as const)("requires a nonempty --name when %s", async (_label, args) => {
-    await expect(run([...args])).rejects.toThrow("required option '--name <name>' not specified");
+    ["omitted", ["get"], "required option '--name <name>' not specified"],
+    ["omitted with --json", ["get", "--json"], "required option '--name <name>' not specified"],
+    ["empty", ["get", "--name", ""], "Invalid value for option '--name'"],
+  ] as const)("requires a nonempty --name when %s", async (_label, args, message) => {
+    await expect(run([...args])).rejects.toThrow(message);
   });
 
   test("preserves the recorded service error name and message", async () => {
