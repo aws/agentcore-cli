@@ -62,7 +62,7 @@ class FakePeer implements InteractiveTerminalPeer {
   readonly frames = new StreamController<TerminalFrame>();
   readonly sent: Uint8Array[] = [];
   readonly resizes: { columns: number; rows: number }[] = [];
-  closed = 0;
+  detached = 0;
 
   send(data: Uint8Array): Promise<void> {
     this.sent.push(Uint8Array.from(data));
@@ -74,8 +74,8 @@ class FakePeer implements InteractiveTerminalPeer {
     return Promise.resolve();
   }
 
-  close(): Promise<void> {
-    this.closed += 1;
+  detach(): Promise<void> {
+    this.detached += 1;
     this.frames.end();
     return Promise.resolve();
   }
@@ -130,7 +130,7 @@ describe("InteractiveTerminal", () => {
     peer.frames.emit({ type: "stderr", data: new TextEncoder().encode("err") });
     peer.frames.end();
 
-    await running;
+    await expect(running).resolves.toEqual({ detached: false });
     expect(peer.sent).toEqual([Uint8Array.from([0x1b, 0x5b, 0x41])]);
     expect(s.stdout()).toBe("out");
     expect(s.stderr()).toBe("err");
@@ -175,7 +175,7 @@ describe("InteractiveTerminal", () => {
     await running;
   });
 
-  test("forwards Ctrl+C and Ctrl+] as raw input", async () => {
+  test("consumes Ctrl+] as detach and forwards Ctrl+C", async () => {
     const s = subject();
     const peer = new FakePeer();
     const running = s.terminal.run(peer);
@@ -183,16 +183,14 @@ describe("InteractiveTerminal", () => {
 
     s.stdin.write(Uint8Array.from([0x03]));
     s.stdin.write(Uint8Array.from([0x1d]));
-    await Bun.sleep(0);
-    peer.frames.end();
 
-    await running;
-    expect(peer.sent).toEqual([Uint8Array.from([0x03]), Uint8Array.from([0x1d])]);
-    expect(peer.closed).toBe(0);
+    await expect(running).resolves.toEqual({ detached: true });
+    expect(peer.sent).toEqual([Uint8Array.from([0x03])]);
+    expect(peer.detached).toBe(1);
     expect(s.rawModes).toEqual([true, false]);
   });
 
-  test("closes the peer and restores terminal state when aborted", async () => {
+  test("detaches and restores terminal state when aborted", async () => {
     const s = subject();
     const peer = new FakePeer();
     const controller = new AbortController();
@@ -203,7 +201,7 @@ describe("InteractiveTerminal", () => {
     controller.abort(interrupted);
 
     await expect(running).rejects.toBe(interrupted);
-    expect(peer.closed).toBe(1);
+    expect(peer.detached).toBe(1);
     expect(s.rawModes).toEqual([true, false]);
     expect(s.resizeRemoved()).toBe(1);
   });
@@ -214,7 +212,7 @@ describe("InteractiveTerminal", () => {
     const peer: InteractiveTerminalPeer = {
       send: async () => {},
       resize: async () => {},
-      close: async () => {},
+      detach: async () => {},
       [Symbol.asyncIterator]() {
         return {
           next: async (): Promise<IteratorResult<TerminalFrame>> => {
