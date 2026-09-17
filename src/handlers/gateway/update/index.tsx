@@ -19,58 +19,87 @@ import {
 } from "../../utils";
 import type { GatewayUpdatePatch } from "../types";
 
+const CONFIGURATION = "Configuration:";
+const PROTOCOL_AUTHORIZER = "Protocol & authorizer:";
+const TRANSFORM = "Transform & interceptors:";
+const POLICY_ENGINE = "Policy engine:";
+const CLEAR = "Clear (unset a field):";
+
 export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "update",
     description: "update an AgentCore Gateway",
     flags: [
-      flag("id", "the Gateway ID", z.string().optional()),
-      flag("role-arn", "updated IAM role ARN", z.string().optional()),
-      flag("description", "updated Gateway description", z.string().optional()),
+      flag("id", "the Gateway ID", z.string().optional(), { group: "Target:" }),
+      flag("role-arn", "updated IAM role ARN", z.string().optional(), { group: CONFIGURATION }),
+      flag("description", "updated Gateway description", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
+      flag("exception-level", "exception detail level: debug", z.enum(["debug"]).optional(), {
+        group: CONFIGURATION,
+      }),
       flag(
         "protocol-configuration",
         "replacement MCP protocol configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: PROTOCOL_AUTHORIZER },
       ),
       flag(
         "authorizer-configuration",
         "replacement CUSTOM_JWT configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: PROTOCOL_AUTHORIZER },
       ),
       flag(
         "custom-transform-configuration",
         "replacement custom transform configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: TRANSFORM },
       ),
       flag(
         "interceptor-configurations",
         "replacement interceptors (JSON array; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: TRANSFORM },
       ),
-      flag("policy-engine-arn", "Policy Engine ARN", z.string().optional()),
+      flag("policy-engine-arn", "Policy Engine ARN", z.string().optional(), {
+        group: POLICY_ENGINE,
+      }),
       flag(
         "policy-engine-mode",
         "Policy Engine mode: log-only or enforce",
         z.enum(["log-only", "enforce"]).optional(),
+        { group: POLICY_ENGINE },
       ),
-      flag("exception-level", "exception detail level: debug", z.enum(["debug"]).optional()),
       flag(
         "waf-configuration",
         "replacement WAF configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: "WAF:" },
       ),
-      flag("clear-protocol", "remove the MCP-only Target restriction", z.boolean()),
-      flag("clear-description", "remove the Gateway description", z.boolean()),
-      flag("clear-protocol-configuration", "remove MCP protocol overrides", z.boolean()),
+      flag("clear-protocol", "remove the MCP-only Target restriction", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-description", "remove the Gateway description", z.boolean(), { group: CLEAR }),
+      flag("clear-protocol-configuration", "remove MCP protocol overrides", z.boolean(), {
+        group: CLEAR,
+      }),
       flag(
         "clear-custom-transform-configuration",
         "remove the custom transform configuration",
         z.boolean(),
+        { group: CLEAR },
       ),
-      flag("clear-interceptor-configurations", "remove every interceptor", z.boolean()),
-      flag("clear-policy-engine", "detach the Policy Engine", z.boolean()),
-      flag("clear-exception-level", "return to generic invocation errors", z.boolean()),
-      flag("clear-waf-configuration", "reset WAF failure mode to FAIL_CLOSE", z.boolean()),
+      flag("clear-interceptor-configurations", "remove every interceptor", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-policy-engine", "detach the Policy Engine", z.boolean(), { group: CLEAR }),
+      flag("clear-exception-level", "return to generic invocation errors", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-waf-configuration", "reset WAF failure mode to FAIL_CLOSE", z.boolean(), {
+        group: CLEAR,
+      }),
     ],
     handle: async (ctx, flags) => {
       if (!flags.id) {

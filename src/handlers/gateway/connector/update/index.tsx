@@ -19,49 +19,72 @@ import {
 import type { GatewayTargetUpdatePatch } from "../../types";
 import { GatewayConnectorTarget } from "../gatewayConnectorTarget";
 
+const TARGET = "Target:";
+const CONNECTOR = "Connector:";
+const CREDENTIALS = "Credentials & networking:";
+const CLEAR = "Clear (unset a field):";
+
 export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "update",
     description: "update a connector-backed Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("id", "the connector-backed Gateway Target ID", z.string().optional()),
-      flag("name", "updated Connector Target name", z.string().optional()),
-      flag("description", "updated Connector Target description", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().optional(), { group: TARGET }),
+      flag("id", "the connector-backed Gateway Target ID", z.string().optional(), {
+        group: TARGET,
+      }),
+      flag("name", "updated Connector Target name", z.string().optional(), { group: TARGET }),
+      flag("description", "updated Connector Target description", z.string().optional(), {
+        group: TARGET,
+      }),
       flag(
         "connector-configuration",
         "complete connector-backed Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CONNECTOR },
       ),
       flag(
         "connector",
         "curated connector",
         z.enum(["web-search", "bedrock-knowledge-bases", "bedrock-mantle"]).optional(),
+        { group: CONNECTOR },
       ),
       flag(
         "knowledge-base-id",
         "Knowledge Base ID for the bedrock-knowledge-bases connector",
         z.string().optional(),
+        { group: CONNECTOR },
       ),
       flag(
         "credential-provider-configurations",
         "replacement outbound credentials (JSON array; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "metadata-configuration",
         "replacement metadata propagation (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "private-endpoint",
         "replacement private endpoint (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
-      flag("clear-description", "remove the Connector Target description", z.boolean()),
-      flag("clear-credential-provider-configurations", "remove outbound credentials", z.boolean()),
-      flag("clear-metadata-configuration", "remove metadata propagation", z.boolean()),
-      flag("clear-private-endpoint", "remove private endpoint configuration", z.boolean()),
+      flag("clear-description", "remove the Connector Target description", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-credential-provider-configurations", "remove outbound credentials", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-metadata-configuration", "remove metadata propagation", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-private-endpoint", "remove private endpoint configuration", z.boolean(), {
+        group: CLEAR,
+      }),
     ],
     handle: async (ctx, flags) => {
       if (!flags["gateway-id"]) {

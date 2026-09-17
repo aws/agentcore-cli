@@ -18,6 +18,10 @@ import {
 import { writeGatewayInvokeResponse } from "./response";
 import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
+const TARGET = "Target:";
+const PAYLOAD = "Payload:";
+const SESSION = "Session:";
+
 export const createInvokeGatewayHandler = (
   core: Core,
   io: AppIO,
@@ -27,31 +31,45 @@ export const createInvokeGatewayHandler = (
     name: "invoke",
     description: "invoke an AgentCore Gateway",
     flags: [
-      flag("id", "the ID of the Gateway", gatewayIdSchema.optional()),
+      flag("id", "the ID of the Gateway", gatewayIdSchema.optional(), { group: TARGET }),
       flag(
         "path",
         "the path relative to the Gateway origin",
         z.string().min(1, "requires a nonempty path").optional(),
-        { sensitive: true },
+        { sensitive: true, group: TARGET },
       ),
-      flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional()),
-      flag("payload", "the inline payload to send", z.string().optional(), { sensitive: true }),
-      flag("content-type", "the payload content type", z.string().optional()),
-      flag("accept", "the accepted response content type", z.string().optional()),
-      flag("header", "an ordered application header", z.array(z.string()).optional(), {
-        sensitive: true,
+      flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional(), {
+        group: TARGET,
       }),
-      flag("bearer-token", "the Gateway bearer token", z.string().optional(), {
+      flag("payload", "the inline payload to send", z.string().optional(), {
         sensitive: true,
+        group: PAYLOAD,
       }),
-      flag("session-id", "the Runtime target session ID", z.string().optional()),
-      flag("mcp-session-id", "the MCP session ID", z.string().optional()),
-      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
+      flag("content-type", "the payload content type", z.string().optional(), { group: PAYLOAD }),
+      flag("accept", "the accepted response content type", z.string().optional(), {
+        group: PAYLOAD,
+      }),
       flag(
         "output-file",
         "the response output file",
         z.string().min(1, "requires a nonempty path").optional(),
+        { group: PAYLOAD },
       ),
+      flag("bearer-token", "the Gateway bearer token", z.string().optional(), {
+        sensitive: true,
+        group: "Authentication:",
+      }),
+      flag("header", "an ordered application header", z.array(z.string()).optional(), {
+        sensitive: true,
+        group: "Application headers:",
+      }),
+      flag("session-id", "the Runtime target session ID", z.string().optional(), {
+        group: SESSION,
+      }),
+      flag("mcp-session-id", "the MCP session ID", z.string().optional(), { group: SESSION }),
+      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional(), {
+        group: SESSION,
+      }),
     ],
     handle: async (ctx, flags) => {
       if (flags.id === undefined) {

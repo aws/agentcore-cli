@@ -19,45 +19,55 @@ import {
 } from "../../../utils";
 import type { CreateGatewayTargetInput } from "../../types";
 
+const TARGET = "Target:";
+const DEFINITION = "Definition:";
+const CREDENTIALS = "Credentials & networking:";
+
 export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "create",
     description: "create a Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().optional(), { group: TARGET }),
       flag(
         "name",
         "Target name; optional only for AgentCore Runtime Targets",
         z.string().optional(),
+        { group: TARGET },
       ),
-      flag("description", "Target description", z.string().optional()),
-      flag("endpoint", "MCP server HTTPS endpoint", z.string().optional()),
+      flag("description", "Target description", z.string().optional(), { group: TARGET }),
+      flag("endpoint", "MCP server HTTPS endpoint", z.string().optional(), { group: DEFINITION }),
       flag(
         "target-configuration",
         "complete Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: DEFINITION },
       ),
       flag(
         "tool-schema",
         "MCP tool schema (inline JSON, file://<path>, - for stdin, or s3:// URI)",
         z.string().optional(),
+        { group: DEFINITION },
       ),
       flag(
         "credential-provider-configurations",
         "outbound credentials (JSON array; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "metadata-configuration",
         "metadata propagation (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "private-endpoint",
         "private endpoint (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
-      flag("client-token", "idempotency token", z.string().optional()),
+      flag("client-token", "idempotency token", z.string().optional(), { group: "Idempotency:" }),
     ],
     handle: async (ctx, flags) => {
       if (!flags["gateway-id"]) {

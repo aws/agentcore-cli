@@ -18,40 +18,62 @@ import {
 } from "../../../utils";
 import type { GatewayTargetUpdatePatch } from "../../types";
 
+const TARGET = "Target:";
+const DEFINITION = "Definition:";
+const CREDENTIALS = "Credentials & networking:";
+const CLEAR = "Clear (unset a field):";
+
 export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "update",
     description: "update a Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("target-id", "the Target ID", z.string().optional()),
-      flag("name", "updated Target name", z.string().optional()),
-      flag("description", "updated Target description", z.string().optional()),
-      flag("endpoint", "updated endpoint for an existing MCP server Target", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().optional(), { group: TARGET }),
+      flag("target-id", "the Target ID", z.string().optional(), { group: TARGET }),
+      flag("name", "updated Target name", z.string().optional(), { group: TARGET }),
+      flag("description", "updated Target description", z.string().optional(), { group: TARGET }),
+      flag(
+        "endpoint",
+        "updated endpoint for an existing MCP server Target",
+        z.string().optional(),
+        {
+          group: DEFINITION,
+        },
+      ),
       flag(
         "target-configuration",
         "complete replacement Target configuration (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: DEFINITION },
       ),
       flag(
         "credential-provider-configurations",
         "replacement outbound credentials (JSON array; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "metadata-configuration",
         "replacement metadata propagation (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
       flag(
         "private-endpoint",
         "replacement private endpoint (JSON; inline, file://<path>, or - for stdin)",
         z.string().optional(),
+        { group: CREDENTIALS },
       ),
-      flag("clear-description", "remove the Target description", z.boolean()),
-      flag("clear-credential-provider-configurations", "remove outbound credentials", z.boolean()),
-      flag("clear-metadata-configuration", "remove metadata propagation", z.boolean()),
-      flag("clear-private-endpoint", "remove private endpoint configuration", z.boolean()),
+      flag("clear-description", "remove the Target description", z.boolean(), { group: CLEAR }),
+      flag("clear-credential-provider-configurations", "remove outbound credentials", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-metadata-configuration", "remove metadata propagation", z.boolean(), {
+        group: CLEAR,
+      }),
+      flag("clear-private-endpoint", "remove private endpoint configuration", z.boolean(), {
+        group: CLEAR,
+      }),
     ],
     handle: async (ctx, flags) => {
       if (!flags["gateway-id"]) {
