@@ -170,16 +170,15 @@ describe("option help groups", () => {
   const headingLine = (title: string) => `\n ${title}\n`;
 
   test("a grouped command renders one section per heading, in --help order", async () => {
-    const r = renderScreen("/agentcore/eval/batch-evaluation/evaluate");
+    // simulate is a grouped, command-line-only sibling of evaluate (which now
+    // has a TUI screen), so it exercises the CliOnlyScreen help-group rendering.
+    const r = renderScreen("/agentcore/eval/batch-evaluation/simulate");
 
     await waitForText(r.lastFrame, "this command runs from the command line");
     const frame = r.lastFrame()!;
-    const positions = [
-      "configuration",
-      "session source (choose exactly one)",
-      "source filters",
-      "evaluation",
-    ].map((title) => frame.indexOf(headingLine(title)));
+    const positions = ["runtime invocation", "dataset", "configuration", "evaluation"].map(
+      (title) => frame.indexOf(headingLine(title)),
+    );
 
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));

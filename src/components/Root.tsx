@@ -58,6 +58,7 @@ import {
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
+import { BatchEvaluationEvaluateScreen } from "../handlers/eval/batch-evaluation/evaluate/screen.tsx";
 import { RecommendationScreen } from "../handlers/eval/recommendation/screen.tsx";
 import { RecommendationListScreen } from "../handlers/eval/recommendation/list/screen.tsx";
 import { RecommendationGetJsonScreen } from "../handlers/eval/recommendation/get/screen.tsx";
@@ -613,6 +614,10 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
           <Route
             path="agentcore/eval/batch-evaluation/list"
             element={<BatchEvaluationListScreen ctx={ctx} core={core} />}
+          />
+          <Route
+            path="agentcore/eval/batch-evaluation/evaluate"
+            element={<BatchEvaluationEvaluateScreen ctx={ctx} core={core} />}
           />
           {/* Bare `get` (no id) has nothing to show — send the user to the list. */}
           <Route
