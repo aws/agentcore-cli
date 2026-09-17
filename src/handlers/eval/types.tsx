@@ -55,6 +55,7 @@ import type {
   DataSourceConfig as DataPlaneDataSourceConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
+import type { EvaluatorModelProvider } from "../../projectSchemas/evaluator";
 
 // SessionWindow is the resolved explicit time filter for a batch evaluation's
 // session source (from --start-time/--end-time). Maps directly to the SDK's
@@ -129,6 +130,10 @@ export type GetBatchEvaluationResult = {
 export type LlmAsAJudgeUpdate = {
   instructions?: string;
   model?: string;
+  // The judge model provider to switch to. Undefined preserves the evaluator's
+  // current provider; a change requires `model`, since model ids are not
+  // portable between provider APIs.
+  modelProvider?: EvaluatorModelProvider;
   ratingScale?: RatingScale;
   kmsKeyArn?: string;
 };
