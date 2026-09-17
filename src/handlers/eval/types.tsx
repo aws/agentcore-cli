@@ -48,6 +48,7 @@ import type {
   RecommendationType,
   StartRecommendationResponse,
   StartBatchEvaluationResponse,
+  StopBatchEvaluationResponse,
   SessionMetadataShape,
   InlineGroundTruth,
   EvaluationReferenceInput,
@@ -434,6 +435,7 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
+  stopBatchEvaluation(id: string, options: CoreOptions): Promise<StopBatchEvaluationResponse>;
   listBatchInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,

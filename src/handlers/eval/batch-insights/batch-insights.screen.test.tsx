@@ -58,7 +58,7 @@ describe("batch-insights menu", () => {
     await waitForText(screen.lastFrame, "list batch insights runs");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: ["run"],
+      cliOnly: ["run", "stop"],
     });
   });
 });

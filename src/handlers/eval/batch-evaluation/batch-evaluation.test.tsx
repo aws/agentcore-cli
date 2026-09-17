@@ -52,7 +52,7 @@ async function run(
 }
 
 describe("eval batch-evaluation command hierarchy", () => {
-  test("registers get + list under eval → batch-evaluation", () => {
+  test("registers batch-evaluation commands", () => {
     const io = testIO();
     const root = createRootHandler(new TestCoreClient(), {
       io: io.io,
@@ -64,7 +64,13 @@ describe("eval batch-evaluation command hierarchy", () => {
       .find((c) => c.name() === "eval")
       ?.children()
       .find((c) => c.name() === "batch-evaluation");
-    expect(group?.children().map((c) => c.name())).toEqual(["evaluate", "simulate", "get", "list"]);
+    expect(group?.children().map((c) => c.name())).toEqual([
+      "evaluate",
+      "simulate",
+      "get",
+      "list",
+      "stop",
+    ]);
   });
 
   test("prints help for `eval batch-evaluation --json` without an SDK call", async () => {

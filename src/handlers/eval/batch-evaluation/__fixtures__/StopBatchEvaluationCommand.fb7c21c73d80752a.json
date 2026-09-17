@@ -1,0 +1,5 @@
+{
+  "batchEvaluationId": "golden_batch_stop_fixture_20260917_1-3c78f86cef",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:batch-evaluate/golden_batch_stop_fixture_20260917_1-3c78f86cef",
+  "status": "STOPPING"
+}

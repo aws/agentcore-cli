@@ -27,7 +27,7 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
 }
 
 describe("eval batch-insights command hierarchy", () => {
-  test("registers only run, get, and list", () => {
+  test("registers batch-insights commands", () => {
     const io = testIO();
     const root = createRootHandler(new TestCoreClient(), {
       io: io.io,
@@ -40,7 +40,7 @@ describe("eval batch-insights command hierarchy", () => {
       ?.children()
       .find((child) => child.name() === "batch-insights");
 
-    expect(group?.children().map((child) => child.name())).toEqual(["run", "get", "list"]);
+    expect(group?.children().map((child) => child.name())).toEqual(["run", "get", "list", "stop"]);
   });
 
   test("prints help for a bare invocation without a Core call", async () => {

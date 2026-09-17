@@ -72,6 +72,7 @@ import {
   ListRecommendationsCommand,
   StartBatchEvaluationCommand,
   StartRecommendationCommand,
+  StopBatchEvaluationCommand,
   type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
@@ -89,6 +90,7 @@ import {
   type RecommendationStatus,
   type StartBatchEvaluationResponse,
   type StartRecommendationResponse,
+  type StopBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
@@ -465,6 +467,15 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .data(toClientConfig(options))
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
+  }
+
+  async stopBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<StopBatchEvaluationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new StopBatchEvaluationCommand({ batchEvaluationId: id }));
   }
 
   async getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse> {

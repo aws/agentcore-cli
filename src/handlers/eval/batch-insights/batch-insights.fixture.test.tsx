@@ -5,6 +5,7 @@ import {
   createSilentLogger,
   fixtureFactories,
   matchGolden,
+  settle,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
@@ -14,15 +15,17 @@ const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 const FIXTURE_JOB_ID = "golden_batch_insights_fixture-cd634815b4";
 const FIXTURE_NAME = "golden_batch_insights_fixture";
+const FIXTURE_STOP_NAME = "golden_batch_insights_stop_fixture_20260917_1";
 const FIXTURE_AGENT = "asdf_MyAgent-3s5axvBC6Q";
+const FIXTURE_STOP_AGENT = "demoEval_demoAgent-qGEpAAE68u";
 
 // Record with:
 // RECORD=1 bun test src/handlers/eval/batch-insights/batch-insights.fixture.test.tsx
 //
-// `get` pins a pre-existing completed insights job. `run` is a write and creates
-// another durable service job, so use a unique FIXTURE_NAME before re-recording.
-// Do not repeat record mode with the same name: the recorded conflict replaces
-// the successful StartBatchEvaluation fixture.
+// `get` pins a pre-existing completed insights job. `run` and `stop` create
+// durable service jobs, so use unique fixture names before re-recording. Do not
+// repeat record mode with the same names: the recorded conflict replaces the
+// successful StartBatchEvaluation fixtures.
 function createFixtureCore(): CoreClient {
   const { createControlClient, createDataClient, createIamClient, createLogsClient } =
     fixtureFactories(FIXTURES);
@@ -87,5 +90,39 @@ describe("eval batch-insights (fixture-backed)", () => {
     const job = JSON.parse(stdout);
     expect(job.batchEvaluationId).toBeTruthy();
     expect(job.insights).toEqual([{ insightId: "Builtin.Insight.FailureAnalysis" }]);
+  });
+
+  test("stop transitions a running batch insights job", async () => {
+    const started = JSON.parse(
+      await run([
+        "eval",
+        "batch-insights",
+        "run",
+        "--name",
+        FIXTURE_STOP_NAME,
+        "--agent",
+        FIXTURE_STOP_AGENT,
+        "--json",
+      ]),
+    );
+    await settle(1_000);
+
+    const stdout = await run([
+      "eval",
+      "batch-insights",
+      "stop",
+      "--id",
+      started.batchEvaluationId,
+      "--json",
+    ]);
+
+    matchGolden(FIXTURES, "stop.golden.json", stdout);
+    const stopped = JSON.parse(stdout);
+    expect(stopped.batchEvaluationId).toBe(started.batchEvaluationId);
+    expect(["STOPPING", "STOPPED"]).toContain(stopped.status);
+  }, 180_000);
+
+  test("stop requires --id before making an AWS call", async () => {
+    await expect(run(["eval", "batch-insights", "stop", "--json"])).rejects.toThrow(/--id/);
   });
 });
