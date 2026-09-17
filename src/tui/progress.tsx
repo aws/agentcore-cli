@@ -5,10 +5,14 @@ import type { AppIO } from "../io";
 /**
  * The event vocabulary long-running operations report progress through. A
  * `step` starts a new unit of work and implicitly completes the one before it;
- * an `output` line belongs to the most recent step. The final step completes
- * when the generator returns, and fails when it throws.
+ * an `output` line belongs to the most recent step, and a `warning` remains
+ * visible without blocking the operation. The final step completes when the
+ * generator returns, and fails when it throws.
  */
-export type ProgressEvent = { type: "step"; message: string } | { type: "output"; line: string };
+export type ProgressEvent =
+  | { type: "step"; message: string }
+  | { type: "output"; line: string }
+  | { type: "warning"; message: string };
 
 export type ProgressResult<T> = Promise<T> | AsyncGenerator<ProgressEvent, T>;
 
@@ -34,7 +38,8 @@ const DEFAULT_TAIL_LINES = 5;
 
 /**
  * Folds one progress event into a task list: a `step` completes the running
- * task and starts a new one; an `output` line joins the running task's tail.
+ * task and starts a new one, an `output` line joins the running task's tail,
+ * and a `warning` is retained as a standalone advisory.
  */
 export function applyProgressEvent(
   tasks: readonly Task[],
@@ -42,10 +47,18 @@ export function applyProgressEvent(
   tailLines = DEFAULT_TAIL_LINES,
 ): Task[] {
   const current = tasks[tasks.length - 1];
+  if (event.type === "warning") {
+    const warning: Task = { title: event.message, state: "warning", tail: [] };
+    // Keep a running task last so later output and settlement still attach to it.
+    return current?.state === "running"
+      ? [...tasks.slice(0, -1), warning, current]
+      : [...tasks, warning];
+  }
   if (event.type === "step") {
-    const settled = current
-      ? [...tasks.slice(0, -1), { ...current, state: "done" as const, tail: [] }]
-      : [];
+    const settled =
+      current?.state === "running"
+        ? [...tasks.slice(0, -1), { ...current, state: "done" as const, tail: [] }]
+        : [...tasks];
     return [...settled, { title: event.message, state: "running", tail: [] }];
   }
   // An output line before the first step has nowhere to render; the debug log
@@ -64,7 +77,7 @@ export function applyProgressEvent(
  */
 export function settleProgress(tasks: readonly Task[], state: "done" | "failed"): Task[] {
   const current = tasks[tasks.length - 1];
-  if (!current) return [...tasks];
+  if (!current || current.state !== "running") return [...tasks];
   return [...tasks.slice(0, -1), { ...current, state, tail: state === "done" ? [] : current.tail }];
 }
 
@@ -105,9 +118,8 @@ export async function driveProgress<T>(
  * marked ✕ with its tail left visible in scrollback, and the error is rethrown
  * unchanged for the caller's exit-code handling to print in full.
  *
- * Fallback path (non-TTY or interactive: false): writes each step message as a
- * plain line to stderr and drops output lines (they are in the debug log),
- * matching the pre-TUI behavior byte for byte.
+ * Fallback path (non-TTY or interactive: false): writes each step and warning
+ * as a plain line to stderr and drops output lines (they are in the debug log).
  *
  * Generic over the operation: nothing here knows about deploys. Any command
  * whose work is an AsyncGenerator<ProgressEvent, T> can run under it.
@@ -121,6 +133,9 @@ export async function runWithProgress<T>(
     let next = await generator.next();
     while (!next.done) {
       if (next.value.type === "step") options.io.stderr.write(`${next.value.message}\n`);
+      if (next.value.type === "warning") {
+        options.io.stderr.write(`Warning: ${next.value.message}\n`);
+      }
       next = await generator.next();
     }
     return next.value;

@@ -10,6 +10,7 @@ import type {
   ResolvedDeployedResource,
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
+import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
   FsReadWriteJson,
@@ -181,6 +182,11 @@ export class CdkBackend implements ProjectBackend {
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
     await this.ensureCdkDependencies(project);
+
+    const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
+    if (compatibilityWarning) {
+      yield { type: "warning", message: compatibilityWarning };
+    }
 
     yield { type: "step", message: "Synthesizing CloudFormation templates" };
     yield* withOutputEvents((emit) => {

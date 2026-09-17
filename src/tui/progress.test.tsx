@@ -27,12 +27,13 @@ async function* scripted<T>(
 }
 
 describe("runWithProgress plain path (no TTY)", () => {
-  test("writes step lines, drops output lines, and resolves the return value", async () => {
+  test("writes step and warning lines, drops output lines, and resolves the return value", async () => {
     const io = testIO();
 
     const result = await runWithProgress(
       scripted(
         [
+          { type: "warning", message: "Legacy CDK version" },
           { type: "step", message: "Step one" },
           { type: "output", line: "noisy detail" },
           { type: "step", message: "Step two" },
@@ -43,7 +44,7 @@ describe("runWithProgress plain path (no TTY)", () => {
     );
 
     expect(result).toBe(7);
-    expect(io.stderr()).toBe("Step one\nStep two");
+    expect(io.stderr()).toBe("Warning: Legacy CDK version\nStep one\nStep two");
     expect(io.stdout()).toBe("");
   });
 
@@ -93,6 +94,25 @@ describe("runWithProgress interactive path", () => {
     expect(frames).toContain("✓ Deploying stack");
     // Progress renders on stderr only; stdout stays machine-readable.
     expect(io.stdout()).toBe("");
+  });
+
+  test("renders a persistent warning without blocking subsequent steps", async () => {
+    const io = testIO({ isTTY: true });
+
+    await runWithProgress(
+      scripted(
+        [
+          { type: "warning", message: "Legacy CDK version" },
+          { type: "step", message: "Synthesizing" },
+        ],
+        { result: null },
+      ),
+      { io: io.io },
+    );
+
+    const frames = stripAnsi(io.stderr());
+    expect(frames).toContain("Legacy CDK version");
+    expect(frames).toContain("✓ Synthesizing");
   });
 
   test("marks the failing step ✕, keeps its recent tail, and rethrows", async () => {
@@ -152,6 +172,17 @@ describe("applyProgressEvent / settleProgress", () => {
     expect(tasks).toEqual([
       { title: "synth", state: "done", tail: [] },
       { title: "deploy", state: "running", tail: [] },
+    ]);
+  });
+
+  test("a warning remains visible and does not become the running task", () => {
+    let tasks = applyProgressEvent([], { type: "warning", message: "legacy dependency" });
+    tasks = applyProgressEvent(tasks, { type: "step", message: "synth" });
+    tasks = settleProgress(tasks, "done");
+
+    expect(tasks).toEqual([
+      { title: "legacy dependency", state: "warning", tail: [] },
+      { title: "synth", state: "done", tail: [] },
     ]);
   });
 

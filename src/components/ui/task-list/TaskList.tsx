@@ -5,7 +5,7 @@ import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 import { Spinner } from "../spinner/Spinner.js";
 
-export type TaskState = "running" | "done" | "failed";
+export type TaskState = "running" | "done" | "failed" | "warning";
 
 export interface Task {
   title: string;
@@ -24,9 +24,9 @@ export interface TaskListProps {
 const DEFAULT_TAIL_LINES = 5;
 
 /**
- * A vertical list of long-running steps: a spinner marks the running task, ✓/✕
- * mark finished ones (the Stepper glyph vocabulary), and the running task shows
- * a live tail of its recent output behind a muted `│` gutter. Presentational
+ * A vertical list of long-running steps: a spinner marks the running task,
+ * ✓/✕ mark finished ones, ⚠ marks persistent warnings, and the running task
+ * shows a live tail of its recent output behind a muted `│` gutter. Presentational
  * only — drive it from runWithProgress (src/tui/progress.tsx) or feed it Task
  * state directly. Designed for inline (scrollback) rendering, where a finished
  * task's collapsed tail leaves only its ✓ line behind.
@@ -51,14 +51,26 @@ export const TaskList: React.FC<TaskListProps> = ({
             <Box>
               {/* Keep the glyph column when the title is wider than the row. */}
               <Box flexShrink={0}>
-                <Text color={task.state === "done" ? theme.colors.success : theme.colors.error}>
-                  {task.state === "done" ? glyphs.done : glyphs.failed}
+                <Text
+                  color={
+                    task.state === "done"
+                      ? theme.colors.success
+                      : task.state === "warning"
+                        ? theme.colors.warning
+                        : theme.colors.error
+                  }
+                >
+                  {task.state === "done"
+                    ? glyphs.done
+                    : task.state === "warning"
+                      ? glyphs.warning
+                      : glyphs.failed}
                 </Text>
               </Box>
               <Text color={theme.colors.text}> {task.title}</Text>
             </Box>
           )}
-          {task.state !== "done" &&
+          {(task.state === "running" || task.state === "failed") &&
             task.tail.slice(-tailLines).map((line, lineIndex) => (
               <Text key={`${lineIndex}-${line}`} color={theme.colors.muted} wrap="truncate-end">
                 {cliTruncate(`  │ ${line}`, columns)}
