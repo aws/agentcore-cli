@@ -69,12 +69,14 @@ export type {
   RatingScale,
 } from './primitives/evaluator';
 export {
+  BASE_EVALUATOR_ID_PATTERN,
   BedrockModelIdSchema,
   isValidBedrockModelId,
   EvaluatorNameSchema,
   KMS_KEY_ARN_PATTERN,
   isValidKmsKeyArn,
 } from './primitives/evaluator';
+export type { DerivedEvaluatorConfig } from './primitives/evaluator';
 export { ConfigBundleSchema };
 export type { ComponentConfiguration, ComponentConfigurationMap, ConfigBundle } from './primitives/config-bundle';
 export { ConfigBundleNameSchema, ComponentConfigurationMapSchema } from './primitives/config-bundle';
@@ -383,6 +385,8 @@ export type EvaluatorType = z.infer<typeof EvaluatorTypeSchema>;
 
 export const EvaluatorSchema = z.object({
   name: EvaluatorNameSchema,
+  // Required for every evaluator. For a derived evaluator it must match the base
+  // metric's level; the CLI resolves it via GetEvaluator at add time.
   level: EvaluationLevelSchema,
   description: z.string().optional(),
   config: EvaluatorConfigSchema,
