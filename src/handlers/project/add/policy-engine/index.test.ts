@@ -48,15 +48,32 @@ describe("project add policy-engine", () => {
       ["add", "policy-engine", "--name", "9starts-with-digit"],
       "Must begin with a letter",
     ],
-    [
-      "a deployed name over the service limit",
-      ["add", "policy-engine", "--name", `E${"x".repeat(36)}`],
-      "exceeds the service limit of 48 characters",
-    ],
   ])("rejects %s", async (_label, args, message) => {
     await inProject();
     await expect(run(args)).rejects.toThrow(message);
   });
+
+  // The deployed name is `TestProject_default_<engine>`, so the 20-character prefix leaves 28 for the engine.
+  test.each([
+    ["accepts", 28],
+    ["rejects", 29],
+  ] as const)(
+    "%s an engine name of %i characters against the 48-character deployed name limit",
+    async (outcome, length) => {
+      const projectRoot = await inProject();
+      const name = `E${"x".repeat(length - 1)}`;
+      const attempt = run(["add", "policy-engine", "--name", name]);
+
+      if (outcome === "rejects") {
+        await expect(attempt).rejects.toThrow(
+          `Policy Engine deployed name 'TestProject_default_${name}' (project, deployment target and engine name joined by underscores) exceeds the service limit of 48 characters`,
+        );
+        return;
+      }
+      await attempt;
+      expect((await projectSpec(projectRoot)).policyEngines).toEqual([{ name, policies: [] }]);
+    },
+  );
 
   test.each([
     ["defaults to enforce", [], "ENFORCE"],

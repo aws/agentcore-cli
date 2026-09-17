@@ -387,9 +387,9 @@ describe("project deploy handler", () => {
     const subject = testDeployCommand({ outputs: {} });
     const projectRoot = await inProjectWithTargets(JSON.stringify([]));
 
-    const message = await messageFrom(subject.run(["--region", "us-west-1"]));
+    const message = await messageFrom(subject.run(["--region", "af-south-1"]));
 
-    expect(message).toContain("'us-west-1' is not an AgentCore-supported region");
+    expect(message).toContain("'af-south-1' is not an AgentCore-supported region");
     expect(message).toContain("us-east-1");
     expect(subject.calls).toEqual([]);
     expect(await Bun.file(join(projectRoot, "agentcore", "aws-targets.json")).text()).toBe("[]");

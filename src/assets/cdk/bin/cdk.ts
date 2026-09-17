@@ -19,6 +19,7 @@ try {
       application: transformAgentCoreJson(project.agentCoreJson, {
         projectRoot: project.projectRoot,
         credentials: stack.credentials,
+        target: stack.target,
       }),
     });
   }

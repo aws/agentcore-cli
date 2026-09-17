@@ -1,16 +1,17 @@
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import type { PolicyEngineSchema } from "../../../../projectSchemas/policy";
+import { DEFAULT_TARGET_NAME } from "../../../../projectSchemas/aws-targets";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
 
 /**
- The deployed service name of a policy engine; mirrors the L3 AgentCorePolicyEngine construct's rule.
+ The deployed service name for the "default" target the first deploy provisions, following the L3 AgentCorePolicyEngine construct's `<project>_<target>_<engine>` rule.
 **/
 export function policyEngineResourceName(projectName: string, engineName: string): string {
-  return `${projectName}_${engineName}`;
+  return `${projectName}_${DEFAULT_TARGET_NAME}_${engineName}`;
 }
 
 export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =>
@@ -44,7 +45,7 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
       const resourceName = policyEngineResourceName(project.name, flags.name);
       if (resourceName.length > 48) {
         throw new InputValidationError(
-          `Policy Engine resource name '${resourceName}' exceeds the service limit of 48 characters`,
+          `Policy Engine deployed name '${resourceName}' (project, deployment target and engine name joined by underscores) exceeds the service limit of 48 characters`,
         );
       }
 

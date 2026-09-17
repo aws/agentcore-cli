@@ -17,6 +17,7 @@ import {
   type ScaffoldHarnessInput,
 } from "../types";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
+import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
   HarnessModelProviderSchema,
   HarnessSpecSchema,
@@ -168,10 +169,11 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
   const provider = resolveHarnessModelProvider(flags["model-provider"]);
 
   const input: ScaffoldHarnessInput = {
-    // CFN's HarnessName is `${projectName}_${harnessName}` capped at 40 chars.
-    // Defaulting the harness to the project name doubles the string, so when
-    // the doubled form would exceed the CFN cap we truncate the harness half
-    // and append a 5-char hash to keep the derived name short and unique.
+    // The deployed HarnessName is `${projectName}_${target}_${harnessName}`
+    // capped at 40 chars. Defaulting the harness to the project name doubles
+    // the string, so when the joined form would exceed the cap we truncate the
+    // harness half and append a 5-char hash to keep the derived name short and
+    // unique.
     name: defaultHarnessNameFor(flags["name"]),
     model: {
       provider,
@@ -188,15 +190,17 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
 }
 
 // CloudFormation limits HarnessName to 40 characters. The synth step joins the
-// project name and the harness name with an underscore. The default harness
-// name is the project name. If the project name is 19 characters or less, the
-// joined name fits. If the project name is longer, this function shortens the
-// harness name so that the joined name is 40 characters. The shortened name
-// ends with a 5-character hash of the project name.
+// project name, the deployment target name and the harness name with
+// underscores. The first deploy provisions a target named "default", so the
+// budget reserves the 9 characters of "_default_". The default harness name is
+// the project name. If the project name is 15 characters or less, the joined
+// name fits. If the project name is longer, this function shortens the harness
+// name so that the joined name is 40 characters. The shortened name ends with
+// a 5-character hash of the project name.
 function defaultHarnessNameFor(projectName: string): string {
-  if (projectName.length <= 19) return projectName;
+  if (projectName.length <= 15) return projectName;
   const hash = createHash("sha256").update(projectName).digest("hex").slice(0, 5);
-  const prefixLen = 40 - projectName.length - 1 - 6;
+  const prefixLen = 40 - projectName.length - `_${DEFAULT_TARGET_NAME}_`.length - 6;
   return `${projectName.slice(0, prefixLen)}_${hash}`;
 }
 
