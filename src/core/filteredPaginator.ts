@@ -7,7 +7,11 @@ export type PaginateFilteredOptions<T> = {
     token: string | undefined,
     maxResults: number | undefined,
   ) => Promise<{ items: T[]; nextToken: string | undefined }>;
-  predicate: (item: T) => boolean;
+  // predicate keeps the items that belong to the narrower listing. Omit it when
+  // every item counts and the service merely caps maxResults below the page
+  // being assembled: each scan then asks only for what the page still needs, so
+  // the page lands exactly on maxResults with no duplicated seam.
+  predicate?: (item: T) => boolean;
   nextToken: string | undefined;
   maxResults: number | undefined;
   defaultPageSize: number;
@@ -37,11 +41,18 @@ export class FilteredPaginator {
 
     for (let scan = 0; scan < MAX_SCAN_REQUESTS; scan++) {
       const requestToken = token;
-      const page = await fetchPage(requestToken, scanPageSize);
-      const matches = page.items.filter(predicate);
+      const remaining = pageSize - results.length;
+      const requestSize = predicate ? scanPageSize : Math.min(scanPageSize ?? remaining, remaining);
+      const page = await fetchPage(requestToken, requestSize);
+      const matches = predicate ? page.items.filter(predicate) : page.items;
       results.push(...matches);
 
-      if (results.length >= pageSize) {
+      // Landed exactly: nothing from this page is left behind, so advance past it.
+      if (results.length === pageSize) {
+        return { items: results, nextToken: page.nextToken };
+      }
+
+      if (results.length > pageSize) {
         // Page holds >= pageSize matches by itself. Return every match found (the
         // page may exceed maxResults) and advance past it: replaying its token would
         // loop, and skipping the surplus would drop matches — so we over-return.
