@@ -4,7 +4,7 @@ import { InputValidationError } from "../../../../errors";
 import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-config";
 import { parseJsonFlag } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -55,6 +55,16 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Online-eval config",
+        project.name,
+        flags["name"],
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
+
       const candidate = {
         name: flags["name"],
         agent: flags["agent"],
@@ -74,7 +84,6 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       const parsed = OnlineEvalConfigSchema.safeParse(candidate);
       if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

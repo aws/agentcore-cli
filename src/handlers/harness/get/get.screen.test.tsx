@@ -506,16 +506,17 @@ describe("buildHarnessLinkNodes", () => {
 
   test("links each row to its detail route in the region of its ARN", () => {
     const nodes = buildHarnessLinkNodes(linkedHarness(), FALLBACK);
-    const routes = Object.fromEntries(nodes.map((node) => [node.id, node.data?.route]));
+    const data = Object.fromEntries(nodes.map((node) => [node.id, node.data]));
+    const linked = (route: string) => ({ route, region: LINK_REGION });
 
-    expect(routes.runtime).toBe(`/agentcore/runtime/get/${RUNTIME_ID}?region=${LINK_REGION}`);
-    expect(routes.memory).toBe(`/agentcore/memory/get/${MEMORY_ID}?region=${LINK_REGION}`);
-    expect(routes["tool:0"]).toBe(`/agentcore/gateway/get/${GATEWAY_ID}?region=${LINK_REGION}`);
-    expect(routes["model-key"]).toBe(
-      `/agentcore/identity/api-key-credential-provider/get/openai-key?region=${LINK_REGION}`,
+    expect(data.runtime).toEqual(linked(`/agentcore/runtime/get/${RUNTIME_ID}`));
+    expect(data.memory).toEqual(linked(`/agentcore/memory/get/${MEMORY_ID}`));
+    expect(data["tool:0"]).toEqual(linked(`/agentcore/gateway/get/${GATEWAY_ID}`));
+    expect(data["model-key"]).toEqual(
+      linked(`/agentcore/identity/api-key-credential-provider/get/openai-key`),
     );
-    expect(nodes[2]?.children?.[0]?.data?.route).toBe(
-      `/agentcore/identity/oauth2-credential-provider/get/github-oauth?region=${LINK_REGION}`,
+    expect(nodes[2]?.children?.[0]?.data).toEqual(
+      linked(`/agentcore/identity/oauth2-credential-provider/get/github-oauth`),
     );
   });
 
@@ -611,7 +612,10 @@ describe("buildHarnessLinkNodes", () => {
       FALLBACK,
     );
 
-    expect(nodes[0]?.data?.route).toBe(`/agentcore/runtime/get/${RUNTIME_ID}?region=${FALLBACK}`);
+    expect(nodes[0]?.data).toEqual({
+      route: `/agentcore/runtime/get/${RUNTIME_ID}`,
+      region: FALLBACK,
+    });
   });
 
   test("lists a git skill's API key provider annotated with the skill", () => {
@@ -643,7 +647,7 @@ describe("buildHarnessLinkNodes", () => {
     expect(keys[0]?.label).toMatch(/api key\s+openai-key$/);
     expect(keys[0]?.annotation).toBe("skill skills/search");
     expect(keys[0]?.data?.route).toBe(
-      `/agentcore/identity/api-key-credential-provider/get/openai-key?region=${LINK_REGION}`,
+      `/agentcore/identity/api-key-credential-provider/get/openai-key`,
     );
     expect(keys[1]?.label).toMatch(/oauth2 provider\s+github-oauth$/);
     expect(keys[1]?.annotation).toBe("skill https://github.com/acme/private.git");

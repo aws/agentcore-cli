@@ -643,6 +643,11 @@ describe("project add config-bundle", () => {
       "required option '--components' not specified",
     ],
     ["invalid name", ["--name", "orders-config", "--components", JSON.stringify(components)]],
+    [
+      "a deployed name over the 100-character service limit",
+      ["--name", `c${"x".repeat(80)}`, "--components", JSON.stringify(components)],
+      `Configuration bundle deployed name 'TestProject_default_c${"x".repeat(80)}' is 101 characters. The maximum is 100.`,
+    ],
     ["empty components", ["--name", "OrdersConfig", "--components", "{}"]],
     [
       "component without configuration",

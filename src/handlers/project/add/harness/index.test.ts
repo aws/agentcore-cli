@@ -551,8 +551,13 @@ describe("project add harness", () => {
     );
   });
 
-  test.each([
+  test.each<[string, string[], (string | typeof InputValidationError)?]>([
     ["missing --name", ["--model", '{"provider":"bedrock","modelId":"x"}']],
+    [
+      "deployed name over the 40-character service limit",
+      ["--name", `h${"x".repeat(20)}`],
+      `Harness deployed name 'TestProject_default_h${"x".repeat(20)}' is 41 characters. The maximum is 40.`,
+    ],
     ["model without modelId", ["--name", "x", "--model", '{"provider":"bedrock"}']],
     [
       "unrecognized model provider",
@@ -615,9 +620,9 @@ describe("project add harness", () => {
         '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
       ],
     ],
-  ])("%s", async (_label, flags) => {
+  ])("%s", async (_label, flags, expected = InputValidationError) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
-    await expect(run(["add", "harness", ...flags])).rejects.toBeInstanceOf(InputValidationError);
+    await expect(run(["add", "harness", ...flags])).rejects.toThrow(expected);
   });
 });

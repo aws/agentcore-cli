@@ -6,7 +6,7 @@ import { TagsSchema } from "../../../../../projectSchemas/tags";
 import type { ManagedEvaluatorScaffoldInput } from "../../../types";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
-import { addProjectResource } from "../../shared";
+import { addProjectResource, requireDeployedNameFits } from "../../shared";
 
 export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -31,6 +31,15 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Evaluator",
+        project.name,
+        flags["name"],
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
       const levelParsed = EvaluationLevelSchema.safeParse(flags["level"]);
       if (!levelParsed.success) throw new InputValidationError(z.prettifyError(levelParsed.error));
       const level = levelParsed.data;
@@ -45,7 +54,6 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         kmsKeyArn: flags["kms-key-arn"],
         tags,
       };
-      const project = ctx.require(ProjectKey);
 
       if (hasLambda) {
         if (flags["timeout-seconds"] !== undefined)

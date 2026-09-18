@@ -417,6 +417,22 @@ describe("project add evaluator llm-as-a-judge", () => {
       "required option '--name' not specified",
     ],
     [
+      "deployed name over the 48-character service limit",
+      [
+        "--name",
+        `e${"x".repeat(28)}`,
+        "--level",
+        "SESSION",
+        "--model",
+        MODEL,
+        "--instructions",
+        "i",
+        "--rating-scale",
+        "pass-fail",
+      ],
+      `Evaluator deployed name 'TestProject_default_e${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
+    ],
+    [
       "missing --level",
       ["--name", "x", "--model", MODEL, "--instructions", "i", "--rating-scale", "pass-fail"],
       "required option '--level' not specified",

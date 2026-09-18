@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { Box, Text } from "ink";
+import { RegionPinContext } from "../handlers/utils";
 import { TreeView, type TreeNode } from "./ui/tree-view";
 import { Divider } from "./ui/divider";
 import { darkTheme } from "./ui/_core.js";
@@ -12,9 +13,11 @@ import { darkTheme } from "./ui/_core.js";
 // one and explains itself otherwise.
 
 export interface LinkedResourceData {
-  // route is where enter forwards (query string included, e.g. ?region=);
-  // rows without one show `hint` under the tree instead.
+  // route is where enter forwards. Rows without one show `hint` under the
+  // tree instead. region, when set, is pinned first so the destination fetches
+  // where the resource lives (see usePinRegion).
   route?: string;
+  region?: string;
   hint?: string;
 }
 
@@ -71,9 +74,11 @@ export function LinkedResourcesTree({
   onOpen,
 }: LinkedResourcesTreeProps) {
   const [hint, setHint] = useState<string>();
+  const pinRegion = useContext(RegionPinContext);
 
   const select = (node: LinkedResourceNode) => {
     if (node.data?.route) {
+      if (node.data.region !== undefined) pinRegion(node.data.region);
       onOpen(node.data.route);
       return;
     }

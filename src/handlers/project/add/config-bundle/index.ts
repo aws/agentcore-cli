@@ -11,7 +11,7 @@ import { KmsKeyArnSchema } from "../../../../projectSchemas/evaluator";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 const ComponentsSchema = z
   .record(z.string().min(1), ComponentConfigurationSchema.strict())
@@ -53,11 +53,20 @@ export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =
       ),
     ],
     handle: async (ctx, flags) => {
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Configuration bundle",
+        project.name,
+        flags.name,
+        "_",
+        100,
+        await config.projectManager.listTargets(project),
+      );
+
       const source = new SourceResolver({ stdin: config.io.stdin });
       const componentsText = await source.resolveText("components", flags.components);
       const components = parseJsonFlagWithSchema("components", componentsText, ComponentsSchema);
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

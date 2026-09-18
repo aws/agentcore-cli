@@ -145,6 +145,11 @@ describe("project add evaluator code-based", () => {
     ["missing --name", ["--level", "SESSION"], "required option '--name' not specified"],
     ["missing --level", ["--name", "x"], "required option '--level' not specified"],
     [
+      "deployed name over the 48-character service limit",
+      ["--name", `e${"x".repeat(28)}`, "--level", "SESSION"],
+      `Evaluator deployed name 'TestProject_default_e${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
+    ],
+    [
       "--timeout-seconds with --lambda-arn",
       [
         "--name",

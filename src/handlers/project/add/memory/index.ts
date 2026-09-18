@@ -15,7 +15,7 @@ import {
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
 import type { AddResourceInput } from "../../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 // The service default for raw event retention
 export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
@@ -166,6 +166,16 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Memory",
+        project.name,
+        flags.name,
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
+
       const inputIndexedKeys = parseJsonFlagWithSchema(
         "indexed-keys",
         flags["indexed-keys"],
@@ -189,7 +199,6 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         tags: parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema),
       };
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

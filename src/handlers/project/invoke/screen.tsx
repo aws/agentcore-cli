@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
+import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import { Layout } from "../../../components/Layout";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { Spinner } from "../../../components/ui/spinner";
 import { glyphs } from "../../../components/ui/_core.js";
+import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectKey, type Context } from "../../../router";
 import { HarnessChat } from "../../harness/invoke/screen";
-import { AwsCredentialProviderKey, RegionKey } from "../../keys";
+import { AwsCredentialProviderKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
+import { usePinRegion } from "../../utils";
 import type { Project, ResolvedDeployedResources } from "../types";
 import { ProjectGate } from "../ProjectGate";
 
@@ -35,6 +38,7 @@ type Destination =
   | { resourceType: "harness"; id: string; ctx: Context };
 
 const BREADCRUMB = ["agentcore", "project", "invoke"];
+const DESCRIPTION = "invoke a Runtime or harness from the current project";
 const PROJECT_MENU = "/agentcore/project";
 
 // The project comes from the launch context when a project command opened the
@@ -42,15 +46,35 @@ const PROJECT_MENU = "/agentcore/project";
 // not-found guidance when there is none, rather than spinning forever.
 export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
+  const goBack = () => navigate(PROJECT_MENU);
   return (
     <ProjectGate
       core={core}
       breadcrumb={BREADCRUMB}
-      description="invoke a Runtime or harness from the current project"
+      description={DESCRIPTION}
       seed={ctx.value(ProjectKey)}
-      onBack={() => navigate(PROJECT_MENU)}
+      onBack={goBack}
     >
-      {(project) => <ProjectInvokePicker ctx={ctx} core={core} project={project} />}
+      {(project) => (
+        <DeploymentTargetPicker
+          core={core}
+          project={project}
+          breadcrumb={BREADCRUMB}
+          description={DESCRIPTION}
+          onBack={goBack}
+        >
+          {({ targetName, target, back }) => (
+            <ProjectInvokePicker
+              ctx={ctx}
+              core={core}
+              project={project}
+              targetName={targetName}
+              target={target}
+              onBack={back}
+            />
+          )}
+        </DeploymentTargetPicker>
+      )}
     </ProjectGate>
   );
 }
@@ -59,18 +83,24 @@ function ProjectInvokePicker({
   ctx,
   core,
   project,
+  targetName,
+  target,
+  onBack,
 }: ScreenProps & {
   project: Project;
+  targetName: string;
+  target: AwsDeploymentTarget | undefined;
+  onBack: () => void;
 }) {
-  const navigate = useNavigate();
   const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
   const [destination, setDestination] = useState<Destination>();
   const [error, setError] = useState<string>();
+  usePinRegion(target?.region);
 
   useEffect(() => {
     let active = true;
     void core.projectManager
-      .resolveDeployedResources(project, { target: "default" })
+      .resolveDeployedResources(project, { target: targetName })
       .then((resolved) => {
         if (active) setDeployed(resolved);
       })
@@ -80,7 +110,7 @@ function ProjectInvokePicker({
     return () => {
       active = false;
     };
-  }, [core.projectManager, project]);
+  }, [core.projectManager, project, targetName]);
 
   const rows = useMemo<ProjectInvokableRow[]>(
     () =>
@@ -106,19 +136,15 @@ function ProjectInvokePicker({
   );
 
   const select = (row: ProjectInvokableRow) => {
-    if (!deployed) return;
     setDestination({
       resourceType: row.resourceType,
       id: row.id,
-      ctx: ctx
-        .withValue(RegionKey, deployed.target.region)
-        .withValue(AwsCredentialProviderKey, row.credentialProvider),
+      ctx: ctx.withValue(AwsCredentialProviderKey, row.credentialProvider),
     });
   };
 
-  const goBack = () => navigate(PROJECT_MENU);
   useInput((_input, key) => {
-    if (key.escape && (!deployed || error !== undefined)) goBack();
+    if (key.escape && (!deployed || error !== undefined)) onBack();
   });
 
   if (destination?.resourceType === "runtime") {
@@ -193,7 +219,7 @@ function ProjectInvokePicker({
   return (
     <Layout
       breadcrumb={BREADCRUMB}
-      description="choose a project resource to invoke on target default"
+      description={`choose a project resource to invoke on target ${targetName}`}
       keyHints={[
         { key: "↑↓/jk", label: "navigate" },
         { key: "/", label: "filter" },
@@ -212,9 +238,9 @@ function ProjectInvokePicker({
           focus
           columns={columns}
           data={rows}
-          emptyMessage="No deployed Runtimes or harnesses were found on target default."
+          emptyMessage={`No deployed Runtimes or harnesses were found on target ${targetName}.`}
           onSelect={select}
-          onEscape={goBack}
+          onEscape={onBack}
         />
       </Box>
     </Layout>

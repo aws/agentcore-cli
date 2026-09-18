@@ -14,7 +14,7 @@ import {
 import { TagsSchema } from "../../../../../projectSchemas/tags";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
-import { addProjectResource } from "../../shared";
+import { addProjectResource, requireDeployedNameFits } from "../../shared";
 import {
   isRatingScalePreset,
   RATING_SCALE_PRESETS,
@@ -58,6 +58,16 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Evaluator",
+        project.name,
+        flags["name"],
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
+
       const modelProvider = resolveModelProvider(flags["model-provider"]);
       validateModel(modelProvider, flags["model"]);
 
@@ -87,7 +97,6 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       const parsed = EvaluatorSchema.safeParse(candidate);
       if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

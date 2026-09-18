@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Core } from "../handlers/types.tsx";
@@ -123,6 +123,8 @@ import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
+import { RegionKey } from "../handlers/keys.tsx";
+import { RegionPinContext } from "../handlers/utils.tsx";
 import type { Context } from "../router";
 
 export interface RootProps {
@@ -141,7 +143,26 @@ export interface RootProps {
 
 // Root is the top of the Ink React tree, rendered by the `agentcore` default
 // handler when the CLI is invoked without a subcommand.
-export function Root({ path, ctx, core, queryClient }: RootProps) {
+export function Root({ ctx, ...props }: RootProps) {
+  // A screen may pin the region the resource it shows lives in (see
+  // usePinRegion). The pin replaces the launch region on every route until a
+  // screen pins another.
+  const [pinned, setPinned] = useState<string>();
+  const routed = useMemo(
+    () => (pinned === undefined ? ctx : ctx.withValue(RegionKey, pinned)),
+    [ctx, pinned],
+  );
+
+  return (
+    <RegionPinContext.Provider value={setPinned}>
+      <RouteTable {...props} ctx={routed} />
+    </RegionPinContext.Provider>
+  );
+}
+
+// RouteTable is the MemoryRouter over the app's routes plus the react-query
+// client every screen fetches through.
+function RouteTable({ path, ctx, core, queryClient }: RootProps) {
   // Create the QueryClient once per mount; a lazy initializer keeps it stable
   // across re-renders (a fresh client would drop the cache and refetch). An
   // injected client (tests) takes precedence.

@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router";
+import { createContext, useContext, useEffect } from "react";
 import type { Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
@@ -22,17 +22,21 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
   };
 }
 
-// useCoreOpts is coreOptsFromCtx for screens that can be linked to across
-// regions. The context's region is the ambient one resolved at launch, which is
-// not necessarily where the resource a screen is asked to show lives — project
-// status forwards to detail pages on a target that may be deployed elsewhere,
-// and links there with `?region=<target region>`. A region in the query string
-// wins; without one the context's region applies as usual.
-export function useCoreOpts(ctx: Context): CoreOptions {
-  const [search] = useSearchParams();
-  const region = search.get("region");
-  const opts = coreOptsFromCtx(ctx);
-  return region ? { ...opts, region } : opts;
+// RegionPinContext carries Root's setter for the TUI's pinned region. The
+// context's region is the ambient one resolved at launch, which is not
+// necessarily where the resource a screen shows lives: project status and
+// invoke work on a target that may be deployed elsewhere, and the harness hub
+// links resources by their ARN's region. A pin replaces RegionKey on every
+// route's context, so a detail page and whatever it opens next fetch there.
+export const RegionPinContext = createContext<(region: string) => void>(() => {});
+
+// usePinRegion pins `region` once it is known. To pin at an event instead, for
+// example right before a navigation, call the context's setter directly.
+export function usePinRegion(region: string | undefined): void {
+  const pin = useContext(RegionPinContext);
+  useEffect(() => {
+    if (region !== undefined) pin(region);
+  }, [pin, region]);
 }
 
 // parseJsonFlag parses a flag's raw string as JSON, typed as the API structure

@@ -206,6 +206,20 @@ describe("project add online-eval", () => {
       "required option '--sampling-rate' not specified",
     ],
     [
+      "deployed name over the 48-character service limit",
+      [
+        "--name",
+        `o${"x".repeat(28)}`,
+        "--log-group-name",
+        "/x",
+        "--evaluators",
+        "e",
+        "--sampling-rate",
+        "10",
+      ],
+      `Online-eval config deployed name 'TestProject_default_o${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
+    ],
+    [
       "--agent and --log-group-name are mutually exclusive",
       [
         "--name",

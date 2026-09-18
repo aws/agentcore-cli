@@ -396,6 +396,11 @@ describe("project add runtime", () => {
       "required option '--name' not specified",
     ],
     [
+      "deployed name over the 48-character service limit",
+      ["--name", `r${"x".repeat(28)}`],
+      `Runtime deployed name 'TestProject_default_r${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
+    ],
+    [
       "--model-provider is not valid with the a2a-python-strands template",
       ["--name", "my_agent", "--template", "a2a-python-strands", "--model-provider", "Anthropic"],
     ],
@@ -423,7 +428,6 @@ describe("project add runtime", () => {
       "invalid JSON in --network-config",
       ["--name", "my_agent", ...template, "--network-config", "{bad}"],
     ],
-    ["runtime names are limited in length", ["--name", "x".repeat(49)]],
   ])("%s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);

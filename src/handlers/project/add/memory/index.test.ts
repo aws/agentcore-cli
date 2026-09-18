@@ -390,7 +390,12 @@ describe("project add memory", () => {
     await expectError(promise, requiredMessage ?? /./, InputValidationError);
   });
 
-  test.each<[string, string[], RegExp]>([
+  test.each<[string, string[], RegExp | string]>([
+    [
+      "rejects a deployed name over the 48-character service limit",
+      ["--name", `m${"x".repeat(28)}`],
+      `Memory deployed name 'TestProject_default_m${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
+    ],
     [
       "rejects unsupported strategy fields",
       [

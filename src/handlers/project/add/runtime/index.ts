@@ -20,7 +20,7 @@ import {
   resolveImportBedrockAgentInput,
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 // The infrastructure settings that arrive as JSON documents. They are parsed
 // but not yet validated when an entry point assembles a runtime, so they are
@@ -136,6 +136,16 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Runtime",
+        project.name,
+        flags.name,
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
+
       const isImport = flags["type"] === "import";
       const isTemplate = flags["template"] !== undefined;
       const modelFlagsPresent =
@@ -242,7 +252,6 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         importBedrockAgent,
       };
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

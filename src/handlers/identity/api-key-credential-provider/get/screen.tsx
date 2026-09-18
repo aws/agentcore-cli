@@ -3,10 +3,10 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../../types";
-import { useCoreOpts } from "../../../utils";
+import { coreOptsFromCtx } from "../../../utils";
 
 function useApiKeyProviderDetail({ ctx, core }: ScreenProps, name: string | undefined) {
-  const opts = useCoreOpts(ctx);
+  const opts = coreOptsFromCtx(ctx);
   return useQuery({
     queryKey: ["api-key-credential-provider", opts.region, name],
     queryFn: () => core.identity.getApiKeyCredentialProvider(name!, opts),
