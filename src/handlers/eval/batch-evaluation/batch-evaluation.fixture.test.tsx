@@ -227,12 +227,15 @@ describe("eval batch-evaluation (fixture-backed)", () => {
   }, 180_000);
 
   test("evaluate submits a job with a customer-supplied output config", async () => {
+    // The StartBatchEvaluation fixture is keyed by the full SDK request, so this
+    // also verifies that raw prefix selectors and session trace filters pass
+    // through the command handler unchanged.
     const stdout = await run([
       "eval",
       "batch-evaluation",
       "evaluate",
-      "--agent",
-      FIXTURE_EVAL_AGENT,
+      "--data-source-config",
+      '{"cloudWatchLogs":{"logGroupNamePrefixes":["/aws/bedrock-agentcore/runtimes/support_agent-"],"serviceNames":["support_agent.DEFAULT"],"filterConfig":{"sessionTraceIds":[{"sessionId":"session-123","traceIds":["4bf92f3577b34da6a3ce929d0e0e4736"]}]}}}',
       "--evaluators",
       "Builtin.Helpfulness",
       "--name",

@@ -19,10 +19,18 @@ Accepts inline JSON, file://<path>, or - to read stdin.
 JSON syntax:
   {
     "cloudWatchLogs": {
-      "logGroupNames": ["string", ...],  // [required] groups holding the traces
+      "logGroupNames": ["string", ...],         // exact names; maximum 10
+      "logGroupNamePrefixes": ["string", ...],  // or match by prefix; maximum 5
       "serviceNames": ["string", ...],   // e.g. "my_agent.DEFAULT"
       "filterConfig": {
         "sessionIds": ["string", ...],
+        "sessionTraceIds": [
+          {
+            "sessionId": "string",       // [required] session containing the traces
+            "traceIds": ["string", ...]  // [required] up to 100 trace IDs
+          },
+          ...
+        ],
         "timeRange": {
           "startTime": "timestamp",
           "endTime": "timestamp"
@@ -35,7 +43,7 @@ API reference:
   https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_DataSourceConfig.html
 
 Example:
-  --data-source-config '{"cloudWatchLogs":{"logGroupNames":["/aws/bedrock-agentcore/runtimes/support_agent-AbC123XyZ9-DEFAULT"],"serviceNames":["support_agent.DEFAULT"],"filterConfig":{"sessionIds":["session-123"]}}}'`;
+  --data-source-config '{"cloudWatchLogs":{"logGroupNamePrefixes":["/aws/bedrock-agentcore/runtimes/support_agent-"],"serviceNames":["support_agent.DEFAULT"],"filterConfig":{"sessionTraceIds":[{"sessionId":"session-123","traceIds":["4bf92f3577b34da6a3ce929d0e0e4736"]}]}}}'`;
 
 export class SessionSource {
   static readonly flags = [

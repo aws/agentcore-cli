@@ -454,8 +454,10 @@ describe("execution role KMS scoping", () => {
       "create",
       "--name",
       KMS_CONFIG_NAME,
-      "--agent",
-      FIXTURE_AGENT_ID,
+      // The PutRolePolicy fixture is keyed by the complete generated policy.
+      // Using a prefix source here verifies the default role grants that prefix.
+      "--data-source-config",
+      '{"cloudWatchLogs":{"logGroupNamePrefixes":["/aws/bedrock-agentcore/runtimes/testAgent_Agent-"],"serviceNames":["testAgent_Agent.DEFAULT"]}}',
       // Builtin.Correctness is backed by the hand-authored fixture carrying a
       // kmsKeyArn; Builtin.Helpfulness carries none, so this covers both arms of
       // the resolution in one create.

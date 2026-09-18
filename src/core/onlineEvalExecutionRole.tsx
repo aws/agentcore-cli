@@ -112,6 +112,7 @@ export function executionPolicy(
   logGroupNames: string[],
   kmsKeyArns: string[],
   outputConfig?: OnlineEvalResultDestination,
+  logGroupNamePrefixes: string[] = [],
 ): string {
   const logs = `arn:aws:logs:${region}:${accountId}:log-group`;
   const spansArn = `${logs}:aws/spans`;
@@ -119,7 +120,10 @@ export function executionPolicy(
   // service validates query access at the runtime level (all of a runtime's
   // endpoints share the `...-<runtimeId>-<endpoint>` naming), and a policy
   // pinned to one endpoint is rejected as insufficient.
-  const sampledArns = logGroupNames.map((name) => `${logs}:${runtimeLogGroupPrefix(name)}*`);
+  const sampledArns = [
+    ...logGroupNames.map((name) => `${logs}:${runtimeLogGroupPrefix(name)}*`),
+    ...logGroupNamePrefixes.map((prefix) => `${logs}:${prefix}*`),
+  ];
   return JSON.stringify({
     Version: "2012-10-17",
     Statement: [
@@ -220,6 +224,7 @@ export function scopePolicyName(policyDocument: string): string {
 export type GrantScopeOptions = {
   roleName?: string;
   outputConfig?: OnlineEvalResultDestination;
+  logGroupNamePrefixes?: string[];
 };
 
 // grantOnlineEvalScope creates the execution role for `configName` if it does not
@@ -232,7 +237,11 @@ export async function grantOnlineEvalScope(
   region: string,
   logGroupNames: string[],
   kmsKeyArns: string[] = [],
-  { roleName = onlineEvalExecutionRoleName(configName), outputConfig }: GrantScopeOptions = {},
+  {
+    roleName = onlineEvalExecutionRoleName(configName),
+    outputConfig,
+    logGroupNamePrefixes,
+  }: GrantScopeOptions = {},
 ): Promise<{ roleArn: string; policyName: string }> {
   let roleArn: string;
   try {
@@ -256,6 +265,7 @@ export async function grantOnlineEvalScope(
     logGroupNames,
     kmsKeyArns,
     outputConfig,
+    logGroupNamePrefixes,
   );
   const policyName = scopePolicyName(policyDocument);
   await iam.send(
