@@ -32,11 +32,11 @@ import { createCloudFormationClient } from "../../factories";
 import type { CreateCloudFormationClient } from "../../types";
 import {
   createCredentialProvisioner,
-  createPaymentCredentialRemover,
+  createCredentialRemover,
   type CredentialProviderCalls,
   type CredentialProvisioner,
+  type CredentialRemover,
   type DeployedCredentials,
-  type PaymentCredentialRemover,
 } from "./cdk/credentials";
 import {
   countDeployableResources,
@@ -114,7 +114,7 @@ export type CdkBackendConfig = {
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
   provisionCredentials?: CredentialProvisioner;
-  removePaymentCredentials?: PaymentCredentialRemover;
+  removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
 };
@@ -131,7 +131,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
   private readonly provisionCredentials: CredentialProvisioner;
-  private readonly removePaymentCredentials: PaymentCredentialRemover;
+  private readonly removeCredentials: CredentialRemover;
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
 
@@ -154,8 +154,7 @@ export class CdkBackend implements ProjectBackend {
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
     this.provisionCredentials =
       config.provisionCredentials ?? createCredentialProvisioner(config.identity);
-    this.removePaymentCredentials =
-      config.removePaymentCredentials ?? createPaymentCredentialRemover(config.identity);
+    this.removeCredentials = config.removeCredentials ?? createCredentialRemover(config.identity);
     this.describeStack =
       config.describeStack ??
       ((region, credentials, stackName) =>
@@ -239,6 +238,7 @@ export class CdkBackend implements ProjectBackend {
     const provisioned = yield* this.provisionCredentials(project, {
       credentials,
       region: target.region,
+      targetName: target.name,
     });
     // Recorded every deploy (even when empty) so dropping the last credential
     // from the spec clears the stale entry instead of leaving it advertised.
@@ -367,9 +367,10 @@ export class CdkBackend implements ProjectBackend {
     yield { type: "step", message: `Removing stack ${artifact.stackName}` };
     yield* this.runCdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
     // After the stack, since a resource in it may still be using the provider.
-    yield* this.removePaymentCredentials(project, {
+    yield* this.removeCredentials(project, {
       credentials: options.credentials,
       region: target.region,
+      targetName: target.name,
       recorded,
     });
     await removeTargetState(this.json, project.rootPath, target.name);

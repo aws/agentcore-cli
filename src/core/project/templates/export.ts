@@ -410,9 +410,10 @@ function attachIdentityProvider(
     category: MODEL_API_KEY_NOTE_CATEGORY,
     message:
       `The harness model authenticates with the AgentCore Identity API-key provider ` +
-      `"${credentialName}" (${apiKeyArn}). A credential entry referencing it was added to ` +
-      `agentcore.json so the deployed agent can fetch the key. For local development ` +
-      `(\`agentcore project dev\`), add ${envVarName}=<your-key> to agentcore/.env.local.`,
+      `"${credentialName}" (${apiKeyArn}). A credential entry named "${credentialName}" was ` +
+      `added to agentcore.json. Deploy creates a provider for it scoped to the project and ` +
+      `target, so add ${envVarName}=<your-key> to agentcore/.env.local before the first ` +
+      `deploy. \`agentcore project dev\` reads the same variable.`,
   });
 }
 

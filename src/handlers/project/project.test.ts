@@ -312,6 +312,12 @@ describe("project create", () => {
     });
     const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
     expect(envLocal).toContain("test-api-key");
+    const loadModel = await Bun.file(
+      join(projectRoot, "app", "agent_python_strands", "model", "load.py"),
+    ).text();
+    expect(loadModel).toContain(
+      `os.environ.get("AGENTCORE_CREDENTIAL_${credentialName.toUpperCase()}_NAME", "${credentialName}")`,
+    );
   });
 
   test("scaffolds a Container agent from the strands -container template", async () => {

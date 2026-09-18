@@ -477,6 +477,22 @@ Source-aware values: any field flag documented as such accepts the value inline,
 `file://` convention). A command reads stdin from at most one flag. For example,
 `--instructions file://order-quality.txt` or `--instructions -`.
 
+Project credentials: a `credentials[]` entry in `agentcore.json` is named by its
+spec name and keeps its secret in `agentcore/.env.local` under
+`AGENTCORE_CREDENTIAL_<NAME>` (with a field suffix for OAuth2 and payment
+values). `project deploy` provisions the Identity credential provider before
+synth under the name `<project>_<target>_<credential>`, so two targets in one
+account and region get separate providers, and records its ARN in
+`deployed-state.json` under the spec name. Tearing a target down (deploying a
+spec with nothing left to deploy, which is where `project remove all` leads)
+deletes every provider the target owns: API key, OAuth2 and payment. CLI
+versions before this change named providers by the bare credential name. Those
+providers stay in the account after an upgrade, untouched by deploys and
+teardowns. Delete them with `agentcore identity api-key-credential-provider
+delete --name <credential>`, the `oauth2-credential-provider` equivalent, or
+`aws bedrock-agentcore-control delete-payment-credential-provider` once nothing
+else uses them.
+
 ### Extending the CDK app
 
 `agentcore/cdk/` is a CDK app of two files. `bin/cdk.ts` reads the project once
