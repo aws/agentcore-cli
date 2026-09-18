@@ -1,4 +1,5 @@
 import z from "zod";
+import { InputValidationError } from "../../../../errors";
 import { SourceResolver, type AppIO } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
