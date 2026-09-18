@@ -1,3 +1,5 @@
+import { InputValidationError } from "../../../errors";
+import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import type { Context } from "../../../router";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey } from "../../keys";
@@ -15,6 +17,23 @@ type AddProjectResourceResultOptions = {
   resourceType?: ProjectMutationResourceType;
   notes?: string[];
 };
+
+/**
+ The L3 deploys `<project><sep><target><sep><name>` and fails at synth past the service cap. This fails at add time for the "default" target the first deploy provisions.
+**/
+export function requireDeployedNameFits(
+  kind: string,
+  projectName: string,
+  name: string,
+  separator: "_" | "-",
+  maxLength: number,
+): void {
+  const deployed = [projectName, DEFAULT_TARGET_NAME, name].join(separator);
+  if (deployed.length <= maxLength) return;
+  throw new InputValidationError(
+    `${kind} deployed name '${deployed}' is ${deployed.length} characters. The maximum is ${maxLength}. The deployed name is <project>${separator}<default target>${separator}<name>. Shorten the ${kind.toLowerCase()} name.`,
+  );
+}
 
 export async function addProjectResource(
   ctx: Context,

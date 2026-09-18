@@ -153,9 +153,9 @@ describe("project add gateway", () => {
   test.each([
     ["missing --name", ["add", "gateway"], "required option '--name"],
     [
-      "service resource name exceeds 48 characters",
-      ["add", "gateway", "--name", "gateway-name-that-is-far-too-long-for-the-service"],
-      "exceeds the service limit",
+      "a deployed name over the 100-character service limit",
+      ["add", "gateway", "--name", `g${"x".repeat(80)}`],
+      `Gateway deployed name 'TestProject-default-g${"x".repeat(80)}' is 101 characters. The maximum is 100.`,
     ],
     [
       "policy engine name without mode",
