@@ -19,10 +19,7 @@ const TARGET_COLUMNS = [
 
 export interface ChosenDeploymentTarget {
   targetName: string;
-  // target is unset for a project that declares no targets yet: the name is
-  // then DEFAULT_TARGET_NAME, which deploy provisions on first run.
   target: AwsDeploymentTarget | undefined;
-  // back returns to the picker when there was a choice, else to onBack.
   back: () => void;
 }
 
@@ -32,7 +29,6 @@ export interface DeploymentTargetPickerProps {
   breadcrumb: string[];
   description: string;
   onBack: () => void;
-  // children must return an element rather than call hooks, as with ProjectGate.
   children: (chosen: ChosenDeploymentTarget) => React.ReactElement;
 }
 

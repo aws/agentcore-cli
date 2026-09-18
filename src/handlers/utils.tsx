@@ -22,12 +22,9 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
   };
 }
 
-// RegionPinContext carries Root's setter for the TUI's pinned region. The
-// context's region is the ambient one resolved at launch, which is not
-// necessarily where the resource a screen shows lives: project status and
-// invoke work on a target that may be deployed elsewhere, and the harness hub
-// links resources by their ARN's region. A pin replaces RegionKey on every
-// route's context, so a detail page and whatever it opens next fetch there.
+// A pinned region replaces RegionKey on every route's context, so a screen that
+// shows a resource living outside the launch region pins it and everything it
+// opens next fetches there.
 export const RegionPinContext = createContext<(region: string) => void>(() => {});
 
 // usePinRegion pins `region` once it is known. To pin at an event instead, for
