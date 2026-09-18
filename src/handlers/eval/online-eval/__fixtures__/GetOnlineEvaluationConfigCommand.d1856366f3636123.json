@@ -12,8 +12,8 @@
       "serviceNames": [
         "testAgent_Agent.DEFAULT"
       ],
-      "logGroupNames": [
-        "/aws/bedrock-agentcore/runtimes/testAgent_Agent-wm9hYBD93Y-DEFAULT"
+      "logGroupNamePrefixes": [
+        "/aws/bedrock-agentcore/runtimes/testAgent_Agent-"
       ]
     }
   },
