@@ -10,7 +10,7 @@ on:
         type: choice
         options: [major, minor, patch]
       channel:
-        description: rc publishes under the rc dist-tag and pins the vended CDK to the library's preview dist-tag, stable publishes under latest and pins latest
+        description: rc publishes under the rc dist-tag and pins the vended CDK to the library's rc dist-tag, stable publishes under latest and pins latest
         required: true
         type: choice
         options: [rc, stable]
@@ -61,7 +61,7 @@ jobs:
       - name: Generate command reference
         run: bun scripts/generate-command-reference.mjs
 
-      - run: bun scripts/sync-vended-cdk.ts ${{ inputs.channel == 'rc' && 'preview' || 'latest' }}
+      - run: bun scripts/sync-vended-cdk.ts ${{ inputs.channel == 'rc' && 'rc' || 'latest' }}
 
       - name: Open release PR
         env:
