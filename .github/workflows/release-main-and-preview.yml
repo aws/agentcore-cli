@@ -4,6 +4,9 @@
 # is registered with, and that registration cannot be edited.
 name: release-publish
 on:
+  # Dispatch publishes the version in package.json at the chosen ref when it is not on npm yet,
+  # for a release whose merge push never ran.
+  workflow_dispatch:
   push:
     # TODO: switch to main once the refactor lands and this workflow is allowlisted there.
     branches: [refactor]
@@ -11,7 +14,7 @@ on:
 jobs:
   check-release:
     if: "!github.event.deleted"
-    runs-on: aws-release-4-core
+    runs-on: ubuntu-latest
     permissions:
       pull-requests: read
     outputs:
@@ -35,6 +38,7 @@ jobs:
                   .base.ref == $ref and
                   (.head.ref | startswith("release/v"))
                 )')
+          [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && IS_RELEASE=true
           echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
 
   verify:
@@ -49,7 +53,7 @@ jobs:
   publish:
     needs: verify
     # npm provenance is only issued from GitHub-hosted runners.
-    runs-on: aws-release-4-core
+    runs-on: ubuntu-latest
     environment:
       name: npm-publish
       url: https://www.npmjs.com/package/@aws/agentcore

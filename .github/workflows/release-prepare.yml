@@ -17,7 +17,7 @@ on:
 
 jobs:
   prepare:
-    runs-on: aws-release-4-core
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
