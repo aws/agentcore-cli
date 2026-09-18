@@ -9,32 +9,6 @@
 // enclosing object, not on the command line.
 
 export const parameterHelp = {
-  name: `(string)
-The name of the harness. Must start with a letter and contain only
-alphanumeric characters and underscores.
-
-Pattern: [a-zA-Z][a-zA-Z0-9_]{0,39}`,
-
-  executionRoleArn: `(string)
-The ARN of the IAM role the harness assumes when running. The role must
-trust bedrock-agentcore.amazonaws.com and have permissions for the services
-the agent needs (Bedrock model invocation, CloudWatch Logs, built-in tools,
-memory, ...).
-
-When omitted, the CLI provisions a default per-harness role named
-AgentCoreHarness-<name> with the baseline policy and uses it.
-
-Example:
-  --execution-role-arn arn:aws:iam::123456789012:role/MyHarnessRole`,
-
-  systemPrompt: `(string)
-The system prompt that defines the agent's behavior and instructions. The
-CLI wraps the string into the API's content-block list ([{"text": ...}])
-for you.
-
-Example:
-  --system-prompt 'You are a concise research assistant.'`,
-
   model: `(JSON: tagged union object)
 The model configuration for the harness. Supports Amazon Bedrock, OpenAI,
 Google Gemini, and LiteLLM providers. Exactly one of the following top-level
