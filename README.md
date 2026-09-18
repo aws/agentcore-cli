@@ -483,10 +483,11 @@ spec name and keeps its secret in `agentcore/.env.local` under
 values). `project deploy` provisions the Identity credential provider before
 synth under the name `<project>_<target>_<credential>`, so two targets in one
 account and region get separate providers, and records its ARN in
-`deployed-state.json` under the spec name. Tearing a target down (deploying a
-spec with nothing left to deploy, which is where `project remove all` leads)
-deletes every provider the target owns: API key, OAuth2 and payment. CLI
-versions before this change named providers by the bare credential name. Those
+`deployed-state.json` under the spec name. A credential removed from the spec
+has its provider deleted on the next deploy of each target, after the stack
+update. Tearing a target down (deploying a spec with nothing left to deploy,
+which is where `project remove all` leads) deletes every provider the target
+owns: API key, OAuth2 and payment. CLI versions before this change named providers by the bare credential name. Those
 providers stay in the account after an upgrade, untouched by deploys and
 teardowns. Delete them with `agentcore identity api-key-credential-provider
 delete --name <credential>`, the `oauth2-credential-provider` equivalent, or

@@ -94,12 +94,12 @@ export type CredentialProvisioner = (
   input: CredentialProvisionInput,
 ) => AsyncGenerator<ProjectEvent, DeployedCredentials>;
 
+/** A credential's spec name and provider kind, enough to name and delete its provider. */
+export type CredentialProviderRef = Pick<Credential, "name" | "authorizerType">;
+
 export type CredentialRemovalInput = CredentialProvisionInput & {
-  /**
-   * The providers deployed-state.json recorded for this target, read before the
-   * deploy overwrote them.
-   */
-  recorded: DeployedCredentials;
+  /** The credentials whose providers to delete. The caller decides the set. */
+  providers: readonly CredentialProviderRef[];
 };
 
 export type CredentialRemover = (
@@ -108,46 +108,50 @@ export type CredentialRemover = (
 ) => AsyncGenerator<ProjectEvent, void>;
 
 /**
- * Deletes the credential providers a target provisioned, for a teardown that has
- * already removed its stack.
+ * The providers a target recorded that its spec no longer declares. Deploy deletes
+ * these after the stack update, and teardown deletes them together with the declared
+ * ones, so a credential dropped from the spec does not leave its provider behind.
  *
- * Taken from the recorded state and not only from the spec: a teardown is reached by
- * declaring nothing to deploy, and `project remove all` gets there by emptying the
- * spec — including the credentials that name the providers to delete. The spec is
- * still consulted, so a project whose state predates the CLI recording credentials
- * still has its providers removed.
+ * A recorded entry without `authorizerType` was written by a CLI that named providers
+ * by the bare credential name, so nothing exists under the scoped name and the entry
+ * is skipped.
+ */
+export function orphanedCredentials(
+  recorded: DeployedCredentials,
+  declared: readonly Credential[],
+): CredentialProviderRef[] {
+  const names = new Set(declared.map(({ name }) => name));
+  return Object.entries(recorded).flatMap(([name, { authorizerType }]) =>
+    authorizerType && !names.has(name) ? [{ name, authorizerType }] : [],
+  );
+}
+
+/**
+ * Deletes the given credentials' providers under their target-scoped names.
  *
  * Every kind is deleted. A provider's name is scoped to this project and target, so
- * nothing outside this target can be using it. A recorded entry without
- * `authorizerType` was written by a CLI that named providers by the bare credential
- * name, so nothing exists under the scoped name and the entry is skipped.
- *
- * A provider that is already gone is not an error, and a provider that cannot be
- * deleted is reported rather than failing a teardown whose stack is already gone.
+ * nothing outside this target can be using it. A provider that is already gone is
+ * not an error, and a provider that cannot be deleted is reported rather than
+ * failing the deploy that already changed the stack.
  */
 export function createCredentialRemover(identity: ProviderDeletes): CredentialRemover {
-  return async function* removeCredentials(project, { region, credentials, targetName, recorded }) {
-    const owned = new Map<string, CredentialType>();
-    for (const [name, state] of Object.entries(recorded)) {
-      if (state.authorizerType) owned.set(name, state.authorizerType);
-    }
-    for (const { name, authorizerType } of project.spec.credentials) {
-      owned.set(name, authorizerType);
-    }
-
+  return async function* removeCredentials(
+    project,
+    { region, credentials, targetName, providers },
+  ) {
     const options: CoreOptions = { region, credentials };
-    for (const [name, kind] of owned) {
+    for (const { name, authorizerType } of providers) {
       const provider = providerName(project.name, targetName, name);
       yield { type: "step", message: `Removing credential provider '${provider}'` };
       try {
-        await deleteProvider(identity, kind, provider, options);
+        await deleteProvider(identity, authorizerType, provider, options);
       } catch (error) {
         if (error instanceof ResourceNotFoundException) continue;
         yield {
           type: "step",
           message:
             `Could not remove credential provider '${provider}': ${(error as Error).message}. ` +
-            `Delete it with 'aws bedrock-agentcore-control ${DELETE_COMMANDS[kind]}'.`,
+            `Delete it with 'aws bedrock-agentcore-control ${DELETE_COMMANDS[authorizerType]}'.`,
         };
       }
     }

@@ -15,7 +15,9 @@ import { EnvLocalFile } from "../../envLocal";
 import {
   createCredentialProvisioner,
   createCredentialRemover,
+  orphanedCredentials,
   type CredentialProviderCalls,
+  type CredentialProviderRef,
   type CredentialProvisionInput,
   type CredentialProvisioner,
   type DeployedCredential,
@@ -886,24 +888,40 @@ describe("createCredentialProvisioner rollback", () => {
   });
 });
 
+describe("orphanedCredentials", () => {
+  test("keeps recorded providers the spec dropped, skipping declared and untyped ones", async () => {
+    // `svc` predates the CLI recording the provider kind, so it was named by the bare
+    // credential name and nothing exists under the scoped name to delete.
+    const recorded: DeployedCredentials = {
+      "openai-key": recordedAs("ApiKeyCredentialProvider", { credentialProviderArn: "arn:apikey" }),
+      wallet: recordedAs("PaymentCredentialProvider", { credentialProviderArn: "arn:payment" }),
+      svc: { credentialProviderArn: "arn:legacy" },
+    };
+    const input = await project([COINBASE]);
+
+    expect(orphanedCredentials(recorded, input.spec.credentials)).toEqual([
+      { name: "openai-key", authorizerType: "ApiKeyCredentialProvider" },
+    ]);
+  });
+});
+
 describe("createCredentialRemover", () => {
-  async function removeAll(
+  async function remove(
     subject: ReturnType<typeof account>,
-    input: Project,
-    recorded: DeployedCredentials = {},
+    providers: CredentialProviderRef[],
   ): Promise<{ events: ProjectEvent[] }> {
-    return collect(createCredentialRemover(subject.client)(input, { ...INPUT, recorded }));
+    const input = await project([]);
+    return collect(createCredentialRemover(subject.client)(input, { ...INPUT, providers }));
   }
 
-  test("deletes every kind of provider a torn-down target declares, under its scoped names", async () => {
+  test("deletes every kind of provider under its scoped name", async () => {
     const subject = account({
       [OPENAI_PROVIDER]: { credentialProviderArn: `arn:apikey:${OPENAI_PROVIDER}` },
       [OAUTH_PROVIDER]: { credentialProviderArn: `arn:oauth:${OAUTH_PROVIDER}` },
       [WALLET_PROVIDER]: { credentialProviderArn: `arn:payment:${WALLET_PROVIDER}` },
     });
-    const input = await project([API_KEY, OAUTH, COINBASE]);
 
-    const { events } = await removeAll(subject, input);
+    const { events } = await remove(subject, [API_KEY, OAUTH, COINBASE]);
 
     // Each kind goes through its own delete call, since Identity has one per kind.
     expect(subject.deleted).toEqual([
@@ -920,54 +938,11 @@ describe("createCredentialRemover", () => {
     expect(subject.optionsSeen).toEqual([OPTIONS, OPTIONS, OPTIONS]);
   });
 
-  test("deletes providers the target recorded but the spec no longer declares", async () => {
-    // What `project remove all` leaves behind: the spec is empty, and the recorded
-    // state read before the deploy is the only record of what was provisioned.
-    const subject = account({ [WALLET_PROVIDER]: { credentialProviderArn: "arn:payment" } });
-    const input = await project([]);
-
-    const { events } = await removeAll(subject, input, {
-      wallet: { credentialProviderArn: "arn:payment", authorizerType: "PaymentCredentialProvider" },
-    });
-
-    expect(subject.deleted).toEqual([{ kind: "payment", name: WALLET_PROVIDER }]);
-    expect(subject.contents()).toEqual({});
-    expect(events).toEqual([
-      { type: "step", message: `Removing credential provider '${WALLET_PROVIDER}'` },
-    ]);
-  });
-
-  test("skips a recorded provider written before its type was persisted", async () => {
-    // Written by a CLI that named providers by the bare credential name, so nothing
-    // exists under the scoped name for a teardown to delete.
-    const subject = account({ svc: { credentialProviderArn: "arn:apikey" } });
-    const input = await project([]);
-
-    const { events } = await removeAll(subject, input, {
-      svc: { credentialProviderArn: "arn:apikey" },
-    });
-
-    expect(subject.deleted).toEqual([]);
-    expect(events).toEqual([]);
-  });
-
-  test("deletes a provider named by the spec or the recorded state exactly once", async () => {
-    const subject = account({ [WALLET_PROVIDER]: { credentialProviderArn: "arn:payment" } });
-    const input = await project([COINBASE]);
-
-    await removeAll(subject, input, {
-      wallet: { credentialProviderArn: "arn:payment", authorizerType: "PaymentCredentialProvider" },
-    });
-
-    expect(subject.deleted).toEqual([{ kind: "payment", name: WALLET_PROVIDER }]);
-  });
-
   test("treats a provider that is already gone as removed", async () => {
     const notFound = new ResourceNotFoundException({ $metadata: {}, message: "not found" });
     const subject = account({}, { deleteFails: notFound });
-    const input = await project([COINBASE]);
 
-    const { events } = await removeAll(subject, input);
+    const { events } = await remove(subject, [COINBASE]);
 
     expect(events).toEqual([
       { type: "step", message: `Removing credential provider '${WALLET_PROVIDER}'` },
@@ -980,9 +955,8 @@ describe("createCredentialRemover", () => {
       { [OPENAI_PROVIDER]: existing },
       { deleteFails: new Error("still in use") },
     );
-    const input = await project([API_KEY]);
 
-    const { events } = await removeAll(subject, input);
+    const { events } = await remove(subject, [API_KEY]);
 
     expect(stepMessages(events)[1]).toMatch(
       new RegExp(
