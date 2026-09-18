@@ -895,14 +895,23 @@ test("--version on a versioned router prints the version and maps to exit 0", as
   expect(AgentCoreCLIError.fromError(error).exitCode).toBe(0);
 });
 
-test("a versioned router declares --version in root help", async () => {
+test("a versioned router declares --version in root help and still lists subcommands by name", async () => {
   const root = new Router("agentcore").version("9.9.9");
-  root.handler(leaf("noop", () => {}));
+  root.handler(
+    createHandler({
+      name: "feedback",
+      description: "",
+      flags: [flag("verbose", "v", z.boolean())],
+      handle: async () => {},
+    }),
+  );
 
   const out = await helpOutput(root, ["agentcore", "--help"]);
 
   expect(out).toContain("-V, --version");
   expect(out).toContain("display the CLI version");
+  expect(out).toMatch(/^ {2}feedback\b/m);
+  expect(out).not.toContain("feedback [options]");
 });
 
 test("a versioned router does not shadow a nested --version option", async () => {

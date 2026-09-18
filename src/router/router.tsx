@@ -202,19 +202,19 @@ export function compile(
   const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
   const c = new RoutedCommand(compiledNode);
   c.addHelpCommand(false);
+  const defaultHelp = c.createHelp();
   c.configureHelp({
     showGlobalOptions: true,
     subcommandTerm: (command) => command.name(),
+    ...(node instanceof Router && node.configuredVersion()
+      ? {
+          visibleOptions: (command: Command) => [
+            ...defaultHelp.visibleOptions(command),
+            new Option("-V, --version", "display the CLI version"),
+          ],
+        }
+      : {}),
   });
-  if (node instanceof Router && node.configuredVersion()) {
-    const defaultHelp = c.createHelp();
-    c.configureHelp({
-      visibleOptions: (command) => [
-        ...defaultHelp.visibleOptions(command),
-        new Option("-V, --version", "display the CLI version"),
-      ],
-    });
-  }
   c.description(node.description());
 
   const ownFlags = node.flags();
