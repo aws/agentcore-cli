@@ -60,7 +60,7 @@ npm checks the filename of the top-level workflow and the environment, so the pu
 `release-main-and-preview.yml` under `npm-publish` rather than move into a reusable workflow. The name is
 shared with main's release workflow on purpose: each branch runs its own copy.
 
-The prepare, check-release, and publish jobs use `ubuntu-latest`. The `release-main-and-preview.yml`
+The prepare job uses `aws-release-4-core`, the check-release and publish jobs use `ubuntu-latest`. The `release-main-and-preview.yml`
 allowlist currently covers `refactor` only. After the workflow lands on `main`, have a
 runner-group administrator add its `main` entry before switching the publish branch filter.
 The allowlist is scoped to workflow paths and branches; renaming a workflow also requires an
