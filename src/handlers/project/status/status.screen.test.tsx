@@ -300,8 +300,9 @@ describe("project status screen", () => {
     expect(call.args[3]).toMatchObject({ region: TARGET.region });
   });
 
-  test("several targets: asks which, keeps the choice across a detail page, and esc returns to the choice", async () => {
-    const screen = renderStatus(core(RUNTIME_RESOURCES, [TARGET, STAGING]));
+  test("several targets: asks which, keeps the choice and its region across a detail page, esc returns to the choice, and a menu unpins", async () => {
+    const value = core(RUNTIME_RESOURCES, [TARGET, STAGING]);
+    const screen = renderStatus(value);
 
     await waitForText(screen.lastFrame, "choose a deployment target");
     const picker = flatFrame(screen.lastFrame);
@@ -315,14 +316,38 @@ describe("project status screen", () => {
     await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "agentcore → runtime → get");
+    await waitForText(screen.lastFrame, "READY");
+    const runtimeCall = value.runtime.calls.find(({ method }) => method === "getRuntime")!;
+    expect(runtimeCall.args[1]).toMatchObject({ region: STAGING.region });
     await screen.press("escape");
     await waitForGroup(screen);
     expect(screen.lastFrame()).toContain("on target staging");
     expect(screen.lastFrame()).not.toContain("choose a deployment target");
+    // Back on the tree the target's region is still pinned for the next open.
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "ACTIVE");
+    const memoryCall = value.memory.calls.find(({ method }) => method === "getMemory")!;
+    expect(memoryCall.args[2]).toMatchObject({ region: STAGING.region });
+    await screen.press("escape");
+    await waitForGroup(screen);
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a deployment target");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
+    // Past the screen that pinned, the menus and what they open fetch in the
+    // launch region again.
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "❯ project");
+    await screen.write("harness");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "agentcore → harness");
+    await screen.write("list");
+    await screen.press("return");
+    await waitFor(() => value.harness.calls.some(({ method }) => method === "listHarnesses"));
+    const listCall = value.harness.calls.find(({ method }) => method === "listHarnesses")!;
+    expect(listCall.args[2]).toMatchObject({ region: "us-east-1" });
   });
 
   test("reports the CLI's own guidance outside a project", async () => {

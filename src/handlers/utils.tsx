@@ -24,8 +24,10 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
 
 // A pinned region replaces RegionKey on every route's context, so a screen that
 // shows a resource living outside the launch region pins it and everything it
-// opens next fetches there.
-export const RegionPinContext = createContext<(region: string) => void>(() => {});
+// opens next fetches there. The pin lasts until the user navigates back past
+// the screen that set it or reaches a command menu (see PinnedRegion in Root).
+// Passing undefined drops every pin.
+export const RegionPinContext = createContext<(region: string | undefined) => void>(() => {});
 
 // usePinRegion pins `region` once it is known. To pin at an event instead, for
 // example right before a navigation, call the context's setter directly.

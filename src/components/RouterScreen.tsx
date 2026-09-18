@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { useNavigate } from "react-router";
@@ -8,6 +8,7 @@ import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
+import { RegionPinContext } from "../handlers/utils";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
@@ -58,6 +59,13 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
+
+  // A menu is not about any one resource: whatever is opened from it fetches
+  // in the launch region again.
+  const pinRegion = useContext(RegionPinContext);
+  useEffect(() => {
+    pinRegion(undefined);
+  }, [pinRegion]);
 
   const command = resolveCommand(ctx.require(CommandKey), path);
   // Screen-backed commands first, then the command-line-only ones, so the
