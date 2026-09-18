@@ -1,5 +1,7 @@
 # Publishes @aws/agentcore to npm and creates the GitHub release when a release PR from
 # release-prepare.yml merges. The version is whatever the merged package.json says.
+# The filename and the npm-publish environment are what the package's npm trusted publisher
+# is registered with, and that registration cannot be edited.
 name: release-publish
 on:
   push:
@@ -48,6 +50,9 @@ jobs:
     needs: verify
     # npm provenance is only issued from GitHub-hosted runners.
     runs-on: aws-release-4-core
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@aws/agentcore
     permissions:
       contents: write
       id-token: write

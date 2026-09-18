@@ -5,7 +5,7 @@
 Workflows are organized into two roles:
 
 ```
-Orchestrators (ci.yml, release-prepare.yml, release-publish.yml)
+Orchestrators (ci.yml, release-prepare.yml, release-main-and-preview.yml)
 Jobs          (verify.yml)
 ```
 
@@ -28,7 +28,7 @@ ci.yml
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
-release-publish.yml (npm publish and GitHub release when a release PR merges)
+release-main-and-preview.yml (npm publish and GitHub release when a release PR merges)
   `-- verify.yml
 ```
 
@@ -54,12 +54,13 @@ ordinary merges, fork PRs, and pushes without a matching release PR skip verific
 publishing. Every job uses the pushed SHA, so later commits cannot change what is released.
 
 npm publish authenticates with trusted publishing: the package's npm settings list this repository
-and `release-publish.yml` as a trusted publisher, and the publish job exchanges its GitHub OIDC token
-for a short-lived npm token. There is no npm secret in the repository. npm checks the filename of the
-top-level workflow, so the publish step must stay in `release-publish.yml` rather than move into a
-reusable workflow.
+and `release-main-and-preview.yml` with the `npm-publish` environment as a trusted publisher, and the publish
+job exchanges its GitHub OIDC token for a short-lived npm token. There is no npm secret in the repository.
+npm checks the filename of the top-level workflow and the environment, so the publish step must stay in
+`release-main-and-preview.yml` under `npm-publish` rather than move into a reusable workflow. The name is
+shared with main's release workflow on purpose: each branch runs its own copy.
 
-The prepare, check-release, and publish jobs use `aws-release-4-core`. The `release-publish.yml`
+The prepare, check-release, and publish jobs use `aws-release-4-core`. The `release-main-and-preview.yml`
 allowlist currently covers `refactor` only. After the workflow lands on `main`, have a
 runner-group administrator add its `main` entry before switching the publish branch filter.
 The allowlist is scoped to workflow paths and branches; renaming a workflow also requires an
