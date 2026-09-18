@@ -107,6 +107,7 @@ import {
   ERROR_SOURCE,
   FileWriteError,
   InputValidationError,
+  MalformedServiceResponseError,
   NetworkingError,
   ResourceNotFoundError,
 } from "../errors";
@@ -695,7 +696,7 @@ export class EvalClient implements CoreEvalClient {
       new StartBatchEvaluationCommand({
         batchEvaluationName: input.name,
         description: input.description,
-        insights: input.insightIds.map((insightId) => ({ insightId })),
+        insights: input.insightIds?.map((insightId) => ({ insightId })),
         evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
         dataSourceConfig,
         kmsKeyArn: input.kmsKeyArn,
@@ -716,9 +717,18 @@ export class EvalClient implements CoreEvalClient {
     const timeRange = source.window;
 
     if (source.origin === "online-eval") {
+      const onlineEvaluationConfigArn = source.onlineEvaluationConfigId.startsWith("arn:")
+        ? source.onlineEvaluationConfigId
+        : (await this.getOnlineEvaluationConfig(source.onlineEvaluationConfigId, options))
+            .onlineEvaluationConfigArn;
+      if (!onlineEvaluationConfigArn) {
+        throw new MalformedServiceResponseError(
+          `online evaluation config "${source.onlineEvaluationConfigId}" returned no ARN`,
+        );
+      }
       return {
         onlineEvaluationConfigSource: {
-          onlineEvaluationConfigArn: source.onlineEvaluationConfigId,
+          onlineEvaluationConfigArn,
           timeRange,
         },
       };

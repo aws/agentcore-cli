@@ -27,7 +27,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
         group: CONFIGURATION,
       }),
       ...SessionSource.flags,
-      flag("insight", "insight ID(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT]), {
+      flag("insight", "insight ID(s) to run", z.array(z.string()).optional(), {
         group: ANALYSIS,
       }),
       flag(
@@ -44,11 +44,20 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
 
       const resolver = new SourceResolver({ stdin: io.stdin });
       const source = await SessionSource.resolve(flags, resolver);
+      if (
+        source.origin === "online-eval" &&
+        (flags["insight"]?.length || flags["evaluators"]?.length)
+      ) {
+        throw new InputValidationError(
+          "--insight and --evaluators cannot be used with --online-eval",
+        );
+      }
       const response = await core.eval.startBatchInsights(
         {
           name: flags["name"],
           description: flags["description"],
-          insightIds: flags["insight"],
+          insightIds:
+            source.origin === "online-eval" ? undefined : (flags["insight"] ?? [DEFAULT_INSIGHT]),
           evaluatorIds: flags["evaluators"],
           source,
           kmsKeyArn: flags["kms-key-arn"],

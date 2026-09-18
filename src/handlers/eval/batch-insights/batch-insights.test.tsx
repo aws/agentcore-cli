@@ -125,7 +125,7 @@ describe("eval batch-insights run", () => {
     ]);
   });
 
-  test("accepts explicit insights and optional evaluator chaining", async () => {
+  test("omits analysis configuration when an online evaluation is the source", async () => {
     const { core } = await run([
       "eval",
       "batch-insights",
@@ -134,6 +134,59 @@ describe("eval batch-insights run", () => {
       "insights_run",
       "--online-eval",
       "online-1",
+      "--json",
+    ]);
+
+    expect(core.eval.calls[0]?.method).toBe("startBatchInsights");
+    expect(core.eval.calls[0]?.args[0]).toMatchObject({
+      insightIds: undefined,
+      evaluatorIds: undefined,
+      source: {
+        origin: "online-eval",
+        onlineEvaluationConfigId: "online-1",
+      },
+    });
+  });
+
+  test("rejects explicit analysis configuration with an online evaluation source", async () => {
+    await expect(
+      run([
+        "eval",
+        "batch-insights",
+        "run",
+        "--name",
+        "insights_run",
+        "--online-eval",
+        "online-1",
+        "--insight",
+        "Builtin.Insight.UserIntent",
+      ]),
+    ).rejects.toThrow(/--insight and --evaluators cannot be used with --online-eval/);
+
+    await expect(
+      run([
+        "eval",
+        "batch-insights",
+        "run",
+        "--name",
+        "insights_run",
+        "--online-eval",
+        "online-1",
+        "--evaluators",
+        "Builtin.Helpfulness",
+      ]),
+    ).rejects.toThrow(/--insight and --evaluators cannot be used with --online-eval/);
+  });
+
+  test("accepts explicit insights and optional evaluator chaining for an agent source", async () => {
+    const { core } = await run([
+      "eval",
+      "batch-insights",
+      "run",
+      "--name",
+      "insights_run",
+      "--agent",
+      "agent-1",
       "--insight",
       "Builtin.Insight.UserIntent",
       "Builtin.Insight.ExecutionSummary",
@@ -142,14 +195,10 @@ describe("eval batch-insights run", () => {
       "--json",
     ]);
 
-    expect(core.eval.calls[0]?.method).toBe("startBatchInsights");
     expect(core.eval.calls[0]?.args[0]).toMatchObject({
       insightIds: ["Builtin.Insight.UserIntent", "Builtin.Insight.ExecutionSummary"],
       evaluatorIds: ["Builtin.Helpfulness"],
-      source: {
-        origin: "online-eval",
-        onlineEvaluationConfigId: "online-1",
-      },
+      source: { origin: "agent", agent: "agent-1" },
     });
   });
 });

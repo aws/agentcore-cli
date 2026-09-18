@@ -293,7 +293,7 @@ export type StartBatchEvaluationInput = {
 export type StartBatchInsightsInput = {
   name: string;
   description?: string;
-  insightIds: string[];
+  insightIds?: string[];
   evaluatorIds?: string[];
   source: SessionSourceValue;
   kmsKeyArn?: string;

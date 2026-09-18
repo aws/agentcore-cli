@@ -2,8 +2,10 @@ import { describe, expect, mock, test } from "bun:test";
 import {
   GetBatchEvaluationCommand,
   ListBatchEvaluationsCommand,
+  StartBatchEvaluationCommand,
   type BatchEvaluationSummary,
 } from "@aws-sdk/client-bedrock-agentcore";
+import { GetOnlineEvaluationConfigCommand } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { AwsClients } from "./types";
 import { EvalClient } from "./eval";
 
@@ -83,5 +85,83 @@ describe("EvalClient.listBatchInsights", () => {
       batchEvaluations: [insightsJob],
       nextToken: undefined,
     });
+  });
+});
+
+describe("EvalClient.startBatchInsights", () => {
+  test("resolves an online evaluation ID to its ARN and omits analysis configuration", async () => {
+    const arn =
+      "arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/config-1";
+    const client = new EvalClient({
+      control: () =>
+        ({
+          send: mock(async (command: GetOnlineEvaluationConfigCommand) => {
+            expect(command).toBeInstanceOf(GetOnlineEvaluationConfigCommand);
+            expect(command.input).toEqual({ onlineEvaluationConfigId: "config-1" });
+            return { onlineEvaluationConfigArn: arn };
+          }),
+        }) as never,
+      data: () =>
+        ({
+          send: mock(async (command: StartBatchEvaluationCommand) => {
+            expect(command).toBeInstanceOf(StartBatchEvaluationCommand);
+            expect(command.input).toEqual({
+              batchEvaluationName: "insights-1",
+              dataSourceConfig: {
+                onlineEvaluationConfigSource: {
+                  onlineEvaluationConfigArn: arn,
+                  timeRange: undefined,
+                },
+              },
+              description: undefined,
+              evaluators: undefined,
+              insights: undefined,
+              kmsKeyArn: undefined,
+            });
+            return {};
+          }),
+        }) as never,
+    } as unknown as AwsClients);
+
+    await client.startBatchInsights(
+      {
+        name: "insights-1",
+        source: { origin: "online-eval", onlineEvaluationConfigId: "config-1" },
+      },
+      options,
+    );
+  });
+
+  test("uses an online evaluation ARN without a control-plane lookup", async () => {
+    const arn =
+      "arn:aws:bedrock-agentcore:us-west-2:123456789012:online-evaluation-config/config-1";
+    const client = new EvalClient({
+      control: () =>
+        ({
+          send: mock(async () => {
+            throw new Error("unexpected control-plane lookup");
+          }),
+        }) as never,
+      data: () =>
+        ({
+          send: mock(async (command: StartBatchEvaluationCommand) => {
+            expect(command.input.dataSourceConfig).toEqual({
+              onlineEvaluationConfigSource: {
+                onlineEvaluationConfigArn: arn,
+                timeRange: undefined,
+              },
+            });
+            return {};
+          }),
+        }) as never,
+    } as unknown as AwsClients);
+
+    await client.startBatchInsights(
+      {
+        name: "insights-1",
+        source: { origin: "online-eval", onlineEvaluationConfigId: arn },
+      },
+      options,
+    );
   });
 });
