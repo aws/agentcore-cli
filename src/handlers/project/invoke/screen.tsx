@@ -7,13 +7,11 @@ import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { Spinner } from "../../../components/ui/spinner";
 import { glyphs } from "../../../components/ui/_core.js";
-import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectKey, type Context } from "../../../router";
 import { HarnessChat } from "../../harness/invoke/screen";
 import { AwsCredentialProviderKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import { usePinRegion } from "../../utils";
 import type { Project, ResolvedDeployedResources } from "../types";
 import { ProjectGate } from "../ProjectGate";
 
@@ -63,13 +61,12 @@ export function ProjectInvokePickerScreen({ ctx, core }: ScreenProps) {
           description={DESCRIPTION}
           onBack={goBack}
         >
-          {({ targetName, target, back }) => (
+          {({ targetName, back }) => (
             <ProjectInvokePicker
               ctx={ctx}
               core={core}
               project={project}
               targetName={targetName}
-              target={target}
               onBack={back}
             />
           )}
@@ -84,18 +81,15 @@ function ProjectInvokePicker({
   core,
   project,
   targetName,
-  target,
   onBack,
 }: ScreenProps & {
   project: Project;
   targetName: string;
-  target: AwsDeploymentTarget | undefined;
   onBack: () => void;
 }) {
   const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
   const [destination, setDestination] = useState<Destination>();
   const [error, setError] = useState<string>();
-  usePinRegion(target?.region);
 
   useEffect(() => {
     let active = true;

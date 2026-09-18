@@ -94,10 +94,7 @@ function core(
     target: TARGET,
     credentialProvider: TARGET_CREDENTIALS,
   });
-  value.projectManager.resolveDeployedResources = async (_project, { target }) => ({
-    resources,
-    target: targets.find((candidate) => candidate.name === target)!,
-  });
+  value.projectManager.resolveDeployedResources = async () => ({ resources, target: TARGET });
   value.runtime
     .setListEndpointsResponse({ runtimeEndpoints: [endpoint("DEFAULT")] })
     .setGetResponse({

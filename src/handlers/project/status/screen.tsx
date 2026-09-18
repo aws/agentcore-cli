@@ -1,21 +1,19 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import { Layout } from "../../../components/Layout";
-import { TreeView } from "../../../components/ui/tree-view";
 import {
   linkedResourceLabel,
+  LinkedResourcesTree,
   typeColumnWidth,
   type LinkedResourceNode,
 } from "../../../components/LinkedResources";
 import { serviceIdFromArn } from "../../../core/arn";
 import { darkTheme } from "../../../components/ui/_core.js";
-import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectKey } from "../../../router";
 import type { Core, ScreenProps } from "../../types";
-import { usePinRegion } from "../../utils";
 import type { DeployableResource, Project, ResolvedProjectResource } from "../types";
 import { LoadingFrame, ProjectGate } from "../ProjectGate";
 
@@ -184,12 +182,11 @@ export function ProjectStatusScreen({ ctx, core }: ScreenProps) {
           description={DESCRIPTION}
           onBack={goBack}
         >
-          {({ targetName, target, back }) => (
+          {({ targetName, back }) => (
             <ProjectStatusView
               core={core}
               project={project}
               targetName={targetName}
-              target={target}
               onBack={back}
             />
           )}
@@ -203,18 +200,14 @@ function ProjectStatusView({
   core,
   project,
   targetName,
-  target,
   onBack,
 }: {
   core: Core;
   project: Project;
   targetName: string;
-  target: AwsDeploymentTarget | undefined;
   onBack: () => void;
 }) {
   const navigate = useNavigate();
-  const [hint, setHint] = useState<string>();
-  usePinRegion(target?.region);
 
   const status = useQuery({
     queryKey: ["project-status", project.rootPath, targetName],
@@ -244,14 +237,6 @@ function ProjectStatusView({
     );
   }
 
-  const select = (node: StatusNode) => {
-    if (node.data?.route) {
-      navigate(node.data.route);
-      return;
-    }
-    setHint(node.data?.hint);
-  };
-
   return (
     <Layout
       breadcrumb={BREADCRUMB}
@@ -265,20 +250,12 @@ function ProjectStatusView({
       ]}
     >
       <Box flexDirection="column" paddingX={1}>
-        <Text bold>resources</Text>
-        <Box flexDirection="column">
-          {nodes.length === 0 ? (
-            <Text color={theme.colors.muted}>
-              No resources are declared in this project. Run `agentcore project add` to declare one.
-            </Text>
-          ) : (
-            <TreeView nodes={nodes} onSelect={select} showIcons={false} focusMarker />
-          )}
-        </Box>
-        {hint !== undefined && (
-          <Box marginTop={1}>
-            <Text color={theme.colors.muted}>{hint}</Text>
-          </Box>
+        {nodes.length === 0 ? (
+          <Text color={theme.colors.muted}>
+            No resources are declared in this project. Run `agentcore project add` to declare one.
+          </Text>
+        ) : (
+          <LinkedResourcesTree nodes={nodes} title="resources" focus onOpen={navigate} />
         )}
       </Box>
     </Layout>

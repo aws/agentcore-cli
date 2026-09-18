@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { LoadingFrame } from "../handlers/project/ProjectGate";
 import type { Project } from "../handlers/project/types";
 import type { Core } from "../handlers/types";
+import { usePinRegion } from "../handlers/utils";
 import { DEFAULT_TARGET_NAME, type AwsDeploymentTarget } from "../projectSchemas/aws-targets";
 import { Layout } from "./Layout";
 import { DataTable, type DataTableColumn } from "./ui/data-table";
@@ -31,16 +32,15 @@ export interface DeploymentTargetPickerProps {
   breadcrumb: string[];
   description: string;
   onBack: () => void;
-  // children receives the chosen target and returns the screen. It must return
-  // an element rather than call hooks itself, since the picker renders a
-  // spinner or the table first and a hook called here would change order.
+  // children must return an element rather than call hooks, as with ProjectGate.
   children: (chosen: ChosenDeploymentTarget) => React.ReactElement;
 }
 
 // DeploymentTargetPicker is the TUI's stand-in for --target. Zero or one
 // declared target resolves without asking, several ask which. The choice lives
 // in the route's query string so a detail page opened from the screen returns
-// to the chosen target rather than to the question.
+// to the chosen target rather than to the question. The chosen target's region
+// is pinned so the screen and what it opens fetch where the target deployed.
 export function DeploymentTargetPicker({
   core,
   project,
@@ -58,6 +58,12 @@ export function DeploymentTargetPicker({
     gcTime: 0,
   });
 
+  const declared = targets.data ?? [];
+  const targetName =
+    chosen ?? (declared.length <= 1 ? (declared[0]?.name ?? DEFAULT_TARGET_NAME) : undefined);
+  const target = declared.find((candidate) => candidate.name === targetName);
+  usePinRegion(target?.region);
+
   if (targets.data === undefined || targets.isFetching || targets.isError) {
     return (
       <LoadingFrame
@@ -69,10 +75,6 @@ export function DeploymentTargetPicker({
       />
     );
   }
-
-  const declared = targets.data;
-  const targetName =
-    chosen ?? (declared.length <= 1 ? (declared[0]?.name ?? DEFAULT_TARGET_NAME) : undefined);
 
   if (targetName === undefined) {
     return (
@@ -105,7 +107,7 @@ export function DeploymentTargetPicker({
 
   return children({
     targetName,
-    target: declared.find((candidate) => candidate.name === targetName),
+    target,
     back: declared.length > 1 ? () => setSearch({}, { replace: true }) : onBack,
   });
 }
