@@ -24,7 +24,6 @@ import {
 import type { CdkCredentialProvider } from "./toolkit";
 
 const REGION = "us-east-1";
-const TARGET = "dev";
 const CREDENTIALS: CdkCredentialProvider = async () => ({
   accessKeyId: "access-key",
   secretAccessKey: "secret-key",
@@ -33,7 +32,7 @@ const OPTIONS: CoreOptions = { region: REGION, credentials: CREDENTIALS };
 const INPUT: CredentialProvisionInput = {
   region: REGION,
   credentials: CREDENTIALS,
-  targetName: TARGET,
+  targetName: "dev",
 };
 
 const API_KEY = { authorizerType: "ApiKeyCredentialProvider", name: "openai-key" } as const;
@@ -888,8 +887,6 @@ describe("createCredentialProvisioner rollback", () => {
 });
 
 describe("createCredentialRemover", () => {
-  const ARN_PREFIX = "arn:aws:bedrock-agentcore:us-east-1:111122223333:token-vault/default";
-
   async function removeAll(
     subject: ReturnType<typeof account>,
     input: Project,
@@ -940,29 +937,14 @@ describe("createCredentialRemover", () => {
     ]);
   });
 
-  test.each([
-    ["apikeycredentialprovider", "apikey"],
-    ["oauth2credentialprovider", "oauth"],
-    ["paymentcredentialprovider", "payment"],
-  ] as const)(
-    "classifies a provider recorded before the type was persisted by the %s segment of its ARN",
-    async (segment, kind) => {
-      const arn = `${ARN_PREFIX}/${segment}/example_dev_svc`;
-      const subject = account({ example_dev_svc: { credentialProviderArn: arn } });
-      const input = await project([]);
-
-      await removeAll(subject, input, { svc: { credentialProviderArn: arn } });
-
-      expect(subject.deleted).toEqual([{ kind, name: "example_dev_svc" }]);
-    },
-  );
-
-  test("skips a recorded provider whose kind cannot be determined", async () => {
-    const subject = account({ example_dev_svc: { credentialProviderArn: "arn:unknown" } });
+  test("skips a recorded provider written before its type was persisted", async () => {
+    // Written by a CLI that named providers by the bare credential name, so nothing
+    // exists under the scoped name for a teardown to delete.
+    const subject = account({ svc: { credentialProviderArn: "arn:apikey" } });
     const input = await project([]);
 
     const { events } = await removeAll(subject, input, {
-      svc: { credentialProviderArn: "arn:unknown" },
+      svc: { credentialProviderArn: "arn:apikey" },
     });
 
     expect(subject.deleted).toEqual([]);

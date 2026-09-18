@@ -10,12 +10,12 @@ import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import type {
   ApiKeyCredential,
   Credential,
+  CredentialType,
   OAuthCredential,
   PaymentCredential,
 } from "../../../../projectSchemas/credential";
 import {
   CREDENTIAL_ENV_PREFIX,
-  CredentialNameSchema,
   credentialEnvironmentVariableNames,
   credentialEnvVarName,
 } from "../../../../projectSchemas/credential";
@@ -32,7 +32,7 @@ export type DeployedCredential = {
    * providers it owns without the spec that declared them — `project remove all`
    * empties the spec before the deploy that tears the target down.
    */
-  authorizerType?: Credential["authorizerType"];
+  authorizerType?: CredentialType;
 };
 export type DeployedCredentials = Record<string, DeployedCredential>;
 
@@ -44,30 +44,13 @@ function providerName(projectName: string, targetName: string, credentialName: s
   return `${projectName}_${targetName}_${credentialName}`;
 }
 
-const PROVIDER_NAME_MAX_LENGTH = CredentialNameSchema.maxLength!;
+const PROVIDER_NAME_MAX_LENGTH = 128;
 
-/**
- * The type segment Identity puts in each kind's ARN, used to classify entries
- * recorded before `authorizerType` was persisted.
- */
-const ARN_SEGMENT_KINDS: Record<string, Credential["authorizerType"]> = {
-  "/apikeycredentialprovider/": "ApiKeyCredentialProvider",
-  "/oauth2credentialprovider/": "OAuthCredentialProvider",
-  "/paymentcredentialprovider/": "PaymentCredentialProvider",
-};
-
-const DELETE_COMMANDS: Record<Credential["authorizerType"], string> = {
+const DELETE_COMMANDS: Record<CredentialType, string> = {
   ApiKeyCredentialProvider: "delete-api-key-credential-provider",
   OAuthCredentialProvider: "delete-oauth2-credential-provider",
   PaymentCredentialProvider: "delete-payment-credential-provider",
 };
-
-function recordedKind(state: DeployedCredential): Credential["authorizerType"] | undefined {
-  if (state.authorizerType) return state.authorizerType;
-  return Object.entries(ARN_SEGMENT_KINDS).find(([segment]) =>
-    state.credentialProviderArn.includes(segment),
-  )?.[1];
-}
 
 /**
  * The Identity operations provisioning uses, narrowed from the Core client that
@@ -135,17 +118,18 @@ export type CredentialRemover = (
  * still has its providers removed.
  *
  * Every kind is deleted. A provider's name is scoped to this project and target, so
- * nothing outside this target can be using it.
+ * nothing outside this target can be using it. A recorded entry without
+ * `authorizerType` was written by a CLI that named providers by the bare credential
+ * name, so nothing exists under the scoped name and the entry is skipped.
  *
  * A provider that is already gone is not an error, and a provider that cannot be
  * deleted is reported rather than failing a teardown whose stack is already gone.
  */
 export function createCredentialRemover(identity: ProviderDeletes): CredentialRemover {
   return async function* removeCredentials(project, { region, credentials, targetName, recorded }) {
-    const owned = new Map<string, Credential["authorizerType"]>();
+    const owned = new Map<string, CredentialType>();
     for (const [name, state] of Object.entries(recorded)) {
-      const kind = recordedKind(state);
-      if (kind) owned.set(name, kind);
+      if (state.authorizerType) owned.set(name, state.authorizerType);
     }
     for (const { name, authorizerType } of project.spec.credentials) {
       owned.set(name, authorizerType);
@@ -298,7 +282,7 @@ async function* rollback(
 
 function deleteProvider(
   identity: ProviderDeletes,
-  kind: Credential["authorizerType"],
+  kind: CredentialType,
   provider: string,
   options: CoreOptions,
 ): Promise<unknown> {
@@ -618,7 +602,7 @@ function paymentProvision(
 
 function deployedCredential(
   provider: string,
-  authorizerType: Credential["authorizerType"],
+  authorizerType: CredentialType,
   credentialProviderArn: string | undefined,
   secretArn: string | undefined,
 ): DeployedCredential {

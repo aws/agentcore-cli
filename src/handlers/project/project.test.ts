@@ -12,6 +12,7 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError } from "../../errors";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 
 async function run(
   args: string[],
@@ -316,7 +317,7 @@ describe("project create", () => {
       join(projectRoot, "app", "agent_python_strands", "model", "load.py"),
     ).text();
     expect(loadModel).toContain(
-      `os.environ.get("AGENTCORE_CREDENTIAL_${credentialName.toUpperCase()}_NAME", "${credentialName}")`,
+      `os.environ.get("${credentialEnvVarName(credentialName, "_NAME")}", "${credentialName}")`,
     );
   });
 
