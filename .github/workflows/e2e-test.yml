@@ -1,0 +1,121 @@
+name: e2e-test
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: git reference (commit, branch, or tag) to build and test
+        required: false
+        type: string
+        default: ""
+      tags:
+        description: Vitest tag expression, for example runtime || canary
+        required: false
+        type: string
+        default: ""
+    secrets:
+      WORKFLOW_SECRETS_READER_ROLE_ARN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: git reference (commit, branch, or tag) to build and test
+        type: string
+        default: refactor
+      tags:
+        description: Vitest tag expression, for example runtime || canary
+        type: string
+        default: ""
+
+concurrency:
+  group: e2e-test-${{ inputs.ref || github.ref }}-${{ inputs.tags || 'all' }}
+  cancel-in-progress: false
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: "1"
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      is-authorized: ${{ steps.check.outputs.is_authorized }}
+    steps:
+      - name: Fetch secrets from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: AUTHORIZED_USERS
+      - name: Check authorization
+        id: authz
+        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          subject: ${{ github.actor }}
+          authorized-users: ${{ env.AUTHORIZED_USERS }}
+      - name: Determine authorization
+        id: check
+        env:
+          IS_AUTHORIZED: ${{ steps.authz.outputs.is-authorized }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [[ "$IS_AUTHORIZED" == "true" ]]; then
+            echo "Actor ${ACTOR} is authorized"
+            echo "is_authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Actor ${ACTOR} is not in AUTHORIZED_USERS, skipping"
+            echo "is_authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    name: e2e (${{ matrix.name }})
+    needs: authorize
+    if: needs.authorize.outputs.is-authorized == 'true'
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Per-job labels stop GitHub from routing a job to the runner CodeBuild created for another job.
+          # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html
+          - name: Linux
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "e2e-linux"]'
+          - name: Windows
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0", "e2e-windows"]'
+          # CodeBuild does not support macOS.
+          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
+          - name: macOS
+            runner: '["macos-latest"]'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v6
+      - run: bun install --frozen-lockfile
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.E2E_ROLE_ARN }}
+          aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
+      - name: Build CLI
+        run: bun run build
+      - name: Run all E2E tests
+        if: inputs.tags == ''
+        env:
+          AGENTCORE_CLI_PATH: node ${{ github.workspace }}/dist/index.js
+          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+        run: bun run test:e2e
+      - name: Run tagged E2E tests
+        if: inputs.tags != ''
+        env:
+          AGENTCORE_CLI_PATH: node ${{ github.workspace }}/dist/index.js
+          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+        run: bun run test:e2e -- --tagsFilter="${{ inputs.tags }}"
