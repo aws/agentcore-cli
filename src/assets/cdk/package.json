@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@aws/agentcore-cdk": "0.1.0-alpha.53",
-    "aws-cdk-lib": "~2.266.0",
+    "aws-cdk-lib": "~2.269.0",
     "constructs": "~10.7.0"
   }
 }
