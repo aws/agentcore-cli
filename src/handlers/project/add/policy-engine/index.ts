@@ -34,7 +34,14 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
         throw new InputValidationError("--attach-mode requires --attach-to-gateways");
       }
       const project = ctx.require(ProjectKey);
-      requireDeployedNameFits("Policy Engine", project.name, flags.name, "_", 48);
+      requireDeployedNameFits(
+        "Policy Engine",
+        project.name,
+        flags.name,
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
 
       const engine: z.input<typeof PolicyEngineSchema> = {
         name: flags.name,

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 
 const { addGateway, cleanup, inProject, projectSpec, run } =
@@ -56,6 +58,19 @@ describe("project add policy-engine", () => {
   ])("rejects %s", async (_label, args, message) => {
     await inProject();
     await expect(run(args)).rejects.toThrow(message);
+  });
+
+  test("checks the deployed name against the longest declared target", async () => {
+    const projectRoot = await inProject();
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "production", account: "111122223333", region: "us-east-1" }]),
+    );
+    const name = `E${"x".repeat(25)}`;
+
+    await expect(run(["add", "policy-engine", "--name", name])).rejects.toThrow(
+      `Policy Engine deployed name 'TestProject_production_${name}' is 49 characters. The maximum is 48.`,
+    );
   });
 
   test.each([

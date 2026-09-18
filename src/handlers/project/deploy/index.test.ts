@@ -440,7 +440,9 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
     const subject = testDeployCommand({ outputs: {} });
     await inProjectWithTargets(JSON.stringify([DEFAULT_TARGET, DEFAULT_TARGET]));
 
-    await expect(subject.run()).rejects.toThrow(/Duplicate deployment target name: default/);
+    await expect(subject.run()).rejects.toThrow(
+      /Duplicate deployment target name \(ignoring case\): default/,
+    );
     expect(subject.calls).toEqual([]);
   });
 

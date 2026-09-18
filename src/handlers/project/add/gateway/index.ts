@@ -56,7 +56,14 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         throw new InputValidationError("required option '--name <name>' not specified");
       }
       const project = ctx.require(ProjectKey);
-      requireDeployedNameFits("Gateway", project.name, flags.name, "-", 100);
+      requireDeployedNameFits(
+        "Gateway",
+        project.name,
+        flags.name,
+        "-",
+        100,
+        await config.projectManager.listTargets(project),
+      );
       if (
         (flags["policy-engine-name"] === undefined) !==
         (flags["policy-engine-mode"] === undefined)
