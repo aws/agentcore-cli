@@ -893,6 +893,35 @@ test("--version on a versioned router prints the version and maps to exit 0", as
   expect(AgentCoreCLIError.fromError(error).exitCode).toBe(0);
 });
 
+test("a versioned router declares --version in root help", async () => {
+  const root = new Router("agentcore").version("9.9.9");
+  root.handler(leaf("noop", () => {}));
+
+  const out = await helpOutput(root, ["agentcore", "--help"]);
+
+  expect(out).toContain("-V, --version");
+  expect(out).toContain("display the CLI version");
+});
+
+test("a versioned router does not shadow a nested --version option", async () => {
+  let receivedVersion: string | undefined;
+  const get = createHandler({
+    name: "get",
+    description: "",
+    flags: [flag("version", "nested version", z.string().optional())],
+    handle: async (_ctx, flags) => {
+      receivedVersion = flags["version"];
+    },
+  });
+  const versions = new Router("version").handler(get);
+  const harness = new Router("harness").handler(versions);
+  const root = new Router("agentcore").version("9.9.9").handler(harness);
+
+  await root.route(["node", "agentcore", "harness", "version", "get", "--version", "7"]);
+
+  expect(receivedVersion).toBe("7");
+});
+
 test("--version is an unknown option on a router without a version", async () => {
   const root = new Router("agentcore");
   root.handler(
