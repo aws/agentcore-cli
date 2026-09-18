@@ -3,6 +3,8 @@ import type {
   GetPaymentManagerResponse,
   ListPaymentConnectorsResponse,
   ListPaymentManagersResponse,
+  RotatePaymentConnectorCredentialsRequest,
+  RotatePaymentConnectorCredentialsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   GetPaymentInstrumentRequest,
@@ -45,6 +47,10 @@ export interface CorePaymentClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListPaymentConnectorsResponse>;
+  rotatePaymentConnectorCredentials(
+    request: RotatePaymentConnectorCredentialsRequest,
+    options: CoreOptions,
+  ): Promise<RotatePaymentConnectorCredentialsResponse>;
 
   // Core resolves the selected manager ID to the ARN required by the data plane.
   getPaymentSession(

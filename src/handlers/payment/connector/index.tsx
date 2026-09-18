@@ -4,10 +4,12 @@ import { renderTui } from "../../../tui";
 import type { Core } from "../../types";
 import { createGetPaymentConnectorHandler } from "./get";
 import { createListPaymentConnectorsHandler } from "./list";
+import { createRotatePaymentConnectorCredentialsHandler } from "./rotate-credentials";
 
 export function createPaymentConnectorHandler(core: Core, io: AppIO): Router {
   return new Router("connector", "manage connectors under a payment manager")
     .default(renderTui(core, io))
     .handler(createGetPaymentConnectorHandler(core))
-    .handler(createListPaymentConnectorsHandler(core));
+    .handler(createListPaymentConnectorsHandler(core))
+    .handler(createRotatePaymentConnectorCredentialsHandler(core));
 }

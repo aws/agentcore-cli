@@ -110,13 +110,14 @@ agentcore                          # interactive TUI
 │   │   └── list                   # list Rules under a Gateway
 │   └── policy
 │       └── generate               # generate Cedar for a Gateway from a prompt (TUI when run bare)
-├── payment                        # inspect AgentCore Payments (command line only for now)
+├── payment                        # manage AgentCore Payments (command line only for now)
 │   ├── manager
 │   │   ├── get                    # get a payment manager by id
 │   │   └── list                   # list payment managers (server-side paginated)
 │   ├── connector                  # connectors under a payment manager
 │   │   ├── get                    # get a connector (shows the Quick Create authorization URL while pending)
-│   │   └── list                   # list a manager's connectors
+│   │   ├── list                   # list a manager's connectors
+│   │   └── rotate-credentials     # rotate service-managed Coinbase credentials
 │   ├── session                    # budget-limited payment contexts (data plane)
 │   │   ├── get
 │   │   └── list
@@ -308,9 +309,10 @@ directly or working outside a project.
 ### Inspect AgentCore Payments
 
 The `payment` commands call the Payments control and data planes directly, with
-no project involved. This command family currently provides read-only inspection
-of existing managers, connectors, sessions, instruments, and payment credential
-providers. It does not create IAM roles or change provider credentials.
+no project involved. This command family provides inspection of existing managers,
+connectors, sessions, instruments, and payment credential providers, plus on-demand
+rotation of service-managed connector credentials. It does not create resources
+or IAM roles.
 
 Choose a manager from `manager list` and use its `paymentManagerId` below:
 
@@ -367,6 +369,27 @@ variables, the active AWS profile, then the CLI default.
 A `CUSTOM_JWT` manager accepts only bearer tokens on its data plane, which
 these commands do not send yet; the CLI reports that limitation before calling
 the data plane.
+
+### Rotate Payment Connector Credentials
+
+Only READY Coinbase Quick Create connectors support credential rotation.
+`--secrets` selects `API_KEY`, `WALLET_SECRET`, or both; it does not accept secret
+values. Rotation uses the connector's existing consent and the caller's
+control-plane IAM permissions, without an application user ID.
+
+```bash
+agentcore payment connector rotate-credentials \
+  --manager-id "$MANAGER_ID" --connector-id "$CONNECTOR_ID" \
+  --secrets API_KEY WALLET_SECRET
+```
+
+The service performs the rotation and returns its result. An optional
+`--client-token` identifies retries of the same request.
+
+Wallet-secret rotation can interrupt wallet operations while the new credential
+is installed. Selecting both credentials rotates the API key first, then the
+wallet secret; this is not atomic. An error does not guarantee that credentials
+are unchanged.
 
 ### Examples
 

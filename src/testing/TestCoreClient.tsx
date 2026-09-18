@@ -33,6 +33,7 @@ import type {
   GetPaymentManagerResponse,
   ListPaymentConnectorsResponse,
   ListPaymentManagersResponse,
+  RotatePaymentConnectorCredentialsResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
@@ -1549,6 +1550,9 @@ export class TestPaymentClient implements CorePaymentClient {
     throw new Error("Unexpected payment call");
   }
   async listPaymentConnectors(): Promise<ListPaymentConnectorsResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async rotatePaymentConnectorCredentials(): Promise<RotatePaymentConnectorCredentialsResponse> {
     throw new Error("Unexpected payment call");
   }
   async getPaymentSession(): Promise<GetPaymentSessionResponse> {
