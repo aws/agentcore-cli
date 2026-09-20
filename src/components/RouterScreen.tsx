@@ -44,6 +44,8 @@ interface Option {
 }
 
 export interface RouterScreenProps extends ScreenProps {
+  // banner is content shown above the standard screen header.
+  banner?: React.ReactNode;
   // path is the screen's command path, e.g. ["agentcore", "harness"]. The first
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
@@ -55,7 +57,7 @@ export interface RouterScreenProps extends ScreenProps {
 // Command) as navigable options below. Selecting an option routes to that
 // subcommand's screen. Subcommands without a screen are listed below a divider
 // and open their help instead (see CliOnlyScreen).
-export function RouterScreen({ ctx, path }: RouterScreenProps) {
+export function RouterScreen({ banner, ctx, path }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
@@ -136,6 +138,7 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
 
   return (
     <Layout
+      banner={banner}
       breadcrumb={path}
       description={command.description()}
       keyHints={[
