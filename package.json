@@ -81,7 +81,7 @@
     "bedrock-agentcore": "^0.4.3",
     "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "handlebars": "^4.7.9",
     "ink": "^7.1.0",
     "ink-scroll-view": "^0.3.7",
