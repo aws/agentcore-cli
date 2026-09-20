@@ -229,10 +229,15 @@ export class FsProjectManager implements ProjectManager {
           `the project scaffolded at ${destination} could not be read back`,
         );
       }
-      yield* this.addResource(scaffolded, {
+      const withHarness = yield* this.addResource(scaffolded, {
         resourceType: "harness",
         resourceConfig: input.scaffoldHarnessInput,
       });
+      // addResource persists schema defaults for existing projects. A fresh
+      // scaffold does not need an empty AB test collection; leave it out just
+      // here, without changing how existing project definitions are saved.
+      const { abTests: _abTests, ...initialSpec } = withHarness.spec;
+      await this.json.write(this.getProjectSpecPath(withHarness), initialSpec);
     }
 
     // A failed step leaves the scaffolded files in place; the error carries the
