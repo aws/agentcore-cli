@@ -18,6 +18,7 @@ export {
   RuntimeInvokeResponseError,
   SilentCLIError,
   SourceResolutionError,
+  TransactionSearchNotEnabledError,
   UserCancellationError,
   type AgentCoreCLIErrorOptions,
 } from "./errors";

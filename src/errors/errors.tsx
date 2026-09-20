@@ -206,6 +206,25 @@ export class CloudWatchQueryError extends AgentCoreCLIError {
   }
 }
 
+/**
+ * Raised when a trace-consuming eval operation (batch-evaluation) targets an
+ * account/region where CloudWatch Transaction Search is not enabled, so agent
+ * traces never reach the `aws/spans` log group the evaluation reads. USER
+ * source: the fix is an account-level setup step, and the message carries the
+ * docs link so the user can act without digging.
+ */
+export class TransactionSearchNotEnabledError extends InputValidationError {
+  constructor(options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(
+      "CloudWatch Transaction Search is not enabled in this account and region, so agent " +
+        "traces are not delivered to the 'aws/spans' log group that evaluation reads. " +
+        "Enable Transaction Search, then retry: " +
+        "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html",
+      options,
+    );
+  }
+}
+
 /** Service data was returned successfully, but did not match the expected contract. */
 export class MalformedServiceResponseError extends AgentCoreCLIError {
   constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {

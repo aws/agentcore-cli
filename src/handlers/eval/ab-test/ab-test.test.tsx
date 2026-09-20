@@ -1,8 +1,10 @@
 import { test, expect, describe } from "bun:test";
 import type { GetABTestResponse, ListABTestsResponse } from "@aws-sdk/client-bedrock-agentcore";
 import { createRootHandler } from "../../index";
+import { CoreClient } from "../../../core";
 import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/";
+import { TransactionSearchNotEnabledError } from "../../../errors";
 
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   const core = new TestCoreClient();
@@ -348,5 +350,59 @@ describe("eval ab-test target-based run validation", () => {
       roleArn: undefined,
       enableOnCreate: undefined,
     });
+  });
+});
+
+describe("ab-test run — transaction search precondition", () => {
+  // A/B scores traffic via its online evaluations, which read agent spans from
+  // `aws/spans`. Both variants funnel through the private createABTest guard, so
+  // testing config-based covers the shared check. A never-returning send is
+  // assignable to every SDK client type, so one helper stubs all clients.
+  const clientReturning = (send: (command: unknown) => Promise<unknown>) => () =>
+    ({ send }) as never;
+
+  function coreWithSpans(present: boolean): CoreClient {
+    return new CoreClient({
+      createControlClient: clientReturning(async () => {
+        throw new Error("control plane must not be called when spans are missing");
+      }),
+      createDataClient: clientReturning(async () => {
+        throw new Error("CreateABTest must not run when spans are missing");
+      }),
+      createIamClient: clientReturning(async () => {
+        throw new Error("role provisioning must not run when spans are missing");
+      }),
+      createLogsClient: clientReturning(async () => ({
+        logGroups: present ? [{ logGroupName: "aws/spans" }] : [],
+      })),
+      logger: createSilentLogger(),
+    });
+  }
+
+  const input = {
+    name: "trial",
+    gateway: "orders-gateway",
+    control: { configBundle: "b1", bundleVersion: "v1" },
+    treatment: { configBundle: "b1", bundleVersion: "v2" },
+    onlineEval: "monitor",
+  } as const;
+
+  test("throws before provisioning or calling the service when aws/spans is absent", async () => {
+    await expect(
+      coreWithSpans(false).eval.createConfigBasedABTest(input, { region: "us-west-2" }),
+    ).rejects.toBeInstanceOf(TransactionSearchNotEnabledError);
+  });
+
+  test("the error names Transaction Search and links the enablement docs", async () => {
+    let err: Error | undefined;
+    try {
+      await coreWithSpans(false).eval.createConfigBasedABTest(input, { region: "us-west-2" });
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err?.message).toContain("Transaction Search");
+    expect(err?.message).toContain(
+      "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html",
+    );
   });
 });

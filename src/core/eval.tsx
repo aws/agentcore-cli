@@ -92,7 +92,11 @@ import {
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
-import { ResourceNotFoundException, type ResultField } from "@aws-sdk/client-cloudwatch-logs";
+import {
+  DescribeLogGroupsCommand,
+  ResourceNotFoundException,
+  type ResultField,
+} from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
 import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
@@ -107,6 +111,7 @@ import {
   InputValidationError,
   NetworkingError,
   ResourceNotFoundError,
+  TransactionSearchNotEnabledError,
 } from "../errors";
 import {
   DEFAULT_ENDPOINT_QUALIFIER,
@@ -508,6 +513,13 @@ export class EvalClient implements CoreEvalClient {
     }) => CreateABTestRequest,
     options: CoreOptions,
   ): Promise<CreateABTestResponse> {
+    // Both A/B variants score traffic through their online evaluations, which
+    // read agent spans from `aws/spans`. Without Transaction Search, config-based
+    // fails server-side and target-based silently yields no results — so gate
+    // both here, before provisioning a role or calling the service.
+    if (!(await this.transactionSearchEnabled(options))) {
+      throw new TransactionSearchNotEnabledError();
+    }
     const control = this.clients.control(toClientConfig(options));
     const gatewayArn = (await control.send(new GetGatewayCommand({ gatewayIdentifier: gateway })))
       .gatewayArn!;
@@ -655,6 +667,22 @@ export class EvalClient implements CoreEvalClient {
       resourceLabel: "Batch Insights",
     });
     return { batchEvaluations: page.items, nextToken: page.nextToken };
+  }
+
+  /**
+   * True when CloudWatch Transaction Search is delivering agent traces to the
+   * `aws/spans` log group in this account and region. Batch evaluation scores
+   * sessions by reading their spans from that group, so its absence means the
+   * run has nothing to read. We probe the log group's existence — cheap, and the
+   * same signal the service itself keys on — rather than adding an X-Ray client
+   * solely to call GetTraceSegmentDestination.
+   */
+  async transactionSearchEnabled(options: CoreOptions): Promise<boolean> {
+    const logs = this.clients.logs(toClientConfig(options));
+    const { logGroups } = await logs.send(
+      new DescribeLogGroupsCommand({ logGroupNamePrefix: SPANS_LOG_GROUP, limit: 1 }),
+    );
+    return (logGroups ?? []).some((group) => group.logGroupName === SPANS_LOG_GROUP);
   }
 
   async startBatchEvaluation(

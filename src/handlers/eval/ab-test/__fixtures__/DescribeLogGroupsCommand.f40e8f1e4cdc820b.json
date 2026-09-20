@@ -1,0 +1,16 @@
+{
+  "logGroups": [
+    {
+      "logGroupName": "aws/spans",
+      "creationTime": 1764701153619,
+      "retentionInDays": 30,
+      "metricFilterCount": 0,
+      "arn": "arn:aws:logs:us-west-2:725476964917:log-group:aws/spans:*",
+      "storedBytes": 72115,
+      "logGroupClass": "STANDARD",
+      "logGroupArn": "arn:aws:logs:us-west-2:725476964917:log-group:aws/spans",
+      "deletionProtectionEnabled": false,
+      "bearerTokenAuthenticationEnabled": false
+    }
+  ]
+}
