@@ -37,6 +37,23 @@ const AGENT_PYTHON_LANGCHAIN = resolveRuntimeTemplateShortcut("agent-python-lang
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
 
+test("Terraform creation skips CDK installation and vends the Terraform scaffold", async () => {
+  await inTempDirectory();
+  const { manager: subject, commands, checkedTools } = manager();
+  const { project } = await runCreate(subject, {
+    name: "TerraformDemo",
+    managedBy: "TERRAFORM",
+    scaffoldRuntimeInput: AGENT_PYTHON,
+    skipGit: true,
+  });
+  expect(project.spec.managedBy).toBe("TERRAFORM");
+  expect(existsSync(join(project.rootPath, "agentcore", "cdk"))).toBe(false);
+  expect(existsSync(join(project.rootPath, "agentcore", "terraform", "README.md"))).toBe(true);
+  expect(existsSync(join(project.rootPath, "agentcore", "terraform", ".gitignore"))).toBe(true);
+  expect(checkedTools).not.toContain("npm");
+  expect(commands.every(({ command }) => command[0] !== "npm")).toBe(true);
+});
+
 async function inTempDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-manager-"));
   tempDirectories.push(directory);

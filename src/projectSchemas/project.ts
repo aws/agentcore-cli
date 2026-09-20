@@ -20,7 +20,7 @@ import { PolicyEngineSchema } from "./policy";
 import { TagsSchema } from "./tags";
 import { uniqueBy } from "./zod-util";
 import { z } from "zod";
-export const ManagedBySchema = z.enum(["CDK"]).default("CDK");
+export const ManagedBySchema = z.enum(["CDK", "TERRAFORM"]).default("CDK");
 export type ManagedBy = z.infer<typeof ManagedBySchema>;
 export const ProjectNameSchema = z
   .string()

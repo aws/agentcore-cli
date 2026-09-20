@@ -5,7 +5,7 @@ import type { PaymentConnectorSchema, PaymentManagerSchema } from "../../project
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { MemorySchema } from "../../projectSchemas/memory";
 import type { EvaluatorSchema, EvaluationLevel } from "../../projectSchemas/evaluator";
-import type { ProjectSpecSchema } from "../../projectSchemas/project";
+import type { ManagedBy, ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
@@ -20,6 +20,8 @@ import type { AwsCredentialProvider } from "../../core/types";
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
+  /** Deployment engine, selected once when scaffolding. Existing projects default to CDK. */
+  managedBy?: ManagedBy;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
