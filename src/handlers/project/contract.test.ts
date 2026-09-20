@@ -10,9 +10,11 @@ import {
 } from "../../testing";
 import { createRootHandler } from "../index";
 import type { Project } from "./types";
+import { ProjectSpecSchema } from "../../projectSchemas/project";
+import { declaresNothingDeployable } from "./deploy";
 
-const OMITTED_ON_CREATE = ["datasets", "abTests", "unassignedTargets", "capacityProviders"];
-const EXISTING_COLLECTIONS = {
+const REMOVED_FIELDS = ["datasets", "abTests", "unassignedTargets", "capacityProviders"];
+const LEGACY_COLLECTIONS: Record<string, unknown[]> = {
   datasets: [
     {
       name: "examples",
@@ -46,6 +48,9 @@ const EXISTING_COLLECTIONS = {
   unassignedTargets: [
     { name: "unattached", targetType: "mcpServer", endpoint: "https://unattached.example.com" },
   ],
+  capacityProviders: [{ name: "provider" }],
+};
+const RETAINED_COLLECTIONS = {
   knowledgeBases: [
     { name: "catalog", dataSources: [{ type: "S3", uri: "s3://example-documents/catalog" }] },
   ],
@@ -120,7 +125,7 @@ async function createProject(flags: string[] = []) {
   return Bun.file(join(project.projectRoot, "agentcore", "agentcore.json"));
 }
 
-describe("new project configuration", () => {
+describe("project configuration contract", () => {
   test.each([
     { name: "harness", flags: [] },
     { name: "empty", flags: ["--template", "empty"] },
@@ -129,20 +134,18 @@ describe("new project configuration", () => {
     const file = await createProject([...flags]);
     const contents = await file.text();
     const spec = JSON.parse(contents);
-    for (const field of OMITTED_ON_CREATE) expect(spec).not.toHaveProperty(field);
+    for (const field of REMOVED_FIELDS) expect(spec).not.toHaveProperty(field);
 
     const project = await subject().core.projectManager.resolve({ filePath: file.name! });
     expect(project).toBeDefined();
     expect(project!.spec.knowledgeBases).toEqual([]);
-    // Reading still applies baseline schema defaults in memory without
-    // writing them back into the newly generated configuration.
-    expect(project!.spec.abTests).toEqual([]);
+    for (const field of REMOVED_FIELDS) expect(project!.spec).not.toHaveProperty(field);
     expect(await file.text()).toBe(contents);
   });
 
-  test("preserves populated existing definitions through reads, edits, and backend handoff", async () => {
+  test("preserves knowledge bases, gateway targets, and tool runtimes through edits and backend handoff", async () => {
     const file = await createProject(["--template", "empty"]);
-    const contents = JSON.stringify({ ...(await file.json()), ...EXISTING_COLLECTIONS });
+    const contents = JSON.stringify({ ...(await file.json()), ...RETAINED_COLLECTIONS });
     await Bun.write(file, contents);
     const instance = subject();
     const original = await instance.core.projectManager.resolve({ filePath: file.name! });
@@ -163,7 +166,8 @@ describe("new project configuration", () => {
     await instance.run(["remove", "gateway-target", "--gateway", "tools", "--name", "search"]);
     const updated = await file.json();
     expect(updated).toEqual(original!.spec);
-    for (const field of Object.keys(EXISTING_COLLECTIONS)) {
+    for (const field of REMOVED_FIELDS) expect(updated).not.toHaveProperty(field);
+    for (const field of Object.keys(RETAINED_COLLECTIONS)) {
       expect(updated[field]).toHaveLength(1);
     }
 
@@ -177,16 +181,57 @@ describe("new project configuration", () => {
     expect(instance.deployments).toHaveLength(1);
     for (const project of [...instance.builds, ...instance.deployments]) {
       expect(project.spec).toEqual(updated);
+      for (const field of REMOVED_FIELDS) expect(project.spec).not.toHaveProperty(field);
     }
   });
 
-  test.each(["datasets", "abTests", "unassignedTargets"])(
-    "preserves an existing empty %s collection during an update",
-    async (field) => {
-      const file = await createProject(["--template", "empty"]);
-      await Bun.write(file, JSON.stringify({ ...(await file.json()), [field]: [] }));
-      await subject().run(["add", "gateway", "--name", "tools"]);
-      expect((await file.json())[field]).toEqual([]);
+  test.each(
+    REMOVED_FIELDS.flatMap((field) =>
+      ["empty", "populated"].flatMap((kind) =>
+        [
+          ["build"],
+          ["deploy", "--yes"],
+          ["add", "runtime", "--name", "extra", "--template", "agent-python-minimal"],
+          ["remove", "all", "--yes"],
+          ["export", "harness", "--name", "Example"],
+        ].map((args) => ({ field, kind, args })),
+      ),
+    ),
+  )("rejects $kind $field before project $args can act", async ({ field, kind, args }) => {
+    const file = await createProject();
+    const contents = JSON.stringify({
+      ...(await file.json()),
+      ...RETAINED_COLLECTIONS,
+      [field]: kind === "empty" ? [] : LEGACY_COLLECTIONS[field],
+    });
+    await Bun.write(file, contents);
+    const instance = subject();
+
+    await expect(instance.run(args)).rejects.toThrow(field);
+
+    expect(instance.builds).toEqual([]);
+    expect(instance.deployments).toEqual([]);
+    expect(instance.core.projectCommands).toEqual([]);
+    expect(await file.text()).toBe(contents);
+    expect(await Bun.file(join("agentcore", "aws-targets.json")).json()).toEqual([]);
+    expect(await Bun.file(join("app", "extra", "main.py")).exists()).toBe(false);
+    expect(await Bun.file(join("app", "ExampleAgent", "main.py")).exists()).toBe(false);
+  });
+
+  test.each(["knowledgeBases", "toolRuntimes"] as const)(
+    "counts retained %s as deployable",
+    (field) => {
+      const project: Project = {
+        name: "Example",
+        rootPath: "/workspace/example",
+        spec: ProjectSpecSchema.parse({ name: "Example", version: 1 }),
+      };
+      expect(declaresNothingDeployable(project)).toBe(true);
+      project.spec = ProjectSpecSchema.parse({
+        ...project.spec,
+        [field]: RETAINED_COLLECTIONS[field],
+      });
+      expect(declaresNothingDeployable(project)).toBe(false);
     },
   );
 });

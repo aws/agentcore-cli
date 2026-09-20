@@ -127,11 +127,8 @@ export function declaresNothingDeployable(project: Project): boolean {
     spec.agentCoreGateways,
     spec.policyEngines,
     spec.configBundles,
-    spec.abTests,
     spec.harnesses,
     spec.toolRuntimes ?? [],
-    spec.unassignedTargets ?? [],
-    spec.datasets ?? [],
     spec.payments ?? [],
   ];
   return collections.every((collection) => collection.length === 0);

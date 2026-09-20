@@ -90,13 +90,6 @@ function project(): Project {
           bindings: [{ runtimeName: "orders", envVarName: "SEARCH_URL" }],
         },
       ],
-      unassignedTargets: [
-        {
-          name: "catalog",
-          targetType: "smithyModel",
-          schemaSource: { inline: { path: "schema.smithy" } },
-        },
-      ],
       policyEngines: [
         {
           name: "guardrails",
@@ -164,7 +157,7 @@ describe("GET /api/resources", () => {
           policies: [{ name: "allow_read", description: "Allow reads" }],
         },
       ],
-      unassignedTargets: [{ name: "catalog", targetType: "smithyModel" }],
+      unassignedTargets: [],
       deploymentTargets: [],
     });
   });

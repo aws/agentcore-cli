@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import { ProjectSpecSchema, ProjectNameSchema } from "./project";
 
 const minimalProject = { name: "project", version: 1 };
@@ -132,41 +132,26 @@ describe("project custom validation", () => {
     ).toBe(true);
   });
 
-  it("validates target-based AB test gateway and target references", () => {
-    const abTest = {
-      name: "experiment",
-      mode: "target-based" as const,
-      gatewayRef: "{{gateway:gateway}}",
-      variants: [
-        {
-          name: "C" as const,
-          weight: 50,
-          variantConfiguration: { target: { targetName: "control" } },
-        },
-        {
-          name: "T1" as const,
-          weight: 50,
-          variantConfiguration: { target: { targetName: "missing" } },
-        },
-      ],
-      evaluationConfig: { onlineEvaluationConfigArn: "arn:evaluation" },
-    };
-    const result = ProjectSpecSchema.safeParse({
-      ...minimalProject,
-      agentCoreGateways: [
-        {
-          name: "gateway",
-          targets: [{ name: "control", targetType: "connector", connectorId: "web-search" }],
-        },
-      ],
-      abTests: [abTest],
-    });
+  test.each(
+    ["datasets", "abTests", "unassignedTargets", "capacityProviders"].flatMap((field) =>
+      [[], [{ name: "legacy" }], null, undefined].map((value) => ({ field, value })),
+    ),
+  )("rejects removed project field $field with value $value", ({ field, value }) => {
+    const result = ProjectSpecSchema.safeParse({ ...minimalProject, [field]: value });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((issue) => issue.message.includes('target "missing"'))).toBe(
-        true,
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({ code: "unrecognized_keys", keys: [field] }),
       );
     }
+  });
+
+  test("does not generate removed fields when applying project defaults", () => {
+    const spec = ProjectSpecSchema.parse(minimalProject);
+    for (const field of ["datasets", "abTests", "unassignedTargets", "capacityProviders"]) {
+      expect(spec).not.toHaveProperty(field);
+    }
+    expect(spec.knowledgeBases).toEqual([]);
   });
 
   it("validates gateway policy engine references", () => {

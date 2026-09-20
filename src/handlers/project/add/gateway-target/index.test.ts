@@ -397,31 +397,4 @@ describe("project add gateway-target", () => {
     expect(gateways[0].targets).toHaveLength(1);
     expect(gateways[1].targets).toHaveLength(0);
   });
-
-  test("rejects a Target name already present in unassignedTargets", async () => {
-    const projectRoot = await inProject();
-    const spec = await projectSpec(projectRoot);
-    spec.unassignedTargets = [
-      {
-        name: "search",
-        targetType: "mcpServer",
-        endpoint: "https://unassigned.example.com",
-      },
-    ];
-    await writeProjectSpec(projectRoot, spec);
-    await addGateway();
-
-    await expect(
-      run([
-        "add",
-        "gateway-target",
-        "--gateway",
-        "tools",
-        "--name",
-        "search",
-        "--endpoint",
-        "https://tools.example.com",
-      ]),
-    ).rejects.toThrow("unassigned gateway target");
-  });
 });

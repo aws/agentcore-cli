@@ -180,19 +180,18 @@ pre-built container image or a custom Dockerfile, that is reported in
 `EXPORT_NOTES.md` rather than rebuilt. Path-based skills are not supported,
 since the exported agent has no container filesystem to read them from.
 
-### New project configuration
+### Project configuration compatibility
 
-Newly created `agentcore/agentcore.json` files omit the top-level `datasets`,
-`abTests`, `unassignedTargets`, and `capacityProviders` keys. This includes the
-default harness project, which previously wrote `abTests: []` when adding its
-initial harness.
+**Breaking change:** `agentcore/agentcore.json` rejects `datasets`, `abTests`,
+`unassignedTargets`, and `capacityProviders` for all projects, including empty arrays.
+Remove empty keys. Before deploying a project with populated collections, preserve
+and move those resources out of the removed collections, reviewing CloudFormation
+ownership and retention. Simply deleting populated collections and deploying can
+delete resources; there is no automatic migration.
 
-`knowledgeBases`, gateway-attached targets, and standalone `toolRuntimes` remain
-supported. Existing project definitions for datasets, A/B tests, and unassigned
-targets continue to be read, updated, and deployed as before; no configuration
-migration is required. Subsequent project edits retain the existing schema's
-default handling, including adding an empty `abTests` array when it is absent.
-`capacityProviders` remains unsupported by the CLI project schema.
+`knowledgeBases`, targets under `agentCoreGateways[].targets`, and standalone
+`toolRuntimes` remain supported. Service-level `agentcore eval dataset` and
+`agentcore eval ab-test` commands and evaluation with external datasets remain available.
 
 ### Harness Project Files
 
