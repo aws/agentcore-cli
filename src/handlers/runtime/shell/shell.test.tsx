@@ -149,9 +149,12 @@ describe("runtime shell command", () => {
     );
   });
 
-  test("rejects an endpoint URL override the shell SDK cannot honor", async () => {
+  test("rejects --endpoint-url, which is globally disabled", async () => {
     const subject = harness();
 
+    // --endpoint-url is temporarily disabled (unregistered as a global flag), so
+    // it is rejected as an unknown option before the shell handler runs — the
+    // shell SDK could not honor it anyway.
     await expect(
       subject.run(
         "--id",
@@ -161,7 +164,7 @@ describe("runtime shell command", () => {
         "--endpoint-url",
         "https://runtime.test",
       ),
-    ).rejects.toThrow("runtime shell does not support --endpoint-url");
+    ).rejects.toThrow("unknown option '--endpoint-url'");
     expect(subject.core.runtime.calls.some((call) => call.method === "getRuntime")).toBe(false);
   });
 });

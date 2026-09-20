@@ -30,7 +30,6 @@ import { createGetMemoryHandler } from "./get";
 import { InputValidationError } from "../../errors";
 
 const REGION = "us-west-2";
-const ENDPOINT = "https://agentcore.example.test";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
 
 // The e2e-test account holds two persistent fixture Memories:
@@ -263,8 +262,6 @@ describe("memory event commands", () => {
       SESSION_ID,
       "--event-id",
       EVENT_ID,
-      "--endpoint-url",
-      ENDPOINT,
     ]);
 
     expect(core.memory.calls).toEqual([
@@ -277,7 +274,7 @@ describe("memory event commands", () => {
             sessionId: SESSION_ID,
             eventId: EVENT_ID,
           },
-          { region: REGION, endpointUrl: ENDPOINT },
+          { region: REGION },
         ],
       },
     ]);

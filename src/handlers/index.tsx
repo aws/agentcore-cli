@@ -7,7 +7,7 @@ import { createIdentityHandler } from "./identity/index.tsx";
 import { createMemoryHandler } from "./memory/index.tsx";
 import { createPaymentHandler } from "./payment/index.tsx";
 import { createRuntimeHandler } from "./runtime/index.tsx";
-import { DebugKey, EndpointKey, JsonKey, RegionKey } from "./keys.tsx";
+import { DebugKey, JsonKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
 import { createProjectHandler } from "./project/index.ts";
 import { createUpdateHandler } from "./update/index.tsx";
@@ -46,7 +46,10 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.version(PACKAGE_VERSION);
 
   // Add global flags
-  root.groupFlags(RegionKey, DebugKey, JsonKey, EndpointKey);
+  // --endpoint-url intentionally omitted: temporarily disabled (inconsistent
+  // override behavior). EndpointKey + its plumbing stay defined so re-enabling
+  // is adding it back here.
+  root.groupFlags(RegionKey, DebugKey, JsonKey);
 
   // Resolve the effective AWS region (flag -> env -> config file) and pin it on
   // the context for every command beneath the root.

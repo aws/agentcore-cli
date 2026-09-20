@@ -140,8 +140,6 @@ describe("gateway invoke", () => {
       "mcp-session",
       "--mcp-protocol-version",
       "2025-06-18",
-      "--endpoint-url",
-      "https://control.example.test",
     ]);
 
     const request = core.gateway.calls.find((call) => call.method === "invokeGateway")!
@@ -158,10 +156,7 @@ describe("gateway invoke", () => {
       mcpSessionId: "mcp-session",
       mcpProtocolVersion: "2025-06-18",
     });
-    expect(core.gateway.calls[0]!.args[1]).toEqual({
-      region: REGION,
-      endpointUrl: "https://control.example.test",
-    });
+    expect(core.gateway.calls[0]!.args[1]).toEqual({ region: REGION });
   });
 
   test("supports GET without a payload", async () => {
