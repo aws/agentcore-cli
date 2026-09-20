@@ -28,8 +28,6 @@ import { DEFAULT_HARNESS_MODEL } from "../add/harness";
 import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
-import { validateBackendCreateInput } from "./backend";
-import type { ManagedBy } from "../../../projectSchemas/project";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -55,11 +53,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     flags: [
       flag("name", "name of the project to create", ProjectNameSchema),
       flag(
-        "backend",
-        "deployment engine: cdk or terraform (preview)",
-        z.enum(["cdk", "terraform"]).default("cdk"),
-      ),
-      flag(
         "template",
         "the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key",
         z.enum(PROJECT_TEMPLATE_NAMES).optional(),
@@ -84,7 +77,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     ],
     handle: async (ctx, flags) => {
       const name = flags["name"];
-      if (!flags["skip-install"] && flags["backend"] === "cdk") {
+      if (!flags["skip-install"]) {
         assertProjectPathFits(name, ctx.require(PlatformKey), {
           alternative: "pass --skip-install and install the CDK dependencies yourself",
         });
@@ -112,7 +105,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       const base = {
         name,
-        ...(flags.backend === "terraform" && { managedBy: "TERRAFORM" as ManagedBy }),
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
       };
@@ -134,7 +126,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         };
       }
 
-      validateBackendCreateInput(createInput);
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
       const project = await runWithProgress(config.projectManager.create(createInput), {

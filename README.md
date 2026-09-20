@@ -996,11 +996,10 @@ demo greet --name Ada          # hello, Ada!
 demo greet --name Ada --loud   # HELLO, ADA!
 ```
 
-## Terraform backend preview
+## Terraform templates
 
-New projects can select CDK or Terraform with `project create --backend`.
-See [Choosing CDK or Terraform](docs/terraform-backend.md) for the supported
-resource subset, provider behavior, state, and extension contract.
+See the [standalone AWSCC / Cloud Control Terraform example](examples/terraform/awscc/README.md)
+for a Runtime and Memory deployment using plain `.tf` files.
 
 ## Adding a new handler
 

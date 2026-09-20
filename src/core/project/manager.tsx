@@ -75,9 +75,6 @@ import {
 } from "../../errors/errors";
 import z from "zod";
 import { CdkBackend } from "./backends/cdk";
-import { TerraformBackend } from "./backends/terraform";
-import { assertBackendOwnership } from "./backends/terraform/state";
-import { validateBackendCreateInput } from "../../handlers/project/create/backend";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
@@ -163,7 +160,6 @@ export class FsProjectManager implements ProjectManager {
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
     this.backends = config.backends ?? {
-      TERRAFORM: new TerraformBackend({ runner: config.runner, checkTool: config.checkTool }),
       CDK: new CdkBackend({
         logger: config.logger,
         createCloudFormationClient: config.createCloudFormationClient,
@@ -191,7 +187,6 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
-    validateBackendCreateInput(input);
     // Scaffold into a fresh directory, refusing to nest inside an existing project.
     const enclosing = enclosingProjectRoot(process.cwd());
     if (enclosing) {
@@ -209,7 +204,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name, managedBy: input.managedBy },
+      { projectName: input.name },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -243,10 +238,8 @@ export class FsProjectManager implements ProjectManager {
     // A failed step leaves the scaffolded files in place; the error carries the
     // failing command, its directory, and its output.
     if (!input.skipInstall) {
-      if (input.managedBy !== "TERRAFORM") {
-        yield { type: "step", message: "Installing CDK dependencies with npm" };
-        yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
-      }
+      yield { type: "step", message: "Installing CDK dependencies with npm" };
+      yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
 
       if (scaffoldRuntimeInput) {
         const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
@@ -1022,7 +1015,6 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
-    await assertBackendOwnership(project, target);
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
@@ -1180,12 +1172,7 @@ export class FsProjectManager implements ProjectManager {
 
   private async checkCreateDependencies(input: CreateProjectInput): Promise<void> {
     if (!input.skipInstall) {
-      if (
-        input.managedBy !== "TERRAFORM" ||
-        input.scaffoldRuntimeInput?.language === "TypeScript"
-      ) {
-        await this.checkTool("npm", NODE_INSTALL_HINT);
-      }
+      await this.checkTool("npm", NODE_INSTALL_HINT);
       if (input.scaffoldRuntimeInput?.language === "Python") {
         await this.checkTool("uv", UV_INSTALL_HINT);
       }

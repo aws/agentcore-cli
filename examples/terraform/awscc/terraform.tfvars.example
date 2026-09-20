@@ -1,0 +1,5 @@
+region                = "us-west-2"
+expected_account_id   = "123456789012"
+name_prefix           = "myagentawscc"
+description           = "AgentCore Terraform example"
+memory_retention_days = 3
