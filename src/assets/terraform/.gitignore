@@ -1,0 +1,10 @@
+**/.terraform/
+**/.agentcore.lock
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/crash.log
+**/crash.*.log
+**/agentcore.generated.tf.json
+**/*.tfvars
+**/*.tfvars.json

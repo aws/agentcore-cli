@@ -6,6 +6,7 @@ import type {
   RuntimeResourceConfig,
 } from "../../../handlers/project/add/runtime/types";
 import { InputValidationError } from "../../../errors/errors";
+import type { ManagedBy } from "../../../projectSchemas/project";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
@@ -18,7 +19,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; managedBy?: ManagedBy },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -43,12 +44,15 @@ export async function createProjectTree(
       config.assetSource.read("templates/shared/gitignore.template"),
     ),
     FsTreeNode.createDirectory("agentcore", [
-      await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
+      await FsTreeNode.fromAssetSource(
+        { assetSource: config.assetSource },
+        { assetDir: input.managedBy === "TERRAFORM" ? "terraform" : "cdk" },
+      ),
       FsTreeNode.createFile("agentcore.json", async () =>
         json({
           name: input.projectName,
           version: 1,
-          managedBy: "CDK",
+          managedBy: input.managedBy ?? "CDK",
           ...mergeSpecEntries(templates.map(({ spec }) => spec)),
         }),
       ),
