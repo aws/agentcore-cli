@@ -517,8 +517,6 @@ describe("project remove", () => {
 });
 
 describe("project remove all", () => {
-  // Includes knowledge bases and standalone tool runtimes, which are configured
-  // directly in the spec and still need to be cleared by remove-all.
   async function populatedProject(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],

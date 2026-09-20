@@ -70,8 +70,6 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
         description: policy.description,
       })),
     })),
-    // The Inspector resource API requires this array; the project schema has
-    // no unassigned targets to expose.
     unassignedTargets: [],
     // Project schema has no aws-targets or deployed-state equivalent yet, so neutral defaults.
     deploymentTargets: [],
