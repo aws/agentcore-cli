@@ -183,7 +183,7 @@ since the exported agent has no container filesystem to read them from.
 ### Project configuration compatibility
 
 **Breaking change:** `agentcore/agentcore.json` rejects `datasets`, `abTests`,
-`unassignedTargets`, and `capacityProviders` for all projects, including empty arrays.
+and `unassignedTargets` for all projects, including empty arrays.
 Remove empty keys. Before deploying a project with populated collections, preserve
 and move those resources out of the removed collections, reviewing CloudFormation
 ownership and retention. Simply deleting populated collections and deploying can
@@ -192,6 +192,9 @@ delete resources; there is no automatic migration.
 `knowledgeBases`, targets under `agentCoreGateways[].targets`, and standalone
 `toolRuntimes` remain supported. Service-level `agentcore eval dataset` and
 `agentcore eval ab-test` commands and evaluation with external datasets remain available.
+A/B tests have no CDK implementation, so declaring them in project configuration
+cannot deploy them. Capacity provider support in the CDK library is unchanged;
+the CLI project schema already excludes `capacityProviders`.
 
 ### Harness Project Files
 

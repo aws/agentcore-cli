@@ -133,7 +133,7 @@ describe("project custom validation", () => {
   });
 
   test.each(
-    ["datasets", "abTests", "unassignedTargets", "capacityProviders"].flatMap((field) =>
+    ["datasets", "abTests", "unassignedTargets"].flatMap((field) =>
       [[], [{ name: "legacy" }], null, undefined].map((value) => ({ field, value })),
     ),
   )("rejects removed project field $field with value $value", ({ field, value }) => {
@@ -148,7 +148,7 @@ describe("project custom validation", () => {
 
   test("does not generate removed fields when applying project defaults", () => {
     const spec = ProjectSpecSchema.parse(minimalProject);
-    for (const field of ["datasets", "abTests", "unassignedTargets", "capacityProviders"]) {
+    for (const field of ["datasets", "abTests", "unassignedTargets"]) {
       expect(spec).not.toHaveProperty(field);
     }
     expect(spec.knowledgeBases).toEqual([]);

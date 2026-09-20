@@ -13,7 +13,7 @@ import type { Project } from "./types";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { declaresNothingDeployable } from "./deploy";
 
-const REMOVED_FIELDS = ["datasets", "abTests", "unassignedTargets", "capacityProviders"];
+const REMOVED_FIELDS = ["datasets", "abTests", "unassignedTargets"];
 const LEGACY_COLLECTIONS: Record<string, unknown[]> = {
   datasets: [
     {
@@ -48,7 +48,6 @@ const LEGACY_COLLECTIONS: Record<string, unknown[]> = {
   unassignedTargets: [
     { name: "unattached", targetType: "mcpServer", endpoint: "https://unattached.example.com" },
   ],
-  capacityProviders: [{ name: "provider" }],
 };
 const RETAINED_COLLECTIONS = {
   knowledgeBases: [
