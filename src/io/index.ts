@@ -25,7 +25,7 @@ export {
   type InteractiveTerminalPeer,
   type TerminalFrame,
 } from "./interactiveTerminal";
-export { readTextFile, type ReadTextFileOptions } from "./fileRead";
+export { readTextFile, readYamlFile, type ReadTextFileOptions } from "./fileRead";
 export { readOptionalBytes, resolvePackageFileDir } from "./packagedAssets";
 export {
   parseJsonObjectLines,

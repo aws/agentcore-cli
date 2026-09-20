@@ -1,7 +1,7 @@
 import z from "zod";
 import type { RatingScale } from "@aws-sdk/client-bedrock-agentcore-control";
 import { flag } from "../../../../router";
-import { parseJsonFlag } from "../../../utils";
+import { parseJsonObjectFlag } from "../../../utils";
 import {
   RATING_SCALE_PRESET_IDS,
   isRatingScalePreset,
@@ -9,23 +9,23 @@ import {
 } from "../../ratingScale";
 import type { SourceResolver } from "../../../../io";
 
-export const instructionsFlag = flag(
-  "instructions",
-  "evaluation instructions (inline, file://<path>, or - for stdin)",
-  z.string().optional(),
-);
+const ratingScaleDescription = `rating scale: a preset (${RATING_SCALE_PRESET_IDS.join(" | ")}) or a custom RatingScale (JSON inline, file://<path>, or - for stdin)`;
 
-export const ratingScaleFlag = flag(
-  "rating-scale",
-  `rating scale: a preset (${RATING_SCALE_PRESET_IDS.join(" | ")}) or a custom RatingScale (JSON inline, file://<path>, or - for stdin)`,
-  z.string().optional(),
-);
+export const ratingScaleFlag = {
+  ...flag("rating-scale", ratingScaleDescription, z.string().min(1)),
+  optional: () => flag("rating-scale", ratingScaleDescription, z.string().optional()),
+};
 
 // resolveRatingScale turns the single --rating-scale value into a RatingScale, or
 // undefined when the flag is omitted. A value matching a known preset id expands
 // to that preset; anything else is a source-aware JSON RatingScale (inline,
 // file://<path>, or - for stdin). A file literally named after a preset is still
 // reachable via file://.
+export function resolveRatingScale(value: string, source: SourceResolver): Promise<RatingScale>;
+export function resolveRatingScale(
+  value: string | undefined,
+  source: SourceResolver,
+): Promise<RatingScale | undefined>;
 export async function resolveRatingScale(
   value: string | undefined,
   source: SourceResolver,
@@ -33,5 +33,5 @@ export async function resolveRatingScale(
   if (value === undefined) return undefined;
   if (isRatingScalePreset(value)) return ratingScaleFromPreset(value);
   const raw = await source.resolveText("rating-scale", value);
-  return parseJsonFlag<RatingScale>("rating-scale", raw);
+  return parseJsonObjectFlag<RatingScale>("rating-scale", raw);
 }

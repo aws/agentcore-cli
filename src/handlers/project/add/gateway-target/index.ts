@@ -18,7 +18,7 @@ export const createAddGatewayTargetHandler = (config: AddProjectResourceConfig) 
     name: "gateway-target",
     description: "add a Target to a project Gateway",
     flags: [
-      flag("gateway", "name of the parent Gateway in this project", z.string().optional()),
+      flag("gateway", "name of the parent Gateway in this project", z.string().min(1)),
       flag("name", "the Target name for endpoint or Runtime shortcuts", z.string().optional()),
       flag("endpoint", "external MCP server HTTPS endpoint", z.string().optional()),
       flag("runtime", "name of a Runtime declared in this project", z.string().optional()),
@@ -49,9 +49,6 @@ Use project add gateway-connector for curated Connector shortcuts.`,
       flag("scope", "OAuth scope", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.gateway) {
-        throw new InputValidationError("required option '--gateway <gateway>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["endpoint", "runtime", "target-configuration"], {
         exactlyOne: true,
       });

@@ -29,12 +29,18 @@ describe("AWS deployment targets", () => {
     expect(AwsAccountIdSchema.safeParse(account).success).toBe(false);
   });
 
-  test.each(["", "1default", "-default", "_default", "has_underscore", "has spaces", "has.dots"])(
-    "rejects invalid target name %j",
-    (name) => {
-      expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);
-    },
-  );
+  test.each([
+    "",
+    "1default",
+    "-default",
+    "_default",
+    "has_underscore",
+    "has-hyphen",
+    "has spaces",
+    "has.dots",
+  ])("rejects invalid target name %j", (name) => {
+    expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);
+  });
 
   test("enforces target name and description lengths", () => {
     expect(DeploymentTargetNameSchema.safeParse("a".repeat(64)).success).toBe(true);
@@ -44,23 +50,31 @@ describe("AWS deployment targets", () => {
     ).toBe(false);
   });
 
-  test.each(["ap-southeast-5", "ap-southeast-7", "eu-south-1", "eu-south-2", "us-gov-west-1"])(
-    "accepts supported region %s",
-    (region) => {
-      expect(AgentCoreRegionSchema.safeParse(region).success).toBe(true);
-    },
-  );
-
-  test("rejects an AWS region where AgentCore is unavailable", () => {
-    expect(AgentCoreRegionSchema.safeParse("us-west-1").success).toBe(false);
+  test.each([
+    "ap-south-2",
+    "ap-southeast-5",
+    "ap-southeast-7",
+    "eu-south-1",
+    "eu-south-2",
+    "us-gov-west-1",
+    "us-west-1",
+  ])("accepts supported region %s", (region) => {
+    expect(AgentCoreRegionSchema.safeParse(region).success).toBe(true);
   });
 
-  test("rejects duplicate target names", () => {
-    const result = AwsDeploymentTargetsSchema.safeParse([target, target]);
+  test("rejects an AWS region where AgentCore is unavailable", () => {
+    expect(AgentCoreRegionSchema.safeParse("af-south-1").success).toBe(false);
+  });
+
+  test.each([
+    ["the same name", target],
+    ["a name that differs only by case", { ...target, name: "Default" }],
+  ])("rejects a second target with %s", (_label, second) => {
+    const result = AwsDeploymentTargetsSchema.safeParse([target, second]);
 
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe("Duplicate deployment target name: default");
-    }
+    expect(result.error?.issues[0]?.message).toBe(
+      "Duplicate deployment target name (ignoring case): default",
+    );
   });
 });

@@ -6,6 +6,7 @@ import type { Core } from "../../types";
 import { createGetBatchInsightsHandler } from "./get";
 import { createListBatchInsightsHandler } from "./list";
 import { createRunBatchInsightsHandler } from "./run";
+import { createStopBatchInsightsHandler } from "./stop";
 
 export function createBatchInsightsHandler(core: Core, io: AppIO): Router {
   return new Router("batch-insights", "run and inspect AgentCore batch insights")
@@ -14,7 +15,8 @@ export function createBatchInsightsHandler(core: Core, io: AppIO): Router {
     .supportedTuiCommands("get", "list")
     .handler(createRunBatchInsightsHandler(core, io))
     .handler(createGetBatchInsightsHandler(core))
-    .handler(createListBatchInsightsHandler(core));
+    .handler(createListBatchInsightsHandler(core))
+    .handler(createStopBatchInsightsHandler(core));
 }
 
 export { BatchInsightsScreen } from "./screen.tsx";

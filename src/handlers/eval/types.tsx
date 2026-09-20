@@ -48,6 +48,7 @@ import type {
   RecommendationType,
   StartRecommendationResponse,
   StartBatchEvaluationResponse,
+  StopBatchEvaluationResponse,
   SessionMetadataShape,
   InlineGroundTruth,
   EvaluationReferenceInput,
@@ -292,7 +293,7 @@ export type StartBatchEvaluationInput = {
 export type StartBatchInsightsInput = {
   name: string;
   description?: string;
-  insightIds: string[];
+  insightIds?: string[];
   evaluatorIds?: string[];
   source: SessionSourceValue;
   kmsKeyArn?: string;
@@ -434,6 +435,7 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
+  stopBatchEvaluation(id: string, options: CoreOptions): Promise<StopBatchEvaluationResponse>;
   listBatchInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,

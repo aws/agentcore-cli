@@ -17,8 +17,8 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create an AgentCore Gateway",
     flags: [
-      flag("name", "the Gateway name", z.string().optional()),
-      flag("role-arn", "IAM role the Gateway assumes", z.string().optional()),
+      flag("name", "the Gateway name", z.string().min(1)),
+      flag("role-arn", "IAM role the Gateway assumes", z.string().min(1)),
       flag(
         "protocol",
         "restrict Target protocols to MCP; omitted allows every Target protocol",
@@ -27,7 +27,7 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
       flag(
         "authorizer-type",
         "inbound authorizer: AWS_IAM, CUSTOM_JWT, NONE, or AUTHENTICATE_ONLY",
-        z.enum(["AWS_IAM", "CUSTOM_JWT", "NONE", "AUTHENTICATE_ONLY"]).optional(),
+        z.enum(["AWS_IAM", "CUSTOM_JWT", "NONE", "AUTHENTICATE_ONLY"]),
       ),
       flag("description", "Gateway description", z.string().optional()),
       flag(
@@ -61,17 +61,6 @@ export const createCreateGatewayHandler = (core: Core, io: AppIO) =>
       flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-      if (!flags["role-arn"]) {
-        throw new InputValidationError("required option '--role-arn <role-arn>' not specified");
-      }
-      if (!flags["authorizer-type"]) {
-        throw new InputValidationError(
-          "required option '--authorizer-type <authorizer-type>' not specified",
-        );
-      }
       if (
         flags["authorizer-type"] === "CUSTOM_JWT" &&
         flags["authorizer-configuration"] === undefined

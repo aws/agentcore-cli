@@ -5,6 +5,7 @@ import {
   createSilentLogger,
   fixtureFactories,
   matchGolden,
+  settle,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
@@ -15,13 +16,12 @@ const FIXTURES = join(import.meta.dir, "__fixtures__");
 
 // Record with: RECORD=1 bun test src/handlers/eval/batch-evaluation/batch-evaluation.fixture.test.tsx
 //
-// Batch evaluation is READ-ONLY, so — unlike the evaluator/online-eval fixture
-// suites, which create-then-delete their resource during a record run — this
-// pins a pre-existing COMPLETED job in the fixture account. Re-recording requires
-// that job to still exist AND its CloudWatch result stream to still hold events
-// (streams age out under log retention). If it has aged out, run a fresh batch
-// evaluation, wait for it to complete, and repoint FIXTURE_JOB_ID at it before
-// re-recording.
+// The read tests pin a pre-existing COMPLETED job in the fixture account.
+// Re-recording requires that job to still exist AND its CloudWatch result stream
+// to still hold events (streams age out under log retention). If it has aged
+// out, run a fresh batch evaluation, wait for it to complete, and repoint
+// FIXTURE_JOB_ID at it before re-recording. The stop test creates its own job and
+// immediately transitions it to a terminal state.
 //
 // This suite exercises the real seam end to end: parsing → handler → CoreClient →
 // GetBatchEvaluation (data plane) → CloudWatchClient.readLogStream →
@@ -42,6 +42,8 @@ const MISSING_JOB_ID = "missing-batch-eval-0000000000";
 // bump FIXTURE_EVAL_NAME when re-recording.
 const FIXTURE_EVAL_AGENT = "asdf_MyAgent-3s5axvBC6Q";
 const FIXTURE_EVAL_NAME = "golden_batch_evaluate_fixture685";
+const FIXTURE_STOP_NAME = "golden_batch_stop_fixture_20260917_1";
+const FIXTURE_STOP_AGENT = "demoEval_demoAgent-qGEpAAE68u";
 
 const FIXTURE_SIMULATE_NAME = "golden_batch_simulate_fixture1";
 const FIXTURE_OUTPUT_CONFIG_NAME = "golden_batch_evaluate_outputconfig1";
@@ -141,6 +143,42 @@ describe("eval batch-evaluation (fixture-backed)", () => {
     const job = JSON.parse(stdout);
     expect(job.batchEvaluationId).toBeTruthy();
     expect(job.status).toBeTruthy();
+  });
+
+  test("stop transitions a running batch evaluation", async () => {
+    const started = JSON.parse(
+      await run([
+        "eval",
+        "batch-evaluation",
+        "evaluate",
+        "--agent",
+        FIXTURE_STOP_AGENT,
+        "--evaluators",
+        "Builtin.Helpfulness",
+        "--name",
+        FIXTURE_STOP_NAME,
+        "--json",
+      ]),
+    );
+    await settle(1_000);
+
+    const stdout = await run([
+      "eval",
+      "batch-evaluation",
+      "stop",
+      "--id",
+      started.batchEvaluationId,
+      "--json",
+    ]);
+
+    matchGolden(FIXTURES, "stop.golden.json", stdout);
+    const stopped = JSON.parse(stdout);
+    expect(stopped.batchEvaluationId).toBe(started.batchEvaluationId);
+    expect(["STOPPING", "STOPPED"]).toContain(stopped.status);
+  }, 180_000);
+
+  test("stop requires --id before making an AWS call", async () => {
+    await expect(run(["eval", "batch-evaluation", "stop", "--json"])).rejects.toThrow(/--id/);
   });
 
   test("simulate replays a dataset, then submits a batch job over the created sessions", async () => {

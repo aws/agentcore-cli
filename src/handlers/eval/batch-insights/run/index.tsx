@@ -17,7 +17,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
     name: "run",
     description: "start an asynchronous batch insights run over existing sessions",
     flags: [
-      flag("name", "batch insights name (must be unique in the account)", z.string().optional(), {
+      flag("name", "batch insights name (must be unique in the account)", z.string().min(1), {
         group: CONFIGURATION,
       }),
       flag("description", "optional description", z.string().optional(), {
@@ -27,7 +27,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
         group: CONFIGURATION,
       }),
       ...SessionSource.flags,
-      flag("insight", "insight ID(s) to run", z.array(z.string()).default([DEFAULT_INSIGHT]), {
+      flag("insight", "insight ID(s) to run", z.array(z.string()).optional(), {
         group: ANALYSIS,
       }),
       flag(
@@ -38,17 +38,22 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"]) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-
       const resolver = new SourceResolver({ stdin: io.stdin });
       const source = await SessionSource.resolve(flags, resolver);
+      if (
+        source.origin === "online-eval" &&
+        (flags["insight"]?.length || flags["evaluators"]?.length)
+      ) {
+        throw new InputValidationError(
+          "--insight and --evaluators cannot be used with --online-eval",
+        );
+      }
       const response = await core.eval.startBatchInsights(
         {
           name: flags["name"],
           description: flags["description"],
-          insightIds: flags["insight"],
+          insightIds:
+            source.origin === "online-eval" ? undefined : (flags["insight"] ?? [DEFAULT_INSIGHT]),
           evaluatorIds: flags["evaluators"],
           source,
           kmsKeyArn: flags["kms-key-arn"],

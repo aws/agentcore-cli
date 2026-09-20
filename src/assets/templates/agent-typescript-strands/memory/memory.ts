@@ -1,18 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { MemoryManager } from '@strands-agents/sdk';
 import { createAgentCoreMemoryStores } from 'bedrock-agentcore/experimental/memory/strands';
 
 const MEMORY_ID = process.env.{{memoryEnvVarName}};
-
-const CUSTOM_ACTOR_ID_HEADER = 'x-amzn-bedrock-agentcore-runtime-custom-actor-id';
-
-export function getActorId(payload: any, context: any): string {
-  const raw =
-    context?.headers?.[CUSTOM_ACTOR_ID_HEADER] ||
-    payload?.userId ||
-    context?.sessionId;
-  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : randomUUID();
-}
 
 const memoryManagerCache = new Map<string, MemoryManager>();
 
@@ -31,7 +20,7 @@ export function getOrCreateMemoryManager(sessionId: string, actorId: string): Me
       { namespace: '/users/{actorId}/facts' },
       { namespace: '/users/{actorId}/preferences' },
       { namespace: '/episodes/{actorId}/{sessionId}' },
-      { namespace: '/summaries/{actorId}/{sessionId}' },
+      { namespace: '/summaries/{actorId}' },
     ],
     // readMode defaults to 'per-namespace' (one retrieve call per namespace).
     // Switch to 'subtree' to consolidate to a single hierarchical recall call.

@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -10,15 +9,11 @@ export const createListGatewayTargetsHandler = (core: Core) =>
     name: "list",
     description: "list Targets for an AgentCore Gateway",
     flags: [
-      flag("gateway-id", "the ID of the Gateway", z.string().optional()),
+      flag("gateway-id", "the ID of the Gateway", z.string().min(1)),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
-
       ctx
         .require(JsonRendererKey)
         .renderJson(

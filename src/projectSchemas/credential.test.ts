@@ -91,6 +91,7 @@ describe("credential schema", () => {
     expect(credentialNameFieldSuffix("service-key")).toBeUndefined();
     expect(credentialNameFieldSuffix("svc-client-id")).toBe("_CLIENT_ID");
     expect(credentialNameFieldSuffix("svc_client_secret")).toBe("_CLIENT_SECRET");
+    expect(credentialNameFieldSuffix("svc-name")).toBe("_NAME");
     expect(credentialNameFieldSuffix("wallet-authorization-private-key")).toBe(
       "_AUTHORIZATION_PRIVATE_KEY",
     );

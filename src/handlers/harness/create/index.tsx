@@ -13,7 +13,6 @@ import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx, parseJsonFlag } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
-import { InputValidationError } from "../../../errors";
 import { parameterHelp } from "../parameterHelp.tsx";
 
 export const createCreateHarnessHandler = (core: Core) =>
@@ -21,7 +20,7 @@ export const createCreateHarnessHandler = (core: Core) =>
     name: "create",
     description: "create a harness",
     flags: [
-      flag("name", "the name of the harness", z.string().optional(), { help: parameterHelp.name }),
+      flag("name", "the name of the harness", z.string().min(1), { help: parameterHelp.name }),
       flag(
         "execution-role-arn",
         "IAM role the harness assumes; a default role is created when omitted",
@@ -90,12 +89,6 @@ export const createCreateHarnessHandler = (core: Core) =>
       }),
     ],
     handle: async (ctx, flags) => {
-      // Required at runtime but declared optional so that a bare
-      // `harness create` falls through to the TUI middleware instead.
-      if (!flags["name"]) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-
       const response = await core.harness.createHarness(
         {
           harnessName: flags["name"],

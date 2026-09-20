@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
-import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
@@ -57,7 +56,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
     name: "evaluate",
     description: "evaluate existing sessions service-side (async; returns a job ID)",
     flags: [
-      flag("name", "batch evaluation name (must be unique in the account)", z.string().optional(), {
+      flag("name", "batch evaluation name (must be unique in the account)", z.string().min(1), {
         group: CONFIGURATION,
       }),
       flag("description", "optional description", z.string().optional(), {
@@ -67,7 +66,7 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         group: CONFIGURATION,
       }),
       ...SessionSource.flags,
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).min(1), {
         group: EVALUATION,
       }),
       flag(
@@ -79,15 +78,6 @@ export const createEvaluateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       ...BatchOutputConfig.flags,
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"]) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
-        throw new InputValidationError(
-          "required option '--evaluators <evaluators...>' not specified",
-        );
-      }
-
       // One resolver shared across every stdin-capable flag, so a second `-`
       // (e.g. --ground-truth - --output-config -) is rejected rather than
       // silently reading an empty string after the first drains stdin.

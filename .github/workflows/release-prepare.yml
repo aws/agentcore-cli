@@ -1,5 +1,5 @@
 # Opens the release PR: bumps package.json, refreshes the vended @aws/agentcore-cdk pin, and pushes
-# release/v<version>. Merging that PR is the release approval and triggers release-publish.yml.
+# release/v<version>. Merging that PR is the release approval and triggers release-main-and-preview.yml.
 name: release-prepare
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
         type: choice
         options: [major, minor, patch]
       channel:
-        description: rc publishes under the rc dist-tag, stable under latest
+        description: rc publishes under the rc dist-tag and pins the vended CDK to the library's rc dist-tag, stable publishes under latest and pins latest
         required: true
         type: choice
         options: [rc, stable]
@@ -61,7 +61,7 @@ jobs:
       - name: Generate command reference
         run: bun scripts/generate-command-reference.mjs
 
-      - run: bun scripts/sync-vended-cdk.ts
+      - run: bun scripts/sync-vended-cdk.ts ${{ inputs.channel == 'rc' && 'rc' || 'latest' }}
 
       - name: Open release PR
         env:

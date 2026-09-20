@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { SourceResolver, type AppIO } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -19,11 +18,11 @@ export const createCreateConfigBundleHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create a configuration bundle and its initial immutable version",
     flags: [
-      flag("name", "the name of the configuration bundle", z.string().optional()),
+      flag("name", "the name of the configuration bundle", z.string().min(1)),
       flag(
         "components",
         "complete component configuration map (JSON inline, file://<path>, or - for stdin)",
-        z.string().optional(),
+        z.string().min(1),
         { sensitive: true },
       ),
       flag("branch-name", "branch name for the initial configuration", BranchNameSchema.optional()),
@@ -39,13 +38,6 @@ export const createCreateConfigBundleHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"]) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-      if (!flags["components"]) {
-        throw new InputValidationError("required option '--components <components>' not specified");
-      }
-
       const components = await resolveConfigurationBundleComponents(
         flags["components"],
         new SourceResolver({ stdin: io.stdin }),

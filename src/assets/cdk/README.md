@@ -9,6 +9,9 @@ through the `@aws/agentcore-cdk` constructs. It is two files:
   with this file.
 - `lib/cdk-stack.ts` — `AgentCoreStack`, which instantiates one `AgentCoreApplication`. This is the file you edit.
 
+Harness settings are read from `harness.yaml`. Inline `systemPrompt` text overrides
+the conventional `system-prompt.md` file in the harness directory.
+
 ## The CLI runs it for you
 
 You normally do not run this app directly:

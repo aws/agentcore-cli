@@ -16,7 +16,7 @@ export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig
     name: "oauth",
     description: "add an OAuth2 credential provider to the current project",
     flags: [
-      flag("name", "the name of the credential provider", z.string().optional()),
+      flag("name", "the name of the credential provider", z.string().min(1)),
       flag(
         "vendor",
         "the OAuth2 vendor (e.g. GithubOauth2); custom providers use the guided flags instead",
@@ -47,9 +47,6 @@ export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name)
-        throw new InputValidationError("required option '--name <name>' not specified");
-
       const secretRef = parseExclusiveSecretRef(
         "client-secret-reference",
         flags["client-secret-reference"],

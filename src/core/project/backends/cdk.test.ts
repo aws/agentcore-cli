@@ -10,9 +10,10 @@ import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
+  CredentialProvisionInput,
   CredentialProvisioner,
-  DeployedCredentials,
-  PaymentCredentialRemover,
+  CredentialRemovalInput,
+  CredentialRemover,
 } from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH, updateTargetState } from "./cdk/deployedState";
 import type { DeployBackendInput } from "./types";
@@ -157,7 +158,7 @@ type HarnessOptions = {
   failOperation?: CdkOperation["kind"];
   bootstrapError?: Error;
   provisionCredentials?: CredentialProvisioner;
-  removePaymentCredentials?: PaymentCredentialRemover;
+  removeCredentials?: CredentialRemover;
   /** Stack returned by CloudFormation. Defaults to a present stack; null means absent. */
   describedStack?: Stack | null;
   /** Chunks the fake synth process streams through onOutput. */
@@ -237,8 +238,8 @@ function harness(options: HarnessOptions = {}) {
       };
     },
     ...(options.provisionCredentials && { provisionCredentials: options.provisionCredentials }),
-    ...(options.removePaymentCredentials && {
-      removePaymentCredentials: options.removePaymentCredentials,
+    ...(options.removeCredentials && {
+      removeCredentials: options.removeCredentials,
     }),
     describeStack: async (region, provider, stackName) => {
       stackReads.push({ stackName, region, credentials: provider });
@@ -453,10 +454,12 @@ describe("CdkBackend.deploy", () => {
     });
   });
 
-  test("provisions credentials before synth and records them under the target", async () => {
+  test("provisions credentials for the target before synth and records them under it", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
-    const provisionCredentials: CredentialProvisioner = async function* () {
+    const handed: CredentialProvisionInput[] = [];
+    const provisionCredentials: CredentialProvisioner = async function* (_project, provisionInput) {
+      handed.push(provisionInput);
       yield { type: "step", message: "Preparing credential provider 'openai-key'" };
       return { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
     };
@@ -468,6 +471,10 @@ describe("CdkBackend.deploy", () => {
 
     const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
 
+    // The target's name scopes the provider names, so provisioning needs it.
+    expect(handed).toEqual([
+      { credentials: subject.credentials, region: TARGET.region, targetName: TARGET.name },
+    ]);
     // The credential step runs (and its ARNs are recorded) before synthesis, so
     // the assembly is synthesized against a state file that already describes them.
     const messages = stepMessages(deployed.events);
@@ -640,15 +647,15 @@ describe("CdkBackend.deploy", () => {
     });
   });
 
-  test("removes the project's payment credential providers after its stack", async () => {
+  test("removes the target's credential providers after its stack", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
     const removals: string[] = [];
-    const removePaymentCredentials: PaymentCredentialRemover = async function* (project) {
+    const removeCredentials: CredentialRemover = async function* (project) {
       removals.push(project.name);
       yield { type: "step", message: "Removing credential provider 'wallet'" };
     };
-    const subject = harness({ removePaymentCredentials });
+    const subject = harness({ removeCredentials });
 
     const deployed = await collectDeploy(
       subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
@@ -662,10 +669,11 @@ describe("CdkBackend.deploy", () => {
     );
   });
 
-  test("hands teardown the credentials recorded before the deploy overwrote them", async () => {
+  test("hands teardown the target and the providers recorded before the deploy overwrote them", async () => {
     // The `project remove all` shape: the spec declares nothing, so provisioning
     // returns nothing and rewrites the credentials map to empty before teardown runs.
-    // The recorded providers are the only remaining record of what to delete.
+    // The recorded providers are the only remaining record of what to delete, and
+    // the target name is what scopes their provider names.
     const input = await project();
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
     const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
@@ -686,21 +694,88 @@ describe("CdkBackend.deploy", () => {
       }),
     );
 
-    const handed: DeployedCredentials[] = [];
-    const removePaymentCredentials: PaymentCredentialRemover = async function* (
-      _project,
-      { recorded },
-    ) {
-      handed.push(recorded);
+    const handed: CredentialRemovalInput[] = [];
+    const removeCredentials: CredentialRemover = async function* (_project, removalInput) {
+      handed.push(removalInput);
       yield { type: "step", message: "Removing credential provider 'wallet'" };
     };
-    const subject = harness({ removePaymentCredentials });
+    const subject = harness({ removeCredentials });
 
     await collectDeploy(
       subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
     );
 
-    expect(handed).toEqual([{ wallet: recordedWallet }]);
+    expect(handed).toEqual([
+      {
+        credentials: subject.credentials,
+        region: TARGET.region,
+        targetName: TARGET.name,
+        providers: [{ name: "wallet", authorizerType: "PaymentCredentialProvider" }],
+      },
+    ]);
+  });
+
+  test("removes a recorded provider whose credential left the spec, after the stack update", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 1,
+      credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "openai-key" }],
+    });
+    await writeAssembly(input, [TARGET.name]);
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: {
+            stackArn: "arn:stack:default",
+            resources: {
+              credentials: {
+                "openai-key": {
+                  credentialProviderArn: "arn:apikey:openai-key",
+                  authorizerType: "ApiKeyCredentialProvider",
+                },
+                wallet: {
+                  credentialProviderArn: "arn:payment:wallet",
+                  authorizerType: "PaymentCredentialProvider",
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      yield { type: "step", message: "Preparing credential provider 'example_default_openai-key'" };
+      return { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
+    };
+    const handed: CredentialRemovalInput[] = [];
+    const removeCredentials: CredentialRemover = async function* (_project, removalInput) {
+      handed.push(removalInput);
+      yield { type: "step", message: "Removing credential provider 'example_default_wallet'" };
+    };
+    const subject = harness({ provisionCredentials, removeCredentials });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    // Only the dropped credential's provider goes: the declared one was just provisioned.
+    expect(handed).toEqual([
+      {
+        credentials: subject.credentials,
+        region: TARGET.region,
+        targetName: TARGET.name,
+        providers: [{ name: "wallet", authorizerType: "PaymentCredentialProvider" }],
+      },
+    ]);
+    // After the stack update, since a resource in the stack may have used the
+    // provider until this deploy removed the reference.
+    const messages = stepMessages(deployed.events);
+    expect(messages.indexOf("Deploying AgentCore-example-default-0")).toBeLessThan(
+      messages.indexOf("Removing credential provider 'example_default_wallet'"),
+    );
+    expect(deployed.result).toEqual({ outputs: {} });
   });
 
   test("says to add a resource when there is no stack to remove either", async () => {

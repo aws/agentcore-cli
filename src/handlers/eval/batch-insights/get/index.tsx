@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -9,10 +8,9 @@ export const createGetBatchInsightsHandler = (core: Core) =>
   createHandler({
     name: "get",
     description: "get a batch insights run and its reports by ID",
-    flags: [flag("id", "the ID of the batch insights run", z.string().optional())],
+    flags: [flag("id", "the ID of the batch insights run", z.string().min(1))],
     handle: async (ctx, flags) => {
       const id = flags["id"];
-      if (!id) throw new InputValidationError("required option '--id <id>' not specified");
 
       const detail = await core.eval.getBatchInsights(id, coreOptsFromCtx(ctx));
 

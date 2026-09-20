@@ -32,11 +32,12 @@ import { createCloudFormationClient } from "../../factories";
 import type { CreateCloudFormationClient } from "../../types";
 import {
   createCredentialProvisioner,
-  createPaymentCredentialRemover,
+  createCredentialRemover,
+  orphanedCredentials,
   type CredentialProviderCalls,
+  type CredentialProviderRef,
   type CredentialProvisioner,
-  type DeployedCredentials,
-  type PaymentCredentialRemover,
+  type CredentialRemover,
 } from "./cdk/credentials";
 import {
   countDeployableResources,
@@ -114,7 +115,7 @@ export type CdkBackendConfig = {
   resolveAccount?: AccountResolver;
   loadBootstrapTemplate?: BootstrapTemplateLoader;
   provisionCredentials?: CredentialProvisioner;
-  removePaymentCredentials?: PaymentCredentialRemover;
+  removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
 };
@@ -131,7 +132,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly resolveAccount: AccountResolver;
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
   private readonly provisionCredentials: CredentialProvisioner;
-  private readonly removePaymentCredentials: PaymentCredentialRemover;
+  private readonly removeCredentials: CredentialRemover;
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
 
@@ -154,8 +155,7 @@ export class CdkBackend implements ProjectBackend {
     this.loadBootstrapTemplate = config.loadBootstrapTemplate ?? loadBootstrapTemplate;
     this.provisionCredentials =
       config.provisionCredentials ?? createCredentialProvisioner(config.identity);
-    this.removePaymentCredentials =
-      config.removePaymentCredentials ?? createPaymentCredentialRemover(config.identity);
+    this.removeCredentials = config.removeCredentials ?? createCredentialRemover(config.identity);
     this.describeStack =
       config.describeStack ??
       ((region, credentials, stackName) =>
@@ -227,18 +227,20 @@ export class CdkBackend implements ProjectBackend {
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
-    // Kept from before provisioning rewrites the credentials map: it is the only
-    // record of what this target provisioned, and a teardown reached by emptying the
-    // spec has no other way to know which providers it owns.
+    // Read before provisioning rewrites the credentials map: it is the only record
+    // of what this target provisioned, so it is the only way to find a provider whose
+    // credential has since left the spec.
     const recorded =
       (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
         ?.credentials ?? {};
+    const orphaned = orphanedCredentials(recorded, project.spec.credentials);
 
     // Credential providers aren't stack resources; the synthesized app reads their
     // ARNs from deployed-state.json, so they must exist and be recorded before synth.
     const provisioned = yield* this.provisionCredentials(project, {
       credentials,
       region: target.region,
+      targetName: target.name,
     });
     // Recorded every deploy (even when empty) so dropping the last credential
     // from the spec clears the stale entry instead of leaving it advertised.
@@ -255,7 +257,7 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options, recorded });
+      return yield* this.teardown({ project, artifact, input, options, orphaned });
     }
 
     const bootstrap = await this.bootstrap(target.region, credentials);
@@ -306,6 +308,15 @@ export class CdkBackend implements ProjectBackend {
     // another's recorded state.
     await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
 
+    // After the stack update, since a resource in it may have been using the provider
+    // until this deploy removed the reference.
+    yield* this.removeCredentials(project, {
+      credentials,
+      region: target.region,
+      targetName: target.name,
+      providers: orphaned,
+    });
+
     // Reported after the stack is up and its ARN recorded: a Quick Create
     // connector is deployed but unusable until someone follows its authorization
     // link, and that link expires minutes after the connector is created.
@@ -331,14 +342,14 @@ export class CdkBackend implements ProjectBackend {
     artifact,
     input,
     options,
-    recorded,
+    orphaned,
   }: {
     project: Project;
     artifact: StackArtifact;
     input: DeployBackendInput;
     options: CdkRunOptions;
-    /** The credentials deployed-state.json held for this target before the deploy. */
-    recorded: DeployedCredentials;
+    /** Providers recorded for this target before the deploy that the spec no longer declares. */
+    orphaned: CredentialProviderRef[];
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
@@ -366,11 +377,14 @@ export class CdkBackend implements ProjectBackend {
 
     yield { type: "step", message: `Removing stack ${artifact.stackName}` };
     yield* this.runCdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
-    // After the stack, since a resource in it may still be using the provider.
-    yield* this.removePaymentCredentials(project, {
+    // After the stack, since a resource in it may still be using the provider. The
+    // declared credentials are included because `project remove all` empties the spec
+    // before the deploy that gets here, so what it recorded is all that names them.
+    yield* this.removeCredentials(project, {
       credentials: options.credentials,
       region: target.region,
-      recorded,
+      targetName: target.name,
+      providers: [...orphaned, ...project.spec.credentials],
     });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };

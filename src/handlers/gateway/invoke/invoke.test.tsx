@@ -4,11 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import { CommanderError } from "commander";
 import type { AppIO } from "../../../io";
-import { UserCancellationError } from "../../../errors";
+import { UserCancellationError, InputValidationError } from "../../../errors";
 import { ExitCode, runWithExitCode } from "../../../runnable";
 import {
   createSilentLogger,
+  expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
   waitFor,
@@ -361,27 +363,33 @@ describe("gateway invoke", () => {
       ],
       /--json cannot be used/,
     ],
-    [
-      ["gateway", "invoke", "--id", GATEWAY_ID, "--payload", "{}", "--request-type", "mcp"],
-      /unknown option '--request-type'/,
-    ],
   ] as const)("rejects invalid input before invocation", async (args, message) => {
     const core = configuredCore();
     const output = captureIO();
-    await expect(runCommand(core, output.io, [...args])).rejects.toThrow(message);
+    await expectError(runCommand(core, output.io, [...args]), message, InputValidationError);
     expect(core.gateway.calls.some((call) => call.method === "invokeGateway")).toBe(false);
   });
 
-  test("classifies a missing ID as usage", async () => {
+  test("rejects an unknown option before invocation", async () => {
     const core = configuredCore();
     const output = captureIO();
+    const args = [
+      "gateway",
+      "invoke",
+      "--id",
+      GATEWAY_ID,
+      "--payload",
+      "{}",
+      "--request-type",
+      "mcp",
+    ];
 
-    const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, ["gateway", "invoke", "--payload", "{}"]),
+    await expectError(
+      runCommand(core, output.io, args),
+      /unknown option '--request-type'/,
+      CommanderError,
     );
-
-    expect(code).toBe(ExitCode.USAGE);
-    expect(core.gateway.calls).toEqual([]);
+    expect(core.gateway.calls.some((call) => call.method === "invokeGateway")).toBe(false);
   });
 
   test("a bare command enters existing TUI middleware without Gateway Core calls", async () => {

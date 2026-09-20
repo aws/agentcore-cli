@@ -7,9 +7,10 @@ session, and streams its response.
 ## What's here
 
 - `main.py`: the agent. A `BedrockAgentCoreApp` wraps an async entrypoint
-  that reads `prompt` from the payload, runs the agent, and streams each model
-  chunk back as a JSON event of content blocks. An `InMemorySaver` checkpointer
-  keyed on the Runtime session id carries history between turns.
+  that reads `prompt` from the payload, runs the agent, and streams each
+  completed model message back as a JSON event of content blocks. An
+  `InMemorySaver` checkpointer keyed on the Runtime session id carries history
+  between turns.
 - `model/load.py`: creates the Bedrock chat model with `init_chat_model`.
 - `pyproject.toml`: Python dependencies, managed with
   [uv](https://docs.astral.sh/uv/). `agentcore project create` has already run

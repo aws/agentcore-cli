@@ -20,7 +20,7 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
     name: "update",
     description: "update an online evaluation config",
     flags: [
-      flag("id", "the ID of the online evaluation config to update", z.string().optional(), {
+      flag("id", "the ID of the online evaluation config to update", z.string().min(1), {
         group: "Target:",
       }),
       flag(
@@ -81,7 +81,6 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
       if (flags["endpoint"] && flags["clear-endpoint"] === "true") {
         throw new InputValidationError(
           "'--endpoint' and '--clear-endpoint' are mutually exclusive",

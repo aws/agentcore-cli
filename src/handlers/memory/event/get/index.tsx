@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
@@ -10,25 +9,12 @@ export const createGetMemoryEventHandler = (core: Core) =>
     name: "get",
     description: "get an AgentCore Memory Event",
     flags: [
-      flag("id", "the ID of the Memory", z.string().optional()),
-      flag("actor-id", "the ID of the actor", z.string().optional()),
-      flag("event-id", "the event ID", z.string().optional()),
-      flag("session-id", "the session ID", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("actor-id", "the ID of the actor", z.string().min(1)),
+      flag("session-id", "the session ID", z.string().min(1)),
+      flag("event-id", "the event ID", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-      if (!flags["actor-id"]) {
-        throw new InputValidationError("required option '--actor-id <actor-id>' not specified");
-      }
-      if (!flags["session-id"]) {
-        throw new InputValidationError("required option '--session-id <session-id>' not specified");
-      }
-      if (!flags["event-id"]) {
-        throw new InputValidationError("required option '--event-id <event-id>' not specified");
-      }
-
       const response = await core.memory.getEvent(
         {
           memoryId: flags.id,

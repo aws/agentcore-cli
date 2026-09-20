@@ -108,7 +108,6 @@ exports[`FsProjectManager.create snapshots the Strands TypeScript project manife
     "app/agent_typescript_strands/.gitignore",
     "app/agent_typescript_strands/README.md",
     "app/agent_typescript_strands/main.ts",
-    "app/agent_typescript_strands/mcp_client/client.ts",
     "app/agent_typescript_strands/memory/memory.ts",
     "app/agent_typescript_strands/model/load.ts",
     "app/agent_typescript_strands/package.json",

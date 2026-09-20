@@ -15,7 +15,7 @@ export const createUpdateOnlineInsightHandler = (core: Core, io: AppIO) =>
     name: "update",
     description: "update an online insight config",
     flags: [
-      flag("id", "the ID of the online insight config to update", z.string().optional()),
+      flag("id", "the ID of the online insight config to update", z.string().min(1)),
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
@@ -60,7 +60,6 @@ export const createUpdateOnlineInsightHandler = (core: Core, io: AppIO) =>
       flag("role-arn", "replace the IAM role the online insight assumes", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
       if (flags["endpoint"] && flags["clear-endpoint"] === "true")
         throw new InputValidationError(
           "'--endpoint' and '--clear-endpoint' are mutually exclusive",

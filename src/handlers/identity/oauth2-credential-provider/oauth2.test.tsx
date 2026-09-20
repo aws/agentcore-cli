@@ -7,6 +7,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   createSilentLogger,
+  expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -17,6 +18,7 @@ import {
   parseProviderConfigFlags,
   validateProviderConfigMode,
 } from "./config";
+import { InputValidationError } from "../../../errors";
 
 const REGION = "us-west-2";
 const PROVIDER_NAME = "oauth2-provider";
@@ -124,8 +126,10 @@ describe("oauth2-credential-provider TUI dispatch", () => {
   test.each(["create", "update", "delete"] as const)(
     "runs normal validation for bare CLI-only `%s`",
     async (command) => {
-      await expect(run(["identity", "oauth2-credential-provider", command])).rejects.toThrow(
-        "required option '--name <name>' not specified",
+      await expectError(
+        run(["identity", "oauth2-credential-provider", command]),
+        "required option '--name' not specified",
+        InputValidationError,
       );
     },
   );
@@ -158,7 +162,7 @@ describe("oauth2-credential-provider flag validation", () => {
       /--name/,
     ],
   ] as const)("rejects missing required flags for `%s`", async (_label, args, message) => {
-    expect(run([...args])).rejects.toThrow(message);
+    await expectError(run([...args]), message, InputValidationError);
   });
 
   test.each([

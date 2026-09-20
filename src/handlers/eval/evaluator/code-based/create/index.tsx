@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
-import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
@@ -12,9 +11,9 @@ export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create a code-based (Lambda-backed) evaluator",
     flags: [
-      flag("name", "the name of the evaluator", z.string().optional()),
-      flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS).optional()),
-      flag("lambda-arn", "ARN of the Lambda function that scores a session", z.string().optional()),
+      flag("name", "the name of the evaluator", z.string().min(1)),
+      flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS)),
+      flag("lambda-arn", "ARN of the Lambda function that scores a session", z.string().min(1)),
       // No default; the service applies its own timeout (60s) when omitted.
       flag(
         "timeout",
@@ -29,14 +28,6 @@ export const createCodeBasedCreateHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["level"])
-        throw new InputValidationError("required option '--level <level>' not specified");
-      if (!flags["lambda-arn"]) {
-        throw new InputValidationError("required option '--lambda-arn <lambda-arn>' not specified");
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const tags = parseJsonFlag<Record<string, string>>(
         "tags",

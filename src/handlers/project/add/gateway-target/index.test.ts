@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { ProjectStateError, InputValidationError } from "../../../../errors";
+import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
@@ -309,11 +311,6 @@ describe("project add gateway-target", () => {
       "--scope is valid only with --outbound-auth oauth",
     ],
     [
-      "API-key endpoint shortcut unsupported by the project schema",
-      endpointFlags("--outbound-auth", "api-key", "--credential-name", "api-key"),
-      "mcpServer targets do not support API_KEY outbound auth",
-    ],
-    [
       "unknown credential",
       endpointFlags("--outbound-auth", "oauth", "--credential-name", "missing"),
       "no credential named 'missing' exists in this project",
@@ -330,7 +327,20 @@ describe("project add gateway-target", () => {
     ],
   ])("rejects %s", async (_label, flags, message) => {
     await projectWithCredentials();
-    await expect(run(["add", "gateway-target", ...flags])).rejects.toThrow(message);
+    await expectError(run(["add", "gateway-target", ...flags]), message, InputValidationError);
+  });
+
+  test("rejects an API-key endpoint shortcut unsupported by the project schema", async () => {
+    await projectWithCredentials();
+    await expectError(
+      run([
+        "add",
+        "gateway-target",
+        ...endpointFlags("--outbound-auth", "api-key", "--credential-name", "api-key"),
+      ]),
+      "mcpServer targets do not support API_KEY outbound auth",
+      ProjectStateError,
+    );
   });
 
   test("rejects a direct API-key reference to an OAuth credential", async () => {

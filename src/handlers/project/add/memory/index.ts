@@ -15,7 +15,7 @@ import {
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
 import type { AddResourceInput } from "../../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 // The service default for raw event retention
 export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
@@ -130,7 +130,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
     name: "memory",
     description: "add a Memory to the current project",
     flags: [
-      flag("name", "the name of the Memory", z.string().optional()),
+      flag("name", "the name of the Memory", z.string().min(1)),
       flag("description", "a description of what the Memory stores", z.string().optional()),
       flag(
         "event-expiry-duration",
@@ -166,8 +166,15 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name)
-        throw new InputValidationError("required option '--name <name>' not specified");
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Memory",
+        project.name,
+        flags.name,
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
 
       const inputIndexedKeys = parseJsonFlagWithSchema(
         "indexed-keys",
@@ -192,7 +199,6 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         tags: parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema),
       };
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

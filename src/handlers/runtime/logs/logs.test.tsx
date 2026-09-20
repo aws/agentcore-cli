@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
+import { createSilentLogger, expectError, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/globalConfig";
 import { createRootHandler } from "../../index";
 import type { LogSource } from "../../../core/observability/index";
+import { InputValidationError } from "../../../errors";
 
 const REGION = "us-west-2";
 
@@ -106,8 +107,10 @@ describe("runtime logs", () => {
     const previousCwd = process.cwd();
     process.chdir(root);
     try {
-      await expect(route(["runtime", "logs", "--since", `${SINCE_MS}`])).rejects.toThrow(
-        "required option '--id <id>' not specified",
+      await expectError(
+        route(["runtime", "logs", "--since", `${SINCE_MS}`]),
+        "required option '--id' not specified",
+        InputValidationError,
       );
     } finally {
       process.chdir(previousCwd);

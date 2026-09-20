@@ -863,11 +863,11 @@ describe("FsProjectManager.deploy", () => {
     const subject = deployManager();
     const project = await projectWithTargets(root, undefined);
 
-    const attempt = deploy(subject.manager, project, "default", { region: "us-west-1" });
+    const attempt = deploy(subject.manager, project, "default", { region: "af-south-1" });
 
-    await expect(attempt).rejects.toThrow(/'us-west-1' is not an AgentCore-supported region/);
+    await expect(attempt).rejects.toThrow(/'af-south-1' is not an AgentCore-supported region/);
     await expect(
-      deploy(subject.manager, project, "default", { region: "us-west-1" }),
+      deploy(subject.manager, project, "default", { region: "af-south-1" }),
     ).rejects.toThrow(/Supported regions: .*us-east-1.*Re-run with --region/s);
     expect(subject.calls).toEqual([]);
     expect(subject.accountCalls).toEqual([]);

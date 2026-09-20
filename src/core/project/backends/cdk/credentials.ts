@@ -10,6 +10,7 @@ import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import type {
   ApiKeyCredential,
   Credential,
+  CredentialType,
   OAuthCredential,
   PaymentCredential,
 } from "../../../../projectSchemas/credential";
@@ -31,22 +32,25 @@ export type DeployedCredential = {
    * providers it owns without the spec that declared them — `project remove all`
    * empties the spec before the deploy that tears the target down.
    */
-  authorizerType?: Credential["authorizerType"];
+  authorizerType?: CredentialType;
 };
 export type DeployedCredentials = Record<string, DeployedCredential>;
 
 /**
- * The type segment Identity puts in a payment provider's ARN, used to classify
- * entries recorded before `authorizerType` was persisted.
+ * The Identity name a credential's provider is created under. Scoped to the project
+ * and target so two targets in one account and region never share a provider.
  */
-const PAYMENT_ARN_SEGMENT = "/paymentcredentialprovider/";
-
-/** Whether a recorded provider is a payment provider, and so owned by its project. */
-function isPaymentProvider(state: DeployedCredential): boolean {
-  return state.authorizerType
-    ? state.authorizerType === "PaymentCredentialProvider"
-    : state.credentialProviderArn.includes(PAYMENT_ARN_SEGMENT);
+function providerName(projectName: string, targetName: string, credentialName: string): string {
+  return `${projectName}_${targetName}_${credentialName}`;
 }
+
+const PROVIDER_NAME_MAX_LENGTH = 128;
+
+const DELETE_COMMANDS: Record<CredentialType, string> = {
+  ApiKeyCredentialProvider: "delete-api-key-credential-provider",
+  OAuthCredentialProvider: "delete-oauth2-credential-provider",
+  PaymentCredentialProvider: "delete-payment-credential-provider",
+};
 
 /**
  * The Identity operations provisioning uses, narrowed from the Core client that
@@ -64,8 +68,15 @@ export type CredentialProviderCalls = Pick<
   | "getPaymentCredentialProvider"
   | "createPaymentCredentialProvider"
   | "updatePaymentCredentialProvider"
-  // Deletes undo what one deploy created; a provider that already existed is never
-  // deleted by a deploy, and only payment providers are deleted by a teardown.
+  // Deletes undo what a failed deploy created and remove what a torn-down target
+  // owns. A provider that already existed is never deleted by a deploy.
+  | "deleteApiKeyCredentialProvider"
+  | "deleteOauth2CredentialProvider"
+  | "deletePaymentCredentialProvider"
+>;
+
+type ProviderDeletes = Pick<
+  CredentialProviderCalls,
   | "deleteApiKeyCredentialProvider"
   | "deleteOauth2CredentialProvider"
   | "deletePaymentCredentialProvider"
@@ -75,6 +86,7 @@ export type CredentialProvisionInput = {
   region: string;
   /** Credential provider shared with the rest of the deployment preflight. */
   credentials: CdkCredentialProvider;
+  targetName: string;
 };
 
 export type CredentialProvisioner = (
@@ -82,67 +94,72 @@ export type CredentialProvisioner = (
   input: CredentialProvisionInput,
 ) => AsyncGenerator<ProjectEvent, DeployedCredentials>;
 
-export type PaymentCredentialRemovalInput = CredentialProvisionInput & {
-  /**
-   * The providers deployed-state.json recorded for this target, read before the
-   * deploy overwrote them.
-   */
-  recorded: DeployedCredentials;
+/** A credential's spec name and provider kind, enough to name and delete its provider. */
+export type CredentialProviderRef = Pick<Credential, "name" | "authorizerType">;
+
+export type CredentialRemovalInput = CredentialProvisionInput & {
+  /** The credentials whose providers to delete. The caller decides the set. */
+  providers: readonly CredentialProviderRef[];
 };
 
-export type PaymentCredentialRemover = (
+export type CredentialRemover = (
   project: Project,
-  input: PaymentCredentialRemovalInput,
+  input: CredentialRemovalInput,
 ) => AsyncGenerator<ProjectEvent, void>;
 
 /**
- * Deletes the payment credential providers a target provisioned, for a teardown that
- * has already removed its stack.
+ * The providers a target recorded that its spec no longer declares. Deploy deletes
+ * these after the stack update, and teardown deletes them together with the declared
+ * ones, so a credential dropped from the spec does not leave its provider behind.
  *
- * Taken from the recorded state and not only from the spec: a teardown is reached by
- * declaring nothing to deploy, and `project remove all` gets there by emptying the
- * spec — including the credentials that name the providers to delete. The spec is
- * still consulted, so a project whose state predates the CLI recording credentials
- * still has its providers removed.
- *
- * Only payment providers: they hold a payment vendor's own API key, wallet and
- * authorization secrets, provisioned for this project alone. An API-key or OAuth
- * provider is named account-globally and may be shared with another project or with
- * work done outside the CLI, so tearing down one project never removes it.
- *
- * A provider that is already gone is not an error, and a provider that cannot be
- * deleted is reported rather than failing a teardown whose stack is already gone.
+ * A recorded entry without `authorizerType` was written by a CLI that named providers
+ * by the bare credential name, so nothing exists under the scoped name and the entry
+ * is skipped.
  */
-export function createPaymentCredentialRemover(
-  identity: Pick<CredentialProviderCalls, "deletePaymentCredentialProvider">,
-): PaymentCredentialRemover {
-  return async function* removePaymentCredentials(project, { region, credentials, recorded }) {
-    const declared = project.spec.credentials
-      .filter((credential) => credential.authorizerType === "PaymentCredentialProvider")
-      .map(({ name }) => name);
-    const fromState = Object.entries(recorded)
-      .filter(([, state]) => isPaymentProvider(state))
-      .map(([name]) => name);
-    const names = [...new Set([...fromState, ...declared])];
-    if (names.length === 0) return;
+export function orphanedCredentials(
+  recorded: DeployedCredentials,
+  declared: readonly Credential[],
+): CredentialProviderRef[] {
+  const names = new Set(declared.map(({ name }) => name));
+  return Object.entries(recorded).flatMap(([name, { authorizerType }]) =>
+    authorizerType && !names.has(name) ? [{ name, authorizerType }] : [],
+  );
+}
 
+/**
+ * Deletes the given credentials' providers under their target-scoped names.
+ *
+ * Every kind is deleted. A provider's name is scoped to this project and target, so
+ * nothing outside this target can be using it. A provider that is already gone is
+ * not an error, and a provider that cannot be deleted is reported rather than
+ * failing the deploy that already changed the stack.
+ */
+export function createCredentialRemover(identity: ProviderDeletes): CredentialRemover {
+  return async function* removeCredentials(
+    project,
+    { region, credentials, targetName, providers },
+  ) {
     const options: CoreOptions = { region, credentials };
-    for (const name of names) {
-      yield { type: "step", message: `Removing credential provider '${name}'` };
+    for (const { name, authorizerType } of providers) {
+      const provider = providerName(project.name, targetName, name);
+      yield { type: "step", message: `Removing credential provider '${provider}'` };
       try {
-        await identity.deletePaymentCredentialProvider(name, options);
+        await deleteProvider(identity, authorizerType, provider, options);
       } catch (error) {
         if (error instanceof ResourceNotFoundException) continue;
         yield {
           type: "step",
           message:
-            `Could not remove credential provider '${name}': ${(error as Error).message}. ` +
-            `Delete it with 'aws bedrock-agentcore-control delete-payment-credential-provider'.`,
+            `Could not remove credential provider '${provider}': ${(error as Error).message}. ` +
+            `Delete it with 'aws bedrock-agentcore-control ${DELETE_COMMANDS[authorizerType]}'.`,
         };
       }
     }
   };
 }
+
+/** A declared credential paired with the Identity provider name it resolves to. */
+type NamedCredential = { credential: Credential; provider: string };
 
 /**
  * Provisions the credential providers a project declares, before synthesis: the
@@ -158,7 +175,7 @@ export function createCredentialProvisioner(
   identity: CredentialProviderCalls,
   processEnv: Record<string, string | undefined> = process.env,
 ): CredentialProvisioner {
-  return async function* provisionCredentials(project, { region, credentials }) {
+  return async function* provisionCredentials(project, { region, credentials, targetName }) {
     const declared = project.spec.credentials;
     if (declared.length === 0) return {};
 
@@ -172,24 +189,47 @@ export function createCredentialProvisioner(
     // rather than the default chain, in the region the target deploys to.
     const options: CoreOptions = { region, credentials };
 
+    // Every name is composed and checked before the first lookup, so one that is
+    // too long fails the deploy before it touches Identity.
+    const named: NamedCredential[] = declared.map((credential) => {
+      const provider = providerName(project.name, targetName, credential.name);
+      if (provider.length > PROVIDER_NAME_MAX_LENGTH) {
+        throw new ProjectStateError(
+          `Credential '${credential.name}' would create a credential provider named ` +
+            `'${provider}' for target '${targetName}', which is ${provider.length} characters. ` +
+            `Provider names are at most ${PROVIDER_NAME_MAX_LENGTH} characters. Shorten the ` +
+            `credential name or the target name.`,
+        );
+      }
+      return { credential, provider };
+    });
+
     // Resolve every credential before writing any: look up existing providers and
     // validate the secret each one needs. A missing secret then fails before the
     // first provider is written, not partway through the list.
-    const plans: { credential: Credential; provision: Provision }[] = [];
-    for (const credential of declared) {
+    const plans: (NamedCredential & { provision: Provision })[] = [];
+    for (const { credential, provider } of named) {
       plans.push({
         credential,
-        provision: await resolveCredential(identity, credential, options, env, project.rootPath),
+        provider,
+        provision: await resolveCredential(
+          identity,
+          credential,
+          provider,
+          options,
+          env,
+          project.rootPath,
+        ),
       });
     }
 
     const provisioned: DeployedCredentials = {};
     // Providers this deploy brought into existence, so a later failure can undo them
     // rather than leaving one behind that nothing records.
-    const created: Credential[] = [];
+    const created: NamedCredential[] = [];
     try {
-      for (const { credential, provision } of plans) {
-        yield { type: "step", message: `Preparing credential provider '${credential.name}'` };
+      for (const { credential, provider, provision } of plans) {
+        yield { type: "step", message: `Preparing credential provider '${provider}'` };
         if ("reuse" in provision) {
           provisioned[credential.name] = provision.reuse;
           continue;
@@ -198,7 +238,7 @@ export function createCredentialProvisioner(
         // validation has already created the provider, and rollback has to know about
         // it. A create that never reached the service leaves nothing to delete, which
         // rollback treats as already gone.
-        if (provision.kind === "create") created.push(credential);
+        if (provision.kind === "create") created.push({ credential, provider });
         provisioned[credential.name] = await provision.write();
       }
     } catch (error) {
@@ -220,42 +260,43 @@ export function createCredentialProvisioner(
  * mistake, forgetting one that was created, cannot happen.
  */
 async function* rollback(
-  identity: CredentialProviderCalls,
-  created: Credential[],
+  identity: ProviderDeletes,
+  created: NamedCredential[],
   options: CoreOptions,
 ): AsyncGenerator<ProjectEvent, void> {
-  for (const credential of [...created].reverse()) {
+  for (const { credential, provider } of [...created].reverse()) {
     yield {
       type: "step",
-      message: `Removing credential provider '${credential.name}' this deploy created`,
+      message: `Removing credential provider '${provider}' this deploy created`,
     };
     try {
-      await deleteCredential(identity, credential, options);
+      await deleteProvider(identity, credential.authorizerType, provider, options);
     } catch (error) {
       if (error instanceof ResourceNotFoundException) continue;
       yield {
         type: "step",
         message:
-          `Could not remove credential provider '${credential.name}': ` +
-          `${(error as Error).message}. It exists in AWS but is not recorded; the next deploy ` +
-          `of this project will adopt it.`,
+          `Could not remove credential provider '${provider}': ` +
+          `${(error as Error).message}. It exists in AWS but is not recorded, so the next ` +
+          `deploy of this target will adopt it.`,
       };
     }
   }
 }
 
-function deleteCredential(
-  identity: CredentialProviderCalls,
-  credential: Credential,
+function deleteProvider(
+  identity: ProviderDeletes,
+  kind: CredentialType,
+  provider: string,
   options: CoreOptions,
 ): Promise<unknown> {
-  switch (credential.authorizerType) {
+  switch (kind) {
     case "ApiKeyCredentialProvider":
-      return identity.deleteApiKeyCredentialProvider(credential.name, options);
+      return identity.deleteApiKeyCredentialProvider(provider, options);
     case "OAuthCredentialProvider":
-      return identity.deleteOauth2CredentialProvider(credential.name, options);
+      return identity.deleteOauth2CredentialProvider(provider, options);
     case "PaymentCredentialProvider":
-      return identity.deletePaymentCredentialProvider(credential.name, options);
+      return identity.deletePaymentCredentialProvider(provider, options);
   }
 }
 
@@ -271,32 +312,34 @@ type Provision =
 function resolveCredential(
   identity: CredentialProviderCalls,
   credential: Credential,
+  provider: string,
   options: CoreOptions,
   env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<Provision> {
   switch (credential.authorizerType) {
     case "ApiKeyCredentialProvider":
-      return resolveApiKey(identity, credential, options, env, rootPath);
+      return resolveApiKey(identity, credential, provider, options, env, rootPath);
     case "OAuthCredentialProvider":
-      return resolveOauth2(identity, credential, options, env, rootPath);
+      return resolveOauth2(identity, credential, provider, options, env, rootPath);
     case "PaymentCredentialProvider":
-      return resolvePayment(identity, credential, options, env, rootPath);
+      return resolvePayment(identity, credential, provider, options, env, rootPath);
   }
 }
 
 async function resolveApiKey(
   identity: CredentialProviderCalls,
   credential: ApiKeyCredential,
+  provider: string,
   options: CoreOptions,
   env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<Provision> {
   const { name } = credential;
-  // Provider names are account-global, so one already in this account is the one
-  // this project's credential resolves to.
+  // Provider names are account-global, so one already under this target's scoped
+  // name is the one this credential resolves to.
   const existing = await undefinedWhenAbsent(() =>
-    identity.getApiKeyCredentialProvider(name, options),
+    identity.getApiKeyCredentialProvider(provider, options),
   );
 
   const secret = credential.secretRef
@@ -305,42 +348,43 @@ async function resolveApiKey(
   if (!secret) {
     // Nothing to write. An existing provider keeps whatever secret it holds; an
     // absent one cannot be created at all.
-    if (existing) return { reuse: apiKeyProvision(name, existing) };
+    if (existing) return { reuse: apiKeyProvision(provider, existing) };
     throw missingSecret(name, credentialEnvVarName(name), "secretRef", rootPath);
   }
 
-  const input = { name, ...secret };
+  const input = { name: provider, ...secret };
   if (existing) {
     return {
       kind: "update",
       write: async () =>
-        apiKeyProvision(name, await identity.updateApiKeyCredentialProvider(input, options)),
+        apiKeyProvision(provider, await identity.updateApiKeyCredentialProvider(input, options)),
     };
   }
   return {
     kind: "create",
     write: async () =>
-      apiKeyProvision(name, await identity.createApiKeyCredentialProvider(input, options)),
+      apiKeyProvision(provider, await identity.createApiKeyCredentialProvider(input, options)),
   };
 }
 
 async function resolveOauth2(
   identity: CredentialProviderCalls,
   credential: OAuthCredential,
+  provider: string,
   options: CoreOptions,
   env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<Provision> {
   const existing = await undefinedWhenAbsent(() =>
-    identity.getOauth2CredentialProvider(credential.name, options),
+    identity.getOauth2CredentialProvider(provider, options),
   );
-  if (existing) requireVendorMatch(credential.name, credential.vendor, existing);
+  if (existing) requireVendorMatch(credential.name, provider, credential.vendor, existing);
 
   const secret: Record<string, unknown> | undefined = credential.clientSecretRef
     ? { clientSecretConfig: credential.clientSecretRef, clientSecretSource: "EXTERNAL" }
     : secretFromEnv(env, credential.name, (clientSecret) => ({ clientSecret }), "_CLIENT_SECRET");
   if (!secret) {
-    if (existing) return { reuse: oauth2Provision(credential.name, existing) };
+    if (existing) return { reuse: oauth2Provision(provider, existing) };
     throw missingSecret(
       credential.name,
       credentialEnvVarName(credential.name, "_CLIENT_SECRET"),
@@ -356,7 +400,7 @@ async function resolveOauth2(
     ? vendorConfigWithSecret(credential.name, credential.providerConfig, secret)
     : guidedCustomConfig(credential, clientId, secret);
   const input = {
-    name: credential.name,
+    name: provider,
     // The spec's vendor is free-form so a new service vendor works without
     // a CLI release; the service rejects values it does not know.
     credentialProviderVendor: credential.vendor as never,
@@ -366,19 +410,13 @@ async function resolveOauth2(
     return {
       kind: "update",
       write: async () =>
-        oauth2Provision(
-          credential.name,
-          await identity.updateOauth2CredentialProvider(input, options),
-        ),
+        oauth2Provision(provider, await identity.updateOauth2CredentialProvider(input, options)),
     };
   }
   return {
     kind: "create",
     write: async () =>
-      oauth2Provision(
-        credential.name,
-        await identity.createOauth2CredentialProvider(input, options),
-      ),
+      oauth2Provision(provider, await identity.createOauth2CredentialProvider(input, options)),
   };
 }
 
@@ -402,24 +440,25 @@ function credentialEnvironment(
 async function resolvePayment(
   identity: CredentialProviderCalls,
   credential: PaymentCredential,
+  provider: string,
   options: CoreOptions,
   env: Record<string, string | undefined>,
   rootPath: string,
 ): Promise<Provision> {
   const { name } = credential;
   const existing = await undefinedWhenAbsent(() =>
-    identity.getPaymentCredentialProvider(name, options),
+    identity.getPaymentCredentialProvider(provider, options),
   );
-  if (existing) requireVendorMatch(name, credential.provider, existing);
+  if (existing) requireVendorMatch(name, provider, credential.provider, existing);
 
   const fields = paymentFields(credential, env);
   if ("missing" in fields) {
-    if (existing) return { reuse: paymentProvision(name, existing) };
+    if (existing) return { reuse: paymentProvision(provider, existing) };
     throw missingPaymentSecrets(name, fields.missing, rootPath);
   }
 
   const input = {
-    name,
+    name: provider,
     credentialProviderVendor: credential.provider as never,
     providerConfigurationInput: fields.configuration,
   };
@@ -427,13 +466,13 @@ async function resolvePayment(
     return {
       kind: "update",
       write: async () =>
-        paymentProvision(name, await identity.updatePaymentCredentialProvider(input, options)),
+        paymentProvision(provider, await identity.updatePaymentCredentialProvider(input, options)),
     };
   }
   return {
     kind: "create",
     write: async () =>
-      paymentProvision(name, await identity.createPaymentCredentialProvider(input, options)),
+      paymentProvision(provider, await identity.createPaymentCredentialProvider(input, options)),
   };
 }
 
@@ -498,6 +537,7 @@ function secretFromEnv<T>(
  */
 function requireVendorMatch(
   name: string,
+  provider: string,
   declared: string,
   existing: { credentialProviderVendor?: string },
 ): void {
@@ -505,9 +545,9 @@ function requireVendorMatch(
   if (!actual || actual === declared) return;
   throw new ProjectStateError(
     `Credential '${name}' declares vendor '${declared}', but a credential provider named ` +
-      `'${name}' already exists in this account with vendor '${actual}'. Provider names are ` +
-      `shared across an account: rename the credential, or delete the existing provider if ` +
-      `nothing else uses it.`,
+      `'${provider}' already exists in this account with vendor '${actual}'. Provider names ` +
+      `are shared across an account: rename the credential, or delete the existing provider ` +
+      `if nothing else uses it.`,
   );
 }
 
@@ -527,11 +567,11 @@ async function undefinedWhenAbsent<T>(send: () => Promise<T>): Promise<T | undef
 // The two provider families report their secret under different response fields,
 // so each maps its own; both record the same shape in deployed-state.json.
 function apiKeyProvision(
-  name: string,
+  provider: string,
   response: { credentialProviderArn?: string; apiKeySecretArn?: { secretArn?: string } },
 ): DeployedCredential {
   return deployedCredential(
-    name,
+    provider,
     "ApiKeyCredentialProvider",
     response.credentialProviderArn,
     response.apiKeySecretArn?.secretArn,
@@ -539,11 +579,11 @@ function apiKeyProvision(
 }
 
 function oauth2Provision(
-  name: string,
+  provider: string,
   response: { credentialProviderArn?: string; clientSecretArn?: { secretArn?: string } },
 ): DeployedCredential {
   return deployedCredential(
-    name,
+    provider,
     "OAuthCredentialProvider",
     response.credentialProviderArn,
     response.clientSecretArn?.secretArn,
@@ -553,11 +593,11 @@ function oauth2Provision(
 // A payment provider holds several secrets rather than one, each reported under its
 // vendor's own field, so only the provider ARN is recorded.
 function paymentProvision(
-  name: string,
+  provider: string,
   response: { credentialProviderArn?: string },
 ): DeployedCredential {
   return deployedCredential(
-    name,
+    provider,
     "PaymentCredentialProvider",
     response.credentialProviderArn,
     undefined,
@@ -565,13 +605,13 @@ function paymentProvision(
 }
 
 function deployedCredential(
-  name: string,
-  authorizerType: Credential["authorizerType"],
+  provider: string,
+  authorizerType: CredentialType,
   credentialProviderArn: string | undefined,
   secretArn: string | undefined,
 ): DeployedCredential {
   return {
-    credentialProviderArn: requireArn(credentialProviderArn, name),
+    credentialProviderArn: requireArn(credentialProviderArn, provider),
     ...(secretArn && { clientSecretArn: secretArn }),
     authorizerType,
   };
@@ -654,10 +694,10 @@ function missingPaymentSecrets(
   );
 }
 
-function requireArn(arn: string | undefined, name: string): string {
+function requireArn(arn: string | undefined, provider: string): string {
   if (!arn) {
     throw new MalformedServiceResponseError(
-      `Identity returned no credentialProviderArn for credential provider '${name}'`,
+      `Identity returned no credentialProviderArn for credential provider '${provider}'`,
     );
   }
   return arn;

@@ -2,9 +2,11 @@ import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { parse } from "yaml";
 import { createRootHandler } from "../index";
 import {
   createSilentLogger,
+  expectError,
   initProject,
   inTempDirectory,
   TestCoreClient,
@@ -12,6 +14,7 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError } from "../../errors";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 
 async function run(
   args: string[],
@@ -74,12 +77,18 @@ describe("project create", () => {
     expect(spec.harnesses).toEqual([{ name: "MyAgent", path: "app/MyAgent" }]);
     expect(spec.runtimes).toEqual([]);
 
-    const harness = await Bun.file(join(projectRoot, "app", "MyAgent", "harness.json")).json();
+    const harness = parse(
+      await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
+    );
     expect(harness.model).toEqual({
       provider: "bedrock",
       modelId: "global.anthropic.claude-sonnet-4-6",
     });
-    expect(harness.memory).toBeUndefined();
+    expect(harness.memory).toEqual({ mode: "managed" });
+    expect(harness.systemPrompt).toBeUndefined();
+    expect(harness.tools).toBeUndefined();
+    expect(harness.skills).toBeUndefined();
+    expect(existsSync(join(projectRoot, "app", "MyAgent", "harness.json"))).toBe(false);
     expect(await Bun.file(join(projectRoot, "app", "MyAgent", "system-prompt.md")).exists()).toBe(
       true,
     );
@@ -312,6 +321,12 @@ describe("project create", () => {
     });
     const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
     expect(envLocal).toContain("test-api-key");
+    const loadModel = await Bun.file(
+      join(projectRoot, "app", "agent_python_strands", "model", "load.py"),
+    ).text();
+    expect(loadModel).toContain(
+      `os.environ.get("${credentialEnvVarName(credentialName, "_NAME")}", "${credentialName}")`,
+    );
   });
 
   test("scaffolds a Container agent from the strands -container template", async () => {
@@ -623,10 +638,23 @@ describe("project add config-bundle", () => {
     await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
   });
 
-  test.each([
-    ["missing name", ["--components", JSON.stringify(components)]],
-    ["missing components", ["--name", "OrdersConfig"]],
+  test.each<[string, string[], string?]>([
+    [
+      "missing name",
+      ["--components", JSON.stringify(components)],
+      "required option '--name' not specified",
+    ],
+    [
+      "missing components",
+      ["--name", "OrdersConfig"],
+      "required option '--components' not specified",
+    ],
     ["invalid name", ["--name", "orders-config", "--components", JSON.stringify(components)]],
+    [
+      "a deployed name over the 100-character service limit",
+      ["--name", `c${"x".repeat(80)}`, "--components", JSON.stringify(components)],
+      `Configuration bundle deployed name 'TestProject_default_c${"x".repeat(80)}' is 101 characters. The maximum is 100.`,
+    ],
     ["empty components", ["--name", "OrdersConfig", "--components", "{}"]],
     [
       "component without configuration",
@@ -688,10 +716,12 @@ describe("project add config-bundle", () => {
         "not-an-arn",
       ],
     ],
-  ])("rejects %s", async (_label, flags) => {
+  ])("rejects %s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
-    await expect(run(["add", "config-bundle", ...flags])).rejects.toBeInstanceOf(
+    await expectError(
+      run(["add", "config-bundle", ...flags]),
+      requiredMessage ?? /./,
       InputValidationError,
     );
   });
@@ -1025,9 +1055,8 @@ describe("project add credentials", () => {
   ])("rejects %s", async (_label, args, message) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
-    await expect(run(["add", "credentials", ...args], { stdin: "line1\nline2" })).rejects.toThrow(
-      message,
-    );
+    const promise = run(["add", "credentials", ...args], { stdin: "line1\nline2" });
+    await expectError(promise, message, InputValidationError);
   });
 });
 

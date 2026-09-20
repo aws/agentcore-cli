@@ -202,9 +202,18 @@ export function compile(
   const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
   const c = new RoutedCommand(compiledNode);
   c.addHelpCommand(false);
+  const defaultHelp = c.createHelp();
   c.configureHelp({
     showGlobalOptions: true,
     subcommandTerm: (command) => command.name(),
+    ...(node instanceof Router && node.configuredVersion()
+      ? {
+          visibleOptions: (command: Command) => [
+            ...defaultHelp.visibleOptions(command),
+            new Option("-V, --version", "display the CLI version"),
+          ],
+        }
+      : {}),
   });
   c.description(node.description());
 
@@ -338,6 +347,10 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
     return this;
   }
 
+  configuredVersion(): string | undefined {
+    return this.cliVersion;
+  }
+
   // --- Handler API: a router is itself a mountable branch node ---
 
   name(): string {
@@ -409,9 +422,6 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
     }
 
     const command = compile(this, ctx);
-    if (this.cliVersion) {
-      command.addHelpText("after", `\nRun '${this.cmdName} --version' to print the CLI version.`);
-    }
     await command.parseAsync(argv);
   }
 }

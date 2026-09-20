@@ -24,7 +24,7 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create a Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().min(1)),
       flag(
         "name",
         "Target name; optional only for AgentCore Runtime Targets",
@@ -60,9 +60,6 @@ export const createCreateGatewayTargetHandler = (core: Core, io: AppIO) =>
       flag("client-token", "idempotency token", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["endpoint", "target-configuration"], {
         exactlyOne: true,
       });

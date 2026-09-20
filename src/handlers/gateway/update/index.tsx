@@ -24,7 +24,7 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
     name: "update",
     description: "update an AgentCore Gateway",
     flags: [
-      flag("id", "the Gateway ID", z.string().optional()),
+      flag("id", "the Gateway ID", z.string().min(1)),
       flag("role-arn", "updated IAM role ARN", z.string().optional()),
       flag("description", "updated Gateway description", z.string().optional()),
       flag(
@@ -73,10 +73,6 @@ export const createUpdateGatewayHandler = (core: Core, io: AppIO) =>
       flag("clear-waf-configuration", "reset WAF failure mode to FAIL_CLOSE", z.boolean()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-
       assertMutuallyExclusiveFlags(flags, ["description", "clear-description"]);
       assertMutuallyExclusiveFlags(flags, [
         "protocol-configuration",

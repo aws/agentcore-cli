@@ -114,6 +114,7 @@ import type {
   RecommendationStatus,
   StartBatchEvaluationResponse,
   StartRecommendationResponse,
+  StopBatchEvaluationResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type {
@@ -350,6 +351,10 @@ const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
 } as unknown as StartBatchEvaluationResponse;
+const DEFAULT_STOP_BATCH_EVAL_RESPONSE = {
+  batchEvaluationId: "batch-eval-test",
+  status: "STOPPING",
+} as StopBatchEvaluationResponse;
 const DEFAULT_START_RECOMMENDATION_RESPONSE = {} as StartRecommendationResponse;
 const DEFAULT_GET_RECOMMENDATION_RESPONSE = {} as GetRecommendationResponse;
 const DEFAULT_LIST_RECOMMENDATIONS_RESPONSE: ListRecommendationsResponse = {
@@ -1634,6 +1639,7 @@ export class TestEvalClient implements CoreEvalClient {
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
+  private stopBatchEvalResponse: StopBatchEvaluationResponse = DEFAULT_STOP_BATCH_EVAL_RESPONSE;
   private getTracesResponse: SessionTrace[] = [];
   private evaluateResponse: EvaluateResult = {
     sessionsRequested: 0,
@@ -1829,6 +1835,11 @@ export class TestEvalClient implements CoreEvalClient {
   // not erroring). Pass `forNextToken` to serve a later page.
   setBatchEvalListResponse(response: ListBatchEvaluationsResponse, forNextToken?: string): this {
     this.batchEvalListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setStopBatchEvalResponse(response: StopBatchEvaluationResponse): this {
+    this.stopBatchEvalResponse = response;
     return this;
   }
 
@@ -2040,6 +2051,15 @@ export class TestEvalClient implements CoreEvalClient {
       this.batchEvalListResponses.get(undefined) ??
       DEFAULT_LIST_BATCH_EVALS_RESPONSE
     );
+  }
+
+  async stopBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<StopBatchEvaluationResponse> {
+    this.calls.push({ method: "stopBatchEvaluation", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.stopBatchEvalResponse;
   }
 
   async listBatchInsights(

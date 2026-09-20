@@ -2,10 +2,12 @@ import { z } from "zod";
 import { uniqueBy } from "./zod-util";
 
 // Keep in sync with https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html
+// and with the library copy at agentcore-l3-cdk-constructs/src/schema/schemas/aws-targets.ts.
 export const AgentCoreRegionSchema = z.enum([
   "ap-northeast-1",
   "ap-northeast-2",
   "ap-south-1",
+  "ap-south-2",
   "ap-southeast-1",
   "ap-southeast-2",
   "ap-southeast-5",
@@ -21,6 +23,7 @@ export const AgentCoreRegionSchema = z.enum([
   "sa-east-1",
   "us-east-1",
   "us-east-2",
+  "us-west-1",
   "us-west-2",
   "us-gov-west-1",
 ]);
@@ -36,11 +39,12 @@ export const DeploymentTargetNameSchema = z
   .string()
   .min(1)
   .max(64)
-  // Underscores are rejected up front even though the CDK normalizes them to
-  // hyphens, so a target name means the same thing everywhere it appears.
+  /**
+   Letters and digits only: the target is the middle segment of every deployed resource name, so a separator inside it would make two targets compose the same name.
+  **/
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9-]*$/,
-    "Name must start with a letter and contain only alphanumeric characters and hyphens",
+    /^[a-zA-Z][a-zA-Z0-9]*$/,
+    "Name must start with a letter and contain only letters and digits",
   )
   .describe("Unique identifier for the deployment target");
 
@@ -60,8 +64,8 @@ export type AwsDeploymentTarget = z.infer<typeof AwsDeploymentTargetSchema>;
 
 export const AwsDeploymentTargetsSchema = z.array(AwsDeploymentTargetSchema).superRefine(
   uniqueBy<AwsDeploymentTarget>(
-    (target) => target.name,
-    (name) => `Duplicate deployment target name: ${name}`,
+    (target) => target.name.toLowerCase(),
+    (name) => `Duplicate deployment target name (ignoring case): ${name}`,
   ),
 );
 

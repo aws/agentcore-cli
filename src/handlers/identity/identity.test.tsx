@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { CoreClient } from "../../core";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   matchGolden,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
 import { createRootHandler } from "../index";
+import { InputValidationError } from "../../errors";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -93,8 +95,10 @@ describe("api-key-credential-provider TUI dispatch", () => {
   test.each(["create", "update", "delete"] as const)(
     "runs normal validation for bare CLI-only `%s`",
     async (command) => {
-      await expect(run(["identity", "api-key-credential-provider", command])).rejects.toThrow(
-        "required option '--name <name>' not specified",
+      await expectError(
+        run(["identity", "api-key-credential-provider", command]),
+        "required option '--name' not specified",
+        InputValidationError,
       );
     },
   );
@@ -251,7 +255,7 @@ describe("api-key-credential-provider CRUDL", () => {
       /--name/,
     ],
   ] as const)("rejects missing required flags for `%s`", async (_label, args, message) => {
-    expect(run([...args])).rejects.toThrow(message);
+    await expectError(run([...args]), message, InputValidationError);
   });
 
   test.each([

@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { CoreClient } from "../../../core";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   matchGolden,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
+import { InputValidationError } from "../../../errors";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -73,11 +75,11 @@ describe("payment-credential-provider get", () => {
   });
 
   test.each([
-    ["omitted", ["get"], "required option '--name <name>' not specified"],
-    ["omitted with --json", ["get", "--json"], "required option '--name <name>' not specified"],
+    ["omitted", ["get"], "required option '--name' not specified"],
+    ["omitted with --json", ["get", "--json"], "required option '--name' not specified"],
     ["empty", ["get", "--name", ""], "Invalid value for option '--name'"],
   ] as const)("requires a nonempty --name when %s", async (_label, args, message) => {
-    await expect(run([...args])).rejects.toThrow(message);
+    await expectError(run([...args]), message, InputValidationError);
   });
 
   test("preserves the recorded service error name and message", async () => {

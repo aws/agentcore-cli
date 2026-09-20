@@ -24,8 +24,8 @@ const CredentialStateSchema = z
     clientSecretArn: z.string().optional(),
     // Which kind of provider the ARN belongs to. A teardown reads this to know which
     // providers the project owns, since the spec that declared them may already be
-    // empty by then. Optional: entries written before it was recorded lack it, and
-    // those are classified by their ARN instead.
+    // empty by then. Optional: entries written before it was recorded lack it. Those
+    // were provisioned under the bare credential name, and a teardown leaves them alone.
     authorizerType: z
       .enum(["ApiKeyCredentialProvider", "OAuthCredentialProvider", "PaymentCredentialProvider"])
       .optional(),

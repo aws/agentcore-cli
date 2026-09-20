@@ -14,7 +14,7 @@ import {
 import { TagsSchema } from "../../../../../projectSchemas/tags";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
-import { addProjectResource } from "../../shared";
+import { addProjectResource, requireDeployedNameFits } from "../../shared";
 import {
   isRatingScalePreset,
   RATING_SCALE_PRESETS,
@@ -27,8 +27,8 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
     description:
       "add an LLM-as-a-Judge evaluator — another LLM prompted with instructions on how to score a session",
     flags: [
-      flag("name", "the name of the evaluator", z.string().optional()),
-      flag("level", "what to score: SESSION, TRACE, or TOOL_CALL", z.string().optional()),
+      flag("name", "the name of the evaluator", z.string().min(1)),
+      flag("level", "what to score: SESSION, TRACE, or TOOL_CALL", z.string().min(1)),
       flag(
         "model-provider",
         "model provider for the judge: Bedrock (default) or OpenResponses",
@@ -37,17 +37,17 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       flag(
         "model",
         "judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID",
-        z.string().optional(),
+        z.string().min(1),
       ),
       flag(
         "instructions",
         "scoring instructions for the judge (inline text, 'file://<path>', or '-' for stdin); use level placeholders like '{context}'",
-        z.string().optional(),
+        z.string(),
       ),
       flag(
         "rating-scale",
         `a rating scale preset (${RATING_SCALE_PRESET_NAMES.join(", ")}) or an inline JSON rating scale`,
-        z.string().optional(),
+        z.string(),
       ),
       flag("description", "a description of what this evaluator measures", z.string().optional()),
       flag(
@@ -58,20 +58,15 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["level"])
-        throw new InputValidationError("required option '--level <level>' not specified");
-      if (!flags["model"])
-        throw new InputValidationError("required option '--model <model>' not specified");
-      if (flags["instructions"] === undefined)
-        throw new InputValidationError(
-          "required option '--instructions <instructions>' not specified",
-        );
-      if (flags["rating-scale"] === undefined)
-        throw new InputValidationError(
-          "required option '--rating-scale <rating-scale>' not specified",
-        );
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Evaluator",
+        project.name,
+        flags["name"],
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
 
       const modelProvider = resolveModelProvider(flags["model-provider"]);
       validateModel(modelProvider, flags["model"]);
@@ -102,7 +97,6 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       const parsed = EvaluatorSchema.safeParse(candidate);
       if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

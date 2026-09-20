@@ -4,15 +4,16 @@ import type {
   GetHarnessResponse,
   GetMemoryOutput,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
-import { RegionKey } from "../../keys";
 import {
   cleanupScreens,
   flatFrame,
   inTempDirectory,
   renderScreen,
   TestCoreClient,
+  waitFor,
   waitForFlatText,
   waitForText,
 } from "../../../testing";
@@ -22,11 +23,10 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
-// The target region differs from the base context's us-east-1 on purpose, so
-// the detail screens are linked with the region the project deployed in.
-// renderStatus pins the ambient region to the target's, since the screen only
-// lists a project deployed there; the mismatch case has a test of its own.
+// The target regions differ from the base context's us-east-1 on purpose, so
+// the detail screens have to fetch where the project deployed.
 const TARGET = { name: "default", account: "111122223333", region: "eu-west-1" } as const;
+const STAGING = { name: "staging", account: "444455556666", region: "eu-central-1" } as const;
 const ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}`;
 const RUNTIME_ID = "checkout-AbCdEf1234";
 const MEMORY_ID = "recallMemory-XyZ123";
@@ -76,9 +76,18 @@ const RUNTIME_RESOURCES: ResolvedProjectResource[] = [
   deployed("memory", "recall", `${ARN}:memory/${MEMORY_ID}`),
 ];
 
-function core(resources: ResolvedProjectResource[] = RUNTIME_RESOURCES): TestCoreClient {
+// The fake resolves the requested target by name, so a screen that names the
+// target it shows proves the name reached the manager call.
+function core(
+  resources: ResolvedProjectResource[] = RUNTIME_RESOURCES,
+  targets: AwsDeploymentTarget[] = [TARGET],
+): TestCoreClient {
   const value = new TestCoreClient();
-  value.projectManager.resolveProjectResources = async () => ({ resources, target: TARGET });
+  value.projectManager.listTargets = async () => targets;
+  value.projectManager.resolveProjectResources = async (_project, { target }) => ({
+    resources,
+    target: targets.find((candidate) => candidate.name === target)!,
+  });
   value.runtime.setGetResponse({
     agentRuntimeId: RUNTIME_ID,
     agentRuntimeArn: `${ARN}:runtime/${RUNTIME_ID}`,
@@ -93,14 +102,10 @@ function core(resources: ResolvedProjectResource[] = RUNTIME_RESOURCES): TestCor
   return value;
 }
 
-function renderStatus(
-  value: TestCoreClient,
-  seed: Project = RUNTIME_PROJECT,
-  region: string = TARGET.region,
-) {
+function renderStatus(value: TestCoreClient, seed: Project = RUNTIME_PROJECT) {
   return renderScreen("/agentcore/project/status", {
     core: value,
-    withContext: (ctx) => ctx.withValue(ProjectKey, seed).withValue(RegionKey, region),
+    withContext: (ctx) => ctx.withValue(ProjectKey, seed),
   });
 }
 
@@ -274,21 +279,75 @@ describe("project status screen", () => {
     await waitForText(screen.lastFrame, "No resources are declared in this project.");
   });
 
-  test("reports a project deployed outside the ambient region instead of listing it", async () => {
-    const screen = renderStatus(core(), RUNTIME_PROJECT, "us-east-1");
+  test("the target's region stays pinned for what a detail page opens next", async () => {
+    const value = core();
+    const screen = renderStatus(value);
 
-    await waitForFlatText(
-      screen.lastFrame,
-      `This project is deployed to ${TARGET.region}, not us-east-1`,
-    );
-    const frame = flatFrame(screen.lastFrame);
-    expect(frame).not.toContain("checkout agent");
-    expect(frame).not.toMatch(/runtime\s+checkout/);
-    // Nothing is focusable, so enter goes nowhere and escape still leaves.
+    await waitForGroup(screen);
+    await screen.press("down");
     await screen.press("return");
-    expect(screen.lastFrame()).toContain("agentcore → project → status");
+    await waitForText(screen.lastFrame, "READY");
+    // invoke → shell → endpoints.
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "agentcore → runtime → endpoint → list → " + RUNTIME_ID);
+    await waitFor(() =>
+      value.runtime.calls.some(({ method }) => method === "listRuntimeEndpoints"),
+    );
+    const call = value.runtime.calls.find(({ method }) => method === "listRuntimeEndpoints")!;
+    expect(call.args[3]).toMatchObject({ region: TARGET.region });
+  });
+
+  test("several targets: asks which, keeps the choice and its region across a detail page, esc returns to the choice, and a menu unpins", async () => {
+    const value = core(RUNTIME_RESOURCES, [TARGET, STAGING]);
+    const screen = renderStatus(value);
+
+    await waitForText(screen.lastFrame, "choose a deployment target");
+    const picker = flatFrame(screen.lastFrame);
+    expect(picker).toContain(`default ${TARGET.account} ${TARGET.region}`);
+    expect(picker).toContain(`staging ${STAGING.account} ${STAGING.region}`);
+    await screen.press("down");
+    await screen.press("return");
+
+    await waitForGroup(screen);
+    expect(screen.lastFrame()).toContain("on target staging");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "agentcore → runtime → get");
+    await waitForText(screen.lastFrame, "READY");
+    const runtimeCall = value.runtime.calls.find(({ method }) => method === "getRuntime")!;
+    expect(runtimeCall.args[1]).toMatchObject({ region: STAGING.region });
+    await screen.press("escape");
+    await waitForGroup(screen);
+    expect(screen.lastFrame()).toContain("on target staging");
+    expect(screen.lastFrame()).not.toContain("choose a deployment target");
+    // Back on the tree the target's region is still pinned for the next open.
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "ACTIVE");
+    const memoryCall = value.memory.calls.find(({ method }) => method === "getMemory")!;
+    expect(memoryCall.args[2]).toMatchObject({ region: STAGING.region });
+    await screen.press("escape");
+    await waitForGroup(screen);
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a deployment target");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
+    // Past the screen that pinned, the menus and what they open fetch in the
+    // launch region again.
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "❯ project");
+    await screen.write("harness");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "agentcore → harness");
+    await screen.write("list");
+    await screen.press("return");
+    await waitFor(() => value.harness.calls.some(({ method }) => method === "listHarnesses"));
+    const listCall = value.harness.calls.find(({ method }) => method === "listHarnesses")!;
+    expect(listCall.args[2]).toMatchObject({ region: "us-east-1" });
   });
 
   test("reports the CLI's own guidance outside a project", async () => {

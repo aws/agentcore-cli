@@ -15,7 +15,7 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
     name: "payment-manager",
     description: "add a payment manager to the current project",
     flags: [
-      flag("name", "the payment manager name", z.string().optional()),
+      flag("name", "the payment manager name", z.string().min(1)),
       flag(
         "authorizer-type",
         "payment authorization type",
@@ -48,10 +48,6 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
       flag("network-preferences", "preferred payment networks", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-
       const jwtFlags = [
         flags["discovery-url"],
         flags["allowed-clients"],

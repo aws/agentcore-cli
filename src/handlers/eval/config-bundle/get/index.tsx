@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -10,7 +9,7 @@ export const createGetConfigBundleHandler = (core: Core) =>
     name: "get",
     description: "get the latest or a specific configuration bundle version",
     flags: [
-      flag("id", "the ID of the configuration bundle", z.string().optional()),
+      flag("id", "the ID of the configuration bundle", z.string().min(1)),
       flag("version", "the immutable version ID to retrieve", z.string().optional()),
       flag(
         "branch-name",
@@ -19,10 +18,6 @@ export const createGetConfigBundleHandler = (core: Core) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-
       ctx
         .require(JsonRendererKey)
         .renderJson(

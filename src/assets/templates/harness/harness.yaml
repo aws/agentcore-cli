@@ -1,0 +1,157 @@
+# Optional settings are shown with example values.
+
+{{yaml.name}}
+
+# Instructions come from system-prompt.md unless systemPrompt is set inline.
+# systemPrompt: You are a helpful assistant.
+
+# Model
+{{yaml.model}}
+{{#if modelMaxTokensExample}}
+  # Output tokens per model call, rather than across the whole invocation.
+  # maxTokens: 4096
+{{/if}}
+
+# Tools
+# Code Interpreter and Browser use built-in resources when no ARN is specified.
+# awsIam uses the harness execution role, which must allow Gateway invocation.
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html
+{{#if tools.length}}
+{{yaml.tools}}
+{{else}}
+# tools:
+#   - name: code_interpreter
+#     type: agentcore_code_interpreter
+#   - name: browser
+#     type: agentcore_browser
+#   - name: research
+#     type: remote_mcp
+#     config:
+#       remoteMcp:
+#         url: https://mcp.example.com/mcp
+#   - name: company_tools
+#     type: agentcore_gateway
+#     config:
+#       agentCoreGateway:
+#         gatewayArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway/example-1234567890
+#         outboundAuth:
+#           awsIam: {}
+{{/if}}
+
+# Tool patterns: @<server-name>/<tool-name> or @builtin.
+# This controls agent tool selection, not IAM permissions.
+{{#if yaml.allowedTools}}
+{{yaml.allowedTools}}
+{{else}}
+# allowedTools:
+#   - "@builtin"
+#   - "@research/search"
+{{/if}}
+
+# Skill path sources refer to files already present in the runtime container.
+{{#if skills.length}}
+{{yaml.skills}}
+{{else}}
+# skills:
+#   - s3Uri: s3://your-skills-bucket/skills/research/
+#   - gitUrl: https://github.com/your-org/agent-skills.git
+#     path: skills/research
+#   - path: /opt/skills/research
+{{/if}}
+
+# Memory
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html
+# Alternatives: existing (name or ARN), disabled.
+{{yaml.memory}}
+{{#if (eq memory.mode "managed")}}
+{{#if (or memoryExamples.strategies memoryExamples.eventExpiryDuration)}}
+  # Managed-memory settings. Absent values use service defaults.
+  # Event retention is in days.
+{{#if memoryExamples.strategies}}
+  # strategies:
+  #   - SEMANTIC
+  #   - SUMMARIZATION
+{{/if}}
+{{#if memoryExamples.eventExpiryDuration}}
+  # eventExpiryDuration: 30
+{{/if}}
+{{/if}}
+{{/if}}
+{{#if (or memoryExamples.name memoryExamples.arn)}}
+  # Existing-memory reference: project resource name or external ARN.
+{{#if memoryExamples.name}}
+  # name: ConversationMemory
+{{/if}}
+{{#if memoryExamples.arn}}
+  # arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/example-1234567890
+{{/if}}
+{{/if}}
+
+# Execution limits apply per invocation, across all model calls.
+{{#if yaml.maxIterations}}
+{{yaml.maxIterations}}
+{{else}}
+# maxIterations: 15
+{{/if}}
+{{#if yaml.maxTokens}}
+{{yaml.maxTokens}}
+{{else}}
+# maxTokens: 20000
+{{/if}}
+{{#if yaml.timeoutSeconds}}
+{{yaml.timeoutSeconds}}
+{{else}}
+# timeoutSeconds: 300
+{{/if}}
+
+# Truncation changes the context sent to the model, not the saved memory.
+{{#if yaml.truncation}}
+{{yaml.truncation}}
+{{else}}
+# truncation:
+#   strategy: sliding_window
+#   config:
+#     slidingWindow:
+#       messagesCount: 40
+{{/if}}
+
+# dockerfile and containerUri are mutually exclusive. With neither set, the
+# service-provided environment is used. Dockerfile paths are relative to this directory.
+{{#if yaml.dockerfile}}
+{{yaml.dockerfile}}
+{{else}}
+# dockerfile: Dockerfile
+{{/if}}
+{{#if yaml.containerUri}}
+{{yaml.containerUri}}
+{{else}}
+# containerUri: 123456789012.dkr.ecr.us-west-2.amazonaws.com/my-harness:latest
+{{/if}}
+
+# Environment values are stored in plaintext.
+{{#if yaml.environmentVariables}}
+{{yaml.environmentVariables}}
+{{else}}
+# environmentVariables:
+#   LOG_LEVEL: info
+{{/if}}
+
+# Deployment creates a role when executionRoleArn is absent.
+{{#if yaml.executionRoleArn}}
+{{yaml.executionRoleArn}}
+{{else}}
+# executionRoleArn: arn:aws:iam::123456789012:role/MyHarnessRole
+{{/if}}
+
+# Tags
+{{#if yaml.tags}}
+{{yaml.tags}}
+{{else}}
+# tags:
+#   team: support
+#   environment: development
+{{/if}}
+{{#each additionalSettings}}
+
+{{this}}
+{{/each}}

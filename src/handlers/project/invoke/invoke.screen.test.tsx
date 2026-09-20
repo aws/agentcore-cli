@@ -4,6 +4,7 @@ import type {
   GetAgentRuntimeResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
 import {
@@ -54,7 +55,10 @@ function endpoint(name: string): AgentRuntimeEndpoint {
   };
 }
 
+// The target regions differ from the base context's us-east-1 on purpose, so
+// the invoke flows have to fetch where the project deployed.
 const TARGET = { name: "default", account: "111122223333", region: "eu-west-1" } as const;
+const STAGING = { name: "staging", account: "444455556666", region: "eu-central-1" } as const;
 const TARGET_CREDENTIALS = async () => ({
   accessKeyId: "target-access-key",
   secretAccessKey: "target-secret-key",
@@ -77,8 +81,12 @@ const DEPLOYED_RESOURCES: ResolvedDeployedResource[] = [
   },
 ];
 
-function core(resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES): TestCoreClient {
+function core(
+  resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES,
+  targets: AwsDeploymentTarget[] = [TARGET],
+): TestCoreClient {
   const value = new TestCoreClient();
+  value.projectManager.listTargets = async () => targets;
   value.projectManager.resolveDeployedResource = async (_project, input) => ({
     resourceType: input.resourceType,
     name: input.name,
@@ -131,6 +139,34 @@ describe("project invoke picker", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "manage an AgentCore project");
     expect(screen.lastFrame()).toContain("invoke");
+  });
+
+  test("several targets: asks which, then invokes on the chosen one in its region", async () => {
+    const value = core(DEPLOYED_RESOURCES, [TARGET, STAGING]);
+    let requested: string | undefined;
+    value.projectManager.resolveDeployedResources = async (_project, { target }) => {
+      requested = target;
+      return { resources: DEPLOYED_RESOURCES, target: STAGING };
+    };
+    const screen = renderScreen("/agentcore/project/invoke", {
+      core: value,
+      withContext: (ctx) => ctx.withValue(ProjectKey, project),
+    });
+
+    await waitForText(screen.lastFrame, "choose a deployment target");
+    expect(flatFrame(screen.lastFrame)).toContain(`staging ${STAGING.account} ${STAGING.region}`);
+    await screen.press("down");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "checkout");
+    expect(requested).toBe("staging");
+    expect(screen.lastFrame()).toContain("on target staging");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "send a message…");
+    expect(
+      value.harness.calls.find(({ method }) => method === "getHarness")?.args[1],
+    ).toMatchObject({ region: STAGING.region });
   });
 
   test("shows deployment errors without listing configured resources", async () => {

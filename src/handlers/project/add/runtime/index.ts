@@ -20,7 +20,7 @@ import {
   resolveImportBedrockAgentInput,
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 // The infrastructure settings that arrive as JSON documents. They are parsed
 // but not yet validated when an entry point assembles a runtime, so they are
@@ -52,7 +52,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
     name: "runtime",
     description: "add a Runtime to the current project",
     flags: [
-      flag("name", "the name of the Runtime", AgentNameSchema.optional()),
+      flag("name", "the name of the Runtime", AgentNameSchema),
       flag("description", "an optional description of the Runtime", z.string().optional()),
       flag(
         "type",
@@ -136,8 +136,15 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name)
-        throw new InputValidationError("required option '--name <name>' not specified");
+      const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Runtime",
+        project.name,
+        flags.name,
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
 
       const isImport = flags["type"] === "import";
       const isTemplate = flags["template"] !== undefined;
@@ -245,7 +252,6 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         importBedrockAgent,
       };
 
-      const project = ctx.require(ProjectKey);
       await addProjectResource(
         ctx,
         config,

@@ -42,9 +42,9 @@ export interface ExportNoteLine {
 export interface HarnessExportInput {
   harnessName: string;
   targetAgentName: string;
-  /** The parsed harness spec (from app/<name>/harness.json or the service). */
+  /** The parsed harness spec (from app/<name>/harness.yaml or the service). */
   spec: HarnessSpec;
-  /** The resolved system prompt text (system-prompt.md > spec.systemPrompt > default). */
+  /** The resolved system prompt text (explicit prompt > conventional file > default). */
   systemPrompt: string;
   /** The current project spec, for memory lookups and credential dedup. */
   projectSpec: ProjectSpec;
@@ -410,9 +410,10 @@ function attachIdentityProvider(
     category: MODEL_API_KEY_NOTE_CATEGORY,
     message:
       `The harness model authenticates with the AgentCore Identity API-key provider ` +
-      `"${credentialName}" (${apiKeyArn}). A credential entry referencing it was added to ` +
-      `agentcore.json so the deployed agent can fetch the key. For local development ` +
-      `(\`agentcore project dev\`), add ${envVarName}=<your-key> to agentcore/.env.local.`,
+      `"${credentialName}" (${apiKeyArn}). A credential entry named "${credentialName}" was ` +
+      `added to agentcore.json. Deploy creates a provider for it scoped to the project and ` +
+      `target, so add ${envVarName}=<your-key> to agentcore/.env.local before the first ` +
+      `deploy. \`agentcore project dev\` reads the same variable.`,
   });
 }
 

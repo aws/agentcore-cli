@@ -13,29 +13,18 @@ export const createCreateDatasetHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create a dataset from JSONL examples",
     flags: [
-      flag("name", "the name of the dataset", z.string().optional()),
+      flag("name", "the name of the dataset", z.string().min(1)),
       sourceFlag,
       flag(
         "schema-type",
         `the structure of the dataset's examples, immutable after creation (${SCHEMA_TYPE_ALIASES.join(" | ")})`,
-        z.enum(SCHEMA_TYPE_ALIASES).optional(),
+        z.enum(SCHEMA_TYPE_ALIASES),
       ),
       flag("description", "a description of the dataset", z.string().optional()),
       flag("kms-key-arn", "customer managed KMS key ARN for dataset data", z.string().optional()),
       flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["source"]) {
-        throw new InputValidationError("required option '--source <source>' not specified");
-      }
-      if (!flags["schema-type"]) {
-        throw new InputValidationError(
-          "required option '--schema-type <schema-type>' not specified",
-        );
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const datasetSource = await resolveDatasetSource(flags["source"], source).catch(
         (error: unknown) => {

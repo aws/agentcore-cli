@@ -1,7 +1,7 @@
 import z from "zod";
 import { GatewayInvokeResponseError, InputValidationError } from "../../../errors";
 import { SourceResolver, type AppIO } from "../../../io";
-import { ExitCode, withUserCancellation } from "../../../runnable";
+import { withUserCancellation } from "../../../runnable";
 import { createHandler, flag, PathKey } from "../../../router";
 import { renderTuiAt } from "../../../tui";
 import { JsonKey } from "../../keys";
@@ -27,7 +27,7 @@ export const createInvokeGatewayHandler = (
     name: "invoke",
     description: "invoke an AgentCore Gateway",
     flags: [
-      flag("id", "the ID of the Gateway", gatewayIdSchema.optional()),
+      flag("id", "the ID of the Gateway", gatewayIdSchema),
       flag(
         "path",
         "the path relative to the Gateway origin",
@@ -54,12 +54,6 @@ export const createInvokeGatewayHandler = (
       ),
     ],
     handle: async (ctx, flags) => {
-      if (flags.id === undefined) {
-        throw new InputValidationError("required option '--id <id>' not specified", {
-          exitCode: ExitCode.USAGE,
-        });
-      }
-
       const jsonOutput = ctx.require(JsonKey);
       if (flags.payload === undefined) {
         const hasHeadlessOnlyFlag = Object.entries(flags).some(

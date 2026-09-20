@@ -282,7 +282,7 @@ describe("mapServiceHarnessToSpec", () => {
   });
 
   // The pinned CDK only maps additionalParams for lite_llm, so carrying it on another provider
-  // would produce a harness.json that fails at synth. The lite_llm keep-path is already asserted
+  // would produce a harness.yaml that fails at synth. The lite_llm keep-path is already asserted
   // by "maps openai and litellm model configs" above.
   test("notes additionalParams the CDK cannot map", () => {
     const { spec, notes } = mapServiceHarnessToSpec(

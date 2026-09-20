@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
-import { InputValidationError } from "../../../../../errors";
 import { SourceResolver } from "../../../../../io";
 import type { AddProjectResourceConfig } from "../../types";
 import type { EnvLocalEntry } from "../../../types";
@@ -11,7 +10,7 @@ export const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfi
     name: "api-key",
     description: "add an API key credential provider to the current project",
     flags: [
-      flag("name", "the name of the credential provider", z.string().optional()),
+      flag("name", "the name of the credential provider", z.string().min(1)),
       flag(
         "api-key",
         "the API key (file://path or - for stdin; inline values are rejected)",
@@ -25,9 +24,6 @@ export const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfi
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name)
-        throw new InputValidationError("required option '--name <name>' not specified");
-
       const secretRef = parseExclusiveSecretRef(
         "api-key-secret-reference",
         flags["api-key-secret-reference"],

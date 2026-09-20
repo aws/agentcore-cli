@@ -6,26 +6,16 @@ import type { AgentCoreGateway } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseJsonFlagWithSchema, parseTags } from "../../../utils";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
 const GatewayAuthorizerConfigurationInputSchema = GatewayAuthorizerConfigSchema.strict();
-
-/**
- The deployed service name of a gateway; mirrors the L3 Gateway construct's rule.
-**/
-export function gatewayResourceName(
-  projectName: string,
-  gateway: { name: string; resourceName?: string },
-): string {
-  return gateway.resourceName ?? `${projectName}-${gateway.name}`;
-}
 
 export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway",
     description: "add a Gateway to the current project",
     flags: [
-      flag("name", "the Gateway name", z.string().optional()),
+      flag("name", "the Gateway name", z.string().min(1)),
       flag(
         "role-arn",
         "IAM role the Gateway assumes; a default role is created when omitted",
@@ -62,16 +52,15 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
       flag("tags", "tags as repeated key=value or a JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
       const project = ctx.require(ProjectKey);
-      const resourceName = gatewayResourceName(project.name, { name: flags.name });
-      if (resourceName.length > 48) {
-        throw new InputValidationError(
-          `Gateway resource name '${resourceName}' exceeds the service limit of 48 characters`,
-        );
-      }
+      requireDeployedNameFits(
+        "Gateway",
+        project.name,
+        flags.name,
+        "-",
+        100,
+        await config.projectManager.listTargets(project),
+      );
       if (
         (flags["policy-engine-name"] === undefined) !==
         (flags["policy-engine-mode"] === undefined)

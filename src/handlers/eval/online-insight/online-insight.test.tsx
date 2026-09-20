@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { CoreClient } from "../../../core";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   matchGolden,
   settle,
@@ -10,6 +11,7 @@ import {
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
+import { InputValidationError } from "../../../errors";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -229,7 +231,7 @@ describe("online-insight CRUDL", () => {
 // Flag parsing never reaches the SDK, so these need no fixtures.
 describe("flag validation", () => {
   test("create requires --role-arn", async () => {
-    await expect(
+    await expectError(
       run([
         "eval",
         "online-insight",
@@ -243,11 +245,13 @@ describe("flag validation", () => {
         "--sampling-rate",
         "10",
       ]),
-    ).rejects.toThrow("required option '--role-arn <role-arn>' not specified");
+      "required option '--role-arn' not specified",
+      InputValidationError,
+    );
   });
 
   test("create requires --insight", async () => {
-    await expect(
+    await expectError(
       run([
         "eval",
         "online-insight",
@@ -261,7 +265,9 @@ describe("flag validation", () => {
         "--sampling-rate",
         "10",
       ]),
-    ).rejects.toThrow("required option '--insight <insight...>' not specified");
+      "required option '--insight' not specified",
+      InputValidationError,
+    );
   });
 
   test("create rejects an insight id that is neither a builtin nor an ARN", async () => {
@@ -369,8 +375,10 @@ describe("flag validation", () => {
   // --json forces the headless path so the required-flag error surfaces; without
   // it a bare invocation opens the TUI under the empty-invocation middleware.
   test.each(["get", "pause", "resume", "delete"])("%s requires --id", async (command) => {
-    await expect(run(["eval", "online-insight", command, "--json"])).rejects.toThrow(
-      /required option '--id <id>' not specified/,
+    await expectError(
+      run(["eval", "online-insight", command, "--json"]),
+      /required option '--id' not specified/,
+      InputValidationError,
     );
   });
 });

@@ -51,7 +51,7 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
     name: "evaluate",
     description: "evaluate existing sessions client-side (synchronous; prints scores)",
     flags: [
-      flag("agent", "harness ID or Runtime ID whose sessions to evaluate", z.string().optional(), {
+      flag("agent", "harness ID or Runtime ID whose sessions to evaluate", z.string().min(1), {
         group: SESSION_SOURCE,
       }),
       flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
@@ -75,7 +75,7 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
         { group: SESSION_FILTERS },
       ),
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).min(1), {
         group: EVALUATION,
       }),
       flag(
@@ -86,15 +86,6 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["agent"]) {
-        throw new InputValidationError("on-demand requires '--agent'");
-      }
-      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
-        throw new InputValidationError(
-          "required option '--evaluators <evaluators...>' not specified",
-        );
-      }
-
       const window = resolveWindow(flags);
       const sessionIds = flags["session-ids"];
       const traceId = flags["trace-id"];

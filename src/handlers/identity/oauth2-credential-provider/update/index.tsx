@@ -41,7 +41,7 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
     name: "update",
     description: "update an OAuth2 credential provider",
     flags: [
-      flag("name", "the name of the OAuth2 credential provider", z.string().optional()),
+      flag("name", "the name of the OAuth2 credential provider", z.string().min(1)),
       flag("vendor", "the OAuth2 vendor", z.string().optional()),
       flag(
         "client-secret",
@@ -69,10 +69,6 @@ export const createUpdateOauth2CredentialProviderHandler = (core: Core, io: AppI
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-
       assertMutuallyExclusiveFlags(flags, ["client-secret", "client-secret-reference"], {
         exactlyOne: true,
       });

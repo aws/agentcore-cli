@@ -13,7 +13,7 @@ export const createExecHarnessHandler = (core: Core, io: AppIO) =>
     name: "exec",
     description: "run a shell command in a harness",
     flags: [
-      flag("id", "the ID of the harness", z.string().max(48).optional()),
+      flag("id", "the ID of the harness", z.string().min(1).max(48)),
       flag("command", "the shell command to run", z.string().optional()),
       flag(
         "session-id",
@@ -32,11 +32,6 @@ export const createExecHarnessHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      // Required at runtime but declared optional so that a bare `harness exec`
-      // falls through to the TUI middleware instead.
-      if (!flags["id"]) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
       // Without a command, open the interactive exec screen at this harness —
       // resuming the given session and targeting the given qualifier when
       // passed. The one-shot CLI run below needs --command (and is the only

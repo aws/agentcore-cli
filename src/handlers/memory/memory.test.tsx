@@ -18,6 +18,7 @@ import type {
 import { CoreClient } from "../../core";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   matchGolden,
   TestCoreClient,
@@ -26,6 +27,7 @@ import {
 } from "../../testing";
 import { createRootHandler } from "../index";
 import { createGetMemoryHandler } from "./get";
+import { InputValidationError } from "../../errors";
 
 const REGION = "us-west-2";
 const ENDPOINT = "https://agentcore.example.test";
@@ -226,7 +228,7 @@ describe("memory read-only commands", () => {
   });
 
   test("rejects a missing Memory selector for headless get", async () => {
-    await expect(run(["memory", "get", "--json"])).rejects.toThrow(/--id/);
+    await expectError(run(["memory", "get", "--json"]), /--id/, InputValidationError);
   });
 
   test("rejects an unsupported response view", async () => {
@@ -386,37 +388,37 @@ describe("memory event commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--id <id>"],
-    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
-    [
-      "session",
-      ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
-      "--session-id <session-id>",
-    ],
+    ["memory", ["--json"], /--id/],
+    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], /--actor-id/],
+    ["session", ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"], /--session-id/],
     [
       "event",
       ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--session-id", SESSION_ID, "--json"],
-      "--event-id <event-id>",
+      /--event-id/,
     ],
   ] as const)("rejects a missing %s selector for event get", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "event", "get", ...flags])).rejects.toThrow(expected);
+    await expectError(
+      command.route(["memory", "event", "get", ...flags]),
+      expected,
+      InputValidationError,
+    );
     expect(command.core.memory.calls).toEqual([]);
   });
 
   test.each([
-    ["memory", ["--json"], "--id <id>"],
-    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
-    [
-      "session",
-      ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"],
-      "--session-id <session-id>",
-    ],
+    ["memory", ["--json"], /--id/],
+    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], /--actor-id/],
+    ["session", ["--id", EVENT_MEMORY_ID, "--actor-id", ACTOR_ID, "--json"], /--session-id/],
   ] as const)("rejects a missing %s selector for event list", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "event", "list", ...flags])).rejects.toThrow(expected);
+    await expectError(
+      command.route(["memory", "event", "list", ...flags]),
+      expected,
+      InputValidationError,
+    );
     expect(command.core.memory.calls).toEqual([]);
   });
 
@@ -495,7 +497,11 @@ describe("memory actor commands", () => {
   test("rejects a missing Memory selector for actor list", async () => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "actor", "list", "--json"])).rejects.toThrow("--id <id>");
+    await expectError(
+      command.route(["memory", "actor", "list", "--json"]),
+      /--id/,
+      InputValidationError,
+    );
     expect(command.core.memory.calls).toEqual([]);
   });
 });
@@ -542,12 +548,16 @@ describe("memory session commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--id <id>"],
-    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], "--actor-id <actor-id>"],
+    ["memory", ["--json"], /--id/],
+    ["actor", ["--id", EVENT_MEMORY_ID, "--json"], /--actor-id/],
   ] as const)("rejects a missing %s selector for session list", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "session", "list", ...flags])).rejects.toThrow(expected);
+    await expectError(
+      command.route(["memory", "session", "list", ...flags]),
+      expected,
+      InputValidationError,
+    );
     expect(command.core.memory.calls).toEqual([]);
   });
 });
@@ -585,12 +595,16 @@ describe("memory record commands", () => {
   });
 
   test.each([
-    ["memory", ["--json"], "--id <id>"],
-    ["record", ["--id", EVENT_MEMORY_ID, "--json"], "--record-id <record-id>"],
+    ["memory", ["--json"], /--id/],
+    ["record", ["--id", EVENT_MEMORY_ID, "--json"], /--record-id/],
   ] as const)("rejects a missing %s selector for record get", async (_name, flags, expected) => {
     const command = testMemoryCommand();
 
-    await expect(command.route(["memory", "record", "get", ...flags])).rejects.toThrow(expected);
+    await expectError(
+      command.route(["memory", "record", "get", ...flags]),
+      expected,
+      InputValidationError,
+    );
     expect(command.core.memory.calls).toEqual([]);
   });
 
@@ -735,9 +749,11 @@ describe("memory record commands", () => {
   test("rejects a missing Memory selector for record list", async () => {
     const command = testMemoryCommand();
 
-    await expect(
+    await expectError(
       command.route(["memory", "record", "list", "--namespace", "/customers/acme", "--json"]),
-    ).rejects.toThrow("--id <id>");
+      /--id/,
+      InputValidationError,
+    );
     expect(command.core.memory.calls).toEqual([]);
   });
 

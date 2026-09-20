@@ -33,7 +33,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create an online evaluation config",
     flags: [
-      flag("name", "the name of the online evaluation config", z.string().optional(), {
+      flag("name", "the name of the online evaluation config", z.string().min(1), {
         group: CONFIGURATION,
       }),
       flag(
@@ -69,13 +69,13 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
         { group: SESSION_SOURCE },
       ),
-      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).optional(), {
+      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).min(1), {
         group: EVALUATION,
       }),
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
-        z.number().min(0.01).max(100).optional(),
+        z.number().min(0.01).max(100),
         { group: EVALUATION },
       ),
       flag(
@@ -97,19 +97,6 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["sampling-rate"]) {
-        throw new InputValidationError(
-          "required option '--sampling-rate <sampling-rate>' not specified",
-        );
-      }
-      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
-        throw new InputValidationError(
-          "required option '--evaluators <evaluators...>' not specified",
-        );
-      }
-
       assertMutuallyExclusiveFlags(flags, ["agent", "data-source-config"], { exactlyOne: true });
       const hasAgent = flags["agent"] !== undefined;
       const hasDataSource = flags["data-source-config"] !== undefined;

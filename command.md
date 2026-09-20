@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.0.0-rc.2`.
+This reference was generated from `agentcore --help` for version `1.0.0-rc.3`.
 
 ## Table of contents
 
@@ -205,10 +205,12 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.2`.
       - [`agentcore eval batch-evaluation simulate`](#agentcore-eval-batch-evaluation-simulate)
       - [`agentcore eval batch-evaluation get`](#agentcore-eval-batch-evaluation-get)
       - [`agentcore eval batch-evaluation list`](#agentcore-eval-batch-evaluation-list)
+      - [`agentcore eval batch-evaluation stop`](#agentcore-eval-batch-evaluation-stop)
     - [`agentcore eval batch-insights`](#agentcore-eval-batch-insights)
       - [`agentcore eval batch-insights run`](#agentcore-eval-batch-insights-run)
       - [`agentcore eval batch-insights get`](#agentcore-eval-batch-insights-get)
       - [`agentcore eval batch-insights list`](#agentcore-eval-batch-insights-list)
+      - [`agentcore eval batch-insights stop`](#agentcore-eval-batch-insights-stop)
     - [`agentcore eval ondemand`](#agentcore-eval-ondemand)
       - [`agentcore eval ondemand evaluate`](#agentcore-eval-ondemand-evaluate)
       - [`agentcore eval ondemand simulate`](#agentcore-eval-ondemand-simulate)
@@ -257,6 +259,7 @@ the platform for production AI agents
 - `--debug`: debug logging (default: false)
 - `--json`: JSON output (default: false)
 - `--endpoint-url <endpoint-url>`: endpoint URL override
+- `-V, --version`: display the CLI version
 
 ## Project commands
 
@@ -278,7 +281,7 @@ create a new AgentCore project
 
 **Options**
 
-- `--name <name>`: name of the project to create
+- `--name <name>`: name of the project to create (required)
 - `--template <template>`: the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key
 - `--model-provider <model-provider>`: model provider for templates that support it: bedrock, anthropic, open\_ai, gemini, or lite\_llm
 - `--api-key <api-key>`: API key for non-Bedrock providers: '-' for stdin, 'file://path' for file
@@ -303,9 +306,9 @@ add a configuration bundle to the current project
 
 **Options**
 
-- `--name <name>`: the name of the configuration bundle
+- `--name <name>`: the name of the configuration bundle (required)
 - `--description <description>`: a description of the configuration bundle
-- `--components <components>`: component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin)
+- `--components <components>`: component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--branch-name <branch-name>`: branch name for the initial configuration (default: "mainline")
 - `--commit-message <commit-message>`: message describing the initial configuration
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for component configurations
@@ -355,7 +358,7 @@ add a Memory to the current project
 
 **Options**
 
-- `--name <name>`: the name of the Memory
+- `--name <name>`: the name of the Memory (required)
 - `--description <description>`: a description of what the Memory stores
 - `--event-expiry-duration <event-expiry-duration>`: how long raw events are retained, in days (3-365) (default: 30)
 - `--strategies <strategies>`: long-term Memory strategies: comma-separated types, or the JSON strategies[] as stored in agentcore.json
@@ -375,7 +378,7 @@ add a Runtime to the current project
 
 **Options**
 
-- `--name <name>`: the name of the Runtime
+- `--name <name>`: the name of the Runtime (required)
 - `--description <description>`: an optional description of the Runtime
 - `--type <type>`: create scaffolds new agent code (the default); import translates a Bedrock Agent version
 - `--agent-id <agent-id>`: Bedrock Agent ID to import (requires --type import)
@@ -406,13 +409,13 @@ add an online evaluation config to the current project
 
 **Options**
 
-- `--name <name>`: the name of the online evaluation config
+- `--name <name>`: the name of the online evaluation config (required)
 - `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
 - `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
 - `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
 - `--evaluators <evaluators...>`: evaluator name(s), Builtin.\* IDs, or ARNs to apply
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
+- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: enable evaluation immediately after deploy (default true; pass false to add it paused)
 - `--tags <tags>`: tags to apply (JSON object of key/value strings)
@@ -427,14 +430,14 @@ add an online insight config to the current project
 
 **Options**
 
-- `--name <name>`: the name of the online insight config
+- `--name <name>`: the name of the online insight config (required)
 - `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
 - `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
 - `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
-- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs
+- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs (required)
 - `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s): DAILY, WEEKLY, MONTHLY
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
+- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: enable insights immediately after deploy (default true; pass false to add it paused)
 - `--tags <tags>`: tags to apply (JSON object of key/value strings)
@@ -457,12 +460,12 @@ add an LLM-as-a-Judge evaluator: another LLM prompted with instructions on how t
 
 **Options**
 
-- `--name <name>`: the name of the evaluator
-- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL
+- `--name <name>`: the name of the evaluator (required)
+- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL (required)
 - `--model-provider <model-provider>`: model provider for the judge: Bedrock (default) or OpenResponses
-- `--model <model>`: judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID
-- `--instructions <instructions>`: scoring instructions for the judge (inline text, 'file://&lt;path&gt;', or '-' for stdin); use level placeholders like '{context}'
-- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale
+- `--model <model>`: judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID (required)
+- `--instructions <instructions>`: scoring instructions for the judge (inline text, 'file://&lt;path&gt;', or '-' for stdin); use level placeholders like '{context}' (required)
+- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale (required)
 - `--description <description>`: a description of what this evaluator measures
 - `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
 - `--tags <tags>`: tags to apply (JSON object of key/value strings)
@@ -477,8 +480,8 @@ add a code-based evaluator: scaffold a Python Lambda with custom evaluation logi
 
 **Options**
 
-- `--name <name>`: the name of the evaluator
-- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL
+- `--name <name>`: the name of the evaluator (required)
+- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL (required)
 - `--lambda-arn <lambda-arn>`: ARN of an existing Lambda that scores a session
 - `--timeout-seconds <timeout-seconds>`: evaluator timeout in seconds (1-300)
 - `--description <description>`: a description of what this evaluator measures
@@ -503,7 +506,7 @@ add an API key credential provider to the current project
 
 **Options**
 
-- `--name <name>`: the name of the credential provider
+- `--name <name>`: the name of the credential provider (required)
 - `--api-key <api-key>`: the API key (file://path or - for stdin; inline values are rejected)
 - `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
 
@@ -517,7 +520,7 @@ add an OAuth2 credential provider to the current project
 
 **Options**
 
-- `--name <name>`: the name of the credential provider
+- `--name <name>`: the name of the credential provider (required)
 - `--vendor <vendor>`: the OAuth2 vendor (e.g. GithubOauth2); custom providers use the guided flags instead (default: "CustomOauth2")
 - `--client-id <client-id>`: OAuth2 client ID (guided custom OAuth2)
 - `--discovery-url <discovery-url>`: OAuth2 discovery URL (guided custom OAuth2)
@@ -536,8 +539,8 @@ add a payment credential provider to the current project
 
 **Options**
 
-- `--name <name>`: the name of the credential provider
-- `--provider <provider>`: the payment provider: CoinbaseCDP or StripePrivy
+- `--name <name>`: the name of the credential provider (required)
+- `--provider <provider>`: the payment provider: CoinbaseCDP or StripePrivy (required)
 - `--api-key-id <api-key-id>`: Coinbase CDP API key ID
 - `--api-key-secret <api-key-secret>`: Coinbase CDP API key secret (file://path or - for stdin; inline values are rejected)
 - `--wallet-secret <wallet-secret>`: Coinbase CDP wallet secret (file://path or - for stdin; inline values are rejected)
@@ -556,7 +559,7 @@ add a Gateway to the current project
 
 **Options**
 
-- `--name <name>`: the Gateway name
+- `--name <name>`: the Gateway name (required)
 - `--role-arn <role-arn>`: IAM role the Gateway assumes; a default role is created when omitted
 - `--protocol-type <protocol-type>`: restrict the Gateway to MCP Targets
 - `--enable-semantic-search`: enable semantic search for tools on the Gateway (default: false)
@@ -578,7 +581,7 @@ add a Target to a project Gateway
 
 **Options**
 
-- `--gateway <gateway>`: name of the parent Gateway in this project
+- `--gateway <gateway>`: name of the parent Gateway in this project (required)
 - `--name <name>`: the Target name for endpoint or Runtime shortcuts
 - `--endpoint <endpoint>`: external MCP server HTTPS endpoint
 - `--runtime <runtime>`: name of a Runtime declared in this project
@@ -598,7 +601,7 @@ add a connector-backed Target to a project Gateway
 
 **Options**
 
-- `--gateway <gateway>`: name of the parent Gateway in this project
+- `--gateway <gateway>`: name of the parent Gateway in this project (required)
 - `--name <name>`: the Target name for a connector shortcut
 - `--connector <connector>`: curated connector [bedrock-knowledge-bases | web-search]
 - `--connector-configuration <connector-configuration>`: complete connector agentCoreGateways[].targets[] object (JSON; inline, file://&lt;path&gt;, or - for stdin)
@@ -614,7 +617,7 @@ add a Policy Engine to the current project
 
 **Options**
 
-- `--name <name>`: the Policy Engine name
+- `--name <name>`: the Policy Engine name (required)
 - `--description <description>`: Policy Engine description
 - `--encryption-key-arn <encryption-key-arn>`: KMS encryption key ARN
 - `--tags <tags...>`: tags as repeated key=value or a JSON object
@@ -631,10 +634,10 @@ add a Cedar Policy to a project Policy Engine
 
 **Options**
 
-- `--engine <engine>`: name of the parent Policy Engine in this project
-- `--name <name>`: the Policy name
+- `--engine <engine>`: name of the parent Policy Engine in this project (required)
+- `--name <name>`: the Policy name (required)
 - `--description <description>`: Policy description
-- `--statement <statement>`: Cedar policy statement (inline, file://&lt;path&gt;, or - for stdin)
+- `--statement <statement>`: Cedar policy statement (inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--validation-mode <validation-mode>`: validation mode: fail-on-any-findings or ignore-all-findings
 - `--enforcement-mode <enforcement-mode>`: enforcement mode: active or log-only
 - `--authorization-phase <authorization-phase>`: authorization phase: initiate or return-output (default inferred from the statement)
@@ -649,7 +652,7 @@ add a payment manager to the current project
 
 **Options**
 
-- `--name <name>`: the payment manager name
+- `--name <name>`: the payment manager name (required)
 - `--authorizer-type <authorizer-type>`: payment authorization type (default: "AWS\_IAM")
 - `--discovery-url <discovery-url>`: OIDC discovery URL for CUSTOM\_JWT authorization
 - `--allowed-clients <allowed-clients...>`: allowed JWT client IDs
@@ -671,8 +674,8 @@ add a connector to a project payment manager
 
 **Options**
 
-- `--manager <manager>`: the parent payment manager
-- `--name <name>`: the payment connector name
+- `--manager <manager>`: the parent payment manager (required)
+- `--name <name>`: the payment connector name (required)
 - `--credential <credential>`: an existing payment credential to reuse
 - `--quick-create`: create a CoinbaseCDP connector through Quick Create (default: false)
 
@@ -686,8 +689,8 @@ add a named endpoint (version alias) to a runtime
 
 **Options**
 
-- `--runtime <runtime>`: the parent runtime name
-- `--name <name>`: the endpoint name (e.g., prod, staging)
+- `--runtime <runtime>`: the parent runtime name (required)
+- `--name <name>`: the endpoint name (e.g., prod, staging) (required)
 - `--version <version>`: the runtime version this endpoint points to (default: 1)
 - `--description <description>`: description of the endpoint
 
@@ -1007,7 +1010,7 @@ create a harness
 
 **Options**
 
-- `--name <name>`: the name of the harness
+- `--name <name>`: the name of the harness (required)
 - `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes; a default role is created when omitted
 - `--system-prompt <system-prompt>`: the agent's system prompt
 - `--model <model>`: model configuration (JSON HarnessModelConfiguration)
@@ -1060,7 +1063,7 @@ update a harness (creates a new version)
 
 **Options**
 
-- `--id <id>`: the ID of the harness to update
+- `--id <id>`: the ID of the harness to update (required)
 - `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes
 - `--system-prompt <system-prompt>`: the agent's system prompt
 - `--model <model>`: model configuration (JSON HarnessModelConfiguration)
@@ -1090,7 +1093,7 @@ delete a harness
 
 **Options**
 
-- `--id <id>`: the ID of the harness to delete
+- `--id <id>`: the ID of the harness to delete (required)
 - `--delete-managed-memory <delete-managed-memory>`: whether to also delete the managed Memory (default true; pass false to keep it)
 
 #### `agentcore harness invoke`
@@ -1103,7 +1106,7 @@ invoke a harness
 
 **Options**
 
-- `--id <id>`: the ID of the harness
+- `--id <id>`: the ID of the harness (required)
 - `--prompt <prompt>`: the message to send to the harness
 - `--session-id <session-id>`: the Runtime session ID to continue (33-100 characters)
 - `--qualifier <qualifier>`: the harness endpoint qualifier to invoke (default DEFAULT)
@@ -1118,7 +1121,7 @@ run a shell command in a harness
 
 **Options**
 
-- `--id <id>`: the ID of the harness
+- `--id <id>`: the ID of the harness (required)
 - `--command <command>`: the shell command to run
 - `--session-id <session-id>`: the Runtime session ID to run in (33-100 characters)
 - `--qualifier <qualifier>`: the harness endpoint qualifier to run in (default DEFAULT)
@@ -1205,8 +1208,8 @@ create a harness endpoint
 
 **Options**
 
-- `--id <id>`: the ID of the harness
-- `--name <name>`: the name of the endpoint
+- `--id <id>`: the ID of the harness (required)
+- `--name <name>`: the name of the endpoint (required)
 - `--target-version <target-version>`: the harness version the endpoint points to (default latest)
 - `--tags <tags>`: tags to apply (JSON object of key/value strings)
 
@@ -1220,8 +1223,8 @@ get a harness endpoint
 
 **Options**
 
-- `--id <id>`: the ID of the harness
-- `--qualifier <qualifier>`: the endpoint name (qualifier)
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
 
 ##### `agentcore harness endpoint list`
 
@@ -1233,7 +1236,7 @@ list a harness's endpoints
 
 **Options**
 
-- `--id <id>`: the ID of the harness
+- `--id <id>`: the ID of the harness (required)
 - `--next-token <next-token>`: next token to use on paginated
 - `--max-results <max-results>`: max number of items to return
 
@@ -1247,8 +1250,8 @@ update a harness endpoint
 
 **Options**
 
-- `--id <id>`: the ID of the harness
-- `--qualifier <qualifier>`: the endpoint name (qualifier)
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
 - `--target-version <target-version>`: the harness version the endpoint points to
 
 ##### `agentcore harness endpoint delete`
@@ -1261,8 +1264,8 @@ delete a harness endpoint
 
 **Options**
 
-- `--id <id>`: the ID of the harness
-- `--qualifier <qualifier>`: the endpoint name (qualifier)
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
 
 #### `agentcore harness version`
 
@@ -1282,8 +1285,8 @@ get a specific version of a harness
 
 **Options**
 
-- `--id <id>`: the ID of the harness
-- `--version <version>`: the harness version to get
+- `--id <id>`: the ID of the harness (required)
+- `--version <version>`: the harness version to get (required)
 
 ##### `agentcore harness version list`
 
@@ -1295,7 +1298,7 @@ list a harness's versions
 
 **Options**
 
-- `--id <id>`: the ID of the harness
+- `--id <id>`: the ID of the harness (required)
 - `--next-token <next-token>`: next token to use on paginated
 - `--max-results <max-results>`: max number of items to return
 
@@ -1327,7 +1330,7 @@ create an API key credential provider
 
 **Options**
 
-- `--name <name>`: the name of the API key credential provider
+- `--name <name>`: the name of the API key credential provider (required)
 - `--api-key <api-key>`: the API key (file://path or - for stdin; inline values are rejected)
 - `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
@@ -1342,7 +1345,7 @@ get an API key credential provider
 
 **Options**
 
-- `--name <name>`: the name of the API key credential provider
+- `--name <name>`: the name of the API key credential provider (required)
 
 ##### `agentcore identity api-key-credential-provider list`
 
@@ -1367,7 +1370,7 @@ update an API key credential provider
 
 **Options**
 
-- `--name <name>`: the name of the API key credential provider
+- `--name <name>`: the name of the API key credential provider (required)
 - `--api-key <api-key>`: the new API key (file://path or - for stdin; inline values are rejected)
 - `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
 
@@ -1381,7 +1384,7 @@ delete an API key credential provider
 
 **Options**
 
-- `--name <name>`: the name of the API key credential provider
+- `--name <name>`: the name of the API key credential provider (required)
 
 #### `agentcore identity oauth2-credential-provider`
 
@@ -1401,8 +1404,8 @@ create an OAuth2 credential provider
 
 **Options**
 
-- `--name <name>`: the name of the OAuth2 credential provider
-- `--vendor <vendor>`: the OAuth2 vendor (e.g. CustomOauth2, GithubOauth2)
+- `--name <name>`: the name of the OAuth2 credential provider (required)
+- `--vendor <vendor>`: the OAuth2 vendor (e.g. CustomOauth2, GithubOauth2) (required)
 - `--client-secret <client-secret>`: the client secret (file://path or - for stdin; inline values are rejected)
 - `--client-secret-reference <client-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
 - `--client-id <client-id>`: OAuth2 client ID (guided custom OAuth2)
@@ -1421,7 +1424,7 @@ get an OAuth2 credential provider
 
 **Options**
 
-- `--name <name>`: the name of the OAuth2 credential provider
+- `--name <name>`: the name of the OAuth2 credential provider (required)
 
 ##### `agentcore identity oauth2-credential-provider list`
 
@@ -1446,7 +1449,7 @@ update an OAuth2 credential provider
 
 **Options**
 
-- `--name <name>`: the name of the OAuth2 credential provider
+- `--name <name>`: the name of the OAuth2 credential provider (required)
 - `--vendor <vendor>`: the OAuth2 vendor
 - `--client-secret <client-secret>`: the client secret (file://path or - for stdin; inline values are rejected)
 - `--client-secret-reference <client-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
@@ -1465,7 +1468,7 @@ delete an OAuth2 credential provider
 
 **Options**
 
-- `--name <name>`: the name of the OAuth2 credential provider
+- `--name <name>`: the name of the OAuth2 credential provider (required)
 
 #### `agentcore identity payment-credential-provider`
 
@@ -1520,7 +1523,7 @@ get an AgentCore Runtime
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
+- `--id <id>`: the ID of the Runtime (required)
 
 #### `agentcore runtime list`
 
@@ -1545,7 +1548,7 @@ invoke a Runtime
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
+- `--id <id>`: the ID of the Runtime (required)
 - `--payload <payload>`: the inline payload to send
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--content-type <content-type>`: the payload content type
@@ -1574,7 +1577,7 @@ open an interactive shell in a Runtime
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
+- `--id <id>`: the ID of the Runtime (required)
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--session-id <session-id>`: the Runtime session ID to use
 - `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
@@ -1597,8 +1600,8 @@ get a specific Runtime version
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
-- `--version <version>`: the Runtime version to get
+- `--id <id>`: the ID of the Runtime (required)
+- `--version <version>`: the Runtime version to get (required)
 
 ##### `agentcore runtime version list`
 
@@ -1610,7 +1613,7 @@ list a Runtime's versions
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
+- `--id <id>`: the ID of the Runtime (required)
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
 
@@ -1632,8 +1635,8 @@ get a Runtime endpoint
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
-- `--qualifier <qualifier>`: the endpoint name (qualifier)
+- `--id <id>`: the ID of the Runtime (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
 
 ##### `agentcore runtime endpoint list`
 
@@ -1645,7 +1648,7 @@ list a Runtime's endpoints
 
 **Options**
 
-- `--id <id>`: the ID of the Runtime
+- `--id <id>`: the ID of the Runtime (required)
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
 
@@ -1732,7 +1735,7 @@ get an AgentCore Memory
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
+- `--id <id>`: the ID of the Memory (required)
 - `--view <view>`: response view
 
 #### `agentcore memory list`
@@ -1766,10 +1769,10 @@ get an AgentCore Memory Event
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
-- `--actor-id <actor-id>`: the ID of the actor
-- `--event-id <event-id>`: the event ID
-- `--session-id <session-id>`: the session ID
+- `--id <id>`: the ID of the Memory (required)
+- `--actor-id <actor-id>`: the ID of the actor (required)
+- `--session-id <session-id>`: the session ID (required)
+- `--event-id <event-id>`: the event ID (required)
 
 ##### `agentcore memory event list`
 
@@ -1781,9 +1784,9 @@ list AgentCore Memory events
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
-- `--actor-id <actor-id>`: the ID of the actor
-- `--session-id <session-id>`: the session ID
+- `--id <id>`: the ID of the Memory (required)
+- `--actor-id <actor-id>`: the ID of the actor (required)
+- `--session-id <session-id>`: the session ID (required)
 - `--include-payloads`: includes event payloads in the response (default: false)
 - `--branch <branch>`: filter events by branch name
 - `--include-parent-branches`: includes parent branches when filtering by branch (default: false)
@@ -1809,8 +1812,8 @@ get an AgentCore Memory record
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
-- `--record-id <record-id>`: the ID of the Memory record
+- `--id <id>`: the ID of the Memory (required)
+- `--record-id <record-id>`: the ID of the Memory record (required)
 
 ##### `agentcore memory record list`
 
@@ -1822,7 +1825,7 @@ list AgentCore Memory records
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
+- `--id <id>`: the ID of the Memory (required)
 - `--namespace <namespace>`: filter by namespace prefix
 - `--namespace-path <namespace-path>`: filter by namespace hierarchy
 - `--strategy-id <strategy-id>`: filter by Memory strategy ID
@@ -1848,7 +1851,7 @@ list actors in an AgentCore Memory
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
+- `--id <id>`: the ID of the Memory (required)
 - `--max-results <max-results>`: maximum number of actors to return
 - `--next-token <next-token>`: pagination token returned by a previous request
 
@@ -1870,8 +1873,8 @@ list sessions in an AgentCore Memory
 
 **Options**
 
-- `--id <id>`: the ID of the Memory
-- `--actor-id <actor-id>`: the ID of the actor
+- `--id <id>`: the ID of the Memory (required)
+- `--actor-id <actor-id>`: the ID of the actor (required)
 - `--max-results <max-results>`: maximum number of sessions to return
 - `--next-token <next-token>`: pagination token returned by a previous request
 
@@ -1895,10 +1898,10 @@ create an AgentCore Gateway
 
 **Options**
 
-- `--name <name>`: the Gateway name
-- `--role-arn <role-arn>`: IAM role the Gateway assumes
+- `--name <name>`: the Gateway name (required)
+- `--role-arn <role-arn>`: IAM role the Gateway assumes (required)
 - `--protocol <protocol>`: restrict Target protocols to MCP; omitted allows every Target protocol
-- `--authorizer-type <authorizer-type>`: inbound authorizer: AWS\_IAM, CUSTOM\_JWT, NONE, or AUTHENTICATE\_ONLY
+- `--authorizer-type <authorizer-type>`: inbound authorizer: AWS\_IAM, CUSTOM\_JWT, NONE, or AUTHENTICATE\_ONLY (required)
 - `--description <description>`: Gateway description
 - `--protocol-configuration <protocol-configuration>`: MCP protocol configuration (JSON; inline, file://&lt;path&gt;, or - for stdin)
 - `--authorizer-configuration <authorizer-configuration>`: authorizer configuration (JSON; inline, file://&lt;path&gt;, or - for stdin)
@@ -1920,7 +1923,7 @@ update an AgentCore Gateway
 
 **Options**
 
-- `--id <id>`: the Gateway ID
+- `--id <id>`: the Gateway ID (required)
 - `--role-arn <role-arn>`: updated IAM role ARN
 - `--description <description>`: updated Gateway description
 - `--protocol-configuration <protocol-configuration>`: replacement MCP protocol configuration (JSON; inline, file://&lt;path&gt;, or - for stdin)
@@ -1950,7 +1953,7 @@ get an AgentCore Gateway
 
 **Options**
 
-- `--id <id>`: the ID of the Gateway
+- `--id <id>`: the ID of the Gateway (required)
 
 #### `agentcore gateway list`
 
@@ -1975,7 +1978,7 @@ delete an AgentCore Gateway
 
 **Options**
 
-- `--id <id>`: the Gateway ID
+- `--id <id>`: the Gateway ID (required)
 
 #### `agentcore gateway invoke`
 
@@ -1987,7 +1990,7 @@ invoke an AgentCore Gateway
 
 **Options**
 
-- `--id <id>`: the ID of the Gateway
+- `--id <id>`: the ID of the Gateway (required)
 - `--path <path>`: the path relative to the Gateway origin
 - `--method <method>`: the HTTP request method
 - `--payload <payload>`: the inline payload to send
@@ -2018,7 +2021,7 @@ create a Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
 - `--name <name>`: Target name; optional only for AgentCore Runtime Targets
 - `--description <description>`: Target description
 - `--endpoint <endpoint>`: MCP server HTTPS endpoint
@@ -2039,8 +2042,8 @@ update a Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--target-id <target-id>`: the Target ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--target-id <target-id>`: the Target ID (required)
 - `--name <name>`: updated Target name
 - `--description <description>`: updated Target description
 - `--endpoint <endpoint>`: updated endpoint for an existing MCP server Target
@@ -2063,8 +2066,8 @@ get a Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID of the Gateway
-- `--target-id <target-id>`: the ID of the Gateway Target
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--target-id <target-id>`: the ID of the Gateway Target (required)
 
 ##### `agentcore gateway target list`
 
@@ -2076,7 +2079,7 @@ list Targets for an AgentCore Gateway
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID of the Gateway
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
 
@@ -2090,8 +2093,8 @@ delete a Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--target-id <target-id>`: the Target ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--target-id <target-id>`: the Target ID (required)
 
 #### `agentcore gateway connector`
 
@@ -2111,8 +2114,8 @@ create a connector-backed Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--name <name>`: Connector Target name
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--name <name>`: Connector Target name (required)
 - `--description <description>`: Connector Target description
 - `--connector-configuration <connector-configuration>`: connector-backed Target configuration (JSON; inline, file://&lt;path&gt;, or - for stdin)
 - `--connector <connector>`: curated connector
@@ -2131,8 +2134,8 @@ update a connector-backed Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--id <id>`: the connector-backed Gateway Target ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--id <id>`: the connector-backed Gateway Target ID (required)
 - `--name <name>`: updated Connector Target name
 - `--description <description>`: updated Connector Target description
 - `--connector-configuration <connector-configuration>`: complete connector-backed Target configuration (JSON; inline, file://&lt;path&gt;, or - for stdin)
@@ -2156,8 +2159,8 @@ get a connector-backed Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID of the Gateway
-- `--id <id>`: the ID of the connector-backed Gateway Target
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--id <id>`: the ID of the connector-backed Gateway Target (required)
 
 ##### `agentcore gateway connector list`
 
@@ -2169,7 +2172,7 @@ list connectors configured for an AgentCore Gateway
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID of the Gateway
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
 
@@ -2183,8 +2186,8 @@ delete a connector-backed Gateway Target
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--id <id>`: the connector-backed Gateway Target ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--id <id>`: the connector-backed Gateway Target ID (required)
 
 #### `agentcore gateway rule`
 
@@ -2204,10 +2207,10 @@ create a Gateway Rule
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--priority <priority>`: Rule priority from 1 to 1000000
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--priority <priority>`: Rule priority from 1 to 1000000 (required)
 - `--conditions <conditions>`: Rule conditions (JSON Condition[]; inline, file://&lt;path&gt;, or - for stdin)
-- `--actions <actions>`: Rule actions (JSON Action[]; inline, file://&lt;path&gt;, or - for stdin)
+- `--actions <actions>`: Rule actions (JSON Action[]; inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--description <description>`: Rule description
 
 ##### `agentcore gateway rule update`
@@ -2220,8 +2223,8 @@ update a Gateway Rule
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--rule-id <rule-id>`: the Rule ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--rule-id <rule-id>`: the Rule ID (required)
 - `--priority <priority>`: updated priority from 1 to 1000000
 - `--conditions <conditions>`: replacement conditions (JSON array; inline, file://&lt;path&gt;, or - for stdin)
 - `--clear-conditions`: make the Rule unconditional (default: false)
@@ -2238,8 +2241,8 @@ get a Gateway Rule
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID of the Gateway
-- `--rule-id <rule-id>`: the ID of the Gateway Rule
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--rule-id <rule-id>`: the ID of the Gateway Rule (required)
 
 ##### `agentcore gateway rule list`
 
@@ -2251,7 +2254,7 @@ list Rules for an AgentCore Gateway
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID of the Gateway
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
 
@@ -2265,8 +2268,8 @@ delete a Gateway Rule
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the parent Gateway ID
-- `--rule-id <rule-id>`: the Rule ID
+- `--gateway-id <gateway-id>`: the parent Gateway ID (required)
+- `--rule-id <rule-id>`: the Rule ID (required)
 
 #### `agentcore gateway policy`
 
@@ -2286,7 +2289,7 @@ generate a Cedar policy for a Gateway from a natural-language prompt
 
 **Options**
 
-- `--gateway-id <gateway-id>`: the ID or ARN of the Gateway the policy applies to
+- `--gateway-id <gateway-id>`: the ID or ARN of the Gateway the policy applies to (required)
 - `--policy-engine-id <policy-engine-id>`: the ID or ARN of the Policy Engine (default the Gateway's attached engine)
 - `--prompt <prompt>`: what the policy should allow or deny (inline, file://&lt;path&gt;, or - for stdin)
 - `--name <name>`: name of the generation request (default cli\_generation\_&lt;timestamp&gt;)
@@ -2503,11 +2506,11 @@ create an LLM-as-a-Judge evaluator
 
 **Options**
 
-- `--name <name>`: the name of the evaluator
-- `--level <level>`: evaluation level (SESSION | TRACE | TOOL\_CALL)
-- `--model <model>`: the Bedrock model ID used to judge
-- `--instructions <instructions>`: evaluation instructions (inline, file://&lt;path&gt;, or - for stdin)
-- `--rating-scale <rating-scale>`: rating scale: a preset (1-5-quality | 1-3-simple | pass-fail | good-neutral-bad) or a custom RatingScale (JSON inline, file://&lt;path&gt;, or - for stdin)
+- `--name <name>`: the name of the evaluator (required)
+- `--level <level>`: evaluation level (SESSION | TRACE | TOOL\_CALL) (required)
+- `--model <model>`: the Bedrock model ID used to judge (required)
+- `--instructions <instructions>`: evaluation instructions (inline, file://&lt;path&gt;, or - for stdin) (required)
+- `--rating-scale <rating-scale>`: rating scale: a preset (1-5-quality | 1-3-simple | pass-fail | good-neutral-bad) or a custom RatingScale (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
 - `--tags <tags>`: tags to apply (JSON object of key/value strings; inline, file://&lt;path&gt;, or - for stdin)
 
@@ -2521,7 +2524,7 @@ update an LLM-as-a-Judge evaluator
 
 **Options**
 
-- `--id <id>`: the ID of the evaluator to update
+- `--id <id>`: the ID of the evaluator to update (required)
 - `--instructions <instructions>`: evaluation instructions (inline, file://&lt;path&gt;, or - for stdin)
 - `--model <model>`: the Bedrock model ID used to judge
 - `--rating-scale <rating-scale>`: rating scale: a preset (1-5-quality | 1-3-simple | pass-fail | good-neutral-bad) or a custom RatingScale (JSON inline, file://&lt;path&gt;, or - for stdin)
@@ -2545,9 +2548,9 @@ create a code-based (Lambda-backed) evaluator
 
 **Options**
 
-- `--name <name>`: the name of the evaluator
-- `--level <level>`: evaluation level (SESSION | TRACE | TOOL\_CALL)
-- `--lambda-arn <lambda-arn>`: ARN of the Lambda function that scores a session
+- `--name <name>`: the name of the evaluator (required)
+- `--level <level>`: evaluation level (SESSION | TRACE | TOOL\_CALL) (required)
+- `--lambda-arn <lambda-arn>`: ARN of the Lambda function that scores a session (required)
 - `--timeout <timeout>`: Lambda timeout in seconds (1-300)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
 - `--tags <tags>`: tags to apply (JSON object of key/value strings; inline, file://&lt;path&gt;, or - for stdin)
@@ -2562,7 +2565,7 @@ update a code-based (Lambda-backed) evaluator
 
 **Options**
 
-- `--id <id>`: the ID of the evaluator to update
+- `--id <id>`: the ID of the evaluator to update (required)
 - `--lambda-arn <lambda-arn>`: ARN of the Lambda function that scores a session
 - `--timeout <timeout>`: Lambda timeout in seconds (1-300)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
@@ -2577,7 +2580,7 @@ get an evaluator by ID
 
 **Options**
 
-- `--id <id>`: the ID of the evaluator
+- `--id <id>`: the ID of the evaluator (required)
 
 ##### `agentcore eval evaluator list`
 
@@ -2602,7 +2605,7 @@ delete an evaluator by ID
 
 **Options**
 
-- `--id <id>`: the ID of the evaluator to delete
+- `--id <id>`: the ID of the evaluator to delete (required)
 
 #### `agentcore eval online-eval`
 
@@ -2622,16 +2625,18 @@ create an online evaluation config
 
 **Options**
 
-- `--name <name>`: the name of the online evaluation config
+- `--name <name>`: the name of the online evaluation config (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: whether to enable evaluation immediately (default true; pass false to create it paused)
+- `--tags <tags>`: resource tags (JSON object of key/value strings)
 - `--agent <agent>`: harness ID or Runtime ID whose traffic to sample
 - `--data-source-config <data-source-config>`: the traces to sample (JSON DataSourceConfig), as an alternative to --agent
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (default DEFAULT)
-- `--evaluators <evaluators...>`: the ID(s) of the evaluators to apply
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
+- `--evaluators <evaluators...>`: the ID(s) of the evaluators to apply (required)
+- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
 - `--session-timeout-minutes <session-timeout-minutes>`: minutes of inactivity before a session is considered complete (1-1440, default 15)
 - `--filters <filters>`: trace filters (JSON Filter[])
+- `--output-config <output-config>`: where results and metrics are written (JSON OutputConfig)
 - `--role-arn <role-arn>`: IAM role the online evaluation assumes (default auto-provisioned)
 
 ##### `agentcore eval online-eval get`
@@ -2644,7 +2649,7 @@ get an online evaluation config by ID
 
 **Options**
 
-- `--id <id>`: the ID of the online evaluation config
+- `--id <id>`: the ID of the online evaluation config (required)
 
 ##### `agentcore eval online-eval list`
 
@@ -2669,7 +2674,8 @@ update an online evaluation config
 
 **Options**
 
-- `--id <id>`: the ID of the online evaluation config to update
+- `--id <id>`: the ID of the online evaluation config to update (required)
+- `--description <description>`: replace the description of the config's monitoring purpose
 - `--agent <agent>`: repoint at a different harness ID or Runtime ID
 - `--data-source-config <data-source-config>`: replace the traces to sample (JSON DataSourceConfig)
 - `--endpoint <endpoint>`: re-scope monitoring to a different agent endpoint qualifier
@@ -2678,6 +2684,7 @@ update an online evaluation config
 - `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
 - `--session-timeout-minutes <session-timeout-minutes>`: minutes of inactivity before a session is considered complete (1-1440)
 - `--filters <filters>`: replace the trace filters (JSON Filter[])
+- `--output-config <output-config>`: where results and metrics are written (JSON OutputConfig)
 - `--role-arn <role-arn>`: replace the IAM role the online evaluation assumes
 
 ##### `agentcore eval online-eval pause`
@@ -2690,7 +2697,7 @@ pause an online evaluation config
 
 **Options**
 
-- `--id <id>`: the ID of the online evaluation config to pause
+- `--id <id>`: the ID of the online evaluation config to pause (required)
 
 ##### `agentcore eval online-eval resume`
 
@@ -2702,7 +2709,7 @@ resume a paused online evaluation config
 
 **Options**
 
-- `--id <id>`: the ID of the online evaluation config to resume
+- `--id <id>`: the ID of the online evaluation config to resume (required)
 
 ##### `agentcore eval online-eval delete`
 
@@ -2714,7 +2721,7 @@ delete an online evaluation config by ID
 
 **Options**
 
-- `--id <id>`: the ID of the online evaluation config to delete
+- `--id <id>`: the ID of the online evaluation config to delete (required)
 
 #### `agentcore eval online-insight`
 
@@ -2734,14 +2741,14 @@ create an online insight config
 
 **Options**
 
-- `--name <name>`: the name of the online insight config
-- `--role-arn <role-arn>`: IAM role the online insight assumes
+- `--name <name>`: the name of the online insight config (required)
+- `--role-arn <role-arn>`: IAM role the online insight assumes (required)
 - `--agent <agent>`: harness ID or Runtime ID whose traffic to sample
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (default DEFAULT)
 - `--data-source-config <data-source-config>`: the traces to evaluate (JSON DataSourceConfig; inline, file://&lt;path&gt;, or - for stdin), as an alternative to --agent
-- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs
+- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs (required)
 - `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s): DAILY, WEEKLY, MONTHLY
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
+- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
 - `--session-timeout-minutes <session-timeout-minutes>`: minutes of inactivity before a session is considered complete (1-1440, default 15)
 - `--filters <filters>`: trace filters (JSON Filter[]; inline, file://&lt;path&gt;, or - for stdin)
 - `--enable-on-create <enable-on-create>`: whether to enable evaluation immediately (default true; pass false to create it paused)
@@ -2757,7 +2764,7 @@ get an online insight config by ID
 
 **Options**
 
-- `--id <id>`: the ID of the online insight config
+- `--id <id>`: the ID of the online insight config (required)
 
 ##### `agentcore eval online-insight list`
 
@@ -2782,7 +2789,7 @@ update an online insight config
 
 **Options**
 
-- `--id <id>`: the ID of the online insight config to update
+- `--id <id>`: the ID of the online insight config to update (required)
 - `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
 - `--session-timeout-minutes <session-timeout-minutes>`: minutes of inactivity before a session is considered complete (1-1440)
 - `--filters <filters>`: trace filters (JSON Filter[]; inline, file://&lt;path&gt;, or - for stdin)
@@ -2804,7 +2811,7 @@ pause an online insight config
 
 **Options**
 
-- `--id <id>`: the ID of the online insight config to pause
+- `--id <id>`: the ID of the online insight config to pause (required)
 
 ##### `agentcore eval online-insight resume`
 
@@ -2816,7 +2823,7 @@ resume a paused online insight config
 
 **Options**
 
-- `--id <id>`: the ID of the online insight config to resume
+- `--id <id>`: the ID of the online insight config to resume (required)
 
 ##### `agentcore eval online-insight delete`
 
@@ -2828,7 +2835,7 @@ delete an online insight config by ID
 
 **Options**
 
-- `--id <id>`: the ID of the online insight config to delete
+- `--id <id>`: the ID of the online insight config to delete (required)
 
 #### `agentcore eval dataset`
 
@@ -2848,9 +2855,9 @@ create a dataset from JSONL examples
 
 **Options**
 
-- `--name <name>`: the name of the dataset
-- `--source <source>`: dataset examples: a JSONL file (file://&lt;path&gt;), an S3 JSONL object (s3://&lt;bucket&gt;/&lt;key&gt;), or - for stdin
-- `--schema-type <schema-type>`: the structure of the dataset's examples, immutable after creation (predefined | simulated)
+- `--name <name>`: the name of the dataset (required)
+- `--source <source>`: dataset examples: a JSONL file (file://&lt;path&gt;), an S3 JSONL object (s3://&lt;bucket&gt;/&lt;key&gt;), or - for stdin (required)
+- `--schema-type <schema-type>`: the structure of the dataset's examples, immutable after creation (predefined | simulated) (required)
 - `--description <description>`: a description of the dataset
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for dataset data
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
@@ -2865,7 +2872,7 @@ get a dataset's metadata, optionally downloading its examples
 
 **Options**
 
-- `--id <id>`: the ID of the dataset
+- `--id <id>`: the ID of the dataset (required)
 - `--version <version>`: the version to retrieve (DRAFT or a version number, default DRAFT)
 - `--file-path <file-path>`: write the version's examples to this path as JSONL, in addition to printing metadata
 
@@ -2892,7 +2899,7 @@ delete a dataset, or one of its published versions
 
 **Options**
 
-- `--id <id>`: the ID of the dataset to delete
+- `--id <id>`: the ID of the dataset to delete (required)
 - `--version <version>`: delete only this published version, leaving the dataset in place; omit to delete the entire dataset
 
 ##### `agentcore eval dataset update`
@@ -2905,8 +2912,8 @@ update a dataset DRAFT from a local JSONL file
 
 **Options**
 
-- `--id <id>`: the ID of the dataset to update
-- `--file-path <file-path>`: local JSONL file to reconcile into the DRAFT
+- `--id <id>`: the ID of the dataset to update (required)
+- `--file-path <file-path>`: local JSONL file to reconcile into the DRAFT (required)
 
 ##### `agentcore eval dataset publish`
 
@@ -2918,7 +2925,7 @@ publish the current DRAFT as a new immutable version
 
 **Options**
 
-- `--id <id>`: the ID of the dataset to publish
+- `--id <id>`: the ID of the dataset to publish (required)
 
 #### `agentcore eval batch-evaluation`
 
@@ -2938,7 +2945,7 @@ evaluate existing sessions service-side (async; returns a job ID)
 
 **Options**
 
-- `--name <name>`: batch evaluation name (must be unique in the account)
+- `--name <name>`: batch evaluation name (must be unique in the account) (required)
 - `--description <description>`: optional description
 - `--kms-key-arn <kms-key-arn>`: KMS key to encrypt evaluation data at rest
 - `--agent <agent>`: harness ID or Runtime ID whose sessions to use
@@ -2948,7 +2955,7 @@ evaluate existing sessions service-side (async; returns a job ID)
 - `--start-time <start-time>`: window start (ISO-8601, with --end-time)
 - `--end-time <end-time>`: window end (ISO-8601, with --start-time)
 - `--session-ids <session-ids...>`: specific session IDs (only with --agent)
-- `--evaluators <evaluators...>`: evaluator ID(s) to apply
+- `--evaluators <evaluators...>`: evaluator ID(s) to apply (required)
 - `--ground-truth <ground-truth>`: expected answers for the sessions (JSON SessionMetadataShape[])
 - `--output-config <output-config>`: where results and metrics are written (JSON OutputConfig)
 
@@ -2962,19 +2969,19 @@ replay a dataset against a Runtime, then batch-evaluate the resulting sessions
 
 **Options**
 
-- `--runtime-id <runtime-id>`: Runtime ID to invoke per scenario
+- `--runtime-id <runtime-id>`: Runtime ID to invoke per scenario (required)
 - `--endpoint <endpoint>`: Runtime endpoint qualifier (default DEFAULT)
-- `--payload-template <payload-template>`: request body per example (JSON object); {input} is replaced with the input
+- `--payload-template <payload-template>`: request body per example (JSON object); {input} is replaced with the input (required)
 - `--header <header...>`: an ordered application header (repeatable)
 - `--bearer-token <bearer-token>`: CUSTOM\_JWT bearer token (for JWT-auth Runtimes)
 - `--user-id <user-id>`: Runtime user ID
-- `--dataset <dataset>`: dataset source: local JSONL path or a dataset ID
+- `--dataset <dataset>`: dataset source: local JSONL path or a dataset ID (required)
 - `--dataset-version <dataset-version>`: dataset version (with a dataset ID)
 - `--ingestion-wait-ms <ingestion-wait-ms>`: ms to wait for span ingestion before grading (default 180000; 0 to skip)
-- `--name <name>`: batch evaluation name (unique in the account)
+- `--name <name>`: batch evaluation name (unique in the account) (required)
 - `--description <description>`: description for the batch evaluation
 - `--kms-key-arn <kms-key-arn>`: KMS key to encrypt evaluation data at rest
-- `--evaluators <evaluators...>`: evaluator ID(s) to apply
+- `--evaluators <evaluators...>`: evaluator ID(s) to apply (required)
 - `--output-config <output-config>`: where results and metrics are written (JSON OutputConfig)
 
 ##### `agentcore eval batch-evaluation get`
@@ -2987,7 +2994,7 @@ get a batch evaluation by ID, with CloudWatch-backed results when available
 
 **Options**
 
-- `--id <id>`: the ID of the batch evaluation
+- `--id <id>`: the ID of the batch evaluation (required)
 - `--disable-cw-results`: skip CloudWatch result retrieval and return only service-side job metadata (default: false)
 
 ##### `agentcore eval batch-evaluation list`
@@ -3002,6 +3009,18 @@ list batch evaluations
 
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
+
+##### `agentcore eval batch-evaluation stop`
+
+```text
+agentcore eval batch-evaluation stop [options]
+```
+
+stop a running batch evaluation
+
+**Options**
+
+- `--id <id>`: the ID of the batch evaluation to stop (required)
 
 #### `agentcore eval batch-insights`
 
@@ -3021,7 +3040,7 @@ start an asynchronous batch insights run over existing sessions
 
 **Options**
 
-- `--name <name>`: batch insights name (must be unique in the account)
+- `--name <name>`: batch insights name (must be unique in the account) (required)
 - `--description <description>`: optional description
 - `--kms-key-arn <kms-key-arn>`: KMS key to encrypt insights data at rest
 - `--agent <agent>`: harness ID or Runtime ID whose sessions to use
@@ -3031,7 +3050,7 @@ start an asynchronous batch insights run over existing sessions
 - `--start-time <start-time>`: window start (ISO-8601, with --end-time)
 - `--end-time <end-time>`: window end (ISO-8601, with --start-time)
 - `--session-ids <session-ids...>`: specific session IDs (only with --agent)
-- `--insight <insight...>`: insight ID(s) to run (default: ["Builtin.Insight.FailureAnalysis"])
+- `--insight <insight...>`: insight ID(s) to run
 - `--evaluators <evaluators...>`: optional evaluator ID(s) to run alongside the insights
 
 ##### `agentcore eval batch-insights get`
@@ -3044,7 +3063,7 @@ get a batch insights run and its reports by ID
 
 **Options**
 
-- `--id <id>`: the ID of the batch insights run
+- `--id <id>`: the ID of the batch insights run (required)
 
 ##### `agentcore eval batch-insights list`
 
@@ -3058,6 +3077,18 @@ list batch insights runs
 
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of batch insights runs to return
+
+##### `agentcore eval batch-insights stop`
+
+```text
+agentcore eval batch-insights stop [options]
+```
+
+stop a running batch insights run
+
+**Options**
+
+- `--id <id>`: the ID of the batch insights run to stop (required)
 
 #### `agentcore eval ondemand`
 
@@ -3077,14 +3108,14 @@ evaluate existing sessions client-side (synchronous; prints scores)
 
 **Options**
 
-- `--agent <agent>`: harness ID or Runtime ID whose sessions to evaluate
+- `--agent <agent>`: harness ID or Runtime ID whose sessions to evaluate (required)
 - `--endpoint <endpoint>`: Runtime endpoint qualifier (default DEFAULT)
 - `--lookback-days <lookback-days>`: evaluate sessions from the last N days
 - `--start-time <start-time>`: window start (ISO-8601, with --end-time)
 - `--end-time <end-time>`: window end (ISO-8601, with --start-time)
 - `--session-ids <session-ids...>`: specific session IDs
 - `--trace-id <trace-id>`: a single trace ID (session ID is read off the span)
-- `--evaluators <evaluators...>`: evaluator ID(s) to apply
+- `--evaluators <evaluators...>`: evaluator ID(s) to apply (required)
 - `--ground-truth <ground-truth>`: expected answers (JSON EvaluationReferenceInput[])
 
 ##### `agentcore eval ondemand simulate`
@@ -3097,15 +3128,15 @@ replay a dataset against a Runtime, then evaluate the sessions client-side
 
 **Options**
 
-- `--runtime-id <runtime-id>`: Runtime ID to invoke per scenario
+- `--runtime-id <runtime-id>`: Runtime ID to invoke per scenario (required)
 - `--endpoint <endpoint>`: Runtime endpoint qualifier (default DEFAULT)
-- `--payload-template <payload-template>`: request body per example (JSON object); {input} is replaced with the input
+- `--payload-template <payload-template>`: request body per example (JSON object); {input} is replaced with the input (required)
 - `--header <header...>`: an ordered application header (repeatable)
 - `--bearer-token <bearer-token>`: CUSTOM\_JWT bearer token (for JWT-auth Runtimes)
 - `--user-id <user-id>`: Runtime user ID
-- `--dataset <dataset>`: local JSONL path or a dataset ID
+- `--dataset <dataset>`: local JSONL path or a dataset ID (required)
 - `--dataset-version <dataset-version>`: dataset version (with a dataset ID)
-- `--evaluators <evaluators...>`: evaluator ID(s) to apply
+- `--evaluators <evaluators...>`: evaluator ID(s) to apply (required)
 - `--ingestion-wait-ms <ingestion-wait-ms>`: ms to wait for span ingestion before grading (default 180000; 0 to skip)
 
 #### `agentcore eval config-bundle`
@@ -3126,8 +3157,8 @@ create a configuration bundle and its initial immutable version
 
 **Options**
 
-- `--name <name>`: the name of the configuration bundle
-- `--components <components>`: complete component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin)
+- `--name <name>`: the name of the configuration bundle (required)
+- `--components <components>`: complete component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--branch-name <branch-name>`: branch name for the initial configuration
 - `--commit-message <commit-message>`: message describing the initial configuration
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for component configurations
@@ -3142,7 +3173,7 @@ get the latest or a specific configuration bundle version
 
 **Options**
 
-- `--id <id>`: the ID of the configuration bundle
+- `--id <id>`: the ID of the configuration bundle (required)
 - `--version <version>`: the immutable version ID to retrieve
 - `--branch-name <branch-name>`: branch used when retrieving the latest version (default: "mainline")
 
@@ -3169,9 +3200,9 @@ create a new immutable configuration bundle version
 
 **Options**
 
-- `--id <id>`: the ID of the configuration bundle
-- `--components <components>`: replacement component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin)
-- `--commit-message <commit-message>`: message describing the configuration bundle update
+- `--id <id>`: the ID of the configuration bundle (required)
+- `--components <components>`: replacement component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
+- `--commit-message <commit-message>`: message describing the configuration bundle update (required)
 - `--branch-name <branch-name>`: branch to update (default: "mainline")
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN to rotate component encryption to
 
@@ -3185,7 +3216,7 @@ delete a configuration bundle and all of its versions
 
 **Options**
 
-- `--id <id>`: the ID of the configuration bundle
+- `--id <id>`: the ID of the configuration bundle (required)
 
 ##### `agentcore eval config-bundle version`
 
@@ -3205,7 +3236,7 @@ list immutable versions of a configuration bundle
 
 **Options**
 
-- `--id <id>`: the ID of the configuration bundle
+- `--id <id>`: the ID of the configuration bundle (required)
 - `--next-token <next-token>`: pagination token returned by a previous request
 - `--max-results <max-results>`: maximum number of items to return
 
@@ -3227,7 +3258,7 @@ get an A/B test by ID, with per-evaluator comparison metrics
 
 **Options**
 
-- `--id <id>`: the ID of the A/B test
+- `--id <id>`: the ID of the A/B test (required)
 
 ##### `agentcore eval ab-test list`
 
@@ -3252,7 +3283,7 @@ pause a running A/B test
 
 **Options**
 
-- `--id <id>`: the ID of the A/B test
+- `--id <id>`: the ID of the A/B test (required)
 
 ##### `agentcore eval ab-test resume`
 
@@ -3264,7 +3295,7 @@ resume a paused A/B test
 
 **Options**
 
-- `--id <id>`: the ID of the A/B test
+- `--id <id>`: the ID of the A/B test (required)
 
 ##### `agentcore eval ab-test stop`
 
@@ -3276,7 +3307,7 @@ stop an A/B test (terminal)
 
 **Options**
 
-- `--id <id>`: the ID of the A/B test
+- `--id <id>`: the ID of the A/B test (required)
 
 ##### `agentcore eval ab-test delete`
 
@@ -3288,7 +3319,7 @@ delete a stopped A/B test
 
 **Options**
 
-- `--id <id>`: the ID of the A/B test
+- `--id <id>`: the ID of the A/B test (required)
 
 ##### `agentcore eval ab-test config-based`
 
@@ -3308,11 +3339,11 @@ run an A/B test between two config-bundle versions on one Gateway
 
 **Options**
 
-- `--name <name>`: the A/B test name
-- `--gateway <gateway>`: deployed Gateway ID
-- `--control <control>`: control JSON {"config-bundle","bundle-version"} (inline, file://, or -)
-- `--treatment <treatment>`: treatment JSON {"config-bundle","bundle-version"} (inline, file://, or -)
-- `--online-eval <online-eval>`: online-evaluation config ID
+- `--name <name>`: the A/B test name (required)
+- `--gateway <gateway>`: deployed Gateway ID (required)
+- `--control <control>`: control JSON {"config-bundle","bundle-version"} (inline, file://, or -) (required)
+- `--treatment <treatment>`: treatment JSON {"config-bundle","bundle-version"} (inline, file://, or -) (required)
+- `--online-eval <online-eval>`: online-evaluation config ID (required)
 - `--treatment-weight <treatment-weight>`: 1-99; control weight = 100 - this (default 50)
 - `--gateway-filter <gateway-filter>`: GatewayFilter JSON, e.g. {"targetPaths":["/orders"]} (inline, file://, or -)
 - `--role-arn <role-arn>`: execution-role override (default auto-provisioned)
@@ -3336,10 +3367,10 @@ run an A/B test between two Gateway Targets and their online evaluations
 
 **Options**
 
-- `--name <name>`: the A/B test name
-- `--gateway <gateway>`: deployed Gateway ID
-- `--control <control>`: control JSON {"gateway-target":"&lt;name&gt;","online-eval":"&lt;id&gt;"} (inline, file://, or -)
-- `--treatment <treatment>`: treatment JSON {"gateway-target":"&lt;name&gt;","online-eval":"&lt;id&gt;"} (inline, file://, or -)
+- `--name <name>`: the A/B test name (required)
+- `--gateway <gateway>`: deployed Gateway ID (required)
+- `--control <control>`: control JSON {"gateway-target":"&lt;name&gt;","online-eval":"&lt;id&gt;"} (inline, file://, or -) (required)
+- `--treatment <treatment>`: treatment JSON {"gateway-target":"&lt;name&gt;","online-eval":"&lt;id&gt;"} (inline, file://, or -) (required)
 - `--treatment-weight <treatment-weight>`: 1-99; control weight = 100 - this (default 50)
 - `--gateway-filter <gateway-filter>`: GatewayFilter JSON, e.g. {"targetPaths":["/orders"]} (inline, file://, or -)
 - `--role-arn <role-arn>`: execution-role override (default auto-provisioned)
@@ -3363,9 +3394,9 @@ start an asynchronous recommendation
 
 **Options**
 
-- `--name <name>`: the name of the recommendation
-- `--type <type>`: the recommendation type (SYSTEM\_PROMPT\_RECOMMENDATION | TOOL\_DESCRIPTION\_RECOMMENDATION)
-- `--recommendation-config <recommendation-config>`: recommendation configuration (JSON inline, file://&lt;path&gt;, or - for stdin)
+- `--name <name>`: the name of the recommendation (required)
+- `--type <type>`: the recommendation type (SYSTEM\_PROMPT\_RECOMMENDATION | TOOL\_DESCRIPTION\_RECOMMENDATION) (required)
+- `--recommendation-config <recommendation-config>`: recommendation configuration (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--description <description>`: a description of the recommendation
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for recommendation data
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
@@ -3380,7 +3411,7 @@ get a recommendation by ID
 
 **Options**
 
-- `--id <id>`: the ID of the recommendation
+- `--id <id>`: the ID of the recommendation (required)
 
 ##### `agentcore eval recommendation list`
 
@@ -3406,7 +3437,7 @@ delete a recommendation by ID
 
 **Options**
 
-- `--id <id>`: the ID of the recommendation to delete
+- `--id <id>`: the ID of the recommendation to delete (required)
 
 ## CLI settings and feedback
 

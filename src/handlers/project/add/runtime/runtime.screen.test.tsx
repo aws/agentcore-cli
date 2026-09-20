@@ -247,7 +247,7 @@ describe("project add runtime dispatch", () => {
     });
   }
 
-  const MISSING_NAME = "required option '--name <name>' not specified";
+  const MISSING_NAME = "required option '--name' not specified";
 
   async function routeError(io: AppIO, args: string[]): Promise<unknown> {
     return buildRoot(io)

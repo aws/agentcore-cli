@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { InputValidationError } from "../../../../errors";
 
 const COMPLETE_CONNECTOR = JSON.stringify({
   name: "configured",
@@ -191,6 +193,6 @@ describe("project add gateway-connector", () => {
   ])("rejects %s", async (_label, flags, message) => {
     await inProject();
     await addGateway();
-    await expect(run(["add", "gateway-connector", ...flags])).rejects.toThrow(message);
+    await expectError(run(["add", "gateway-connector", ...flags]), message, InputValidationError);
   });
 });

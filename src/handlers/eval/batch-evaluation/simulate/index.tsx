@@ -29,7 +29,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
     name: "simulate",
     description: "replay a dataset against a Runtime, then batch-evaluate the resulting sessions",
     flags: [
-      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional(), {
+      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().min(1), {
         group: RUNTIME_INVOCATION,
       }),
       flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
@@ -38,7 +38,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       flag(
         "payload-template",
         "request body per example (JSON object); {input} is replaced with the input",
-        z.string().optional(),
+        z.string().min(1),
         { group: RUNTIME_INVOCATION, help: payloadTemplateHelp },
       ),
       flag("header", "an ordered application header (repeatable)", z.array(z.string()).optional(), {
@@ -54,7 +54,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       flag("user-id", "Runtime user ID", z.string().optional(), {
         group: RUNTIME_INVOCATION,
       }),
-      flag("dataset", "dataset source: local JSONL path or a dataset ID", z.string().optional(), {
+      flag("dataset", "dataset source: local JSONL path or a dataset ID", z.string().min(1), {
         group: DATASET,
       }),
       flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional(), {
@@ -66,7 +66,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
         z.coerce.number().int().nonnegative().optional(),
         { group: DATASET },
       ),
-      flag("name", "batch evaluation name (unique in the account)", z.string().optional(), {
+      flag("name", "batch evaluation name (unique in the account)", z.string().min(1), {
         group: CONFIGURATION,
       }),
       flag("description", "description for the batch evaluation", z.string().optional(), {
@@ -75,27 +75,12 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       flag("kms-key-arn", "KMS key to encrypt evaluation data at rest", z.string().optional(), {
         group: CONFIGURATION,
       }),
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).min(1), {
         group: "Evaluation:",
       }),
       ...BatchOutputConfig.flags,
     ],
     handle: async (ctx, flags) => {
-      if (!flags["runtime-id"])
-        throw new InputValidationError("required option '--runtime-id' not specified");
-      if (!flags["payload-template"]) {
-        throw new InputValidationError("required option '--payload-template' not specified");
-      }
-      if (!flags["dataset"])
-        throw new InputValidationError("required option '--dataset' not specified");
-      if (!flags["evaluators"]?.length) {
-        throw new InputValidationError(
-          "required option '--evaluators <evaluators...>' not specified",
-        );
-      }
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-
       // Ctrl-C aborts the run (invokes, the ingestion wait, the dataset download).
       // TODO(#1986): swap for the shared SIGINT/abort helper once it merges.
       const resolver = new SourceResolver({ stdin: io.stdin });

@@ -72,6 +72,7 @@ import {
   ListRecommendationsCommand,
   StartBatchEvaluationCommand,
   StartRecommendationCommand,
+  StopBatchEvaluationCommand,
   type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
@@ -89,6 +90,7 @@ import {
   type RecommendationStatus,
   type StartBatchEvaluationResponse,
   type StartRecommendationResponse,
+  type StopBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
@@ -109,6 +111,7 @@ import {
   ERROR_SOURCE,
   FileWriteError,
   InputValidationError,
+  MalformedServiceResponseError,
   NetworkingError,
   ResourceNotFoundError,
   TransactionSearchNotEnabledError,
@@ -472,6 +475,15 @@ export class EvalClient implements CoreEvalClient {
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
   }
 
+  async stopBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<StopBatchEvaluationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new StopBatchEvaluationCommand({ batchEvaluationId: id }));
+  }
+
   async getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse> {
     return this.clients.data(toClientConfig(options)).send(new GetABTestCommand({ abTestId: id }));
   }
@@ -712,7 +724,7 @@ export class EvalClient implements CoreEvalClient {
       new StartBatchEvaluationCommand({
         batchEvaluationName: input.name,
         description: input.description,
-        insights: input.insightIds.map((insightId) => ({ insightId })),
+        insights: input.insightIds?.map((insightId) => ({ insightId })),
         evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
         dataSourceConfig,
         kmsKeyArn: input.kmsKeyArn,
@@ -733,9 +745,18 @@ export class EvalClient implements CoreEvalClient {
     const timeRange = source.window;
 
     if (source.origin === "online-eval") {
+      const onlineEvaluationConfigArn = source.onlineEvaluationConfigId.startsWith("arn:")
+        ? source.onlineEvaluationConfigId
+        : (await this.getOnlineEvaluationConfig(source.onlineEvaluationConfigId, options))
+            .onlineEvaluationConfigArn;
+      if (!onlineEvaluationConfigArn) {
+        throw new MalformedServiceResponseError(
+          `online evaluation config "${source.onlineEvaluationConfigId}" returned no ARN`,
+        );
+      }
       return {
         onlineEvaluationConfigSource: {
-          onlineEvaluationConfigArn: source.onlineEvaluationConfigId,
+          onlineEvaluationConfigArn,
           timeRange,
         },
       };

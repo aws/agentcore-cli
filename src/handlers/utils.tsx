@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router";
+import { createContext, useContext, useEffect } from "react";
 import type { Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
@@ -22,17 +22,20 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
   };
 }
 
-// useCoreOpts is coreOptsFromCtx for screens that can be linked to across
-// regions. The context's region is the ambient one resolved at launch, which is
-// not necessarily where the resource a screen is asked to show lives — project
-// status forwards to detail pages on a target that may be deployed elsewhere,
-// and links there with `?region=<target region>`. A region in the query string
-// wins; without one the context's region applies as usual.
-export function useCoreOpts(ctx: Context): CoreOptions {
-  const [search] = useSearchParams();
-  const region = search.get("region");
-  const opts = coreOptsFromCtx(ctx);
-  return region ? { ...opts, region } : opts;
+// A pinned region replaces RegionKey on every route's context, so a screen that
+// shows a resource living outside the launch region pins it and everything it
+// opens next fetches there. The pin lasts until the user navigates back past
+// the screen that set it or reaches a command menu (see PinnedRegion in Root).
+// Passing undefined drops every pin.
+export const RegionPinContext = createContext<(region: string | undefined) => void>(() => {});
+
+// usePinRegion pins `region` once it is known. To pin at an event instead, for
+// example right before a navigation, call the context's setter directly.
+export function usePinRegion(region: string | undefined): void {
+  const pin = useContext(RegionPinContext);
+  useEffect(() => {
+    if (region !== undefined) pin(region);
+  }, [pin, region]);
 }
 
 // parseJsonFlag parses a flag's raw string as JSON, typed as the API structure
@@ -52,6 +55,12 @@ export function parseJsonFlag<T>(name: string, raw: string | undefined): T | und
   }
 }
 
+export function parseJsonFlagWithSchema<T>(name: string, raw: string, schema: z.ZodType<T>): T;
+export function parseJsonFlagWithSchema<T>(
+  name: string,
+  raw: string | undefined,
+  schema: z.ZodType<T>,
+): T | undefined;
 export function parseJsonFlagWithSchema<T>(
   name: string,
   raw: string | undefined,
@@ -70,6 +79,11 @@ export function parseJsonFlagWithSchema<T>(
   return result.data;
 }
 
+export function parseJsonObjectFlag<T extends object>(name: string, raw: string): T;
+export function parseJsonObjectFlag<T extends object>(
+  name: string,
+  raw: string | undefined,
+): T | undefined;
 export function parseJsonObjectFlag<T extends object>(
   name: string,
   raw: string | undefined,

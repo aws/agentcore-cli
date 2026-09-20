@@ -15,7 +15,7 @@ export const createRuntimeShellHandler = (core: Core, io: AppIO) =>
     name: "shell",
     description: "open an interactive shell in a Runtime",
     flags: [
-      flag("id", "the ID of the Runtime", runtimeIdSchema.optional()),
+      flag("id", "the ID of the Runtime", runtimeIdSchema),
       flag("qualifier", "the Runtime endpoint qualifier", z.string().min(1).optional()),
       flag("session-id", "the Runtime session ID to use", z.string().min(33).max(256).optional()),
       flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
@@ -25,9 +25,6 @@ export const createRuntimeShellHandler = (core: Core, io: AppIO) =>
     handle: async (ctx, flags) => {
       if (ctx.require(JsonKey)) {
         throw new InputValidationError("--json cannot be used with runtime shell");
-      }
-      if (flags.id === undefined) {
-        throw new InputValidationError("required option '--id <id>' not specified");
       }
       const bearerToken = await resolveRuntimeShellBearerToken(flags["bearer-token"], io.stdin);
       const launchContext = {

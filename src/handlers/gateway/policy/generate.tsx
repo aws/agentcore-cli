@@ -18,11 +18,7 @@ export const createGeneratePolicyHandler = (
     name: "generate",
     description: "generate a Cedar policy for a Gateway from a natural-language prompt",
     flags: [
-      flag(
-        "gateway-id",
-        "the ID or ARN of the Gateway the policy applies to",
-        z.string().optional(),
-      ),
+      flag("gateway-id", "the ID or ARN of the Gateway the policy applies to", z.string().min(1)),
       flag(
         "policy-engine-id",
         "the ID or ARN of the Policy Engine (default the Gateway's attached engine)",
@@ -40,9 +36,6 @@ export const createGeneratePolicyHandler = (
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
       const jsonOutput = ctx.require(JsonKey);
       if (
         flags.prompt === undefined &&

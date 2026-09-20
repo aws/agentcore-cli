@@ -139,6 +139,8 @@ const CREDENTIAL_FIELD_SUFFIXES = [
   "_API_KEY_ID",
   "_APP_ID",
   "_AUTHORIZATION_ID",
+  // The provider name discovery variable every runtime receives.
+  "_NAME",
 ] as const;
 
 /**

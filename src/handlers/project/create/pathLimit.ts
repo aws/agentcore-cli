@@ -4,7 +4,7 @@ import { InputValidationError } from "../../../errors";
 /**
  Deepest file a fresh `npm install` under agentcore/cdk writes, measured from the project root:
  `agentcore/cdk/node_modules/aws-cdk-lib/product-stack-snapshots/nested/<...>.v1.product.template.json`
- is 155 characters (aws-cdk-lib ~2.266 with @aws/agentcore-cdk 0.1.0-alpha.53). The depth comes
+ is 155 characters (aws-cdk-lib ~2.269 with @aws/agentcore-cdk 1.0.0-rc.1). The depth comes
  from aws-cdk-lib's own shipped fixtures, so it does not move when the vended app changes.
 **/
 const DEEPEST_INSTALLED_PATH = 155;

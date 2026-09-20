@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -10,17 +9,10 @@ export const createGetRuntimeEndpointHandler = (core: Core) =>
     name: "get",
     description: "get a Runtime endpoint",
     flags: [
-      flag("id", "the ID of the Runtime", z.string().optional()),
-      flag("qualifier", "the endpoint name (qualifier)", z.string().optional()),
+      flag("id", "the ID of the Runtime", z.string().min(1)),
+      flag("qualifier", "the endpoint name (qualifier)", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-      if (!flags.qualifier) {
-        throw new InputValidationError("required option '--qualifier <qualifier>' not specified");
-      }
-
       ctx
         .require(JsonRendererKey)
         .renderJson(

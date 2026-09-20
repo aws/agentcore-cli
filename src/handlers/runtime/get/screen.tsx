@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 import type { ScreenProps } from "../../types";
-import { useCoreOpts } from "../../utils";
+import { coreOptsFromCtx } from "../../utils";
 
 const ACTIONS = [
   {
@@ -36,7 +36,7 @@ const ACTIONS = [
 ] as const;
 
 function useRuntimeDetail({ ctx, core }: ScreenProps, runtimeId: string | undefined) {
-  const opts = useCoreOpts(ctx);
+  const opts = coreOptsFromCtx(ctx);
   return useQuery({
     queryKey: ["runtime", opts.region, runtimeId],
     queryFn: () => core.runtime.getRuntime(runtimeId!, opts),
