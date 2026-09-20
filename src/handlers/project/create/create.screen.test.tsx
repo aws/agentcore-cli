@@ -45,34 +45,6 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
 
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-4-6";
 
-test("the wizard persists Terraform and creates its scaffold", async () => {
-  const { path: directory, cleanup } = await inTempDirectory();
-  cleanups.push(cleanup);
-  const core = new TestCoreClient();
-  const inputs = spyOnCreate(core);
-  const r = renderScreen("/agentcore/project/create", { core });
-  await waitForText(r.lastFrame, "name your project");
-  await r.write("TerraformDemo");
-  await r.press("return");
-  await waitForText(r.lastFrame, "what should the project be built around?");
-  await r.press("return");
-  await waitForText(r.lastFrame, "choose a template");
-  for (let i = 0; i < 10; i++) await r.press("down");
-  await waitForText(r.lastFrame, "● empty");
-  await r.press("return");
-  await waitForText(r.lastFrame, "choose a deployment backend");
-  await r.press("down");
-  await r.press("return");
-  await waitForText(r.lastFrame, "this project will be created");
-  expect(r.lastFrame()).toContain("TERRAFORM");
-  await r.press("return");
-  await waitForText(r.lastFrame, "project created in ./TerraformDemo", 5000);
-  expect(inputs[0]?.managedBy).toBe("TERRAFORM");
-  expect(existsSync(join(directory, "TerraformDemo", "agentcore", "terraform"))).toBe(true);
-  expect(existsSync(join(directory, "TerraformDemo", "agentcore", "cdk"))).toBe(false);
-  r.unmount();
-}, 10000);
-
 describe("project create wizard", () => {
   test("harness flow: name → type → model → review → created", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -108,8 +80,6 @@ describe("project create wizard", () => {
     await r.press("return"); // accept model id
 
     // Review: the summary names the project, type, model, and directory.
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     const review = r.lastFrame()!;
     expect(review).toContain("DemoApp");
@@ -163,8 +133,6 @@ describe("project create wizard", () => {
     await r.press("return");
     await r.write("-test");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./TunedApp", 5000);
@@ -208,8 +176,6 @@ describe("project create wizard", () => {
     await r.write(apiKeyArn);
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     const review = r.lastFrame()!;
     expect(review).toContain("provider");
@@ -349,8 +315,6 @@ describe("project create wizard", () => {
     await r.press("return");
 
     // No memory step: memory is no longer a choice, so review follows directly.
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).not.toContain("choose a memory configuration");
     expect(r.lastFrame()).toContain("agent-python-strands");
@@ -398,8 +362,6 @@ describe("project create wizard", () => {
     await r.press("return");
 
     // Straight to review.
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./HelloApp", 5000);
@@ -435,8 +397,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).toContain("agent-python-langchain");
     await r.press("return");
@@ -471,8 +431,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
     await waitForText(r.lastFrame, "project created in ./EmptyApp", 5000);
@@ -586,8 +544,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a model");
     await r.press("return");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
@@ -631,8 +587,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a model");
     await r.press("return"); // focus model id
     await r.press("return"); // accept model id
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
@@ -675,8 +629,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a model");
     await r.press("return");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a deployment backend");
-    await r.press("return"); // keep CDK
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 

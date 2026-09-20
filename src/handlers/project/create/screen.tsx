@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useNavigate } from "react-router";
-import { ProjectNameSchema, type ManagedBy } from "../../../projectSchemas/project";
-import { validateBackendCreateInput } from "./backend";
+import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { HarnessModelProvider } from "../../../projectSchemas/harness";
 import type { ScreenProps } from "../../types";
 import { PlatformKey } from "../../../router";
@@ -52,7 +51,6 @@ interface ProjectModelValues {
 
 interface CreateProjectFormValues {
   name: string;
-  managedBy?: ManagedBy;
   kind: ProjectKind;
   model: ProjectModelValues;
   template: TemplateName;
@@ -139,13 +137,11 @@ function selectedModel(values: CreateProjectFormValues): ProjectModelConfig {
 // buildCreateInput translates the form through the same resolver as the
 // flag-driven path, including its existing API-key ARN support.
 export function buildCreateInput(values: CreateProjectFormValues): CreateProjectInput {
-  const backend = values.managedBy === "TERRAFORM" ? { managedBy: values.managedBy } : {};
   if (values.kind === "harness") {
     const provider = values.model.provider;
     const config = selectedModel(values);
     return {
       name: values.name,
-      ...backend,
       skipInstall: false,
       skipGit: false,
       scaffoldHarnessInput: resolveScaffoldHarnessInput({
@@ -161,11 +157,10 @@ export function buildCreateInput(values: CreateProjectFormValues): CreateProject
     };
   }
   if (values.template === EMPTY_TEMPLATE_NAME) {
-    return { name: values.name, ...backend, skipInstall: false, skipGit: false };
+    return { name: values.name, skipInstall: false, skipGit: false };
   }
   return {
     name: values.name,
-    ...backend,
     skipInstall: false,
     skipGit: false,
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template),
@@ -174,7 +169,7 @@ export function buildCreateInput(values: CreateProjectFormValues): CreateProject
 
 // summaryOf renders the review table: what will be created, and where.
 function summaryOf(values: CreateProjectFormValues): Record<string, string> {
-  const base = { project: values.name, backend: values.managedBy ?? "CDK" };
+  const base = { project: values.name };
   if (values.kind === "harness") {
     const provider = values.model.provider;
     const config = selectedModel(values);
@@ -222,11 +217,8 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         // Both of these throw before anything is written, so the wizard reports
         // them the way it reports a failed create — with the retry still on
         // offer, because nothing has to be cleaned up first.
-        const input = buildCreateInput(values);
-        validateBackendCreateInput(input);
-        if (values.managedBy !== "TERRAFORM")
-          assertProjectPathFits(values.name, ctx.require(PlatformKey));
-        return core.projectManager.create(input);
+        assertProjectPathFits(values.name, ctx.require(PlatformKey));
+        return core.projectManager.create(buildCreateInput(values));
       }}
       runningLabel={`creating ${values.name}…`}
       successLabel={`project created in ./${values.name}`}
@@ -274,22 +266,6 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
           />
         </Step>
       )}
-
-      <Step stepKey="backend" prompt="choose a deployment backend">
-        <ChoiceField
-          help="Terraform preview supports Python CodeZip and short-term memory; choose the minimal, langchain, or empty template"
-          choices={[
-            { value: "CDK", label: "CDK", description: "deploy through CloudFormation" },
-            {
-              value: "TERRAFORM",
-              label: "Terraform (preview)",
-              description: "manage individual resources with Terraform",
-            },
-          ]}
-          value={values.managedBy ?? "CDK"}
-          onChange={(managedBy: ManagedBy) => patch({ managedBy })}
-        />
-      </Step>
 
       <Step stepKey="review" prompt="this project will be created">
         <Summary items={summaryOf(values)} />

@@ -46,27 +46,6 @@ test("project dev requires an AgentCore project", async () => {
 });
 
 describe("project create", () => {
-  test("--backend terraform persists the engine without scaffolding CDK", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await run([
-      "create",
-      "--name",
-      "TerraformDemo",
-      "--backend",
-      "terraform",
-      "--template",
-      "agent-python-minimal",
-      "--skip-install",
-      "--skip-git",
-    ]);
-    const root = join(directory, "TerraformDemo", "agentcore");
-    const spec = await Bun.file(join(root, "agentcore.json")).json();
-    expect(spec.managedBy).toBe("TERRAFORM");
-    expect(existsSync(join(root, "cdk"))).toBe(false);
-    expect(existsSync(join(root, "terraform", "README.md"))).toBe(true);
-  });
-
   test("--json returns the created project without human success text", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
