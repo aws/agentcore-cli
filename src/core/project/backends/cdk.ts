@@ -1,11 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Stack } from "@aws-sdk/client-cloudformation";
-import {
-  MalformedServiceResponseError,
-  ProjectStateError,
-  TransactionSearchUnavailableError,
-} from "../../../errors/errors";
+import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type {
   DeployResult,
   Project,
@@ -274,15 +270,16 @@ export class CdkBackend implements ProjectBackend {
     }
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
-    // above, so a destroy is never blocked by missing Transaction Search setup
-    // permissions. Opt out via the spec.
+    // above, so a destroy is never blocked by Transaction Search. Never fail the
+    // deploy on it either — spans are best-effort, so any setup error just skips.
+    // Opt out entirely via the spec.
     if (project.spec.transactionSearch !== false) {
       yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
       try {
         await this.enableTransactionSearch(target, credentials);
       } catch (error) {
-        if (!(error instanceof TransactionSearchUnavailableError)) throw error;
-        yield { type: "step", message: `Skipping Transaction Search: ${error.message}` };
+        const detail = error instanceof Error ? error.message : String(error);
+        yield { type: "step", message: `Skipping Transaction Search: ${detail}` };
       }
     }
 

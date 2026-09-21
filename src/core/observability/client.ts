@@ -9,7 +9,7 @@ import {
   UpdateTraceSegmentDestinationCommand,
 } from "@aws-sdk/client-xray";
 import { partition } from "@aws-sdk/util-endpoints";
-import { TransactionSearchSetupError, TransactionSearchUnavailableError } from "../../errors";
+import { TransactionSearchSetupError } from "../../errors";
 import type { AwsClients, CoreOptions } from "../types";
 import { toClientConfig } from "../utils";
 import { CloudWatchClient } from "./cloudWatchClient";
@@ -35,19 +35,6 @@ import {
 const RESOURCE_POLICY_NAME = "TransactionSearchXRayAccess";
 const DEFAULT_INDEX_PERCENTAGE = 100;
 
-// Regions/partitions without Transaction Search (e.g. some GovCloud/China) have
-// no endpoint or operation for these APIs; treat that as "skip", not a failure.
-function transactionSearchUnavailable(error: unknown): boolean {
-  const name = (error as { name?: string })?.name ?? "";
-  return (
-    name === "UnknownOperationException" ||
-    name === "UnsupportedOperationException" ||
-    /could not be found|getaddrinfo|Inaccessible host|not support/i.test(
-      (error as Error)?.message ?? "",
-    )
-  );
-}
-
 export class ObservabilityClient {
   private readonly cloudWatch: CloudWatchClient;
 
@@ -56,6 +43,12 @@ export class ObservabilityClient {
   }
 
   async isTransactionSearchEnabled(options: CoreOptions): Promise<boolean> {
+    return this.transactionSearchActive(options);
+  }
+
+  // True when X-Ray is delivering trace segments to CloudWatch Logs. Shared by
+  // the enable flow (to skip the flip when already on) and the public check.
+  private async transactionSearchActive(options: CoreOptions): Promise<boolean> {
     const xray = this.clients.xray(toClientConfig(options));
     const { Destination, Status } = await xray.send(new GetTraceSegmentDestinationCommand({}));
     return Destination === "CloudWatchLogs" && Status === "ACTIVE";
@@ -83,11 +76,6 @@ export class ObservabilityClient {
     try {
       await applicationSignals.send(new StartDiscoveryCommand({}));
     } catch (cause) {
-      if (transactionSearchUnavailable(cause)) {
-        throw new TransactionSearchUnavailableError(
-          `Transaction Search is not available in ${region}`,
-        );
-      }
       fail("enable Application Signals", cause);
     }
 
@@ -135,8 +123,7 @@ export class ObservabilityClient {
 
     let justEnabled = false;
     try {
-      const destination = await xray.send(new GetTraceSegmentDestinationCommand({}));
-      if (destination.Destination !== "CloudWatchLogs") {
+      if (!(await this.transactionSearchActive(options))) {
         await xray.send(
           new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }),
         );

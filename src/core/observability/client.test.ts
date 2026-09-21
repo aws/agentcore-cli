@@ -7,7 +7,7 @@ import {
   UpdateIndexingRuleCommand,
   UpdateTraceSegmentDestinationCommand,
 } from "@aws-sdk/client-xray";
-import { TransactionSearchSetupError, TransactionSearchUnavailableError } from "../../errors";
+import { TransactionSearchSetupError } from "../../errors";
 import { ObservabilityClient } from "./client";
 import type { AwsClients } from "../types";
 
@@ -103,7 +103,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
 
   test("skips the destination update when already pointed at CloudWatch Logs", async () => {
     const { observability, sent } = harness({
-      GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs" },
+      GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs", Status: "ACTIVE" },
     });
 
     await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
@@ -130,17 +130,6 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
     await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
 
     expect(sent.some((c) => c instanceof UpdateIndexingRuleCommand)).toBe(false);
-  });
-
-  test("skips (does not hard-fail) when the region has no Transaction Search", async () => {
-    const unavailable = Object.assign(new Error("UnknownOperationException"), {
-      name: "UnknownOperationException",
-    });
-    const { observability } = harness({ StartDiscoveryCommand: unavailable });
-
-    await expect(observability.enableTransactionSearch(OPTIONS, ACCOUNT)).rejects.toBeInstanceOf(
-      TransactionSearchUnavailableError,
-    );
   });
 
   test("hard-fails with TransactionSearchSetupError naming the denied step", async () => {

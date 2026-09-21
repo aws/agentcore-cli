@@ -220,17 +220,6 @@ export class TransactionSearchSetupError extends AgentCoreCLIError {
 }
 
 /**
- * CloudWatch Transaction Search is not available in the deploy target's region
- * (e.g. some GovCloud/China partitions). Not a failure — deploy catches this and
- * skips the setup with a clear message rather than aborting.
- */
-export class TransactionSearchUnavailableError extends AgentCoreCLIError {
-  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message, { ...options, source: ERROR_SOURCE.USER });
-  }
-}
-
-/**
  * An A/B test run was requested while CloudWatch Transaction Search is off, so no
  * agent spans reach `aws/spans` for the online evaluation to score. Thrown up
  * front (USER source) with a link to the enablement docs.
