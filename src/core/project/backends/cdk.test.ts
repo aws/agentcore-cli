@@ -1116,29 +1116,42 @@ describe("CdkBackend.resolveProjectResources", () => {
 
     const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
 
-    // [type, name, arn, [children...]] so a child under the wrong owner fails here
+    // [type, name, identifier field, identifier, [children...]] so both the
+    // identifier kind and a child under the wrong owner fail here.
     const shape = (resource: ResolvedProjectResource): unknown => [
       resource.resourceType,
       resource.name,
-      resource.deploymentState === "deployed" ? resource.id : undefined,
+      resource.deploymentState === "deployed" ? ("arn" in resource ? "arn" : "id") : undefined,
+      resource.deploymentState === "deployed"
+        ? "arn" in resource
+          ? resource.arn
+          : resource.id
+        : undefined,
       ...(resource.children ? [resource.children.map(shape)] : []),
     ];
     expect(resources.map(shape)).toEqual([
-      ["runtime", "web", "arn:runtime/web-1"],
-      ["harness", "chat", "arn:harness/chat-1"],
-      ["memory", "user_mem", "arn:memory/mem-1"],
-      ["knowledge-base", "kb", "arn:kb/kb-1"],
-      ["credential", "cred", "arn:aws:cred/cred"],
-      ["evaluator", "ev", "arn:evaluator/ev-1"],
-      ["online-eval", "oe", "arn:online-eval/oe-1"],
-      ["gateway", "gw", "arn:gateway/gw-1", [["gateway-target", "tgt", "tgt-1"]]],
-      ["policy-engine", "pe", "arn:policy-engine/pe-1", [["policy", "pol", "arn:policy/pol-1"]]],
-      ["config-bundle", "cb", "arn:config-bundle/cb-1"],
+      ["runtime", "web", "arn", "arn:runtime/web-1"],
+      ["harness", "chat", "arn", "arn:harness/chat-1"],
+      ["memory", "user_mem", "arn", "arn:memory/mem-1"],
+      ["knowledge-base", "kb", "arn", "arn:kb/kb-1"],
+      ["credential", "cred", "arn", "arn:aws:cred/cred"],
+      ["evaluator", "ev", "arn", "arn:evaluator/ev-1"],
+      ["online-eval", "oe", "arn", "arn:online-eval/oe-1"],
+      ["gateway", "gw", "arn", "arn:gateway/gw-1", [["gateway-target", "tgt", "id", "tgt-1"]]],
+      [
+        "policy-engine",
+        "pe",
+        "arn",
+        "arn:policy-engine/pe-1",
+        [["policy", "pol", "arn", "arn:policy/pol-1"]],
+      ],
+      ["config-bundle", "cb", "arn", "arn:config-bundle/cb-1"],
       [
         "payment-manager",
         "pay",
+        "arn",
         "arn:payment-manager/pay-1",
-        [["payment-connector", "wallet_one", "conn-1"]],
+        [["payment-connector", "wallet_one", "id", "conn-1"]],
       ],
     ]);
     expect(subject.stackReads).toHaveLength(1);
@@ -1167,7 +1180,7 @@ describe("CdkBackend.resolveProjectResources", () => {
         resourceType: "memory",
         name: "shortTerm",
         deploymentState: "deployed",
-        id: "arn:memory/short-1",
+        arn: "arn:memory/short-1",
       },
       { resourceType: "memory", name: "longTerm", deploymentState: "local-only" },
     ]);

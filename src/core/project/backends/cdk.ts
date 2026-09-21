@@ -488,53 +488,56 @@ export class CdkBackend implements ProjectBackend {
     const byOutputKey = (key: string) =>
       stack?.Outputs?.find((output) => output.OutputKey === key)?.OutputValue;
 
-    const arnOf = (
+    const asArn = (value: string | undefined) => (value ? { arn: value } : undefined);
+    const asId = (value: string | undefined) => (value ? { id: value } : undefined);
+
+    const identifierOf = (
       resourceType: DeployableResource,
       name: string,
       owner?: string,
-    ): string | undefined => {
+    ): { arn: string } | { id: string } | undefined => {
       switch (resourceType) {
         case "runtime":
-          return byExportName(name, "RuntimeArn");
+          return asArn(byExportName(name, "RuntimeArn"));
         case "harness":
-          return byExportName("Harness", name, "Arn");
+          return asArn(byExportName("Harness", name, "Arn"));
         case "memory":
-          return byExportName("Memory", name, "Arn");
+          return asArn(byExportName("Memory", name, "Arn"));
         case "knowledge-base":
-          return byExportName("KnowledgeBase", name, "Arn");
+          return asArn(byExportName("KnowledgeBase", name, "Arn"));
         case "evaluator":
-          return byExportName("Evaluator", name, "Arn");
+          return asArn(byExportName("Evaluator", name, "Arn"));
         case "online-eval":
-          return byExportName("OnlineEval", name, "Arn");
+          return asArn(byExportName("OnlineEval", name, "Arn"));
         case "gateway":
-          return byExportName("Gateway", name, "Arn");
+          return asArn(byExportName("Gateway", name, "Arn"));
         case "gateway-target":
           // The L3 exports an id for targets and never an ARN
-          return byExportName("GatewayTarget", name, "Id");
+          return asId(byExportName("GatewayTarget", name, "Id"));
         case "policy":
           // ExportName: <StackName>-Policy-<engineName>-<policyName>-Arn
-          return byExportName("Policy", owner ?? "", name, "Arn");
+          return asArn(byExportName("Policy", owner ?? "", name, "Arn"));
         case "policy-engine":
-          return byExportName("PolicyEngine", name, "Arn");
+          return asArn(byExportName("PolicyEngine", name, "Arn"));
         case "config-bundle":
-          return byExportName("ConfigBundle", name, "Arn");
+          return asArn(byExportName("ConfigBundle", name, "Arn"));
         case "payment-manager":
           // @aws/agentcore-cdk's AgentCorePayments construct writes the payment
           // outputs at stack scope without an exportName, under keys built from
           // the manager name with underscores removed (its toCdkId). Therefore
           // match on the OutputKey.
-          return byOutputKey(`Payment${cdkId(name)}ManagerArn`);
+          return asArn(byOutputKey(`Payment${cdkId(name)}ManagerArn`));
         case "payment-connector":
           // The same construct writes only a connector id, never an ARN, again
           // without an exportName. Therefore match on the OutputKey.
-          return byOutputKey(`Payment${cdkId(owner ?? "")}${cdkId(name)}ConnectorId`);
+          return asId(byOutputKey(`Payment${cdkId(owner ?? "")}${cdkId(name)}ConnectorId`));
         case "runtime-endpoint":
           // ExportName: <StackName>-Endpoint-<runtimeName>-<endpointName>-Arn
-          return byExportName("Endpoint", owner ?? "", name, "Arn");
+          return asArn(byExportName("Endpoint", owner ?? "", name, "Arn"));
         case "credential":
           // The CLI creates credential providers imperatively. The stack does not
           // contain them. Therefore read the ARN from the deployed state file.
-          return recorded?.resources?.credentials?.[name]?.credentialProviderArn;
+          return asArn(recorded?.resources?.credentials?.[name]?.credentialProviderArn);
         default: {
           const unhandled: never = resourceType;
           return unhandled;
@@ -551,12 +554,14 @@ export class CdkBackend implements ProjectBackend {
       name: string,
       options: { owner?: string; children?: ResolvedProjectResource[] } = {},
     ): ResolvedProjectResource => {
-      const id = arnOf(resourceType, name, options.owner);
+      const identifier = identifierOf(resourceType, name, options.owner);
       return {
         resourceType,
         name,
         ...(options.children?.length ? { children: options.children } : {}),
-        ...(id ? { deploymentState: "deployed", id } : { deploymentState: "local-only" }),
+        ...(identifier
+          ? { deploymentState: "deployed", ...identifier }
+          : { deploymentState: "local-only" }),
       };
     };
 

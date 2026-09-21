@@ -264,7 +264,11 @@ export type ResolvedProjectResource = {
    * the resolver nests them here and no caller pairs them up by name.
    */
   children?: ResolvedProjectResource[];
-} & ({ deploymentState: "deployed"; id: string } | { deploymentState: "local-only" });
+} & (
+  | { deploymentState: "deployed"; arn: string }
+  | { deploymentState: "deployed"; id: string }
+  | { deploymentState: "local-only" }
+);
 
 export type ResolvedProjectResources = {
   resources: ResolvedProjectResource[];

@@ -56,14 +56,14 @@ const RUNTIME_PROJECT = project({
 const deployed = (
   resourceType: ResolvedProjectResource["resourceType"],
   name: string,
-  id: string,
+  identifier: { arn: string } | { id: string },
   children?: ResolvedProjectResource[],
 ): ResolvedProjectResource => ({
   resourceType,
   name,
   ...(children ? { children } : {}),
   deploymentState: "deployed",
-  id,
+  ...identifier,
 });
 
 const localOnly = (
@@ -72,8 +72,8 @@ const localOnly = (
 ): ResolvedProjectResource => ({ resourceType, name, deploymentState: "local-only" });
 
 const RUNTIME_RESOURCES: ResolvedProjectResource[] = [
-  deployed("runtime", "checkout", `${ARN}:runtime/${RUNTIME_ID}`),
-  deployed("memory", "recall", `${ARN}:memory/${MEMORY_ID}`),
+  deployed("runtime", "checkout", { arn: `${ARN}:runtime/${RUNTIME_ID}` }),
+  deployed("memory", "recall", { arn: `${ARN}:memory/${MEMORY_ID}` }),
 ];
 
 // The fake resolves the requested target by name, so a screen that names the
@@ -138,8 +138,8 @@ describe("project status screen", () => {
     const screen = renderStatus(
       core([
         ...RUNTIME_RESOURCES,
-        deployed("gateway", "tools", `${ARN}:gateway/tools-GwId12345`, [
-          deployed("gateway-target", "search", "TARGETID123"),
+        deployed("gateway", "tools", { arn: `${ARN}:gateway/tools-GwId12345` }, [
+          deployed("gateway-target", "search", { id: "TARGETID123" }),
         ]),
         localOnly("credential", "svc-key"),
       ]),
@@ -156,7 +156,7 @@ describe("project status screen", () => {
   test("marks declared-but-undeployed rows local-only and skips them when navigating", async () => {
     const screen = renderStatus(
       core([
-        deployed("runtime", "checkout", `${ARN}:runtime/${RUNTIME_ID}`),
+        deployed("runtime", "checkout", { arn: `${ARN}:runtime/${RUNTIME_ID}` }),
         localOnly("memory", "recall"),
       ]),
     );
@@ -203,7 +203,7 @@ describe("project status screen", () => {
 
   test("enter on a Harness opens the Harness detail page", async () => {
     const screen = renderStatus(
-      core([deployed("harness", "support", `${ARN}:harness/${HARNESS_ID}`)]),
+      core([deployed("harness", "support", { arn: `${ARN}:harness/${HARNESS_ID}` })]),
       project({ harnesses: [{ name: "support", path: "app/support" }] }),
     );
 
@@ -228,7 +228,10 @@ describe("project status screen", () => {
 
   test("a deployed resource without a detail screen explains itself instead of navigating", async () => {
     const screen = renderStatus(
-      core([...RUNTIME_RESOURCES, deployed("credential", "svc-key", `${ARN}:token-vault/default`)]),
+      core([
+        ...RUNTIME_RESOURCES,
+        deployed("credential", "svc-key", { arn: `${ARN}:token-vault/default` }),
+      ]),
     );
 
     await waitForGroup(screen);

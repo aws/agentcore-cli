@@ -32,12 +32,14 @@ const DETAIL_ROUTES: Partial<Record<DeployableResource, (id: string) => string>>
   gateway: (id) => `/agentcore/gateway/get/${encodeURIComponent(id)}`,
 };
 
-// resolveProjectResources reports most ids as ARNs (e.g.
-// arn:aws:bedrock-agentcore:<region>:<account>:memory/<memoryId>) while the
-// detail routes and Core clients take the bare service id — see
-// serviceIdFromArn, which passes non-ARN ids (a gateway target's, for one)
-// through unchanged.
 type StatusNode = LinkedResourceNode;
+
+// Detail routes and Core clients take bare service ids, so normalize deployed
+// resources while preserving non-ARN identifiers such as gateway target ids.
+function serviceIdOf(resource: ResolvedProjectResource): string | undefined {
+  if (resource.deploymentState !== "deployed") return undefined;
+  return "arn" in resource ? serviceIdFromArn(resource.arn) : resource.id;
+}
 
 // routeFor resolves the detail route for a deployed resource. Gateway targets
 // have a detail screen too, but its route needs the owning gateway's id, which
@@ -46,20 +48,21 @@ function routeFor(
   resource: ResolvedProjectResource,
   parent?: ResolvedProjectResource,
 ): string | undefined {
-  if (resource.deploymentState !== "deployed") return undefined;
+  const resourceId = serviceIdOf(resource);
+  if (!resourceId) return undefined;
   if (resource.resourceType === "gateway-target") {
-    if (parent?.deploymentState !== "deployed") return undefined;
-    const gatewayId = encodeURIComponent(serviceIdFromArn(parent.id));
-    return `/agentcore/gateway/target/get/${gatewayId}/${encodeURIComponent(resource.id)}`;
+    const gatewayId = parent && serviceIdOf(parent);
+    if (!gatewayId) return undefined;
+    return `/agentcore/gateway/target/get/${encodeURIComponent(gatewayId)}/${encodeURIComponent(resourceId)}`;
   }
   // An endpoint's detail (runtime endpoint get) keys off the parent runtime's id
   // plus the endpoint name as qualifier, not the endpoint's own ARN.
   if (resource.resourceType === "runtime-endpoint") {
-    if (parent?.deploymentState !== "deployed") return undefined;
-    const runtimeId = encodeURIComponent(serviceIdFromArn(parent.id));
-    return `/agentcore/runtime/endpoint/get/${runtimeId}/${encodeURIComponent(resource.name)}`;
+    const runtimeId = parent && serviceIdOf(parent);
+    if (!runtimeId) return undefined;
+    return `/agentcore/runtime/endpoint/get/${encodeURIComponent(runtimeId)}/${encodeURIComponent(resource.name)}`;
   }
-  return DETAIL_ROUTES[resource.resourceType]?.(serviceIdFromArn(resource.id));
+  return DETAIL_ROUTES[resource.resourceType]?.(resourceId);
 }
 
 // buildStatusNodes groups the resolved resources by agent. Each entry in
