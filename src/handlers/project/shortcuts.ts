@@ -49,7 +49,7 @@ type RuntimeTemplateShortcut = {
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "agent-python-minimal": {
     runtimeName: "agent_python_minimal",
-    description: "minimal Python agent on Bedrock, no framework",
+    description: "minimal Python project, no agent framework",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -60,7 +60,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-strands": {
     runtimeName: "agent_python_strands",
-    description: "Strands agent on Bedrock with memory",
+    description: "Strands agent with AgentCore Memory, Bedrock for inference",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -71,7 +71,8 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-strands-container": {
     runtimeName: "agent_python_strands_container",
-    description: "Strands agent on Bedrock with memory",
+    description:
+      "Strands agent with AgentCore Memory, Bedrock for inference, container-based deployment",
     build: "Container",
     language: "Python",
     framework: "strands",
@@ -81,7 +82,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-typescript-strands": {
     runtimeName: "agent_typescript_strands",
-    description: "Strands agent on Bedrock with memory, in TypeScript",
+    description: "Strands agent in TypeScript with AgentCore Memory, Bedrock for inference",
     build: "CodeZip",
     language: "TypeScript",
     framework: "strands",
@@ -92,7 +93,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-langchain": {
     runtimeName: "agent_python_langchain",
-    description: "LangChain agent on Bedrock",
+    description: "LangChain agent with Bedrock for inference",
     build: "CodeZip",
     language: "Python",
     framework: "langchain",
@@ -103,7 +104,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-typescript-vercel": {
     runtimeName: "agent_typescript_vercel",
-    description: "minimal Vercel AI SDK agent on Bedrock, in TypeScript",
+    description: "Vercel AI SDK agent in TypeScript, Bedrock for inference",
     build: "CodeZip",
     language: "TypeScript",
     framework: "vercelai",
@@ -114,7 +115,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "mcp-python-fastmcp": {
     runtimeName: "mcp_python_fastmcp",
-    description: "MCP server exposing tools via FastMCP",
+    description: "MCP server exposing tools with FastMCP",
     build: "CodeZip",
     language: "Python",
     framework: "none",
@@ -125,7 +126,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "a2a-python-strands": {
     runtimeName: "a2a_python_strands",
-    description: "Strands agent speaking the A2A protocol on Bedrock",
+    description: "Strands agent speaking the A2A protocol, Bedrock for inference",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -137,7 +138,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agui-python-strands": {
     runtimeName: "agui_python_strands",
-    description: "Strands agent speaking the AG-UI protocol on Bedrock",
+    description: "Strands agent speaking AG-UI, Bedrock for inference",
     build: "CodeZip",
     language: "Python",
     framework: "strands",

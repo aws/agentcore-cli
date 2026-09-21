@@ -58,13 +58,13 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
 
-    // Type step: agent code is the preselected default.
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    // Type step: code-based is the preselected default.
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     const typeStep = r.lastFrame()!;
-    expect(typeStep).toContain("● agent code");
-    expect(typeStep).toContain("○ harness");
-    expect(typeStep).not.toContain("harness (recommended)");
-    expect(typeStep.indexOf("● agent code")).toBeLessThan(typeStep.indexOf("○ harness"));
+    expect(typeStep).toContain("● code-based");
+    expect(typeStep).toContain("○ config-based");
+    expect(typeStep).not.toContain("config-based (recommended)");
+    expect(typeStep.indexOf("● code-based")).toBeLessThan(typeStep.indexOf("○ config-based"));
     await r.press("down"); // harness
     await r.press("return");
 
@@ -124,7 +124,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("TunedApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
 
@@ -162,7 +162,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("OpenAIApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
 
@@ -303,8 +303,8 @@ describe("project create wizard", () => {
     await r.write("StrandsApp");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "what should the project be built around?");
-    await waitForText(r.lastFrame, "● agent code");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await waitForText(r.lastFrame, "● code-based");
     await r.press("return");
 
     // Template step: the supported templates are offered, including the
@@ -353,7 +353,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("HelloApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     await r.press("down"); // agent-python-strands-container
@@ -392,7 +392,7 @@ describe("project create wizard", () => {
     await r.write("LangChainApp");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
@@ -429,7 +429,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("EmptyApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
@@ -492,7 +492,7 @@ describe("project create wizard", () => {
     // The embedded "\r" is not a submit; a real enter advances with the
     // clean value — which it could not do if the control byte had stuck.
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     r.unmount();
   });
 
@@ -502,7 +502,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("DemoApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("escape");
     await waitForText(r.lastFrame, "name your project");
     // Esc on the first step lands on the project menu.
@@ -544,7 +544,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("DemoApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
@@ -587,7 +587,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("DemoApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
@@ -629,7 +629,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("DemoApp");
     await r.press("return");
-    await waitForText(r.lastFrame, "what should the project be built around?");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model");
@@ -708,7 +708,7 @@ describe("project create dispatch", () => {
     stdin.write("DemoApp");
     await waitFor(() => streams.stdout().includes("DemoApp"));
     stdin.write("\r");
-    await waitFor(() => streams.stdout().includes("what should the project be built around?"));
+    await waitFor(() => streams.stdout().includes("what kind of agent to start with?"));
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("choose a template"));
     stdin.write("\r");

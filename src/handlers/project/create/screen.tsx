@@ -114,13 +114,14 @@ function emptyCreateProjectForm(): CreateProjectFormValues {
 const PROJECT_KIND_CHOICES: Choice<ProjectKind>[] = [
   {
     value: "agent",
-    label: "agent code",
-    description: "generate runnable agent code from a template",
+    label: "code-based",
+    description:
+      "create an agent or MCP server using an SDK like Strands, LangGraph, or FastMCP, deployed to AgentCore Runtime",
   },
   {
     value: "harness",
-    label: "harness",
-    description: "a managed agent configured by spec — no agent-loop code to maintain",
+    label: "config-based",
+    description: "create a managed, config-based agent with AgentCore harness",
   },
 ];
 
@@ -253,9 +254,8 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         />
       </Step>
 
-      <Step stepKey="type" prompt="what should the project be built around?">
+      <Step stepKey="type" prompt="what kind of agent to start with?">
         <ChoiceField
-          help="a project deploys either a managed harness or your own agent code"
           choices={PROJECT_KIND_CHOICES}
           value={values.kind}
           onChange={(kind) => patch({ kind })}
@@ -263,7 +263,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       </Step>
 
       {values.kind === "harness" && (
-        <Step stepKey="model" prompt="choose a model">
+        <Step stepKey="model">
           <ModelField value={values.model} onChange={(model) => patch({ model })} />
         </Step>
       )}
@@ -271,7 +271,6 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       {values.kind === "agent" && (
         <Step stepKey="template" prompt="choose a template">
           <ChoiceField
-            help="the agent code scaffolded into the project"
             choices={TEMPLATE_CHOICES}
             value={values.template}
             onChange={(template) => patch({ template })}
@@ -466,7 +465,7 @@ function ModelField({
       >
         <FormRadioGroup
           key="provider"
-          helpText="the provider and model that will power the harness"
+          helpText="choose a model"
           options={options}
           focusedIndex={providerIndex}
           selectedIndex={focusedField !== null ? providerIndex : undefined}
