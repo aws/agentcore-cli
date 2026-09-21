@@ -21,7 +21,6 @@
   ],
   "scripts": {
     "build": "bun scripts/build.ts bundle",
-    "build:schema": "bun scripts/generate-schema.ts",
     "compile": "bun run compile:darwin-x64 && bun run compile:darwin-arm64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64 && bun run compile:windows-arm64",
     "compile:darwin-x64": "bun scripts/build.ts compile bun-darwin-x64",
     "compile:darwin-arm64": "bun scripts/build.ts compile bun-darwin-arm64",
