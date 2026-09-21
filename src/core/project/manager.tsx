@@ -709,7 +709,6 @@ export class FsProjectManager implements ProjectManager {
       configBundles: [],
       harnesses: [],
       toolRuntimes: undefined,
-      httpGateways: undefined,
       payments: undefined,
     };
 

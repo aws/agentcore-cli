@@ -603,10 +603,16 @@ describe("project remove all", () => {
     ]) {
       expect(spec[collection]).toEqual([]);
     }
-    for (const collection of ["toolRuntimes", "httpGateways", "payments"]) {
+    for (const collection of ["toolRuntimes", "payments"]) {
       expect(spec[collection]).toBeUndefined();
     }
-    for (const field of ["datasets", "abTests", "unassignedTargets", "capacityProviders"]) {
+    for (const field of [
+      "datasets",
+      "abTests",
+      "unassignedTargets",
+      "httpGateways",
+      "capacityProviders",
+    ]) {
       expect(spec).not.toHaveProperty(field);
     }
     expect(spec.name).toBe(before.name);

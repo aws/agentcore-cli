@@ -68,13 +68,6 @@ export const ProjectSpecSchema = z
       .default([])
       .superRefine(uniqueNames("config bundle")),
     harnesses: z.array(HarnessRegistryEntrySchema).default([]).superRefine(uniqueNames("harness")),
-    httpGateways: z
-      .array(z.unknown())
-      .max(
-        0,
-        '"httpGateways" is deprecated. Migrate to agentCoreGateways with protocolType: "None", or use "agentcore import gateway".',
-      )
-      .optional(),
     payments: z.array(PaymentManagerSchema).optional().superRefine(uniqueNames("payment manager")),
   })
   .strict()
