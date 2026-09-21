@@ -441,6 +441,8 @@ export type RemoveResourcesResult = {
 /** The outcome of removing one resource, including its resolved parent. */
 export type RemoveResourceResult = RemoveResourcesResult & {
   removedResource: RemoveResourceInput;
+  /** Runtime codeLocation retained on disk after a successful runtime removal. */
+  retainedSourceCodePath?: string;
 };
 
 /**

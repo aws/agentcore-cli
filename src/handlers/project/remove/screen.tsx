@@ -10,6 +10,7 @@ import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { Project, RemoveResourceInput } from "../types";
 import type { ScreenProps } from "../../types";
 import { ProjectGate, projectQueryKey } from "../ProjectGate";
+import { runtimeSourceCodeRetainedNotice } from "./notice";
 
 type RootResourceType =
   | "runtime"
@@ -359,9 +360,14 @@ function RemoveConfirm({
       action={async () => {
         const result = await core.projectManager.removeResource(project, resource);
         removedProject.current = result.project;
+        const sourceCodeNotice =
+          config.resourceType === "runtime" && result.retainedSourceCodePath
+            ? runtimeSourceCodeRetainedNotice(resource.name, result.retainedSourceCodePath)
+            : undefined;
         return {
           rows: {
             removed: `${config.resourceType} '${resource.name}'`,
+            ...(sourceCodeNotice ? { notice: sourceCodeNotice } : {}),
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type {
   AddResourceInput,
   CreateProjectInput,
@@ -567,6 +567,14 @@ export class FsProjectManager implements ProjectManager {
     let removed = false;
     let newSpec: unknown;
     let removedResource = input;
+    const configuredSourceCodePath =
+      input.resourceType === "runtime"
+        ? existingProjectSpec.runtimes.find((runtime) => runtime.name === input.name)?.codeLocation
+        : undefined;
+    const retainedSourceCodePath =
+      configuredSourceCodePath && existsSync(resolve(project.rootPath, configuredSourceCodePath))
+        ? configuredSourceCodePath
+        : undefined;
     if (input.resourceType === "policy") {
       const candidates = existingProjectSpec.policyEngines.filter((engine) =>
         engine.policies.some((policy) => policy.name === input.name),
@@ -682,6 +690,7 @@ export class FsProjectManager implements ProjectManager {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
       removedResource,
+      ...(retainedSourceCodePath ? { retainedSourceCodePath } : {}),
     };
   }
 

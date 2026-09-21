@@ -8,6 +8,7 @@ import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
 import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
+import { runtimeSourceCodeRetainedNotice } from "./notice";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -154,6 +155,10 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
 
       const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
+      const sourceCodeNotice =
+        resource === "runtime" && result.retainedSourceCodePath
+          ? runtimeSourceCodeRetainedNotice(name, result.retainedSourceCodePath)
+          : undefined;
       renderResult<ProjectMutationResult>(
         ctx,
         {
@@ -161,8 +166,12 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           project: projectReference(result.project),
           resource: projectMutationResource(resource, name, result.removedResource),
           removedEnvironmentKeys: result.removedEnvKeys,
+          ...(sourceCodeNotice ? { notes: [sourceCodeNotice] } : {}),
         },
-        () => config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`),
+        () => {
+          config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`);
+          if (sourceCodeNotice) config.io.stderr.write(`${sourceCodeNotice}\n`);
+        },
       );
     },
   });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -372,6 +373,10 @@ describe("project remove screen", () => {
     await waitForText(r.lastFrame, "Resource removed");
 
     expect((await readSpec(specPath)).runtimes).toEqual([]);
+    expect(r.lastFrame()!.replace(/\s+/g, " ")).toContain(
+      `Runtime '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
+    );
+    expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
     r.unmount();
   });
 
