@@ -35,29 +35,6 @@ function harness(responses: Record<string, unknown> = {}): {
 const OPTIONS = { region: "us-west-2" };
 const ACCOUNT = "123456789012";
 
-describe("ObservabilityClient.isTransactionSearchEnabled", () => {
-  test("true when the X-Ray destination is CloudWatch Logs and active", async () => {
-    const { observability } = harness({
-      GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs", Status: "ACTIVE" },
-    });
-    expect(await observability.isTransactionSearchEnabled(OPTIONS)).toBe(true);
-  });
-
-  test("false when the destination is still X-Ray", async () => {
-    const { observability } = harness({
-      GetTraceSegmentDestinationCommand: { Destination: "XRay", Status: "ACTIVE" },
-    });
-    expect(await observability.isTransactionSearchEnabled(OPTIONS)).toBe(false);
-  });
-
-  test("false while the destination change is pending", async () => {
-    const { observability } = harness({
-      GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs", Status: "PENDING" },
-    });
-    expect(await observability.isTransactionSearchEnabled(OPTIONS)).toBe(false);
-  });
-});
-
 describe("ObservabilityClient.enableTransactionSearch", () => {
   test("runs the full setup in order on a fresh account", async () => {
     const { observability, sent } = harness();

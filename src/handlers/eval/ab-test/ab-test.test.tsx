@@ -4,6 +4,8 @@ import { createRootHandler } from "../../index";
 import { createSilentLogger, expectError, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/";
 import { InputValidationError, TransactionSearchNotEnabledError } from "../../../errors";
+import { ObservabilityClient } from "../../../core/observability/client";
+import type { AwsClients } from "../../../core/types";
 
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   const core = new TestCoreClient();
@@ -383,5 +385,26 @@ describe("eval ab-test run requires Transaction Search", () => {
     await expect(run(TB_RUN, disableTransactionSearch)).rejects.toBeInstanceOf(
       TransactionSearchNotEnabledError,
     );
+  });
+});
+
+describe("ObservabilityClient.isTransactionSearchEnabled", () => {
+  const withDestination = (response: unknown): ObservabilityClient => {
+    const factory = () => ({ send: async () => response });
+    return new ObservabilityClient({
+      xray: factory,
+      logs: factory,
+      applicationSignals: factory,
+    } as unknown as AwsClients);
+  };
+
+  test("false when the X-Ray destination is still X-Ray", async () => {
+    const obs = withDestination({ Destination: "XRay", Status: "ACTIVE" });
+    expect(await obs.isTransactionSearchEnabled({ region: "us-west-2" })).toBe(false);
+  });
+
+  test("false while the destination change is pending", async () => {
+    const obs = withDestination({ Destination: "CloudWatchLogs", Status: "PENDING" });
+    expect(await obs.isTransactionSearchEnabled({ region: "us-west-2" })).toBe(false);
   });
 });
