@@ -11,8 +11,7 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
-import { InvalidEnvironmentError } from "../../errors";
-import { ExitCode } from "../../runnable";
+import { ExitCode, InvalidEnvironmentError } from "../../errors";
 import { commandParameterDetails } from "../../router";
 import { createRootHandler } from "../index";
 import {

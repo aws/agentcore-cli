@@ -1,7 +1,11 @@
-import { InputValidationError, InvalidEnvironmentError, SilentCLIError } from "../../../errors";
+import {
+  ExitCode,
+  InputValidationError,
+  InvalidEnvironmentError,
+  SilentCLIError,
+} from "../../../errors";
 import { InteractiveTerminal, type AppIO } from "../../../io";
 import type { Context } from "../../../router";
-import { ExitCode } from "../../../runnable";
 import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import type { RuntimeShellLaunchContext } from "./launchContext";

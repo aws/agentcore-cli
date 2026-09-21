@@ -12,8 +12,7 @@ import {
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
-import { InvalidEnvironmentError } from "../errors";
-import { ExitCode } from "../runnable";
+import { ExitCode, InvalidEnvironmentError } from "../errors";
 import { TuiExitMessageKey } from "./exitMessage";
 
 // renderJson pretty-prints a value as indented JSON. It is the output

@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "../handlers";
-import { InvalidEnvironmentError } from "../errors";
+import { ExitCode, InvalidEnvironmentError } from "../errors";
 import { renderJson } from "./index";
 import {
   createSilentLogger,
@@ -11,7 +11,6 @@ import {
   tick,
   waitFor,
 } from "../testing";
-import { ExitCode } from "../runnable";
 
 describe("renderJson", () => {
   test("pretty-prints a value as indented JSON to the given writer", () => {

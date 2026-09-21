@@ -7,9 +7,10 @@ import type {
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ProjectBackend, ResolveDeployedResourcesBackendInput } from "../../../core/project";
+import { ExitCode } from "../../../errors";
 import { startHttpServer, type HttpServerHandle } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
-import { ExitCode, runWithExitCode } from "../../../runnable";
+import { runWithExitCode } from "../../../runnable";
 import { ProjectKey, ValueContext, type Context } from "../../../router";
 import {
   createSilentLogger,

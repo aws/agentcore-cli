@@ -6,8 +6,8 @@ import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { CommanderError } from "commander";
 import type { AppIO } from "../../../io";
-import { UserCancellationError, InputValidationError } from "../../../errors";
-import { ExitCode, runWithExitCode } from "../../../runnable";
+import { ExitCode, InputValidationError, UserCancellationError } from "../../../errors";
+import { runWithExitCode } from "../../../runnable";
 import {
   createSilentLogger,
   expectError,

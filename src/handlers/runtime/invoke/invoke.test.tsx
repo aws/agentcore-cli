@@ -12,8 +12,8 @@ import {
   TestGlobalConfigAccessor,
   waitFor,
 } from "../../../testing";
-import { ExitCode, runWithExitCode } from "../../../runnable";
-import { UserCancellationError, InputValidationError } from "../../../errors";
+import { runWithExitCode } from "../../../runnable";
+import { ExitCode, InputValidationError, UserCancellationError } from "../../../errors";
 import { createRootHandler } from "../../index";
 import * as tui from "../../../tui";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
