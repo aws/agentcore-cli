@@ -3,6 +3,7 @@ import { createHandler, flag } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
+import { isValidEvaluatorModelId } from "../../../../../projectSchemas/evaluator";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
 import {
@@ -42,6 +43,13 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
     handle: async (ctx, flags) => {
       // An omitted provider defaults to Bedrock, matching the old CLI.
       const modelProvider = flags["model-provider"] ?? "Bedrock";
+      if (!isValidEvaluatorModelId(modelProvider, flags["model"])) {
+        throw new InputValidationError(
+          modelProvider === "Bedrock"
+            ? `invalid --model "${flags["model"]}": expected a Bedrock model ID or an inference-profile/foundation-model ARN`
+            : `invalid --model "${flags["model"]}": expected an OpenResponses model ID`,
+        );
+      }
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);

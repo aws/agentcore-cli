@@ -57,6 +57,9 @@ const OPEN_RESPONSES_MODEL_ID_PATTERN = /^[\x21-\x7e]+$/;
 export function isValidOpenResponsesModelId(value: string): boolean {
   return OPEN_RESPONSES_MODEL_ID_PATTERN.test(value);
 }
+export function isValidEvaluatorModelId(provider: EvaluatorModelProvider, model: string): boolean {
+  return provider === "Bedrock" ? isValidBedrockModelId(model) : isValidOpenResponsesModelId(model);
+}
 // Provider-neutral: the schema stores whatever model id the resolved provider
 // accepts; per-provider format checks live in the handler where the provider is
 // known.

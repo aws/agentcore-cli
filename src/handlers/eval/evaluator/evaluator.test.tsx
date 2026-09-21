@@ -410,6 +410,21 @@ describe("evaluator CRUDL", () => {
     ).rejects.toThrow(/requires a new --model/);
   });
 
+  test("rejects an invalid model for the existing provider", async () => {
+    await expect(
+      run([
+        "eval",
+        "evaluator",
+        "llm-as-a-judge",
+        "update",
+        "--id",
+        llajId,
+        "--model",
+        "not a model",
+      ]),
+    ).rejects.toThrow(/invalid --model/);
+  });
+
   test("deletes the LLM-as-a-Judge evaluator", async () => {
     const stdout = await run(["eval", "evaluator", "delete", "--id", llajId]);
     matchGolden(FIXTURES, "llaj-delete.golden.json", stdout);
@@ -494,7 +509,7 @@ describe("evaluator flag validation", () => {
         "--level",
         "SESSION",
         "--model",
-        "m",
+        "anthropic.claude-v2:1",
         "--instructions",
         "i",
         "--rating-scale",

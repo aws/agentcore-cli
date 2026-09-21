@@ -166,7 +166,7 @@ import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResult
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
 import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
-import type { EvaluatorModelProvider } from "../projectSchemas/evaluator";
+import { isValidEvaluatorModelId, type EvaluatorModelProvider } from "../projectSchemas/evaluator";
 import type { Logger } from "../logging";
 import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
@@ -285,6 +285,15 @@ export class EvalClient implements CoreEvalClient {
     const currentProvider: EvaluatorModelProvider = existingResponses ? "OpenResponses" : "Bedrock";
     const targetProvider = update.modelProvider ?? currentProvider;
     const providerChanged = targetProvider !== currentProvider;
+
+    if (update.model && !isValidEvaluatorModelId(targetProvider, update.model)) {
+      throw new InputValidationError(
+        targetProvider === "Bedrock"
+          ? `invalid --model "${update.model}": expected a Bedrock model ID or an inference-profile/foundation-model ARN`
+          : `invalid --model "${update.model}": expected an OpenResponses model ID`,
+        { meta: { evaluatorId: id } },
+      );
+    }
 
     // A model id from one provider's API is not valid for the other, so a
     // provider switch cannot reuse the existing id — require a fresh one.
