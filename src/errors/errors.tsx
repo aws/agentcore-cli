@@ -1,6 +1,7 @@
 import { ServiceException } from "@smithy/core/client";
 import { CommanderError } from "commander";
 import { join } from "node:path";
+import { ExitCode } from "../runnable/exitCode";
 import { ERROR_SOURCE, type ErrorSource } from "./types";
 
 export interface AgentCoreCLIErrorOptions extends ErrorOptions {
@@ -79,7 +80,11 @@ export class SilentCLIError extends AgentCoreCLIError {}
 /** Error raised for invalid user input. */
 export class InputValidationError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message, { ...options, exitCode: options?.exitCode ?? 2, source: ERROR_SOURCE.USER });
+    super(message, {
+      ...options,
+      exitCode: options?.exitCode ?? ExitCode.USAGE,
+      source: ERROR_SOURCE.USER,
+    });
   }
 }
 

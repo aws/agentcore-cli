@@ -1,12 +1,7 @@
 import { AgentCoreCLIError, SilentCLIError, UserCancellationError } from "../errors";
+import { ExitCode } from "./exitCode";
 
-// ExitCode provides names for default Unix exit codes.
-export enum ExitCode {
-  SUCCESS = 0,
-  FAILURE = 1,
-  USAGE = 2,
-  INTERRUPTED = 130,
-}
+export { ExitCode } from "./exitCode";
 
 /** Runs a headless operation with process SIGINT mapped to UserCancellationError. */
 export async function withUserCancellation<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
