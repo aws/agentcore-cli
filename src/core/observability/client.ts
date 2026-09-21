@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/client-xray";
 import { partition } from "@aws-sdk/util-endpoints";
 import { TransactionSearchSetupError } from "../../errors";
-import type { AwsClients, AwsCredentials, CoreOptions } from "../types";
+import type { AwsClients, CoreOptions } from "../types";
 import { toClientConfig } from "../utils";
 import { CloudWatchClient } from "./cloudWatchClient";
 import type {
@@ -43,34 +43,21 @@ export class ObservabilityClient {
     this.cloudWatch = new CloudWatchClient(clients);
   }
 
-  /**
-   * True when CloudWatch Transaction Search is currently delivering agent traces
-   * to CloudWatch Logs in this account and region. Reads the live X-Ray trace
-   * segment destination, so it reflects the current state — turning Transaction
-   * Search off flips this back to false, unlike probing whether the `aws/spans`
-   * log group has ever existed. Evaluations score sessions by reading those
-   * spans, so a false result means a run has nothing to read.
-   */
   async isTransactionSearchEnabled(options: CoreOptions): Promise<boolean> {
     const xray = this.clients.xray(toClientConfig(options));
     const { Destination, Status } = await xray.send(new GetTraceSegmentDestinationCommand({}));
     return Destination === "CloudWatchLogs" && Status === "ACTIVE";
   }
 
-  /**
-   * Turns CloudWatch Transaction Search on for `accountId` in `region`,
-   * hard-failing (TransactionSearchSetupError) if any step is denied or errors —
-   * the deploy that calls this depends on spans being delivered. Every step is
-   * idempotent, so it is safe to run on every deploy.
-   */
-  async enableTransactionSearch(params: {
-    region: string;
-    accountId: string;
-    credentials?: AwsCredentials;
-    indexPercentage?: number;
-  }): Promise<void> {
-    const { region, accountId, credentials, indexPercentage = DEFAULT_INDEX_PERCENTAGE } = params;
-    const config = { region, credentials };
+  // Hard-fails (TransactionSearchSetupError) if any step is denied: the deploy
+  // that calls this depends on spans being delivered. Every step is idempotent.
+  async enableTransactionSearch(
+    options: CoreOptions,
+    accountId: string,
+    indexPercentage = DEFAULT_INDEX_PERCENTAGE,
+  ): Promise<void> {
+    const { region } = options;
+    const config = toClientConfig(options);
     const applicationSignals = this.clients.applicationSignals(config);
     const logs = this.clients.logs(config);
     const xray = this.clients.xray(config);
@@ -83,15 +70,12 @@ export class ObservabilityClient {
       );
     };
 
-    // 1. Start Application Signals discovery — creates the service-linked role the
-    // trace-segment delivery relies on. Idempotent.
     try {
       await applicationSignals.send(new StartDiscoveryCommand({}));
     } catch (cause) {
       fail("enable Application Signals", cause);
     }
 
-    // 2. Grant X-Ray permission to deliver spans to CloudWatch Logs (once).
     try {
       const { resourcePolicies } = await logs.send(new DescribeResourcePoliciesCommand({}));
       const alreadyGranted = resourcePolicies?.some((p) => p.policyName === RESOURCE_POLICY_NAME);
@@ -124,8 +108,6 @@ export class ObservabilityClient {
       fail("configure the CloudWatch Logs resource policy", cause);
     }
 
-    // 3. Route trace segments to CloudWatch Logs (this creates `aws/spans`). Skip if
-    // already pointed there.
     try {
       const destination = await xray.send(new GetTraceSegmentDestinationCommand({}));
       if (destination.Destination !== "CloudWatchLogs") {
@@ -137,7 +119,6 @@ export class ObservabilityClient {
       fail("set the X-Ray trace segment destination", cause);
     }
 
-    // 4. Index the segments so they are searchable.
     try {
       await xray.send(
         new UpdateIndexingRuleCommand({

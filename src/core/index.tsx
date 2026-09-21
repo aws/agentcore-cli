@@ -137,11 +137,10 @@ export class CoreClient implements AwsClients {
       // Every deploy ensures Transaction Search is on so evaluations can read the
       // agent spans it delivers to `aws/spans`.
       enableTransactionSearch: (target, credentials) =>
-        this.observability.enableTransactionSearch({
-          region: target.region,
-          accountId: target.account,
-          credentials,
-        }),
+        this.observability.enableTransactionSearch(
+          { region: target.region, credentials },
+          target.account,
+        ),
     });
     this.bedrockAgentImporter = config.bedrockAgentImporter ?? new BedrockAgentImporter();
   }

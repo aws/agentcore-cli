@@ -32,8 +32,8 @@ function harness(responses: Record<string, unknown> = {}): {
   return { observability: new ObservabilityClient(clients), sent };
 }
 
-const PARAMS = { region: "us-west-2", accountId: "123456789012" };
 const OPTIONS = { region: "us-west-2" };
+const ACCOUNT = "123456789012";
 
 describe("ObservabilityClient.isTransactionSearchEnabled", () => {
   test("true when the X-Ray destination is CloudWatch Logs and active", async () => {
@@ -62,7 +62,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
   test("runs the full setup in order on a fresh account", async () => {
     const { observability, sent } = harness();
 
-    await observability.enableTransactionSearch(PARAMS);
+    await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
 
     expect(sent.map((c) => (c as { constructor: { name: string } }).constructor.name)).toEqual([
       "StartDiscoveryCommand",
@@ -94,7 +94,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
       },
     });
 
-    await observability.enableTransactionSearch(PARAMS);
+    await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
 
     expect(sent.some((c) => c instanceof PutResourcePolicyCommand)).toBe(false);
   });
@@ -104,7 +104,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
       GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs" },
     });
 
-    await observability.enableTransactionSearch(PARAMS);
+    await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
 
     expect(sent.some((c) => c instanceof UpdateTraceSegmentDestinationCommand)).toBe(false);
   });
@@ -112,7 +112,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
   test("honors a custom indexing percentage", async () => {
     const { observability, sent } = harness();
 
-    await observability.enableTransactionSearch({ ...PARAMS, indexPercentage: 25 });
+    await observability.enableTransactionSearch(OPTIONS, ACCOUNT, 25);
 
     const rule = sent.find(
       (c) => c instanceof UpdateIndexingRuleCommand,
@@ -126,7 +126,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
     });
     const { observability } = harness({ StartDiscoveryCommand: denied });
 
-    const promise = observability.enableTransactionSearch(PARAMS);
+    const promise = observability.enableTransactionSearch(OPTIONS, ACCOUNT);
     await expect(promise).rejects.toBeInstanceOf(TransactionSearchSetupError);
     await expect(promise).rejects.toThrow(/enable Application Signals.*not authorized/s);
   });
@@ -134,10 +134,7 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
   test("uses the GovCloud partition for us-gov regions", async () => {
     const { observability, sent } = harness();
 
-    await observability.enableTransactionSearch({
-      region: "us-gov-west-1",
-      accountId: "123456789012",
-    });
+    await observability.enableTransactionSearch({ region: "us-gov-west-1" }, ACCOUNT);
 
     const policy = JSON.parse((sent[2] as PutResourcePolicyCommand).input.policyDocument!) as {
       Statement: { Resource: string[] }[];
