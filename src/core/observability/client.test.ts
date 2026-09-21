@@ -42,15 +42,15 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
     await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
 
     expect(sent.map((c) => (c as { constructor: { name: string } }).constructor.name)).toEqual([
+      "GetTraceSegmentDestinationCommand",
       "StartDiscoveryCommand",
       "DescribeResourcePoliciesCommand",
       "PutResourcePolicyCommand",
-      "GetTraceSegmentDestinationCommand",
       "UpdateTraceSegmentDestinationCommand",
       "UpdateIndexingRuleCommand",
     ]);
 
-    const policy = JSON.parse((sent[2] as PutResourcePolicyCommand).input.policyDocument!) as {
+    const policy = JSON.parse((sent[3] as PutResourcePolicyCommand).input.policyDocument!) as {
       Statement: { Resource: string[]; Condition: { StringEquals: Record<string, string> } }[];
     };
     expect(policy.Statement[0]!.Resource).toEqual([
@@ -148,7 +148,8 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
 
     await observability.enableTransactionSearch({ region: "us-gov-west-1" }, ACCOUNT);
 
-    const policy = JSON.parse((sent[2] as PutResourcePolicyCommand).input.policyDocument!) as {
+    const put = sent.find((c) => c instanceof PutResourcePolicyCommand) as PutResourcePolicyCommand;
+    const policy = JSON.parse(put.input.policyDocument!) as {
       Statement: { Resource: string[] }[];
     };
     expect(policy.Statement[0]!.Resource[0]).toBe(

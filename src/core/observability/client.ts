@@ -59,6 +59,10 @@ export class ObservabilityClient {
     accountId: string,
     indexPercentage = DEFAULT_INDEX_PERCENTAGE,
   ): Promise<void> {
+    // Already delivering spans to CloudWatch Logs — nothing to set up. Avoids the
+    // Application Signals / resource-policy / destination mutations on every deploy.
+    if (await this.transactionSearchActive(options)) return;
+
     const { region } = options;
     const config = toClientConfig(options);
     const applicationSignals = this.clients.applicationSignals(config);
@@ -121,31 +125,23 @@ export class ObservabilityClient {
       fail("configure the CloudWatch Logs resource policy", cause);
     }
 
-    let justEnabled = false;
     try {
-      if (!(await this.transactionSearchActive(options))) {
-        await xray.send(
-          new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }),
-        );
-        justEnabled = true;
-      }
+      await xray.send(new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }));
     } catch (cause) {
       fail("set the X-Ray trace segment destination", cause);
     }
 
-    // Set the default sampling only on first enable — never override a customer's
-    // indexing choice on later deploys.
-    if (justEnabled) {
-      try {
-        await xray.send(
-          new UpdateIndexingRuleCommand({
-            Name: "Default",
-            Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },
-          }),
-        );
-      } catch (cause) {
-        fail("set the X-Ray indexing rule", cause);
-      }
+    // Reached only on first enable (an active setup returns above), so this sets
+    // the default sampling without overriding a customer's later indexing choice.
+    try {
+      await xray.send(
+        new UpdateIndexingRuleCommand({
+          Name: "Default",
+          Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },
+        }),
+      );
+    } catch (cause) {
+      fail("set the X-Ray indexing rule", cause);
     }
   }
 
