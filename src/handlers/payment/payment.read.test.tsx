@@ -19,6 +19,14 @@ const INSTRUMENT_CONNECTOR_ID = "mycdpconnectoraidandal-okve8guw4y";
 const SESSION_ID = "payment-session-nq812U4e1BJIfw1";
 const INSTRUMENT_ID = "payment-instrument-CG2Tl7U1HnCGfHW";
 const scope = ["--manager-id", MANAGER_ID, "--user-id", "agentcore-cli-e2e"];
+const rotationArgs = [
+  "connector",
+  "rotate-credentials",
+  "--manager-id",
+  MANAGER_ID,
+  "--connector-id",
+  CONNECTOR_ID,
+];
 
 function setup(resource = "manager", overrides: Partial<ReturnType<typeof fixtureFactories>> = {}) {
   const core = new CoreClient({
@@ -42,7 +50,7 @@ function setup(resource = "manager", overrides: Partial<ReturnType<typeof fixtur
   };
 }
 
-test("registers the read-only command tree without TUI or mutation leaves", () => {
+test("registers the payment command tree without TUI leaves", () => {
   const payment = compile(setup().root, ValueContext.EmptyContext()).commands.find(
     (c) => c.name() === "payment",
   )!;
@@ -52,13 +60,55 @@ test("registers the read-only command tree without TUI or mutation leaves", () =
     ),
   ).toEqual({
     manager: ["get", "list"],
-    connector: ["get", "list"],
+    connector: ["get", "list", "rotate-credentials"],
     session: ["get", "list"],
     instrument: ["get", "list", "balance"],
   });
   for (const resource of payment.commands) {
     for (const command of resource.commands) expect(isTuiCommandSupported(command)).toBe(false);
   }
+});
+
+test.each([
+  { secrets: ["API_KEY"], clientToken: undefined },
+  { secrets: ["WALLET_SECRET"], clientToken: "rotate-wallet" },
+  { secrets: ["API_KEY", "WALLET_SECRET"], clientToken: "rotate-both" },
+])("rotates the selected connector credentials: %j", async ({ secrets, clientToken }) => {
+  const response = {
+    paymentManagerId: MANAGER_ID,
+    paymentConnectorId: CONNECTOR_ID,
+    status: "READY",
+    lastUpdatedAt: new Date("2026-09-18T00:00:00.000Z"),
+  };
+  const send = mock(async (_command: { input: unknown }) => response);
+  const createControlClient = mock(() => ({ send }) as never);
+  const { run, io } = setup("connector", { createControlClient });
+  await run([
+    ...rotationArgs,
+    "--secrets",
+    ...secrets,
+    ...(clientToken ? ["--client-token", clientToken] : []),
+    "--endpoint-url",
+    "https://control.example.test",
+    "--json",
+  ]);
+  expect(createControlClient).toHaveBeenCalledWith({
+    region: "us-west-2",
+    endpoint: "https://control.example.test",
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+  const command = send.mock.calls[0]![0];
+  expect(command.constructor.name).toBe("RotatePaymentConnectorCredentialsCommand");
+  expect(command.input).toEqual({
+    paymentManagerId: MANAGER_ID,
+    paymentConnectorId: CONNECTOR_ID,
+    credentialsToRotate: { coinbaseCDP: { secrets } },
+    clientToken,
+  });
+  expect(JSON.parse(io.stdout())).toEqual({
+    ...response,
+    lastUpdatedAt: response.lastUpdatedAt.toISOString(),
+  });
 });
 
 test.each([
@@ -180,6 +230,9 @@ test.each([
     ["instrument", "get", ...scope, "--instrument-id", INSTRUMENT_ID, "--manager-arn", "arn:old"],
     "unknown option",
   ],
+  [rotationArgs, "--secrets"],
+  [[...rotationArgs, "--secrets", "INVALID"], "Invalid value for option '--secrets'"],
+  [[...rotationArgs, "--secrets", "API_KEY", "API_KEY"], "must be unique"],
 ] as const)("rejects incomplete or obsolete selectors: %j", async (args, message) => {
   await expect(setup().run([...args])).rejects.toThrow(message);
 });
@@ -197,16 +250,17 @@ test.each([
   await expect(run(["session", "list", ...scope])).rejects.toThrow(message);
 });
 
-test.each(["createControlClient", "createDataClient"] as const)(
-  "preserves a payment service failure from %s",
-  async (factory) => {
-    const error = new Error("Payment request denied");
-    const send = mock(async () => {
-      throw error;
-    });
-    const { run, io } = setup("session", { [factory]: () => ({ send }) as never });
-    await expect(run(["session", "list", ...scope])).rejects.toBe(error);
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(io.stdout()).toBe("");
-  },
-);
+test.each([
+  ["createControlClient", ["session", "list", ...scope]],
+  ["createDataClient", ["session", "list", ...scope]],
+  ["createControlClient", [...rotationArgs, "--secrets", "API_KEY"]],
+] as const)("preserves a payment service failure from %s for %j", async (factory, args) => {
+  const error = new Error("Payment request denied");
+  const send = mock(async () => {
+    throw error;
+  });
+  const { run, io } = setup("session", { [factory]: () => ({ send }) as never });
+  await expect(run([...args])).rejects.toBe(error);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(io.stdout()).toBe("");
+});

@@ -3,10 +3,13 @@ import {
   GetPaymentManagerCommand,
   ListPaymentConnectorsCommand,
   ListPaymentManagersCommand,
+  RotatePaymentConnectorCredentialsCommand,
   type GetPaymentConnectorResponse,
   type GetPaymentManagerResponse,
   type ListPaymentConnectorsResponse,
   type ListPaymentManagersResponse,
+  type RotatePaymentConnectorCredentialsRequest,
+  type RotatePaymentConnectorCredentialsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   GetPaymentInstrumentBalanceCommand,
@@ -83,6 +86,15 @@ export class PaymentClient implements CorePaymentClient {
       .send(
         new ListPaymentConnectorsCommand({ paymentManagerId: managerId, nextToken, maxResults }),
       );
+  }
+
+  async rotatePaymentConnectorCredentials(
+    request: RotatePaymentConnectorCredentialsRequest,
+    options: CoreOptions,
+  ): Promise<RotatePaymentConnectorCredentialsResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new RotatePaymentConnectorCredentialsCommand(request));
   }
 
   // ─── payment sessions (data plane) ──────────────────────────────────────────
