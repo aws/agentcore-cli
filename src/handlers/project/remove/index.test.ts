@@ -624,6 +624,9 @@ describe("project remove all", () => {
     expect(await Bun.file(envPath).text()).not.toContain(envKey);
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
     expect(io.stderr()).toContain("removed all resources from project");
+    expect(io.stderr()).toContain(
+      "Resource 'agent_python_minimal' has been removed, but the source code is still in app/agent_python_minimal.",
+    );
     expect(io.stdout()).toBe("");
   });
 

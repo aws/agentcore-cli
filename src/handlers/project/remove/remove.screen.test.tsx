@@ -483,6 +483,9 @@ describe("project remove screen", () => {
     await waitForText(r.lastFrame, "Remove every resource from project orders?");
     await r.write("y");
     await waitForText(r.lastFrame, "All resources removed");
+    expect(r.lastFrame()!.replace(/\s+/g, " ")).toContain(
+      `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
+    );
     await r.press("return");
 
     // Back on the picker, refreshed from the emptied project.

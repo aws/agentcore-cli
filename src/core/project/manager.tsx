@@ -20,9 +20,9 @@ import type {
   ProjectManager,
   ProjectEvent,
   ProjectResource,
+  RemoveAllResourcesResult,
   RemoveResourceInput,
   RemoveResourceResult,
-  RemoveResourcesResult,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -690,7 +690,7 @@ export class FsProjectManager implements ProjectManager {
     };
   }
 
-  public async removeAllResources(project: Project): Promise<RemoveResourcesResult> {
+  public async removeAllResources(project: Project): Promise<RemoveAllResourcesResult> {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -729,10 +729,15 @@ export class FsProjectManager implements ProjectManager {
     };
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    const retainedSourceCode = existingProjectSpec.runtimes.map(({ name, codeLocation }) => ({
+      resourceName: name,
+      sourcePath: codeLocation,
+    }));
 
     return {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
+      retainedSourceCode,
     };
   }
 

@@ -438,6 +438,11 @@ export type RemoveResourcesResult = {
   removedEnvKeys: string[];
 };
 
+/** The outcome of removing every resource declared by a project. */
+export type RemoveAllResourcesResult = RemoveResourcesResult & {
+  retainedSourceCode: { resourceName: string; sourcePath: string }[];
+};
+
 /** The outcome of removing one resource, including its resolved parent. */
 export type RemoveResourceResult = RemoveResourcesResult & {
   removedResource: RemoveResourceInput;
@@ -513,7 +518,7 @@ export interface ProjectManager {
    * code directories under app/ and aws-targets.json survive, so a following
    * deploy can tear down the target's stack.
    */
-  removeAllResources(project: Project): Promise<RemoveResourcesResult>;
+  removeAllResources(project: Project): Promise<RemoveAllResourcesResult>;
 
   /**
    * Convert a harness into an editable Strands runtime agent: render the agent

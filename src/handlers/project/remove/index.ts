@@ -96,6 +96,9 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await confirmRemoveAll(config.io, ctx.require(JsonKey), flags.yes, project.name);
         const result = await config.projectManager.removeAllResources(project);
         reportEnvCleanup(config.io, result.removedEnvKeys);
+        const sourceCodeNotices = result.retainedSourceCode.map(({ resourceName, sourcePath }) =>
+          getSourceCodeRemainsNotice(resourceName, sourcePath),
+        );
         renderResult<ProjectMutationResult>(
           ctx,
           {
@@ -104,7 +107,12 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             resource: { type: "all" },
             removedEnvironmentKeys: result.removedEnvKeys,
           },
-          () => config.io.stderr.write("removed all resources from project\n"),
+          () => {
+            config.io.stderr.write("removed all resources from project\n");
+            for (const notice of sourceCodeNotices) {
+              config.io.stderr.write(`${notice}\n`);
+            }
+          },
         );
         return;
       }
