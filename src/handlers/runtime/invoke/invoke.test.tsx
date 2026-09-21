@@ -396,7 +396,7 @@ describe("runtime invoke", () => {
       runCommand(core, output.io, ["runtime", "invoke", "--id", RUNTIME_ARN, "--payload", "{}"]),
     );
 
-    expect(code).toBe(ExitCode.FAILURE);
+    expect(code).toBe(ExitCode.USAGE);
     expect(core.runtime.calls).toEqual([]);
   });
 
@@ -608,7 +608,7 @@ describe("runtime invoke", () => {
 
       const code = await runWithExitCode(async () => runCommand(core, output.io, args));
 
-      expect(code).toBe(ExitCode.FAILURE);
+      expect(code).toBe(ExitCode.USAGE);
       expect(core.runtime.calls).toEqual([]);
     },
   );
@@ -630,7 +630,7 @@ describe("runtime invoke", () => {
     ).rejects.toMatchObject({
       name: "InputValidationError",
       message: `could not read '--payload' from file '${missing}'`,
-      exitCode: ExitCode.FAILURE,
+      exitCode: ExitCode.USAGE,
     });
     expect(core.runtime.calls).toEqual([]);
   });

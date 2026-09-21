@@ -79,7 +79,7 @@ export class SilentCLIError extends AgentCoreCLIError {}
 /** Error raised for invalid user input. */
 export class InputValidationError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message, { ...options, source: ERROR_SOURCE.USER });
+    super(message, { ...options, exitCode: options?.exitCode ?? 2, source: ERROR_SOURCE.USER });
   }
 }
 

@@ -84,9 +84,12 @@ describe("project export harness handler", () => {
     expect(await readFile(join(directory, "system-prompt.md"), "utf8")).toBe(prompt);
   });
 
-  test.each(["malformed YAML", "blank prompt file"] as const)(
+  test.each([
+    ["malformed YAML", 1],
+    ["blank prompt file", 2],
+  ] as const)(
     "classifies %s as customer configuration through the CLI boundary",
-    async (failure) => {
+    async (failure, exitCode) => {
       const subject = testExportCommand();
       const projectRoot = await inProjectWithHarness(subject);
       const directory = join(projectRoot, "app", "exportme");
@@ -102,7 +105,7 @@ describe("project export harness handler", () => {
       expect(error).toBeInstanceOf(AgentCoreCLIError);
       expect(error).toMatchObject({
         source: "user",
-        exitCode: 1,
+        exitCode,
       });
       expect((error as Error).message).toContain(failure === "malformed YAML" ? path : promptPath);
       expect(existsSync(join(projectRoot, "app", "exportmeAgent"))).toBe(false);
