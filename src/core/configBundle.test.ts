@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DeleteConfigurationBundleCommand,
   GetConfigurationBundleCommand,
   GetConfigurationBundleVersionCommand,
+  ListConfigurationBundleVersionsCommand,
   UpdateConfigurationBundleCommand,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -129,5 +131,36 @@ describe("EvalClient configuration bundles", () => {
       bundleId: "b-1",
       branchName: "mainline",
     });
+  });
+
+  test("accepts a full ARN and sends the bare bundle id to every command", async () => {
+    // `project status` prints ARNs; passing one to --id must not reach the service
+    // as a path segment (its slashes break path→operation parsing → misleading
+    // AccessDenied). The bare id is extracted before the request.
+    const arn = "arn:aws:bedrock-agentcore:us-west-2:123456789012:configuration-bundle/b-1";
+    const sent: unknown[] = [];
+    const { client } = subject(async (command) => {
+      sent.push(command);
+      // update() first reads the current version, so hand back a versionId.
+      return { versionId: "v-9" };
+    });
+
+    await client.getConfigurationBundle(arn, undefined, "mainline", OPTIONS);
+    await client.listConfigurationBundleVersions(arn, undefined, undefined, OPTIONS);
+    await client.deleteConfigurationBundle(arn, OPTIONS);
+    await client.updateConfigurationBundle(
+      arn,
+      { branchName: "mainline", components: {}, commitMessage: "update" },
+      OPTIONS,
+    );
+
+    expect((sent[0] as GetConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
+    expect((sent[1] as ListConfigurationBundleVersionsCommand).input).toMatchObject({
+      bundleId: "b-1",
+    });
+    expect((sent[2] as DeleteConfigurationBundleCommand).input).toEqual({ bundleId: "b-1" });
+    // update() reads then writes: both carry the bare id.
+    expect((sent[3] as GetConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
+    expect((sent[4] as UpdateConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
   });
 });

@@ -168,6 +168,7 @@ import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import type { Logger } from "../logging";
 import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
+import { serviceIdFromArn } from "./arn";
 import { grantOnlineEvalScope } from "./onlineEvalExecutionRole";
 import { accountIdFromArn, deleteAbTestRole, provisionAbTestRole } from "./abTestExecutionRole";
 import { harnessRuntimeFromResponse } from "./harness";
@@ -520,6 +521,7 @@ export class EvalClient implements CoreEvalClient {
     }) => CreateABTestRequest,
     options: CoreOptions,
   ): Promise<CreateABTestResponse> {
+    gateway = serviceIdFromArn(gateway);
     const control = this.clients.control(toClientConfig(options));
     const gatewayArn = (await control.send(new GetGatewayCommand({ gatewayIdentifier: gateway })))
       .gatewayArn!;
@@ -1189,6 +1191,7 @@ export class EvalClient implements CoreEvalClient {
     update: UpdateOnlineEvalInput,
     options: CoreOptions,
   ): Promise<{ response: UpdateOnlineEvaluationConfigResponse }> {
+    id = serviceIdFromArn(id);
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(
       new GetOnlineEvaluationConfigCommand({
@@ -1261,6 +1264,7 @@ export class EvalClient implements CoreEvalClient {
     id: string,
     options: CoreOptions,
   ): Promise<GetOnlineEvaluationConfigResponse> {
+    id = serviceIdFromArn(id);
     return this.clients
       .control(toClientConfig(options))
       .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
@@ -1281,6 +1285,7 @@ export class EvalClient implements CoreEvalClient {
     executionStatus: "ENABLED" | "DISABLED",
     options: CoreOptions,
   ): Promise<UpdateOnlineEvaluationConfigResponse> {
+    id = serviceIdFromArn(id);
     return this.clients
       .control(toClientConfig(options))
       .send(
@@ -1292,6 +1297,7 @@ export class EvalClient implements CoreEvalClient {
     id: string,
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse> {
+    id = serviceIdFromArn(id);
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
@@ -1312,6 +1318,10 @@ export class EvalClient implements CoreEvalClient {
     branchName: string,
     options: CoreOptions,
   ): Promise<GetConfigurationBundleResponse | GetConfigurationBundleVersionResponse> {
+    // Accept a full ARN (as `project status` prints) and use its bare id: the id
+    // is a path segment, and an ARN's slashes would make the service parse the
+    // path as an unknown operation and return a misleading AccessDenied.
+    id = serviceIdFromArn(id);
     const control = this.clients.control(toClientConfig(options));
     return version === undefined
       ? control.send(new GetConfigurationBundleCommand({ bundleId: id, branchName }))
@@ -1335,6 +1345,7 @@ export class EvalClient implements CoreEvalClient {
     update: UpdateConfigurationBundleInput,
     options: CoreOptions,
   ): Promise<UpdateConfigurationBundleResponse> {
+    id = serviceIdFromArn(id);
     const control = this.clients.control(toClientConfig(options));
     const current = await control.send(
       new GetConfigurationBundleCommand({ bundleId: id, branchName: update.branchName }),
@@ -1364,7 +1375,7 @@ export class EvalClient implements CoreEvalClient {
   ): Promise<DeleteConfigurationBundleResponse> {
     return this.clients
       .control(toClientConfig(options))
-      .send(new DeleteConfigurationBundleCommand({ bundleId: id }));
+      .send(new DeleteConfigurationBundleCommand({ bundleId: serviceIdFromArn(id) }));
   }
 
   async listConfigurationBundleVersions(
@@ -1373,9 +1384,13 @@ export class EvalClient implements CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListConfigurationBundleVersionsResponse> {
-    return this.clients
-      .control(toClientConfig(options))
-      .send(new ListConfigurationBundleVersionsCommand({ bundleId: id, nextToken, maxResults }));
+    return this.clients.control(toClientConfig(options)).send(
+      new ListConfigurationBundleVersionsCommand({
+        bundleId: serviceIdFromArn(id),
+        nextToken,
+        maxResults,
+      }),
+    );
   }
 
   async createDataset(
