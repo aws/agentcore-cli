@@ -55,6 +55,7 @@ export function ProjectResourceCreateScreen({ resource }: ProjectResourceCreateS
       <Text color={darkTheme.colors.primary}>{"  agentcore project create"}</Text>
       <Text color={darkTheme.colors.primary}>{"  cd <project-directory>"}</Text>
       <Text color={darkTheme.colors.primary}>{`  ${config.addCommand}`}</Text>
+      <Text color={darkTheme.colors.primary}>{"  agentcore project deploy"}</Text>
     </CommandInfoScreen>
   );
 }

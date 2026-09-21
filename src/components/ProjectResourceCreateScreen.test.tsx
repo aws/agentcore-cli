@@ -46,6 +46,7 @@ describe("project-only resource creation guidance", () => {
       expect(frame).toContain("agentcore project create");
       expect(frame).toContain("cd <project-directory>");
       expect(frame).toContain(addCommand);
+      expect(frame).toContain("agentcore project deploy");
       expect(frame).not.toContain("┌");
 
       await r.press("escape");
