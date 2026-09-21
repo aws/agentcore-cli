@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
-import { FsReadWriteJson } from "../../../io";
+import { FsReadWriteJson, ProcessFailedError } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
 import { CdkBackend } from "./cdk";
@@ -161,6 +161,8 @@ type HarnessOptions = {
   removeCredentials?: CredentialRemover;
   /** Stack returned by CloudFormation. Defaults to a present stack; null means absent. */
   describedStack?: Stack | null;
+  /** Failure thrown by the fake synth process after emitting its output. */
+  synthError?: Error;
   /** Chunks the fake synth process streams through onOutput. */
   synthOutput?: string[];
   /** Lines the fake Toolkit reports through each operation's onOutput sink. */
@@ -190,6 +192,7 @@ function harness(options: HarnessOptions = {}) {
     runner: async (command, { cwd, onOutput }) => {
       commands.push({ command, cwd });
       for (const chunk of options.synthOutput ?? []) onOutput?.(chunk);
+      if (options.synthError) throw options.synthError;
     },
     checkTool: async () => {},
     resolveCredentials: async (region) => {
@@ -358,6 +361,31 @@ describe("CdkBackend.build", () => {
     });
 
     await expect(collect(subject.build(input))).rejects.toThrow("cdk synth exploded");
+  });
+
+  test.each([
+    ['Credential "gateway-oauth" not found in deployed state', "gateway-oauth"],
+    [
+      'Credential "gateway-oauth" has no clientSecretArn in deployed state; the gateway role needs it to read the secret.',
+      "gateway-oauth",
+    ],
+    [
+      'Skill git auth references credential "github-token", but no deployed credential provider ARN was found.',
+      "github-token",
+    ],
+    [
+      'Payment connector "wallet" on manager "payments" references credential "coinbase", but no deployed credential provider was found for it.',
+      "coinbase",
+    ],
+  ])("explains credential dependencies that require a first deploy", async (output, name) => {
+    const input = await project();
+    const failure = new ProcessFailedError(synthCommand(input), cdkDirectory(input), 1, output);
+    const subject = harness({ synthError: failure });
+
+    await expect(collect(subject.backend.build(input))).rejects.toThrow(
+      `Project build cannot resolve credential "${name}" before its first deployment. ` +
+        `Run 'agentcore project deploy' to provision the credential and build the project.`,
+    );
   });
 });
 

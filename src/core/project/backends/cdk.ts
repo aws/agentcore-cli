@@ -14,6 +14,7 @@ import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
   FsReadWriteJson,
+  ProcessFailedError,
   requireTool,
   runProcess,
   type ProcessRunner,
@@ -82,6 +83,19 @@ type StackDescriber = typeof describeStack;
  * the cap streamProcess uses for a failed subprocess's captured output.
  */
 const MAX_ERROR_OUTPUT_LINES = 20;
+
+function unresolvedCredentialName(error: unknown): string | undefined {
+  if (!(error instanceof ProcessFailedError)) return undefined;
+
+  return (
+    error.message.match(
+      /Credential "([^"]+)" (?:not found|has no clientSecretArn) in deployed state/,
+    )?.[1] ??
+    error.message.match(
+      /references credential "([^"]+)", but no deployed credential provider(?: ARN)? was found/,
+    )?.[1]
+  );
+}
 
 // Payment output keys drop underscores the same way AgentCorePayments' toCdkId does.
 function cdkId(name: string): string {
@@ -180,7 +194,10 @@ export class CdkBackend implements ProjectBackend {
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  private async *synthesize(
+    project: Project,
+    explainUndeployedCredentials: boolean,
+  ): AsyncGenerator<ProjectEvent, void> {
     await this.ensureCdkDependencies(project);
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
@@ -189,30 +206,48 @@ export class CdkBackend implements ProjectBackend {
     }
 
     yield { type: "step", message: "Synthesizing CloudFormation templates" };
-    yield* withOutputEvents((emit) => {
-      // Chunks still go to the debug log whole; the splitter reassembles them
-      // into lines for the live progress tail.
-      const lines = createLineSplitter(emit);
-      return this.runner(
-        [
-          "npm",
-          "run",
-          "cdk",
-          "--",
-          "synth",
-          "--quiet",
-          "--output",
-          this.assemblyDirectory(project),
-        ],
-        {
-          cwd: this.cdkDirectory(project),
-          onOutput: (chunk) => {
-            this.logger.debug(chunk);
-            lines.push(chunk);
+    try {
+      yield* withOutputEvents((emit) => {
+        // Chunks still go to the debug log whole; the splitter reassembles them
+        // into lines for the live progress tail.
+        const lines = createLineSplitter(emit);
+        return this.runner(
+          [
+            "npm",
+            "run",
+            "cdk",
+            "--",
+            "synth",
+            "--quiet",
+            "--output",
+            this.assemblyDirectory(project),
+          ],
+          {
+            cwd: this.cdkDirectory(project),
+            onOutput: (chunk) => {
+              this.logger.debug(chunk);
+              lines.push(chunk);
+            },
           },
-        },
-      ).finally(() => lines.flush());
-    });
+        ).finally(() => lines.flush());
+      });
+    } catch (error) {
+      const credentialName = explainUndeployedCredentials
+        ? unresolvedCredentialName(error)
+        : undefined;
+      if (credentialName) {
+        throw new ProjectStateError(
+          `Project build cannot resolve credential "${credentialName}" before its first deployment. ` +
+            `Run 'agentcore project deploy' to provision the credential and build the project.`,
+          { cause: error, meta: { credentialName } },
+        );
+      }
+      throw error;
+    }
+  }
+
+  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+    yield* this.synthesize(project, true);
   }
 
   public async *deploy(
@@ -248,7 +283,7 @@ export class CdkBackend implements ProjectBackend {
       resources: { credentials: provisioned },
     });
 
-    yield* this.build(project);
+    yield* this.synthesize(project, false);
     const assemblyDirectory = this.assemblyDirectory(project);
     const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
     const options = { assemblyDirectory, credentials, region: target.region };
