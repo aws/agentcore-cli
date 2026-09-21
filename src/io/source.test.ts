@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 
-import { SourceResolutionError } from "../errors";
+import { InputValidationError, SourceResolutionError } from "../errors";
 import { SourceResolver } from "./source";
 
 const tempDirectories: string[] = [];
@@ -65,7 +65,8 @@ describe("SourceResolver bytes", () => {
 
     await expect(resolution).rejects.toThrow("'--bearer-token' conflicts with '--payload'");
     await expect(resolution).rejects.toBeInstanceOf(SourceResolutionError);
-    await expect(resolution).rejects.toMatchObject({ source: "user" });
+    await expect(resolution).rejects.not.toBeInstanceOf(InputValidationError);
+    await expect(resolution).rejects.toMatchObject({ source: "user", exitCode: 1 });
   });
 
   test("claims stdin before concurrent resolutions can race", async () => {

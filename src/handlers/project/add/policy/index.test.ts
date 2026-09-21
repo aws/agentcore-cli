@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { inferAuthorizationPhase } from "./index";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 
 const { cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness("policy-add");
 
@@ -107,7 +107,9 @@ describe("project add policy", () => {
     });
   });
 
-  test.each([
+  test.each<
+    [label: string, args: string[], message: string, errorType?: Parameters<typeof expectError>[2]]
+  >([
     ["missing --engine", ["add", "policy", "--name", "P", "--statement", FORBID_ALL], "--engine"],
     [
       "missing --name",
@@ -123,10 +125,11 @@ describe("project add policy", () => {
       "unknown engine",
       ["add", "policy", "--engine", "Missing", "--name", "P", "--statement", FORBID_ALL],
       "no policy-engine named 'Missing' exists in this project",
+      ResourceNotFoundError,
     ],
-  ])("rejects %s", async (_label, args, message) => {
+  ])("rejects %s", async (_label, args, message, errorType = InputValidationError) => {
     await withEngine();
-    await expectError(run(args), message, InputValidationError);
+    await expectError(run(args), message, errorType);
   });
 
   test("rejects a duplicate policy name across engines", async () => {

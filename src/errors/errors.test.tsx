@@ -21,6 +21,7 @@ describe("AgentCoreCLIError", () => {
   test("fromError preserves AgentCoreCLIError subclasses", () => {
     const err = new InputValidationError("bad input");
     expect(AgentCoreCLIError.fromError(err)).toBe(err);
+    expect(err.exitCode).toBe(2);
   });
 
   test.each([

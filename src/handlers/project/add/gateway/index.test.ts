@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 
 const { cleanup, inProject, projectSpec, run, writeProjectSpec } =
   createGatewayProjectTestHarness("gateway-add");
@@ -152,7 +152,9 @@ describe("project add gateway", () => {
     });
   });
 
-  test.each([
+  test.each<
+    [label: string, args: string[], message: string, errorType?: Parameters<typeof expectError>[2]]
+  >([
     ["missing --name", ["add", "gateway"], "required option '--name"],
     [
       "a deployed name over the 100-character service limit",
@@ -182,6 +184,7 @@ describe("project add gateway", () => {
         "enforce",
       ],
       "no policy-engine named 'Missing' exists in this project",
+      ResourceNotFoundError,
     ],
     [
       "CUSTOM_JWT without configuration",
@@ -205,8 +208,8 @@ describe("project add gateway", () => {
       ["add", "gateway", "--name", "tools", "--enable-semantic-search"],
       "--protocol-type MCP",
     ],
-  ])("rejects %s", async (_label, args, message) => {
+  ])("rejects %s", async (_label, args, message, errorType = InputValidationError) => {
     await inProject();
-    await expectError(run(args), message, InputValidationError);
+    await expectError(run(args), message, errorType);
   });
 });

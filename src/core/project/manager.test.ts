@@ -987,6 +987,8 @@ describe("FsProjectManager removal", () => {
       const removal = subject.removeResource(project, { resourceType, name: "ghost" });
 
       await expect(removal).rejects.toBeInstanceOf(ResourceNotFoundError);
+      await expect(removal).rejects.not.toBeInstanceOf(InputValidationError);
+      await expect(removal).rejects.toMatchObject({ source: "user", exitCode: 1 });
       await expect(removal).rejects.toThrow(
         `no ${resourceType} named 'ghost' exists in this project`,
       );

@@ -13,7 +13,7 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
-import { InputValidationError } from "../../errors";
+import { InputValidationError, SourceResolutionError } from "../../errors";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 
 async function run(
@@ -972,17 +972,26 @@ describe("project add credentials", () => {
     );
   });
 
-  test.each<[string, string[], RegExp]>([
+  test.each<
+    [label: string, args: string[], message: RegExp, errorType?: Parameters<typeof expectError>[2]]
+  >([
     [
       "api-key: an inline secret value",
       ["api-key", "--name", "x", "--api-key", "sk-inline"],
       /file:\/\//,
+      SourceResolutionError,
     ],
-    ["api-key: a multi-line secret", ["api-key", "--name", "x", "--api-key", "-"], /single-line/],
+    [
+      "api-key: a multi-line secret",
+      ["api-key", "--name", "x", "--api-key", "-"],
+      /single-line/,
+      SourceResolutionError,
+    ],
     [
       "oauth: an inline secret value",
       ["oauth", "--name", "x", "--discovery-url", discoveryUrl, "--client-secret", "sssh"],
       /file:\/\//,
+      SourceResolutionError,
     ],
     [
       "api-key: a secret combined with a secret reference",
@@ -1052,11 +1061,11 @@ describe("project add credentials", () => {
       ],
       /secret material/,
     ],
-  ])("rejects %s", async (_label, args, message) => {
+  ])("rejects %s", async (_label, args, message, errorType = InputValidationError) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
     const promise = run(["add", "credentials", ...args], { stdin: "line1\nline2" });
-    await expectError(promise, message, InputValidationError);
+    await expectError(promise, message, errorType);
   });
 });
 

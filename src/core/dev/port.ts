@@ -1,4 +1,4 @@
-import { InputValidationError } from "../../errors";
+import { AgentCoreCLIError, ERROR_SOURCE, InputValidationError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { PortChecker } from "../../io";
 
@@ -10,12 +10,13 @@ export type DevPort = {
   requestedPort: number;
 };
 
-export class PortInUseError extends InputValidationError {
+export class PortInUseError extends AgentCoreCLIError {
   constructor(port: number) {
     super(
       `Port ${port} is already in use. Find the process with ` +
         `'lsof -i :${port}' (macOS/Linux) or 'netstat -ano | findstr :${port}' (Windows), ` +
         "then stop it or choose a different --port.",
+      { source: ERROR_SOURCE.USER },
     );
   }
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ProjectStateError, InputValidationError } from "../../../../errors";
+import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../../../errors";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 
@@ -246,7 +246,9 @@ describe("project add gateway-target", () => {
     });
   });
 
-  test.each([
+  test.each<
+    [label: string, flags: string[], message: string, errorType?: Parameters<typeof expectError>[2]]
+  >([
     [
       "missing parent Gateway",
       ["--name", "target", "--endpoint", ENDPOINT],
@@ -314,6 +316,7 @@ describe("project add gateway-target", () => {
       "unknown credential",
       endpointFlags("--outbound-auth", "oauth", "--credential-name", "missing"),
       "no credential named 'missing' exists in this project",
+      ResourceNotFoundError,
     ],
     [
       "credential with wrong type",
@@ -324,10 +327,11 @@ describe("project add gateway-target", () => {
       "unknown Gateway",
       ["--gateway", "missing", "--name", "target", "--endpoint", ENDPOINT],
       "no gateway named 'missing' exists in this project",
+      ResourceNotFoundError,
     ],
-  ])("rejects %s", async (_label, flags, message) => {
+  ])("rejects %s", async (_label, flags, message, errorType = InputValidationError) => {
     await projectWithCredentials();
-    await expectError(run(["add", "gateway-target", ...flags]), message, InputValidationError);
+    await expectError(run(["add", "gateway-target", ...flags]), message, errorType);
   });
 
   test("rejects an API-key endpoint shortcut unsupported by the project schema", async () => {

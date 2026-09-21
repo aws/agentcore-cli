@@ -10,7 +10,7 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../../testing";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -116,16 +116,23 @@ describe("project add runtime-endpoint", () => {
     });
   });
 
-  test.each<[string, string[], string]>([
+  test.each<
+    [label: string, extra: string[], message: string, errorType?: Parameters<typeof expectError>[2]]
+  >([
     ["missing runtime", ["--name", "prod"], "required option '--runtime"],
     ["missing name", ["--runtime", "agent"], "required option '--name"],
-    ["unknown runtime", ["--runtime", "ghost", "--name", "prod"], "no runtime named 'ghost'"],
-  ])("rejects %s", async (_label, extra, message) => {
+    [
+      "unknown runtime",
+      ["--runtime", "ghost", "--name", "prod"],
+      "no runtime named 'ghost'",
+      ResourceNotFoundError,
+    ],
+  ])("rejects %s", async (_label, extra, message, errorType = InputValidationError) => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
     await seedRuntime(projectRoot);
 
-    await expectError(run(["add", "runtime-endpoint", ...extra]), message, InputValidationError);
+    await expectError(run(["add", "runtime-endpoint", ...extra]), message, errorType);
   });
 
   test("rejects a duplicate endpoint name on the same runtime", async () => {

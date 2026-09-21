@@ -89,7 +89,11 @@ export class InputValidationError extends AgentCoreCLIError {
 }
 
 /** Error raised when valid user input references a resource that does not exist. */
-export class ResourceNotFoundError extends InputValidationError {}
+export class ResourceNotFoundError extends AgentCoreCLIError {
+  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.USER });
+  }
+}
 
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
@@ -105,9 +109,9 @@ export class InvalidEnvironmentError extends AgentCoreCLIError {
   }
 }
 
-export class SourceResolutionError extends InputValidationError {
+export class SourceResolutionError extends AgentCoreCLIError {
   constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
+    super(message, { ...options, source: ERROR_SOURCE.USER });
     this.name = "SourceResolutionError";
   }
 }

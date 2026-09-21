@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { InputValidationError } from "../../errors";
 import type { PortChecker } from "../../io";
 import { PortInUseError, resolveDevPort } from "./port";
 
@@ -38,6 +39,8 @@ describe("resolveDevPort", () => {
     });
     const occupied = resolveDevPort("A2A", 4567, async () => false, signal);
     await expect(occupied).rejects.toBeInstanceOf(PortInUseError);
+    await expect(occupied).rejects.not.toBeInstanceOf(InputValidationError);
+    await expect(occupied).rejects.toMatchObject({ source: "user", exitCode: 1 });
     await expect(occupied).rejects.toThrow("lsof -i :4567");
   });
 
