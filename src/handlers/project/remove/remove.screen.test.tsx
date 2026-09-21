@@ -373,9 +373,11 @@ describe("project remove screen", () => {
     await waitForText(r.lastFrame, "Resource removed");
 
     expect((await readSpec(specPath)).runtimes).toEqual([]);
-    expect(r.lastFrame()!.replace(/\s+/g, " ")).toContain(
+    const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(successFrame).toContain(
       `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
     );
+    expect(successFrame).not.toContain("notice");
     expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
     r.unmount();
   });
@@ -483,9 +485,11 @@ describe("project remove screen", () => {
     await waitForText(r.lastFrame, "Remove every resource from project orders?");
     await r.write("y");
     await waitForText(r.lastFrame, "All resources removed");
-    expect(r.lastFrame()!.replace(/\s+/g, " ")).toContain(
+    const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(successFrame).toContain(
       `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
     );
+    expect(successFrame).not.toContain("notice");
     await r.press("return");
 
     // Back on the picker, refreshed from the emptied project.

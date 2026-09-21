@@ -366,11 +366,11 @@ function RemoveConfirm({
         return {
           rows: {
             removed: `${config.resourceType} '${resource.name}'`,
-            ...(sourceCodeNotice ? { notice: sourceCodeNotice } : {}),
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),
           },
+          ...(sourceCodeNotice ? { messages: [sourceCodeNotice] } : {}),
         };
       }}
       successTitle="Resource removed"
@@ -428,20 +428,17 @@ function RemoveAllConfirm({ project, core }: { project: Project; core: ScreenPro
       action={async () => {
         const result = await core.projectManager.removeAllResources(project);
         removedProject.current = result.project;
-        const sourceCodeNotices = Object.fromEntries(
-          result.retainedSourceCode.map(({ resourceName, sourcePath }, index) => [
-            index === 0 ? "notice" : `notice ${index + 1}`,
-            getSourceCodeRemainsNotice(resourceName, sourcePath),
-          ]),
+        const sourceCodeNotices = result.retainedSourceCode.map(({ resourceName, sourcePath }) =>
+          getSourceCodeRemainsNotice(resourceName, sourcePath),
         );
         return {
           rows: {
             removed: "all resources",
-            ...sourceCodeNotices,
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),
           },
+          ...(sourceCodeNotices.length > 0 ? { messages: sourceCodeNotices } : {}),
         };
       }}
       successTitle="All resources removed"
