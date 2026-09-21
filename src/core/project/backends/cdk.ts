@@ -242,8 +242,11 @@ export class CdkBackend implements ProjectBackend {
     // Enable CloudWatch Transaction Search so agent spans reach `aws/spans`, which
     // evaluations read. Idempotent, and run on every deploy; hard-fails the deploy
     // (TransactionSearchSetupError) if the principal lacks the setup permissions.
-    yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
-    await this.enableTransactionSearch(target, credentials);
+    // Projects that manage Transaction Search elsewhere opt out via the spec.
+    if (project.spec.transactionSearch !== false) {
+      yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
+      await this.enableTransactionSearch(target, credentials);
+    }
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose

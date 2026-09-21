@@ -412,6 +412,21 @@ describe("CdkBackend.deploy", () => {
     expect(subject.templateLoads()).toBe(0);
   });
 
+  test("skips Transaction Search when the spec opts out", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({ name: "example", version: 1, transactionSearch: false });
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(deployed.events).not.toContainEqual({
+      type: "step",
+      message: "Enabling CloudWatch Transaction Search",
+    });
+    expect(subject.transactionSearchRegions).toEqual([]);
+  });
+
   test("streams Toolkit lines as output events under the deploy step", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
