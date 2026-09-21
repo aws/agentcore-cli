@@ -121,6 +121,7 @@ import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { GatewayPolicyGenerateScreen } from "../handlers/gateway/policy/screen.tsx";
 import { ProjectScreen } from "../handlers/project/screen.tsx";
 import { CommandFallbackScreen } from "./CliOnlyScreen.tsx";
+import { ProjectResourceCreateScreen } from "./ProjectResourceCreateScreen.tsx";
 import { BuildProjectScreen } from "../handlers/project/build/screen.tsx";
 import { DeployProjectScreen } from "../handlers/project/deploy/screen.tsx";
 import { ProjectCreateScreen } from "../handlers/project/create/screen.tsx";
@@ -376,6 +377,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
       />
       <Route path="agentcore/runtime" element={<RuntimeScreen ctx={ctx} core={core} />} />
       <Route
+        path="agentcore/runtime/create"
+        element={<ProjectResourceCreateScreen ctx={ctx} core={core} resource="runtime" />}
+      />
+      <Route
         path="agentcore/runtime/get"
         element={<Navigate to="/agentcore/runtime/list" replace />}
       />
@@ -433,6 +438,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<RuntimeListEndpointsScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/memory" element={<MemoryScreen ctx={ctx} core={core} />} />
+      <Route
+        path="agentcore/memory/create"
+        element={<ProjectResourceCreateScreen ctx={ctx} core={core} resource="memory" />}
+      />
       <Route
         path="agentcore/memory/get"
         element={<Navigate to="/agentcore/memory/list" replace />}

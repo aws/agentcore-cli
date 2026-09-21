@@ -43,11 +43,19 @@ interface Option {
   cliOnly: boolean;
 }
 
+export interface TuiOnlyCommand {
+  name: string;
+  description: string;
+}
+
 export interface RouterScreenProps extends ScreenProps {
   // path is the screen's command path, e.g. ["agentcore", "harness"]. The first
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
   path: string[];
+  // tuiOnlyCommands are navigable informational flows that intentionally do
+  // not exist in the CLI command tree.
+  tuiOnlyCommands?: TuiOnlyCommand[];
 }
 
 // RouterScreen renders the interactive command menu for a Router node: a filter
@@ -55,7 +63,7 @@ export interface RouterScreenProps extends ScreenProps {
 // Command) as navigable options below. Selecting an option routes to that
 // subcommand's screen. Subcommands without a screen are listed below a divider
 // and open their help instead (see CliOnlyScreen).
-export function RouterScreen({ ctx, path }: RouterScreenProps) {
+export function RouterScreen({ ctx, path, tuiOnlyCommands = [] }: RouterScreenProps) {
   const navigate = useNavigate();
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
@@ -71,13 +79,21 @@ export function RouterScreen({ ctx, path }: RouterScreenProps) {
   // Screen-backed commands first, then the command-line-only ones, so the
   // divider between them falls at one place in the list.
   const options: Option[] = useMemo(() => {
-    const all = command.commands.map((c) => ({
+    const actual = command.commands.map((c) => ({
       name: c.name(),
       description: c.description(),
       cliOnly: !isTuiCommandSupported(c),
     }));
-    return [...all.filter((o) => !o.cliOnly), ...all.filter((o) => o.cliOnly)];
-  }, [command]);
+    const actualNames = new Set(actual.map((option) => option.name));
+    const tuiOnly = tuiOnlyCommands
+      .filter((option) => !actualNames.has(option.name))
+      .map((option) => ({ ...option, cliOnly: false }));
+    return [
+      ...tuiOnly,
+      ...actual.filter((option) => !option.cliOnly),
+      ...actual.filter((option) => option.cliOnly),
+    ];
+  }, [command, tuiOnlyCommands]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);

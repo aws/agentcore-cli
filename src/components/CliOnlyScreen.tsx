@@ -17,11 +17,16 @@ export interface CliOnlyScreenProps extends ScreenProps {
   path: string[];
 }
 
-// CliOnlyScreen stands in for a command that has no screen of its own: it says
-// so, and shows the command's help — usage, arguments, options, parameter
-// details — from the same Commander help `--help` prints, so the two cannot
-// differ. The body scrolls; esc returns to the parent menu.
-export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
+interface CommandInfoScreenProps {
+  path: string[];
+  description?: string;
+  children: ReactNode;
+}
+
+// CommandInfoScreen is the shared scrollable shell for informational command
+// pages. CliOnlyScreen fills it with Commander help; project-only create
+// guidance uses the same navigation, layout, and scrolling behavior.
+export function CommandInfoScreen({ path, description, children }: CommandInfoScreenProps) {
   const navigate = useNavigate();
   const scroll = useRef<ScrollViewRef>(null);
   // Subscribing to the window size re-renders this screen on a resize. Layout
@@ -29,8 +34,6 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
   // this the ScrollView is never re-rendered, never re-measures, and never
   // reports the size change the clamp below responds to.
   useWindowSize();
-  const command = resolveCommand(ctx.require(CommandKey), path);
-  const help = command.createHelp();
 
   // ScrollView's scrollBy clamps to the content height, not to the last full
   // page, so this stops at the bottom rather than scrolling the text off. It
@@ -55,6 +58,39 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
     else if (key.pageDown) scrollBy(scroll.current?.getViewportHeight() ?? 0);
   });
 
+  return (
+    <Layout
+      breadcrumb={path}
+      description={description}
+      keyHints={[
+        { key: "↑↓", label: "scroll" },
+        { key: "esc", label: "back" },
+        { key: "ctrl+c", label: "quit" },
+      ]}
+    >
+      <Box flexDirection="column" paddingX={1} flexGrow={1} minHeight={0}>
+        <ScrollView
+          ref={scroll}
+          flexGrow={1}
+          minHeight={0}
+          onViewportSizeChange={({ height }) => scrollBy(0, { viewport: height })}
+          onContentHeightChange={(height) => scrollBy(0, { content: height })}
+        >
+          {children}
+        </ScrollView>
+      </Box>
+    </Layout>
+  );
+}
+
+// CliOnlyScreen stands in for a command that has no screen of its own: it says
+// so, and shows the command's help — usage, arguments, options, parameter
+// details — from the same Commander help `--help` prints, so the two cannot
+// differ. The body scrolls; esc returns to the parent menu.
+export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
+  const command = resolveCommand(ctx.require(CommandKey), path);
+  const help = command.createHelp();
+
   const table = (rows: [string, string][]) => Object.fromEntries(rows);
   // --help is Commander's own and means nothing on a screen that is the help.
   const optionGroups: [string, [string, string][]][] = [];
@@ -74,43 +110,25 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
   const details = commandParameterDetails(command);
 
   return (
-    <Layout
-      breadcrumb={path}
-      description={help.commandDescription(command)}
-      keyHints={[
-        { key: "↑↓", label: "scroll" },
-        { key: "esc", label: "back" },
-        { key: "ctrl+c", label: "quit" },
-      ]}
-    >
-      <Box flexDirection="column" paddingX={1} flexGrow={1} minHeight={0}>
-        <ScrollView
-          ref={scroll}
-          flexGrow={1}
-          minHeight={0}
-          onViewportSizeChange={({ height }) => scrollBy(0, { viewport: height })}
-          onContentHeightChange={(height) => scrollBy(0, { content: height })}
-        >
-          <Text color={theme.colors.muted}>this command runs from the command line</Text>
-          <Text> </Text>
-          <Text color={theme.colors.primary}>{`  ${help.commandUsage(command)}`}</Text>
-          {Object.keys(args).length > 0 && (
-            <Section title="arguments">
-              <KeyValueTable items={args} />
-            </Section>
-          )}
-          {optionGroups.map(([title, rows]) => (
-            <Section key={title} title={title}>
-              <KeyValueTable items={table(rows)} />
-            </Section>
-          ))}
-          {details !== undefined && (
-            // formatParameterDetails already carries its own heading and layout.
-            <Text color={theme.colors.muted}>{details.trim()}</Text>
-          )}
-        </ScrollView>
-      </Box>
-    </Layout>
+    <CommandInfoScreen path={path} description={help.commandDescription(command)}>
+      <Text color={theme.colors.muted}>this command runs from the command line</Text>
+      <Text> </Text>
+      <Text color={theme.colors.primary}>{`  ${help.commandUsage(command)}`}</Text>
+      {Object.keys(args).length > 0 && (
+        <Section title="arguments">
+          <KeyValueTable items={args} />
+        </Section>
+      )}
+      {optionGroups.map(([title, rows]) => (
+        <Section key={title} title={title}>
+          <KeyValueTable items={table(rows)} />
+        </Section>
+      ))}
+      {details !== undefined && (
+        // formatParameterDetails already carries its own heading and layout.
+        <Text color={theme.colors.muted}>{details.trim()}</Text>
+      )}
+    </CommandInfoScreen>
   );
 }
 

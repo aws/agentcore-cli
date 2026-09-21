@@ -798,6 +798,10 @@ Runtime Shell requires TTY stdin and stdout and does not support `--json` or
 
 Bare Runtime branches and leaves, plus `memory`, `memory get`, and `memory list`,
 require a TTY on stdin and stdout.
+The Runtime and Memory menus include a TUI-only `create` entry that explains
+their project-based creation flow. It points to `project create` and the
+matching `project add` command without adding unsupported imperative
+`runtime create` or `memory create` commands.
 For Runtime Invoke, supplying a payload or headless-only request or output flags
 runs headlessly; `--session-id` can instead seed the persistent console.
 Supplying Memory operation flags runs those commands headlessly, and `--json`
