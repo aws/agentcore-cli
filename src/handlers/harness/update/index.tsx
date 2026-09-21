@@ -13,7 +13,6 @@ import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx, parseJsonFlag } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
-import { InputValidationError } from "../../../errors";
 import { parameterHelp } from "../parameterHelp.tsx";
 
 // updated wraps a PATCH-semantics field: `--<flag> <json>` replaces the value,
@@ -29,7 +28,7 @@ export const createUpdateHarnessHandler = (core: Core) =>
     name: "update",
     description: "update a harness (creates a new version)",
     flags: [
-      flag("id", "the ID of the harness to update", z.string().max(48).optional()),
+      flag("id", "the ID of the harness to update", z.string().min(1).max(48)),
       flag("execution-role-arn", "IAM role the harness assumes", z.string().optional(), {
         help: parameterHelp.executionRoleArn,
       }),
@@ -107,12 +106,6 @@ export const createUpdateHarnessHandler = (core: Core) =>
       flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
-      // Required at runtime but declared optional so that a bare
-      // `harness update` falls through to the TUI middleware instead.
-      if (!flags["id"]) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-
       const response = await core.harness.updateHarness(
         {
           harnessId: flags["id"],

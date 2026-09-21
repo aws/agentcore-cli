@@ -34,19 +34,19 @@ export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
     name: "run",
     description: "run an A/B test between two config-bundle versions on one Gateway",
     flags: [
-      flag("name", "the A/B test name", z.string().optional()),
-      flag("gateway", "deployed Gateway ID", z.string().optional()),
+      flag("name", "the A/B test name", z.string().min(1)),
+      flag("gateway", "deployed Gateway ID", z.string().min(1)),
       flag(
         "control",
         'control JSON {"config-bundle","bundle-version"} (inline, file://, or -)',
-        z.string().optional(),
+        z.string().min(1),
       ),
       flag(
         "treatment",
         'treatment JSON {"config-bundle","bundle-version"} (inline, file://, or -)',
-        z.string().optional(),
+        z.string().min(1),
       ),
-      flag("online-eval", "online-evaluation config ID", z.string().optional()),
+      flag("online-eval", "online-evaluation config ID", z.string().min(1)),
       flag(
         "treatment-weight",
         "1-99; control weight = 100 - this (default 50)",
@@ -65,11 +65,6 @@ export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      const required = ["name", "gateway", "control", "treatment", "online-eval"] as const;
-      for (const f of required) {
-        if (!flags[f]) throw new InputValidationError(`required option '--${f}' not specified`);
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const controlRaw = parseJsonFlag<unknown>(
         "control",

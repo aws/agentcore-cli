@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { AgentCoreCLIError } from "../../../errors";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
@@ -59,11 +61,55 @@ async function inProjectWithHarness(
     JSON.stringify({ provider: "bedrock", modelId: "us.amazon.nova-lite-v1:0", maxTokens: 256 }),
     "--system-prompt",
     "You are a terse assistant.",
+    "--memory",
+    '{"mode":"disabled"}',
   ]);
   return projectRoot;
 }
 
 describe("project export harness handler", () => {
+  test("exports conventional prompt file contents as literal text", async () => {
+    const prompt = "\uFEFFREADME.md\r\n";
+    const subject = testExportCommand();
+    const projectRoot = await inProjectWithHarness(subject);
+    const directory = join(projectRoot, "app", "exportme");
+    const path = join(directory, "harness.yaml");
+    const yaml = await Bun.file(path).text();
+    await writeFile(join(directory, "system-prompt.md"), prompt);
+    await subject.run(["--name", "exportme"]);
+    expect(await Bun.file(join(projectRoot, "app", "exportmeAgent", "main.py")).text()).toContain(
+      `DEFAULT_SYSTEM_PROMPT = """${prompt}"""`,
+    );
+    expect(await Bun.file(path).text()).toBe(yaml);
+    expect(await readFile(join(directory, "system-prompt.md"), "utf8")).toBe(prompt);
+  });
+
+  test.each(["malformed YAML", "blank prompt file"] as const)(
+    "classifies %s as customer configuration through the CLI boundary",
+    async (failure) => {
+      const subject = testExportCommand();
+      const projectRoot = await inProjectWithHarness(subject);
+      const directory = join(projectRoot, "app", "exportme");
+      const path = join(directory, "harness.yaml");
+      const promptPath = join(directory, "system-prompt.md");
+      if (failure === "malformed YAML") await writeFile(path, "name: [");
+      else await writeFile(promptPath, " \n");
+      const specPath = join(projectRoot, "agentcore", "agentcore.json");
+      const before = await Bun.file(specPath).text();
+      const error = await subject
+        .run(["--name", "exportme", "--json"])
+        .catch(AgentCoreCLIError.fromError);
+      expect(error).toBeInstanceOf(AgentCoreCLIError);
+      expect(error).toMatchObject({
+        source: "user",
+        exitCode: 1,
+      });
+      expect((error as Error).message).toContain(failure === "malformed YAML" ? path : promptPath);
+      expect(existsSync(join(projectRoot, "app", "exportmeAgent"))).toBe(false);
+      expect(await Bun.file(specPath).text()).toBe(before);
+    },
+  );
+
   test("requires exactly one of --name and --arn", async () => {
     const subject = testExportCommand();
     await inProjectWithHarness(subject);

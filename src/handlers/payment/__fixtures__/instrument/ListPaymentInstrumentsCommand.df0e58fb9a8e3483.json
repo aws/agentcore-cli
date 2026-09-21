@@ -1,0 +1,18 @@
+{
+  "paymentInstruments": [
+    {
+      "paymentInstrumentId": "payment-instrument-CG2Tl7U1HnCGfHW",
+      "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanageraidandal-gx3nxzaira",
+      "paymentConnectorId": "mycdpconnectoraidandal-okve8guw4y",
+      "userId": "agentcore-cli-e2e",
+      "paymentInstrumentType": "EMBEDDED_CRYPTO_WALLET",
+      "status": "ACTIVE",
+      "createdAt": {
+        "$date": "2026-09-08T20:24:40.849Z"
+      },
+      "updatedAt": {
+        "$date": "2026-09-08T20:24:41.673Z"
+      }
+    }
+  ]
+}

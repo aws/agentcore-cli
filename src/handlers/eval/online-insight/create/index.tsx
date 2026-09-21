@@ -15,8 +15,8 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create an online insight config",
     flags: [
-      flag("name", "the name of the online insight config", z.string().optional()),
-      flag("role-arn", "IAM role the online insight assumes", z.string().optional()),
+      flag("name", "the name of the online insight config", z.string().min(1)),
+      flag("role-arn", "IAM role the online insight assumes", z.string().min(1)),
       flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional()),
       flag(
         "endpoint",
@@ -31,7 +31,7 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
       flag(
         "insight",
         "insight ID(s) to apply: Builtin.Insight.* identifiers or full ARNs",
-        z.array(z.string()).optional(),
+        z.array(z.string()).min(1),
       ),
       flag(
         "clustering-frequency",
@@ -41,7 +41,7 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
-        z.number().min(0.01).max(100).optional(),
+        z.number().min(0.01).max(100),
       ),
       flag(
         "session-timeout-minutes",
@@ -65,17 +65,6 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["role-arn"])
-        throw new InputValidationError("required option '--role-arn <role-arn>' not specified");
-      if (!flags["sampling-rate"])
-        throw new InputValidationError(
-          "required option '--sampling-rate <sampling-rate>' not specified",
-        );
-      if (!flags["insight"] || flags["insight"].length === 0)
-        throw new InputValidationError("required option '--insight <insight...>' not specified");
-
       for (const id of flags["insight"]) {
         if (!id.startsWith(BUILTIN_INSIGHT_PREFIX) && !id.startsWith(ARN_PREFIX))
           throw new InputValidationError(

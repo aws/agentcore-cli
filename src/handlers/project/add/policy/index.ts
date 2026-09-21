@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { SourceResolver } from "../../../../io";
 import type { PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
@@ -25,13 +24,13 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
     name: "policy",
     description: "add a Cedar Policy to a project Policy Engine",
     flags: [
-      flag("engine", "name of the parent Policy Engine in this project", z.string().optional()),
-      flag("name", "the Policy name", z.string().optional()),
+      flag("engine", "name of the parent Policy Engine in this project", z.string().min(1)),
+      flag("name", "the Policy name", z.string().min(1)),
       flag("description", "Policy description", z.string().optional()),
       flag(
         "statement",
         "Cedar policy statement (inline, file://<path>, or - for stdin)",
-        z.string().optional(),
+        z.string().min(1),
       ),
       flag(
         "validation-mode",
@@ -50,15 +49,6 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.engine) {
-        throw new InputValidationError("required option '--engine <engine>' not specified");
-      }
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
-      if (!flags.statement) {
-        throw new InputValidationError("required option '--statement <statement>' not specified");
-      }
       const project = ctx.require(ProjectKey);
 
       const source = new SourceResolver({ stdin: config.io.stdin });

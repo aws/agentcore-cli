@@ -173,7 +173,7 @@ const InstrumentationSchema = z.object({
 });
 const CodeZipRuntimeConfigSchema = z
   .object({
-    artifact: z.literal("CodeZip"),
+    build: z.literal("CodeZip"),
     pythonVersion: PythonRuntimeSchema,
     name: AgentRuntimeNameSchema,
     entrypoint: PythonEntrypointSchema,
@@ -477,19 +477,19 @@ export const AgentCoreGatewaySchema = z
     }
   });
 export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;
-export const McpRuntimeBindingSchema = z
+export const ToolRuntimeBindingSchema = z
   .object({
     runtimeName: z.string().min(1),
     envVarName: EnvVarNameSchema,
   })
   .strict();
-export type McpRuntimeBinding = z.infer<typeof McpRuntimeBindingSchema>;
-export const AgentCoreMcpRuntimeToolSchema = z
+export type ToolRuntimeBinding = z.infer<typeof ToolRuntimeBindingSchema>;
+export const ToolRuntimeSchema = z
   .object({
     name: z.string().min(1),
     toolDefinition: ToolDefinitionSchema,
     compute: AgentCoreRuntimeComputeConfigSchema,
-    bindings: z.array(McpRuntimeBindingSchema).optional(),
+    bindings: z.array(ToolRuntimeBindingSchema).optional(),
   })
   .strict();
-export type AgentCoreMcpRuntimeTool = z.infer<typeof AgentCoreMcpRuntimeToolSchema>;
+export type ToolRuntime = z.infer<typeof ToolRuntimeSchema>;

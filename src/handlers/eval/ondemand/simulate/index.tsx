@@ -30,7 +30,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
     name: "simulate",
     description: "replay a dataset against a Runtime, then evaluate the sessions client-side",
     flags: [
-      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().optional(), {
+      flag("runtime-id", "Runtime ID to invoke per scenario", z.string().min(1), {
         group: TARGET,
       }),
       flag("endpoint", "Runtime endpoint qualifier (default DEFAULT)", z.string().optional(), {
@@ -39,7 +39,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
       flag(
         "payload-template",
         "request body per example (JSON object); {input} is replaced with the input",
-        z.string().optional(),
+        z.string().min(1),
         { group: INVOCATION, help: payloadTemplateHelp },
       ),
       flag("header", "an ordered application header (repeatable)", z.array(z.string()).optional(), {
@@ -53,13 +53,13 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
         { sensitive: true, group: INVOCATION },
       ),
       flag("user-id", "Runtime user ID", z.string().optional(), { group: INVOCATION }),
-      flag("dataset", "local JSONL path or a dataset ID", z.string().optional(), {
+      flag("dataset", "local JSONL path or a dataset ID", z.string().min(1), {
         group: DATASET,
       }),
       flag("dataset-version", "dataset version (with a dataset ID)", z.string().optional(), {
         group: DATASET,
       }),
-      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).optional(), {
+      flag("evaluators", "evaluator ID(s) to apply", z.array(z.string()).min(1), {
         group: EVALUATION,
       }),
       flag(
@@ -70,19 +70,6 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["runtime-id"])
-        throw new InputValidationError("required option '--runtime-id' not specified");
-      if (!flags["payload-template"]) {
-        throw new InputValidationError("required option '--payload-template' not specified");
-      }
-      if (!flags["dataset"])
-        throw new InputValidationError("required option '--dataset' not specified");
-      if (!flags["evaluators"]?.length) {
-        throw new InputValidationError(
-          "required option '--evaluators <evaluators...>' not specified",
-        );
-      }
-
       const runtimeId = flags["runtime-id"];
       const payloadTemplate = flags["payload-template"];
       const dataset = flags["dataset"];

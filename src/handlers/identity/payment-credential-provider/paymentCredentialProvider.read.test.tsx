@@ -1,0 +1,111 @@
+import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { CoreClient } from "../../../core";
+import {
+  createSilentLogger,
+  expectError,
+  fixtureFactories,
+  matchGolden,
+  TestGlobalConfigAccessor,
+  testIO,
+} from "../../../testing";
+import { createRootHandler } from "../../index";
+import { InputValidationError } from "../../../errors";
+
+const REGION = "us-west-2";
+const FIXTURES = join(import.meta.dir, "__fixtures__");
+const BASE = ["identity", "payment-credential-provider"];
+const FIXTURE_PROVIDER_NAME = "agentcore-cli-payment-fixture";
+const MISSING_PROVIDER_NAME = "agentcore-cli-payment-fixture-2";
+
+function createFixtureCore(): CoreClient {
+  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
+    fixtureFactories(FIXTURES);
+  return new CoreClient({
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    logger: createSilentLogger(),
+  });
+}
+
+async function run(args: string[]): Promise<string> {
+  const io = testIO();
+  const root = createRootHandler(createFixtureCore(), {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
+
+  await root.route(["node", "agentcore", ...BASE, ...args, "--region", REGION]);
+  return io.stdout();
+}
+
+describe("payment-credential-provider read-only command hierarchy", () => {
+  test("registers get and list only, with no create, update, or delete commands", () => {
+    const root = createRootHandler(createFixtureCore(), {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const identity = root.children().find((child) => child.name() === "identity");
+    const payment = identity
+      ?.children()
+      .find((child) => child.name() === "payment-credential-provider");
+
+    expect(payment?.children().map((child) => child.name())).toEqual(["get", "list"]);
+  });
+
+  test("prints command help with --json", async () => {
+    const stdout = await run(["--json"]);
+
+    expect(stdout).toContain("Usage: agentcore identity payment-credential-provider");
+    expect(stdout).toContain("Commands:");
+    expect(stdout).toContain("get");
+    expect(stdout).toContain("list");
+  });
+});
+
+describe("payment-credential-provider get", () => {
+  test("prints a recorded provider as JSON", async () => {
+    const stdout = await run(["get", "--name", FIXTURE_PROVIDER_NAME]);
+
+    matchGolden(FIXTURES, "get.golden.json", stdout);
+  });
+
+  test.each([
+    ["omitted", ["get"], "required option '--name' not specified"],
+    ["omitted with --json", ["get", "--json"], "required option '--name' not specified"],
+    ["empty", ["get", "--name", ""], "Invalid value for option '--name'"],
+  ] as const)("requires a nonempty --name when %s", async (_label, args, message) => {
+    await expectError(run([...args]), message, InputValidationError);
+  });
+
+  test("preserves the recorded service error name and message", async () => {
+    await expect(run(["get", "--name", MISSING_PROVIDER_NAME])).rejects.toMatchObject({
+      name: "ResourceNotFoundException",
+      message: "PaymentCredentialProvider not found",
+    });
+  });
+});
+
+describe("payment-credential-provider list", () => {
+  test.each([
+    ["without flags", ["list"]],
+    ["with --json", ["list", "--json"]],
+  ] as const)("prints recorded providers %s", async (_label, args) => {
+    const stdout = await run([...args]);
+
+    matchGolden(FIXTURES, "list.golden.json", stdout);
+  });
+
+  test("forwards --max-results and --next-token and preserves pagination tokens", async () => {
+    const firstPage = await run(["list", "--max-results", "1"]);
+    matchGolden(FIXTURES, "list-page-1.golden.json", firstPage);
+    const first = JSON.parse(firstPage);
+
+    const secondPage = await run(["list", "--max-results", "1", "--next-token", first.nextToken]);
+    matchGolden(FIXTURES, "list-page-2.golden.json", secondPage);
+  });
+});

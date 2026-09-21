@@ -1,30 +1,27 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
+import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import { Layout } from "../../../components/Layout";
-import { TreeView } from "../../../components/ui/tree-view";
 import {
   linkedResourceLabel,
+  LinkedResourcesTree,
   typeColumnWidth,
   type LinkedResourceNode,
 } from "../../../components/LinkedResources";
 import { serviceIdFromArn } from "../../../core/arn";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { ProjectKey } from "../../../router";
-import type { ScreenProps } from "../../types";
+import type { Core, ScreenProps } from "../../types";
 import type { DeployableResource, Project, ResolvedProjectResource } from "../types";
 import { LoadingFrame, ProjectGate } from "../ProjectGate";
-import { RegionKey } from "../../keys";
 
 const theme = darkTheme;
 
 const BREADCRUMB = ["agentcore", "project", "status"];
+const DESCRIPTION = "the project's linked resources";
 const PROJECT_MENU = "/agentcore/project";
-// The TUI opens only from a bare invocation (an explicit --target keeps the
-// headless report), so the screen always shows the default target, like the
-// invoke picker.
-const TARGET_NAME = "default";
 
 // The detail routes a deployed resource can forward to. Types without a detail
 // screen are listed but not navigable.
@@ -75,7 +72,7 @@ function routeFor(
 // env var for every declared memory into every runtime (see
 // src/core/project/templates/runtime.ts), so each declared memory is reachable
 // from each runtime agent. A harness's memory binding lives in its own
-// harness.json (HarnessMemoryRefSchema), not in the project spec this report is
+// harness.yaml (HarnessMemoryRefSchema), not in the project spec this report is
 // built from — a managed one is provisioned inside the harness and never
 // appears here — so harness groups list just the harness itself and memories a
 // harness may reference by name stay visible under the project group.
@@ -168,32 +165,53 @@ export function buildStatusNodes(
 // not-found guidance when there is none.
 export function ProjectStatusScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
+  const goBack = () => navigate(PROJECT_MENU);
   return (
     <ProjectGate
       core={core}
       breadcrumb={BREADCRUMB}
-      description="the project's linked resources on target default"
+      description={DESCRIPTION}
       seed={ctx.value(ProjectKey)}
-      onBack={() => navigate(PROJECT_MENU)}
+      onBack={goBack}
     >
-      {(project) => <ProjectStatusView core={core} ctx={ctx} project={project} />}
+      {(project) => (
+        <DeploymentTargetPicker
+          core={core}
+          project={project}
+          breadcrumb={BREADCRUMB}
+          description={DESCRIPTION}
+          onBack={goBack}
+        >
+          {({ targetName, back }) => (
+            <ProjectStatusView
+              core={core}
+              project={project}
+              targetName={targetName}
+              onBack={back}
+            />
+          )}
+        </DeploymentTargetPicker>
+      )}
     </ProjectGate>
   );
 }
 
 function ProjectStatusView({
   core,
-  ctx,
   project,
-}: ScreenProps & {
+  targetName,
+  onBack,
+}: {
+  core: Core;
   project: Project;
+  targetName: string;
+  onBack: () => void;
 }) {
   const navigate = useNavigate();
-  const [hint, setHint] = useState<string>();
 
   const status = useQuery({
-    queryKey: ["project-status", project.rootPath, TARGET_NAME],
-    queryFn: () => core.projectManager.resolveProjectResources(project, { target: TARGET_NAME }),
+    queryKey: ["project-status", project.rootPath, targetName],
+    queryFn: () => core.projectManager.resolveProjectResources(project, { target: targetName }),
   });
 
   const nodes = useMemo(
@@ -201,48 +219,28 @@ function ProjectStatusView({
     [project, status.data],
   );
 
-  const goBack = () => navigate(PROJECT_MENU);
   // Only once the tree is up — while loading or on an error the LoadingFrame
   // below owns escape (and retry).
   useInput((_input, key) => {
-    if (key.escape && status.data !== undefined) goBack();
+    if (key.escape && status.data !== undefined) onBack();
   });
 
   if (!status.data) {
     return (
       <LoadingFrame
         breadcrumb={BREADCRUMB}
-        description="the project's linked resources on target default"
+        description={`${DESCRIPTION} on target ${targetName}`}
         query={status}
         loadingLabel="Resolving project resources…"
-        onBack={goBack}
+        onBack={onBack}
       />
     );
   }
 
-  const select = (node: StatusNode) => {
-    if (node.data?.route) {
-      // The detail screens fetch in their context's region, which is the
-      // ambient one — link with ?region= so the destination fetches where the
-      // project actually deployed (see useCoreOpts). Escape there is a history
-      // pop back here.
-      const region = encodeURIComponent(status.data.target.region);
-      navigate(`${node.data.route}?region=${region}`);
-      return;
-    }
-    setHint(node.data?.hint);
-  };
-
-  // A linked detail page fetches in the target's region, but everything it
-  // opens in turn runs in the ambient one, so a project deployed elsewhere is
-  // reported rather than listed: the user reopens with --region.
-  const region = ctx.require(RegionKey);
-  const isWrongRegion = status.data.target.region !== region;
-
   return (
     <Layout
       breadcrumb={BREADCRUMB}
-      description={`the project's linked resources on target ${status.data.target.name}`}
+      description={`${DESCRIPTION} on target ${status.data.target.name}`}
       keyHints={[
         { key: "↑↓/jk", label: "navigate" },
         { key: "←→", label: "collapse/expand" },
@@ -252,30 +250,12 @@ function ProjectStatusView({
       ]}
     >
       <Box flexDirection="column" paddingX={1}>
-        {isWrongRegion && (
-          <Text color="red">
-            This project is deployed to {status.data.target.region}, not {region}
+        {nodes.length === 0 ? (
+          <Text color={theme.colors.muted}>
+            No resources are declared in this project. Run `agentcore project add` to declare one.
           </Text>
-        )}
-        {!isWrongRegion && (
-          <>
-            <Text bold>resources</Text>
-            <Box flexDirection="column">
-              {nodes.length === 0 ? (
-                <Text color={theme.colors.muted}>
-                  No resources are declared in this project. Run `agentcore project add` to declare
-                  one.
-                </Text>
-              ) : (
-                <TreeView nodes={nodes} onSelect={select} showIcons={false} focusMarker />
-              )}
-            </Box>
-          </>
-        )}
-        {hint !== undefined && (
-          <Box marginTop={1}>
-            <Text color={theme.colors.muted}>{hint}</Text>
-          </Box>
+        ) : (
+          <LinkedResourcesTree nodes={nodes} title="resources" focus onOpen={navigate} />
         )}
       </Box>
     </Layout>

@@ -24,8 +24,8 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create a connector-backed Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("name", "Connector Target name", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().min(1)),
+      flag("name", "Connector Target name", z.string().min(1)),
       flag("description", "Connector Target description", z.string().optional()),
       flag(
         "connector-configuration",
@@ -59,12 +59,6 @@ export const createCreateGatewayConnectorHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["connector", "connector-configuration"], {
         exactlyOne: true,
       });

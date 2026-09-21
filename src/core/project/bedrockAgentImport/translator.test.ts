@@ -82,9 +82,6 @@ describe("StrandsBedrockAgentTranslator", () => {
     expect(plan.files["main.py"]).not.toContain("invoke_agent(" + "agentId=");
     expect(plan.files["main.py"]).not.toContain("client.invoke_agent");
     expect(plan.files["main.py"]).not.toContain("bedrock:InvokeAgent");
-    expect(plan.files["memory.py"]).toContain(
-      'MEMORY_ID = os.getenv("MEMORY_IMPORTEDSUPPORTMEMORY_ID")',
-    );
     // Knowledge-base access is documented as manual follow-up, not generated as an IAM policy.
     expect(Object.keys(plan.files)).not.toContain("bedrock-knowledge-base-policy.json");
     expect(plan.files["IMPORT_NOTES.md"]).toContain(
@@ -378,3 +375,21 @@ describe("LangGraphBedrockAgentTranslator", () => {
     expect(plan.files["IMPORT_NOTES.md"]).not.toContain("LangGraph model provider");
   });
 });
+
+test.each([
+  ["strands", StrandsBedrockAgentTranslator, "memory.py"],
+  ["langgraph", LangGraphBedrockAgentTranslator, "main.py"],
+] as const)(
+  "%s reads the memory id under the default memory's truncated name",
+  (framework, Translator, file) => {
+    const plan = new Translator(snapshot(), {
+      ...request,
+      framework,
+      runtimeName: "a".repeat(48),
+    }).translate();
+
+    expect(plan.files[file]).toContain(
+      `MEMORY_ID = os.getenv("AGENTCORE_MEMORY_${"A".repeat(42)}MEMORY_ID")`,
+    );
+  },
+);

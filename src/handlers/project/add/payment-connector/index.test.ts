@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { expectError } from "../../../../testing";
 import { createPaymentProjectTestHarness } from "../payment-test-support";
+import { InputValidationError } from "../../../../errors";
 
 const { cleanup, inProject, projectSpec, run, writeProjectSpec } =
   createPaymentProjectTestHarness("payment-connector");
@@ -89,7 +91,7 @@ describe("project add payment-connector", () => {
     const projectRoot = await inProject();
     await addManager();
 
-    await expect(run(["add", "payment-connector", ...flags])).rejects.toThrow(message);
+    await expectError(run(["add", "payment-connector", ...flags]), message, InputValidationError);
     expect((await projectSpec(projectRoot)).payments[0].connectors).toEqual([]);
   });
 

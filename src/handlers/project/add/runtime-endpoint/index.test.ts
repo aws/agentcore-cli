@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { createRootHandler } from "../../../index";
 import {
   createSilentLogger,
+  expectError,
   initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../../testing";
+import { InputValidationError } from "../../../../errors";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -123,7 +125,7 @@ describe("project add runtime-endpoint", () => {
     cleanups.push(cleanup);
     await seedRuntime(projectRoot);
 
-    await expect(run(["add", "runtime-endpoint", ...extra])).rejects.toThrow(message);
+    await expectError(run(["add", "runtime-endpoint", ...extra]), message, InputValidationError);
   });
 
   test("rejects a duplicate endpoint name on the same runtime", async () => {

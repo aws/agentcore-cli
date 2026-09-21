@@ -7,7 +7,6 @@ import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
 import {
   buildEvaluatorModelConfig,
-  instructionsFlag,
   modelProviderFlag,
   ratingScaleFlag,
   resolveRatingScale,
@@ -19,15 +18,19 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create an LLM-as-a-Judge evaluator",
     flags: [
-      flag("name", "the name of the evaluator", z.string()),
+      flag("name", "the name of the evaluator", z.string().min(1)),
       flag("level", `evaluation level (${LEVELS.join(" | ")})`, z.enum(LEVELS)),
       modelProviderFlag,
       flag(
         "model",
         "judge model: a Bedrock model ID / ARN, or an OpenResponses model ID",
-        z.string(),
+        z.string().min(1),
       ),
-      instructionsFlag,
+      flag(
+        "instructions",
+        "evaluation instructions (inline, file://<path>, or - for stdin)",
+        z.string().min(1),
+      ),
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
       flag(
@@ -42,17 +45,10 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);
-      if (!instructions) {
-        throw new InputValidationError(
-          "required option '--instructions <instructions>' not specified",
-        );
+      if (instructions.length === 0) {
+        throw new InputValidationError("Option '--instructions' must resolve to non-empty text");
       }
       const ratingScale = await resolveRatingScale(flags["rating-scale"], source);
-      if (!ratingScale) {
-        throw new InputValidationError(
-          "required option '--rating-scale <rating-scale>' not specified",
-        );
-      }
       const tags = parseJsonFlag<Record<string, string>>(
         "tags",
         await source.resolveText("tags", flags["tags"]),

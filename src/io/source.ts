@@ -32,6 +32,8 @@ export class SourceResolver {
     return new TextEncoder().encode(source);
   }
 
+  async resolveText(name: string, source: string): Promise<string>;
+  async resolveText(name: string, source: string | undefined): Promise<string | undefined>;
   async resolveText(name: string, source: string | undefined): Promise<string | undefined> {
     const bytes = await this.resolveBytes(name, source);
     if (bytes === undefined) return undefined;

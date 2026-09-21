@@ -28,6 +28,11 @@ import type {
   GetMemoryOutput,
   ListApiKeyCredentialProvidersResponse,
   ListOauth2CredentialProvidersResponse,
+  ListPaymentCredentialProvidersResponse,
+  GetPaymentConnectorResponse,
+  GetPaymentManagerResponse,
+  ListPaymentConnectorsResponse,
+  ListPaymentManagersResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
   ListAgentRuntimeVersionsResponse,
@@ -109,6 +114,7 @@ import type {
   RecommendationStatus,
   StartBatchEvaluationResponse,
   StartRecommendationResponse,
+  StopBatchEvaluationResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type {
@@ -136,6 +142,14 @@ import type {
   UpdateApiKeyCredentialProviderInput,
   UpdateOauth2CredentialProviderInput,
 } from "../handlers/identity/types";
+import type {
+  GetPaymentInstrumentResponse,
+  GetPaymentInstrumentBalanceResponse,
+  GetPaymentSessionResponse,
+  ListPaymentInstrumentsResponse,
+  ListPaymentSessionsResponse,
+} from "@aws-sdk/client-bedrock-agentcore";
+import type { CorePaymentClient } from "../handlers/payment/types";
 import type { CoreMemoryClient } from "../handlers/memory/types";
 import type {
   CloudWatchLogEvent,
@@ -259,6 +273,9 @@ const DEFAULT_CREATE_PAYMENT_RESPONSE = {} as CreatePaymentCredentialProviderRes
 const DEFAULT_GET_PAYMENT_RESPONSE = {} as GetPaymentCredentialProviderResponse;
 const DEFAULT_UPDATE_PAYMENT_RESPONSE = {} as UpdatePaymentCredentialProviderResponse;
 const DEFAULT_DELETE_PAYMENT_RESPONSE = {} as DeletePaymentCredentialProviderResponse;
+const DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE: ListPaymentCredentialProvidersResponse = {
+  credentialProviders: [],
+};
 const DEFAULT_GET_MEMORY_RESPONSE = {} as GetMemoryOutput;
 const DEFAULT_LIST_MEMORIES_RESPONSE: ListMemoriesOutput = { memories: [] };
 const DEFAULT_GET_EVENT_RESPONSE: GetEventOutput = { event: undefined };
@@ -334,6 +351,10 @@ const DEFAULT_START_BATCH_EVAL_RESPONSE = {
   batchEvaluationId: "batch-eval-test",
   status: "RUNNING",
 } as unknown as StartBatchEvaluationResponse;
+const DEFAULT_STOP_BATCH_EVAL_RESPONSE = {
+  batchEvaluationId: "batch-eval-test",
+  status: "STOPPING",
+} as StopBatchEvaluationResponse;
 const DEFAULT_START_RECOMMENDATION_RESPONSE = {} as StartRecommendationResponse;
 const DEFAULT_GET_RECOMMENDATION_RESPONSE = {} as GetRecommendationResponse;
 const DEFAULT_LIST_RECOMMENDATIONS_RESPONSE: ListRecommendationsResponse = {
@@ -1500,6 +1521,51 @@ export class TestIdentityClient implements CoreIdentityClient {
     if (this.error) throw this.error;
     return DEFAULT_DELETE_PAYMENT_RESPONSE;
   }
+
+  async listPaymentCredentialProviders(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListPaymentCredentialProvidersResponse> {
+    this.calls.push({
+      method: "listPaymentCredentialProviders",
+      args: [nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE;
+  }
+}
+
+// Payment command tests use real Core clients; configure a stub explicitly if a
+// future screen test needs one.
+export class TestPaymentClient implements CorePaymentClient {
+  async getPaymentManager(): Promise<GetPaymentManagerResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async listPaymentManagers(): Promise<ListPaymentManagersResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async getPaymentConnector(): Promise<GetPaymentConnectorResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async listPaymentConnectors(): Promise<ListPaymentConnectorsResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async getPaymentSession(): Promise<GetPaymentSessionResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async listPaymentSessions(): Promise<ListPaymentSessionsResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async getPaymentInstrument(): Promise<GetPaymentInstrumentResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async getPaymentInstrumentBalance(): Promise<GetPaymentInstrumentBalanceResponse> {
+    throw new Error("Unexpected payment call");
+  }
+  async listPaymentInstruments(): Promise<ListPaymentInstrumentsResponse> {
+    throw new Error("Unexpected payment call");
+  }
 }
 
 // TestEvalClient is the eval sub-client of TestCoreClient.
@@ -1573,6 +1639,7 @@ export class TestEvalClient implements CoreEvalClient {
   private batchEvalResults: BatchEvaluationResultEntry[] = [];
   private batchEvalResultsError?: unknown;
   private startBatchEvalResponse: StartBatchEvaluationResponse = DEFAULT_START_BATCH_EVAL_RESPONSE;
+  private stopBatchEvalResponse: StopBatchEvaluationResponse = DEFAULT_STOP_BATCH_EVAL_RESPONSE;
   private getTracesResponse: SessionTrace[] = [];
   private evaluateResponse: EvaluateResult = {
     sessionsRequested: 0,
@@ -1768,6 +1835,11 @@ export class TestEvalClient implements CoreEvalClient {
   // not erroring). Pass `forNextToken` to serve a later page.
   setBatchEvalListResponse(response: ListBatchEvaluationsResponse, forNextToken?: string): this {
     this.batchEvalListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setStopBatchEvalResponse(response: StopBatchEvaluationResponse): this {
+    this.stopBatchEvalResponse = response;
     return this;
   }
 
@@ -1979,6 +2051,15 @@ export class TestEvalClient implements CoreEvalClient {
       this.batchEvalListResponses.get(undefined) ??
       DEFAULT_LIST_BATCH_EVALS_RESPONSE
     );
+  }
+
+  async stopBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<StopBatchEvaluationResponse> {
+    this.calls.push({ method: "stopBatchEvaluation", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.stopBatchEvalResponse;
   }
 
   async listBatchInsights(
@@ -2483,6 +2564,7 @@ export class TestPolicyClient implements CorePolicyClient {
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
   readonly identity = new TestIdentityClient();
+  readonly payment = new TestPaymentClient();
   readonly memory = new TestMemoryClient();
   readonly runtime = new TestRuntimeClient();
   readonly gateway = new TestGatewayClient();

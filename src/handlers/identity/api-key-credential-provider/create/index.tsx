@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
@@ -13,7 +12,7 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
     name: "create",
     description: "create an API key credential provider",
     flags: [
-      flag("name", "the name of the API key credential provider", z.string().optional()),
+      flag("name", "the name of the API key credential provider", z.string().min(1)),
       flag(
         "api-key",
         "the API key (file://path or - for stdin; inline values are rejected)",
@@ -28,9 +27,6 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
       flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.name) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["api-key", "api-key-secret-reference"], {
         exactlyOne: true,
       });

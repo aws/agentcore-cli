@@ -11,9 +11,9 @@ export const createListMemoryEventsHandler = (core: Core) =>
     name: "list",
     description: "list AgentCore Memory events",
     flags: [
-      flag("id", "the ID of the Memory", z.string().optional()),
-      flag("actor-id", "the ID of the actor", z.string().optional()),
-      flag("session-id", "the session ID", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("actor-id", "the ID of the actor", z.string().min(1)),
+      flag("session-id", "the session ID", z.string().min(1)),
       flag("include-payloads", "includes event payloads in the response", z.boolean().optional()),
       flag("branch", "filter events by branch name", z.string().optional()),
       flag(
@@ -27,16 +27,6 @@ export const createListMemoryEventsHandler = (core: Core) =>
     ],
 
     handle: async (ctx, flags) => {
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-      if (!flags["actor-id"]) {
-        throw new InputValidationError("required option '--actor-id <actor-id>' not specified");
-      }
-      if (!flags["session-id"]) {
-        throw new InputValidationError("required option '--session-id <session-id>' not specified");
-      }
-
       if (flags["include-parent-branches"] && !flags.branch) {
         throw new InputValidationError("'--include-parent-branches' requires '--branch'");
       }

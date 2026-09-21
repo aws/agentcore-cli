@@ -24,8 +24,8 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
     name: "update",
     description: "update a connector-backed Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("id", "the connector-backed Gateway Target ID", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().min(1)),
+      flag("id", "the connector-backed Gateway Target ID", z.string().min(1)),
       flag("name", "updated Connector Target name", z.string().optional()),
       flag("description", "updated Connector Target description", z.string().optional()),
       flag(
@@ -64,12 +64,6 @@ export const createUpdateGatewayConnectorHandler = (core: Core, io: AppIO) =>
       flag("clear-private-endpoint", "remove private endpoint configuration", z.boolean()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["connector", "connector-configuration"]);
       assertMutuallyExclusiveFlags(flags, ["description", "clear-description"]);
       assertMutuallyExclusiveFlags(flags, [

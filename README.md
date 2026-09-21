@@ -62,12 +62,15 @@ agentcore                          # interactive TUI
 │   │   ├── list                   # list API key credential providers
 │   │   ├── update                 # update an API key credential provider
 │   │   └── delete                 # delete an API key credential provider
-│   └── oauth2-credential-provider
-│       ├── create                 # create an OAuth2 credential provider
-│       ├── get                    # get an OAuth2 credential provider
-│       ├── list                   # list OAuth2 credential providers
-│       ├── update                 # update an OAuth2 credential provider
-│       └── delete                 # delete an OAuth2 credential provider
+│   ├── oauth2-credential-provider
+│   │   ├── create                 # create an OAuth2 credential provider
+│   │   ├── get                    # get an OAuth2 credential provider
+│   │   ├── list                   # list OAuth2 credential providers
+│   │   ├── update                 # update an OAuth2 credential provider
+│   │   └── delete                 # delete an OAuth2 credential provider
+│   └── payment-credential-provider
+│       ├── get                    # get a payment credential provider
+│       └── list                   # list payment credential providers
 ├── runtime                        # inspect deployed AgentCore Runtimes
 │   ├── get                        # fetch a Runtime by id
 │   ├── list                       # list Runtimes (server-side paginated)
@@ -107,6 +110,20 @@ agentcore                          # interactive TUI
 │   │   └── list                   # list Rules under a Gateway
 │   └── policy
 │       └── generate               # generate Cedar for a Gateway from a prompt (TUI when run bare)
+├── payment                        # inspect AgentCore Payments (command line only for now)
+│   ├── manager
+│   │   ├── get                    # get a payment manager by id
+│   │   └── list                   # list payment managers (server-side paginated)
+│   ├── connector                  # connectors under a payment manager
+│   │   ├── get                    # get a connector (shows the Quick Create authorization URL while pending)
+│   │   └── list                   # list a manager's connectors
+│   ├── session                    # budget-limited payment contexts (data plane)
+│   │   ├── get
+│   │   └── list
+│   └── instrument                 # embedded crypto wallets (data plane)
+│       ├── get
+│       ├── list
+│       └── balance                # read token balance on an explicit chain (default token: USDC)
 ├── eval                           # evaluate and optimize AgentCore agents
 │   └── evaluator                  # manage AgentCore evaluators
 │       ├── llm-as-a-judge         # LLM-as-a-Judge evaluators
@@ -121,7 +138,9 @@ agentcore                          # interactive TUI
 ├── project                        # manage an AgentCore project (scaffold → deploy)
 │   ├── create                     # create a project: a managed harness by default,
 │   │                              #   or scaffolded runtime code via --template;
-│   │                              #   bare `project create` opens an interactive wizard
+│   │                              #   bare `project create` opens an interactive wizard.
+│   │                              #   agentcore/cdk/ holds a two-file CDK app on
+│   │                              #   @aws/agentcore-cdk (bin/cdk.ts, lib/cdk-stack.ts)
 │   ├── add                        # add a resource to the project (runtime, harness, memory, …)
 │   ├── export
 │   │   └── harness                # convert a harness into an editable Strands runtime agent
@@ -139,9 +158,11 @@ agentcore                          # interactive TUI
 │   │   ├── runtime                # use the existing Runtime invoke experience
 │   │   └── harness                # use the existing Harness invoke experience
 │   ├── status                     # inspect deployed project resources (TUI when run bare)
-│   └── build                      # synthesize the project's CloudFormation templates
-│   └── log
-│       └── runtime                # resolve a project Runtime and inspect its logs
+│   ├── build                      # synthesize the project's CloudFormation templates
+│   ├── log
+│   │   └── runtime                # resolve a project Runtime and inspect its logs
+│   └── traces
+│       └── runtime
 └── config                         # read/write global config values
 ```
 
@@ -158,6 +179,60 @@ declares its own dependencies, so it needs no image build. If the harness used a
 pre-built container image or a custom Dockerfile, that is reported in
 `EXPORT_NOTES.md` rather than rebuilt. Path-based skills are not supported,
 since the exported agent has no container filesystem to read them from.
+
+### Harness Project Files
+
+`project create` (without `--template`) and `project add harness` share the same
+scaffolding flow. Each harness has `app/<name>/harness.yaml` and
+`app/<name>/system-prompt.md`. YAML is the harness configuration format.
+The YAML contains the supplied settings and
+commented optional examples. Tools are opt-in. Newly scaffolded harnesses
+explicitly use `memory: { mode: managed }` unless another memory configuration
+was supplied. Reading an existing file with no `memory` setting still means
+disabled memory; reading never adds the scaffold default.
+
+```yaml
+name: assistant
+model:
+  provider: bedrock
+  modelId: global.anthropic.claude-sonnet-4-6
+# Instructions come from system-prompt.md unless systemPrompt is set inline.
+# systemPrompt: You are a helpful assistant.
+memory:
+  mode: managed
+```
+
+Both deployment and local export use inline `systemPrompt` text when it is
+provided. Otherwise, instructions come from `system-prompt.md` next to
+`harness.yaml`. Prompt contents are not trimmed, and blank prompts are rejected.
+Prompt settings do not resolve local file references.
+
+```yaml
+systemPrompt: |
+  You are a concise assistant.
+truncation:
+  strategy: summarization
+  config:
+    summarization:
+      summarizationSystemPrompt: Keep decisions and open questions.
+```
+
+`project add harness --system-prompt "Your instructions"` writes the supplied
+text to `system-prompt.md`, leaving `systemPrompt` out of the generated YAML.
+Summary instructions in
+`truncation.config.summarization.summarizationSystemPrompt` are inline text.
+
+Skills are unchanged: skill paths refer to the **runtime/container filesystem**,
+not local files to package. Other fields do not support local includes.
+Malformed YAML, duplicate keys, and existing schema violations fail the read.
+Unknown fields at the harness root and directly inside `model` are stripped
+from the parsed configuration. Nested configurations keep their existing
+validation contracts. Free-form
+maps such as headers, tags, environment variables, `additionalParams`, and
+`inputSchema` still accept arbitrary keys.
+Build, deploy, and export do not rewrite harness YAML or remove its comments.
+`agentcore.json`, deployment targets, JSON CLI flags/output, and service payloads
+are unchanged.
 
 Global flags (declared at the root, available on every command):
 
@@ -188,21 +263,110 @@ agentcore project invoke harness \
 Use `--target` to select a deployment target. When a project declares exactly
 one resource of the requested type, `--name` may be omitted.
 
-### Inspect project Runtime logs
+### Inspect project logs
 
-Project logging resolves a logical Runtime name through the selected deployment
-target, so the Runtime ID and deployment region do not need to be
+Project logging resolves a logical resource name through the selected
+deployment target, so physical IDs and deployment regions do not need to be
 supplied:
 
 ```bash
 agentcore project log runtime
 agentcore project log runtime --name checkout --target production
 agentcore project log runtime --name checkout --since 1h --level error
+agentcore project log harness
+agentcore project log harness --name support --target production
+agentcore project log harness --name support --since 1h --level error
 ```
 
-When the project declares exactly one Runtime, `--name` may be omitted. Use the
-imperative `agentcore runtime logs --id <runtimeId>` command when addressing a
-Runtime directly or working outside a project.
+When the project declares exactly one resource of the requested type, `--name`
+may be omitted. For Harnesses, the CLI also resolves the managed Harness to its
+underlying Runtime before reading CloudWatch. Use the imperative
+`agentcore runtime logs` or `agentcore harness logs` commands when addressing a
+physical resource directly or working outside a project.
+
+### Inspect project traces
+
+Project tracing uses the same logical resource and deployment target
+resolution, then lists or downloads traces from the resolved Runtime's
+deployment region:
+
+```bash
+agentcore project traces runtime list
+agentcore project traces runtime list --name checkout --target production --since 30m
+agentcore project traces runtime get <traceId> --name checkout --output trace.json
+agentcore project traces harness list
+agentcore project traces harness list --name support --target production --since 30m
+agentcore project traces harness get <traceId> --name support --output trace.json
+```
+
+When the project declares exactly one resource of the requested type, `--name`
+may be omitted. For Harnesses, the CLI resolves the underlying Runtime before
+querying its traces. Use the imperative `agentcore runtime traces` or
+`agentcore harness traces` commands when addressing a physical resource
+directly or working outside a project.
+
+### Inspect AgentCore Payments
+
+The `payment` commands call the Payments control and data planes directly, with
+no project involved. This command family currently provides read-only inspection
+of existing managers, connectors, sessions, instruments, and payment credential
+providers. It does not create IAM roles or change provider credentials.
+
+Choose a manager from `manager list` and use its `paymentManagerId` below:
+
+```bash
+agentcore payment manager list --json
+MANAGER_ID='<paymentManagerId from manager list>'
+agentcore payment manager get --id "$MANAGER_ID"
+agentcore payment connector list --manager-id "$MANAGER_ID"
+```
+
+`--user-id` is the application user ID used when the session or instrument was
+created, not an IAM username or AWS profile. Session and instrument reads require
+it with IAM authentication; their lists return that user's resources, not every
+user's resources under the manager.
+
+```bash
+USER_ID='alice' # Use the application user ID associated with the resources.
+agentcore payment session list --manager-id "$MANAGER_ID" --user-id "$USER_ID"
+agentcore payment instrument list --manager-id "$MANAGER_ID" --user-id "$USER_ID"
+
+# Use paymentInstrumentId and paymentConnectorId from the same instrument list item.
+INSTRUMENT_ID='<paymentInstrumentId>'
+CONNECTOR_ID='<paymentConnectorId>'
+agentcore payment instrument get --manager-id "$MANAGER_ID" \
+  --instrument-id "$INSTRUMENT_ID" --user-id "$USER_ID"
+agentcore payment instrument balance --manager-id "$MANAGER_ID" \
+  --connector-id "$CONNECTOR_ID" --instrument-id "$INSTRUMENT_ID" \
+  --user-id "$USER_ID" --chain BASE_SEPOLIA
+```
+
+To inspect connector or credential provider metadata:
+
+```bash
+agentcore payment connector get --manager-id "$MANAGER_ID" --connector-id "$CONNECTOR_ID"
+agentcore identity payment-credential-provider list --json
+agentcore identity payment-credential-provider get --name '<provider name>'
+```
+
+The optional `--agent-name` on session and instrument reads labels the request for
+observability. It does not select an AgentCore agent or filter the results.
+
+`instrument get` returns instrument metadata without querying balances. `balance`
+requires an explicit chain and defaults to `--token USDC`; wallet network families
+such as ETHEREUM do not identify whether to query mainnet or a testnet. The JSON
+response retains the raw atomic amount string and decimals. A service error is
+reported as an error, never converted to a zero balance.
+
+Data-plane commands work against managers that use the `AWS_IAM` authorizer.
+The CLI resolves `--manager-id` through `GetPaymentManager` in the configured
+region, then supplies the returned ARN to the data-plane API. Callers need
+`bedrock-agentcore:GetPaymentManager` as well as the relevant data-plane action.
+Region resolution follows the other imperative commands: `--region`, environment
+variables, the active AWS profile, then the CLI default.
+A `CUSTOM_JWT` manager accepts only bearer tokens on its data plane, which
+these commands do not send yet; the CLI reports that limitation before calling
+the data plane.
 
 ### Examples
 
@@ -280,6 +444,13 @@ agentcore runtime logs --id <runtimeId> --since 2026-08-30T12:00:00Z --until now
 # List recent traces (they take 2-3 minutes to appear), then download one
 agentcore runtime traces list --id <runtimeId> --since 30m
 agentcore runtime traces get <traceId> --id <runtimeId> --output trace.json
+
+# Resolve project resources by logical name and deployment target
+agentcore project log harness --name support --target production --since 1h
+agentcore project traces runtime list --name checkout --target production --since 30m
+agentcore project traces runtime get <traceId> --name checkout --output trace.json
+agentcore project traces harness list --name support --target production --since 30m
+agentcore project traces harness get <traceId> --name support --output trace.json
 
 # Inspect AgentCore Memories without project configuration or deployment
 agentcore memory get --id <memoryId>
@@ -359,6 +530,55 @@ Source-aware values: any field flag documented as such accepts the value inline,
 `file://<path>` to read it from a file, or `-` to read it from stdin (the AWS CLI
 `file://` convention). A command reads stdin from at most one flag. For example,
 `--instructions file://order-quality.txt` or `--instructions -`.
+
+Project credentials: a `credentials[]` entry in `agentcore.json` is named by its
+spec name and keeps its secret in `agentcore/.env.local` under
+`AGENTCORE_CREDENTIAL_<NAME>` (with a field suffix for OAuth2 and payment
+values). `project deploy` provisions the Identity credential provider before
+synth under the name `<project>_<target>_<credential>`, so two targets in one
+account and region get separate providers, and records its ARN in
+`deployed-state.json` under the spec name. A credential removed from the spec
+has its provider deleted on the next deploy of each target, after the stack
+update. Tearing a target down (deploying a spec with nothing left to deploy,
+which is where `project remove all` leads) deletes every provider the target
+owns: API key, OAuth2 and payment. CLI versions before this change named providers by the bare credential name. Those
+providers stay in the account after an upgrade, untouched by deploys and
+teardowns. Delete them with `agentcore identity api-key-credential-provider
+delete --name <credential>`, the `oauth2-credential-provider` equivalent, or
+`aws bedrock-agentcore-control delete-payment-credential-provider` once nothing
+else uses them.
+
+### Extending the CDK app
+
+`agentcore/cdk/` is a CDK app of two files. `bin/cdk.ts` reads the project once
+(`readAgentCoreProject`), makes one stack per deployment target
+(`resolveTargetStacks`) and turns `agentcore.json` into the application's props
+(`transformAgentCoreJson`) — all three come from `@aws/agentcore-cdk`, so how
+`agentcore.json` is interpreted changes with the library version, not with code
+on your disk. `lib/cdk-stack.ts` instantiates one `AgentCoreApplication`; it is
+the file you edit. Add your own resources after the application and wire them to
+a runtime or harness through the application's accessors: runtimes and harnesses
+implement `iam.IGrantable`, so any AWS L2 grant accepts them, and they expose
+`grantRead` / `grantWrite` / `grantReadWrite` (DynamoDB tables, S3 buckets,
+Secrets Manager secrets) and `addEnvironmentVariable`:
+
+```ts
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+
+const orders = new dynamodb.Table(this, "Orders", {
+  partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+});
+const checkout = this.application.runtime("checkout"); // or this.application.harness('support')
+checkout.grantReadWrite(orders);
+checkout.addEnvironmentVariable("ORDERS_TABLE", orders.tableName);
+orders.grantReadData(this.application.harness("support")); // any AWS L2 grant works too
+```
+
+Redeploy with `agentcore project deploy`. An unknown name fails at synth and lists
+the names that exist; a runtime or harness configured with an `executionRoleArn`
+warns at synth about every grant CDK could not attach to the imported role. Note
+that `agentcore project status` reports only the resources `agentcore.json`
+declares, not the ones you add in the stack.
 
 ### Invoke a Gateway
 
@@ -985,8 +1205,10 @@ npm i -g ./aws-agentcore-0.28.1.tgz
   output while text is selected (the title bar shows `Select`). Press `Esc`.
   Windows Terminal does not do this.
 - **`project create` refuses a long path**: Windows caps paths at 260 characters
-  unless `LongPathsEnabled` is set, and the CDK app's `node_modules` needs about
-  100 of them. Create the project higher in the tree or enable long paths.
+  unless `LongPathsEnabled` is set, and the CDK app's `node_modules` puts its
+  deepest file 155 characters below the project root (aws-cdk-lib's own shipped
+  fixtures), so the project root must be at most 104 characters. Create the
+  project higher in the tree or enable long paths.
 
 # Build
 

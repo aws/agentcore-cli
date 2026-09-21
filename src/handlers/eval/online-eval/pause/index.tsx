@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
-import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
@@ -9,10 +8,8 @@ export const createPauseOnlineEvalHandler = (core: Core) =>
   createHandler({
     name: "pause",
     description: "pause an online evaluation config",
-    flags: [flag("id", "the ID of the online evaluation config to pause", z.string().optional())],
+    flags: [flag("id", "the ID of the online evaluation config to pause", z.string().min(1))],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
-
       ctx
         .require(JsonRendererKey)
         .renderJson(

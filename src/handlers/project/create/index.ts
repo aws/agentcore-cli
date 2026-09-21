@@ -17,6 +17,7 @@ import {
   type ScaffoldHarnessInput,
 } from "../types";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
+import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
   HarnessModelProviderSchema,
   HarnessSpecSchema,
@@ -50,10 +51,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     description: "create a new AgentCore project",
     middlewares: config.middlewares,
     flags: [
-      // Optional at the flag layer (and enforced in handle) so a bare
-      // interactive `project create` reaches the TUI wizard middleware instead
-      // of dying on Commander's mandatory-option check.
-      flag("name", "name of the project to create", ProjectNameSchema.optional()),
+      flag("name", "name of the project to create", ProjectNameSchema),
       flag(
         "template",
         "the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key",
@@ -79,9 +77,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     ],
     handle: async (ctx, flags) => {
       const name = flags["name"];
-      if (name === undefined) {
-        throw new InputValidationError("required option '--name <name>' not specified");
-      }
       if (!flags["skip-install"]) {
         assertProjectPathFits(name, ctx.require(PlatformKey), {
           alternative: "pass --skip-install and install the CDK dependencies yourself",
@@ -168,10 +163,6 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
   const provider = resolveHarnessModelProvider(flags["model-provider"]);
 
   const input: ScaffoldHarnessInput = {
-    // CFN's HarnessName is `${projectName}_${harnessName}` capped at 40 chars.
-    // Defaulting the harness to the project name doubles the string, so when
-    // the doubled form would exceed the CFN cap we truncate the harness half
-    // and append a 5-char hash to keep the derived name short and unique.
     name: defaultHarnessNameFor(flags["name"]),
     model: {
       provider,
@@ -187,17 +178,14 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
   return input;
 }
 
-// CloudFormation limits HarnessName to 40 characters. The synth step joins the
-// project name and the harness name with an underscore. The default harness
-// name is the project name. If the project name is 19 characters or less, the
-// joined name fits. If the project name is longer, this function shortens the
-// harness name so that the joined name is 40 characters. The shortened name
-// ends with a 5-character hash of the project name.
+/**
+ The deployed `<project>_default_<harness>` must fit CloudFormation's 40-character HarnessName cap, so a project name over 15 characters gets a truncated harness name ending in a 5-character hash.
+**/
 function defaultHarnessNameFor(projectName: string): string {
-  if (projectName.length <= 19) return projectName;
+  const budget = 40 - `_${DEFAULT_TARGET_NAME}_`.length;
+  if (projectName.length * 2 <= budget) return projectName;
   const hash = createHash("sha256").update(projectName).digest("hex").slice(0, 5);
-  const prefixLen = 40 - projectName.length - 1 - 6;
-  return `${projectName.slice(0, prefixLen)}_${hash}`;
+  return `${projectName.slice(0, budget - projectName.length - 6)}_${hash}`;
 }
 
 // Runtimes and harnesses support different model sets and record them under

@@ -1,5 +1,4 @@
 import z from "zod";
-import { InputValidationError } from "../../../errors";
 import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import type { Core } from "../../types";
@@ -12,14 +11,10 @@ export const createGetMemoryHandler = (core: Core) =>
     name: "get",
     description: "get an AgentCore Memory",
     flags: [
-      flag("id", "the ID of the Memory", z.string().optional()),
+      flag("id", "the ID of the Memory", z.string().min(1)),
       flag("view", "response view", z.enum(MEMORY_VIEWS).optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-
       ctx
         .require(JsonRendererKey)
         .renderJson(

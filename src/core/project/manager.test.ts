@@ -206,6 +206,21 @@ describe("FsProjectManager.create", () => {
     expect(spec.memories).toMatchObject([{ name: "a2a_python_strandsMemory" }]);
   });
 
+  test("renders the Strands memory session reading the deploy-injected memory id", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+    });
+
+    const session = await Bun.file(
+      join(directory, "example", "app", "agent_python_strands", "memory", "session.py"),
+    ).text();
+    expect(session).toContain(
+      'MEMORY_ID = os.getenv("AGENTCORE_MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")',
+    );
+  });
+
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
@@ -848,11 +863,11 @@ describe("FsProjectManager.deploy", () => {
     const subject = deployManager();
     const project = await projectWithTargets(root, undefined);
 
-    const attempt = deploy(subject.manager, project, "default", { region: "us-west-1" });
+    const attempt = deploy(subject.manager, project, "default", { region: "af-south-1" });
 
-    await expect(attempt).rejects.toThrow(/'us-west-1' is not an AgentCore-supported region/);
+    await expect(attempt).rejects.toThrow(/'af-south-1' is not an AgentCore-supported region/);
     await expect(
-      deploy(subject.manager, project, "default", { region: "us-west-1" }),
+      deploy(subject.manager, project, "default", { region: "af-south-1" }),
     ).rejects.toThrow(/Supported regions: .*us-east-1.*Re-run with --region/s);
     expect(subject.calls).toEqual([]);
     expect(subject.accountCalls).toEqual([]);

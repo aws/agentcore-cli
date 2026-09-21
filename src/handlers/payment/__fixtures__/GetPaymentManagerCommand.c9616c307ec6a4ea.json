@@ -1,0 +1,17 @@
+{
+  "paymentManagerArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:payment-manager/mypaymentmanageraidandal-gx3nxzaira",
+  "paymentManagerId": "mypaymentmanageraidandal-gx3nxzaira",
+  "name": "MyPaymentManagerAidandal",
+  "authorizerType": "AWS_IAM",
+  "roleArn": "arn:aws:iam::603141041947:role/AgentCore-PayBash-default-PaymentMyPaymentManagerAi-gyKcmOGL9YyA",
+  "createdAt": {
+    "$date": "2026-06-08T18:11:41.129Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-06-08T18:11:41.129Z"
+  },
+  "status": "READY",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-west-2:603141041947:workload-identity-directory/default/workload-identity/mypaymentmanageraidandal-gx3nxzaira"
+  }
+}

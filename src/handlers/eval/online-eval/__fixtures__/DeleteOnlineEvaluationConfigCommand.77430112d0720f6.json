@@ -1,5 +1,0 @@
-{
-  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_kms-bG4DUW3Ua5",
-  "onlineEvaluationConfigId": "agentcore_cli_online_eval_kms-bG4DUW3Ua5",
-  "status": "DELETING"
-}

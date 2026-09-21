@@ -16,7 +16,7 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
     name: "gateway-connector",
     description: "add a connector-backed Target to a project Gateway",
     flags: [
-      flag("gateway", "name of the parent Gateway in this project", z.string().optional()),
+      flag("gateway", "name of the parent Gateway in this project", z.string().min(1)),
       flag("name", "the Target name for a connector shortcut", z.string().optional()),
       flag(
         "connector",
@@ -35,9 +35,6 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags.gateway) {
-        throw new InputValidationError("required option '--gateway <gateway>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["connector", "connector-configuration"], {
         exactlyOne: true,
       });

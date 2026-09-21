@@ -16,7 +16,7 @@ export const sourceFlag = flag(
   "source",
   "dataset examples: a JSONL file (file://<path>), an S3 JSONL object (s3://<bucket>/<key>), " +
     "or - for stdin",
-  z.string().optional(),
+  z.string().min(1),
 );
 
 // resolveDatasetSource turns the single --source value into the API's

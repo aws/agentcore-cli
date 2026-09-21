@@ -31,6 +31,27 @@ describe("project custom validation", () => {
     }
   });
 
+  it("accepts toolRuntimes and rejects the old mcpRuntimeTools key", () => {
+    const toolRuntime = {
+      name: "search",
+      toolDefinition: {
+        name: "search",
+        description: "Search the catalog",
+        inputSchema: { type: "object" },
+      },
+      compute: {
+        host: "AgentCoreRuntime",
+        implementation: { language: "Python", path: "tools", handler: "handler.main" },
+      },
+    };
+    expect(
+      ProjectSpecSchema.safeParse({ ...minimalProject, toolRuntimes: [toolRuntime] }).success,
+    ).toBe(true);
+    expect(
+      ProjectSpecSchema.safeParse({ ...minimalProject, mcpRuntimeTools: [toolRuntime] }).success,
+    ).toBe(false);
+  });
+
   it("validates online evaluation agent and evaluator references", () => {
     const result = ProjectSpecSchema.safeParse({
       ...minimalProject,

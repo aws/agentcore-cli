@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { AgentCoreCLIError, InputValidationError } from "../errors";
 import { DefaultTelemetryClient } from "../telemetry";
-import { createSilentLogger, TestGlobalConfigAccessor } from "../testing";
+import { createSilentLogger, expectError, TestGlobalConfigAccessor } from "../testing";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -374,8 +374,10 @@ test("a required (non-optional) flag is mandatory", async () => {
 
   const cmd = exitOverrideAll(compile(root, ValueContext.EmptyContext()));
 
-  await expect(cmd.parseAsync(["node", "app", "get"])).rejects.toThrow(
-    "required option '--harness-id <harness-id>' not specified",
+  await expectError(
+    cmd.parseAsync(["node", "app", "get"]),
+    "required option '--harness-id' not specified",
+    InputValidationError,
   );
 });
 
@@ -891,6 +893,44 @@ test("--version on a versioned router prints the version and maps to exit 0", as
   );
   expect(error).toMatchObject({ code: "commander.version", message: "9.9.9" });
   expect(AgentCoreCLIError.fromError(error).exitCode).toBe(0);
+});
+
+test("a versioned router declares --version in root help and still lists subcommands by name", async () => {
+  const root = new Router("agentcore").version("9.9.9");
+  root.handler(
+    createHandler({
+      name: "feedback",
+      description: "",
+      flags: [flag("verbose", "v", z.boolean())],
+      handle: async () => {},
+    }),
+  );
+
+  const out = await helpOutput(root, ["agentcore", "--help"]);
+
+  expect(out).toContain("-V, --version");
+  expect(out).toContain("display the CLI version");
+  expect(out).toMatch(/^ {2}feedback\b/m);
+  expect(out).not.toContain("feedback [options]");
+});
+
+test("a versioned router does not shadow a nested --version option", async () => {
+  let receivedVersion: string | undefined;
+  const get = createHandler({
+    name: "get",
+    description: "",
+    flags: [flag("version", "nested version", z.string().optional())],
+    handle: async (_ctx, flags) => {
+      receivedVersion = flags["version"];
+    },
+  });
+  const versions = new Router("version").handler(get);
+  const harness = new Router("harness").handler(versions);
+  const root = new Router("agentcore").version("9.9.9").handler(harness);
+
+  await root.route(["node", "agentcore", "harness", "version", "get", "--version", "7"]);
+
+  expect(receivedVersion).toBe("7");
 });
 
 test("--version is an unknown option on a router without a version", async () => {

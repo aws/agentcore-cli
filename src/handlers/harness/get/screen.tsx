@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import type { Harness, HarnessTool } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ScreenProps } from "../../types";
-import { useCoreOpts } from "../../utils";
+import { coreOptsFromCtx } from "../../utils";
 import {
   credentialProviderTypeFromArn,
   parseArn,
@@ -232,10 +232,10 @@ function flattenLinks(links: HarnessLink[], depth = 0): { link: HarnessLink; dep
 }
 
 // buildHarnessLinkNodes maps a GetHarness response to the rows of the hub's
-// Linked Resources tree. Each row with a detail screen links there with
-// ?region= taken from the resource's own ARN, so it opens where it lives (see
-// useCoreOpts); `fallbackRegion` — the region the harness itself was fetched
-// in — covers ARNs without one. Rows without a detail screen carry a hint.
+// Linked Resources tree. Each row with a detail screen links there in the
+// region of the resource's own ARN, so it opens where it lives (see
+// usePinRegion). `fallbackRegion`, the region the harness itself was fetched
+// in, covers ARNs without one. Rows without a detail screen carry a hint.
 export function buildHarnessLinkNodes(
   harness: Harness,
   fallbackRegion: string,
@@ -258,7 +258,7 @@ export function buildHarnessLinkNodes(
       annotation: link.annotation,
       ...(children?.length ? { defaultExpanded: true, children } : {}),
       data: link.route
-        ? { route: `${link.route}?region=${encodeURIComponent(region)}` }
+        ? { route: link.route, region }
         : { hint: `${link.type} ${link.name} has no detail view.` },
     };
   };
@@ -267,10 +267,9 @@ export function buildHarnessLinkNodes(
 }
 
 // The harness ID comes from the `:harnessId` route path value; the fetch
-// honours a ?region= link (see useCoreOpts) and reports the region it used so
-// the linked rows can fall back to it.
+// reports the region it used so the linked rows can fall back to it.
 function useHarnessDetail({ ctx, core }: ScreenProps, harnessId: string | undefined) {
-  const opts = useCoreOpts(ctx);
+  const opts = coreOptsFromCtx(ctx);
   const query = useQuery({
     queryKey: ["harness", opts.region, harnessId],
     queryFn: () => core.harness.getHarness(harnessId!, opts),

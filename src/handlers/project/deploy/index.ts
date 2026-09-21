@@ -129,7 +129,7 @@ export function declaresNothingDeployable(project: Project): boolean {
     spec.configBundles,
     spec.abTests,
     spec.harnesses,
-    spec.mcpRuntimeTools ?? [],
+    spec.toolRuntimes ?? [],
     spec.unassignedTargets ?? [],
     spec.datasets ?? [],
     spec.payments ?? [],

@@ -5,9 +5,24 @@ import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
-import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import {
+  assertMutuallyExclusiveFlags,
+  coreOptsFromCtx,
+  parseJsonFlag,
+  parseJsonFlagWithSchema,
+} from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
+import { OnlineEvalOutputConfigFlag } from "../outputConfig";
+import { TagsSchema } from "../../../../projectSchemas/tags";
+
+const tagsHelp = `(JSON: map of string to string)
+Tags applied to the online evaluation configuration.
+
+Accepts inline JSON, file://<path>, or - to read stdin.
+
+Example:
+  --tags '{"team":"ml-platform","env":"prod"}'`;
 
 const CONFIGURATION = "Configuration:";
 const SESSION_SOURCE = "Session source (choose exactly one):";
@@ -18,7 +33,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
     name: "create",
     description: "create an online evaluation config",
     flags: [
-      flag("name", "the name of the online evaluation config", z.string().optional(), {
+      flag("name", "the name of the online evaluation config", z.string().min(1), {
         group: CONFIGURATION,
       }),
       flag(
@@ -35,6 +50,10 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.enum(["true", "false"]).optional(),
         { group: CONFIGURATION },
       ),
+      flag("tags", "resource tags (JSON object of key/value strings)", z.string().optional(), {
+        group: CONFIGURATION,
+        help: tagsHelp,
+      }),
       flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional(), {
         group: SESSION_SOURCE,
       }),
@@ -50,13 +69,13 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
         { group: SESSION_SOURCE },
       ),
-      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).optional(), {
+      flag("evaluators", "the ID(s) of the evaluators to apply", z.array(z.string()).min(1), {
         group: EVALUATION,
       }),
       flag(
         "sampling-rate",
         "percentage of sessions to sample (0.01-100)",
-        z.number().min(0.01).max(100).optional(),
+        z.number().min(0.01).max(100),
         { group: EVALUATION },
       ),
       flag(
@@ -69,6 +88,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         group: EVALUATION,
         help: filtersHelp,
       }),
+      ...OnlineEvalOutputConfigFlag.flags,
       flag(
         "role-arn",
         "IAM role the online evaluation assumes (default auto-provisioned)",
@@ -77,19 +97,6 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["name"])
-        throw new InputValidationError("required option '--name <name>' not specified");
-      if (!flags["sampling-rate"]) {
-        throw new InputValidationError(
-          "required option '--sampling-rate <sampling-rate>' not specified",
-        );
-      }
-      if (!flags["evaluators"] || flags["evaluators"].length === 0) {
-        throw new InputValidationError(
-          "required option '--evaluators <evaluators...>' not specified",
-        );
-      }
-
       assertMutuallyExclusiveFlags(flags, ["agent", "data-source-config"], { exactlyOne: true });
       const hasAgent = flags["agent"] !== undefined;
       const hasDataSource = flags["data-source-config"] !== undefined;
@@ -97,10 +104,21 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("'--endpoint' can only be used with '--agent'");
       }
 
+      // One resolver shared across every stdin-capable flag (--tags, --filters,
+      // --data-source-config, --output-config) so a second `-` is rejected
+      // rather than reading empty after the first drains stdin.
       const source = new SourceResolver({ stdin: io.stdin });
+      const outputConfig = await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], source);
+      const tags = parseJsonFlagWithSchema(
+        "tags",
+        await source.resolveText("tags", flags["tags"]),
+        TagsSchema,
+      );
       const common = {
         name: flags["name"],
         description: flags["description"],
+        tags,
+        outputConfig,
         samplingRate: flags["sampling-rate"],
         sessionTimeoutMinutes: flags["session-timeout-minutes"],
         filters: parseJsonFlag<Filter[]>(

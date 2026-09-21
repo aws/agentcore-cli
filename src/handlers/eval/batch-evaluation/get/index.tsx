@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
-import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { warn, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
@@ -13,7 +12,7 @@ export const createGetBatchEvaluationHandler = (core: Core, io: AppIO) =>
     name: "get",
     description: "get a batch evaluation by ID, with CloudWatch-backed results when available",
     flags: [
-      flag("id", "the ID of the batch evaluation", z.string().optional()),
+      flag("id", "the ID of the batch evaluation", z.string().min(1)),
       flag(
         "disable-cw-results",
         "skip CloudWatch result retrieval and return only service-side job metadata",
@@ -22,7 +21,6 @@ export const createGetBatchEvaluationHandler = (core: Core, io: AppIO) =>
     ],
     handle: async (ctx, flags) => {
       const id = flags["id"];
-      if (!id) throw new InputValidationError("required option '--id <id>' not specified");
       const opts = coreOptsFromCtx(ctx);
 
       // Core fetches the job and (unless --disable-cw-results) merges the

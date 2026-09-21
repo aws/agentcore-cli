@@ -22,7 +22,7 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
     name: "invoke",
     description: "invoke a Runtime",
     flags: [
-      flag("id", "the ID of the Runtime", runtimeIdSchema.optional()),
+      flag("id", "the ID of the Runtime", runtimeIdSchema),
       flag("payload", "the inline payload to send", z.string().optional(), {
         sensitive: true,
       }),
@@ -52,11 +52,6 @@ export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (flags.id === undefined) {
-        throw new InputValidationError("required option '--id <id>' not specified", {
-          exitCode: ExitCode.USAGE,
-        });
-      }
       if (flags.payload === undefined) {
         const hasHeadlessOnlyFlag = Object.entries(flags).some(
           ([name, value]) =>

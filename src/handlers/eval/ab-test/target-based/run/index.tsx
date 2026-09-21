@@ -29,17 +29,17 @@ export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
     name: "run",
     description: "run an A/B test between two Gateway Targets and their online evaluations",
     flags: [
-      flag("name", "the A/B test name", z.string().optional()),
-      flag("gateway", "deployed Gateway ID", z.string().optional()),
+      flag("name", "the A/B test name", z.string().min(1)),
+      flag("gateway", "deployed Gateway ID", z.string().min(1)),
       flag(
         "control",
         'control JSON {"gateway-target":"<name>","online-eval":"<id>"} (inline, file://, or -)',
-        z.string().optional(),
+        z.string().min(1),
       ),
       flag(
         "treatment",
         'treatment JSON {"gateway-target":"<name>","online-eval":"<id>"} (inline, file://, or -)',
-        z.string().optional(),
+        z.string().min(1),
       ),
       flag(
         "treatment-weight",
@@ -59,11 +59,6 @@ export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      const required = ["name", "gateway", "control", "treatment"] as const;
-      for (const f of required) {
-        if (!flags[f]) throw new InputValidationError(`required option '--${f}' not specified`);
-      }
-
       const source = new SourceResolver({ stdin: io.stdin });
       const controlRaw = parseJsonFlag<unknown>(
         "control",

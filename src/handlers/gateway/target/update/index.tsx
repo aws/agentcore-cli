@@ -23,8 +23,8 @@ export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
     name: "update",
     description: "update a Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("target-id", "the Target ID", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().min(1)),
+      flag("target-id", "the Target ID", z.string().min(1)),
       flag("name", "updated Target name", z.string().optional()),
       flag("description", "updated Target description", z.string().optional()),
       flag("endpoint", "updated endpoint for an existing MCP server Target", z.string().optional()),
@@ -54,13 +54,6 @@ export const createUpdateGatewayTargetHandler = (core: Core, io: AppIO) =>
       flag("clear-private-endpoint", "remove private endpoint configuration", z.boolean()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
-      if (!flags["target-id"]) {
-        throw new InputValidationError("required option '--target-id <target-id>' not specified");
-      }
-
       assertMutuallyExclusiveFlags(flags, ["description", "clear-description"]);
       assertMutuallyExclusiveFlags(flags, [
         "credential-provider-configurations",

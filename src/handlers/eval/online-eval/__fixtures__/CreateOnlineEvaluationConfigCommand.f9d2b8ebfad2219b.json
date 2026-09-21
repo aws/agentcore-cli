@@ -1,0 +1,12 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_fixture-5gZw987afd",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_fixture-5gZw987afd",
+  "createdAt": {
+    "$date": "2026-09-15T15:11:21.000Z"
+  },
+  "status": "CREATING",
+  "executionStatus": "DISABLED",
+  "outputConfig": {
+    "cloudWatchConfig": {}
+  }
+}

@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
-import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { withUserCancellation } from "../../../../runnable";
 import type { Core } from "../../../types";
@@ -11,7 +10,7 @@ export const createGetDatasetHandler = (core: Core) =>
     name: "get",
     description: "get a dataset's metadata, optionally downloading its examples",
     flags: [
-      flag("id", "the ID of the dataset", z.string().optional()),
+      flag("id", "the ID of the dataset", z.string().min(1)),
       flag(
         "version",
         "the version to retrieve (DRAFT or a version number, default DRAFT)",
@@ -24,7 +23,6 @@ export const createGetDatasetHandler = (core: Core) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
       const datasetId = flags["id"];
 
       const filePath = flags["file-path"];

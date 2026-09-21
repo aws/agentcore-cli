@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createSilentLogger,
+  expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
   waitFor,
 } from "../../../testing";
-import { UserCancellationError } from "../../../errors";
+import { UserCancellationError, InputValidationError } from "../../../errors";
 import { createRootHandler } from "../../index";
 import type { CreateDatasetInput } from "../types";
 
@@ -110,8 +111,10 @@ describe("eval dataset command hierarchy", () => {
   test("runs normal validation for a bare CLI-only dataset command", async () => {
     const { route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "update"])).rejects.toThrow(
-      "required option '--id <id>' not specified",
+    await expectError(
+      route(["eval", "dataset", "update"]),
+      "required option '--id' not specified",
+      InputValidationError,
     );
   });
 });
@@ -262,7 +265,7 @@ describe("dataset create", () => {
         "predefined",
       ]);
 
-      await expect(promise).rejects.toThrow(/--name/);
+      await expectError(promise, /--name/, InputValidationError);
       expect(core.eval.calls).toHaveLength(0);
     });
 
@@ -281,7 +284,7 @@ describe("dataset create", () => {
         "predefined",
       ]);
 
-      await expect(promise).rejects.toThrow(/--source/);
+      await expectError(promise, /--source/, InputValidationError);
       expect(core.eval.calls).toHaveLength(0);
     });
 
@@ -300,7 +303,7 @@ describe("dataset create", () => {
         `file://${path()}`,
       ]);
 
-      await expect(promise).rejects.toThrow(/--schema-type/);
+      await expectError(promise, /--schema-type/, InputValidationError);
       expect(core.eval.calls).toHaveLength(0);
     });
 
@@ -482,7 +485,7 @@ describe("dataset get", () => {
   test("requires --id", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "get", "--json"])).rejects.toThrow(/--id/);
+    await expectError(route(["eval", "dataset", "get", "--json"]), /--id/, InputValidationError);
     expect(core.eval.calls).toHaveLength(0);
   });
 });
@@ -564,7 +567,7 @@ describe("dataset delete", () => {
   test("requires --id", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "delete", "--json"])).rejects.toThrow(/--id/);
+    await expectError(route(["eval", "dataset", "delete", "--json"]), /--id/, InputValidationError);
     expect(core.eval.calls).toHaveLength(0);
   });
 });
@@ -613,7 +616,11 @@ describe("dataset publish", () => {
   test("requires --id", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "publish", "--json"])).rejects.toThrow(/--id/);
+    await expectError(
+      route(["eval", "dataset", "publish", "--json"]),
+      /--id/,
+      InputValidationError,
+    );
     expect(core.eval.calls).toHaveLength(0);
   });
 });
@@ -715,16 +722,22 @@ describe("dataset update", () => {
     const path = writeTempJsonl(EXAMPLE_A);
     const { core, route } = testDatasetCommand();
 
-    await expect(route(["eval", "dataset", "update", "--file-path", path])).rejects.toThrow(/--id/);
+    await expectError(
+      route(["eval", "dataset", "update", "--file-path", path]),
+      /--id/,
+      InputValidationError,
+    );
     expect(core.eval.calls).toHaveLength(0);
   });
 
   test("requires --file-path", async () => {
     const { core, route } = testDatasetCommand();
 
-    await expect(
+    await expectError(
       route(["eval", "dataset", "update", "--id", "dataset-orders-abc123"]),
-    ).rejects.toThrow(/--file-path/);
+      /--file-path/,
+      InputValidationError,
+    );
     expect(core.eval.calls).toHaveLength(0);
   });
 });

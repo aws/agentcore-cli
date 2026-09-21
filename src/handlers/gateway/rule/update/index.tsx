@@ -13,8 +13,8 @@ export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
     name: "update",
     description: "update a Gateway Rule",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("rule-id", "the Rule ID", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().min(1)),
+      flag("rule-id", "the Rule ID", z.string().min(1)),
       flag(
         "priority",
         "updated priority from 1 to 1000000",
@@ -34,12 +34,6 @@ export const createUpdateGatewayRuleHandler = (core: Core, io: AppIO) =>
       flag("description", "updated Rule description", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
-      if (!flags["rule-id"]) {
-        throw new InputValidationError("required option '--rule-id <rule-id>' not specified");
-      }
       assertMutuallyExclusiveFlags(flags, ["conditions", "clear-conditions"]);
       if (flags.description === "") {
         throw new InputValidationError("Rule description cannot be empty or cleared");

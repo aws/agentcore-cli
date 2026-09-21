@@ -10,7 +10,6 @@
     "dev": "tsx watch main.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "~1.25.2",
     "@opentelemetry/api": "~1.9.0",
     "@strands-agents/sdk": "~1.5.0",
     "bedrock-agentcore": "~0.3.0",

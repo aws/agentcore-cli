@@ -1,0 +1,43 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-west-2:725476964917:online-evaluation-config/agentcore_cli_online_eval_kms-15ciiv2UoV",
+  "onlineEvaluationConfigId": "agentcore_cli_online_eval_kms-15ciiv2UoV",
+  "onlineEvaluationConfigName": "agentcore_cli_online_eval_kms",
+  "rule": {
+    "samplingConfig": {
+      "samplingPercentage": 10
+    }
+  },
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "testAgent_Agent.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/runtimes/testAgent_Agent-wm9hYBD93Y-DEFAULT"
+      ]
+    }
+  },
+  "status": "ACTIVE",
+  "executionStatus": "DISABLED",
+  "createdAt": {
+    "$date": "2026-09-15T15:11:30.185Z"
+  },
+  "updatedAt": {
+    "$date": "2026-09-15T15:11:30.386Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    },
+    {
+      "evaluatorId": "Builtin.Correctness"
+    }
+  ],
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/agentcore_cli_online_eval_kms-15ciiv2UoV",
+      "resultDestination": "DEDICATED_LOG_GROUP"
+    }
+  },
+  "evaluationExecutionRoleArn": "arn:aws:iam::725476964917:role/AgentCoreOnlineEval-agentcore_cli_online_eval_kms"
+}

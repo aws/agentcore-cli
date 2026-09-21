@@ -69,9 +69,7 @@ function validateFlag(flag: Flag, opts: Record<string, unknown>): unknown {
   const result = flag.schema.safeParse(coerce(flag.schema, raw));
   if (!result.success) {
     if (raw === undefined) {
-      throw new InputValidationError(
-        `required option '--${flag.name} <${flag.name}>' not specified`,
-      );
+      throw new InputValidationError(`required option '--${flag.name}' not specified`);
     }
     throw new InputValidationError(
       `Invalid value for option '--${flag.name}': ${formatZodError(result.error)}`,

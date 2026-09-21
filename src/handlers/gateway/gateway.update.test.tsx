@@ -22,6 +22,7 @@ import { CoreClient } from "../../core";
 import { createControlClient, createIamClient } from "../../core/factories";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   isRecording,
   matchGolden,
@@ -30,6 +31,7 @@ import {
   testIO,
 } from "../../testing";
 import { createRootHandler } from "../index";
+import { InputValidationError } from "../../errors";
 
 async function runWithTestCore(args: string[]): Promise<TestCoreClient> {
   const core = new TestCoreClient();
@@ -127,7 +129,7 @@ describe("Gateway update validation", () => {
       /at least one/,
     ],
   ] as const)("rejects invalid %s input", async (_name, args, error) => {
-    await expect(runWithTestCore([...args])).rejects.toThrow(error);
+    await expectError(runWithTestCore([...args]), error, InputValidationError);
   });
 });
 

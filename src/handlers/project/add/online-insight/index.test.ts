@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createRootHandler } from "../../../index";
 import {
   createSilentLogger,
+  expectError,
   initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
@@ -184,10 +185,22 @@ describe("project add online-insight", () => {
     ).rejects.toBeInstanceOf(DeserializationError);
   });
 
-  test.each<[string, string[]]>([
-    ["missing --name", ["--agent", "a", "--insight", INSIGHT, "--sampling-rate", "10"]],
-    ["missing --sampling-rate", ["--name", "x", "--agent", "a", "--insight", INSIGHT]],
-    ["no --insight", ["--name", "x", "--agent", "a", "--sampling-rate", "10"]],
+  test.each<[string, string[], string?]>([
+    [
+      "missing --name",
+      ["--agent", "a", "--insight", INSIGHT, "--sampling-rate", "10"],
+      "required option '--name' not specified",
+    ],
+    [
+      "missing --sampling-rate",
+      ["--name", "x", "--agent", "a", "--insight", INSIGHT],
+      "required option '--sampling-rate' not specified",
+    ],
+    [
+      "no --insight",
+      ["--name", "x", "--agent", "a", "--sampling-rate", "10"],
+      "required option '--insight' not specified",
+    ],
     [
       "invalid insight id",
       ["--name", "x", "--agent", "a", "--insight", "NotAnInsight", "--sampling-rate", "10"],
@@ -237,11 +250,10 @@ describe("project add online-insight", () => {
         "10",
       ],
     ],
-  ])("%s", async (_label, flags) => {
+  ])("%s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
     cleanups.push(cleanup);
-    await expect(run(["add", "online-insight", ...flags])).rejects.toBeInstanceOf(
-      InputValidationError,
-    );
+    const promise = run(["add", "online-insight", ...flags]);
+    await expectError(promise, requiredMessage ?? /./, InputValidationError);
   });
 });

@@ -19,6 +19,7 @@ import { createAddProjectResourceHandler } from "./add";
 import { createExportProjectResourceHandler } from "./export";
 import { createProjectInvokeHandler } from "./invoke";
 import { createProjectLogHandler } from "./log";
+import { createProjectTracesHandler } from "./traces";
 
 type ProjectHandlerConfig = {
   core: Core;
@@ -39,6 +40,7 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
     "deploy",
     "status",
     "add",
+    "remove",
   );
 
   // Without a default, a bare `agentcore project` falls back to Commander's help
@@ -59,9 +61,14 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
   project.handler(createAddProjectResourceHandler(config, core));
   project.handler(createExportProjectResourceHandler({ projectManager, core, io }));
   project.handler(
-    withProject({ projectManager: config.projectManager })(
-      createRemoveProjectHandler({ projectManager: config.projectManager, io: config.io }),
-    ),
+    createRemoveProjectHandler({
+      projectManager: config.projectManager,
+      io: config.io,
+      middlewares: [
+        withProject({ projectManager: config.projectManager }),
+        withTuiWhenInteractive(core, io),
+      ],
+    }),
   );
   project.handler(
     withProject({ projectManager: config.projectManager })(
@@ -90,6 +97,7 @@ export function createProjectHandler({ core, io }: ProjectHandlerConfig): Router
   );
   project.handler(createProjectInvokeHandler(core, io));
   project.handler(createProjectLogHandler(core, io));
+  project.handler(createProjectTracesHandler(core, io));
   // A bare `agentcore project status` in an interactive session opens the TUI
   // linked-resources screen; any user-supplied flag, --json, or a non-TTY
   // invocation keeps the headless JSON report. withProject runs before the TUI

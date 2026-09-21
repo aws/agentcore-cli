@@ -1,0 +1,97 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`scaffolds valid YAML with inactive examples and a resolvable prompt 1`] = `
+"# Optional settings are shown with example values.
+
+name: assistant
+
+# Instructions come from system-prompt.md unless systemPrompt is set inline.
+# systemPrompt: You are a helpful assistant.
+
+# Model
+model:
+  provider: bedrock
+  modelId: example
+  # Output tokens per model call, rather than across the whole invocation.
+  # maxTokens: 4096
+
+# Tools
+# Code Interpreter and Browser use built-in resources when no ARN is specified.
+# awsIam uses the harness execution role, which must allow Gateway invocation.
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html
+# tools:
+#   - name: code_interpreter
+#     type: agentcore_code_interpreter
+#   - name: browser
+#     type: agentcore_browser
+#   - name: research
+#     type: remote_mcp
+#     config:
+#       remoteMcp:
+#         url: https://mcp.example.com/mcp
+#   - name: company_tools
+#     type: agentcore_gateway
+#     config:
+#       agentCoreGateway:
+#         gatewayArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway/example-1234567890
+#         outboundAuth:
+#           awsIam: {}
+
+# Tool patterns: @<server-name>/<tool-name> or @builtin.
+# This controls agent tool selection, not IAM permissions.
+# allowedTools:
+#   - "@builtin"
+#   - "@research/search"
+
+# Skill path sources refer to files already present in the runtime container.
+# skills:
+#   - s3Uri: s3://your-skills-bucket/skills/research/
+#   - gitUrl: https://github.com/your-org/agent-skills.git
+#     path: skills/research
+#   - path: /opt/skills/research
+
+# Memory
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html
+# Alternatives: existing (name or ARN), disabled.
+memory:
+  mode: managed
+  # Managed-memory settings. Absent values use service defaults.
+  # Event retention is in days.
+  # strategies:
+  #   - SEMANTIC
+  #   - SUMMARIZATION
+  # eventExpiryDuration: 30
+  # Existing-memory reference: project resource name or external ARN.
+  # name: ConversationMemory
+  # arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/example-1234567890
+
+# Execution limits apply per invocation, across all model calls.
+# maxIterations: 15
+# maxTokens: 20000
+# timeoutSeconds: 300
+
+# Truncation changes the context sent to the model, not the saved memory.
+# truncation:
+#   strategy: sliding_window
+#   config:
+#     slidingWindow:
+#       messagesCount: 40
+
+# dockerfile and containerUri are mutually exclusive. With neither set, the
+# service-provided environment is used. Dockerfile paths are relative to this directory.
+# dockerfile: Dockerfile
+# containerUri: 123456789012.dkr.ecr.us-west-2.amazonaws.com/my-harness:latest
+
+# Environment values are stored in plaintext.
+# environmentVariables:
+#   LOG_LEVEL: info
+
+# Deployment creates a role when executionRoleArn is absent.
+# executionRoleArn: arn:aws:iam::123456789012:role/MyHarnessRole
+
+# Tags
+# tags:
+#   team: support
+#   environment: development
+"
+`;

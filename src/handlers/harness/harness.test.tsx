@@ -4,12 +4,14 @@ import { CoreClient } from "../../core";
 import { createRootHandler } from "../index";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   isRecording,
   matchGolden,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../testing";
+import { InputValidationError } from "../../errors";
 
 // End-to-end command-flow tests for the `harness` subtree.
 //
@@ -76,10 +78,7 @@ describe("harness get", () => {
   });
 
   test("errors when --id is omitted (leaf requires it)", async () => {
-    // No id and no other flags would normally open the TUI, but withRegion adds
-    // no arg; the get leaf throws its own required-option error. Assert the flow
-    // surfaces it rather than printing output.
-    await expect(run(["harness", "get", "--id", ""])).rejects.toThrow(/--id/);
+    await expectError(run(["harness", "get", "--json"]), /--id/, InputValidationError);
   });
 });
 
@@ -109,7 +108,7 @@ describe("harness endpoint list", () => {
   });
 
   test("errors when --id is omitted (leaf requires it)", async () => {
-    await expect(run(["harness", "endpoint", "list", "--id", ""])).rejects.toThrow(/--id/);
+    await expectError(run(["harness", "endpoint", "list", "--json"]), /--id/, InputValidationError);
   });
 });
 
@@ -128,15 +127,19 @@ describe("harness endpoint get", () => {
   });
 
   test("errors when --id is omitted (leaf requires it)", async () => {
-    await expect(
-      run(["harness", "endpoint", "get", "--id", "", "--qualifier", "DEFAULT"]),
-    ).rejects.toThrow(/--id/);
+    await expectError(
+      run(["harness", "endpoint", "get", "--qualifier", "DEFAULT"]),
+      /--id/,
+      InputValidationError,
+    );
   });
 
   test("errors when --qualifier is omitted (leaf requires it)", async () => {
-    await expect(
-      run(["harness", "endpoint", "get", "--id", "MyPDXHarness-rhkXkAE1IS", "--qualifier", ""]),
-    ).rejects.toThrow(/--qualifier/);
+    await expectError(
+      run(["harness", "endpoint", "get", "--id", "MyPDXHarness-rhkXkAE1IS"]),
+      /--qualifier/,
+      InputValidationError,
+    );
   });
 });
 
@@ -153,7 +156,7 @@ describe("harness version list", () => {
   });
 
   test("errors when --id is omitted (leaf requires it)", async () => {
-    await expect(run(["harness", "version", "list", "--id", ""])).rejects.toThrow(/--id/);
+    await expectError(run(["harness", "version", "list", "--json"]), /--id/, InputValidationError);
   });
 });
 
@@ -172,52 +175,72 @@ describe("harness version get", () => {
   });
 
   test("errors when --id is omitted (leaf requires it)", async () => {
-    await expect(run(["harness", "version", "get", "--id", "", "--version", "1"])).rejects.toThrow(
+    await expectError(
+      run(["harness", "version", "get", "--version", "1"]),
       /--id/,
+      InputValidationError,
     );
   });
 
   test("errors when --version is omitted (leaf requires it)", async () => {
-    await expect(
-      run(["harness", "version", "get", "--id", "MyPDXHarness-rhkXkAE1IS", "--version", ""]),
-    ).rejects.toThrow(/--version/);
+    await expectError(
+      run(["harness", "version", "get", "--id", "MyPDXHarness-rhkXkAE1IS"]),
+      /--version/,
+      InputValidationError,
+    );
   });
 });
 
 describe("write command validation", () => {
-  // Each write leaf declares its identifying flags optional (so a bare
-  // invocation opens the TUI) but requires them at runtime.
   test("`harness create` errors when --name is omitted", async () => {
-    await expect(run(["harness", "create", "--name", ""])).rejects.toThrow(/--name/);
+    await expectError(run(["harness", "create", "--json"]), /--name/, InputValidationError);
   });
 
   test("`harness update` errors when --id is omitted", async () => {
-    await expect(run(["harness", "update", "--id", ""])).rejects.toThrow(/--id/);
+    await expectError(run(["harness", "update", "--json"]), /--id/, InputValidationError);
   });
 
   test("`harness delete` errors when --id is omitted", async () => {
-    await expect(run(["harness", "delete", "--id", ""])).rejects.toThrow(/--id/);
+    await expectError(run(["harness", "delete", "--json"]), /--id/, InputValidationError);
   });
 
   test("`harness endpoint create` errors when --id or --name is omitted", async () => {
-    await expect(run(["harness", "endpoint", "create", "--id", ""])).rejects.toThrow(/--id/);
-    await expect(
-      run(["harness", "endpoint", "create", "--id", "h-1", "--name", ""]),
-    ).rejects.toThrow(/--name/);
+    await expectError(
+      run(["harness", "endpoint", "create", "--name", "prod"]),
+      /--id/,
+      InputValidationError,
+    );
+    await expectError(
+      run(["harness", "endpoint", "create", "--id", "h-1"]),
+      /--name/,
+      InputValidationError,
+    );
   });
 
   test("`harness endpoint update` errors when --id or --qualifier is omitted", async () => {
-    await expect(run(["harness", "endpoint", "update", "--id", ""])).rejects.toThrow(/--id/);
-    await expect(
-      run(["harness", "endpoint", "update", "--id", "h-1", "--qualifier", ""]),
-    ).rejects.toThrow(/--qualifier/);
+    await expectError(
+      run(["harness", "endpoint", "update", "--qualifier", "DEFAULT"]),
+      /--id/,
+      InputValidationError,
+    );
+    await expectError(
+      run(["harness", "endpoint", "update", "--id", "h-1"]),
+      /--qualifier/,
+      InputValidationError,
+    );
   });
 
   test("`harness endpoint delete` errors when --id or --qualifier is omitted", async () => {
-    await expect(run(["harness", "endpoint", "delete", "--id", ""])).rejects.toThrow(/--id/);
-    await expect(
-      run(["harness", "endpoint", "delete", "--id", "h-1", "--qualifier", ""]),
-    ).rejects.toThrow(/--qualifier/);
+    await expectError(
+      run(["harness", "endpoint", "delete", "--qualifier", "DEFAULT"]),
+      /--id/,
+      InputValidationError,
+    );
+    await expectError(
+      run(["harness", "endpoint", "delete", "--id", "h-1"]),
+      /--qualifier/,
+      InputValidationError,
+    );
   });
 
   test("`harness create` rejects malformed JSON flags", async () => {

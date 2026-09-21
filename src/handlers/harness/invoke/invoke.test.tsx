@@ -7,10 +7,12 @@ import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-contr
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
+  expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
+import { InputValidationError } from "../../../errors";
 
 // Command-flow tests for `harness invoke`, driven through the real root handler
 // exactly as the CLI runs it. Unlike the get/list suites these use a
@@ -150,7 +152,7 @@ describe("harness invoke", () => {
   });
 
   test("errors when --id is omitted", async () => {
-    await expect(run(["harness", "invoke", "--prompt", "hi"])).rejects.toThrow(/--id/);
+    await expectError(run(["harness", "invoke", "--prompt", "hi"]), /--id/, InputValidationError);
   });
 
   // Without --prompt (and outside JSON mode) the handler opens the interactive

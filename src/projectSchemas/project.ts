@@ -3,8 +3,8 @@ import { ProjectRuntimeSchema } from "./runtime";
 import {
   AgentCoreGatewaySchema,
   AgentCoreGatewayTargetSchema,
-  AgentCoreMcpRuntimeToolSchema,
   REAL_KB_ID_PATTERN,
+  ToolRuntimeSchema,
 } from "./gateway";
 import { ABTestSchema } from "./ab-test";
 import { ConfigBundleSchema } from "./config-bundle";
@@ -65,10 +65,7 @@ export const ProjectSpecSchema = z
       .array(AgentCoreGatewaySchema)
       .default([])
       .superRefine(uniqueNames("gateway")),
-    mcpRuntimeTools: z
-      .array(AgentCoreMcpRuntimeToolSchema)
-      .optional()
-      .superRefine(uniqueNames("MCP runtime tool")),
+    toolRuntimes: z.array(ToolRuntimeSchema).optional().superRefine(uniqueNames("tool runtime")),
     unassignedTargets: z
       .array(AgentCoreGatewayTargetSchema)
       .optional()

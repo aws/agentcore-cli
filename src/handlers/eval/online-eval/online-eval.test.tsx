@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { CoreClient } from "../../../core";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   matchGolden,
   settle,
@@ -10,6 +11,7 @@ import {
   testIO,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
+import { InputValidationError } from "../../../errors";
 
 const REGION = "us-west-2";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -115,14 +117,21 @@ describe("eval online-eval command hierarchy", () => {
   );
 
   test("runs normal validation for a bare CLI-only command", async () => {
-    await expect(run(["eval", "online-eval", "create"])).rejects.toThrow(
-      "required option '--name <name>' not specified",
+    await expectError(
+      run(["eval", "online-eval", "create"]),
+      "required option '--name' not specified",
+      InputValidationError,
     );
   });
 });
 
 describe("online-eval CRUDL", () => {
   test("creates an online evaluation config from an agent", async () => {
+    // --output-config and --tags are carried by this recording so the request
+    // fixture (CreateOnlineEvaluationConfigCommand.*) is the assertion they reach
+    // the SDK unchanged, and the provisioned role's PutRolePolicy fixture proves
+    // the write scope widened to the destination. SOURCE_LOG_GROUP avoids creating
+    // a dedicated result group, keeping the recording residue-free.
     const stdout = await run([
       "eval",
       "online-eval",
@@ -139,6 +148,10 @@ describe("online-eval CRUDL", () => {
       "30",
       "--enable-on-create",
       "false",
+      "--output-config",
+      '{"cloudWatchConfig":{"resultDestination":"SOURCE_LOG_GROUP"}}',
+      "--tags",
+      '{"team":"agentcore-cli"}',
     ]);
 
     matchGolden(FIXTURES, "create.golden.json", stdout);
@@ -179,6 +192,8 @@ describe("online-eval CRUDL", () => {
   // update merges over the current config because UpdateOnlineEvaluationConfig
   // replaces the whole `rule`; this asserts the unset fields survive the round trip.
   test("updates only the sampling rate, preserving the session timeout", async () => {
+    // --description and --output-config ride along so the update request fixture
+    // asserts they reach the SDK; update never touches the execution role.
     const stdout = await run([
       "eval",
       "online-eval",
@@ -187,6 +202,10 @@ describe("online-eval CRUDL", () => {
       configId,
       "--sampling-rate",
       "25",
+      "--description",
+      "quality monitor for prod traffic",
+      "--output-config",
+      '{"cloudWatchConfig":{"resultDestination":"SOURCE_LOG_GROUP"}}',
     ]);
 
     matchGolden(FIXTURES, "update.golden.json", stdout);
@@ -326,6 +345,38 @@ describe("flag validation", () => {
     ).rejects.toThrow(/Invalid JSON for option '--data-source-config'/);
   });
 
+  const CREATE_BASE = [
+    "eval",
+    "online-eval",
+    "create",
+    "--name",
+    CONFIG_NAME,
+    "--agent",
+    FIXTURE_AGENT_ID,
+    "--evaluators",
+    FIXTURE_EVALUATOR_ID,
+    "--sampling-rate",
+    "10",
+  ];
+
+  test("create rejects malformed --output-config JSON", async () => {
+    await expect(run([...CREATE_BASE, "--output-config", "{not json"])).rejects.toThrow(
+      /Invalid JSON for option '--output-config'/,
+    );
+  });
+
+  test("create rejects malformed --tags JSON", async () => {
+    await expect(run([...CREATE_BASE, "--tags", "{not json"])).rejects.toThrow(
+      /Invalid JSON for option '--tags'/,
+    );
+  });
+
+  test("create rejects a non-string --tags value rather than passing it to the API", async () => {
+    await expect(run([...CREATE_BASE, "--tags", '{"team":42}'])).rejects.toThrow(
+      /Invalid value for option '--tags'/,
+    );
+  });
+
   test("update rejects --endpoint together with --clear-endpoint", async () => {
     await expect(
       run([
@@ -377,8 +428,10 @@ describe("flag validation", () => {
   // --json forces the headless path so the required-flag error surfaces; without
   // it a bare invocation opens the TUI under the empty-invocation middleware.
   test.each(["get", "update", "pause", "resume", "delete"])("%s requires --id", async (command) => {
-    await expect(run(["eval", "online-eval", command, "--json"])).rejects.toThrow(
-      /required option '--id <id>' not specified/,
+    await expectError(
+      run(["eval", "online-eval", command, "--json"]),
+      /required option '--id' not specified/,
+      InputValidationError,
     );
   });
 });

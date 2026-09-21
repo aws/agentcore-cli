@@ -409,7 +409,7 @@ describe("mapHarnessToExportPlan memory", () => {
     });
 
     expect(result.hasMemory).toBe(true);
-    expect(result.context.memoryEnvVarName).toBe("MEMORY_CHAT_HISTORY_ID");
+    expect(result.context.memoryEnvVarName).toBe("AGENTCORE_MEMORY_CHAT_HISTORY_ID");
     expect(result.context.memoryStrategies).toEqual(["SEMANTIC"]);
     expect(result.context.actorId).toBe("actor-1");
     expect(result.notes).toEqual([]);

@@ -13,7 +13,7 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
     name: "invoke",
     description: "invoke a harness",
     flags: [
-      flag("id", "the ID of the harness", z.string().max(48).optional()),
+      flag("id", "the ID of the harness", z.string().min(1).max(48)),
       flag("prompt", "the message to send to the harness", z.string().optional()),
       flag(
         "session-id",
@@ -27,11 +27,6 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      // These are required at runtime but declared optional so that a bare
-      // `harness invoke` falls through to the TUI middleware instead.
-      if (!flags["id"]) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
       // Without a prompt, open the interactive chat at this harness — resuming
       // the given session and targeting the given qualifier when passed. The
       // one-shot CLI transcript below needs --prompt (and is the only shape

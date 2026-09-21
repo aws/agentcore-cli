@@ -28,6 +28,7 @@ import type {
   UpdateConfigurationBundleResponse,
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
+  OutputConfig as OnlineEvalOutputConfig,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CreateABTestResponse,
@@ -47,6 +48,7 @@ import type {
   RecommendationType,
   StartRecommendationResponse,
   StartBatchEvaluationResponse,
+  StopBatchEvaluationResponse,
   SessionMetadataShape,
   InlineGroundTruth,
   EvaluationReferenceInput,
@@ -162,6 +164,8 @@ export type CreateOnlineEvalInput = {
   evaluatorIds?: string[];
   evaluationExecutionRoleArn?: string;
   enableOnCreate?: boolean;
+  tags?: Record<string, string>;
+  outputConfig?: OnlineEvalOutputConfig;
 } & (
   | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
@@ -209,6 +213,7 @@ export type DeleteOnlineInsightResponse = DeleteOnlineEvaluationConfigResponse;
 // `rule` object); `clearEndpoint` nulls out the endpoint scope, falling back to
 // the agent's default log group.
 export type UpdateOnlineEvalInput = {
+  description?: string;
   samplingRate?: number;
   sessionTimeoutMinutes?: number;
   filters?: Rule["filters"];
@@ -224,7 +229,10 @@ export type UpdateOnlineEvalInput = {
   // Replaces the execution role. Like `harness update`, the CLI never provisions
   // or re-scopes a role here — a role named here is the caller's to manage.
   evaluationExecutionRoleArn?: string;
+  outputConfig?: OnlineEvalOutputConfig;
 };
+
+export type { OnlineEvalOutputConfig };
 
 export type BundleRef = { configBundle: string; bundleVersion: string };
 
@@ -290,7 +298,7 @@ export type StartBatchEvaluationInput = {
 export type StartBatchInsightsInput = {
   name: string;
   description?: string;
-  insightIds: string[];
+  insightIds?: string[];
   evaluatorIds?: string[];
   source: SessionSourceValue;
   kmsKeyArn?: string;
@@ -432,6 +440,7 @@ export interface CoreEvalClient {
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
+  stopBatchEvaluation(id: string, options: CoreOptions): Promise<StopBatchEvaluationResponse>;
   listBatchInsights(
     nextToken: string | undefined,
     maxResults: number | undefined,

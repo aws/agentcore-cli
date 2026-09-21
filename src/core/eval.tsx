@@ -73,6 +73,7 @@ import {
   ListRecommendationsCommand,
   StartBatchEvaluationCommand,
   StartRecommendationCommand,
+  StopBatchEvaluationCommand,
   type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
@@ -90,6 +91,7 @@ import {
   type RecommendationStatus,
   type StartBatchEvaluationResponse,
   type StartRecommendationResponse,
+  type StopBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
@@ -106,6 +108,7 @@ import {
   ERROR_SOURCE,
   FileWriteError,
   InputValidationError,
+  MalformedServiceResponseError,
   NetworkingError,
   ResourceNotFoundError,
 } from "../errors";
@@ -502,6 +505,15 @@ export class EvalClient implements CoreEvalClient {
       .send(new ListBatchEvaluationsCommand({ nextToken, maxResults }));
   }
 
+  async stopBatchEvaluation(
+    id: string,
+    options: CoreOptions,
+  ): Promise<StopBatchEvaluationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new StopBatchEvaluationCommand({ batchEvaluationId: id }));
+  }
+
   async getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse> {
     return this.clients.data(toClientConfig(options)).send(new GetABTestCommand({ abTestId: id }));
   }
@@ -719,7 +731,7 @@ export class EvalClient implements CoreEvalClient {
       new StartBatchEvaluationCommand({
         batchEvaluationName: input.name,
         description: input.description,
-        insights: input.insightIds.map((insightId) => ({ insightId })),
+        insights: input.insightIds?.map((insightId) => ({ insightId })),
         evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
         dataSourceConfig,
         kmsKeyArn: input.kmsKeyArn,
@@ -740,9 +752,18 @@ export class EvalClient implements CoreEvalClient {
     const timeRange = source.window;
 
     if (source.origin === "online-eval") {
+      const onlineEvaluationConfigArn = source.onlineEvaluationConfigId.startsWith("arn:")
+        ? source.onlineEvaluationConfigId
+        : (await this.getOnlineEvaluationConfig(source.onlineEvaluationConfigId, options))
+            .onlineEvaluationConfigArn;
+      if (!onlineEvaluationConfigArn) {
+        throw new MalformedServiceResponseError(
+          `online evaluation config "${source.onlineEvaluationConfigId}" returned no ARN`,
+        );
+      }
       return {
         onlineEvaluationConfigSource: {
-          onlineEvaluationConfigArn: source.onlineEvaluationConfigId,
+          onlineEvaluationConfigArn,
           timeRange,
         },
       };
@@ -1015,6 +1036,9 @@ export class EvalClient implements CoreEvalClient {
           options.region,
           logGroupNamesOf(dataSourceConfig),
           await evaluatorKmsKeys(input.evaluatorIds ?? [], control),
+          // Read only to widen the write scope to the chosen destination; the
+          // request object below still gets the caller's object untouched.
+          { outputConfig: input.outputConfig },
         )
       ).roleArn;
 
@@ -1024,8 +1048,10 @@ export class EvalClient implements CoreEvalClient {
       rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
       dataSourceConfig,
       evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
+      outputConfig: input.outputConfig,
       evaluationExecutionRoleArn,
       enableOnCreate: input.enableOnCreate ?? true,
+      tags: input.tags,
     });
 
     // A role provisioned moments ago may not be assumable yet (IAM is eventually
@@ -1255,9 +1281,11 @@ export class EvalClient implements CoreEvalClient {
     const response = await control.send(
       new UpdateOnlineEvaluationConfigCommand({
         onlineEvaluationConfigId: id,
+        description: update.description,
         rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
         dataSourceConfig,
         evaluators,
+        outputConfig: update.outputConfig,
         evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
       }),
     );

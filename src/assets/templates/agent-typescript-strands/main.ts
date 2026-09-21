@@ -1,14 +1,8 @@
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
-import { Agent, McpClient, tool, type ToolList } from '@strands-agents/sdk';
+import { Agent, tool, type ToolList } from '@strands-agents/sdk';
 import { z } from 'zod';
 import { loadModel } from './model/load.js';
-import { getStreamableHttpMcpClient } from './mcp_client/client.js';
-import { getActorId, getOrCreateMemoryManager } from './memory/memory.js';
-
-// Define a collection of MCP clients (filter out anything that failed to initialize)
-const mcpClients: McpClient[] = [getStreamableHttpMcpClient()].filter(
-  (client): client is McpClient => Boolean(client)
-);
+import { getOrCreateMemoryManager } from './memory/memory.js';
 
 // Define a collection of tools used by the model
 const tools: ToolList = [];
@@ -25,16 +19,13 @@ const addNumbers = tool({
 });
 tools.push(addNumbers);
 
-// Add MCP clients to tools
-tools.push(...mcpClients);
-
 const SYSTEM_PROMPT = `
 You are a helpful assistant. Use tools when appropriate.
 `;
 
 const requestSchema = z.object({
   prompt: z.string().default(''),
-  userId: z.string().optional(),
+  actorId: z.string().default('default').transform((actorId) => actorId || 'default'),
 });
 
 const agentCache = new Map<string, Agent>();
@@ -60,7 +51,7 @@ const app = new BedrockAgentCoreApp({
     requestSchema,
     async *process(payload, context) {
       const sessionId = context?.sessionId ?? 'default-session';
-      const actorId = getActorId(payload, context);
+      const actorId = payload.actorId;
       const agent = await getOrCreateAgent(sessionId, actorId);
 
       try {

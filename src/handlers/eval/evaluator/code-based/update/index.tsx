@@ -1,6 +1,5 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
-import { InputValidationError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
@@ -10,7 +9,7 @@ export const createCodeBasedUpdateHandler = (core: Core) =>
     name: "update",
     description: "update a code-based (Lambda-backed) evaluator",
     flags: [
-      flag("id", "the ID of the evaluator to update", z.string().optional()),
+      flag("id", "the ID of the evaluator to update", z.string().min(1)),
       flag("lambda-arn", "ARN of the Lambda function that scores a session", z.string().optional()),
       flag(
         "timeout",
@@ -20,8 +19,6 @@ export const createCodeBasedUpdateHandler = (core: Core) =>
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["id"]) throw new InputValidationError("required option '--id <id>' not specified");
-
       const response = await core.eval.updateCodeBasedEvaluator(
         flags["id"],
         {

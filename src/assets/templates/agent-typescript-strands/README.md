@@ -15,8 +15,23 @@ defines an HTTP server that streams tokens from your chosen Agent framework SDK.
 
 ## Input Validation
 
-The generated Zod request schema keeps plain prompts typed as strings before forwarding them to Strands. Retain this
-validation when extending the request shape, and pass only prompt text to the agent.
+The generated Zod request schema keeps the prompt and actor ID typed as strings before forwarding them to Strands.
+Retain this validation when extending the request shape, and pass only prompt text to the agent.
+
+## Payload
+
+The Runtime accepts a JSON object with:
+
+- `prompt` (string) — a single user message; defaults to `""`.
+- `actorId` (string, optional) — identifies the end user for Memory scoping (for example,
+  `/users/{actorId}/facts`); defaults to `"default"`.
+
+The `sessionId` is not in the body. It comes from the
+`X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header (`context.sessionId`); reuse it to continue a conversation.
+
+```json
+{ "prompt": "What's the weather?", "actorId": "user-123" }
+```
 
 # Developing locally
 
@@ -27,3 +42,9 @@ If installation was successful, `node_modules/` is already populated with depend
 # Deployment
 
 After providing credentials, `agentcore project deploy` will deploy your project into Amazon Bedrock AgentCore.
+
+Invoke the deployed Runtime with its native payload:
+
+```bash
+agentcore project invoke runtime --payload '{"prompt":"Hello!","actorId":"user-123"}'
+```

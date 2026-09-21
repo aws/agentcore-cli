@@ -12,7 +12,7 @@ import os
 from strands.models.anthropic import AnthropicModel
 from bedrock_agentcore.identity.auth import requires_api_key
 
-IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].envVarName}}_NAME", "{{identityProviders.[0].name}}")
 IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
 
 
@@ -51,7 +51,7 @@ import os
 from strands.models.openai import OpenAIModel
 from bedrock_agentcore.identity.auth import requires_api_key
 
-IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].envVarName}}_NAME", "{{identityProviders.[0].name}}")
 IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
 
 
@@ -89,7 +89,7 @@ import os
 from strands.models.gemini import GeminiModel
 from bedrock_agentcore.identity.auth import requires_api_key
 
-IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].envVarName}}_NAME", "{{identityProviders.[0].name}}")
 IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
 
 
@@ -130,7 +130,7 @@ from strands.models.litellm import LiteLLMModel
 {{#if identityProviders.[0].name}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
-IDENTITY_PROVIDER_NAME = "{{identityProviders.[0].name}}"
+IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].envVarName}}_NAME", "{{identityProviders.[0].name}}")
 IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
 
 

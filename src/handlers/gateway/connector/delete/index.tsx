@@ -11,17 +11,10 @@ export const createDeleteGatewayConnectorHandler = (core: Core) =>
     name: "delete",
     description: "delete a connector-backed Gateway Target",
     flags: [
-      flag("gateway-id", "the parent Gateway ID", z.string().optional()),
-      flag("id", "the connector-backed Gateway Target ID", z.string().optional()),
+      flag("gateway-id", "the parent Gateway ID", z.string().min(1)),
+      flag("id", "the connector-backed Gateway Target ID", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {
-      if (!flags["gateway-id"]) {
-        throw new InputValidationError("required option '--gateway-id <gateway-id>' not specified");
-      }
-      if (!flags.id) {
-        throw new InputValidationError("required option '--id <id>' not specified");
-      }
-
       const options = coreOptsFromCtx(ctx);
       const target = await core.gateway.getGatewayTarget(flags["gateway-id"], flags.id, options);
       if (!GatewayConnectorTarget.is(target.targetConfiguration)) {

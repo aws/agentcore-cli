@@ -26,6 +26,7 @@ import { CoreClient } from "../../core";
 import { createControlClient, createIamClient } from "../../core/factories";
 import {
   createSilentLogger,
+  expectError,
   fixtureFactories,
   isRecording,
   matchGolden,
@@ -34,6 +35,7 @@ import {
   testIO,
 } from "../../testing";
 import { createRootHandler } from "../index";
+import { InputValidationError } from "../../errors";
 
 const REGION = "us-west-2";
 const GATEWAY_ID = "gateway-1";
@@ -173,7 +175,7 @@ describe("gateway delete validation", () => {
   ] as const)("rejects a missing %s before calling Core", async (_name, args, error) => {
     const core = new TestCoreClient();
 
-    await expect(run([...args], core)).rejects.toThrow(error);
+    await expectError(run([...args], core), error, InputValidationError);
     expect(core.gateway.calls).toEqual([]);
   });
 });

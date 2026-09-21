@@ -7,12 +7,13 @@ import type { AppIO } from "../../../io";
 import type { RuntimeInvokeRequest } from "../types";
 import {
   createSilentLogger,
+  expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
   waitFor,
 } from "../../../testing";
 import { ExitCode, runWithExitCode } from "../../../runnable";
-import { UserCancellationError } from "../../../errors";
+import { UserCancellationError, InputValidationError } from "../../../errors";
 import { createRootHandler } from "../../index";
 import * as tui from "../../../tui";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
@@ -399,15 +400,15 @@ describe("runtime invoke", () => {
     expect(core.runtime.calls).toEqual([]);
   });
 
-  test("classifies a missing --id as usage before Core calls", async () => {
+  test("rejects a missing --id before Core calls", async () => {
     const core = new TestCoreClient();
     const output = captureIO();
 
-    const code = await runWithExitCode(async () =>
+    await expectError(
       runCommand(core, output.io, ["runtime", "invoke", "--payload", "{}"]),
+      /--id/,
+      InputValidationError,
     );
-
-    expect(code).toBe(ExitCode.USAGE);
     expect(core.runtime.calls).toEqual([]);
   });
 

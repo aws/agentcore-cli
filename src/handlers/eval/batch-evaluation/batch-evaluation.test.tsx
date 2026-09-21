@@ -4,9 +4,10 @@ import type {
   ListBatchEvaluationsResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { createRootHandler } from "../../index";
-import { createSilentLogger, TestCoreClient, testIO } from "../../../testing";
+import { createSilentLogger, expectError, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/";
 import type { BatchEvaluationResultEntry } from "../types";
+import { InputValidationError } from "../../../errors";
 
 // Command-flow tests for `eval batch-evaluation`, driven through the real root
 // handler against a TestCoreClient (no network). These cover the edges that the
@@ -52,7 +53,7 @@ async function run(
 }
 
 describe("eval batch-evaluation command hierarchy", () => {
-  test("registers get + list under eval → batch-evaluation", () => {
+  test("registers batch-evaluation commands", () => {
     const io = testIO();
     const root = createRootHandler(new TestCoreClient(), {
       io: io.io,
@@ -64,7 +65,13 @@ describe("eval batch-evaluation command hierarchy", () => {
       .find((c) => c.name() === "eval")
       ?.children()
       .find((c) => c.name() === "batch-evaluation");
-    expect(group?.children().map((c) => c.name())).toEqual(["evaluate", "simulate", "get", "list"]);
+    expect(group?.children().map((c) => c.name())).toEqual([
+      "evaluate",
+      "simulate",
+      "get",
+      "list",
+      "stop",
+    ]);
   });
 
   test("prints help for `eval batch-evaluation --json` without an SDK call", async () => {
@@ -78,7 +85,11 @@ describe("eval batch-evaluation command hierarchy", () => {
 
 describe("eval batch-evaluation get", () => {
   test("requires --id", async () => {
-    await expect(run(["eval", "batch-evaluation", "get", "--json"])).rejects.toThrow(/--id/);
+    await expectError(
+      run(["eval", "batch-evaluation", "get", "--json"]),
+      /--id/,
+      InputValidationError,
+    );
   });
 
   test("includes CloudWatch results for a terminal job by default", async () => {
@@ -231,7 +242,11 @@ describe("eval batch-evaluation simulate", () => {
       ],
     ],
   ])("rejects when a required flag is missing (%s)", async (expected, args) => {
-    await expect(run(["eval", "batch-evaluation", "simulate", ...args])).rejects.toThrow(expected);
+    await expectError(
+      run(["eval", "batch-evaluation", "simulate", ...args]),
+      expected,
+      InputValidationError,
+    );
   });
 
   test("refuses to grade when nothing was invoked, naming the first failure", async () => {
