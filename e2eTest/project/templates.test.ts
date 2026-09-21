@@ -38,7 +38,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     payload: { prompt: "Reply with a short greeting." },
   },
   {
-    name: "agent_python_strands_container",
+    name: "py_strands_container",
     template: "agent-python-strands-container",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
@@ -50,13 +50,13 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     payload: { prompt: "Reply with a short greeting." },
   },
   {
-    name: "agent_typescript_strands",
+    name: "agent_ts_strands",
     template: "agent-typescript-strands",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
-    name: "agent_typescript_vercel",
+    name: "agent_ts_vercel",
     template: "agent-typescript-vercel",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
@@ -153,7 +153,7 @@ describe(
   { sequential: true, tags: [TAGS.RUNTIME] },
   () => {
     const cli = new CliRunner();
-    const projectName = `${E2E_PREFIX}${Date.now().toString(36).slice(-4)}`;
+    const projectName = `${E2E_PREFIX}${Date.now().toString(36)}`;
     let projectDir: string;
 
     beforeAll(async () => {
