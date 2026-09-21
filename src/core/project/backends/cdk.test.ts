@@ -311,7 +311,10 @@ describe("CdkBackend.build", () => {
     const input = await project();
     const packageDirectory = join(cdkDirectory(input), "node_modules", "@aws", "agentcore-cdk");
     await mkdir(packageDirectory, { recursive: true });
-    await writeFile(join(packageDirectory, "package.json"), JSON.stringify({ version: "0.0.0-0" }));
+    await writeFile(
+      join(packageDirectory, "package.json"),
+      JSON.stringify({ version: "1.0.0-rc.1" }),
+    );
     const subject = harness();
 
     expect(await collect(subject.backend.build(input))).toEqual([

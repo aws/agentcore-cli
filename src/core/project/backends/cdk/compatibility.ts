@@ -2,10 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 
-/**
- * Oldest @aws/agentcore-cdk version with a v1 CLI compatible schema
- */
-export const MINIMUM_COMPATIBLE_CDK_VERSION = "1.0.0-rc.1";
+export const MINIMUM_COMPATIBLE_CDK_VERSION = "1.0.0-rc.2";
 
 export async function cdkCompatibilityWarning(cdkDirectory: string): Promise<string | undefined> {
   const packagePath = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk", "package.json");

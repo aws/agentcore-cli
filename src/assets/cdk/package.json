@@ -16,7 +16,7 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@aws/agentcore-cdk": "1.0.0-rc.1",
+    "@aws/agentcore-cdk": "1.0.0-rc.2",
     "aws-cdk-lib": "~2.269.0",
     "constructs": "~10.7.0"
   }

@@ -24,6 +24,7 @@ import {
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
 const AGENT_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("agent-python-strands");
@@ -128,6 +129,8 @@ describe("FsProjectManager.create", () => {
       version: 2,
     });
     expect(ProjectSpecSchema.safeParse(spec).success).toBe(true);
+    const cdkPackage = await Bun.file(join(projectRoot, "agentcore", "cdk", "package.json")).json();
+    expect(cdkPackage.dependencies["@aws/agentcore-cdk"]).toBe(MINIMUM_COMPATIBLE_CDK_VERSION);
     expect(await projectManifest(projectRoot)).toMatchSnapshot();
   });
 
