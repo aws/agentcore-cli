@@ -1,4 +1,15 @@
-import { DescribeLogGroupsCommand } from "@aws-sdk/client-cloudwatch-logs";
+import { StartDiscoveryCommand } from "@aws-sdk/client-application-signals";
+import {
+  DescribeResourcePoliciesCommand,
+  PutResourcePolicyCommand,
+} from "@aws-sdk/client-cloudwatch-logs";
+import {
+  GetTraceSegmentDestinationCommand,
+  UpdateIndexingRuleCommand,
+  UpdateTraceSegmentDestinationCommand,
+} from "@aws-sdk/client-xray";
+import { partition } from "@aws-sdk/util-endpoints";
+import { TransactionSearchSetupError } from "../../errors";
 import type { AwsClients, AwsCredentials, CoreOptions } from "../types";
 import { toClientConfig } from "../utils";
 import { CloudWatchClient } from "./cloudWatchClient";
@@ -20,10 +31,9 @@ import {
   normalizeTraceRecords,
   normalizeTraceSummaries,
 } from "./traces";
-import { enableTransactionSearch } from "./transactionSearch";
 
-// The log group AgentCore delivers agent spans to once Transaction Search is on.
-const SPANS_LOG_GROUP = "aws/spans";
+const RESOURCE_POLICY_NAME = "TransactionSearchXRayAccess";
+const DEFAULT_INDEX_PERCENTAGE = 100;
 
 /** Shared observability API over explicit CloudWatch log-group targets. */
 export class ObservabilityClient {
@@ -34,30 +44,110 @@ export class ObservabilityClient {
   }
 
   /**
-   * True when CloudWatch Transaction Search is delivering agent traces to the
-   * `aws/spans` log group in this account and region. Evaluations score sessions
-   * by reading their spans from that group, so its absence means a run has
-   * nothing to read. Probing the log group's existence is cheap and the same
-   * signal the service keys on.
+   * True when CloudWatch Transaction Search is currently delivering agent traces
+   * to CloudWatch Logs in this account and region. Reads the live X-Ray trace
+   * segment destination, so it reflects the current state — turning Transaction
+   * Search off flips this back to false, unlike probing whether the `aws/spans`
+   * log group has ever existed. Evaluations score sessions by reading those
+   * spans, so a false result means a run has nothing to read.
    */
   async isTransactionSearchEnabled(options: CoreOptions): Promise<boolean> {
-    const logs = this.clients.logs(toClientConfig(options));
-    const { logGroups } = await logs.send(
-      new DescribeLogGroupsCommand({ logGroupNamePrefix: SPANS_LOG_GROUP, limit: 1 }),
-    );
-    return (logGroups ?? []).some((group) => group.logGroupName === SPANS_LOG_GROUP);
+    const xray = this.clients.xray(toClientConfig(options));
+    const { Destination, Status } = await xray.send(new GetTraceSegmentDestinationCommand({}));
+    return Destination === "CloudWatchLogs" && Status === "ACTIVE";
   }
 
-  // enableTransactionSearch turns Transaction Search on for a deploy target,
-  // hard-failing if any step is denied. Run on every deploy; the steps are
-  // idempotent.
-  enableTransactionSearch(params: {
+  /**
+   * Turns CloudWatch Transaction Search on for `accountId` in `region`,
+   * hard-failing (TransactionSearchSetupError) if any step is denied or errors —
+   * the deploy that calls this depends on spans being delivered. Every step is
+   * idempotent, so it is safe to run on every deploy.
+   */
+  async enableTransactionSearch(params: {
     region: string;
     accountId: string;
     credentials?: AwsCredentials;
     indexPercentage?: number;
   }): Promise<void> {
-    return enableTransactionSearch(this.clients, params);
+    const { region, accountId, credentials, indexPercentage = DEFAULT_INDEX_PERCENTAGE } = params;
+    const config = { region, credentials };
+    const applicationSignals = this.clients.applicationSignals(config);
+    const logs = this.clients.logs(config);
+    const xray = this.clients.xray(config);
+
+    const fail = (action: string, cause: unknown): never => {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new TransactionSearchSetupError(
+        `Could not ${action} while enabling CloudWatch Transaction Search: ${detail}`,
+        { cause },
+      );
+    };
+
+    // 1. Start Application Signals discovery — creates the service-linked role the
+    // trace-segment delivery relies on. Idempotent.
+    try {
+      await applicationSignals.send(new StartDiscoveryCommand({}));
+    } catch (cause) {
+      fail("enable Application Signals", cause);
+    }
+
+    // 2. Grant X-Ray permission to deliver spans to CloudWatch Logs (once).
+    try {
+      const { resourcePolicies } = await logs.send(new DescribeResourcePoliciesCommand({}));
+      const alreadyGranted = resourcePolicies?.some((p) => p.policyName === RESOURCE_POLICY_NAME);
+      if (!alreadyGranted) {
+        const part = partition(region).name;
+        const policyDocument = JSON.stringify({
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Sid: RESOURCE_POLICY_NAME,
+              Effect: "Allow",
+              Principal: { Service: "xray.amazonaws.com" },
+              Action: "logs:PutLogEvents",
+              Resource: [
+                `arn:${part}:logs:${region}:${accountId}:log-group:aws/spans:*`,
+                `arn:${part}:logs:${region}:${accountId}:log-group:/aws/application-signals/data:*`,
+              ],
+              Condition: {
+                ArnLike: { "aws:SourceArn": `arn:${part}:xray:${region}:${accountId}:*` },
+                StringEquals: { "aws:SourceAccount": accountId },
+              },
+            },
+          ],
+        });
+        await logs.send(
+          new PutResourcePolicyCommand({ policyName: RESOURCE_POLICY_NAME, policyDocument }),
+        );
+      }
+    } catch (cause) {
+      fail("configure the CloudWatch Logs resource policy", cause);
+    }
+
+    // 3. Route trace segments to CloudWatch Logs (this creates `aws/spans`). Skip if
+    // already pointed there.
+    try {
+      const destination = await xray.send(new GetTraceSegmentDestinationCommand({}));
+      if (destination.Destination !== "CloudWatchLogs") {
+        await xray.send(
+          new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }),
+        );
+      }
+    } catch (cause) {
+      fail("set the X-Ray trace segment destination", cause);
+    }
+
+    // 4. Index the segments so they are searchable.
+    try {
+      await xray.send(
+        new UpdateIndexingRuleCommand({
+          Name: "Default",
+          Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },
+        }),
+      );
+    } catch (cause) {
+      fail("set the X-Ray indexing rule", cause);
+    }
   }
 
   async *searchLogs(

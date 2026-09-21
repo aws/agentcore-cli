@@ -15,6 +15,7 @@
         "@aws-sdk/client-iam": "^3.1080.0",
         "@aws-sdk/client-sts": "^3.1092.0",
         "@aws-sdk/client-xray": "^3.1092.0",
+        "@aws-sdk/util-endpoints": "^3.996.44",
         "@aws/agent-inspector": "0.6.1",
         "@opentelemetry/api": "^1.9.1",
         "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
@@ -185,6 +186,8 @@
     "@aws-sdk/token-providers": ["@aws-sdk/token-providers@3.1116.0", "", { "dependencies": { "@aws-sdk/core": "^3.977.9", "@aws-sdk/nested-clients": "^3.997.44", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-ygIivKqh8aHzNkucOCXHyIBgBpLPfrSI0mCqXF+vLBsPTUKqj0VSqAY0GFPe7lQl4HntjOcQ+KSyS7oUV2C54Q=="],
 
     "@aws-sdk/types": ["@aws-sdk/types@3.974.5", "", { "dependencies": { "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-LkwLL2BLbC6wNNm4JaH9mbEqBMdOZCct6VAYqhdN4U1xrWM+fUJQEfbHwQgDypapOWTRtlk25akb5afM0P8CIQ=="],
+
+    "@aws-sdk/util-endpoints": ["@aws-sdk/util-endpoints@3.996.44", "", { "dependencies": { "@aws-sdk/core": "^3.978.0", "@smithy/core": "^3.33.3", "tslib": "^2.6.2" } }, "sha512-E+KYecsXEz6Maf0WNTBfX6ZCyEx2q+jkMIM9bRnMP6wi2j2NX55nkIrv8ncBXgkSqhlqXrQwtj/Sw6cX+iNBhQ=="],
 
     "@aws-sdk/util-utf8-browser": ["@aws-sdk/util-utf8-browser@3.259.0", "", { "dependencies": { "tslib": "^2.3.1" } }, "sha512-UvFa/vR+e19XookZF8RzFZBrw2EUkQWxiBW0yYQAhvk3C+QVGl0H3ouca8LDBlBfQKXwmW3huo/59H8rwb1wJw=="],
 

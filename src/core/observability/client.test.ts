@@ -5,16 +5,14 @@ import {
   UpdateTraceSegmentDestinationCommand,
 } from "@aws-sdk/client-xray";
 import { TransactionSearchSetupError } from "../../errors";
-import { enableTransactionSearch } from "./transactionSearch";
+import { ObservabilityClient } from "./client";
 import type { AwsClients } from "../types";
-
-type TransactionSearchClients = Pick<AwsClients, "applicationSignals" | "logs" | "xray">;
 
 // A recording harness: every client shares one `sent` log and looks its response
 // (or an Error to throw) up by command name. Missing entries default to {}. Each
 // factory hands back that one recording client, matching the AwsClients seam.
 function harness(responses: Record<string, unknown> = {}): {
-  clients: TransactionSearchClients;
+  observability: ObservabilityClient;
   sent: unknown[];
 } {
   const sent: unknown[] = [];
@@ -30,17 +28,41 @@ function harness(responses: Record<string, unknown> = {}): {
     applicationSignals: factory,
     logs: factory,
     xray: factory,
-  } as unknown as TransactionSearchClients;
-  return { clients, sent };
+  } as unknown as AwsClients;
+  return { observability: new ObservabilityClient(clients), sent };
 }
 
 const PARAMS = { region: "us-west-2", accountId: "123456789012" };
+const OPTIONS = { region: "us-west-2" };
 
-describe("enableTransactionSearch", () => {
+describe("ObservabilityClient.isTransactionSearchEnabled", () => {
+  test("true when the X-Ray destination is CloudWatch Logs and active", async () => {
+    const { observability } = harness({
+      GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs", Status: "ACTIVE" },
+    });
+    expect(await observability.isTransactionSearchEnabled(OPTIONS)).toBe(true);
+  });
+
+  test("false when the destination is still X-Ray", async () => {
+    const { observability } = harness({
+      GetTraceSegmentDestinationCommand: { Destination: "XRay", Status: "ACTIVE" },
+    });
+    expect(await observability.isTransactionSearchEnabled(OPTIONS)).toBe(false);
+  });
+
+  test("false while the destination change is pending", async () => {
+    const { observability } = harness({
+      GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs", Status: "PENDING" },
+    });
+    expect(await observability.isTransactionSearchEnabled(OPTIONS)).toBe(false);
+  });
+});
+
+describe("ObservabilityClient.enableTransactionSearch", () => {
   test("runs the full setup in order on a fresh account", async () => {
-    const { clients, sent } = harness();
+    const { observability, sent } = harness();
 
-    await enableTransactionSearch(clients, PARAMS);
+    await observability.enableTransactionSearch(PARAMS);
 
     expect(sent.map((c) => (c as { constructor: { name: string } }).constructor.name)).toEqual([
       "StartDiscoveryCommand",
@@ -66,31 +88,31 @@ describe("enableTransactionSearch", () => {
   });
 
   test("skips the resource policy when it already exists", async () => {
-    const { clients, sent } = harness({
+    const { observability, sent } = harness({
       DescribeResourcePoliciesCommand: {
         resourcePolicies: [{ policyName: "TransactionSearchXRayAccess" }],
       },
     });
 
-    await enableTransactionSearch(clients, PARAMS);
+    await observability.enableTransactionSearch(PARAMS);
 
     expect(sent.some((c) => c instanceof PutResourcePolicyCommand)).toBe(false);
   });
 
   test("skips the destination update when already pointed at CloudWatch Logs", async () => {
-    const { clients, sent } = harness({
+    const { observability, sent } = harness({
       GetTraceSegmentDestinationCommand: { Destination: "CloudWatchLogs" },
     });
 
-    await enableTransactionSearch(clients, PARAMS);
+    await observability.enableTransactionSearch(PARAMS);
 
     expect(sent.some((c) => c instanceof UpdateTraceSegmentDestinationCommand)).toBe(false);
   });
 
   test("honors a custom indexing percentage", async () => {
-    const { clients, sent } = harness();
+    const { observability, sent } = harness();
 
-    await enableTransactionSearch(clients, { ...PARAMS, indexPercentage: 25 });
+    await observability.enableTransactionSearch({ ...PARAMS, indexPercentage: 25 });
 
     const rule = sent.find(
       (c) => c instanceof UpdateIndexingRuleCommand,
@@ -102,17 +124,20 @@ describe("enableTransactionSearch", () => {
     const denied = Object.assign(new Error("User is not authorized"), {
       name: "AccessDeniedException",
     });
-    const { clients } = harness({ StartDiscoveryCommand: denied });
+    const { observability } = harness({ StartDiscoveryCommand: denied });
 
-    const promise = enableTransactionSearch(clients, PARAMS);
+    const promise = observability.enableTransactionSearch(PARAMS);
     await expect(promise).rejects.toBeInstanceOf(TransactionSearchSetupError);
     await expect(promise).rejects.toThrow(/enable Application Signals.*not authorized/s);
   });
 
   test("uses the GovCloud partition for us-gov regions", async () => {
-    const { clients, sent } = harness();
+    const { observability, sent } = harness();
 
-    await enableTransactionSearch(clients, { region: "us-gov-west-1", accountId: "123456789012" });
+    await observability.enableTransactionSearch({
+      region: "us-gov-west-1",
+      accountId: "123456789012",
+    });
 
     const policy = JSON.parse((sent[2] as PutResourcePolicyCommand).input.policyDocument!) as {
       Statement: { Resource: string[] }[];
