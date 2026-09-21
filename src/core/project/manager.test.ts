@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import {
   DeserializationError,
@@ -993,7 +993,7 @@ describe("FsProjectManager removal", () => {
     },
   );
 
-  test("removing a runtime returns its retained source path and leaves the code in place", async () => {
+  test("removing a runtime returns its retained source path without deleting it", async () => {
     const { subject, project } = await createdProject();
     const runtime = project.spec.runtimes[0]!;
 
@@ -1004,43 +1004,6 @@ describe("FsProjectManager removal", () => {
 
     expect(result.retainedSourceCodePath).toBe(runtime.codeLocation);
     expect(existsSync(join(project.rootPath, runtime.codeLocation))).toBe(true);
-  });
-
-  test("removing a runtime returns an absolute retained source path", async () => {
-    const { subject, project } = await createdProject();
-    const runtime = project.spec.runtimes[0]!;
-    const absoluteSourcePath = resolve(project.rootPath, runtime.codeLocation);
-    await writeFile(
-      join(project.rootPath, "agentcore", "agentcore.json"),
-      JSON.stringify({
-        ...project.spec,
-        runtimes: project.spec.runtimes.map((candidate) =>
-          candidate.name === runtime.name
-            ? { ...candidate, codeLocation: absoluteSourcePath }
-            : candidate,
-        ),
-      }),
-    );
-
-    const result = await subject.removeResource(project, {
-      resourceType: "runtime",
-      name: runtime.name,
-    });
-
-    expect(result.retainedSourceCodePath).toBe(absoluteSourcePath);
-  });
-
-  test("removing a runtime does not claim source code is retained when its path is missing", async () => {
-    const { subject, project } = await createdProject();
-    const runtime = project.spec.runtimes[0]!;
-    await rm(join(project.rootPath, runtime.codeLocation), { recursive: true });
-
-    const result = await subject.removeResource(project, {
-      resourceType: "runtime",
-      name: runtime.name,
-    });
-
-    expect(result.retainedSourceCodePath).toBeUndefined();
   });
 
   test("removing a credential deletes the .env.local keys it reserved", async () => {

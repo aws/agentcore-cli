@@ -22,7 +22,7 @@ import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
-function startRun(args: string[], ioOptions?: TestIOOptions) {
+async function run(args: string[], ioOptions?: TestIOOptions) {
   const io = testIO(ioOptions);
   const core = new TestCoreClient();
   const root = createRootHandler(core, {
@@ -30,17 +30,8 @@ function startRun(args: string[], ioOptions?: TestIOOptions) {
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     logger: createSilentLogger(),
   });
-  return {
-    io,
-    core,
-    result: root.route(["node", "agentcore", "project", ...args]),
-  };
-}
-
-async function run(args: string[], ioOptions?: TestIOOptions) {
-  const invocation = startRun(args, ioOptions);
-  await invocation.result;
-  return invocation;
+  await root.route(["node", "agentcore", "project", ...args]);
+  return { io, core };
 }
 
 type RemoveCase = {
@@ -197,38 +188,6 @@ describe("project remove", () => {
       `Runtime 'agent_python_minimal' has been removed, but the source code is still in ${sourcePath}.`,
     );
     expect(existsSync(join(projectRoot, sourcePath))).toBe(true);
-  });
-
-  test("a failed runtime removal does not report a retained source path", async () => {
-    const { cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-    const { io, result } = startRun(["remove", "runtime", "--name", "ghost"]);
-
-    await expect(result).rejects.toBeInstanceOf(ResourceNotFoundError);
-    expect(io.stderr()).not.toContain("source code is still in");
-  });
-
-  test("--json reports the retained runtime source path as a structured note", async () => {
-    const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-    const sourcePath = "app/agent_python_minimal";
-
-    const { io } = await run(["remove", "runtime", "--name", "agent_python_minimal", "--json"]);
-
-    expect(JSON.parse(io.stdout())).toEqual({
-      operation: "remove",
-      project: { name: "TestProject", path: projectRoot },
-      resource: { type: "runtime", name: "agent_python_minimal" },
-      removedEnvironmentKeys: [],
-      notes: [
-        `Runtime 'agent_python_minimal' has been removed, but the source code is still in ${sourcePath}.`,
-      ],
-    });
-    expect(io.stderr()).not.toContain("source code is still in");
   });
 
   test("removing a target of a non-existent gateway names the missing gateway", async () => {

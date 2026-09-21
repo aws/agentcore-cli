@@ -32,7 +32,6 @@ export type ProjectMutationResult =
       project: ProjectReference;
       resource: ProjectMutationResource | { type: "all" };
       removedEnvironmentKeys: string[];
-      notes?: string[];
     };
 
 export function projectReference(project: Project): ProjectReference {
