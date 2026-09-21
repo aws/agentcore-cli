@@ -10,6 +10,7 @@ import { SourceResolver } from "../../../../io";
 import {
   RUNTIME_TEMPLATE_SHORTCUTS,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
+  formatTemplateParameterHelp,
   getDefaultMemorySpec,
   resolveRuntimeTemplateShortcut,
 } from "../../shortcuts";
@@ -74,6 +75,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         "template",
         "a preset of flags for scaffolding the Runtime; compatible flags override preset values",
         z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
+        { help: formatTemplateParameterHelp() },
       ),
       flag(
         "framework",

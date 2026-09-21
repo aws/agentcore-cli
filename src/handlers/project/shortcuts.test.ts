@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { getDefaultMemorySpec, PROJECT_TEMPLATE_NAMES } from "./shortcuts";
+import {
+  EMPTY_TEMPLATE_NAME,
+  formatTemplateParameterHelp,
+  getDefaultMemorySpec,
+  PROJECT_TEMPLATE_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUTS,
+} from "./shortcuts";
 
 describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {
@@ -15,6 +22,26 @@ describe("template order", () => {
       "mcp-python-fastmcp",
       "empty",
     ]);
+  });
+});
+
+describe("template parameter help", () => {
+  test("lists every Runtime template with its registry description", () => {
+    const help = formatTemplateParameterHelp();
+
+    expect(help).toStartWith("(template name)\nAvailable templates:\n");
+    for (const name of RUNTIME_TEMPLATE_SHORTCUT_NAMES) {
+      expect(help).toContain(name);
+      expect(help).toContain(RUNTIME_TEMPLATE_SHORTCUTS[name].description);
+    }
+    expect(help).not.toContain(EMPTY_TEMPLATE_NAME);
+  });
+
+  test("can include the empty project template", () => {
+    const help = formatTemplateParameterHelp({ includeEmpty: true });
+
+    expect(help).toContain(EMPTY_TEMPLATE_NAME);
+    expect(help).toContain("empty project with no Runtime or harness");
   });
 });
 

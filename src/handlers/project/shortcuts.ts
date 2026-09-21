@@ -189,6 +189,7 @@ export const RUNTIME_TEMPLATE_SHORTCUT_NAMES = (
 
 /** The empty template scaffolds a project with no runtime and no harness. */
 export const EMPTY_TEMPLATE_NAME = "empty";
+const EMPTY_TEMPLATE_DESCRIPTION = "empty project with no Runtime or harness";
 
 export type TemplateName = RuntimeTemplateShortcutName | typeof EMPTY_TEMPLATE_NAME;
 
@@ -197,6 +198,31 @@ export const PROJECT_TEMPLATE_NAMES = [
   ...RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   EMPTY_TEMPLATE_NAME,
 ] as unknown as readonly [TemplateName, ...TemplateName[]];
+
+/**
+ * Long-form `--template` help generated from the same registry used to resolve
+ * templates and populate the TUI. Project creation also offers the empty
+ * project template; adding a Runtime does not.
+ */
+export function formatTemplateParameterHelp(options?: { includeEmpty?: boolean }): string {
+  const names: readonly TemplateName[] = options?.includeEmpty
+    ? PROJECT_TEMPLATE_NAMES
+    : RUNTIME_TEMPLATE_SHORTCUT_NAMES;
+  const descriptions = names.map((name) => ({
+    name,
+    description:
+      name === EMPTY_TEMPLATE_NAME
+        ? EMPTY_TEMPLATE_DESCRIPTION
+        : RUNTIME_TEMPLATE_SHORTCUTS[name].description,
+  }));
+  const nameWidth = Math.max(...descriptions.map(({ name }) => name.length));
+
+  return [
+    "(template name)",
+    "Available templates:",
+    ...descriptions.map(({ name, description }) => `  ${name.padEnd(nameWidth + 2)}${description}`),
+  ].join("\n");
+}
 
 type RuntimeTemplateOverrides = {
   runtimeName?: string;

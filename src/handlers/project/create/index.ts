@@ -8,6 +8,7 @@ import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
+  formatTemplateParameterHelp,
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
 import {
@@ -56,6 +57,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         "template",
         "the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key",
         z.enum(PROJECT_TEMPLATE_NAMES).optional(),
+        { help: formatTemplateParameterHelp({ includeEmpty: true }) },
       ),
       flag(
         "model-provider",

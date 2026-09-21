@@ -13,7 +13,13 @@ import {
 } from "../../testing";
 import { InvalidEnvironmentError } from "../../errors";
 import { ExitCode } from "../../runnable";
+import { commandParameterDetails } from "../../router";
 import { createRootHandler } from "../index";
+import {
+  EMPTY_TEMPLATE_NAME,
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUTS,
+} from "./shortcuts";
 
 afterEach(cleanupScreens);
 
@@ -71,6 +77,21 @@ function projectCommand(...path: string[]) {
 }
 
 describe("project menu: command-line-only subcommands", () => {
+  test("create and add runtime expose the shared registry-backed template help", () => {
+    const createDetails = commandParameterDetails(projectCommand("create"))!;
+    const addRuntimeDetails = commandParameterDetails(projectCommand("add", "runtime"))!;
+
+    for (const name of RUNTIME_TEMPLATE_SHORTCUT_NAMES) {
+      const description = RUNTIME_TEMPLATE_SHORTCUTS[name].description;
+      expect(createDetails).toContain(name);
+      expect(createDetails).toContain(description);
+      expect(addRuntimeDetails).toContain(name);
+      expect(addRuntimeDetails).toContain(description);
+    }
+    expect(createDetails).toContain(EMPTY_TEMPLATE_NAME);
+    expect(addRuntimeDetails).not.toContain(EMPTY_TEMPLATE_NAME);
+  });
+
   test("are listed below a divider, after the ones with a screen", async () => {
     const r = renderScreen("/agentcore/project");
 
