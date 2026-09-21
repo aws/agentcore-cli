@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Stack } from "@aws-sdk/client-cloudformation";
-import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
+import {
+  MalformedServiceResponseError,
+  ProjectStateError,
+  TransactionSearchUnavailableError,
+} from "../../../errors/errors";
 import type {
   DeployResult,
   Project,
@@ -29,13 +33,7 @@ import type {
   ResolveProjectResourcesBackendInput,
 } from "./types";
 import { createCloudFormationClient } from "../../factories";
-import type { AwsCredentials } from "../../types";
-
-export type TransactionSearchEnabler = (
-  target: AwsDeploymentTarget,
-  credentials: AwsCredentials,
-) => Promise<void>;
-import type { CreateCloudFormationClient } from "../../types";
+import type { AwsCredentials, CreateCloudFormationClient } from "../../types";
 import {
   createCredentialProvisioner,
   createCredentialRemover,
@@ -106,6 +104,11 @@ function findDeployedResourceId(
       : `${stack.StackName}-Harness-${exportResourceName}-Id`;
   return stack.Outputs?.find((output) => output.ExportName === exportName)?.OutputValue;
 }
+
+export type TransactionSearchEnabler = (
+  target: AwsDeploymentTarget,
+  credentials: AwsCredentials,
+) => Promise<void>;
 
 export type CdkBackendConfig = {
   logger: Logger;
@@ -237,11 +240,6 @@ export class CdkBackend implements ProjectBackend {
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
 
-    if (project.spec.transactionSearch !== false) {
-      yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
-      await this.enableTransactionSearch(target, credentials);
-    }
-
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
     // credential has since left the spec.
@@ -273,6 +271,19 @@ export class CdkBackend implements ProjectBackend {
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
       return yield* this.teardown({ project, artifact, input, options, orphaned });
+    }
+
+    // Only after a real deploy is confirmed: a teardown (empty assembly) returns
+    // above, so a destroy is never blocked by missing Transaction Search setup
+    // permissions. Opt out via the spec.
+    if (project.spec.transactionSearch !== false) {
+      yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
+      try {
+        await this.enableTransactionSearch(target, credentials);
+      } catch (error) {
+        if (!(error instanceof TransactionSearchUnavailableError)) throw error;
+        yield { type: "step", message: `Skipping Transaction Search: ${error.message}` };
+      }
     }
 
     const bootstrap = await this.bootstrap(target.region, credentials);

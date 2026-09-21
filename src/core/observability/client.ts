@@ -9,7 +9,7 @@ import {
   UpdateTraceSegmentDestinationCommand,
 } from "@aws-sdk/client-xray";
 import { partition } from "@aws-sdk/util-endpoints";
-import { TransactionSearchSetupError } from "../../errors";
+import { TransactionSearchSetupError, TransactionSearchUnavailableError } from "../../errors";
 import type { AwsClients, CoreOptions } from "../types";
 import { toClientConfig } from "../utils";
 import { CloudWatchClient } from "./cloudWatchClient";
@@ -34,6 +34,19 @@ import {
 
 const RESOURCE_POLICY_NAME = "TransactionSearchXRayAccess";
 const DEFAULT_INDEX_PERCENTAGE = 100;
+
+// Regions/partitions without Transaction Search (e.g. some GovCloud/China) have
+// no endpoint or operation for these APIs; treat that as "skip", not a failure.
+function transactionSearchUnavailable(error: unknown): boolean {
+  const name = (error as { name?: string })?.name ?? "";
+  return (
+    name === "UnknownOperationException" ||
+    name === "UnsupportedOperationException" ||
+    /could not be found|getaddrinfo|Inaccessible host|not support/i.test(
+      (error as Error)?.message ?? "",
+    )
+  );
+}
 
 export class ObservabilityClient {
   private readonly cloudWatch: CloudWatchClient;
@@ -70,6 +83,11 @@ export class ObservabilityClient {
     try {
       await applicationSignals.send(new StartDiscoveryCommand({}));
     } catch (cause) {
+      if (transactionSearchUnavailable(cause)) {
+        throw new TransactionSearchUnavailableError(
+          `Transaction Search is not available in ${region}`,
+        );
+      }
       fail("enable Application Signals", cause);
     }
 
@@ -115,26 +133,32 @@ export class ObservabilityClient {
       fail("configure the CloudWatch Logs resource policy", cause);
     }
 
+    let justEnabled = false;
     try {
       const destination = await xray.send(new GetTraceSegmentDestinationCommand({}));
       if (destination.Destination !== "CloudWatchLogs") {
         await xray.send(
           new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }),
         );
+        justEnabled = true;
       }
     } catch (cause) {
       fail("set the X-Ray trace segment destination", cause);
     }
 
-    try {
-      await xray.send(
-        new UpdateIndexingRuleCommand({
-          Name: "Default",
-          Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },
-        }),
-      );
-    } catch (cause) {
-      fail("set the X-Ray indexing rule", cause);
+    // Set the default sampling only on first enable — never override a customer's
+    // indexing choice on later deploys.
+    if (justEnabled) {
+      try {
+        await xray.send(
+          new UpdateIndexingRuleCommand({
+            Name: "Default",
+            Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },
+          }),
+        );
+      } catch (cause) {
+        fail("set the X-Ray indexing rule", cause);
+      }
     }
   }
 

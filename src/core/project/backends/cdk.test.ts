@@ -7,7 +7,7 @@ import type { DeployResult, Project, ProjectEvent } from "../../../handlers/proj
 import { FsReadWriteJson } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
-import { TransactionSearchSetupError } from "../../../errors";
+import { TransactionSearchSetupError, TransactionSearchUnavailableError } from "../../../errors";
 import { CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
@@ -381,8 +381,8 @@ describe("CdkBackend.deploy", () => {
 
     expect(deployed.events).toEqual([
       { type: "step", message: `Verifying AWS account ${TARGET.account}` },
-      { type: "step", message: "Enabling CloudWatch Transaction Search" },
       { type: "step", message: "Synthesizing CloudFormation templates" },
+      { type: "step", message: "Enabling CloudWatch Transaction Search" },
       { type: "step", message: "Deploying AgentCore-example-default-0" },
     ]);
     expect(subject.transactionSearchRegions).toEqual([TARGET.region]);
@@ -567,9 +567,28 @@ describe("CdkBackend.deploy", () => {
     await expect(
       collectDeploy(subject.backend.deploy(input, deployInput())),
     ).rejects.toBeInstanceOf(TransactionSearchSetupError);
-    // Aborts before any CDK synth or deploy operation.
-    expect(subject.commands).toEqual([]);
+    // Synth runs first (it is how a teardown is detected), but the failure aborts
+    // before any CDK toolkit deploy/bootstrap operation.
     expect(subject.runs).toEqual([]);
+  });
+
+  test("skips Transaction Search when unavailable in the region", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({
+      outputs: { RuntimeArn: "arn:runtime" },
+      transactionSearchError: new TransactionSearchUnavailableError(
+        "Transaction Search is not available in us-west-2",
+      ),
+    });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(deployed.events).toContainEqual({
+      type: "step",
+      message: "Skipping Transaction Search: Transaction Search is not available in us-west-2",
+    });
+    expect(deployed.result).toEqual({ outputs: { RuntimeArn: "arn:runtime" } });
   });
 
   test("fails before touching AWS when the existing state file is malformed", async () => {
@@ -641,6 +660,19 @@ describe("CdkBackend.deploy", () => {
       /--yes/,
     );
     expect(subject.runs).toEqual([]);
+  });
+
+  test("does not enable Transaction Search when the deploy is a teardown", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const subject = harness();
+
+    await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    // A destroy must not be blocked by (or trigger) Transaction Search setup.
+    expect(subject.transactionSearchRegions).toEqual([]);
   });
 
   test("removes the stack when the teardown is confirmed", async () => {

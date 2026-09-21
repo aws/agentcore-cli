@@ -18,6 +18,7 @@ export {
   RuntimeInvokeResponseError,
   SilentCLIError,
   SourceResolutionError,
+  TransactionSearchUnavailableError,
   TransactionSearchNotEnabledError,
   TransactionSearchSetupError,
   UserCancellationError,
