@@ -35,7 +35,6 @@ import {
 const RESOURCE_POLICY_NAME = "TransactionSearchXRayAccess";
 const DEFAULT_INDEX_PERCENTAGE = 100;
 
-/** Shared observability API over explicit CloudWatch log-group targets. */
 export class ObservabilityClient {
   private readonly cloudWatch: CloudWatchClient;
 
@@ -49,8 +48,6 @@ export class ObservabilityClient {
     return Destination === "CloudWatchLogs" && Status === "ACTIVE";
   }
 
-  // Hard-fails (TransactionSearchSetupError) if any step is denied: the deploy
-  // that calls this depends on spans being delivered. Every step is idempotent.
   async enableTransactionSearch(
     options: CoreOptions,
     accountId: string,
@@ -77,8 +74,18 @@ export class ObservabilityClient {
     }
 
     try {
-      const { resourcePolicies } = await logs.send(new DescribeResourcePoliciesCommand({}));
-      const alreadyGranted = resourcePolicies?.some((p) => p.policyName === RESOURCE_POLICY_NAME);
+      let alreadyGranted = false;
+      let policyToken: string | undefined;
+      do {
+        const page = await logs.send(
+          new DescribeResourcePoliciesCommand(policyToken ? { nextToken: policyToken } : {}),
+        );
+        if (page.resourcePolicies?.some((p) => p.policyName === RESOURCE_POLICY_NAME)) {
+          alreadyGranted = true;
+          break;
+        }
+        policyToken = page.nextToken;
+      } while (policyToken);
       if (!alreadyGranted) {
         const part = partition(region).name;
         const policyDocument = JSON.stringify({

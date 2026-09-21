@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { PutResourcePolicyCommand } from "@aws-sdk/client-cloudwatch-logs";
+import {
+  DescribeResourcePoliciesCommand,
+  PutResourcePolicyCommand,
+} from "@aws-sdk/client-cloudwatch-logs";
 import {
   UpdateIndexingRuleCommand,
   UpdateTraceSegmentDestinationCommand,
@@ -8,9 +11,6 @@ import { TransactionSearchSetupError } from "../../errors";
 import { ObservabilityClient } from "./client";
 import type { AwsClients } from "../types";
 
-// A recording harness: every client shares one `sent` log and looks its response
-// (or an Error to throw) up by command name. Missing entries default to {}. Each
-// factory hands back that one recording client, matching the AwsClients seam.
 function harness(responses: Record<string, unknown> = {}): {
   observability: ObservabilityClient;
   sent: unknown[];
@@ -96,6 +96,31 @@ describe("ObservabilityClient.enableTransactionSearch", () => {
 
     await observability.enableTransactionSearch(OPTIONS, ACCOUNT);
 
+    expect(sent.some((c) => c instanceof PutResourcePolicyCommand)).toBe(false);
+  });
+
+  test("paginates DescribeResourcePolicies before deciding to add the policy", async () => {
+    const pages = [
+      { resourcePolicies: [{ policyName: "other" }], nextToken: "t2" },
+      { resourcePolicies: [{ policyName: "TransactionSearchXRayAccess" }] },
+    ];
+    const sent: unknown[] = [];
+    let describeCalls = 0;
+    const send = async (command: { constructor: { name: string } }): Promise<unknown> => {
+      sent.push(command);
+      if (command instanceof DescribeResourcePoliciesCommand) return pages[describeCalls++];
+      return {};
+    };
+    const factory = () => ({ send });
+    const clients = {
+      applicationSignals: factory,
+      logs: factory,
+      xray: factory,
+    } as unknown as AwsClients;
+
+    await new ObservabilityClient(clients).enableTransactionSearch(OPTIONS, ACCOUNT);
+
+    expect(describeCalls).toBe(2);
     expect(sent.some((c) => c instanceof PutResourcePolicyCommand)).toBe(false);
   });
 

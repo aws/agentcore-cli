@@ -134,8 +134,6 @@ export class CoreClient implements AwsClients {
       logger: this.logger.child({ module: "projectManager" }),
       createCloudFormationClient: config.createCloudFormationClient,
       identity: this.identity,
-      // Every deploy ensures Transaction Search is on so evaluations can read the
-      // agent spans it delivers to `aws/spans`.
       enableTransactionSearch: (target, credentials) =>
         this.observability.enableTransactionSearch(
           { region: target.region, credentials },

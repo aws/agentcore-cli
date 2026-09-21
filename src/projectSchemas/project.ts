@@ -89,10 +89,6 @@ export const ProjectSpecSchema = z
       )
       .optional(),
     payments: z.array(PaymentManagerSchema).optional().superRefine(uniqueNames("payment manager")),
-    // Whether `deploy` turns on CloudWatch Transaction Search for the target
-    // account/region. Evaluations read the `aws/spans` log group it populates, so
-    // it defaults on; set false to opt out when Transaction Search is managed
-    // outside this project.
     transactionSearch: z.boolean().default(true),
   })
   .strict()

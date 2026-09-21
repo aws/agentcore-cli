@@ -31,8 +31,6 @@ import type {
 import { createCloudFormationClient } from "../../factories";
 import type { AwsCredentials } from "../../types";
 
-// Enables CloudWatch Transaction Search for a deploy target. Injectable so tests
-// exercise the deploy flow without real AWS calls.
 export type TransactionSearchEnabler = (
   target: AwsDeploymentTarget,
   credentials: AwsCredentials,
@@ -239,10 +237,6 @@ export class CdkBackend implements ProjectBackend {
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
 
-    // Enable CloudWatch Transaction Search so agent spans reach `aws/spans`, which
-    // evaluations read. Idempotent, and run on every deploy; hard-fails the deploy
-    // (TransactionSearchSetupError) if the principal lacks the setup permissions.
-    // Projects that manage Transaction Search elsewhere opt out via the spec.
     if (project.spec.transactionSearch !== false) {
       yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
       await this.enableTransactionSearch(target, credentials);
