@@ -99,4 +99,5 @@ export interface CoreObservabilityClient {
     options: CoreOptions,
     signal?: AbortSignal,
   ): Promise<TraceRecord[]>;
+  isTransactionSearchEnabled(options: CoreOptions): Promise<boolean>;
 }

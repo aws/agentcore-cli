@@ -2467,6 +2467,13 @@ export class TestObservabilityClient implements CoreObservabilityClient {
 
   logEvents: CloudWatchLogEvent[] = [];
   queryRows: InsightsQueryRow[] = [];
+  transactionSearchEnabled = true;
+
+  async isTransactionSearchEnabled(options: CoreOptions): Promise<boolean> {
+    this.calls.push({ method: "isTransactionSearchEnabled", args: [options] });
+    if (this.error) throw this.error;
+    return this.transactionSearchEnabled;
+  }
 
   async *searchLogs(
     source: LogSource,
@@ -2606,6 +2613,9 @@ export class TestCoreClient implements Core {
       logger: options?.logger ?? createSilentLogger(),
       createCloudFormationClient: options?.createCloudFormationClient,
       identity: this.identity,
+      // Deploy tests that exercise Transaction Search inject a backend via
+      // `backends`; the default here is a no-op so the manager just constructs.
+      enableTransactionSearch: async () => {},
       json: options?.json,
       backends: options?.backends,
       runner: async (command, { cwd }) => {

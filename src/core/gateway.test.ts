@@ -213,6 +213,12 @@ function recordingGatewayClient(responses: unknown[]): {
     logs: () => {
       throw new Error("unexpected Logs client");
     },
+    xray: () => {
+      throw new Error("unexpected X-Ray client");
+    },
+    applicationSignals: () => {
+      throw new Error("unexpected Application Signals client");
+    },
   };
   return {
     client: new GatewayClient(clients, globalThis.fetch, createSilentLogger()),

@@ -50,6 +50,12 @@ function coreWithFetch(
       }) as unknown as BedrockAgentCoreClient,
     createIamClient: (config) => ({ config }) as unknown as IAMClient,
     createLogsClient: (config) => ({ config }) as unknown as CloudWatchLogsClient,
+    createXrayClient: () => {
+      throw new Error("unexpected X-Ray client");
+    },
+    createApplicationSignalsClient: () => {
+      throw new Error("unexpected Application Signals client");
+    },
     fetch,
     logger: createSilentLogger(),
   });

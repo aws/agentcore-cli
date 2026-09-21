@@ -74,7 +74,7 @@ import {
   ResourceNotFoundError,
 } from "../../errors/errors";
 import z from "zod";
-import { CdkBackend } from "./backends/cdk";
+import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
@@ -126,6 +126,12 @@ type ProjectManagerConfig = {
    * silently getting a client that talks to AWS.
    */
   identity: CoreIdentityClient;
+  /**
+   * Enables CloudWatch Transaction Search for a deploy target. Required rather
+   * than defaulted so it always routes through the caller's shared clients (and
+   * their record/replay seam) instead of constructing raw SDK clients here.
+   */
+  enableTransactionSearch: TransactionSearchEnabler;
   source?: AssetSource;
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
@@ -164,6 +170,7 @@ export class FsProjectManager implements ProjectManager {
         logger: config.logger,
         createCloudFormationClient: config.createCloudFormationClient,
         identity: config.identity,
+        enableTransactionSearch: config.enableTransactionSearch,
         runner: config.runner,
         checkTool: config.checkTool,
         json: config.json,

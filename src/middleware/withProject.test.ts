@@ -9,6 +9,7 @@ describe("withProject", () => {
     const projectManager = new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
     });
 
     const app = new Router("app", "test");
@@ -28,6 +29,7 @@ describe("withProject", () => {
     const projectManager = new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
     });
 
     const app = new Router("app", "test");

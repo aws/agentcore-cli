@@ -65,6 +65,7 @@ function manager(): {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
       },
@@ -317,6 +318,7 @@ describe("FsProjectManager.create", () => {
     const subject = new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
       runner: async (command) => {
         commands.push(command);
       },
@@ -438,6 +440,7 @@ describe("FsProjectManager.create", () => {
     const failing = new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
       runner: async () => {
         throw new Error("npm exploded");
       },
@@ -483,6 +486,7 @@ describe("FsProjectManager.addResource", () => {
       const subject = new FsProjectManager({
         logger: createSilentLogger(),
         identity: new TestIdentityClient(),
+        enableTransactionSearch: async () => {},
         runner: async (command) => {
           commands.push(command);
         },
@@ -607,6 +611,7 @@ describe("FsProjectManager.build", () => {
     const failing = new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
       runner: async () => {
         throw new Error("cdk synth exploded");
       },
@@ -645,6 +650,7 @@ describe("FsProjectManager.deploy", () => {
       manager: new FsProjectManager({
         logger: createSilentLogger(),
         identity: new TestIdentityClient(),
+        enableTransactionSearch: async () => {},
         backends: { CDK: backend },
         resolveAccount: async (region) => {
           accountCalls.push(region);

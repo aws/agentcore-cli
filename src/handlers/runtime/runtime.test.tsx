@@ -46,14 +46,22 @@ const LOG_SEARCH_ARGS = [
 ];
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(FIXTURES);
+  const {
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
+  } = fixtureFactories(FIXTURES);
 
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
     logger: createSilentLogger(),
   });
 }

@@ -117,13 +117,21 @@ async function writeUpdateExamples(): Promise<{
 }
 
 function createFixtureCore(fixtures: string): CoreClient {
-  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(fixtures);
+  const {
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
+  } = fixtureFactories(fixtures);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
     logger: createSilentLogger(),
     fetch: fixtureFetch(fixtures),
   });

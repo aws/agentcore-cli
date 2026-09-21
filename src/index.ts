@@ -4,11 +4,13 @@ import { join } from "path";
 import { CoreClient } from "./core";
 import { createRuntimeShellOpener } from "./core/runtimeShell";
 import {
+  createApplicationSignalsClient,
   createCloudFormationClient,
   createControlClient,
   createDataClient,
   createIamClient,
   createLogsClient,
+  createXrayClient,
 } from "./core/factories";
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
@@ -69,6 +71,8 @@ process.exit(
         createDataClient,
         createIamClient,
         createLogsClient,
+        createXrayClient,
+        createApplicationSignalsClient,
         openRuntimeShell: createRuntimeShellOpener(),
         logger: rootLogger.child({ module: "core" }),
       });

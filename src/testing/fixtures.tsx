@@ -6,21 +6,27 @@ import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
+import type { XRayClient } from "@aws-sdk/client-xray";
+import type { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
 import type {
   ClientConfig,
+  CreateApplicationSignalsClient,
   CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateXrayClient,
   CoreFetch,
 } from "../core/types";
 import {
+  createApplicationSignalsClient,
   createCloudFormationClient,
   createControlClient,
   createDataClient,
   createIamClient,
   createLogsClient,
+  createXrayClient,
 } from "../core/factories";
 import { parse, stringify } from "./serialization";
 
@@ -237,6 +243,8 @@ export function fixtureFactories(dir: string): {
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
+  createXrayClient: CreateXrayClient;
+  createApplicationSignalsClient: CreateApplicationSignalsClient;
 } {
   return {
     createCloudFormationClient: (config) => {
@@ -270,6 +278,18 @@ export function fixtureFactories(dir: string): {
       return {
         send: makeRecordingSend(real, dir),
       } as unknown as CloudWatchLogsClient;
+    },
+    createXrayClient: (config: ClientConfig) => {
+      const real = createXrayClient(config);
+      return {
+        send: makeRecordingSend(real, dir),
+      } as unknown as XRayClient;
+    },
+    createApplicationSignalsClient: (config: ClientConfig) => {
+      const real = createApplicationSignalsClient(config);
+      return {
+        send: makeRecordingSend(real, dir),
+      } as unknown as ApplicationSignalsClient;
     },
   };
 }

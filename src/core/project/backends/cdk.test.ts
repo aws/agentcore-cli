@@ -360,6 +360,7 @@ describe("CdkBackend.build", () => {
     const subject = new CdkBackend({
       logger: createSilentLogger(),
       identity: unusedIdentity(),
+      enableTransactionSearch: async () => {},
       runner: async () => {
         throw new Error("cdk synth exploded");
       },

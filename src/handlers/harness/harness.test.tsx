@@ -32,13 +32,21 @@ const REGION = "us-west-2";
 // keeps tests isolated) over an in-memory io, routes `args` beneath `agentcore`,
 // and returns whatever the command wrote to stdout.
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(FIXTURES);
+  const {
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
+  } = fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
     logger: createSilentLogger(),
   });
 }

@@ -3,6 +3,8 @@ import type { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
+import type { XRayClient } from "@aws-sdk/client-xray";
+import type { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@smithy/types";
 
 // AwsCredentials is an explicit credential source for a call: either resolved
@@ -49,6 +51,8 @@ export type CreateControlClient = (config: ClientConfig) => BedrockAgentCoreCont
 export type CreateDataClient = (config: ClientConfig) => BedrockAgentCoreClient;
 export type CreateIamClient = (config: ClientConfig) => IAMClient;
 export type CreateLogsClient = (config: ClientConfig) => CloudWatchLogsClient;
+export type CreateXrayClient = (config: ClientConfig) => XRayClient;
+export type CreateApplicationSignalsClient = (config: ClientConfig) => ApplicationSignalsClient;
 export type CreateCloudFormationClient = (config: CredentialedClientConfig) => CloudFormationClient;
 export type CoreFetch = (
   ...args: Parameters<typeof globalThis.fetch>
@@ -67,4 +71,8 @@ export interface AwsClients {
   // results to. CloudWatch is a distinct service from the AgentCore data plane,
   // so it gets its own client/factory rather than reusing `data`.
   logs(config: ClientConfig): CloudWatchLogsClient;
+  // xray and applicationSignals enable CloudWatch Transaction Search on deploy so
+  // agent spans land in `aws/spans` for evaluations to read.
+  xray(config: ClientConfig): XRayClient;
+  applicationSignals(config: ClientConfig): ApplicationSignalsClient;
 }

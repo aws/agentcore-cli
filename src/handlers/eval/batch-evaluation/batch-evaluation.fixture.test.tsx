@@ -51,13 +51,21 @@ const FIXTURE_SIMULATE_ENDPOINT_NAME = "golden_batch_simulate_endpoint1";
 const FIXTURE_SIMULATE_DATASET = join(FIXTURES, "simulate-ds.jsonl");
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(FIXTURES);
+  const {
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
+  } = fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
     logger: createSilentLogger(),
   });
 }
@@ -183,13 +191,21 @@ describe("eval batch-evaluation (fixture-backed)", () => {
 
   test("simulate replays a dataset, then submits a batch job over the created sessions", async () => {
     let n = 0;
-    const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-      fixtureFactories(FIXTURES);
+    const {
+      createControlClient,
+      createDataClient,
+      createIamClient,
+      createLogsClient,
+      createXrayClient,
+      createApplicationSignalsClient,
+    } = fixtureFactories(FIXTURES);
     const core = new CoreClient({
       createControlClient,
       createDataClient,
       createIamClient,
       createLogsClient,
+      createXrayClient,
+      createApplicationSignalsClient,
       logger: createSilentLogger(),
       newSessionId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     });
@@ -247,13 +263,21 @@ describe("eval batch-evaluation (fixture-backed)", () => {
 
   test("simulate passes --endpoint through and submits with an output config", async () => {
     let n = 0;
-    const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-      fixtureFactories(FIXTURES);
+    const {
+      createControlClient,
+      createDataClient,
+      createIamClient,
+      createLogsClient,
+      createXrayClient,
+      createApplicationSignalsClient,
+    } = fixtureFactories(FIXTURES);
     const core = new CoreClient({
       createControlClient,
       createDataClient,
       createIamClient,
       createLogsClient,
+      createXrayClient,
+      createApplicationSignalsClient,
       logger: createSilentLogger(),
       newSessionId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     });

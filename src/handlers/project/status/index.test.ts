@@ -117,6 +117,7 @@ describe("project status handler", () => {
     const backend = new CdkBackend({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
       resolveCredentials: async () => async () => ({
         accessKeyId: "access-key",
         secretAccessKey: "secret-key",

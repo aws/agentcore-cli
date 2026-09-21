@@ -126,6 +126,12 @@ async function runWithRealCore(options: LogsOptions, logger = createSilentLogger
     createDataClient: () => data,
     createIamClient: () => ({}) as IAMClient,
     createLogsClient: () => logs,
+    createXrayClient: () => {
+      throw new Error("unexpected X-Ray client");
+    },
+    createApplicationSignalsClient: () => {
+      throw new Error("unexpected Application Signals client");
+    },
     logger,
   });
   const io = testIO();

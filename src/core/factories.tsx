@@ -3,12 +3,16 @@ import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
+import { XRayClient } from "@aws-sdk/client-xray";
+import { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
 import type {
+  CreateApplicationSignalsClient,
   CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateXrayClient,
 } from "./types";
 
 // createControlClient / createDataClient are the production factories injected
@@ -26,6 +30,11 @@ export const createIamClient: CreateIamClient = (config) => new IAMClient({ ...c
 
 export const createLogsClient: CreateLogsClient = (config) =>
   new CloudWatchLogsClient({ ...config });
+
+export const createXrayClient: CreateXrayClient = (config) => new XRayClient({ ...config });
+
+export const createApplicationSignalsClient: CreateApplicationSignalsClient = (config) =>
+  new ApplicationSignalsClient({ ...config });
 
 export const createCloudFormationClient: CreateCloudFormationClient = (config) =>
   new CloudFormationClient({ ...config });

@@ -86,6 +86,8 @@ function stubClients(options: {
     data: () => client,
     iam: () => client,
     logs: () => client,
+    xray: () => client,
+    applicationSignals: () => client,
   };
 }
 

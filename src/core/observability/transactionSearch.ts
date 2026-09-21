@@ -3,12 +3,8 @@
 // sessions by reading those spans, so deploy runs this to guarantee they exist.
 // The steps are idempotent — safe to run on every deploy.
 
+import { StartDiscoveryCommand } from "@aws-sdk/client-application-signals";
 import {
-  ApplicationSignalsClient,
-  StartDiscoveryCommand,
-} from "@aws-sdk/client-application-signals";
-import {
-  CloudWatchLogsClient,
   DescribeResourcePoliciesCommand,
   PutResourcePolicyCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
@@ -16,33 +12,17 @@ import {
   GetTraceSegmentDestinationCommand,
   UpdateIndexingRuleCommand,
   UpdateTraceSegmentDestinationCommand,
-  XRayClient,
 } from "@aws-sdk/client-xray";
-import { TransactionSearchSetupError } from "../errors";
-import type { AwsCredentials } from "./types";
+import { TransactionSearchSetupError } from "../../errors";
+import type { AwsClients, AwsCredentials } from "../types";
 
 const RESOURCE_POLICY_NAME = "TransactionSearchXRayAccess";
 const DEFAULT_INDEX_PERCENTAGE = 100;
 
-// The three services Transaction Search touches. Narrowed to `send` so tests can
-// inject stubs without constructing real SDK clients.
-export interface TransactionSearchClients {
-  applicationSignals: Pick<ApplicationSignalsClient, "send">;
-  logs: Pick<CloudWatchLogsClient, "send">;
-  xray: Pick<XRayClient, "send">;
-}
-
-// transactionSearchClients builds the real SDK clients for a deploy target.
-export function transactionSearchClients(
-  region: string,
-  credentials?: AwsCredentials,
-): TransactionSearchClients {
-  return {
-    applicationSignals: new ApplicationSignalsClient({ region, credentials }),
-    logs: new CloudWatchLogsClient({ region, credentials }),
-    xray: new XRayClient({ region, credentials }),
-  };
-}
+// The three services Transaction Search touches, sourced from the shared client
+// factories so the calls route through the same cached/recorded seam as the rest
+// of the CLI.
+type TransactionSearchClients = Pick<AwsClients, "applicationSignals" | "logs" | "xray">;
 
 // AWS partitions differ for GovCloud and China; the resource-policy ARNs must use
 // the same partition as the account being configured.
@@ -57,9 +37,18 @@ function partitionForRegion(region: string): string {
 // or errors — the deploy that calls this depends on spans being delivered.
 export async function enableTransactionSearch(
   clients: TransactionSearchClients,
-  params: { region: string; accountId: string; indexPercentage?: number },
+  params: {
+    region: string;
+    accountId: string;
+    credentials?: AwsCredentials;
+    indexPercentage?: number;
+  },
 ): Promise<void> {
-  const { region, accountId, indexPercentage = DEFAULT_INDEX_PERCENTAGE } = params;
+  const { region, accountId, credentials, indexPercentage = DEFAULT_INDEX_PERCENTAGE } = params;
+  const config = { region, credentials };
+  const applicationSignals = clients.applicationSignals(config);
+  const logs = clients.logs(config);
+  const xray = clients.xray(config);
 
   const fail = (action: string, cause: unknown): never => {
     const detail = cause instanceof Error ? cause.message : String(cause);
@@ -72,14 +61,14 @@ export async function enableTransactionSearch(
   // 1. Start Application Signals discovery — creates the service-linked role the
   // trace-segment delivery relies on. Idempotent.
   try {
-    await clients.applicationSignals.send(new StartDiscoveryCommand({}));
+    await applicationSignals.send(new StartDiscoveryCommand({}));
   } catch (cause) {
     fail("enable Application Signals", cause);
   }
 
   // 2. Grant X-Ray permission to deliver spans to CloudWatch Logs (once).
   try {
-    const { resourcePolicies } = await clients.logs.send(new DescribeResourcePoliciesCommand({}));
+    const { resourcePolicies } = await logs.send(new DescribeResourcePoliciesCommand({}));
     const alreadyGranted = resourcePolicies?.some((p) => p.policyName === RESOURCE_POLICY_NAME);
     if (!alreadyGranted) {
       const partition = partitionForRegion(region);
@@ -102,7 +91,7 @@ export async function enableTransactionSearch(
           },
         ],
       });
-      await clients.logs.send(
+      await logs.send(
         new PutResourcePolicyCommand({ policyName: RESOURCE_POLICY_NAME, policyDocument }),
       );
     }
@@ -113,11 +102,9 @@ export async function enableTransactionSearch(
   // 3. Route trace segments to CloudWatch Logs (this creates `aws/spans`). Skip if
   // already pointed there.
   try {
-    const destination = await clients.xray.send(new GetTraceSegmentDestinationCommand({}));
+    const destination = await xray.send(new GetTraceSegmentDestinationCommand({}));
     if (destination.Destination !== "CloudWatchLogs") {
-      await clients.xray.send(
-        new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }),
-      );
+      await xray.send(new UpdateTraceSegmentDestinationCommand({ Destination: "CloudWatchLogs" }));
     }
   } catch (cause) {
     fail("set the X-Ray trace segment destination", cause);
@@ -125,7 +112,7 @@ export async function enableTransactionSearch(
 
   // 4. Index the segments so they are searchable.
   try {
-    await clients.xray.send(
+    await xray.send(
       new UpdateIndexingRuleCommand({
         Name: "Default",
         Rule: { Probabilistic: { DesiredSamplingPercentage: indexPercentage } },

@@ -6,6 +6,7 @@ import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import type { TargetVariantRef } from "../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
+import { requireTransactionSearch } from "../../requireTransactionSearch";
 
 const targetRefSchema = z
   .object({
@@ -84,6 +85,8 @@ export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
       if (treatmentWeight !== undefined && (treatmentWeight < 1 || treatmentWeight > 99)) {
         throw new InputValidationError("--treatment-weight must be between 1 and 99");
       }
+
+      await requireTransactionSearch(core, coreOptsFromCtx(ctx));
 
       const result = await core.eval.createTargetBasedABTest(
         {

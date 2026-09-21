@@ -32,13 +32,21 @@ const WINDOW_START = "2026-09-14T00:00:00Z";
 const WINDOW_END = "2026-09-15T00:00:00Z";
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(FIXTURES);
+  const {
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
+  } = fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
     logger: createSilentLogger(),
   });
 }
@@ -89,13 +97,21 @@ describe("eval ondemand evaluate (fixture-backed)", () => {
       () => Date.now() + 24 * 60 * 60 * 1000,
     );
     let n = 0;
-    const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-      fixtureFactories(FIXTURES);
+    const {
+      createControlClient,
+      createDataClient,
+      createIamClient,
+      createLogsClient,
+      createXrayClient,
+      createApplicationSignalsClient,
+    } = fixtureFactories(FIXTURES);
     const core = new CoreClient({
       createControlClient,
       createDataClient,
       createIamClient,
       createLogsClient,
+      createXrayClient,
+      createApplicationSignalsClient,
       logger: createSilentLogger(),
       newSessionId: () =>
         `00000000-0000-4000-8000-${nonce.slice(-8).padStart(8, "0")}${String(++n).padStart(4, "0")}`,

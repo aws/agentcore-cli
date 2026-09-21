@@ -8,6 +8,7 @@ import type { Core } from "../../../../types";
 import type { BundleRef } from "../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
 import { parseJsonFlag } from "../../../../utils";
+import { requireTransactionSearch } from "../../requireTransactionSearch";
 
 const bundleRefSchema = z
   .object({
@@ -94,6 +95,8 @@ export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
       if (treatmentWeight !== undefined && (treatmentWeight < 1 || treatmentWeight > 99)) {
         throw new InputValidationError("--treatment-weight must be between 1 and 99");
       }
+
+      await requireTransactionSearch(core, coreOptsFromCtx(ctx));
 
       const result = await core.eval.createConfigBasedABTest(
         {

@@ -46,13 +46,21 @@ const MISSING_CONFIG_ID = "missing-online-0000000000";
 const EVAL_ONLY_CONFIG_ID = "ABVfyLatest_ProdEval-2vqlCb2UiG";
 
 function createFixtureCore(): CoreClient {
-  const { createControlClient, createDataClient, createIamClient, createLogsClient } =
-    fixtureFactories(FIXTURES);
+  const {
+    createControlClient,
+    createDataClient,
+    createIamClient,
+    createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
+  } = fixtureFactories(FIXTURES);
   return new CoreClient({
     createControlClient,
     createDataClient,
     createIamClient,
     createLogsClient,
+    createXrayClient,
+    createApplicationSignalsClient,
     logger: createSilentLogger(),
   });
 }

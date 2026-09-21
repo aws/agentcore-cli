@@ -36,6 +36,8 @@ function setup(response: object = balance) {
     createDataClient: () => ({ send }) as unknown as BedrockAgentCoreClient,
     createIamClient: unexpectedClient,
     createLogsClient: unexpectedClient,
+    createXrayClient: unexpectedClient,
+    createApplicationSignalsClient: unexpectedClient,
     logger: createSilentLogger(),
   });
   const io = testIO();

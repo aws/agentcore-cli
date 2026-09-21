@@ -4,11 +4,15 @@ import {
   UpdateIndexingRuleCommand,
   UpdateTraceSegmentDestinationCommand,
 } from "@aws-sdk/client-xray";
-import { TransactionSearchSetupError } from "../errors";
-import { enableTransactionSearch, type TransactionSearchClients } from "./transactionSearch";
+import { TransactionSearchSetupError } from "../../errors";
+import { enableTransactionSearch } from "./transactionSearch";
+import type { AwsClients } from "../types";
+
+type TransactionSearchClients = Pick<AwsClients, "applicationSignals" | "logs" | "xray">;
 
 // A recording harness: every client shares one `sent` log and looks its response
-// (or an Error to throw) up by command name. Missing entries default to {}.
+// (or an Error to throw) up by command name. Missing entries default to {}. Each
+// factory hands back that one recording client, matching the AwsClients seam.
 function harness(responses: Record<string, unknown> = {}): {
   clients: TransactionSearchClients;
   sent: unknown[];
@@ -20,8 +24,14 @@ function harness(responses: Record<string, unknown> = {}): {
     if (value instanceof Error) throw value;
     return value ?? {};
   };
-  const client = { send } as unknown as TransactionSearchClients["xray"];
-  return { clients: { applicationSignals: client, logs: client, xray: client }, sent };
+  const client = { send };
+  const factory = () => client;
+  const clients = {
+    applicationSignals: factory,
+    logs: factory,
+    xray: factory,
+  } as unknown as TransactionSearchClients;
+  return { clients, sent };
 }
 
 const PARAMS = { region: "us-west-2", accountId: "123456789012" };

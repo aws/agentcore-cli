@@ -2,6 +2,8 @@ import { BedrockAgentCoreControlClient } from "@aws-sdk/client-bedrock-agentcore
 import { BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import { XRayClient } from "@aws-sdk/client-xray";
+import { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
 import { EvalClient } from "./eval";
 import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
@@ -17,11 +19,13 @@ import type {
   AwsCredentials,
   ClientConfig,
   CoreFetch,
+  CreateApplicationSignalsClient,
   CreateCloudFormationClient,
   CreateControlClient,
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateXrayClient,
 } from "./types";
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
@@ -32,11 +36,13 @@ export type {
   AwsClients,
   ClientConfig,
   CoreFetch,
+  CreateApplicationSignalsClient,
   CreateControlClient,
   CreateCloudFormationClient,
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateXrayClient,
 } from "./types";
 
 type CoreClientConfig = {
@@ -45,6 +51,8 @@ type CoreClientConfig = {
   createDataClient: CreateDataClient;
   createIamClient: CreateIamClient;
   createLogsClient: CreateLogsClient;
+  createXrayClient: CreateXrayClient;
+  createApplicationSignalsClient: CreateApplicationSignalsClient;
   logger: Logger;
   fetch?: CoreFetch;
   newSessionId?: () => string;
@@ -62,11 +70,15 @@ export class CoreClient implements AwsClients {
   private dataClients = new ClientCache<BedrockAgentCoreClient>();
   private iamClients = new ClientCache<IAMClient>();
   private logsClients = new ClientCache<CloudWatchLogsClient>();
+  private xrayClients = new ClientCache<XRayClient>();
+  private applicationSignalsClients = new ClientCache<ApplicationSignalsClient>();
 
   private readonly createControlClient: CreateControlClient;
   private readonly createDataClient: CreateDataClient;
   private readonly createIamClient: CreateIamClient;
   private readonly createLogsClient: CreateLogsClient;
+  private readonly createXrayClient: CreateXrayClient;
+  private readonly createApplicationSignalsClient: CreateApplicationSignalsClient;
   private logger: Logger;
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
@@ -89,6 +101,8 @@ export class CoreClient implements AwsClients {
     this.createDataClient = config.createDataClient;
     this.createIamClient = config.createIamClient;
     this.createLogsClient = config.createLogsClient;
+    this.createXrayClient = config.createXrayClient;
+    this.createApplicationSignalsClient = config.createApplicationSignalsClient;
     this.logger = config.logger;
     const fetch = config.fetch ?? globalThis.fetch;
     const cloudWatch = new CloudWatchClient(this);
@@ -114,12 +128,20 @@ export class CoreClient implements AwsClients {
       cloudWatch,
     );
 
-    this.observability = new ObservabilityClient(cloudWatch);
+    this.observability = new ObservabilityClient(this);
 
     this.projectManager = new FsProjectManager({
       logger: this.logger.child({ module: "projectManager" }),
       createCloudFormationClient: config.createCloudFormationClient,
       identity: this.identity,
+      // Every deploy ensures Transaction Search is on so evaluations can read the
+      // agent spans it delivers to `aws/spans`.
+      enableTransactionSearch: (target, credentials) =>
+        this.observability.enableTransactionSearch({
+          region: target.region,
+          accountId: target.account,
+          credentials,
+        }),
     });
     this.bedrockAgentImporter = config.bedrockAgentImporter ?? new BedrockAgentImporter();
   }
@@ -146,6 +168,18 @@ export class CoreClient implements AwsClients {
   // on first use (used to read batch-evaluation result log streams).
   logs(config: ClientConfig): CloudWatchLogsClient {
     return this.logsClients.get(config, this.createLogsClient);
+  }
+
+  // xray returns the X-Ray client for `config`, creating and caching it on first
+  // use (used to enable CloudWatch Transaction Search on deploy).
+  xray(config: ClientConfig): XRayClient {
+    return this.xrayClients.get(config, this.createXrayClient);
+  }
+
+  // applicationSignals returns the Application Signals client for `config`,
+  // creating and caching it on first use (used to enable Transaction Search).
+  applicationSignals(config: ClientConfig): ApplicationSignalsClient {
+    return this.applicationSignalsClients.get(config, this.createApplicationSignalsClient);
   }
 }
 

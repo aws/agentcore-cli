@@ -35,6 +35,7 @@ function manager(options: { json?: ReadWriteJson } = {}) {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
       json: options.json,
       runner: async (command, { cwd }) => {
         commands.push({ command, cwd });
