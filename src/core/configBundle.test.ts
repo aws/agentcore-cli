@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DeleteConfigurationBundleCommand,
   GetConfigurationBundleCommand,
   GetConfigurationBundleVersionCommand,
-  ListConfigurationBundleVersionsCommand,
   UpdateConfigurationBundleCommand,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { NetworkingError } from "../errors";
+import { InputValidationError, NetworkingError } from "../errors";
 import { EvalClient } from "./eval";
 import type { AwsClients, ClientConfig } from "./types";
 
@@ -133,34 +131,38 @@ describe("EvalClient configuration bundles", () => {
     });
   });
 
-  test("accepts a full ARN and sends the bare bundle id to every command", async () => {
-    // `project status` prints ARNs; passing one to --id must not reach the service
-    // as a path segment (its slashes break path→operation parsing → misleading
-    // AccessDenied). The bare id is extracted before the request.
+  test("rejects a full ARN, telling the caller to pass the bare id", async () => {
+    // `project status` prints bare ids; a full ARN in --id would reach the service
+    // as a path segment whose slashes break path→operation parsing (a misleading
+    // AccessDenied), so it is rejected up front, before any request.
     const arn = "arn:aws:bedrock-agentcore:us-west-2:123456789012:configuration-bundle/b-1";
     const sent: unknown[] = [];
     const { client } = subject(async (command) => {
       sent.push(command);
-      // update() first reads the current version, so hand back a versionId.
       return { versionId: "v-9" };
     });
 
-    await client.getConfigurationBundle(arn, undefined, "mainline", OPTIONS);
-    await client.listConfigurationBundleVersions(arn, undefined, undefined, OPTIONS);
-    await client.deleteConfigurationBundle(arn, OPTIONS);
-    await client.updateConfigurationBundle(
-      arn,
-      { branchName: "mainline", components: {}, commitMessage: "update" },
-      OPTIONS,
+    const rejects = /must be a bare resource id, not an ARN/;
+    await expect(
+      client.getConfigurationBundle(arn, undefined, "mainline", OPTIONS),
+    ).rejects.toThrow(rejects);
+    await expect(
+      client.listConfigurationBundleVersions(arn, undefined, undefined, OPTIONS),
+    ).rejects.toThrow(rejects);
+    await expect(client.deleteConfigurationBundle(arn, OPTIONS)).rejects.toBeInstanceOf(
+      InputValidationError,
     );
+    await expect(
+      client.updateConfigurationBundle(
+        arn,
+        { branchName: "mainline", components: {}, commitMessage: "update" },
+        OPTIONS,
+      ),
+    ).rejects.toThrow(rejects);
 
+    // Rejected before any SDK call; a bare id still works.
+    expect(sent).toEqual([]);
+    await client.getConfigurationBundle("b-1", undefined, "mainline", OPTIONS);
     expect((sent[0] as GetConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
-    expect((sent[1] as ListConfigurationBundleVersionsCommand).input).toMatchObject({
-      bundleId: "b-1",
-    });
-    expect((sent[2] as DeleteConfigurationBundleCommand).input).toEqual({ bundleId: "b-1" });
-    // update() reads then writes: both carry the bare id.
-    expect((sent[3] as GetConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
-    expect((sent[4] as UpdateConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
   });
 });
