@@ -153,7 +153,7 @@ describe(
   { sequential: true, tags: [TAGS.RUNTIME] },
   () => {
     const cli = new CliRunner();
-    const projectName = `${E2E_PREFIX}rt${Date.now().toString(36)}`;
+    const projectName = `${E2E_PREFIX}${Date.now().toString(36).slice(-4)}`;
     let projectDir: string;
 
     beforeAll(async () => {
@@ -368,12 +368,14 @@ function assertProtocolResponse(runtime: RuntimeTemplateTestCase, body: string):
   if (runtime.protocol === "MCP") {
     const response = parseResult(McpResponseSchema, result);
     expect(response.id).toBe(runtime.payload.id);
+    expect(response.error).toBe(undefined);
     return;
   }
 
   if (runtime.protocol === "A2A") {
     const response = parseResult(A2aResponseSchema, result);
     expect(response.id).toBe(runtime.payload.id);
+    expect(response.error).toBe(undefined);
   }
 }
 
