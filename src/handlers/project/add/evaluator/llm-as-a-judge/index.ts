@@ -5,8 +5,7 @@ import { SourceResolver } from "../../../../../io";
 import {
   EvaluatorModelProviderSchema,
   EvaluatorSchema,
-  isValidBedrockModelId,
-  isValidOpenResponsesModelId,
+  getEvaluatorModelValidationError,
   RatingScaleSchema,
   type EvaluatorModelProvider,
   type RatingScale,
@@ -121,17 +120,8 @@ function resolveModelProvider(value: string | undefined): EvaluatorModelProvider
 }
 
 function validateModel(provider: EvaluatorModelProvider, model: string): void {
-  if (provider === "Bedrock") {
-    if (!isValidBedrockModelId(model))
-      throw new InputValidationError(
-        `invalid --model "${model}": expected a Bedrock model ID (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0) or an inference-profile/foundation-model ARN`,
-      );
-    return;
-  }
-  if (!isValidOpenResponsesModelId(model))
-    throw new InputValidationError(
-      `invalid --model "${model}": expected an OpenResponses model ID (a non-empty identifier without spaces, e.g. openai.gpt-5.4)`,
-    );
+  const error = getEvaluatorModelValidationError(provider, model);
+  if (error) throw new InputValidationError(error);
 }
 
 // A preset name expands to a fresh copy of the shared table; anything else is

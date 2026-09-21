@@ -6,6 +6,10 @@ import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
 import {
+  getEvaluatorModelValidationError,
+  type EvaluatorModelProvider,
+} from "../../../../../projectSchemas/evaluator";
+import {
   buildEvaluatorModelConfig,
   modelProviderFlag,
   ratingScaleFlag,
@@ -42,6 +46,11 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
     handle: async (ctx, flags) => {
       // An omitted provider defaults to Bedrock, matching the old CLI.
       const modelProvider = flags["model-provider"] ?? "Bedrock";
+      const modelValidationError = getEvaluatorModelValidationError(
+        modelProvider as EvaluatorModelProvider,
+        flags["model"],
+      );
+      if (modelValidationError) throw new InputValidationError(modelValidationError);
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);

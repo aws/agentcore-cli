@@ -166,7 +166,10 @@ import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResult
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
 import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
-import type { EvaluatorModelProvider } from "../projectSchemas/evaluator";
+import {
+  getEvaluatorModelValidationError,
+  type EvaluatorModelProvider,
+} from "../projectSchemas/evaluator";
 import type { Logger } from "../logging";
 import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
@@ -285,6 +288,13 @@ export class EvalClient implements CoreEvalClient {
     const currentProvider: EvaluatorModelProvider = existingResponses ? "OpenResponses" : "Bedrock";
     const targetProvider = update.modelProvider ?? currentProvider;
     const providerChanged = targetProvider !== currentProvider;
+
+    if (update.model) {
+      const modelValidationError = getEvaluatorModelValidationError(targetProvider, update.model);
+      if (modelValidationError) {
+        throw new InputValidationError(modelValidationError, { meta: { evaluatorId: id } });
+      }
+    }
 
     // A model id from one provider's API is not valid for the other, so a
     // provider switch cannot reuse the existing id — require a fresh one.
