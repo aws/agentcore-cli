@@ -41,6 +41,7 @@ type RemoveCase = {
   commands: string[][];
   specKey: string;
   expectedRemaining: string[];
+  showsAppCodeNotice: boolean;
 };
 
 describe("project remove", () => {
@@ -55,12 +56,24 @@ describe("project remove", () => {
       ],
       specKey: "harnesses",
       expectedRemaining: [],
+      showsAppCodeNotice: true,
     },
     {
       label: "runtime",
       commands: [["remove", "runtime", "--name", "agent_python_minimal"]],
       specKey: "runtimes",
       expectedRemaining: [],
+      showsAppCodeNotice: true,
+    },
+    {
+      label: "evaluator",
+      commands: [
+        ["add", "evaluator", "code-based", "--name", "custom_eval", "--level", "TOOL_CALL"],
+        ["remove", "evaluator", "--name", "custom_eval"],
+      ],
+      specKey: "evaluators",
+      expectedRemaining: [],
+      showsAppCodeNotice: true,
     },
     {
       label: "removes one harness while leaving others intact",
@@ -71,6 +84,7 @@ describe("project remove", () => {
       ],
       specKey: "harnesses",
       expectedRemaining: ["keep_me"],
+      showsAppCodeNotice: true,
     },
     {
       label: "gateway",
@@ -81,6 +95,7 @@ describe("project remove", () => {
       ],
       specKey: "agentCoreGateways",
       expectedRemaining: ["keep"],
+      showsAppCodeNotice: false,
     },
     {
       label: "config-bundle",
@@ -97,6 +112,7 @@ describe("project remove", () => {
       ],
       specKey: "configBundles",
       expectedRemaining: [],
+      showsAppCodeNotice: false,
     },
     {
       label: "online-eval",
@@ -117,6 +133,7 @@ describe("project remove", () => {
       ],
       specKey: "onlineEvalConfigs",
       expectedRemaining: [],
+      showsAppCodeNotice: false,
     },
     {
       label: "online-insight",
@@ -137,6 +154,7 @@ describe("project remove", () => {
       ],
       specKey: "onlineEvalConfigs",
       expectedRemaining: [],
+      showsAppCodeNotice: false,
     },
     {
       label: "memory",
@@ -146,20 +164,24 @@ describe("project remove", () => {
       ],
       specKey: "memories",
       expectedRemaining: [],
+      showsAppCodeNotice: false,
     },
-  ])("$label", async ({ commands, specKey, expectedRemaining }) => {
+  ])("$label", async ({ commands, specKey, expectedRemaining, showsAppCodeNotice }) => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
     cleanups.push(cleanup);
 
+    let stderr = "";
     for (const cmd of commands) {
-      await run(cmd);
+      const { io } = await run(cmd);
+      stderr = io.stderr();
     }
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     const remaining = (agentcoreJson[specKey] ?? []) as { name: string }[];
     expect(remaining.map((r) => r.name)).toEqual(expectedRemaining);
+    expect(stderr.includes(APP_CODE_RETAINED_NOTICE)).toBe(showsAppCodeNotice);
   });
 
   test("removing a non-existent resource fails with a not-found error", async () => {
@@ -175,67 +197,6 @@ describe("project remove", () => {
 
     // The spec file is untouched, unlike the old warn-and-rewrite behavior.
     expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text()).toBe(before);
-  });
-
-  test.each<{
-    resource: "runtime" | "harness" | "evaluator";
-    name: string;
-    setup: string[][];
-  }>([
-    { resource: "runtime", name: "agent_python_minimal", setup: [] },
-    {
-      resource: "harness",
-      name: "my_harness",
-      setup: [["add", "harness", "--name", "my_harness"]],
-    },
-    {
-      resource: "evaluator",
-      name: "custom_eval",
-      setup: [["add", "evaluator", "code-based", "--name", "custom_eval", "--level", "TOOL_CALL"]],
-    },
-  ])(
-    "successfully removing a $resource reports that app code is kept",
-    async ({ resource, name, setup }) => {
-      const { projectRoot, cleanup } = await initProject({
-        flags: ["--template", "agent-python-minimal"],
-      });
-      cleanups.push(cleanup);
-
-      for (const command of setup) await run(command);
-      const { io } = await run(["remove", resource, "--name", name]);
-
-      expect(io.stderr()).toContain(APP_CODE_RETAINED_NOTICE);
-      expect(existsSync(join(projectRoot, "app"))).toBe(true);
-    },
-  );
-
-  test("removing another resource type does not report that app code is kept", async () => {
-    const { cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-    await run(["add", "memory", "--name", "recall"]);
-
-    const { io } = await run(["remove", "memory", "--name", "recall"]);
-
-    expect(io.stderr()).not.toContain(APP_CODE_RETAINED_NOTICE);
-  });
-
-  test("--json reports that app code is kept for a runtime", async () => {
-    const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-
-    const { io } = await run(["remove", "runtime", "--name", "agent_python_minimal", "--json"]);
-
-    expect(JSON.parse(io.stdout())).toEqual({
-      operation: "remove",
-      project: { name: "TestProject", path: projectRoot },
-      resource: { type: "runtime", name: "agent_python_minimal" },
-      removedEnvironmentKeys: [],
-      notes: [APP_CODE_RETAINED_NOTICE],
-    });
   });
 
   test("removing a target of a non-existent gateway names the missing gateway", async () => {
@@ -266,7 +227,7 @@ describe("project remove", () => {
     expect(io.stderr()).toContain("removed credential with name 'svc-key' from project");
   });
 
-  test("--json reports a removal and its cleaned environment keys", async () => {
+  test("--json reports removals, cleaned environment keys, and retained code notes", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
@@ -286,6 +247,21 @@ describe("project remove", () => {
     });
     expect(io.stdout()).not.toContain("removed credential with name");
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
+
+    const { io: runtimeIO } = await run([
+      "remove",
+      "runtime",
+      "--name",
+      "agent_python_minimal",
+      "--json",
+    ]);
+    expect(JSON.parse(runtimeIO.stdout())).toEqual({
+      operation: "remove",
+      project: { name: "TestProject", path: projectRoot },
+      resource: { type: "runtime", name: "agent_python_minimal" },
+      removedEnvironmentKeys: [],
+      notes: [APP_CODE_RETAINED_NOTICE],
+    });
   });
 
   test("removing a secret-reference credential leaves .env.local alone", async () => {

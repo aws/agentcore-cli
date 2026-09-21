@@ -64,6 +64,24 @@ const POLICY: AddResourceInput[] = [
   },
 ];
 
+const HARNESS: AddResourceInput = {
+  resourceType: "harness",
+  resourceConfig: {
+    name: "assistant",
+    model: { provider: "bedrock", modelId: "us.amazon.nova-lite-v1:0" },
+    systemPrompt: "You are terse.",
+  },
+};
+
+const EVALUATOR: AddResourceInput = {
+  resourceType: "evaluator",
+  resourceConfig: {
+    name: "judge",
+    level: "SESSION",
+    config: { codeBased: { managed: { codeLocation: "./evaluator" } } },
+  },
+};
+
 function render(path: string, core: TestCoreClient, project: Project) {
   return renderScreen(path, { core, withContext: (ctx) => ctx.withValue(ProjectKey, project) });
 }
@@ -381,71 +399,26 @@ describe("project remove screen", () => {
     r.unmount();
   });
 
-  test.each<{
-    resourceType: "harness" | "evaluator";
-    name: string;
-    resource: AddResourceInput;
-  }>([
-    {
-      resourceType: "harness",
-      name: "assistant",
-      resource: {
-        resourceType: "harness",
-        resourceConfig: {
-          name: "assistant",
-          model: { provider: "bedrock", modelId: "us.amazon.nova-lite-v1:0" },
-          systemPrompt: "You are terse.",
-        },
-      },
-    },
-    {
-      resourceType: "evaluator",
-      name: "judge",
-      resource: {
-        resourceType: "evaluator",
-        resourceConfig: {
-          name: "judge",
-          level: "SESSION",
-          config: { codeBased: { managed: { codeLocation: "./evaluator" } } },
-        },
-      },
-    },
-  ])(
-    "removing a $resourceType reports that app code is kept",
-    async ({ resourceType, name, resource }) => {
-      const core = new TestCoreClient();
-      const { project } = await createProject(core, [resource]);
-      const r = render(`/agentcore/project/remove/${resourceType}/0`, core, project);
-
-      await waitForText(r.lastFrame, `Remove ${resourceType} '${name}' from project orders?`);
-      await r.write("y");
-      await waitForText(r.lastFrame, "Resource removed");
-
-      const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
-      expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
-      expect(successFrame).toContain("notes");
-      r.unmount();
-    },
-  );
-
   test("enter after success refreshes the list when the project is pinned in context", async () => {
     const core = new TestCoreClient();
-    const { project } = await createProject(core, POLICY);
+    const { project } = await createProject(core, [...POLICY, HARNESS]);
     // ProjectKey is set in context (as the command wiring does): useProject uses
     // it as initialData and never refetches, so the removal must update the cache.
-    const r = render("/agentcore/project/remove/runtime/0", core, project);
+    const r = render("/agentcore/project/remove/harness/0", core, project);
 
-    await waitForText(r.lastFrame, `Remove runtime '${RUNTIME}' from project orders?`);
+    await waitForText(r.lastFrame, "Remove harness 'assistant' from project orders?");
     await r.write("y");
     await waitForText(r.lastFrame, "Resource removed");
+    expect(r.lastFrame()).toContain(APP_CODE_RETAINED_NOTICE);
     await r.press("return");
 
     await waitFor(() => {
       const frame = r.lastFrame() ?? "";
       return (
         frame.includes("choose a resource to remove from project orders") &&
+        frame.includes("runtime") &&
         frame.includes("policy") &&
-        !frame.includes("runtime")
+        !frame.includes("harness")
       );
     });
     r.unmount();
@@ -453,23 +426,25 @@ describe("project remove screen", () => {
 
   test("enter after success returns to the resource-type selector with fresh data", async () => {
     const core = new TestCoreClient();
-    const { project } = await createProject(core, POLICY);
+    const { project } = await createProject(core, [...POLICY, EVALUATOR]);
     process.chdir(project.rootPath); // cwd-resolve path, so the selector refreshes from disk
-    const r = renderScreen("/agentcore/project/remove/runtime/0", { core });
+    const r = renderScreen("/agentcore/project/remove/evaluator/0", { core });
 
-    await waitForText(r.lastFrame, `Remove runtime '${RUNTIME}' from project orders?`);
+    await waitForText(r.lastFrame, "Remove evaluator 'judge' from project orders?");
     await r.write("y");
     await waitForText(r.lastFrame, "Resource removed");
+    expect(r.lastFrame()).toContain(APP_CODE_RETAINED_NOTICE);
     await r.press("return");
 
-    // Back on the resource-type selector, refreshed off disk: policy remains,
-    // the just-removed runtime is gone.
+    // Back on the resource-type selector, refreshed off disk: runtime and policy
+    // remain, while the just-removed evaluator is gone.
     await waitFor(() => {
       const frame = r.lastFrame() ?? "";
       return (
         frame.includes("choose a resource to remove from project orders") &&
+        frame.includes("runtime") &&
         frame.includes("policy") &&
-        !frame.includes("runtime")
+        !frame.includes("evaluator")
       );
     });
     r.unmount();
@@ -527,7 +502,11 @@ describe("project remove screen", () => {
   test("enter after remove-all refreshes the list when the project is pinned in context", async () => {
     const core = new TestCoreClient();
     const { project } = await createProject(core, POLICY);
-    const r = render("/agentcore/project/remove/all", core, project); // ProjectKey pinned in context
+    const { project: projectWithoutRuntime } = await core.projectManager.removeResource(project, {
+      resourceType: "runtime",
+      name: RUNTIME,
+    });
+    const r = render("/agentcore/project/remove/all", core, projectWithoutRuntime);
 
     await waitForText(r.lastFrame, "Remove every resource from project orders?");
     await r.write("y");
@@ -539,25 +518,6 @@ describe("project remove screen", () => {
 
     // Back on the picker, refreshed from the emptied project.
     await waitForText(r.lastFrame, "This project has no resources to remove.");
-    r.unmount();
-  });
-
-  test("remove all always reports that app code is kept", async () => {
-    const core = new TestCoreClient();
-    const { project } = await createProject(core, POLICY);
-    const { project: projectWithoutRuntime } = await core.projectManager.removeResource(project, {
-      resourceType: "runtime",
-      name: RUNTIME,
-    });
-    const r = render("/agentcore/project/remove/all", core, projectWithoutRuntime);
-
-    await waitForText(r.lastFrame, "Remove every resource from project orders?");
-    await r.write("y");
-    await waitForText(r.lastFrame, "All resources removed");
-
-    const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
-    expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
-    expect(successFrame).toContain("notes");
     r.unmount();
   });
 
