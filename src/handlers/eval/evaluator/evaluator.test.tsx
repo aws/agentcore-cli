@@ -494,7 +494,7 @@ describe("evaluator flag validation", () => {
         "--level",
         "SESSION",
         "--model",
-        "anthropic.claude-v2:1",
+        "m",
         "--instructions",
         "i",
         "--rating-scale",

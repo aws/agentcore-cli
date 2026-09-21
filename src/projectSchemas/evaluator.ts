@@ -57,21 +57,6 @@ const OPEN_RESPONSES_MODEL_ID_PATTERN = /^[\x21-\x7e]+$/;
 export function isValidOpenResponsesModelId(value: string): boolean {
   return OPEN_RESPONSES_MODEL_ID_PATTERN.test(value);
 }
-export function getEvaluatorModelValidationError(
-  provider: EvaluatorModelProvider,
-  model: string,
-): string | undefined {
-  if (provider === "Bedrock") {
-    if (!isValidBedrockModelId(model)) {
-      return `invalid --model "${model}": expected a Bedrock model ID (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0) or an inference-profile/foundation-model ARN`;
-    }
-    return undefined;
-  }
-  if (!isValidOpenResponsesModelId(model)) {
-    return `invalid --model "${model}": expected an OpenResponses model ID (a non-empty identifier without spaces, e.g. openai.gpt-5.4)`;
-  }
-  return undefined;
-}
 // Provider-neutral: the schema stores whatever model id the resolved provider
 // accepts; per-provider format checks live in the handler where the provider is
 // known.
