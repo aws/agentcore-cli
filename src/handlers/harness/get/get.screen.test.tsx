@@ -374,6 +374,7 @@ describe("harness hub linked resources", () => {
     await focusTree(r);
     await r.press("return");
     await waitForText(r.lastFrame, `agentcore → runtime → get → ${RUNTIME_ID}`);
+    await waitForText(r.lastFrame, "READY");
 
     await r.press("escape");
     // History-back re-renders the hub, which refetches the harness before the
