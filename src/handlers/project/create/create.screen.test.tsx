@@ -20,6 +20,7 @@ import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
+import { ProjectSpecSchema } from "../../../projectSchemas/project";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -680,6 +681,41 @@ describe("project create dispatch", () => {
     );
     expect(await outcome).toEqual({ ok: true });
     expect(streams.stderr()).not.toContain("required option");
+  }, 10000);
+
+  test("successful TUI create leaves the launch command in the restored terminal", async () => {
+    const { streams, stdin } = ttyTestIO();
+    const core = new TestCoreClient();
+    core.projectManager.create = (input) =>
+      (async function* () {
+        yield { type: "step" as const, message: "creating project directory" };
+        return {
+          name: input.name,
+          rootPath: join(process.cwd(), input.name),
+          spec: ProjectSpecSchema.parse({ name: input.name, version: 1 }),
+        };
+      })();
+    const root = buildRoot(streams.io, core);
+
+    const outcome = root.route(["node", "agentcore", "project", "create"]);
+
+    await waitFor(() => streams.stdout().includes("name your project"));
+    stdin.write("DemoApp");
+    await waitFor(() => streams.stdout().includes("DemoApp"));
+    stdin.write("\r");
+    await waitFor(() => streams.stdout().includes("what should the project be built around?"));
+    stdin.write("\r");
+    await waitFor(() => streams.stdout().includes("choose a template"));
+    stdin.write("\r");
+    await waitFor(() => streams.stdout().includes("this project will be created"));
+    stdin.write("\r");
+    await waitFor(() => streams.stdout().includes("project created in ./DemoApp"));
+
+    expect(streams.stdout()).not.toContain("cd DemoApp/ && agentcore");
+    stdin.write("\r");
+    await outcome;
+
+    expect(streams.stdout()).toContain("Next step:\n  cd DemoApp/ && agentcore");
   }, 10000);
 
   test("bare create without a TTY stays headless and reports the missing --name", async () => {

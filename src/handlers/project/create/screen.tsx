@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
@@ -29,6 +29,7 @@ import {
   type Choice,
 } from "../../../components/wizard";
 import { darkTheme } from "../../../components/ui/_core.js";
+import { TuiExitMessageKey } from "../../../tui/exitMessage";
 
 const theme = darkTheme;
 
@@ -201,6 +202,7 @@ function providerLabel(provider: HarnessModelProvider): string {
 // working directory, npm install and git init included.
 export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
+  const { exit } = useApp();
   const [values, setValues] = useState<CreateProjectFormValues>(emptyCreateProjectForm);
 
   const patch = (update: Partial<CreateProjectFormValues>) =>
@@ -224,6 +226,10 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       successLabel={`project created in ./${values.name}`}
       successNextSteps={[`cd ${values.name}`, "agentcore project deploy"]}
       successHint="enter exits"
+      onDone={() => {
+        ctx.value(TuiExitMessageKey)?.(`Next step:\n  cd ${values.name}/ && agentcore`);
+        exit();
+      }}
       doneLabel="exit"
     >
       <Step stepKey="name" prompt="name your project">
