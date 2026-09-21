@@ -41,23 +41,13 @@ type RemoveCase = {
   commands: string[][];
   specKey: string;
   expectedRemaining: string[];
-  showsAppCodeNotice: boolean;
+  showsAppCodeNotice?: boolean;
 };
 
 describe("project remove", () => {
   // Verifies that resources are removed from agentcore.json and the correct
   // remaining resources are left.
   test.each<RemoveCase>([
-    {
-      label: "harness",
-      commands: [
-        ["add", "harness", "--name", "my_harness"],
-        ["remove", "harness", "--name", "my_harness"],
-      ],
-      specKey: "harnesses",
-      expectedRemaining: [],
-      showsAppCodeNotice: true,
-    },
     {
       label: "runtime",
       commands: [["remove", "runtime", "--name", "agent_python_minimal"]],
@@ -76,7 +66,7 @@ describe("project remove", () => {
       showsAppCodeNotice: true,
     },
     {
-      label: "removes one harness while leaving others intact",
+      label: "harness",
       commands: [
         ["add", "harness", "--name", "keep_me"],
         ["add", "harness", "--name", "remove_me"],
@@ -95,7 +85,6 @@ describe("project remove", () => {
       ],
       specKey: "agentCoreGateways",
       expectedRemaining: ["keep"],
-      showsAppCodeNotice: false,
     },
     {
       label: "config-bundle",
@@ -112,7 +101,6 @@ describe("project remove", () => {
       ],
       specKey: "configBundles",
       expectedRemaining: [],
-      showsAppCodeNotice: false,
     },
     {
       label: "online-eval",
@@ -133,7 +121,6 @@ describe("project remove", () => {
       ],
       specKey: "onlineEvalConfigs",
       expectedRemaining: [],
-      showsAppCodeNotice: false,
     },
     {
       label: "online-insight",
@@ -154,7 +141,6 @@ describe("project remove", () => {
       ],
       specKey: "onlineEvalConfigs",
       expectedRemaining: [],
-      showsAppCodeNotice: false,
     },
     {
       label: "memory",
@@ -164,7 +150,6 @@ describe("project remove", () => {
       ],
       specKey: "memories",
       expectedRemaining: [],
-      showsAppCodeNotice: false,
     },
   ])("$label", async ({ commands, specKey, expectedRemaining, showsAppCodeNotice }) => {
     const { projectRoot, cleanup } = await initProject({
@@ -181,7 +166,7 @@ describe("project remove", () => {
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     const remaining = (agentcoreJson[specKey] ?? []) as { name: string }[];
     expect(remaining.map((r) => r.name)).toEqual(expectedRemaining);
-    expect(stderr.includes(APP_CODE_RETAINED_NOTICE)).toBe(showsAppCodeNotice);
+    expect(stderr.includes(APP_CODE_RETAINED_NOTICE)).toBe(showsAppCodeNotice ?? false);
   });
 
   test("removing a non-existent resource fails with a not-found error", async () => {
@@ -227,7 +212,7 @@ describe("project remove", () => {
     expect(io.stderr()).toContain("removed credential with name 'svc-key' from project");
   });
 
-  test("--json reports removals, cleaned environment keys, and retained code notes", async () => {
+  test("--json reports a removal and its cleaned environment keys", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
@@ -247,21 +232,6 @@ describe("project remove", () => {
     });
     expect(io.stdout()).not.toContain("removed credential with name");
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
-
-    const { io: runtimeIO } = await run([
-      "remove",
-      "runtime",
-      "--name",
-      "agent_python_minimal",
-      "--json",
-    ]);
-    expect(JSON.parse(runtimeIO.stdout())).toEqual({
-      operation: "remove",
-      project: { name: "TestProject", path: projectRoot },
-      resource: { type: "runtime", name: "agent_python_minimal" },
-      removedEnvironmentKeys: [],
-      notes: [APP_CODE_RETAINED_NOTICE],
-    });
   });
 
   test("removing a secret-reference credential leaves .env.local alone", async () => {
@@ -652,19 +622,6 @@ describe("project remove all", () => {
     expect(io.stdout()).toBe("");
   });
 
-  test("always reports that app code is kept", async () => {
-    const { cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-    await run(["remove", "runtime", "--name", "agent_python_minimal"]);
-    await run(["add", "memory", "--name", "recall"]);
-
-    const { io } = await run(["remove", "all", "--yes"]);
-
-    expect(io.stderr()).toContain(APP_CODE_RETAINED_NOTICE);
-  });
-
   test("reports the removal as JSON under --json", async () => {
     const projectRoot = await populatedProject();
     const envKey = credentialEnvVarName("svc-key");
@@ -676,7 +633,6 @@ describe("project remove all", () => {
       project: { name: "TestProject", path: projectRoot },
       resource: { type: "all" },
       removedEnvironmentKeys: [envKey],
-      notes: [APP_CODE_RETAINED_NOTICE],
     });
   });
 

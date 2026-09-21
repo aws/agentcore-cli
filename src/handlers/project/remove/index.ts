@@ -103,7 +103,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             project: projectReference(result.project),
             resource: { type: "all" },
             removedEnvironmentKeys: result.removedEnvKeys,
-            notes: [APP_CODE_RETAINED_NOTICE],
           },
           () => {
             config.io.stderr.write("removed all resources from project\n");
@@ -167,7 +166,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           project: projectReference(result.project),
           resource: projectMutationResource(resource, name, result.removedResource),
           removedEnvironmentKeys: result.removedEnvKeys,
-          ...(showAppCodeNotice ? { notes: [APP_CODE_RETAINED_NOTICE] } : {}),
         },
         () => {
           config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`);
