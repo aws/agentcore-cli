@@ -13,6 +13,8 @@ export type DeployBackendInput = {
   target: AwsDeploymentTarget;
   /** Requests approval after synthesis identifies a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
+  /** Whether to enable CloudWatch Transaction Search on deploy (global config). */
+  transactionSearch?: boolean;
 };
 
 export type ResolveDeployedResourcesBackendInput = {

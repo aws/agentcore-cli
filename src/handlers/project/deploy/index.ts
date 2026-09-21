@@ -3,7 +3,7 @@ import z from "zod";
 import { UserCancellationError } from "../../../errors/errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import { createHandler, flag, ProjectKey } from "../../../router";
+import { createHandler, flag, GlobalConfigAccessorKey, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionKey } from "../../keys";
@@ -80,10 +80,12 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         canPrompt === true,
       );
 
+      const globalConfig = await ctx.require(GlobalConfigAccessorKey).get();
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
         region: ctx.require(RegionKey),
         confirmTeardown,
+        transactionSearch: globalConfig.transactionSearch,
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.

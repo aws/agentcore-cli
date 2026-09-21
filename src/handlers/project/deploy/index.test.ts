@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { UserCancellationError } from "../../../errors/errors";
 import { createRootHandler } from "../../index";
+import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
 import {
   createSilentLogger,
   initProject,
@@ -82,6 +83,8 @@ type TestDeployOptions = {
   /** Thrown by the fake backend after its events, to exercise failure paths. */
   failure?: Error;
   resolveAccount?: (region: string) => Promise<string>;
+  /** Seeds the global config's transactionSearch flag (defaults to on). */
+  transactionSearch?: boolean;
 };
 
 function testDeployCommand(
@@ -97,7 +100,16 @@ function testDeployCommand(
   });
   const root = createRootHandler(core, {
     io: io.io,
-    globalConfigAccessor: new TestGlobalConfigAccessor(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(
+      options.transactionSearch === undefined
+        ? undefined
+        : {
+            initialConfigData: {
+              ...DEFAULT_GLOBAL_CONFIG,
+              transactionSearch: options.transactionSearch,
+            },
+          },
+    ),
     logger: createSilentLogger(),
   });
 
@@ -152,6 +164,18 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
     // Stack outputs are rendered only with --json; without it stdout stays empty.
     expect(subject.io.stdout()).toBe("");
+  });
+
+  test("passes the global config's transactionSearch flag into the deploy", async () => {
+    const enabled = testDeployCommand({ outputs: {} });
+    await inProjectWithTargets();
+    await enabled.run();
+    expect(enabled.calls[0]?.input.transactionSearch).toBe(true);
+
+    const disabled = testDeployCommand({ outputs: {} }, [], { transactionSearch: false });
+    await inProjectWithTargets();
+    await disabled.run();
+    expect(disabled.calls[0]?.input.transactionSearch).toBe(false);
   });
 
   test("passes an explicit target and renders the result as JSON", async () => {

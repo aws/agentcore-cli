@@ -89,7 +89,6 @@ export const ProjectSpecSchema = z
       )
       .optional(),
     payments: z.array(PaymentManagerSchema).optional().superRefine(uniqueNames("payment manager")),
-    transactionSearch: z.boolean().default(true),
   })
   .strict()
   .superRefine((spec, ctx) => {

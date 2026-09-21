@@ -170,6 +170,8 @@ export type DeployProjectInput = {
   region: string;
   /** Requests approval after the backend discovers that this deploy is a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
+  /** Whether to enable CloudWatch Transaction Search on deploy (from global config). */
+  transactionSearch?: boolean;
 };
 
 export type DeployResult = {

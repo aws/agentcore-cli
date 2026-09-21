@@ -273,7 +273,7 @@ export class CdkBackend implements ProjectBackend {
     // above, so a destroy is never blocked by Transaction Search. Never fail the
     // deploy on it either — spans are best-effort, so any setup error just skips.
     // Opt out entirely via the spec.
-    if (project.spec.transactionSearch !== false) {
+    if (input.transactionSearch !== false) {
       yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
       try {
         await this.enableTransactionSearch(target, credentials);

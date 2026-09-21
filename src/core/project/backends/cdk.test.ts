@@ -412,13 +412,14 @@ describe("CdkBackend.deploy", () => {
     expect(subject.templateLoads()).toBe(0);
   });
 
-  test("skips Transaction Search when the spec opts out", async () => {
+  test("skips Transaction Search when the config disables it", async () => {
     const input = await project();
-    input.spec = ProjectSpecSchema.parse({ name: "example", version: 1, transactionSearch: false });
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
 
-    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ transactionSearch: false })),
+    );
 
     expect(deployed.events).not.toContainEqual({
       type: "step",

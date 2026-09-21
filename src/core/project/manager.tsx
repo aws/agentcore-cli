@@ -1025,6 +1025,7 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
+      transactionSearch: input.transactionSearch,
     });
   }
 
