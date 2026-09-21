@@ -163,18 +163,21 @@ describe("project status handler", () => {
           resourceType: "harness",
           name: "orders",
           deploymentState: "deployed",
-          id: `${ARN}:harness/orders-1`,
+          arn: `${ARN}:harness/orders-1`,
         },
       ],
     });
   });
 
-  test("reports deployed resources by ARN, nesting children under their owner", async () => {
+  test("labels ARNs recursively and preserves identifiers for resources without ARNs", async () => {
     const subject = testStatusCommand([
       HARNESS_ROW,
       deployed("memory", "shortTerm", `${ARN}:memory/shortTerm-1`),
       deployed("policy-engine", "guards", `${ARN}:policy-engine/guards-1`, [
         deployed("policy", "noPii", `${ARN}:policy/noPii-1`),
+      ]),
+      deployed("gateway", "tools", `${ARN}:gateway/tools-1`, [
+        deployed("gateway-target", "search", "target-1"),
       ]),
       localOnly("policy-engine", "empty"),
     ]);
@@ -198,19 +201,33 @@ describe("project status handler", () => {
           resourceType: "memory",
           name: "shortTerm",
           deploymentState: "deployed",
-          id: `${ARN}:memory/shortTerm-1`,
+          arn: `${ARN}:memory/shortTerm-1`,
         },
         {
           resourceType: "policy-engine",
           name: "guards",
           deploymentState: "deployed",
-          id: `${ARN}:policy-engine/guards-1`,
+          arn: `${ARN}:policy-engine/guards-1`,
           children: [
             {
               resourceType: "policy",
               name: "noPii",
               deploymentState: "deployed",
-              id: `${ARN}:policy/noPii-1`,
+              arn: `${ARN}:policy/noPii-1`,
+            },
+          ],
+        },
+        {
+          resourceType: "gateway",
+          name: "tools",
+          deploymentState: "deployed",
+          arn: `${ARN}:gateway/tools-1`,
+          children: [
+            {
+              resourceType: "gateway-target",
+              name: "search",
+              deploymentState: "deployed",
+              id: "target-1",
             },
           ],
         },
@@ -235,7 +252,7 @@ describe("project status handler", () => {
         resourceType: "memory",
         name: "shortTerm",
         deploymentState: "deployed",
-        id: `${ARN}:memory/shortTerm-1`,
+        arn: `${ARN}:memory/shortTerm-1`,
       },
       { resourceType: "memory", name: "longTerm", deploymentState: "local-only" },
     ]);
