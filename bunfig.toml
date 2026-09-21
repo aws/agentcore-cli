@@ -1,4 +1,4 @@
 [test]
 preload = ["./src/testing/setup.ts"]
-pathIgnorePatterns = ["src/assets/**", "out/**", "dist/**", "test/**"]
+pathIgnorePatterns = ["src/assets/**", "out/**", "dist/**", "e2eTest/**"]
 coveragePathIgnorePatterns = ["src/testing/**", "src/assets/**"]
