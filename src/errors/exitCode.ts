@@ -1,4 +1,3 @@
-// ExitCode provides names for default Unix exit codes.
 export const ExitCode = {
   SUCCESS: 0,
   FAILURE: 1,
