@@ -1,12 +1,11 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
-import { InputValidationError } from "../../../../../errors";
+import { InputValidationError, TransactionSearchNotEnabledError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import type { TargetVariantRef } from "../../../types";
 import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
-import { requireTransactionSearch } from "../../requireTransactionSearch";
 
 const targetRefSchema = z
   .object({
@@ -86,7 +85,9 @@ export const createTargetBasedRunHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("--treatment-weight must be between 1 and 99");
       }
 
-      await requireTransactionSearch(core, coreOptsFromCtx(ctx));
+      if (!(await core.observability.isTransactionSearchEnabled(coreOptsFromCtx(ctx)))) {
+        throw new TransactionSearchNotEnabledError();
+      }
 
       const result = await core.eval.createTargetBasedABTest(
         {

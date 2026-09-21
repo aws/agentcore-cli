@@ -1,14 +1,13 @@
 import type { GatewayFilter } from "@aws-sdk/client-bedrock-agentcore";
 import z from "zod";
 import { createHandler, flag } from "../../../../../router";
-import { InputValidationError } from "../../../../../errors";
+import { InputValidationError, TransactionSearchNotEnabledError } from "../../../../../errors";
 import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import type { BundleRef } from "../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
 import { parseJsonFlag } from "../../../../utils";
-import { requireTransactionSearch } from "../../requireTransactionSearch";
 
 const bundleRefSchema = z
   .object({
@@ -96,7 +95,9 @@ export const createConfigBasedRunHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("--treatment-weight must be between 1 and 99");
       }
 
-      await requireTransactionSearch(core, coreOptsFromCtx(ctx));
+      if (!(await core.observability.isTransactionSearchEnabled(coreOptsFromCtx(ctx)))) {
+        throw new TransactionSearchNotEnabledError();
+      }
 
       const result = await core.eval.createConfigBasedABTest(
         {

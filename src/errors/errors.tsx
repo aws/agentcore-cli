@@ -224,14 +224,14 @@ export class TransactionSearchSetupError extends AgentCoreCLIError {
  * agent spans reach `aws/spans` for the online evaluation to score. Thrown up
  * front (USER source) with a link to the enablement docs.
  */
-export class TransactionSearchNotEnabledError extends InputValidationError {
+export class TransactionSearchNotEnabledError extends AgentCoreCLIError {
   constructor(options?: Omit<AgentCoreCLIErrorOptions, "source">) {
     super(
       "CloudWatch Transaction Search is not enabled in this account and region, so agent " +
         "traces are not delivered to the 'aws/spans' log group that evaluation reads. " +
         "Enable Transaction Search, then retry: " +
         "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html",
-      options,
+      { ...options, source: ERROR_SOURCE.USER },
     );
   }
 }
