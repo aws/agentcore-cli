@@ -1,7 +1,7 @@
 import { ServiceException } from "@smithy/core/client";
 import { CommanderError } from "commander";
 import { join } from "node:path";
-import { ExitCode } from "../runnable/exitCode";
+import { ExitCode } from "./exitCode";
 import { ERROR_SOURCE, type ErrorSource } from "./types";
 
 export interface AgentCoreCLIErrorOptions extends ErrorOptions {

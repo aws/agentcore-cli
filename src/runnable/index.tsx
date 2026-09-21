@@ -1,7 +1,6 @@
-import { AgentCoreCLIError, SilentCLIError, UserCancellationError } from "../errors";
-import { ExitCode } from "./exitCode";
+import { AgentCoreCLIError, ExitCode, SilentCLIError, UserCancellationError } from "../errors";
 
-export { ExitCode } from "./exitCode";
+export { ExitCode } from "../errors";
 
 /** Runs a headless operation with process SIGINT mapped to UserCancellationError. */
 export async function withUserCancellation<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {

@@ -21,4 +21,5 @@ export {
   UserCancellationError,
   type AgentCoreCLIErrorOptions,
 } from "./errors";
+export { ExitCode } from "./exitCode";
 export { ERROR_SOURCE } from "./types";
