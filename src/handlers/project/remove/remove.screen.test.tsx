@@ -377,7 +377,7 @@ describe("project remove screen", () => {
     expect(successFrame).toContain(
       `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
     );
-    expect(successFrame).not.toContain("notice");
+    expect(successFrame).toContain("notes");
     expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
     r.unmount();
   });
@@ -489,7 +489,7 @@ describe("project remove screen", () => {
     expect(successFrame).toContain(
       `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
     );
-    expect(successFrame).not.toContain("notice");
+    expect(successFrame).toContain("notes");
     await r.press("return");
 
     // Back on the picker, refreshed from the emptied project.

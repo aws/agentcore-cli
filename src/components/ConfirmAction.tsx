@@ -17,7 +17,6 @@ export type SummaryRows = Record<string, string>;
 export interface ActionResult {
   title?: string;
   rows: SummaryRows;
-  messages?: string[];
 }
 
 // ActionTrigger says what starts the action: a y/N question the user answers
@@ -67,7 +66,7 @@ type Phase =
   | { kind: "waiting" }
   | { kind: "confirm"; message: string }
   | { kind: "running" }
-  | { kind: "success"; title: string; rows: SummaryRows; messages?: string[] }
+  | { kind: "success"; title: string; rows: SummaryRows }
   | { kind: "error"; message: string; retryMessage?: string };
 
 // ConfirmAction is the shared destructive-action screen body: a summary overlay
@@ -104,12 +103,7 @@ export function ConfirmAction({
       const outcome = isProgressGenerator(result)
         ? await driveProgress(result, setTasks)
         : await result;
-      setPhase({
-        kind: "success",
-        title: outcome.title ?? successTitle,
-        rows: outcome.rows,
-        messages: outcome.messages,
-      });
+      setPhase({ kind: "success", title: outcome.title ?? successTitle, rows: outcome.rows });
     } catch (err) {
       setPhase({
         kind: "error",
@@ -186,7 +180,6 @@ export function ConfirmAction({
             <SuccessBody
               title={phase.title}
               rows={phase.rows}
-              messages={phase.messages}
               nextSteps={nextSteps}
               onDone={onDone}
               doneLabel={doneLabel}

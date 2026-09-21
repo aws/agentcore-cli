@@ -366,11 +366,11 @@ function RemoveConfirm({
         return {
           rows: {
             removed: `${config.resourceType} '${resource.name}'`,
+            ...(sourceCodeNotice ? { notes: sourceCodeNotice } : {}),
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),
           },
-          ...(sourceCodeNotice ? { messages: [sourceCodeNotice] } : {}),
         };
       }}
       successTitle="Resource removed"
@@ -434,11 +434,11 @@ function RemoveAllConfirm({ project, core }: { project: Project; core: ScreenPro
         return {
           rows: {
             removed: "all resources",
+            ...(sourceCodeNotices.length > 0 ? { notes: sourceCodeNotices.join("\n") } : {}),
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),
           },
-          ...(sourceCodeNotices.length > 0 ? { messages: sourceCodeNotices } : {}),
         };
       }}
       successTitle="All resources removed"
