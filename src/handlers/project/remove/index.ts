@@ -8,7 +8,7 @@ import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
 import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
-import { getSourceCodeRemainsNotice } from "./notice";
+import { APP_CODE_RETAINED_NOTICE, shouldShowAppCodeNotice } from "./notice";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -96,9 +96,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         await confirmRemoveAll(config.io, ctx.require(JsonKey), flags.yes, project.name);
         const result = await config.projectManager.removeAllResources(project);
         reportEnvCleanup(config.io, result.removedEnvKeys);
-        const sourceCodeNotices = result.retainedSourceCode.map(({ resourceName, sourcePath }) =>
-          getSourceCodeRemainsNotice(resourceName, sourcePath),
-        );
         renderResult<ProjectMutationResult>(
           ctx,
           {
@@ -106,12 +103,11 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             project: projectReference(result.project),
             resource: { type: "all" },
             removedEnvironmentKeys: result.removedEnvKeys,
+            notes: [APP_CODE_RETAINED_NOTICE],
           },
           () => {
             config.io.stderr.write("removed all resources from project\n");
-            for (const notice of sourceCodeNotices) {
-              config.io.stderr.write(`${notice}\n`);
-            }
+            config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
           },
         );
         return;
@@ -163,9 +159,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
 
       const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      const sourceCodeNotice = result.retainedSourceCodePath
-        ? getSourceCodeRemainsNotice(name, result.retainedSourceCodePath)
-        : undefined;
+      const showAppCodeNotice = shouldShowAppCodeNotice(resource);
       renderResult<ProjectMutationResult>(
         ctx,
         {
@@ -173,10 +167,13 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           project: projectReference(result.project),
           resource: projectMutationResource(resource, name, result.removedResource),
           removedEnvironmentKeys: result.removedEnvKeys,
+          ...(showAppCodeNotice ? { notes: [APP_CODE_RETAINED_NOTICE] } : {}),
         },
         () => {
           config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`);
-          if (sourceCodeNotice) config.io.stderr.write(`${sourceCodeNotice}\n`);
+          if (showAppCodeNotice) {
+            config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
+          }
         },
       );
     },

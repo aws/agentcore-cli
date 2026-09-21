@@ -19,6 +19,8 @@ import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 
+const APP_CODE_RETAINED_NOTICE = "Resource removed. Note that any code under app/ is kept.";
+
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
@@ -175,19 +177,65 @@ describe("project remove", () => {
     expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text()).toBe(before);
   });
 
-  test("successfully removing a runtime reports where its source code remains", async () => {
+  test.each<{
+    resource: "runtime" | "harness" | "evaluator";
+    name: string;
+    setup: string[][];
+  }>([
+    { resource: "runtime", name: "agent_python_minimal", setup: [] },
+    {
+      resource: "harness",
+      name: "my_harness",
+      setup: [["add", "harness", "--name", "my_harness"]],
+    },
+    {
+      resource: "evaluator",
+      name: "custom_eval",
+      setup: [["add", "evaluator", "code-based", "--name", "custom_eval", "--level", "TOOL_CALL"]],
+    },
+  ])(
+    "successfully removing a $resource reports that app code is kept",
+    async ({ resource, name, setup }) => {
+      const { projectRoot, cleanup } = await initProject({
+        flags: ["--template", "agent-python-minimal"],
+      });
+      cleanups.push(cleanup);
+
+      for (const command of setup) await run(command);
+      const { io } = await run(["remove", resource, "--name", name]);
+
+      expect(io.stderr()).toContain(APP_CODE_RETAINED_NOTICE);
+      expect(existsSync(join(projectRoot, "app"))).toBe(true);
+    },
+  );
+
+  test("removing another resource type does not report that app code is kept", async () => {
+    const { cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+    await run(["add", "memory", "--name", "recall"]);
+
+    const { io } = await run(["remove", "memory", "--name", "recall"]);
+
+    expect(io.stderr()).not.toContain(APP_CODE_RETAINED_NOTICE);
+  });
+
+  test("--json reports that app code is kept for a runtime", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
     cleanups.push(cleanup);
-    const sourcePath = "app/agent_python_minimal";
 
-    const { io } = await run(["remove", "runtime", "--name", "agent_python_minimal"]);
+    const { io } = await run(["remove", "runtime", "--name", "agent_python_minimal", "--json"]);
 
-    expect(io.stderr()).toContain(
-      `Resource 'agent_python_minimal' has been removed, but the source code is still in ${sourcePath}.`,
-    );
-    expect(existsSync(join(projectRoot, sourcePath))).toBe(true);
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "remove",
+      project: { name: "TestProject", path: projectRoot },
+      resource: { type: "runtime", name: "agent_python_minimal" },
+      removedEnvironmentKeys: [],
+      notes: [APP_CODE_RETAINED_NOTICE],
+    });
   });
 
   test("removing a target of a non-existent gateway names the missing gateway", async () => {
@@ -624,10 +672,21 @@ describe("project remove all", () => {
     expect(await Bun.file(envPath).text()).not.toContain(envKey);
     expect(io.stderr()).toContain(`removed '${envKey}' from ${ENV_LOCAL_RELATIVE_PATH}`);
     expect(io.stderr()).toContain("removed all resources from project");
-    expect(io.stderr()).toContain(
-      "Resource 'agent_python_minimal' has been removed, but the source code is still in app/agent_python_minimal.",
-    );
+    expect(io.stderr()).toContain(APP_CODE_RETAINED_NOTICE);
     expect(io.stdout()).toBe("");
+  });
+
+  test("always reports that app code is kept", async () => {
+    const { cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+    await run(["remove", "runtime", "--name", "agent_python_minimal"]);
+    await run(["add", "memory", "--name", "recall"]);
+
+    const { io } = await run(["remove", "all", "--yes"]);
+
+    expect(io.stderr()).toContain(APP_CODE_RETAINED_NOTICE);
   });
 
   test("reports the removal as JSON under --json", async () => {
@@ -641,6 +700,7 @@ describe("project remove all", () => {
       project: { name: "TestProject", path: projectRoot },
       resource: { type: "all" },
       removedEnvironmentKeys: [envKey],
+      notes: [APP_CODE_RETAINED_NOTICE],
     });
   });
 

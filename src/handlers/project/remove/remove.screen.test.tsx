@@ -16,6 +16,7 @@ import {
 } from "../../../testing";
 
 const RUNTIME = "agent_python_minimal";
+const APP_CODE_RETAINED_NOTICE = "Resource removed. Note that any code under app/ is kept.";
 
 const originalCwd = process.cwd();
 const temporaryDirectories: string[] = [];
@@ -374,13 +375,58 @@ describe("project remove screen", () => {
 
     expect((await readSpec(specPath)).runtimes).toEqual([]);
     const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
-    expect(successFrame).toContain(
-      `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
-    );
+    expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
     expect(successFrame).toContain("notes");
     expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
     r.unmount();
   });
+
+  test.each<{
+    resourceType: "harness" | "evaluator";
+    name: string;
+    resource: AddResourceInput;
+  }>([
+    {
+      resourceType: "harness",
+      name: "assistant",
+      resource: {
+        resourceType: "harness",
+        resourceConfig: {
+          name: "assistant",
+          model: { provider: "bedrock", modelId: "us.amazon.nova-lite-v1:0" },
+          systemPrompt: "You are terse.",
+        },
+      },
+    },
+    {
+      resourceType: "evaluator",
+      name: "judge",
+      resource: {
+        resourceType: "evaluator",
+        resourceConfig: {
+          name: "judge",
+          level: "SESSION",
+          config: { codeBased: { managed: { codeLocation: "./evaluator" } } },
+        },
+      },
+    },
+  ])(
+    "removing a $resourceType reports that app code is kept",
+    async ({ resourceType, name, resource }) => {
+      const core = new TestCoreClient();
+      const { project } = await createProject(core, [resource]);
+      const r = render(`/agentcore/project/remove/${resourceType}/0`, core, project);
+
+      await waitForText(r.lastFrame, `Remove ${resourceType} '${name}' from project orders?`);
+      await r.write("y");
+      await waitForText(r.lastFrame, "Resource removed");
+
+      const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
+      expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
+      expect(successFrame).toContain("notes");
+      r.unmount();
+    },
+  );
 
   test("enter after success refreshes the list when the project is pinned in context", async () => {
     const core = new TestCoreClient();
@@ -461,6 +507,7 @@ describe("project remove screen", () => {
     await waitForText(confirm.lastFrame, "Resource removed");
 
     expect((await readSpec(specPath)).policyEngines[0]!.policies).toEqual([]);
+    expect(confirm.lastFrame()).not.toContain(APP_CODE_RETAINED_NOTICE);
     confirm.unmount();
   });
 
@@ -486,14 +533,31 @@ describe("project remove screen", () => {
     await r.write("y");
     await waitForText(r.lastFrame, "All resources removed");
     const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
-    expect(successFrame).toContain(
-      `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
-    );
+    expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
     expect(successFrame).toContain("notes");
     await r.press("return");
 
     // Back on the picker, refreshed from the emptied project.
     await waitForText(r.lastFrame, "This project has no resources to remove.");
+    r.unmount();
+  });
+
+  test("remove all always reports that app code is kept", async () => {
+    const core = new TestCoreClient();
+    const { project } = await createProject(core, POLICY);
+    const { project: projectWithoutRuntime } = await core.projectManager.removeResource(project, {
+      resourceType: "runtime",
+      name: RUNTIME,
+    });
+    const r = render("/agentcore/project/remove/all", core, projectWithoutRuntime);
+
+    await waitForText(r.lastFrame, "Remove every resource from project orders?");
+    await r.write("y");
+    await waitForText(r.lastFrame, "All resources removed");
+
+    const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
+    expect(successFrame).toContain("notes");
     r.unmount();
   });
 

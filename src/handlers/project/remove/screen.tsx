@@ -10,7 +10,7 @@ import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { Project, RemoveResourceInput } from "../types";
 import type { ScreenProps } from "../../types";
 import { ProjectGate, projectQueryKey } from "../ProjectGate";
-import { getSourceCodeRemainsNotice } from "./notice";
+import { APP_CODE_RETAINED_NOTICE, shouldShowAppCodeNotice } from "./notice";
 
 type RootResourceType =
   | "runtime"
@@ -360,13 +360,12 @@ function RemoveConfirm({
       action={async () => {
         const result = await core.projectManager.removeResource(project, resource);
         removedProject.current = result.project;
-        const sourceCodeNotice = result.retainedSourceCodePath
-          ? getSourceCodeRemainsNotice(resource.name, result.retainedSourceCodePath)
-          : undefined;
         return {
           rows: {
             removed: `${config.resourceType} '${resource.name}'`,
-            ...(sourceCodeNotice ? { notes: sourceCodeNotice } : {}),
+            ...(shouldShowAppCodeNotice(resource.resourceType)
+              ? { notes: APP_CODE_RETAINED_NOTICE }
+              : {}),
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),
@@ -428,13 +427,10 @@ function RemoveAllConfirm({ project, core }: { project: Project; core: ScreenPro
       action={async () => {
         const result = await core.projectManager.removeAllResources(project);
         removedProject.current = result.project;
-        const sourceCodeNotices = result.retainedSourceCode.map(({ resourceName, sourcePath }) =>
-          getSourceCodeRemainsNotice(resourceName, sourcePath),
-        );
         return {
           rows: {
             removed: "all resources",
-            ...(sourceCodeNotices.length > 0 ? { notes: sourceCodeNotices.join("\n") } : {}),
+            notes: APP_CODE_RETAINED_NOTICE,
             ...(result.removedEnvKeys.length > 0
               ? { "env removed": result.removedEnvKeys.join(", ") }
               : {}),

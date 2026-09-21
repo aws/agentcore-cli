@@ -20,9 +20,9 @@ import type {
   ProjectManager,
   ProjectEvent,
   ProjectResource,
-  RemoveAllResourcesResult,
   RemoveResourceInput,
   RemoveResourceResult,
+  RemoveResourcesResult,
 } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
@@ -677,20 +677,15 @@ export class FsProjectManager implements ProjectManager {
     }
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
-    const retainedSourceCodePath =
-      input.resourceType === "runtime"
-        ? existingProjectSpec.runtimes.find((runtime) => runtime.name === input.name)?.codeLocation
-        : undefined;
 
     return {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
       removedResource,
-      ...(retainedSourceCodePath ? { retainedSourceCodePath } : {}),
     };
   }
 
-  public async removeAllResources(project: Project): Promise<RemoveAllResourcesResult> {
+  public async removeAllResources(project: Project): Promise<RemoveResourcesResult> {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -729,15 +724,10 @@ export class FsProjectManager implements ProjectManager {
     };
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
-    const retainedSourceCode = existingProjectSpec.runtimes.map(({ name, codeLocation }) => ({
-      resourceName: name,
-      sourcePath: codeLocation,
-    }));
 
     return {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
-      retainedSourceCode,
     };
   }
 
