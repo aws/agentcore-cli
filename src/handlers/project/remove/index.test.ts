@@ -18,8 +18,7 @@ import {
 import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
-
-const APP_CODE_RETAINED_NOTICE = "Resource removed. Note that any code under app/ is kept.";
+import { APP_CODE_RETAINED_NOTICE } from "./notice";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));

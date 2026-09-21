@@ -14,9 +14,9 @@ import {
   cleanupScreens,
   TestCoreClient,
 } from "../../../testing";
+import { APP_CODE_RETAINED_NOTICE } from "./notice";
 
 const RUNTIME = "agent_python_minimal";
-const APP_CODE_RETAINED_NOTICE = "Resource removed. Note that any code under app/ is kept.";
 
 const originalCwd = process.cwd();
 const temporaryDirectories: string[] = [];
