@@ -7,6 +7,7 @@ import type { DeployResult, Project, ProjectEvent } from "../../../handlers/proj
 import { FsReadWriteJson } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { createSilentLogger } from "../../../testing";
+import { TransactionSearchSetupError } from "../../../errors";
 import { CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
@@ -157,6 +158,8 @@ type HarnessOptions = {
   template?: boolean;
   failOperation?: CdkOperation["kind"];
   bootstrapError?: Error;
+  /** When set, the injected Transaction Search enabler throws it. */
+  transactionSearchError?: Error;
   provisionCredentials?: CredentialProvisioner;
   removeCredentials?: CredentialRemover;
   /** Stack returned by CloudFormation. Defaults to a present stack; null means absent. */
@@ -175,6 +178,7 @@ function harness(options: HarnessOptions = {}) {
   const bootstrapCredentials: CdkCredentialProvider[] = [];
   const accountRegions: string[] = [];
   const bootstrapRegions: string[] = [];
+  const transactionSearchRegions: string[] = [];
   const stackReads: { stackName: string; region: string; credentials: CdkCredentialProvider }[] =
     [];
   let templateLoads = 0;
@@ -206,6 +210,10 @@ function harness(options: HarnessOptions = {}) {
       bootstrapCredentials.push(provider);
       if (options.bootstrapError) throw options.bootstrapError;
       return options.bootstrap ?? { kind: "current", version: 30 };
+    },
+    enableTransactionSearch: async (target) => {
+      transactionSearchRegions.push(target.region);
+      if (options.transactionSearchError) throw options.transactionSearchError;
     },
     cdk: async (operation, runOptions) => {
       runs.push({ operation, options: runOptions });
@@ -265,6 +273,7 @@ function harness(options: HarnessOptions = {}) {
     credentials,
     runs,
     stackReads,
+    transactionSearchRegions,
     templateLoads: () => templateLoads,
     templateCleanups: () => templateCleanups,
   };
@@ -371,9 +380,11 @@ describe("CdkBackend.deploy", () => {
 
     expect(deployed.events).toEqual([
       { type: "step", message: `Verifying AWS account ${TARGET.account}` },
+      { type: "step", message: "Enabling CloudWatch Transaction Search" },
       { type: "step", message: "Synthesizing CloudFormation templates" },
       { type: "step", message: "Deploying AgentCore-example-default-0" },
     ]);
+    expect(subject.transactionSearchRegions).toEqual([TARGET.region]);
     expect(deployed.result).toEqual({ outputs: { RuntimeArn: "arn:runtime" } });
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
     expect(subject.runs).toEqual([
@@ -528,6 +539,21 @@ describe("CdkBackend.deploy", () => {
       /npm install/,
     );
     expect(provisioned).toBe(false);
+  });
+
+  test("hard-fails the deploy when Transaction Search setup is denied", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({
+      transactionSearchError: new TransactionSearchSetupError("denied: logs:PutResourcePolicy"),
+    });
+
+    await expect(
+      collectDeploy(subject.backend.deploy(input, deployInput())),
+    ).rejects.toBeInstanceOf(TransactionSearchSetupError);
+    // Aborts before any CDK synth or deploy operation.
+    expect(subject.commands).toEqual([]);
+    expect(subject.runs).toEqual([]);
   });
 
   test("fails before touching AWS when the existing state file is malformed", async () => {
