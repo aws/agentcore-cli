@@ -38,7 +38,7 @@ function harness(spec: Record<string, unknown>): HarnessSpec {
 function projectSpec(overrides: Record<string, unknown> = {}) {
   return ProjectSpecSchema.parse({
     name: "orders",
-    version: 1,
+    version: 2,
     managedBy: "CDK",
     ...overrides,
   });

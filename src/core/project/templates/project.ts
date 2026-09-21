@@ -46,8 +46,9 @@ export async function createProjectTree(
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
       FsTreeNode.createFile("agentcore.json", async () =>
         json({
+          $schema: "https://schema.agentcore.aws.dev/v2/agentcore.json",
           name: input.projectName,
-          version: 1,
+          version: 2,
           managedBy: "CDK",
           ...mergeSpecEntries(templates.map(({ spec }) => spec)),
         }),

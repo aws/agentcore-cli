@@ -74,7 +74,7 @@ async function inProject(
   await mkdir(join(root, "agentcore"), { recursive: true });
   const spec = ProjectSpecSchema.parse({
     name: "orders",
-    version: 1,
+    version: 2,
     runtimes: resources.runtimes ?? [],
     harnesses: resources.harnesses ?? [],
   });

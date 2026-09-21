@@ -35,7 +35,7 @@ function project(quickCreate = true): Project {
     rootPath: "/tmp/example",
     spec: ProjectSpecSchema.parse({
       name: "example",
-      version: 1,
+      version: 2,
       payments: [{ name: "payments", authorizerType: "AWS_IAM", connectors }],
     }),
   };

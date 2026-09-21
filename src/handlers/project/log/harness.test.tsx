@@ -41,7 +41,7 @@ async function inProject(harnesses: readonly unknown[], targets = [DEFAULT_TARGE
   await mkdir(join(root, "agentcore"), { recursive: true });
   const spec = ProjectSpecSchema.parse({
     name: "orders",
-    version: 1,
+    version: 2,
     harnesses,
   });
   await writeFile(join(root, "agentcore", "agentcore.json"), JSON.stringify(spec));

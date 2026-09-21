@@ -59,7 +59,7 @@ async function inProject(
   cleanups.push(cleanup);
   const spec = ProjectSpecSchema.parse({
     name: "orders",
-    version: 1,
+    version: 2,
     runtimes,
   });
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), JSON.stringify(spec));

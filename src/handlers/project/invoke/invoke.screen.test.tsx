@@ -27,7 +27,7 @@ const project: Project = {
   rootPath: "/tmp/orders",
   spec: ProjectSpecSchema.parse({
     name: "orders",
-    version: 1,
+    version: 2,
     runtimes: [
       {
         name: "checkout",

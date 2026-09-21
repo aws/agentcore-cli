@@ -76,7 +76,7 @@ async function project(credentials: unknown[], envLocal?: string): Promise<Proje
   return {
     name: "example",
     rootPath,
-    spec: ProjectSpecSchema.parse({ name: "example", version: 1, credentials }),
+    spec: ProjectSpecSchema.parse({ name: "example", version: 2, credentials }),
   };
 }
 

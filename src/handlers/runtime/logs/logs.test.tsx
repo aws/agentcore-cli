@@ -101,7 +101,7 @@ describe("runtime logs", () => {
     mkdirSync(join(root, "agentcore"), { recursive: true });
     writeFileSync(
       join(root, "agentcore", "agentcore.json"),
-      JSON.stringify({ name: "LogsProj", version: 1 }),
+      JSON.stringify({ name: "LogsProj", version: 2 }),
     );
 
     const previousCwd = process.cwd();

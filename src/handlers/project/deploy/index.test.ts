@@ -126,7 +126,7 @@ async function inProjectWithTargets(contents: string = JSON.stringify(TARGETS)):
 async function emptyProjectSpec(projectRoot: string): Promise<void> {
   await writeFile(
     join(projectRoot, "agentcore", "agentcore.json"),
-    JSON.stringify({ name: "orders", version: 1 }),
+    JSON.stringify({ name: "orders", version: 2 }),
   );
 }
 

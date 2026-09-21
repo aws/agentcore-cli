@@ -15,7 +15,7 @@ function project(): Project {
     rootPath: "/workspace/demo",
     spec: ProjectSpecSchema.parse({
       name: "Demo",
-      version: 1,
+      version: 2,
       managedBy: "CDK",
       runtimes: [
         {

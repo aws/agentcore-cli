@@ -89,7 +89,7 @@ async function inProject(
     // What `remove --all` leaves: the up-front signal the deploy asks about.
     await writeFile(
       join(projectRoot, "agentcore", "agentcore.json"),
-      JSON.stringify({ name: "orders", version: 1 }),
+      JSON.stringify({ name: "orders", version: 2 }),
     );
   }
   return projectRoot;
@@ -282,7 +282,7 @@ describe("project deploy screen", () => {
 
     await writeFile(
       join(projectRoot, "agentcore", "agentcore.json"),
-      JSON.stringify({ name: "orders", version: 1 }),
+      JSON.stringify({ name: "orders", version: 2 }),
     );
     await r.write("deploy");
     await r.press("return");

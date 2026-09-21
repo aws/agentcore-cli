@@ -122,6 +122,12 @@ describe("FsProjectManager.create", () => {
     });
 
     const projectRoot = join(directory, "example");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec).toMatchObject({
+      $schema: "https://schema.agentcore.aws.dev/v2/agentcore.json",
+      version: 2,
+    });
+    expect(ProjectSpecSchema.safeParse(spec).success).toBe(true);
     expect(await projectManifest(projectRoot)).toMatchSnapshot();
   });
 
@@ -668,7 +674,7 @@ describe("FsProjectManager.deploy", () => {
       name: "example",
       rootPath,
       spec: {
-        ...ProjectSpecSchema.parse({ name: "example", version: 1 }),
+        ...ProjectSpecSchema.parse({ name: "example", version: 2 }),
       },
     };
   }
@@ -950,7 +956,7 @@ describe("FsProjectManager.resolve", () => {
       join(root, "agentcore", "agentcore.json"),
       JSON.stringify({
         name: "example",
-        version: 1,
+        version: 2,
         runtimes: [
           {
             name: "agent_python_minimal",

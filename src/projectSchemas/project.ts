@@ -39,7 +39,7 @@ export const ProjectSpecSchema = z
   .object({
     $schema: z.string().optional(),
     name: ProjectNameSchema,
-    version: z.number().int().min(1),
+    version: z.literal(2),
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),

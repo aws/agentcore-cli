@@ -36,7 +36,7 @@ function project(spec: Record<string, unknown>): Project {
   return {
     name: "orders",
     rootPath: "/tmp/orders",
-    spec: ProjectSpecSchema.parse({ name: "orders", version: 1, ...spec }),
+    spec: ProjectSpecSchema.parse({ name: "orders", version: 2, ...spec }),
   };
 }
 

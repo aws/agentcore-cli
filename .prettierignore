@@ -13,3 +13,4 @@ __fixtures__
 
 *.snap
 src/assets
+schemas/agentcore.schema.v1.json

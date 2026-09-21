@@ -1,7 +1,8 @@
 import { describe, expect, it, test } from "bun:test";
 import { ProjectSpecSchema, ProjectNameSchema } from "./project";
+import { z } from "zod";
 
-const minimalProject = { name: "project", version: 1 };
+const minimalProject = { name: "project", version: 2 };
 
 const runtime = {
   name: "agent",
@@ -13,6 +14,27 @@ const runtime = {
 };
 
 describe("project custom validation", () => {
+  test.each([1, 3, "2", undefined, null])("rejects project version %j", (version) => {
+    const result = ProjectSpecSchema.safeParse({ ...minimalProject, version });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["version"] }));
+    }
+  });
+
+  test("requires an explicit project version", () => {
+    expect(ProjectSpecSchema.safeParse({ name: "project" }).success).toBe(false);
+  });
+
+  test("keeps the published v2 JSON Schema in sync with project inputs", async () => {
+    const schema = await Bun.file(
+      new URL("../../schemas/agentcore.schema.v2.json", import.meta.url),
+    ).json();
+    expect(schema).toEqual(z.toJSONSchema(ProjectSpecSchema, { target: "draft-07", io: "input" }));
+    expect(schema.properties.version).toEqual({ type: "number", const: 2 });
+    expect(schema.required).toEqual(["name", "version"]);
+  });
+
   it("rejects reserved project names case-insensitively", () => {
     expect(ProjectNameSchema.safeParse("OpenAI").success).toBe(false);
     expect(ProjectNameSchema.safeParse("myproject").success).toBe(true);
