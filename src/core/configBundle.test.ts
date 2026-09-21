@@ -5,7 +5,7 @@ import {
   UpdateConfigurationBundleCommand,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { NetworkingError } from "../errors";
+import { InputValidationError, NetworkingError } from "../errors";
 import { EvalClient } from "./eval";
 import type { AwsClients, ClientConfig } from "./types";
 
@@ -129,5 +129,40 @@ describe("EvalClient configuration bundles", () => {
       bundleId: "b-1",
       branchName: "mainline",
     });
+  });
+
+  test("rejects a full ARN, telling the caller to pass the bare id", async () => {
+    // `project status` prints bare ids; a full ARN in --id would reach the service
+    // as a path segment whose slashes break path→operation parsing (a misleading
+    // AccessDenied), so it is rejected up front, before any request.
+    const arn = "arn:aws:bedrock-agentcore:us-west-2:123456789012:configuration-bundle/b-1";
+    const sent: unknown[] = [];
+    const { client } = subject(async (command) => {
+      sent.push(command);
+      return { versionId: "v-9" };
+    });
+
+    const rejects = /must be a bare resource id, not an ARN/;
+    await expect(
+      client.getConfigurationBundle(arn, undefined, "mainline", OPTIONS),
+    ).rejects.toThrow(rejects);
+    await expect(
+      client.listConfigurationBundleVersions(arn, undefined, undefined, OPTIONS),
+    ).rejects.toThrow(rejects);
+    await expect(client.deleteConfigurationBundle(arn, OPTIONS)).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+    await expect(
+      client.updateConfigurationBundle(
+        arn,
+        { branchName: "mainline", components: {}, commitMessage: "update" },
+        OPTIONS,
+      ),
+    ).rejects.toThrow(rejects);
+
+    // Rejected before any SDK call; a bare id still works.
+    expect(sent).toEqual([]);
+    await client.getConfigurationBundle("b-1", undefined, "mainline", OPTIONS);
+    expect((sent[0] as GetConfigurationBundleCommand).input).toMatchObject({ bundleId: "b-1" });
   });
 });
