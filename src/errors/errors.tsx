@@ -206,6 +206,19 @@ export class CloudWatchQueryError extends AgentCoreCLIError {
   }
 }
 
+/**
+ * Enabling CloudWatch Transaction Search during deploy failed. USER source: the
+ * usual cause is the deploying principal lacking the setup permissions, and the
+ * message names the failed step so the user can grant them. Deploy hard-fails on
+ * this — evaluations read spans from `aws/spans`, which only Transaction Search
+ * populates.
+ */
+export class TransactionSearchSetupError extends AgentCoreCLIError {
+  constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
+    super(message, { ...options, source: ERROR_SOURCE.USER });
+  }
+}
+
 /** Service data was returned successfully, but did not match the expected contract. */
 export class MalformedServiceResponseError extends AgentCoreCLIError {
   constructor(message: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
