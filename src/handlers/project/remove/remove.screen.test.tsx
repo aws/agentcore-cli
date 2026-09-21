@@ -374,7 +374,7 @@ describe("project remove screen", () => {
 
     expect((await readSpec(specPath)).runtimes).toEqual([]);
     expect(r.lastFrame()!.replace(/\s+/g, " ")).toContain(
-      `Runtime '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
+      `Resource '${RUNTIME}' has been removed, but the source code is still in app/${RUNTIME}.`,
     );
     expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
     r.unmount();

@@ -185,7 +185,7 @@ describe("project remove", () => {
     const { io } = await run(["remove", "runtime", "--name", "agent_python_minimal"]);
 
     expect(io.stderr()).toContain(
-      `Runtime 'agent_python_minimal' has been removed, but the source code is still in ${sourcePath}.`,
+      `Resource 'agent_python_minimal' has been removed, but the source code is still in ${sourcePath}.`,
     );
     expect(existsSync(join(projectRoot, sourcePath))).toBe(true);
   });

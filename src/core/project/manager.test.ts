@@ -993,19 +993,6 @@ describe("FsProjectManager removal", () => {
     },
   );
 
-  test("removing a runtime returns its retained source path without deleting it", async () => {
-    const { subject, project } = await createdProject();
-    const runtime = project.spec.runtimes[0]!;
-
-    const result = await subject.removeResource(project, {
-      resourceType: "runtime",
-      name: runtime.name,
-    });
-
-    expect(result.retainedSourceCodePath).toBe(runtime.codeLocation);
-    expect(existsSync(join(project.rootPath, runtime.codeLocation))).toBe(true);
-  });
-
   test("removing a credential deletes the .env.local keys it reserved", async () => {
     const { subject, project } = await createdProject();
     const envKey = credentialEnvVarName("svc-key");
