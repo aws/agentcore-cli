@@ -13,7 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Release pushes are verified by release-publish before publishing.
   verify:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
     uses: ./.github/workflows/verify.yml
     permissions:
       contents: read
@@ -23,7 +25,7 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   e2e:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')
     uses: ./.github/workflows/e2e-test.yml
     permissions:
       id-token: write
