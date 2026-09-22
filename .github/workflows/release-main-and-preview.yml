@@ -49,7 +49,6 @@ jobs:
       contents: read
     with:
       ref: ${{ github.sha }}
-      skip_macos: true
 
   publish:
     needs: verify

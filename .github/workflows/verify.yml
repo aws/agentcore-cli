@@ -7,10 +7,6 @@ on:
       ref:
         required: true
         type: string
-      skip_macos:
-        required: false
-        default: false
-        type: boolean
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -44,8 +40,6 @@ jobs:
             runner: '["macos-latest"]'
             target: darwin-arm64
             binary: ./dist/bin/agentcore-darwin-arm64
-        exclude:
-          - name: ${{ inputs.skip_macos && 'macOS' || '' }}
     steps:
       - uses: actions/checkout@v7
         with:
