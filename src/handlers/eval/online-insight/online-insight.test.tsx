@@ -380,6 +380,42 @@ describe("flag validation", () => {
     ).rejects.toThrow(/Invalid JSON for option '--data-source-config'/);
   });
 
+  test("create rejects malformed --output-config JSON", async () => {
+    await expect(
+      run([
+        "eval",
+        "online-insight",
+        "create",
+        "--name",
+        CONFIG_NAME,
+        "--agent",
+        FIXTURE_AGENT_ID,
+        "--role-arn",
+        FIXTURE_ROLE_ARN,
+        "--insight",
+        FIXTURE_INSIGHT_ID,
+        "--sampling-rate",
+        "10",
+        "--output-config",
+        "{not json",
+      ]),
+    ).rejects.toThrow(/Invalid JSON for option '--output-config'/);
+  });
+
+  test("update rejects malformed --output-config JSON", async () => {
+    await expect(
+      run([
+        "eval",
+        "online-insight",
+        "update",
+        "--id",
+        MISSING_CONFIG_ID,
+        "--output-config",
+        "{not json",
+      ]),
+    ).rejects.toThrow(/Invalid JSON for option '--output-config'/);
+  });
+
   // --json forces the headless path so the required-flag error surfaces; without
   // it a bare invocation opens the TUI under the empty-invocation middleware.
   test.each(["get", "pause", "resume", "delete"])("%s requires --id", async (command) => {
