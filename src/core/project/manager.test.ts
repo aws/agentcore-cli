@@ -125,10 +125,9 @@ describe("FsProjectManager.create", () => {
 
     const projectRoot = join(directory, "example");
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec).toMatchObject({
-      $schema: "https://schema.agentcore.aws.dev/v2/agentcore.json",
-      version: 2,
-    });
+    expect(spec).toMatchObject({ version: 2 });
+    // The v2 schema endpoint is unpublished, so scaffolding must not point at it.
+    expect(spec).not.toHaveProperty("$schema");
     expect(ProjectSpecSchema.safeParse(spec).success).toBe(true);
     const cdkPackage = await Bun.file(join(projectRoot, "agentcore", "cdk", "package.json")).json();
     expect(cdkPackage.dependencies["@aws/agentcore-cdk"]).toBe(MINIMUM_COMPATIBLE_CDK_VERSION);
