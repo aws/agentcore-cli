@@ -6,6 +6,7 @@ import z from "zod";
 import { E2E_PREFIX, TAGS } from "../constants";
 import { CliRunner, parseResult, type RunResult } from "../helpers/run";
 import { retry } from "../helpers/retry";
+import { TIMEOUT_MS } from "../timeouts";
 
 type RuntimeTemplateTestCase = {
   name: string;
@@ -13,15 +14,6 @@ type RuntimeTemplateTestCase = {
   protocol: "HTTP" | "MCP" | "A2A" | "AGUI";
   payload: Record<string, unknown>;
   invokeFlags?: string[];
-};
-
-export const TIMEOUT_MS = {
-  PROJECT_CREATE: 3 * 60 * 1000,
-  PROJECT_DEV: 3 * 60 * 1000,
-  PROJECT_DEPLOY: 10 * 60 * 1000,
-  PROJECT_ADD: 3 * 60 * 1000,
-  PROJECT_REMOVE: 60 * 1000,
-  PROJECT_INVOKE: 3 * 60 * 1000,
 };
 
 const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [

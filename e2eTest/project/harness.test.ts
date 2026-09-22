@@ -5,20 +5,13 @@ import { join } from "node:path";
 import z from "zod";
 import { E2E_PREFIX, TAGS } from "../constants";
 import { CliRunner, parseResult } from "../helpers/run";
+import { TIMEOUT_MS } from "../timeouts";
 
 type HarnessTestCase = {
   name: string;
   addFlags: string[];
   invokeFlags: string[];
   expectedText?: string;
-};
-
-const TIMEOUT_MS = {
-  PROJECT_CREATE: 3 * 60 * 1000,
-  PROJECT_DEPLOY: 10 * 60 * 1000,
-  PROJECT_ADD: 3 * 60 * 1000,
-  PROJECT_REMOVE: 60 * 1000,
-  PROJECT_INVOKE: 3 * 60 * 1000,
 };
 
 const CUSTOM_PROMPT_RESPONSE = "HARNESS_PROMPT_VERIFIED";
@@ -134,26 +127,21 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HA
     },
   );
 
-  test.each(HARNESS_TEST_CASES)(
-    "$name can be removed from the project",
-    { timeout: TIMEOUT_MS.PROJECT_REMOVE },
-    async (harness) => {
+  test(
+    "removes all harnesses and deploys the empty project",
+    { timeout: TIMEOUT_MS.PROJECT_REMOVE + TIMEOUT_MS.PROJECT_DEPLOY },
+    async () => {
       const removed = parseResult(
         OperationSchema,
-        await cli.run(
-          ["project", "remove", "harness", "--name", harness.name, "--json"],
-          projectDir,
-        ),
+        await cli.run(["project", "remove", "all", "--yes", "--json"], projectDir),
       );
       expect(removed.operation).toBe("remove");
+
+      const deployment = parseResult(
+        DeployResponseSchema,
+        await cli.run(["project", "deploy", "--yes", "--json"], projectDir),
+      );
+      expect(deployment.message).toContain("Removed project");
     },
   );
-
-  test("deploys the empty project", { timeout: TIMEOUT_MS.PROJECT_DEPLOY }, async () => {
-    const deployment = parseResult(
-      DeployResponseSchema,
-      await cli.run(["project", "deploy", "--yes", "--json"], projectDir),
-    );
-    expect(deployment.message).toContain("Removed project");
-  });
 });
