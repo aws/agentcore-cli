@@ -37,7 +37,6 @@ const uniqueNames = (resource: string) =>
   );
 export const ProjectSpecSchema = z
   .object({
-    $schema: z.string().optional(),
     name: ProjectNameSchema,
     version: z.literal(2),
     managedBy: ManagedBySchema,

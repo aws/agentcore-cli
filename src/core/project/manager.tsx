@@ -700,8 +700,8 @@ export class FsProjectManager implements ProjectManager {
     }
 
     // A spec-level reset, mirroring the original CLI's `remove all`: every
-    // resource collection is emptied while name, version, managedBy, tags, and
-    // $schema survive. Code under app/ and aws-targets.json are left in place
+    // resource collection is emptied while name, version, managedBy, and tags
+    // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
     const newSpec = {
       ...existingProjectSpec,
