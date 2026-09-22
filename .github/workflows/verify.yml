@@ -1,5 +1,7 @@
 # Verifies a commit on every platform in one job each: static checks (Linux only, they are
 # platform-independent), bundle, package, compile, smoke test, unit tests.
+# macOS is a separate job so callers can turn it off: a matrix entry cannot be skipped by input, and
+# exclude runs before include so it cannot drop one.
 name: verify
 on:
   workflow_call:
@@ -7,6 +9,10 @@ on:
       ref:
         required: true
         type: string
+      macos:
+        required: false
+        default: true
+        type: boolean
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -34,12 +40,6 @@ jobs:
             runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0", "verify-windows"]'
             target: windows-x64
             binary: ./dist/bin/agentcore-windows-x64.exe
-          # CodeBuild does not support macOS.
-          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
-          - name: macOS
-            runner: '["macos-latest"]'
-            target: darwin-arm64
-            binary: ./dist/bin/agentcore-darwin-arm64
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,3 +76,25 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  verify-macos:
+    name: macOS
+    if: inputs.macos
+    # CodeBuild does not support macOS.
+    # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun pm pack --ignore-scripts
+      - run: bun run compile:darwin-arm64
+      - name: Smoke test binary
+        run: ./dist/bin/agentcore-darwin-arm64 --help
+      - run: bun test
