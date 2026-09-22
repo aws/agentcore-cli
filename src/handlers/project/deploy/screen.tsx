@@ -2,7 +2,7 @@ import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
-import { ProjectKey, type Context } from "../../../router";
+import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
 import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
@@ -88,10 +88,12 @@ function DeployConfirm({
       isPending={false}
       error={null}
       action={async function* () {
+        const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
         const result = yield* core.projectManager.deploy(project, {
           target: targetName,
           region,
           confirmTeardown: async () => teardown,
+          transactionSearch: globalConfig?.transactionSearch,
         });
         // The title follows the result, not the preflight heuristic, which
         // synthesis can disagree with. Outputs are not listed: the command
