@@ -1,7 +1,7 @@
 import {
   CloudFormationClient,
   DeleteStackCommand,
-  ListStacksCommand,
+  paginateListStacks,
 } from "@aws-sdk/client-cloudformation";
 import { E2E_PREFIX } from "./constants";
 import { createLogger } from "./helpers/logger";
@@ -13,12 +13,7 @@ const logger = createLogger("e2e-cleanup");
 
 /** Given a CloudFormation client, deletes stale e2e stacks while preserving active stacks. */
 export async function cleanupStaleStacks(cfn: CloudFormationClient): Promise<void> {
-  let nextToken: string | undefined;
-
-  do {
-    const page = await cfn.send(new ListStacksCommand({ NextToken: nextToken }));
-    nextToken = page.NextToken;
-
+  for await (const page of paginateListStacks({ client: cfn }, {})) {
     for (const stack of page.StackSummaries ?? []) {
       const status = stack.StackStatus ?? "";
       const age = Date.now() - (stack.CreationTime?.getTime() ?? Date.now());
@@ -45,13 +40,15 @@ export async function cleanupStaleStacks(cfn: CloudFormationClient): Promise<voi
         // Leave failed cleanup for a later pre-run sweep.
       }
     }
-  } while (nextToken);
+  }
 }
 
 logger.info(`starting cleanup in ${region} for stacks prefixed with '${stackPrefix}'`);
 try {
-  await cleanupStaleStacks(new CloudFormationClient({ region }));
+  await cleanupStaleStacks(
+    new CloudFormationClient({ region, maxAttempts: 10, retryMode: "adaptive" }),
+  );
+  logger.info(`cleanup finished`);
 } catch (error) {
   logger.error(`cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
-  throw error;
 }
