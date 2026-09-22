@@ -45,9 +45,7 @@ export async function cleanupStaleStacks(cfn: CloudFormationClient): Promise<voi
 
 logger.info(`starting cleanup in ${region} for stacks prefixed with '${stackPrefix}'`);
 try {
-  await cleanupStaleStacks(
-    new CloudFormationClient({ region, maxAttempts: 10, retryMode: "adaptive" }),
-  );
+  await cleanupStaleStacks(new CloudFormationClient({ region, maxAttempts: 10 }));
   logger.info(`cleanup finished`);
 } catch (error) {
   logger.error(`cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
