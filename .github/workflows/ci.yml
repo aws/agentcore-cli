@@ -13,9 +13,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Release pushes are verified by release-publish before publishing.
+  check-release:
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(release):')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      is_release: ${{ steps.check.outputs.is_release }}
+    steps:
+      - name: Check for a merged release PR
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          IS_RELEASE=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            | jq -r --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF_NAME" --arg sha "$GITHUB_SHA" '
+                any(.[][];
+                  # Stable account ID for agentcore-devx-automation[bot].
+                  .user.id == 282717993 and
+                  .merged_at != null and
+                  .merge_commit_sha == $sha and
+                  .head.repo.full_name == $repository and
+                  .base.ref == $ref and
+                  (.head.ref | startswith("release/v"))
+                )')
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+
+  # Only confirmed release pushes skip CI; a skipped or failed lookup still runs CI.
   verify:
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')
+    needs: check-release
+    if: ${{ !cancelled() && needs.check-release.outputs.is_release != 'true' }}
     uses: ./.github/workflows/verify.yml
     permissions:
       contents: read
@@ -25,7 +53,8 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   e2e:
-    if: github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')
+    needs: check-release
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.check-release.outputs.is_release != 'true' }}
     uses: ./.github/workflows/e2e-test.yml
     permissions:
       id-token: write
