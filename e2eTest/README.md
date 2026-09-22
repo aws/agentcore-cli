@@ -3,6 +3,7 @@
 The e2e suite deploys and invokes real AgentCore resources. Run it with AWS credentials:
 
 ```sh
+bun install
 bun run build
 export AGENTCORE_CLI_PATH="node $PWD/dist/index.js"
 bun run test:e2e
