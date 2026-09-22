@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import z from "zod";
 import {
   assertMutuallyExclusiveFlags,
   parseJsonArrayFlag,
+  parseJsonFlagWithSchema,
   parseJsonObjectFlag,
   parseTags,
 } from "./utils";
@@ -16,6 +18,49 @@ describe("structured JSON flags", () => {
     expect(() => parseJsonObjectFlag("config", "[]")).toThrow("must be a JSON object");
     expect(() => parseJsonObjectFlag("config", "null")).toThrow("must be a JSON object");
     expect(() => parseJsonArrayFlag("items", "{}")).toThrow("must be a JSON array");
+  });
+});
+
+describe("parseJsonFlagWithSchema", () => {
+  const ModelSchema = z
+    .object({ modelId: z.string(), apiKeyArn: z.string().optional() })
+    .refine((m) => m.modelId !== "needs-key" || m.apiKeyArn !== undefined, {
+      message: "apiKeyArn is required",
+    });
+
+  test("returns undefined when the flag is omitted", () => {
+    expect(parseJsonFlagWithSchema("model", undefined, ModelSchema)).toBeUndefined();
+  });
+
+  test("returns valid input unchanged", () => {
+    expect(parseJsonFlagWithSchema("model", '{"modelId":"anthropic.x"}', ModelSchema)).toEqual({
+      modelId: "anthropic.x",
+    });
+  });
+
+  // The F17 case: without the strict pass this parses, drops `modlId`, and sends
+  // an object missing the field the user was trying to set.
+  test("rejects a key the schema does not declare instead of dropping it", () => {
+    expect(() =>
+      parseJsonFlagWithSchema("model", '{"modelId":"anthropic.x","modlId":"typo"}', ModelSchema),
+    ).toThrow("model");
+  });
+
+  test("keeps the schema's own refinements", () => {
+    expect(() => parseJsonFlagWithSchema("model", '{"modelId":"needs-key"}', ModelSchema)).toThrow(
+      "apiKeyArn is required",
+    );
+  });
+
+  // A record accepts any key by definition, so there is nothing to reject and the
+  // strict pass must leave it alone.
+  test("leaves a record schema permissive", () => {
+    const tags = parseJsonFlagWithSchema(
+      "tags",
+      '{"env":"prod"}',
+      z.record(z.string(), z.string()),
+    );
+    expect(tags).toEqual({ env: "prod" });
   });
 });
 
