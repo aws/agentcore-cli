@@ -10,7 +10,6 @@ on:
         required: true
         type: string
       macos:
-        required: false
         default: true
         type: boolean
     secrets:
