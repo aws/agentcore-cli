@@ -7,6 +7,10 @@ on:
       ref:
         required: true
         type: string
+      skip_macos:
+        required: false
+        default: false
+        type: boolean
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -16,30 +20,32 @@ env:
 
 jobs:
   verify:
-    name: ${{ matrix.name }}
-    runs-on: ${{ fromJSON(matrix.runner) }}
+    name: >-
+      ${{
+        matrix.target == 'linux-x64' && 'Linux'
+        || matrix.target == 'windows-x64' && 'Windows'
+        || 'macOS'
+      }}
+    # Per-job labels stop GitHub from routing a job to the runner CodeBuild created for another job.
+    # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html
+    runs-on: >-
+      ${{
+        fromJSON(
+          matrix.target == 'linux-x64'
+          && format('["codebuild-agentcore-e2e-{0}-{1}", "verify-linux"]', github.run_id, github.run_attempt)
+          || matrix.target == 'windows-x64'
+          && format('["codebuild-agentcore-e2e-{0}-{1}", "image:windows-1.0", "verify-windows"]', github.run_id, github.run_attempt)
+          || '["macos-latest"]'
+        )
+      }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Per-job labels stop GitHub from routing a job to the runner CodeBuild created for another job.
-          # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html
-          - name: Linux
-            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "verify-linux"]'
-            target: linux-x64
-            binary: ./dist/bin/agentcore-linux-x64
-          - name: Windows
-            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0", "verify-windows"]'
-            target: windows-x64
-            binary: ./dist/bin/agentcore-windows-x64.exe
-          # CodeBuild does not support macOS.
-          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
-          - name: macOS
-            runner: '["macos-latest"]'
-            target: darwin-arm64
-            binary: ./dist/bin/agentcore-darwin-arm64
+        # CodeBuild does not support macOS.
+        # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
+        target: ${{ fromJSON(inputs.skip_macos && '["linux-x64", "windows-x64"]' || '["linux-x64", "windows-x64", "darwin-arm64"]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,7 +70,7 @@ jobs:
       - run: bun pm pack --ignore-scripts
       - run: bun run compile:${{ matrix.target }}
       - name: Smoke test binary
-        run: ${{ matrix.binary }} --help
+        run: ./dist/bin/agentcore-${{ matrix.target }}${{ matrix.target == 'windows-x64' && '.exe' || '' }} --help
 
       # TODO: investigate sharding as repo grows:  https://bun.com/blog/release-notes/bun-v1.3.13#bun-test-shard-m-n-for-splitting-tests-across-ci-jobs
       - run: bun test --coverage --coverage-reporter=lcov
