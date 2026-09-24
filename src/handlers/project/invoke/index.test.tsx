@@ -36,6 +36,10 @@ const TARGET = {
 } as const;
 const arn = (resource: string) =>
   `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}:${resource}`;
+const TARGET_CREDENTIALS = async () => ({
+  accessKeyId: "target-access-key",
+  secretAccessKey: "target-secret-key",
+});
 const RUNTIME_ID = "checkout-AbCdEf1234";
 const HARNESS_ID = "support-AbCdEf1234";
 const GATEWAY_ID = "tools-AbCdEf1234";
@@ -78,31 +82,27 @@ function backend() {
       yield* [];
       return { outputs: {} };
     },
-    async resolveDeployedResources() {
-      throw new Error("invoke resolves project resources, not deployed resources");
-    },
-    async resolveProjectResources(project, input) {
+    async resolveDeployedResources(project, input) {
       targets.push(input.target.name);
-      return [
-        ...project.spec.runtimes.map(({ name }) => ({
-          resourceType: "runtime" as const,
+      const ids = { runtime: RUNTIME_ID, harness: HARNESS_ID, gateway: GATEWAY_ID };
+      return (
+        [
+          ["runtime", project.spec.runtimes],
+          ["harness", project.spec.harnesses],
+          ["gateway", project.spec.agentCoreGateways],
+        ] as const
+      ).flatMap(([resourceType, resources]) =>
+        resources.map(({ name }) => ({
+          resourceType,
           name,
-          deploymentState: "deployed" as const,
-          arn: arn(`runtime/${RUNTIME_ID}`),
+          id: ids[resourceType],
+          target: input.target,
+          credentialProvider: TARGET_CREDENTIALS,
         })),
-        ...project.spec.harnesses.map(({ name }) => ({
-          resourceType: "harness" as const,
-          name,
-          deploymentState: "deployed" as const,
-          arn: arn(`harness/${HARNESS_ID}`),
-        })),
-        ...project.spec.agentCoreGateways.map(({ name }) => ({
-          resourceType: "gateway" as const,
-          name,
-          deploymentState: "deployed" as const,
-          arn: arn(`gateway/${GATEWAY_ID}`),
-        })),
-      ];
+      );
+    },
+    async resolveProjectResources() {
+      throw new Error("invoke resolves deployed resources, not project resources");
     },
   };
   return { targets, value };
@@ -206,7 +206,7 @@ describe("invoke", () => {
       });
 
       const invoke = core[client].calls.find((call) => call.method === method)!;
-      expect(invoke.args[1]).toEqual({ region: TARGET.region });
+      expect(invoke.args[1]).toEqual({ region: TARGET.region, credentials: TARGET_CREDENTIALS });
       expect(resolved.targets).toEqual(["default"]);
     },
   );

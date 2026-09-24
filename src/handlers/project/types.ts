@@ -203,7 +203,7 @@ export type ResolveTargetInput = {
 
 export type ResolveDeployedResourceInput = {
   target: string;
-  resourceType: ProjectObservableResource;
+  resourceType: ProjectInvokableResource;
   name: string;
 };
 
@@ -212,7 +212,7 @@ export type ResolveDeployedResourcesInput = {
 };
 
 export type ResolvedDeployedResource = {
-  resourceType: ProjectObservableResource;
+  resourceType: ProjectInvokableResource;
   name: string;
   id: string;
   target: AwsDeploymentTarget;
@@ -399,7 +399,6 @@ export type ExportHarnessResult = {
 };
 
 export type ProjectInvokableResource = Extract<ProjectResource, "harness" | "runtime" | "gateway">;
-export type ProjectObservableResource = Extract<ProjectInvokableResource, "harness" | "runtime">;
 
 export type RemoveResourceInput =
   | {
@@ -488,7 +487,7 @@ export interface ProjectManager {
     input: ResolveDeployedResourceInput,
   ): Promise<ResolvedDeployedResource>;
 
-  /** Resolve every configured Runtime and Harness present in the deployed target stack. */
+  /** Resolve every configured Runtime, Harness, and Gateway present in the deployed target stack. */
   resolveDeployedResources(
     project: Project,
     input: ResolveDeployedResourcesInput,

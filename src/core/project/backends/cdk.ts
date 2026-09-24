@@ -108,10 +108,11 @@ function findDeployedResourceId(
 ): string | undefined {
   if (!stack.StackName) return undefined;
   const exportResourceName = input.name.replaceAll("_", "-");
-  const exportName =
-    input.resourceType === "runtime"
-      ? `${stack.StackName}-${exportResourceName}-RuntimeId`
-      : `${stack.StackName}-Harness-${exportResourceName}-Id`;
+  const exportName = {
+    runtime: `${stack.StackName}-${exportResourceName}-RuntimeId`,
+    harness: `${stack.StackName}-Harness-${exportResourceName}-Id`,
+    gateway: `${stack.StackName}-Gateway-${exportResourceName}-Id`,
+  }[input.resourceType];
   return stack.Outputs?.find((output) => output.ExportName === exportName)?.OutputValue;
 }
 
@@ -506,6 +507,10 @@ export class CdkBackend implements ProjectBackend {
     const resources = [
       ...project.spec.runtimes.map(({ name }) => ({ resourceType: "runtime" as const, name })),
       ...project.spec.harnesses.map(({ name }) => ({ resourceType: "harness" as const, name })),
+      ...project.spec.agentCoreGateways.map(({ name }) => ({
+        resourceType: "gateway" as const,
+        name,
+      })),
     ];
     return resources.flatMap((resource) => {
       const id = findDeployedResourceId(stack, resource);

@@ -37,7 +37,6 @@ export const CommandRunMetricEventKey =
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
-export const ProjectTargetKey = contextKey<string>("projectTarget");
 
 // RoutedCommand keeps the compiled handler and Commander command tree together.
 // TUI consumers can therefore read handler metadata without module-level state.

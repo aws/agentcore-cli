@@ -1,15 +1,11 @@
 import { InputValidationError, ResourceNotFoundError } from "../../errors";
-import type { Project, ProjectInvokableResource, ProjectObservableResource } from "./types";
+import type { Project, ProjectInvokableResource } from "./types";
 
 export const RESOURCE_LABELS: Record<ProjectInvokableResource, string> = {
   runtime: "Runtime",
   harness: "Harness",
   gateway: "Gateway",
 };
-
-export function isProjectInvokableResource(value: string): value is ProjectInvokableResource {
-  return value in RESOURCE_LABELS;
-}
 
 export function projectResourceNames(
   project: Project,
@@ -25,7 +21,7 @@ export function projectResourceNames(
 
 export function selectProjectResource(
   project: Project,
-  resourceType: ProjectObservableResource,
+  resourceType: ProjectInvokableResource,
   name: string | undefined,
   operation: string,
 ): string {

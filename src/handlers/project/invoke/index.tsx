@@ -1,5 +1,4 @@
 import z from "zod";
-import { regionFromArn, serviceIdFromArn } from "../../../core/arn";
 import { InputValidationError, ProjectStateError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { withProject } from "../../../middleware";
@@ -9,7 +8,6 @@ import {
   flag,
   PathKey,
   ProjectKey,
-  ProjectTargetKey,
   type FlagsOf,
   type Handler,
 } from "../../../router";
@@ -17,9 +15,9 @@ import { attributeName, parseFlags } from "../../../router/flags";
 import { renderTuiAt } from "../../../tui";
 import { createInvokeGatewayHandler, invokeGatewayFlags } from "../../gateway/invoke";
 import { createInvokeHarnessHandler, invokeHarnessFlags } from "../../harness/invoke";
-import { JsonKey, RegionKey } from "../../keys";
+import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
-import { assertMutuallyExclusiveFlags, toResourceArn } from "../../utils";
+import { assertMutuallyExclusiveFlags, resolveResource } from "../../utils";
 import { projectResourceNames, RESOURCE_LABELS } from "../selection";
 import type { Project, ProjectInvokableResource } from "../types";
 import { createInvokeRuntimeHandler, invokeRuntimeFlags } from "../../runtime/invoke";
@@ -207,24 +205,25 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
         return;
       }
 
-      const arn = await toResourceArn(
+      const resolved = await resolveResource(
         core,
-        ctx.withValue(ProjectTargetKey, flags.target ?? DEFAULT_TARGET_NAME),
+        ctx,
         resourceType,
         identifier,
+        flags.target ?? DEFAULT_TARGET_NAME,
       );
-      const values: Record<string, unknown> = { ...flags, id: serviceIdFromArn(arn) };
+      const values: Record<string, unknown> = { ...flags, id: resolved.id };
       const request = parseFlags(
         invoker.flags(),
         Object.fromEntries(invoker.flags().map(({ name }) => [attributeName(name), values[name]])),
       );
-      await invoker.handle(
-        ctx
-          .withValue(RegionKey, regionFromArn(arn)!)
-          .withValue(PathKey, `/agentcore/${resourceType}/invoke`),
-        request,
-        {},
-      );
+      let invokeCtx = ctx
+        .withValue(RegionKey, resolved.region)
+        .withValue(PathKey, `/agentcore/${resourceType}/invoke`);
+      if (resolved.credentials) {
+        invokeCtx = invokeCtx.withValue(AwsCredentialProviderKey, resolved.credentials);
+      }
+      await invoker.handle(invokeCtx, request, {});
     },
   });
 }

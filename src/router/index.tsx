@@ -8,7 +8,6 @@ export {
   GlobalConfigAccessorKey,
   CommandRunMetricEventKey,
   ProjectKey,
-  ProjectTargetKey,
   type DefaultHandle,
   type DefaultHandlerProvider,
   isDefaultHandlerProvider,

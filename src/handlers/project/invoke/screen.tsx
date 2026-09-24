@@ -7,25 +7,22 @@ import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { Spinner } from "../../../components/ui/spinner";
 import { glyphs } from "../../../components/ui/_core.js";
-import { regionFromArn, serviceIdFromArn } from "../../../core/arn";
 import { ProjectKey, type Context } from "../../../router";
 import { GatewayInvokeConsole } from "../../gateway/invoke/screen";
 import { HarnessChat } from "../../harness/invoke/screen";
-import { RegionKey } from "../../keys";
+import { AwsCredentialProviderKey, RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import { isProjectInvokableResource, RESOURCE_LABELS } from "../selection";
-import type { Project, ProjectInvokableResource, ResolvedProjectResources } from "../types";
+import { RESOURCE_LABELS } from "../selection";
+import type { Project, ResolvedDeployedResource, ResolvedDeployedResources } from "../types";
 import { ProjectGate } from "../ProjectGate";
 
-type ProjectInvokableRow = Record<string, unknown> & {
-  resourceType: ProjectInvokableResource;
-  type: string;
-  name: string;
-  arn: string;
-  protocol: string;
-  source: string;
-};
+type ProjectInvokableRow = Record<string, unknown> &
+  ResolvedDeployedResource & {
+    type: string;
+    protocol: string;
+    source: string;
+  };
 
 const columns = [
   { key: "type", header: "type", width: 10 },
@@ -90,14 +87,14 @@ function ProjectInvokePicker({
   targetName: string;
   onBack: () => void;
 }) {
-  const [deployed, setDeployed] = useState<ResolvedProjectResources>();
+  const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
   const [destination, setDestination] = useState<Destination>();
   const [error, setError] = useState<string>();
 
   useEffect(() => {
     let active = true;
     void core.projectManager
-      .resolveProjectResources(project, { target: targetName })
+      .resolveDeployedResources(project, { target: targetName })
       .then((resolved) => {
         if (active) setDeployed(resolved);
       })
@@ -111,37 +108,32 @@ function ProjectInvokePicker({
 
   const rows = useMemo<ProjectInvokableRow[]>(
     () =>
-      (deployed?.resources ?? []).flatMap(
-        ({ resourceType, name, ...state }): ProjectInvokableRow[] => {
-          if (!isProjectInvokableResource(resourceType) || !("arn" in state)) return [];
-          const runtime =
-            resourceType === "runtime"
-              ? project.spec.runtimes.find((candidate) => candidate.name === name)
-              : undefined;
-          const harness =
-            resourceType === "harness"
-              ? project.spec.harnesses.find((candidate) => candidate.name === name)
-              : undefined;
-          return [
-            {
-              resourceType,
-              type: RESOURCE_LABELS[resourceType],
-              name,
-              arn: state.arn,
-              protocol: runtime ? (runtime.protocol ?? "HTTP") : "-",
-              source: runtime?.codeLocation ?? harness?.path ?? "-",
-            },
-          ];
-        },
-      ),
+      (deployed?.resources ?? []).map((resource) => {
+        const runtime =
+          resource.resourceType === "runtime"
+            ? project.spec.runtimes.find(({ name }) => name === resource.name)
+            : undefined;
+        const harness =
+          resource.resourceType === "harness"
+            ? project.spec.harnesses.find(({ name }) => name === resource.name)
+            : undefined;
+        return {
+          ...resource,
+          type: RESOURCE_LABELS[resource.resourceType],
+          protocol: runtime ? (runtime.protocol ?? "HTTP") : "-",
+          source: runtime?.codeLocation ?? harness?.path ?? "-",
+        };
+      }),
     [deployed, project],
   );
 
   const select = (row: ProjectInvokableRow) => {
     setDestination({
       resourceType: row.resourceType,
-      id: serviceIdFromArn(row.arn),
-      ctx: ctx.withValue(RegionKey, regionFromArn(row.arn)!),
+      id: row.id,
+      ctx: ctx
+        .withValue(RegionKey, deployed!.target.region)
+        .withValue(AwsCredentialProviderKey, row.credentialProvider),
     });
   };
 
