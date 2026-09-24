@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 30
     env:
       RELEASE_TAG: ${{ github.ref_name == 'main' && 'prerelease' || format('prerelease-{0}', github.ref_name) }}
-      RELEASE_TITLE: ${{ github.ref_name == 'main' && 'Prerelease' || format('Prerelease ({0})', github.ref_name) }}
+      RELEASE_TITLE: ${{ github.ref_name == 'main' && 'prerelease' || format('prerelease ({0})', github.ref_name) }}
       TARBALL_NAME: agentcore-cli-prerelease.tgz
     steps:
       - uses: actions/checkout@v7
