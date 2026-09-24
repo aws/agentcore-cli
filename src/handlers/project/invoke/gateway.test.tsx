@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,16 +19,15 @@ import {
   tick,
   waitFor,
 } from "../../../testing";
-import { PathKey, ValueContext } from "../../../router";
 import { createRootHandler } from "../../index";
-import { JsonKey } from "../../keys";
-import type { GatewayInvokeRequest } from "../types";
-import { createInvokeGatewayHandler } from "./index";
-import { GatewayInvokeLaunchContextKey } from "./launchContext";
+import type { GatewayInvokeRequest } from "../../gateway/types";
+import * as tui from "../../../tui";
+import { GatewayInvokeLaunchContextKey } from "../../gateway/invoke/launchContext";
 
 const REGION = "us-west-2";
 const GATEWAY_ID = "gateway-123";
 const GATEWAY_URL = "https://gateway-123.gateway.example.test/mcp";
+const GATEWAY_ARN = `arn:aws:bedrock-agentcore:${REGION}:123456789012:gateway/${GATEWAY_ID}`;
 
 function body(...chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return (async function* () {
@@ -73,6 +72,7 @@ function configuredCore(gateway: Partial<GetGatewayResponse> = {}): TestCoreClie
   core.gateway
     .setGetResponse({
       gatewayId: GATEWAY_ID,
+      gatewayArn: GATEWAY_ARN,
       gatewayUrl: GATEWAY_URL,
       authorizerType: "NONE",
       ...gateway,
@@ -86,7 +86,9 @@ function configuredCore(gateway: Partial<GetGatewayResponse> = {}): TestCoreClie
   return core;
 }
 
-describe("gateway invoke", () => {
+const methods = (core: TestCoreClient) => core.gateway.calls.map(({ method }) => method);
+
+describe("invoke --gateway", () => {
   test.each(["payload", "bearer-token"] as const)(
     "reads TTY %s before starting progress",
     async (input) => {
@@ -98,9 +100,8 @@ describe("gateway invoke", () => {
       const io = testIO({ isTTY: true });
       const stdin = io.io.stdin as unknown as PassThrough;
       const pending = runCommand(core, io.io, [
-        "gateway",
         "invoke",
-        "--id",
+        "--gateway",
         GATEWAY_ID,
         "--payload",
         input === "payload" ? "-" : "{}",
@@ -111,7 +112,7 @@ describe("gateway invoke", () => {
         stdin.write(input === "payload" ? "{}" : "test-token");
         await tick(120);
         expect(io.stderr()).toBe("");
-        expect(core.gateway.calls).toEqual([]);
+        expect(methods(core)).toEqual(["getGateway"]);
         stdin.end();
         await waitFor(() => io.stderr().includes("Invoking gateway..."));
       } finally {
@@ -130,9 +131,8 @@ describe("gateway invoke", () => {
       core.gateway.setInvokeResponse({ statusCode: 200, contentType: "text/plain", body: stream });
       const io = testIO({ isTTY: true });
       const pending = runCommand(core, io.io, [
-        "gateway",
         "invoke",
-        "--id",
+        "--gateway",
         GATEWAY_ID,
         "--payload",
         "{}",
@@ -162,17 +162,16 @@ describe("gateway invoke", () => {
     const output = captureIO();
 
     await runCommand(core, output.io, [
-      "gateway",
       "invoke",
-      "--id",
+      "--gateway",
       GATEWAY_ID,
       "--payload",
       '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
     ]);
 
-    expect(core.gateway.calls.map((call) => call.method)).toEqual(["getGateway", "invokeGateway"]);
-    const lookup = core.gateway.calls[0]!;
-    const invoke = core.gateway.calls[1]!;
+    expect(methods(core)).toEqual(["getGateway", "getGateway", "invokeGateway"]);
+    const lookup = core.gateway.calls[1]!;
+    const invoke = core.gateway.calls[2]!;
     expect(lookup.args.slice(0, 2)).toEqual([GATEWAY_ID, { region: REGION }]);
     expect(lookup.args[2]).toBe(invoke.args[2]);
     expect(invoke.args[1]).toEqual({ region: REGION });
@@ -193,9 +192,8 @@ describe("gateway invoke", () => {
     const output = captureIO();
 
     await runCommand(core, output.io, [
-      "gateway",
       "invoke",
-      "--id",
+      "--gateway",
       GATEWAY_ID,
       "--path",
       "target/invocations?trace=true",
@@ -241,9 +239,8 @@ describe("gateway invoke", () => {
     const output = captureIO();
 
     await runCommand(core, output.io, [
-      "gateway",
       "invoke",
-      "--id",
+      "--gateway",
       GATEWAY_ID,
       "--method",
       "GET",
@@ -263,7 +260,7 @@ describe("gateway invoke", () => {
     const core = configuredCore();
     const output = captureIO();
 
-    await runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID, "--payload", ""]);
+    await runCommand(core, output.io, ["invoke", "--gateway", GATEWAY_ID, "--payload", ""]);
 
     const request = core.gateway.calls.find((call) => call.method === "invokeGateway")!
       .args[0] as GatewayInvokeRequest;
@@ -275,9 +272,8 @@ describe("gateway invoke", () => {
     const output = captureIO(Buffer.from("secret-token"));
 
     await runCommand(core, output.io, [
-      "gateway",
       "invoke",
-      "--id",
+      "--gateway",
       GATEWAY_ID,
       "--payload",
       "{}",
@@ -301,9 +297,8 @@ describe("gateway invoke", () => {
     const output = captureIO();
 
     await runCommand(core, output.io, [
-      "gateway",
       "invoke",
-      "--id",
+      "--gateway",
       GATEWAY_ID,
       "--payload",
       "{}",
@@ -331,7 +326,7 @@ describe("gateway invoke", () => {
     const output = captureIO();
 
     const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID, "--method", "GET"]),
+      runCommand(core, output.io, ["invoke", "--gateway", GATEWAY_ID, "--method", "GET"]),
     );
 
     expect(code).toBe(ExitCode.FAILURE);
@@ -353,15 +348,7 @@ describe("gateway invoke", () => {
     const output = captureIO();
 
     const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, [
-        "gateway",
-        "invoke",
-        "--id",
-        GATEWAY_ID,
-        "--payload",
-        "{}",
-        "--json",
-      ]),
+      runCommand(core, output.io, ["invoke", "--gateway", GATEWAY_ID, "--payload", "{}", "--json"]),
     );
 
     expect(code).toBe(ExitCode.FAILURE);
@@ -392,9 +379,8 @@ describe("gateway invoke", () => {
 
       const code = await runWithExitCode(async () =>
         runCommand(core, output.io, [
-          "gateway",
           "invoke",
-          "--id",
+          "--gateway",
           GATEWAY_ID,
           "--payload",
           "{}",
@@ -417,15 +403,13 @@ describe("gateway invoke", () => {
   });
 
   test.each([
-    [["gateway", "invoke", "--payload", "{}"], /--id/],
-    [["gateway", "invoke", "--id", GATEWAY_ID, "--json"], /--payload/],
-    [["gateway", "invoke", "--id", GATEWAY_ID, "--method", "POST"], /--payload/],
-    [["gateway", "invoke", "--id", GATEWAY_ID, "--output-file", "response.bin"], /--payload/],
+    [["invoke", "--gateway", GATEWAY_ID, "--json"], /--payload/],
+    [["invoke", "--gateway", GATEWAY_ID, "--method", "POST"], /--payload/],
+    [["invoke", "--gateway", GATEWAY_ID, "--output-file", "response.bin"], /--payload/],
     [
       [
-        "gateway",
         "invoke",
-        "--id",
+        "--gateway",
         GATEWAY_ID,
         "--payload",
         "{}",
@@ -445,16 +429,7 @@ describe("gateway invoke", () => {
   test("rejects an unknown option before invocation", async () => {
     const core = configuredCore();
     const output = captureIO();
-    const args = [
-      "gateway",
-      "invoke",
-      "--id",
-      GATEWAY_ID,
-      "--payload",
-      "{}",
-      "--request-type",
-      "mcp",
-    ];
+    const args = ["invoke", "--gateway", GATEWAY_ID, "--payload", "{}", "--request-type", "mcp"];
 
     await expectError(
       runCommand(core, output.io, args),
@@ -464,60 +439,48 @@ describe("gateway invoke", () => {
     expect(core.gateway.calls.some((call) => call.method === "invokeGateway")).toBe(false);
   });
 
-  test("a bare command enters existing TUI middleware without Gateway Core calls", async () => {
-    const core = configuredCore();
-    const output = captureIO();
-
-    await expect(runCommand(core, output.io, ["gateway", "invoke"])).rejects.toThrow(
-      "interactive mode requires a TTY on stdin and stdout",
-    );
-    expect(core.gateway.calls).toEqual([]);
-  });
-
   test("deep-links an id-only invoke and seeds interactive request context", async () => {
-    const core = configuredCore();
+    const core = configuredCore({
+      gatewayArn: `arn:aws:bedrock-agentcore:${REGION}:123456789012:gateway/gateway/blue one`,
+    });
     const output = captureIO();
-    let renderCount = 0;
-    const handler = createInvokeGatewayHandler(
-      core,
-      output.io,
-      async (path, ctx, renderedCore, renderedIo) => {
-        renderCount++;
-        expect(path).toBe("/agentcore/gateway/invoke/gateway%2Fblue%20one");
-        expect(ctx.value(GatewayInvokeLaunchContextKey)).toEqual({
-          gatewayId: "gateway/blue one",
-          path: "runtime/invocations?trace=true",
-          runtimeSessionId: "runtime-session",
-          mcpSessionId: "mcp-session",
-          mcpProtocolVersion: "2025-06-18",
-          applicationHeaders: [["X-Tenant", "retail"]],
-          bearerToken: "secret-token",
-        });
-        expect(renderedCore).toBe(core);
-        expect(renderedIo).toBe(output.io);
-      },
-    );
-    const ctx = ValueContext.EmptyContext()
-      .withValue(PathKey, "/agentcore/gateway/invoke")
-      .withValue(JsonKey, false);
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
 
-    await handler.handle(
-      ctx,
-      {
-        id: "gateway/blue one",
+    try {
+      await runCommand(core, output.io, [
+        "invoke",
+        "--gateway",
+        GATEWAY_ID,
+        "--path",
+        "runtime/invocations?trace=true",
+        "--header",
+        "X-Tenant: retail",
+        "--bearer-token",
+        "secret-token",
+        "--session-id",
+        "runtime-session",
+        "--mcp-session-id",
+        "mcp-session",
+        "--mcp-protocol-version",
+        "2025-06-18",
+      ]);
+
+      expect(render).toHaveBeenCalledTimes(1);
+      const [path, ctx] = render.mock.calls[0]!;
+      expect(path).toBe("/agentcore/invoke/gateway/gateway%2Fblue%20one");
+      expect(ctx.value(GatewayInvokeLaunchContextKey)).toEqual({
+        gatewayId: "gateway/blue one",
         path: "runtime/invocations?trace=true",
-        payload: undefined,
-        header: ["X-Tenant: retail"],
-        "bearer-token": "secret-token",
-        "session-id": "runtime-session",
-        "mcp-session-id": "mcp-session",
-        "mcp-protocol-version": "2025-06-18",
-      },
-      {},
-    );
-
-    expect(renderCount).toBe(1);
-    expect(core.gateway.calls).toEqual([]);
+        runtimeSessionId: "runtime-session",
+        mcpSessionId: "mcp-session",
+        mcpProtocolVersion: "2025-06-18",
+        applicationHeaders: [["X-Tenant", "retail"]],
+        bearerToken: "secret-token",
+      });
+      expect(methods(core)).toEqual(["getGateway"]);
+    } finally {
+      render.mockRestore();
+    }
   });
 
   test("rejects stdin bearer tokens when launching the TUI", async () => {
@@ -525,20 +488,20 @@ describe("gateway invoke", () => {
     const output = captureIO(Buffer.from("secret-token"));
 
     await expect(
-      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID, "--bearer-token", "-"]),
+      runCommand(core, output.io, ["invoke", "--gateway", GATEWAY_ID, "--bearer-token", "-"]),
     ).rejects.toThrow("stdin bearer tokens are not available");
-    expect(core.gateway.calls).toEqual([]);
+    expect(methods(core)).toEqual(["getGateway"]);
   });
 
   test("classifies an unavailable interactive environment as usage", async () => {
     const core = configuredCore();
     const output = captureIO();
     const code = await runWithExitCode(async () =>
-      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID]),
+      runCommand(core, output.io, ["invoke", "--gateway", GATEWAY_ID]),
     );
 
     expect(code).toBe(ExitCode.USAGE);
-    expect(core.gateway.calls).toEqual([]);
+    expect(methods(core)).toEqual(["getGateway"]);
   });
 
   test("SIGINT aborts lookup and invocation through the same signal", async () => {
@@ -554,9 +517,8 @@ describe("gateway invoke", () => {
       });
     };
     const pending = runCommand(core, output.io, [
-      "gateway",
       "invoke",
-      "--id",
+      "--gateway",
       GATEWAY_ID,
       "--payload",
       "{}",
@@ -566,8 +528,8 @@ describe("gateway invoke", () => {
       await waitFor(() => core.gateway.calls.some((call) => call.method === "invokeGateway"));
       process.emit("SIGINT", "SIGINT");
 
-      const lookupSignal = core.gateway.calls[0]!.args[2] as AbortSignal;
-      const invokeSignal = core.gateway.calls[1]!.args[2] as AbortSignal;
+      const lookupSignal = core.gateway.calls[1]!.args[2] as AbortSignal;
+      const invokeSignal = core.gateway.calls[2]!.args[2] as AbortSignal;
       expect(lookupSignal).toBe(invokeSignal);
       expect(invokeSignal.aborted).toBe(true);
       expect(invokeSignal.reason).toBeInstanceOf(UserCancellationError);
@@ -577,7 +539,7 @@ describe("gateway invoke", () => {
     }
   });
 
-  test("registers a headless invoke leaf without a request-type flag", () => {
+  test("redacts --path from debug logs", () => {
     const core = configuredCore();
     const output = captureIO();
     const root = createRootHandler(core, {
@@ -588,11 +550,8 @@ describe("gateway invoke", () => {
         initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
       }),
     });
-    const gateway = root.children().find((child) => child.name() === "gateway");
-    const invoke = gateway?.children().find((child) => child.name() === "invoke");
+    const invoke = root.children().find((child) => child.name() === "invoke");
 
-    expect(invoke).toBeDefined();
-    expect(invoke?.flags().map((registered) => registered.name)).not.toContain("request-type");
     expect(invoke?.flags().find((registered) => registered.name === "path")?.sensitive).toBe(true);
   });
 });

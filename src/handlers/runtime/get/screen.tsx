@@ -9,7 +9,7 @@ const ACTIONS = [
   {
     name: "invoke",
     description: "invoke this Runtime",
-    to: (id: string) => `/agentcore/runtime/invoke/${encodeURIComponent(id)}`,
+    to: (id: string) => `/agentcore/invoke/runtime/${encodeURIComponent(id)}`,
     returnsToDetails: true,
   },
   {

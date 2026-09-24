@@ -203,7 +203,7 @@ export type ResolveTargetInput = {
 
 export type ResolveDeployedResourceInput = {
   target: string;
-  resourceType: ProjectInvokableResource;
+  resourceType: ProjectObservableResource;
   name: string;
 };
 
@@ -212,7 +212,7 @@ export type ResolveDeployedResourcesInput = {
 };
 
 export type ResolvedDeployedResource = {
-  resourceType: ProjectInvokableResource;
+  resourceType: ProjectObservableResource;
   name: string;
   id: string;
   target: AwsDeploymentTarget;
@@ -233,7 +233,7 @@ export type ResolveProjectResourcesInput = {
 /**
  * Every resource type a project can declare and deploy. Broader than
  * {@link ProjectInvokableResource}: status reports all of them, while invoke only
- * addresses the two that accept a payload.
+ * addresses the three that accept a request.
  */
 export type DeployableResource =
   | "runtime"
@@ -398,7 +398,8 @@ export type ExportHarnessResult = {
   notes: ExportNote[];
 };
 
-export type ProjectInvokableResource = Extract<ProjectResource, "harness" | "runtime">;
+export type ProjectInvokableResource = Extract<ProjectResource, "harness" | "runtime" | "gateway">;
+export type ProjectObservableResource = Extract<ProjectInvokableResource, "harness" | "runtime">;
 
 export type RemoveResourceInput =
   | {

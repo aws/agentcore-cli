@@ -363,7 +363,7 @@ The interactive UI is built with [Ink](https://github.com/vadimdemedes/ink)
 (React for the terminal). `renderTui` mounts the `Root` component
 (`src/components/Root.tsx`) — a MemoryRouter over the app's route table plus a
 react-query client — seeded at the command's path. Because routes map to the
-same handler paths as the CLI, deep-linking works: `harness invoke --id X` opens
+same handler paths as the CLI, deep-linking works: `invoke --harness X` opens
 the chat screen at that harness. Ink reads and writes through the injected IO
 streams, so the TUI is fully testable without a real terminal.
 

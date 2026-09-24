@@ -1,12 +1,23 @@
 import { createContext, useContext, useEffect } from "react";
-import type { Context } from "../router";
+import { ResourceNotFoundException } from "@aws-sdk/client-bedrock-agentcore-control";
+import { ProjectKey, ProjectTargetKey, type Context } from "../router";
 import type z from "zod";
 import type { CoreOptions } from "../core/types";
 import type { AppIO } from "../io";
-import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
+import { regionFromArn, serviceIdFromArn } from "../core/arn";
+import {
+  AgentCoreCLIError,
+  InputValidationError,
+  ProjectStateError,
+  ResourceNotFoundError,
+  SilentCLIError,
+} from "../errors";
 import { formatZodError } from "../router/schema";
 import { AwsCredentialProviderKey, EndpointKey, JsonKey, RegionKey } from "./keys";
 import { JsonRendererKey } from "../tui";
+import { projectResourceNames, RESOURCE_LABELS } from "./project/selection";
+import type { ProjectInvokableResource } from "./project/types";
+import type { Core } from "./types";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
 // the values pinned on the context: the resolved region (always present, see the
@@ -20,6 +31,53 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
     endpointUrl: ctx.value(EndpointKey),
     ...(credentialProvider ? { credentials: credentialProvider } : {}),
   };
+}
+
+export async function toResourceArn(
+  core: Core,
+  ctx: Context,
+  resourceType: ProjectInvokableResource,
+  identifier: string,
+): Promise<string> {
+  const label = RESOURCE_LABELS[resourceType];
+  const project = ctx.value(ProjectKey);
+  const names = project ? projectResourceNames(project, resourceType) : [];
+  if (project && names.includes(identifier)) {
+    const target = ctx.require(ProjectTargetKey);
+    const { resources } = await core.projectManager.resolveProjectResources(project, { target });
+    const resource = resources.find(
+      (candidate) => candidate.resourceType === resourceType && candidate.name === identifier,
+    );
+    if (resource && "arn" in resource) return resource.arn;
+    throw new ProjectStateError(
+      `${label} '${identifier}' is not deployed to target '${target}'. ` +
+        `Run 'agentcore deploy --target ${target}' first.`,
+    );
+  }
+
+  const options = coreOptsFromCtx(ctx);
+  const arnRegion = regionFromArn(identifier);
+  const id = serviceIdFromArn(identifier);
+  const lookupOptions = { ...options, region: arnRegion ?? options.region };
+  try {
+    switch (resourceType) {
+      case "runtime":
+        return (await core.runtime.getRuntime(id, lookupOptions)).agentRuntimeArn!;
+      case "harness":
+        return (await core.harness.getHarness(id, lookupOptions)).harness!.arn!;
+      case "gateway":
+        return (await core.gateway.getGateway(id, lookupOptions)).gatewayArn!;
+    }
+  } catch (error) {
+    if (arnRegion || !(error instanceof ResourceNotFoundException)) throw error;
+    const missing = `${label} with ID '${identifier}' exists in ${options.region}`;
+    throw new ResourceNotFoundError(
+      project
+        ? `${label} '${identifier}' is not a project ${label} (available: ${names.join(", ") || "none"}) and no ${missing}.`
+        : `No ${missing}. Run from inside a project to use a project name, or pass a ${label} ID or ARN.`,
+      { cause: error },
+    );
+  }
 }
 
 // A pinned region replaces RegionKey on every route's context, so a screen that

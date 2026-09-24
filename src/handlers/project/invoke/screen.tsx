@@ -7,19 +7,22 @@ import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { Spinner } from "../../../components/ui/spinner";
 import { glyphs } from "../../../components/ui/_core.js";
+import { regionFromArn, serviceIdFromArn } from "../../../core/arn";
 import { ProjectKey, type Context } from "../../../router";
+import { GatewayInvokeConsole } from "../../gateway/invoke/screen";
 import { HarnessChat } from "../../harness/invoke/screen";
-import { AwsCredentialProviderKey } from "../../keys";
+import { RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import type { Project, ResolvedDeployedResources } from "../types";
+import { RESOURCE_LABELS } from "../selection";
+import type { Project, ProjectInvokableResource, ResolvedProjectResources } from "../types";
 import { ProjectGate } from "../ProjectGate";
 
 type ProjectInvokableRow = Record<string, unknown> & {
-  resourceType: "runtime" | "harness";
-  type: "Runtime" | "Harness";
+  resourceType: ProjectInvokableResource;
+  type: string;
   name: string;
-  id: string;
+  arn: string;
   protocol: string;
   source: string;
 };
@@ -33,10 +36,10 @@ const columns = [
 
 type Destination =
   | { resourceType: "runtime"; id: string; ctx: Context; qualifier?: string }
-  | { resourceType: "harness"; id: string; ctx: Context };
+  | { resourceType: "harness" | "gateway"; id: string; ctx: Context };
 
 const BREADCRUMB = ["agentcore", "invoke"];
-const DESCRIPTION = "invoke a Runtime or harness from the current project";
+const DESCRIPTION = "invoke a Runtime, harness, or Gateway from the current project";
 const PROJECT_MENU = "/agentcore";
 
 // The project comes from the launch context when a project command opened the
@@ -87,14 +90,14 @@ function ProjectInvokePicker({
   targetName: string;
   onBack: () => void;
 }) {
-  const [deployed, setDeployed] = useState<ResolvedDeployedResources>();
+  const [deployed, setDeployed] = useState<ResolvedProjectResources>();
   const [destination, setDestination] = useState<Destination>();
   const [error, setError] = useState<string>();
 
   useEffect(() => {
     let active = true;
     void core.projectManager
-      .resolveDeployedResources(project, { target: targetName })
+      .resolveProjectResources(project, { target: targetName })
       .then((resolved) => {
         if (active) setDeployed(resolved);
       })
@@ -108,23 +111,25 @@ function ProjectInvokePicker({
 
   const rows = useMemo<ProjectInvokableRow[]>(
     () =>
-      (deployed?.resources ?? []).map((resource) => {
-        if (resource.resourceType === "runtime") {
-          const configured = project.spec.runtimes.find(({ name }) => name === resource.name);
-          return {
-            ...resource,
-            type: "Runtime" as const,
-            protocol: configured?.protocol ?? "HTTP",
-            source: configured?.codeLocation ?? "-",
-          };
-        }
-        const configured = project.spec.harnesses.find(({ name }) => name === resource.name);
-        return {
-          ...resource,
-          type: "Harness" as const,
-          protocol: "-",
-          source: configured?.path ?? "-",
-        };
+      (deployed?.resources ?? []).flatMap((resource): ProjectInvokableRow[] => {
+        if (!(resource.resourceType in RESOURCE_LABELS) || !("arn" in resource)) return [];
+        const resourceType = resource.resourceType as ProjectInvokableResource;
+        const { name, arn } = resource;
+        const runtime = project.spec.runtimes.find((candidate) => candidate.name === name);
+        const harness = project.spec.harnesses.find((candidate) => candidate.name === name);
+        return [
+          {
+            resourceType,
+            type: RESOURCE_LABELS[resourceType],
+            name,
+            arn,
+            protocol: resourceType === "runtime" ? (runtime?.protocol ?? "HTTP") : "-",
+            source:
+              (resourceType === "runtime" && runtime?.codeLocation) ||
+              (resourceType === "harness" && harness?.path) ||
+              "-",
+          },
+        ];
       }),
     [deployed, project],
   );
@@ -132,8 +137,8 @@ function ProjectInvokePicker({
   const select = (row: ProjectInvokableRow) => {
     setDestination({
       resourceType: row.resourceType,
-      id: row.id,
-      ctx: ctx.withValue(AwsCredentialProviderKey, row.credentialProvider),
+      id: serviceIdFromArn(row.arn),
+      ctx: ctx.withValue(RegionKey, regionFromArn(row.arn)!),
     });
   };
 
@@ -148,7 +153,7 @@ function ProjectInvokePicker({
           ctx={destination.ctx}
           core={core}
           runtimeId={destination.id}
-          breadcrumb={["agentcore", "runtime", "invoke", destination.id]}
+          breadcrumb={["agentcore", "invoke", "runtime", destination.id]}
           description="choose an endpoint to invoke"
           onSelect={(qualifier) => setDestination({ ...destination, qualifier })}
           onEscape={() => setDestination(undefined)}
@@ -173,6 +178,17 @@ function ProjectInvokePicker({
         core={core}
         harnessId={destination.id}
         variant="invoke"
+        onBack={() => setDestination(undefined)}
+      />
+    );
+  }
+
+  if (destination?.resourceType === "gateway") {
+    return (
+      <GatewayInvokeConsole
+        ctx={destination.ctx}
+        core={core}
+        gatewayId={destination.id}
         onBack={() => setDestination(undefined)}
       />
     );
@@ -232,7 +248,7 @@ function ProjectInvokePicker({
           focus
           columns={columns}
           data={rows}
-          emptyMessage={`No deployed Runtimes or harnesses were found on target ${targetName}.`}
+          emptyMessage={`No deployed Runtimes, harnesses, or Gateways were found on target ${targetName}.`}
           onSelect={select}
           onEscape={onBack}
         />

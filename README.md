@@ -32,7 +32,7 @@ Create a managed Harness project, deploy it, and send a prompt:
 agentcore create --name MyAssistant
 cd MyAssistant
 agentcore deploy
-agentcore invoke harness --prompt "Hey, what can you do for me?"
+agentcore invoke --prompt "Hey, what can you do for me?"
 ```
 
 To start with code you own instead, create a Runtime project from a template.
@@ -64,8 +64,8 @@ agentcore invoke --help
 ```
 
 Supported bare commands open their interactive flows in a terminal. Operation
-flags select headless behavior for most commands. Project invoke commands can
-use `--name` and `--target` to select a deployed agent for an interactive session.
+flags select headless behavior for most commands. `invoke` can use `--runtime`,
+`--harness`, `--gateway`, and `--target` to select a resource for an interactive session.
 Run `agentcore create` for guided setup. To create a default project without
 the wizard, run `agentcore create --name MyAssistant`.
 

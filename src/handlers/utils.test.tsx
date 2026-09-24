@@ -1,9 +1,21 @@
 import { describe, expect, test } from "bun:test";
+import type {
+  GetAgentRuntimeResponse,
+  GetGatewayResponse,
+  GetHarnessResponse,
+} from "@aws-sdk/client-bedrock-agentcore-control";
+import { ResourceNotFoundException } from "@aws-sdk/client-bedrock-agentcore-control";
+import { ProjectSpecSchema } from "../projectSchemas/project";
+import { ProjectKey, ProjectTargetKey, ValueContext } from "../router";
+import { TestCoreClient } from "../testing";
+import { RegionKey } from "./keys";
+import type { ProjectManager, ResolvedProjectResource } from "./project/types";
 import {
   assertMutuallyExclusiveFlags,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
   parseTags,
+  toResourceArn,
 } from "./utils";
 
 describe("structured JSON flags", () => {
@@ -113,5 +125,149 @@ describe("assertMutuallyExclusiveFlags", () => {
     ],
   ] as const)("rejects %s", (_label, names, flags, options, message) => {
     expect(() => assertMutuallyExclusiveFlags(flags, names, options)).toThrow(message);
+  });
+});
+
+describe("toResourceArn", () => {
+  const arn = (region: string, resource: string) =>
+    `arn:aws:bedrock-agentcore:${region}:111122223333:${resource}`;
+  const project = {
+    name: "orders",
+    rootPath: "/orders",
+    spec: ProjectSpecSchema.parse({
+      name: "orders",
+      version: 2,
+      runtimes: [
+        {
+          name: "checkout",
+          build: "CodeZip",
+          entrypoint: "main.py",
+          codeLocation: "app/checkout",
+          runtimeVersion: "PYTHON_3_14",
+        },
+      ],
+      harnesses: [{ name: "support", path: "app/support" }],
+      agentCoreGateways: [{ name: "tools", targets: [] }],
+    }),
+  };
+  const deployed: ResolvedProjectResource[] = [
+    { resourceType: "runtime", name: "checkout", deploymentState: "local-only" },
+    {
+      resourceType: "harness",
+      name: "support",
+      deploymentState: "deployed",
+      arn: arn("eu-west-1", "harness/support-AbCd"),
+    },
+    {
+      resourceType: "gateway",
+      name: "tools",
+      deploymentState: "deployed",
+      arn: arn("eu-west-1", "gateway/tools-AbCd"),
+    },
+  ];
+  const notFound = new ResourceNotFoundException({ message: "not found", $metadata: {} });
+
+  function setup(options: { inProject: boolean; error?: Error }) {
+    const core = new TestCoreClient();
+    const targets: string[] = [];
+    Object.assign(core, {
+      projectManager: {
+        resolveProjectResources: async (_project, { target }) => {
+          targets.push(target);
+          return { resources: deployed, target: { name: target } };
+        },
+      } as Partial<ProjectManager>,
+    });
+    core.runtime
+      .setGetResponse({
+        agentRuntimeArn: arn("us-west-2", "runtime/rt"),
+      } as GetAgentRuntimeResponse)
+      .setError(options.error);
+    core.harness
+      .setGetResponse({ harness: { arn: arn("us-west-2", "harness/hs") } } as GetHarnessResponse)
+      .setError(options.error);
+    core.gateway
+      .setGetResponse({ gatewayArn: arn("us-west-2", "gateway/gw") } as GetGatewayResponse)
+      .setError(options.error);
+    let ctx = ValueContext.EmptyContext().withValue(RegionKey, "us-west-2");
+    if (options.inProject) {
+      ctx = ctx.withValue(ProjectKey, project).withValue(ProjectTargetKey, "prod");
+    }
+    const lookups = () =>
+      [...core.runtime.calls, ...core.harness.calls, ...core.gateway.calls]
+        .filter(({ method }) => method.startsWith("get"))
+        .map(({ args }) => [args[0], (args[1] as { region: string }).region]);
+    return { core, ctx, targets, lookups };
+  }
+
+  test.each([
+    [
+      "a project harness by name",
+      "harness",
+      "support",
+      arn("eu-west-1", "harness/support-AbCd"),
+      [],
+    ],
+    ["a project gateway by name", "gateway", "tools", arn("eu-west-1", "gateway/tools-AbCd"), []],
+    ["a Runtime ID", "runtime", "rt", arn("us-west-2", "runtime/rt"), [["rt", "us-west-2"]]],
+    ["a harness ID", "harness", "hs", arn("us-west-2", "harness/hs"), [["hs", "us-west-2"]]],
+    ["a Gateway ID", "gateway", "gw", arn("us-west-2", "gateway/gw"), [["gw", "us-west-2"]]],
+    [
+      "an ARN, in its own region",
+      "runtime",
+      arn("ap-south-1", "runtime/rt"),
+      arn("us-west-2", "runtime/rt"),
+      [["rt", "ap-south-1"]],
+    ],
+  ] as const)("resolves %s", async (_name, resourceType, identifier, expected, lookups) => {
+    const fixture = setup({ inProject: true });
+
+    expect(await toResourceArn(fixture.core, fixture.ctx, resourceType, identifier)).toBe(expected);
+    expect(fixture.lookups()).toEqual(lookups as unknown as string[][]);
+    expect(fixture.targets).toEqual(lookups.length === 0 ? ["prod"] : []);
+  });
+
+  test.each([
+    [
+      "a project name that is not deployed",
+      { inProject: true },
+      "runtime",
+      "checkout",
+      "Runtime 'checkout' is not deployed to target 'prod'. Run 'agentcore deploy --target prod' first.",
+    ],
+    [
+      "an unknown value in a project",
+      { inProject: true, error: notFound },
+      "harness",
+      "missing",
+      "Harness 'missing' is not a project Harness (available: support) and no Harness with ID 'missing' exists in us-west-2.",
+    ],
+    [
+      "an unknown ID outside a project",
+      { inProject: false, error: notFound },
+      "gateway",
+      "missing",
+      "No Gateway with ID 'missing' exists in us-west-2. Run from inside a project to use a project name, or pass a Gateway ID or ARN.",
+    ],
+    [
+      "an unknown ARN",
+      { inProject: false, error: notFound },
+      "runtime",
+      arn("us-west-2", "runtime/missing"),
+      "not found",
+    ],
+    [
+      "a service error",
+      { inProject: false, error: new Error("AccessDenied") },
+      "runtime",
+      "rt",
+      "AccessDenied",
+    ],
+  ] as const)("rejects %s", async (_name, options, resourceType, identifier, message) => {
+    const fixture = setup(options);
+
+    await expect(
+      toResourceArn(fixture.core, fixture.ctx, resourceType, identifier),
+    ).rejects.toThrow(new Error(message));
   });
 });

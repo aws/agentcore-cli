@@ -1,9 +1,16 @@
-import type { Argument, Flag, GlobalFlag, Handler } from "./handler";
+import {
+  isExamplesProvider,
+  type Argument,
+  type Flag,
+  type GlobalFlag,
+  type Handler,
+} from "./handler";
 import { type Middleware, type MiddlewareProvider, isMiddlewareProvider } from "./middleware";
 import { type Context, type ContextKey, ValueContext, contextKey } from "./context";
 import {
   applyGlobalFlags,
   attributeName,
+  formatExamples,
   formatParameterDetails,
   parseFlags,
   toOption,
@@ -30,6 +37,7 @@ export const CommandRunMetricEventKey =
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
+export const ProjectTargetKey = contextKey<string>("projectTarget");
 
 // RoutedCommand keeps the compiled handler and Commander command tree together.
 // TUI consumers can therefore read handler metadata without module-level state.
@@ -225,6 +233,11 @@ export function compile(
     c.addHelpOption(
       new Option("-h, --help", "display help for command").helpGroup("Other options:"),
     );
+  }
+
+  const examples = formatExamples(isExamplesProvider(node) ? node.examples() : []);
+  if (examples) {
+    c.addHelpText("after", examples);
   }
 
   // Flags with long-form documentation get a "Parameter details" section after

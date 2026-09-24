@@ -45,7 +45,7 @@ type Exchange = {
 };
 
 const invokePath = (...parts: string[]) =>
-  ["/agentcore/gateway/invoke", ...parts.map(encodeURIComponent)].join("/");
+  ["/agentcore/invoke/gateway", ...parts.map(encodeURIComponent)].join("/");
 
 const metadata = (response: GatewayInvokeResponse) =>
   [
@@ -148,7 +148,7 @@ export function GatewayInvokeScreen(props: ScreenProps) {
     return (
       <GatewayPicker
         {...props}
-        breadcrumb={["agentcore", "gateway", "invoke"]}
+        breadcrumb={["agentcore", "invoke", "gateway"]}
         description="choose a Gateway to invoke"
         onSelect={(id) => navigate(invokePath(id))}
       />
@@ -161,9 +161,16 @@ export function GatewayInvokeScreen(props: ScreenProps) {
 type GatewayInvokeConsoleProps = ScreenProps & {
   gatewayId: string;
   initialContext?: GatewayInvokeLaunchContext;
+  onBack?: () => void;
 };
 
-function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayInvokeConsoleProps) {
+export function GatewayInvokeConsole({
+  ctx,
+  core,
+  gatewayId,
+  initialContext,
+  onBack,
+}: GatewayInvokeConsoleProps) {
   const navigate = useNavigate();
   const opts = coreOptsFromCtx(ctx);
   const { columns, rows } = useWindowSize();
@@ -385,6 +392,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
       }
       if (key.escape) {
         if (abortRef.current) abortRef.current.abort();
+        else if (onBack) onBack();
         else navigate(invokePath());
         return;
       }
@@ -412,7 +420,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
       <GatewayPicker
         ctx={ctx}
         core={core}
-        breadcrumb={["agentcore", "gateway", "invoke"]}
+        breadcrumb={["agentcore", "invoke", "gateway"]}
         description="choose another Gateway"
         onSelect={selectGateway}
         onEscape={() => setPickingGateway(false)}
@@ -422,7 +430,7 @@ function GatewayInvokeConsole({ ctx, core, gatewayId, initialContext }: GatewayI
 
   return (
     <Layout
-      breadcrumb={["agentcore", "gateway", "invoke", targetGatewayId]}
+      breadcrumb={["agentcore", "invoke", "gateway", targetGatewayId]}
       keyHints={
         editingPath
           ? [

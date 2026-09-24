@@ -21,7 +21,7 @@ afterEach(cleanupScreens);
 // when a test needs to hold the stream open and drive it by hand.
 
 const ARN = "arn:aws:bedrock-agentcore:us-east-1:123:harness/MyHarness-abc123";
-const CHAT_PATH = "/agentcore/harness/invoke/MyHarness-abc123";
+const CHAT_PATH = "/agentcore/invoke/harness/MyHarness-abc123";
 
 function summary(overrides: Partial<HarnessSummary> = {}): HarnessSummary {
   return {
@@ -71,7 +71,7 @@ describe("invoke picker screen", () => {
         summary({ harnessName: "beta", harnessId: "beta-2" }),
       ],
     });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderImperativeScreen("/agentcore/invoke/harness", { core });
 
     await waitForText(r.lastFrame, "alpha");
     expect(r.lastFrame()).toContain("beta");
@@ -82,12 +82,12 @@ describe("invoke picker screen", () => {
   test("selecting a harness opens its chat", async () => {
     const core = chatCore();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderImperativeScreen("/agentcore/invoke/harness", { core });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("return");
     // The chat screen's breadcrumb carries the harness id and the prompt mounts.
-    await waitForText(r.lastFrame, "invoke → MyHarness-abc123");
+    await waitForText(r.lastFrame, "invoke → harness → MyHarness-abc123");
     await waitForText(r.lastFrame, "send a message…");
     r.unmount();
   });
@@ -95,21 +95,21 @@ describe("invoke picker screen", () => {
   test("shows the error message when the list call fails", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("access denied"));
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderImperativeScreen("/agentcore/invoke/harness", { core });
 
     await waitForText(r.lastFrame, "Error:");
     expect(r.lastFrame()).toContain("access denied");
     r.unmount();
   });
 
-  test("esc returns to the harness menu", async () => {
+  test("esc returns to the project invoke picker", async () => {
     const core = new TestCoreClient();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderImperativeScreen("/agentcore/invoke/harness", { core });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "invoke a Runtime, harness, or Gateway from the current project");
     r.unmount();
   });
 });
@@ -401,7 +401,7 @@ describe("invoke chat screen", () => {
   test("esc while idle pops back to the picker", async () => {
     const core = chatCore();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderImperativeScreen("/agentcore/invoke/harness", { core });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("return");

@@ -50,7 +50,7 @@ type Exchange = {
 };
 
 const invokePath = (...parts: string[]) =>
-  ["/agentcore/runtime/invoke", ...parts.map(encodeURIComponent)].join("/");
+  ["/agentcore/invoke/runtime", ...parts.map(encodeURIComponent)].join("/");
 
 const metadata = (response: RuntimeInvokeResponse) =>
   [
@@ -104,7 +104,7 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
     return (
       <RuntimePicker
         {...props}
-        breadcrumb={["agentcore", "runtime", "invoke"]}
+        breadcrumb={["agentcore", "invoke", "runtime"]}
         description="choose a Runtime to invoke"
         onSelect={(id) => navigate(invokePath(id))}
       />
@@ -116,7 +116,7 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
       <RuntimeEndpointPicker
         {...props}
         runtimeId={runtimeId}
-        breadcrumb={["agentcore", "runtime", "invoke", runtimeId]}
+        breadcrumb={["agentcore", "invoke", "runtime", runtimeId]}
         description="choose an endpoint to invoke"
         onSelect={(selected) =>
           navigate(invokePath(runtimeId, selected), {
@@ -338,7 +338,7 @@ export function RuntimeInvokeConsole({
       <RuntimePicker
         ctx={ctx}
         core={core}
-        breadcrumb={["agentcore", "runtime", "invoke"]}
+        breadcrumb={["agentcore", "invoke", "runtime"]}
         description="choose another Runtime"
         onSelect={(selectedRuntimeId) =>
           setTargetPicker({ stage: "endpoint", runtimeId: selectedRuntimeId })
@@ -355,7 +355,7 @@ export function RuntimeInvokeConsole({
         ctx={ctx}
         core={core}
         runtimeId={nextRuntimeId}
-        breadcrumb={["agentcore", "runtime", "invoke", nextRuntimeId]}
+        breadcrumb={["agentcore", "invoke", "runtime", nextRuntimeId]}
         description="choose another endpoint"
         onSelect={(selected) => {
           if (nextRuntimeId !== target.runtimeId || selected !== target.qualifier) {
@@ -378,7 +378,7 @@ export function RuntimeInvokeConsole({
 
   return (
     <Layout
-      breadcrumb={["agentcore", "runtime", "invoke", target.runtimeId, target.qualifier]}
+      breadcrumb={["agentcore", "invoke", "runtime", target.runtimeId, target.qualifier]}
       keyHints={
         busy
           ? [

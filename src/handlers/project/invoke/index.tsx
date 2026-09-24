@@ -1,28 +1,285 @@
+import z from "zod";
+import { regionFromArn, serviceIdFromArn } from "../../../core/arn";
+import { InputValidationError, ProjectStateError } from "../../../errors";
 import type { AppIO } from "../../../io";
-import { InputValidationError } from "../../../errors";
-import { Router } from "../../../router";
-import { renderTuiAt } from "../../../tui";
 import { withProject } from "../../../middleware";
-import { JsonKey } from "../../keys";
+import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
+import { createHandler, flag, ProjectKey, ProjectTargetKey, type FlagsOf } from "../../../router";
+import { renderTuiAt } from "../../../tui";
+import { JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
-import { createProjectInvokeHarnessHandler } from "./harness";
-import { createProjectInvokeRuntimeHandler } from "./runtime";
+import { assertMutuallyExclusiveFlags, toResourceArn } from "../../utils";
+import { projectResourceNames, RESOURCE_LABELS } from "../selection";
+import type { Project, ProjectInvokableResource } from "../types";
+import { invokeGateway } from "./gateway";
+import { invokeHarness } from "./harness";
+import { invokeProjectRuntimeLocally, invokeRuntime } from "./runtime";
+
+const RESOURCE = "Resource options:";
+const REQUEST = "Request options:";
+const RUNTIME = "Runtime options:";
+const GATEWAY = "Gateway options:";
+const MCP = "MCP options (Runtime, Gateway):";
+
+const invokeFlags = [
+  flag(
+    "runtime",
+    "the Runtime to invoke: a project name, ID, or ARN",
+    z.string().min(1).optional(),
+    { group: RESOURCE },
+  ),
+  flag(
+    "harness",
+    "the harness to invoke: a project name, ID, or ARN",
+    z.string().min(1).optional(),
+    { group: RESOURCE },
+  ),
+  flag(
+    "gateway",
+    "the Gateway to invoke: a project name, ID, or ARN",
+    z.string().min(1).optional(),
+    { group: RESOURCE },
+  ),
+  flag(
+    "target",
+    `project deployment target (default: "${DEFAULT_TARGET_NAME}")`,
+    z.string().min(1).optional(),
+    { group: RESOURCE },
+  ),
+  flag("local", "invoke the local development server (project Runtime only)", z.boolean(), {
+    group: RESOURCE,
+  }),
+  flag(
+    "port",
+    "local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)",
+    z.coerce.number().int().min(1).max(65535).optional(),
+    { group: RESOURCE },
+  ),
+  flag("payload", "the inline payload to send", z.string().optional(), {
+    sensitive: true,
+    group: REQUEST,
+  }),
+  flag("prompt", "the message to send to a harness", z.string().optional(), { group: REQUEST }),
+  flag(
+    "session-id",
+    "the session ID to continue (33-100 characters for a harness)",
+    z.string().optional(),
+    { group: REQUEST },
+  ),
+  flag("qualifier", "the endpoint qualifier (default DEFAULT)", z.string().optional(), {
+    group: REQUEST,
+  }),
+  flag("content-type", "the payload content type", z.string().optional(), { group: REQUEST }),
+  flag("accept", "the accepted response content type", z.string().optional(), { group: REQUEST }),
+  flag("header", "an ordered application header", z.array(z.string()).optional(), {
+    sensitive: true,
+    group: REQUEST,
+  }),
+  flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
+    sensitive: true,
+    group: REQUEST,
+  }),
+  flag(
+    "output-file",
+    "the response output file",
+    z.string().min(1, "requires a nonempty path").optional(),
+    { group: REQUEST },
+  ),
+  flag("user-id", 'the Runtime user ID (default "default")', z.string().optional(), {
+    group: RUNTIME,
+  }),
+  flag("mcp-method", "the MCP method", z.string().optional(), { group: RUNTIME }),
+  flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional(), {
+    group: RUNTIME,
+  }),
+  flag("trace-id", "the X-Ray trace ID", z.string().optional(), { group: RUNTIME }),
+  flag("trace-parent", "the W3C trace parent", z.string().optional(), { group: RUNTIME }),
+  flag("trace-state", "the W3C trace state", z.string().optional(), { group: RUNTIME }),
+  flag("baggage", "the W3C baggage", z.string().optional(), { group: RUNTIME }),
+  flag(
+    "path",
+    "the path relative to the Gateway origin",
+    z.string().min(1, "requires a nonempty path").optional(),
+    { sensitive: true, group: GATEWAY },
+  ),
+  flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional(), {
+    group: GATEWAY,
+  }),
+  flag("mcp-session-id", "the MCP session ID", z.string().optional(), { group: MCP }),
+  flag("mcp-protocol-version", "the MCP protocol version", z.string().optional(), {
+    group: MCP,
+  }),
+] as const;
+
+export type InvokeFlags = FlagsOf<typeof invokeFlags>;
+type InvokeFlagName = keyof InvokeFlags;
+
+const RESOURCE_TYPES = ["runtime", "harness", "gateway"] as const;
+
+const REQUEST_FLAGS: Record<ProjectInvokableResource, readonly InvokeFlagName[]> = {
+  runtime: [
+    "local",
+    "port",
+    "payload",
+    "session-id",
+    "qualifier",
+    "content-type",
+    "accept",
+    "header",
+    "bearer-token",
+    "output-file",
+    "user-id",
+    "mcp-method",
+    "mcp-name",
+    "trace-id",
+    "trace-parent",
+    "trace-state",
+    "baggage",
+    "mcp-session-id",
+    "mcp-protocol-version",
+  ],
+  harness: ["prompt", "session-id", "qualifier"],
+  gateway: [
+    "payload",
+    "session-id",
+    "content-type",
+    "accept",
+    "header",
+    "bearer-token",
+    "output-file",
+    "path",
+    "method",
+    "mcp-session-id",
+    "mcp-protocol-version",
+  ],
+};
+
+const isSet = (value: unknown) => value !== undefined && value !== false;
+
+function selectResource(
+  project: Project | undefined,
+  flags: InvokeFlags,
+  headless: boolean,
+): [ProjectInvokableResource, string] | undefined {
+  assertMutuallyExclusiveFlags(flags, RESOURCE_TYPES);
+  const given = RESOURCE_TYPES.find((resourceType) => flags[resourceType] !== undefined);
+  if (given) return [given, flags[given]!];
+
+  if (!project) {
+    if (!headless) return undefined;
+    throw new ProjectStateError(
+      `No AgentCore project found at ${process.cwd()} or any parent directory. ` +
+        "Run from inside a project, or pass --runtime, --harness, or --gateway with an ID or ARN.",
+    );
+  }
+
+  const declared = RESOURCE_TYPES.flatMap((resourceType) =>
+    projectResourceNames(project, resourceType).map(
+      (name) => [resourceType, name] as [ProjectInvokableResource, string],
+    ),
+  );
+  if (declared.length === 1) return declared[0];
+  if (!headless) return undefined;
+  if (declared.length === 0) {
+    throw new InputValidationError(
+      "This project has no Runtimes, harnesses, or Gateways to invoke.",
+    );
+  }
+  throw new InputValidationError(
+    `Choose a resource to invoke: ${declared.map(([type, name]) => `--${type} ${name}`).join(", ")}.`,
+  );
+}
 
 export function createProjectInvokeHandler(
   core: Core,
   io: AppIO,
   renderInvokeTui: typeof renderTuiAt = renderTuiAt,
-): Router {
-  return new Router("invoke", "invoke a Runtime or harness from the current project")
-    .use(withProject({ projectManager: core.projectManager }))
-    .handler(createProjectInvokeRuntimeHandler(core, io, renderInvokeTui))
-    .handler(createProjectInvokeHarnessHandler(core, io, renderInvokeTui))
-    .default((ctx) => {
-      if (ctx.require(JsonKey)) {
+) {
+  return createHandler({
+    name: "invoke",
+    description: "invoke a Runtime, harness, or Gateway",
+    flags: invokeFlags,
+    middlewares: [withProject({ projectManager: core.projectManager, optional: true })],
+    examples: [
+      { description: "Choose a project resource to invoke", command: "agentcore invoke" },
+      {
+        description: "Send a payload to a project Runtime",
+        command: `agentcore invoke --runtime checkout --payload '{"prompt":"Hello"}'`,
+      },
+      {
+        description: "Send a prompt to a harness by ID",
+        command: `agentcore invoke --harness support-AbCdEf1234 --prompt "Hello"`,
+      },
+      {
+        description: "List the tools on a Gateway by ARN",
+        command:
+          "agentcore invoke --gateway arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/tools-AbCdEf1234 " +
+          `--path /mcp --payload '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`,
+      },
+      {
+        description: "Invoke a Runtime on the local development server",
+        command: `agentcore invoke --runtime checkout --local --payload '{"prompt":"Hello"}'`,
+      },
+    ],
+    handle: async (ctx, flags) => {
+      const project = ctx.value(ProjectKey);
+      const headless = ctx.require(JsonKey) || Object.values(flags).some(isSet);
+      const selected = selectResource(project, flags, headless);
+      if (!selected) {
+        await renderInvokeTui("/agentcore/invoke", ctx, core, io);
+        return;
+      }
+
+      const [resourceType, identifier] = selected;
+      const allowed: readonly string[] = [
+        ...RESOURCE_TYPES,
+        "target",
+        ...REQUEST_FLAGS[resourceType],
+      ];
+      const misplaced = Object.entries(flags).find(
+        ([name, value]) => isSet(value) && !allowed.includes(name),
+      );
+      if (misplaced) {
         throw new InputValidationError(
-          "a Runtime or harness invoke subcommand is required with --json",
+          `--${misplaced[0]} does not apply to a ${RESOURCE_LABELS[resourceType]}`,
         );
       }
-      return renderInvokeTui("/agentcore/invoke", ctx, core, io);
-    });
+      const projectName =
+        project && projectResourceNames(project, resourceType).includes(identifier);
+      for (const name of ["target", "local"] as const) {
+        if (isSet(flags[name]) && !projectName) {
+          throw new InputValidationError(`--${name} only applies to project resources`);
+        }
+      }
+      if (ctx.require(JsonKey) && flags["output-file"] !== undefined) {
+        throw new InputValidationError("--json cannot be used with --output-file");
+      }
+      if (!flags.local && flags.port !== undefined) {
+        throw new InputValidationError("--port requires --local");
+      }
+      if (flags.local) {
+        const runtime = project!.spec.runtimes.find(({ name }) => name === identifier)!;
+        await invokeProjectRuntimeLocally(io, ctx, runtime, flags);
+        return;
+      }
+
+      const arn = await toResourceArn(
+        core,
+        ctx.withValue(ProjectTargetKey, flags.target ?? DEFAULT_TARGET_NAME),
+        resourceType,
+        identifier,
+      );
+      const invoke = { runtime: invokeRuntime, harness: invokeHarness, gateway: invokeGateway }[
+        resourceType
+      ];
+      await invoke(
+        core,
+        io,
+        ctx.withValue(RegionKey, regionFromArn(arn)!),
+        serviceIdFromArn(arn),
+        flags,
+        renderInvokeTui,
+      );
+    },
+  });
 }

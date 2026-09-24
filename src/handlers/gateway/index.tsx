@@ -8,7 +8,6 @@ import { createGatewayConnectorHandler } from "./connector";
 import { createCreateGatewayHandler } from "./create";
 import { createDeleteGatewayHandler } from "./delete";
 import { createGetGatewayHandler } from "./get";
-import { createInvokeGatewayHandler } from "./invoke";
 import { createListGatewaysHandler } from "./list";
 import { createGatewayPolicyHandler } from "./policy";
 import { createGatewayRuleHandler } from "./rule";
@@ -20,7 +19,7 @@ export function createGatewayHandler(core: Core, io: AppIO, globalConfig: Global
   const router = new Router("gateway", "manage AgentCore Gateways")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
-    .supportedTuiCommands("get", "list", "invoke", "target", "connector", "rule", "policy");
+    .supportedTuiCommands("get", "list", "target", "connector", "rule", "policy");
   if (imperativeMutationCommands) {
     router
       .handler(createCreateGatewayHandler(core, io))
@@ -29,7 +28,6 @@ export function createGatewayHandler(core: Core, io: AppIO, globalConfig: Global
   router.handler(createGetGatewayHandler(core)).handler(createListGatewaysHandler(core));
   if (imperativeMutationCommands) router.handler(createDeleteGatewayHandler(core));
   return router
-    .handler(createInvokeGatewayHandler(core, io))
     .handler(createGatewayTargetHandler(core, io, imperativeMutationCommands))
     .handler(createGatewayConnectorHandler(core, io, imperativeMutationCommands))
     .handler(createGatewayRuleHandler(core, io, imperativeMutationCommands))

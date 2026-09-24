@@ -52,7 +52,7 @@ export function RuntimeGetEndpointScreen(props: ScreenProps) {
                 description: "invoke this Runtime endpoint",
                 onSelect: () =>
                   navigate(
-                    `/agentcore/runtime/invoke/${encodeURIComponent(runtimeId)}/${encodeURIComponent(qualifier)}`,
+                    `/agentcore/invoke/runtime/${encodeURIComponent(runtimeId)}/${encodeURIComponent(qualifier)}`,
                     { state: { returnOnEscape: true } },
                   ),
               },

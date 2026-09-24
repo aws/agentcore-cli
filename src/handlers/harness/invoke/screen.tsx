@@ -29,7 +29,7 @@ import {
 
 const theme = darkTheme;
 
-// HarnessInvokeScreen is the interactive chat for `harness invoke`. Without a
+// HarnessInvokeScreen is the interactive chat for `invoke --harness`. Without a
 // `:harnessId` route value it renders a picker (choose which harness to chat
 // with); with one it renders the chat itself. A `:sessionId` route value
 // resumes that runtime session instead of starting a fresh one, and a
@@ -43,9 +43,9 @@ export function HarnessInvokeScreen(props: ScreenProps) {
     return (
       <HarnessPicker
         {...props}
-        breadcrumb={["agentcore", "harness", "invoke"]}
+        breadcrumb={["agentcore", "invoke", "harness"]}
         description="choose a harness to chat with"
-        onSelect={(id) => navigate(`/agentcore/harness/invoke/${id}`)}
+        onSelect={(id) => navigate(`/agentcore/invoke/harness/${id}`)}
       />
     );
   }
@@ -302,13 +302,17 @@ export function HarnessChat({
 
   // The ctrl+t endpoint switcher: pick an endpoint and later sends target its
   // qualifier; esc closes the overlay with the qualifier unchanged.
+  const breadcrumb =
+    variant === "invoke"
+      ? ["agentcore", "invoke", "harness", harnessId]
+      : ["agentcore", "harness", "exec", harnessId];
   if (pickingEndpoint) {
     return (
       <HarnessEndpointPicker
         ctx={ctx}
         core={core}
         harnessId={harnessId}
-        breadcrumb={["agentcore", "harness", variant, harnessId, "endpoint"]}
+        breadcrumb={[...breadcrumb, "endpoint"]}
         description="choose the endpoint to use"
         onSelect={(endpointName) => {
           setQualifier(endpointName);
@@ -321,7 +325,7 @@ export function HarnessChat({
 
   return (
     <Layout
-      breadcrumb={["agentcore", "harness", variant, harnessId]}
+      breadcrumb={breadcrumb}
       keyHints={
         streaming
           ? [

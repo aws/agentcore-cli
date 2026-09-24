@@ -116,7 +116,6 @@ describe("runtime command hierarchy", () => {
     expect(runtime?.children().map((child) => child.name())).toEqual([
       "get",
       "list",
-      "invoke",
       "shell",
       "version",
       "endpoint",

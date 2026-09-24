@@ -281,16 +281,16 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<HarnessDeleteScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/harness/invoke"
+        path="agentcore/invoke/harness"
         element={<HarnessInvokeScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/harness/invoke/:harnessId"
+        path="agentcore/invoke/harness/:harnessId"
         element={<HarnessInvokeScreen ctx={ctx} core={core} />}
       />
       {/* Deep link that resumes an existing runtime session in the chat. */}
       <Route
-        path="agentcore/harness/invoke/:harnessId/:sessionId"
+        path="agentcore/invoke/harness/:harnessId/:sessionId"
         element={<HarnessInvokeScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/harness/exec" element={<HarnessExecScreen ctx={ctx} core={core} />} />
@@ -457,15 +457,15 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<MemoryGetJsonScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/runtime/invoke"
+        path="agentcore/invoke/runtime"
         element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/runtime/invoke/:runtimeId"
+        path="agentcore/invoke/runtime/:runtimeId"
         element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/runtime/invoke/:runtimeId/:qualifier"
+        path="agentcore/invoke/runtime/:runtimeId/:qualifier"
         element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
       />
       <Route
@@ -499,11 +499,11 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<GatewayGetJsonScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/gateway/invoke"
+        path="agentcore/invoke/gateway"
         element={<GatewayInvokeScreen ctx={ctx} core={core} />}
       />
       <Route
-        path="agentcore/gateway/invoke/:gatewayId"
+        path="agentcore/invoke/gateway/:gatewayId"
         element={<GatewayInvokeScreen ctx={ctx} core={core} />}
       />
       <Route

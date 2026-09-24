@@ -1,13 +1,8 @@
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import type { AuthorizerType, GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import z from "zod";
 import { InputValidationError, SourceResolutionError } from "../../../errors";
 import { SourceResolver } from "../../../io";
 import type { GatewayInvokeMethod, GatewayInvokeRequest } from "../types";
-
-export const gatewayIdSchema = z
-  .string()
-  .refine((value) => !value.startsWith("arn:"), "must be a Gateway ID, not an ARN");
 
 type GatewayInvokeInput = {
   gatewayId: string;

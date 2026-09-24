@@ -41,7 +41,7 @@ const ACTIONS: { name: string; description: string; to: (id: string) => string }
   {
     name: "invoke",
     description: "chat with this harness",
-    to: (id) => `/agentcore/harness/invoke/${id}`,
+    to: (id) => `/agentcore/invoke/harness/${id}`,
   },
   {
     name: "exec",

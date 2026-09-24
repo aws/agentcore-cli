@@ -23,7 +23,7 @@ Example:
   --payload-template '{"messages":[{"role":"user","content":"{input}"}],"stream":false}'`;
 
 // Composes invokeDataset (replay) → startBatchEvaluation (grade). Invoke flags mirror
-// `runtime invoke`.
+// `invoke --runtime`.
 export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "simulate",

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type {
   AgentRuntimeEndpoint,
   GetAgentRuntimeResponse,
+  GetGatewayResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
@@ -16,7 +17,7 @@ import {
   waitForFlatText,
   waitForText,
 } from "../../../testing";
-import type { Project, ResolvedDeployedResource } from "../types";
+import type { Project, ResolvedProjectResource } from "../types";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -38,6 +39,7 @@ const project: Project = {
       },
     ],
     harnesses: [{ name: "support", path: "app/support" }],
+    agentCoreGateways: [{ name: "tools", targets: [] }],
   }),
 };
 
@@ -59,42 +61,38 @@ function endpoint(name: string): AgentRuntimeEndpoint {
 // the invoke flows have to fetch where the project deployed.
 const TARGET = { name: "default", account: "111122223333", region: "eu-west-1" } as const;
 const STAGING = { name: "staging", account: "444455556666", region: "eu-central-1" } as const;
-const TARGET_CREDENTIALS = async () => ({
-  accessKeyId: "target-access-key",
-  secretAccessKey: "target-secret-key",
-});
-
-const DEPLOYED_RESOURCES: ResolvedDeployedResource[] = [
-  {
-    resourceType: "runtime",
-    name: "checkout",
-    id: "runtime-123",
-    target: TARGET,
-    credentialProvider: TARGET_CREDENTIALS,
-  },
-  {
-    resourceType: "harness",
-    name: "support",
-    id: "harness-123",
-    target: TARGET,
-    credentialProvider: TARGET_CREDENTIALS,
-  },
-];
+function deployed(region: string = TARGET.region): ResolvedProjectResource[] {
+  const arn = (resource: string) => `arn:aws:bedrock-agentcore:${region}:111122223333:${resource}`;
+  return [
+    {
+      resourceType: "runtime",
+      name: "checkout",
+      deploymentState: "deployed",
+      arn: arn("runtime/runtime-123"),
+    },
+    {
+      resourceType: "harness",
+      name: "support",
+      deploymentState: "deployed",
+      arn: arn("harness/harness-123"),
+    },
+    {
+      resourceType: "gateway",
+      name: "tools",
+      deploymentState: "deployed",
+      arn: arn("gateway/gateway-123"),
+    },
+    { resourceType: "memory", name: "notes", deploymentState: "deployed", arn: arn("memory/m") },
+  ];
+}
 
 function core(
-  resources: ResolvedDeployedResource[] = DEPLOYED_RESOURCES,
+  resources: ResolvedProjectResource[] = deployed(),
   targets: AwsDeploymentTarget[] = [TARGET],
 ): TestCoreClient {
   const value = new TestCoreClient();
   value.projectManager.listTargets = async () => targets;
-  value.projectManager.resolveDeployedResource = async (_project, input) => ({
-    resourceType: input.resourceType,
-    name: input.name,
-    id: input.resourceType === "runtime" ? "runtime-123" : "harness-123",
-    target: TARGET,
-    credentialProvider: TARGET_CREDENTIALS,
-  });
-  value.projectManager.resolveDeployedResources = async () => ({ resources, target: TARGET });
+  value.projectManager.resolveProjectResources = async () => ({ resources, target: TARGET });
   value.runtime
     .setListEndpointsResponse({ runtimeEndpoints: [endpoint("DEFAULT")] })
     .setGetResponse({
@@ -107,6 +105,12 @@ function core(
       arn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:harness/harness-123",
     },
   } as GetHarnessResponse);
+  value.gateway.setGetResponse({
+    gatewayId: "gateway-123",
+    gatewayUrl: "https://gateway-123.gateway.example.test/mcp",
+    authorizerType: "NONE",
+    status: "READY",
+  } as GetGatewayResponse);
   return value;
 }
 
@@ -114,13 +118,8 @@ describe("project invoke picker", () => {
   test("lists only resources present in the deployed target", async () => {
     const screen = renderScreen("/agentcore/invoke", {
       core: core([
-        {
-          resourceType: "harness",
-          name: "support",
-          id: "harness-123",
-          target: TARGET,
-          credentialProvider: TARGET_CREDENTIALS,
-        },
+        { resourceType: "runtime", name: "checkout", deploymentState: "local-only" },
+        ...deployed().filter(({ resourceType }) => resourceType === "harness"),
       ]),
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
     });
@@ -142,11 +141,11 @@ describe("project invoke picker", () => {
   });
 
   test("several targets: asks which, then invokes on the chosen one in its region", async () => {
-    const value = core(DEPLOYED_RESOURCES, [TARGET, STAGING]);
+    const value = core(deployed(), [TARGET, STAGING]);
     let requested: string | undefined;
-    value.projectManager.resolveDeployedResources = async (_project, { target }) => {
+    value.projectManager.resolveProjectResources = async (_project, { target }) => {
       requested = target;
-      return { resources: DEPLOYED_RESOURCES, target: STAGING };
+      return { resources: deployed(STAGING.region), target: STAGING };
     };
     const screen = renderScreen("/agentcore/invoke", {
       core: value,
@@ -171,7 +170,7 @@ describe("project invoke picker", () => {
 
   test("shows deployment errors without listing configured resources", async () => {
     const value = core();
-    value.projectManager.resolveDeployedResources = async () => {
+    value.projectManager.resolveProjectResources = async () => {
       throw new Error("No deployment targets are configured for project 'orders'.");
     };
     const screen = renderScreen("/agentcore/invoke", {
@@ -209,7 +208,7 @@ describe("project invoke picker", () => {
     expect(screen.lastFrame()).toContain("support");
   });
 
-  test("lists project Runtime and Harness resources", async () => {
+  test("lists project Runtime, Harness, and Gateway resources", async () => {
     const screen = renderScreen("/agentcore/invoke", {
       core: core(),
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
@@ -222,6 +221,9 @@ describe("project invoke picker", () => {
     expect(screen.lastFrame()).toContain("support");
     expect(screen.lastFrame()).toContain("Harness");
     expect(screen.lastFrame()).toContain("app/support");
+    expect(screen.lastFrame()).toContain("tools");
+    expect(screen.lastFrame()).toContain("Gateway");
+    expect(screen.lastFrame()).not.toContain("notes");
   });
 
   test("opens the selected Harness chat in the same TUI", async () => {
@@ -239,8 +241,27 @@ describe("project invoke picker", () => {
     expect(value.harness.calls.find(({ method }) => method === "getHarness")?.args[1]).toEqual({
       region: TARGET.region,
       endpointUrl: undefined,
-      credentials: TARGET_CREDENTIALS,
     });
+  });
+
+  test("opens the selected Gateway console and returns to the picker on esc", async () => {
+    const value = core();
+    const screen = renderScreen("/agentcore/invoke", {
+      core: value,
+      withContext: (ctx) => ctx.withValue(ProjectKey, project),
+    });
+
+    await waitForText(screen.lastFrame, "checkout");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "gateway-123");
+    expect(value.gateway.calls.find(({ method }) => method === "getGateway")?.args[1]).toEqual({
+      region: TARGET.region,
+      endpointUrl: undefined,
+    });
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a project resource to invoke");
   });
 
   test("uses the existing Runtime endpoint picker before its JSON console", async () => {
@@ -261,7 +282,6 @@ describe("project invoke picker", () => {
     ).toEqual({
       region: TARGET.region,
       endpointUrl: undefined,
-      credentials: TARGET_CREDENTIALS,
     });
   });
 });
