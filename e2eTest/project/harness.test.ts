@@ -68,7 +68,7 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HA
     const created = parseResult(
       ProjectCreatedSchema,
       await cli.run(
-        ["project", "create", "--name", projectName, "--template", "empty", "--skip-git", "--json"],
+        ["create", "--name", projectName, "--template", "empty", "--skip-git", "--json"],
         projectRoot,
       ),
     );
@@ -82,7 +82,7 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HA
       const added = parseResult(
         OperationSchema,
         await cli.run(
-          ["project", "add", "harness", "--name", harness.name, "--json", ...harness.addFlags],
+          ["add", "harness", "--name", harness.name, "--json", ...harness.addFlags],
           projectDir,
         ),
       );
@@ -93,7 +93,7 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HA
   test("deploys all harnesses", { timeout: TIMEOUT_MS.PROJECT_DEPLOY }, async () => {
     const deployment = parseResult(
       DeployResponseSchema,
-      await cli.run(["project", "deploy", "--yes", "--json"], projectDir),
+      await cli.run(["deploy", "--yes", "--json"], projectDir),
     );
     expect(deployment.message).toContain("Deployed project");
   });
@@ -105,15 +105,7 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HA
       const response = parseResult(
         HarnessInvokeResponseSchema,
         await cli.run(
-          [
-            "project",
-            "invoke",
-            "harness",
-            "--name",
-            harness.name,
-            "--json",
-            ...harness.invokeFlags,
-          ],
+          ["invoke", "harness", "--name", harness.name, "--json", ...harness.invokeFlags],
           projectDir,
         ),
       );
@@ -133,13 +125,13 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HA
     async () => {
       const removed = parseResult(
         OperationSchema,
-        await cli.run(["project", "remove", "all", "--yes", "--json"], projectDir),
+        await cli.run(["remove", "all", "--yes", "--json"], projectDir),
       );
       expect(removed.operation).toBe("remove");
 
       const deployment = parseResult(
         DeployResponseSchema,
-        await cli.run(["project", "deploy", "--yes", "--json"], projectDir),
+        await cli.run(["deploy", "--yes", "--json"], projectDir),
       );
       expect(deployment.message).toContain("Removed project");
     },
