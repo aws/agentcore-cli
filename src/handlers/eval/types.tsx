@@ -307,7 +307,7 @@ export type StartBatchInsightsInput = {
 // InvokeDatasetInput is the runtime-level shape for replaying a dataset: invoke each
 // example against the runtime, one client-generated session per example. Runtime fields
 // only — no evaluator/name/kms (those belong to the grader the handler composes on top,
-// e.g. startBatchEvaluation). Invoke fields mirror `invoke --runtime`.
+// e.g. startBatchEvaluation). Invoke fields mirror `runtime invoke`.
 export type InvokeDatasetInput = {
   runtimeId: string;
   qualifier?: string;

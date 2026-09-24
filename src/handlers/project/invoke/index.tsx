@@ -4,16 +4,26 @@ import { InputValidationError, ProjectStateError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { withProject } from "../../../middleware";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import { createHandler, flag, ProjectKey, ProjectTargetKey, type FlagsOf } from "../../../router";
+import {
+  createHandler,
+  flag,
+  PathKey,
+  ProjectKey,
+  ProjectTargetKey,
+  type FlagsOf,
+  type Handler,
+} from "../../../router";
+import { attributeName, parseFlags } from "../../../router/flags";
 import { renderTuiAt } from "../../../tui";
+import { createInvokeGatewayHandler } from "../../gateway/invoke";
+import { createInvokeHarnessHandler } from "../../harness/invoke";
 import { JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
 import { assertMutuallyExclusiveFlags, toResourceArn } from "../../utils";
 import { projectResourceNames, RESOURCE_LABELS } from "../selection";
 import type { Project, ProjectInvokableResource } from "../types";
-import { invokeGateway } from "./gateway";
-import { invokeHarness } from "./harness";
-import { invokeProjectRuntimeLocally, invokeRuntime } from "./runtime";
+import { createInvokeRuntimeHandler } from "../../runtime/invoke";
+import { invokeProjectRuntimeLocally } from "./runtime";
 
 const RESOURCE = "Resource options:";
 const REQUEST = "Request options:";
@@ -112,47 +122,8 @@ const invokeFlags = [
 ] as const;
 
 export type InvokeFlags = FlagsOf<typeof invokeFlags>;
-type InvokeFlagName = keyof InvokeFlags;
 
 const RESOURCE_TYPES = ["runtime", "harness", "gateway"] as const;
-
-const REQUEST_FLAGS: Record<ProjectInvokableResource, readonly InvokeFlagName[]> = {
-  runtime: [
-    "local",
-    "port",
-    "payload",
-    "session-id",
-    "qualifier",
-    "content-type",
-    "accept",
-    "header",
-    "bearer-token",
-    "output-file",
-    "user-id",
-    "mcp-method",
-    "mcp-name",
-    "trace-id",
-    "trace-parent",
-    "trace-state",
-    "baggage",
-    "mcp-session-id",
-    "mcp-protocol-version",
-  ],
-  harness: ["prompt", "session-id", "qualifier"],
-  gateway: [
-    "payload",
-    "session-id",
-    "content-type",
-    "accept",
-    "header",
-    "bearer-token",
-    "output-file",
-    "path",
-    "method",
-    "mcp-session-id",
-    "mcp-protocol-version",
-  ],
-};
 
 const isSet = (value: unknown) => value !== undefined && value !== false;
 
@@ -190,11 +161,12 @@ function selectResource(
   );
 }
 
-export function createProjectInvokeHandler(
-  core: Core,
-  io: AppIO,
-  renderInvokeTui: typeof renderTuiAt = renderTuiAt,
-) {
+export function createProjectInvokeHandler(core: Core, io: AppIO) {
+  const invokers: Record<ProjectInvokableResource, Handler> = {
+    runtime: createInvokeRuntimeHandler(core, io),
+    harness: createInvokeHarnessHandler(core, io),
+    gateway: createInvokeGatewayHandler(core, io),
+  };
   return createHandler({
     name: "invoke",
     description: "invoke a Runtime, harness, or Gateway",
@@ -226,15 +198,17 @@ export function createProjectInvokeHandler(
       const headless = ctx.require(JsonKey) || Object.values(flags).some(isSet);
       const selected = selectResource(project, flags, headless);
       if (!selected) {
-        await renderInvokeTui("/agentcore/invoke", ctx, core, io);
+        await renderTuiAt("/agentcore/invoke", ctx, core, io);
         return;
       }
 
       const [resourceType, identifier] = selected;
-      const allowed: readonly string[] = [
+      const invoker = invokers[resourceType];
+      const allowed = [
         ...RESOURCE_TYPES,
         "target",
-        ...REQUEST_FLAGS[resourceType],
+        ...(resourceType === "runtime" ? ["local", "port"] : []),
+        ...invoker.flags().map(({ name }) => name),
       ];
       const misplaced = Object.entries(flags).find(
         ([name, value]) => isSet(value) && !allowed.includes(name),
@@ -251,9 +225,6 @@ export function createProjectInvokeHandler(
           throw new InputValidationError(`--${name} only applies to project resources`);
         }
       }
-      if (ctx.require(JsonKey) && flags["output-file"] !== undefined) {
-        throw new InputValidationError("--json cannot be used with --output-file");
-      }
       if (!flags.local && flags.port !== undefined) {
         throw new InputValidationError("--port requires --local");
       }
@@ -269,16 +240,17 @@ export function createProjectInvokeHandler(
         resourceType,
         identifier,
       );
-      const invoke = { runtime: invokeRuntime, harness: invokeHarness, gateway: invokeGateway }[
-        resourceType
-      ];
-      await invoke(
-        core,
-        io,
-        ctx.withValue(RegionKey, regionFromArn(arn)!),
-        serviceIdFromArn(arn),
-        flags,
-        renderInvokeTui,
+      const values: Record<string, unknown> = { ...flags, id: serviceIdFromArn(arn) };
+      const request = parseFlags(
+        invoker.flags(),
+        Object.fromEntries(invoker.flags().map(({ name }) => [attributeName(name), values[name]])),
+      );
+      await invoker.handle(
+        ctx
+          .withValue(RegionKey, regionFromArn(arn)!)
+          .withValue(PathKey, `/agentcore/${resourceType}/invoke`),
+        request,
+        {},
       );
     },
   });

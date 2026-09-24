@@ -1,0 +1,68 @@
+import z from "zod";
+import { createHandler, flag, PathKey } from "../../../router";
+import type { AppIO } from "../../../io";
+import type { Core } from "../../types.tsx";
+import { coreOptsFromCtx } from "../../utils.tsx";
+import { JsonKey } from "../../keys.tsx";
+import { JsonRendererKey, renderTuiAt } from "../../../tui";
+import { runWithProgress } from "../../../tui/progress";
+import { InputValidationError } from "../../../errors";
+import { invokeHarnessTurn } from "./operation.ts";
+
+export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
+  createHandler({
+    name: "invoke",
+    description: "invoke a harness",
+    flags: [
+      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("prompt", "the message to send to the harness", z.string().optional()),
+      flag(
+        "session-id",
+        "the Runtime session ID to continue (33-100 characters)",
+        z.string().min(33).max(100).optional(),
+      ),
+      flag(
+        "qualifier",
+        "the harness endpoint qualifier to invoke (default DEFAULT)",
+        z.string().optional(),
+      ),
+    ],
+    handle: async (ctx, flags) => {
+      // Without a prompt, open the interactive chat at this harness — resuming
+      // the given session and targeting the given qualifier when passed. The
+      // one-shot CLI transcript below needs --prompt (and is the only shape
+      // JSON mode supports).
+      if (!flags["prompt"]) {
+        if (ctx.require(JsonKey)) {
+          throw new InputValidationError("required option '--prompt <text>' not specified");
+        }
+        let path = `${ctx.require(PathKey)}/${flags["id"]}`;
+        if (flags["session-id"]) path += `/${flags["session-id"]}`;
+        if (flags["qualifier"]) path += `?qualifier=${encodeURIComponent(flags["qualifier"])}`;
+        await renderTuiAt(path, ctx, core, io);
+        return;
+      }
+
+      const opts = coreOptsFromCtx(ctx);
+      const prompt = flags["prompt"];
+      const invoke = () =>
+        invokeHarnessTurn(
+          core.harness,
+          {
+            harnessId: flags["id"],
+            prompt,
+            qualifier: flags["qualifier"] ?? "DEFAULT",
+            sessionId: flags["session-id"],
+          },
+          opts,
+        );
+      const result = await runWithProgress(invoke, {
+        io,
+        label: "Invoking harness...",
+        interactive: !ctx.require(JsonKey),
+      });
+      ctx.require(JsonRendererKey).renderJson(result);
+    },
+  });
+
+export { HarnessInvokeScreen } from "./screen.tsx";

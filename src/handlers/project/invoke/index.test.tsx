@@ -212,12 +212,12 @@ describe("invoke", () => {
   );
 
   test.each([
-    [["--runtime", "checkout"], `/agentcore/invoke/runtime/${RUNTIME_ID}`],
+    [["--runtime", "checkout"], `/agentcore/runtime/invoke/${RUNTIME_ID}`],
     [
       ["--harness", "support", "--qualifier", "prod"],
-      `/agentcore/invoke/harness/${HARNESS_ID}?qualifier=prod`,
+      `/agentcore/harness/invoke/${HARNESS_ID}?qualifier=prod`,
     ],
-    [["--gateway", "tools"], `/agentcore/invoke/gateway/${GATEWAY_ID}`],
+    [["--gateway", "tools"], `/agentcore/gateway/invoke/${GATEWAY_ID}`],
     [[], "/agentcore/invoke"],
   ])("opens the TUI for %j", async (args, path) => {
     const subject = await launches(args, {
@@ -232,11 +232,11 @@ describe("invoke", () => {
   });
 
   test.each([
-    ["the sole Runtime", { runtimes: [RUNTIME] }, `/agentcore/invoke/runtime/${RUNTIME_ID}`],
+    ["the sole Runtime", { runtimes: [RUNTIME] }, `/agentcore/runtime/invoke/${RUNTIME_ID}`],
     [
       "the sole Gateway",
       { agentCoreGateways: [GATEWAY] },
-      `/agentcore/invoke/gateway/${GATEWAY_ID}`,
+      `/agentcore/gateway/invoke/${GATEWAY_ID}`,
     ],
     ["nothing outside a project", undefined, "/agentcore/invoke"],
   ] as const)("a bare invoke selects %s", async (_name, resources, path) => {
@@ -310,7 +310,7 @@ describe("invoke", () => {
       name: "a harness session ID that is too short",
       args: ["--harness", "support", "--prompt", "hi", "--session-id", "short"],
       resources: { harnesses: [HARNESS] },
-      message: "--session-id must be 33-100 characters for a harness",
+      message: "Invalid value for option '--session-id'",
     },
   ])("rejects $name", async ({ args, resources, message }) => {
     const subject = await routedCommand(args, resources);

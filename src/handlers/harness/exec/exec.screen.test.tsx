@@ -148,7 +148,7 @@ describe("exec screen", () => {
   test("chat turns and exec commands share one session and one transcript", async () => {
     const core = execCore();
     // Start on the invoke route (chat mode), then toggle into exec mode.
-    const r = renderImperativeScreen("/agentcore/invoke/harness/MyHarness-abc123", { core });
+    const r = renderImperativeScreen("/agentcore/harness/invoke/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "send a message…");
     await type(r, "hi agent");

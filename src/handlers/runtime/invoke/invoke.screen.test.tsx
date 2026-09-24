@@ -19,7 +19,7 @@ const REGION = "us-east-1";
 const RUNTIME_ID = "runtime-123";
 const QUALIFIER = "prod";
 const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${RUNTIME_ID}`;
-const CONSOLE_PATH = `/agentcore/invoke/runtime/${RUNTIME_ID}/${QUALIFIER}`;
+const CONSOLE_PATH = `/agentcore/runtime/invoke/${RUNTIME_ID}/${QUALIFIER}`;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 afterEach(cleanupScreens);
@@ -90,7 +90,7 @@ describe("Runtime invoke routing", () => {
       .setGetResponse({
         agentRuntimeArn: `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${runtimeId}`,
       } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen("/agentcore/invoke/runtime", { core });
+    const screen = renderImperativeScreen("/agentcore/runtime/invoke", { core });
 
     await waitForText(screen.lastFrame, runtimeId);
     await screen.press("return");
@@ -99,7 +99,7 @@ describe("Runtime invoke routing", () => {
 
     await waitForText(
       screen.lastFrame,
-      `agentcore → invoke → runtime → ${runtimeId} → ${qualifier}`,
+      `agentcore → runtime → invoke → ${runtimeId} → ${qualifier}`,
     );
     await waitForText(screen.lastFrame, "Enter JSON payload");
   });
@@ -109,13 +109,13 @@ describe("Runtime invoke routing", () => {
     core.runtime.setListEndpointsResponse({ runtimeEndpoints: [endpoint()] }).setListResponse({
       agentRuntimes: [runtime({ agentRuntimeId: "back-to-runtime-picker" })],
     });
-    const screen = renderImperativeScreen(`/agentcore/invoke/runtime/${RUNTIME_ID}`, { core });
+    const screen = renderImperativeScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, { core });
 
     await waitForText(screen.lastFrame, QUALIFIER);
     await screen.press("escape");
 
     await waitForText(screen.lastFrame, "back-to-runtime-picker");
-    expect(screen.lastFrame()).toContain("agentcore → invoke → runtime");
+    expect(screen.lastFrame()).toContain("agentcore → runtime → invoke");
   });
 
   test("keeps a CLI-selected session while choosing an endpoint", async () => {
@@ -124,7 +124,7 @@ describe("Runtime invoke routing", () => {
     core.runtime
       .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(`/agentcore/invoke/runtime/${RUNTIME_ID}`, {
+    const screen = renderImperativeScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
@@ -168,7 +168,7 @@ describe("Runtime invoke routing", () => {
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
-      `agentcore → invoke → runtime → ${RUNTIME_ID} → ${nextQualifier}`,
+      `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
     );
     const nextSessionId = displayedSessionId(screen.lastFrame());
     expect(nextSessionId).toMatch(UUID_PATTERN);
@@ -338,7 +338,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.setGetResponse({
       agentRuntimeArn: `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${runtimeId}`,
     } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(`/agentcore/invoke/runtime/${runtimeId}/${QUALIFIER}`, {
+    const screen = renderImperativeScreen(`/agentcore/runtime/invoke/${runtimeId}/${QUALIFIER}`, {
       core,
     });
 
@@ -728,7 +728,7 @@ describe("Runtime invoke JSON console", () => {
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
-      `agentcore → invoke → runtime → ${RUNTIME_ID} → ${nextQualifier}`,
+      `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
     );
     expect(screen.lastFrame()).not.toContain("old response");
     const nextSessionId = displayedSessionId(screen.lastFrame());
@@ -803,7 +803,7 @@ describe("Runtime invoke JSON console", () => {
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
-      `agentcore → invoke → runtime → ${nextRuntimeId} → ${nextQualifier}`,
+      `agentcore → runtime → invoke → ${nextRuntimeId} → ${nextQualifier}`,
     );
     expect(screen.lastFrame()).not.toContain("Context");
 

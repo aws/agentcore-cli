@@ -165,7 +165,7 @@ describe("harness hub screen", () => {
     await r.press("down"); // versions
     await r.press("down"); // invoke
     await r.press("return");
-    await waitForText(r.lastFrame, "agentcore → invoke → harness → MyHarness-abc123");
+    await waitForText(r.lastFrame, "agentcore → harness → invoke → MyHarness-abc123");
     r.unmount();
   });
 

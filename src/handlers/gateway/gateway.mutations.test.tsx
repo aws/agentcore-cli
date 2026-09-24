@@ -90,6 +90,7 @@ describe("Gateway imperative mutation availability", () => {
       expect(names).toContain("get");
       expect(names).toContain("list");
     }
+    expect(gateway.commands.map((child) => child.name())).toContain("invoke");
     expect(gateway.commands.find((child) => child.name() === "policy")?.commands[0]?.name()).toBe(
       "generate",
     );

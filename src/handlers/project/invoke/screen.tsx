@@ -153,7 +153,7 @@ function ProjectInvokePicker({
           ctx={destination.ctx}
           core={core}
           runtimeId={destination.id}
-          breadcrumb={["agentcore", "invoke", "runtime", destination.id]}
+          breadcrumb={["agentcore", "runtime", "invoke", destination.id]}
           description="choose an endpoint to invoke"
           onSelect={(qualifier) => setDestination({ ...destination, qualifier })}
           onEscape={() => setDestination(undefined)}

@@ -12,7 +12,7 @@ import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
 const GATEWAY_ID = "gateway-123";
 const GATEWAY_URL = "https://gateway-123.gateway.example.test/mcp";
-const CONSOLE_PATH = `/agentcore/invoke/gateway/${GATEWAY_ID}`;
+const CONSOLE_PATH = `/agentcore/gateway/invoke/${GATEWAY_ID}`;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 afterEach(cleanupScreens);
@@ -62,12 +62,12 @@ describe("Gateway invoke routing", () => {
   test("selects a Gateway before opening the JSON console", async () => {
     const core = new TestCoreClient();
     core.gateway.setListResponse({ items: [gatewaySummary()] }).setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen("/agentcore/invoke/gateway", { core });
+    const screen = renderImperativeScreen("/agentcore/gateway/invoke", { core });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, `agentcore → invoke → gateway → ${GATEWAY_ID}`);
+    await waitForText(screen.lastFrame, `agentcore → gateway → invoke → ${GATEWAY_ID}`);
     await waitForText(screen.lastFrame, "Enter JSON payload");
     expect(screen.lastFrame()).toContain("Path: /mcp (Gateway URL)");
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
@@ -100,7 +100,7 @@ describe("Gateway invoke routing", () => {
     await waitFor(() => signal!.aborted);
   });
 
-  test("idle Escape returns through the Gateway picker to the project invoke picker", async () => {
+  test("idle Escape returns through the invoke picker to the Gateway menu", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail()).setListResponse({ items: [gatewaySummary()] });
     const screen = renderImperativeScreen(CONSOLE_PATH, { core });
@@ -112,7 +112,7 @@ describe("Gateway invoke routing", () => {
     expect(screen.lastFrame()).toContain("checkout-gateway");
 
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "invoke a Runtime, harness, or Gateway from the current project");
+    await waitForText(screen.lastFrame, "manage AgentCore Gateways");
   });
 });
 
@@ -411,7 +411,7 @@ describe("Gateway invoke JSON console", () => {
     await waitForText(screen.lastFrame, "next-gateway");
     await screen.press("down");
     await screen.press("return");
-    await waitForText(screen.lastFrame, `agentcore → invoke → gateway → ${nextGatewayId}`);
+    await waitForText(screen.lastFrame, `agentcore → gateway → invoke → ${nextGatewayId}`);
     await waitForText(screen.lastFrame, "Ready");
 
     expect(screen.lastFrame()).toContain("Path: /mcp (Gateway URL)");

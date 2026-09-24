@@ -45,7 +45,7 @@ type Exchange = {
 };
 
 const invokePath = (...parts: string[]) =>
-  ["/agentcore/invoke/gateway", ...parts.map(encodeURIComponent)].join("/");
+  ["/agentcore/gateway/invoke", ...parts.map(encodeURIComponent)].join("/");
 
 const metadata = (response: GatewayInvokeResponse) =>
   [
@@ -148,7 +148,7 @@ export function GatewayInvokeScreen(props: ScreenProps) {
     return (
       <GatewayPicker
         {...props}
-        breadcrumb={["agentcore", "invoke", "gateway"]}
+        breadcrumb={["agentcore", "gateway", "invoke"]}
         description="choose a Gateway to invoke"
         onSelect={(id) => navigate(invokePath(id))}
       />
@@ -420,7 +420,7 @@ export function GatewayInvokeConsole({
       <GatewayPicker
         ctx={ctx}
         core={core}
-        breadcrumb={["agentcore", "invoke", "gateway"]}
+        breadcrumb={["agentcore", "gateway", "invoke"]}
         description="choose another Gateway"
         onSelect={selectGateway}
         onEscape={() => setPickingGateway(false)}
@@ -430,7 +430,7 @@ export function GatewayInvokeConsole({
 
   return (
     <Layout
-      breadcrumb={["agentcore", "invoke", "gateway", targetGatewayId]}
+      breadcrumb={["agentcore", "gateway", "invoke", targetGatewayId]}
       keyHints={
         editingPath
           ? [

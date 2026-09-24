@@ -116,7 +116,7 @@ describe("Gateway menu and list", () => {
 
     await waitForText(screen.lastFrame, "manage AgentCore Gateways");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["create", "get", "list", "target", "connector", "rule", "policy"],
+      screens: ["create", "get", "list", "invoke", "target", "connector", "rule", "policy"],
       cliOnly: [],
     });
     expect(screen.core.gateway.calls).toEqual([]);

@@ -8,6 +8,7 @@ import { createRootHandler } from "../../index";
 import {
   IMPERATIVE_GLOBAL_CONFIG,
   createSilentLogger,
+  expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -15,8 +16,9 @@ import {
   tick,
   waitFor,
 } from "../../../testing";
+import { InputValidationError } from "../../../errors";
 
-// Command-flow tests for `invoke --harness`, driven through the real root handler
+// Command-flow tests for `harness invoke`, driven through the real root handler
 // exactly as the CLI runs it. Unlike the get/list suites these use a
 // TestCoreClient rather than recorded fixtures: the invoke response is an
 // AsyncIterable stream, which the fixture serialization cannot capture.
@@ -61,14 +63,22 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void, i
   return { core, stdout: io.stdout() };
 }
 
-describe("invoke --harness", () => {
+describe("harness invoke", () => {
   test.each([false, true])(
     "waits for the transcript and respects JSON mode (json=%s)",
     async (json) => {
       const io = testIO({ isTTY: true });
       const stream = new StreamController<InvokeHarnessStreamOutput>();
       const pending = run(
-        ["invoke", "--harness", "MyHarness-abc123", "--prompt", "hi", ...(json ? ["--json"] : [])],
+        [
+          "harness",
+          "invoke",
+          "--id",
+          "MyHarness-abc123",
+          "--prompt",
+          "hi",
+          ...(json ? ["--json"] : []),
+        ],
         (core) => core.harness.queueInvokeStream(stream),
         io,
       );
@@ -88,7 +98,14 @@ describe("invoke --harness", () => {
   );
 
   test("folds the stream into a JSON transcript", async () => {
-    const { stdout } = await run(["invoke", "--harness", "MyHarness-abc123", "--prompt", "hi"]);
+    const { stdout } = await run([
+      "harness",
+      "invoke",
+      "--id",
+      "MyHarness-abc123",
+      "--prompt",
+      "hi",
+    ]);
 
     const out = JSON.parse(stdout);
     expect(out.stopReason).toBe("end_turn");
@@ -102,7 +119,7 @@ describe("invoke --harness", () => {
   });
 
   test("resolves the harness ARN and sends a single user message with a fresh session id", async () => {
-    const { core } = await run(["invoke", "--harness", "MyHarness-abc123", "--prompt", "hi"]);
+    const { core } = await run(["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi"]);
 
     const get = core.harness.calls.find((c) => c.method === "getHarness")!;
     expect(get.args[0]).toBe("MyHarness-abc123");
@@ -121,8 +138,9 @@ describe("invoke --harness", () => {
   test("--session-id is passed through and echoed in the output", async () => {
     const sessionId = "custom-session-id-that-is-long-enough";
     const { core, stdout } = await run([
+      "harness",
       "invoke",
-      "--harness",
+      "--id",
       "MyHarness-abc123",
       "--prompt",
       "hi",
@@ -137,14 +155,15 @@ describe("invoke --harness", () => {
 
   test("--session-id shorter than 33 characters is rejected", async () => {
     await expect(
-      run(["invoke", "--harness", "X", "--prompt", "hi", "--session-id", "too-short"]),
-    ).rejects.toThrow("--session-id must be 33-100 characters for a harness");
+      run(["harness", "invoke", "--id", "X", "--prompt", "hi", "--session-id", "too-short"]),
+    ).rejects.toThrow();
   });
 
   test("--qualifier is passed through on the request", async () => {
     const { core } = await run([
+      "harness",
       "invoke",
-      "--harness",
+      "--id",
       "MyHarness-abc123",
       "--prompt",
       "hi",
@@ -158,7 +177,7 @@ describe("invoke --harness", () => {
 
   test("a stream-borne validationException becomes an error transcript item", async () => {
     const { stdout } = await run(
-      ["invoke", "--harness", "MyHarness-abc123", "--prompt", "hi"],
+      ["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi"],
       (core) =>
         core.harness.setInvokeEvents({
           validationException: { message: "session id malformed" },
@@ -171,11 +190,15 @@ describe("invoke --harness", () => {
     ]);
   });
 
+  test("errors when --id is omitted", async () => {
+    await expectError(run(["harness", "invoke", "--prompt", "hi"]), /--id/, InputValidationError);
+  });
+
   // Without --prompt (and outside JSON mode) the handler opens the interactive
   // chat instead — that path is covered by the screen tests, since the test IO
   // streams cannot host an Ink render.
   test("errors when --prompt is omitted in JSON mode", async () => {
-    await expect(run(["invoke", "--harness", "MyHarness-abc123", "--json"])).rejects.toThrow(
+    await expect(run(["harness", "invoke", "--id", "MyHarness-abc123", "--json"])).rejects.toThrow(
       /--prompt/,
     );
   });

@@ -54,7 +54,7 @@ describe("menu rendering", () => {
     await waitForText(r.lastFrame, "list");
 
     const frame = r.lastFrame()!;
-    for (const sub of ["get", "list", "create", "update", "delete", "exec"]) {
+    for (const sub of ["get", "list", "create", "update", "delete", "invoke", "exec"]) {
       expect(frame).toContain(sub);
     }
     r.unmount();

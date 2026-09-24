@@ -306,7 +306,7 @@ describe("Runtime endpoint flow", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "invoke this Runtime endpoint");
     await r.press("return");
-    await waitForText(r.lastFrame, "agentcore → invoke → runtime → runtime-123 → prod");
+    await waitForText(r.lastFrame, "agentcore → runtime → invoke → runtime-123 → prod");
     await waitForText(r.lastFrame, "Enter JSON payload");
 
     await r.press("escape");
