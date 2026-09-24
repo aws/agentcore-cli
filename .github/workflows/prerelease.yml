@@ -60,8 +60,7 @@ jobs:
           [\`$TARBALL_NAME\`]($release_url/$TARBALL_NAME)
 
           \`\`\`bash
-          curl -L "$release_url/$TARBALL_NAME" -o "$TARBALL_NAME"
-          bun add --global "./$TARBALL_NAME"
+          npm i -g "$release_url/$TARBALL_NAME"
           \`\`\`
 
           ### Standalone executables
