@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   prerelease:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 30
     env:
       RELEASE_TAG: ${{ github.ref_name == 'main' && 'prerelease' || format('prerelease-{0}', github.ref_name) }}
