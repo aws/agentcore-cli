@@ -659,13 +659,14 @@ invoke a Runtime, harness, or Gateway
 - `--local`: invoke the local development server (project Runtime only) (default: false)
 - `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)
 - `--payload <payload>`: the inline payload to send
-- `--prompt <prompt>`: the message to send to a harness
-- `--session-id <session-id>`: the session ID to continue (33-100 characters for a harness)
-- `--qualifier <qualifier>`: the endpoint qualifier (default DEFAULT)
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--content-type <content-type>`: the payload content type
 - `--accept <accept>`: the accepted response content type
+- `--session-id <session-id>`: the Runtime session ID
 - `--header <header...>`: an ordered application header
 - `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--mcp-session-id <mcp-session-id>`: the MCP session ID
+- `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
 - `--output-file <output-file>`: the response output file
 - `--user-id <user-id>`: the Runtime user ID (default "default")
 - `--mcp-method <mcp-method>`: the MCP method
@@ -674,10 +675,9 @@ invoke a Runtime, harness, or Gateway
 - `--trace-parent <trace-parent>`: the W3C trace parent
 - `--trace-state <trace-state>`: the W3C trace state
 - `--baggage <baggage>`: the W3C baggage
+- `--prompt <prompt>`: the message to send to the harness
 - `--path <path>`: the path relative to the Gateway origin
 - `--method <method>`: the HTTP request method
-- `--mcp-session-id <mcp-session-id>`: the MCP session ID
-- `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
 
 ### `agentcore log`
 

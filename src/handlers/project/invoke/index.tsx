@@ -15,23 +15,20 @@ import {
 } from "../../../router";
 import { attributeName, parseFlags } from "../../../router/flags";
 import { renderTuiAt } from "../../../tui";
-import { createInvokeGatewayHandler } from "../../gateway/invoke";
-import { createInvokeHarnessHandler } from "../../harness/invoke";
+import { createInvokeGatewayHandler, invokeGatewayFlags } from "../../gateway/invoke";
+import { createInvokeHarnessHandler, invokeHarnessFlags } from "../../harness/invoke";
 import { JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
 import { assertMutuallyExclusiveFlags, toResourceArn } from "../../utils";
 import { projectResourceNames, RESOURCE_LABELS } from "../selection";
 import type { Project, ProjectInvokableResource } from "../types";
-import { createInvokeRuntimeHandler } from "../../runtime/invoke";
+import { createInvokeRuntimeHandler, invokeRuntimeFlags } from "../../runtime/invoke";
 import { invokeProjectRuntimeLocally } from "./runtime";
 
 const RESOURCE = "Resource options:";
-const REQUEST = "Request options:";
-const RUNTIME = "Runtime options:";
-const GATEWAY = "Gateway options:";
-const MCP = "MCP options (Runtime, Gateway):";
+const RESOURCE_TYPES = ["runtime", "harness", "gateway"] as const;
 
-const invokeFlags = [
+const resourceFlags = [
   flag(
     "runtime",
     "the Runtime to invoke: a project name, ID, or ARN",
@@ -65,65 +62,41 @@ const invokeFlags = [
     z.coerce.number().int().min(1).max(65535).optional(),
     { group: RESOURCE },
   ),
-  flag("payload", "the inline payload to send", z.string().optional(), {
-    sensitive: true,
-    group: REQUEST,
-  }),
-  flag("prompt", "the message to send to a harness", z.string().optional(), { group: REQUEST }),
-  flag(
-    "session-id",
-    "the session ID to continue (33-100 characters for a harness)",
-    z.string().optional(),
-    { group: REQUEST },
-  ),
-  flag("qualifier", "the endpoint qualifier (default DEFAULT)", z.string().optional(), {
-    group: REQUEST,
-  }),
-  flag("content-type", "the payload content type", z.string().optional(), { group: REQUEST }),
-  flag("accept", "the accepted response content type", z.string().optional(), { group: REQUEST }),
-  flag("header", "an ordered application header", z.array(z.string()).optional(), {
-    sensitive: true,
-    group: REQUEST,
-  }),
-  flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
-    sensitive: true,
-    group: REQUEST,
-  }),
-  flag(
-    "output-file",
-    "the response output file",
-    z.string().min(1, "requires a nonempty path").optional(),
-    { group: REQUEST },
-  ),
-  flag("user-id", 'the Runtime user ID (default "default")', z.string().optional(), {
-    group: RUNTIME,
-  }),
-  flag("mcp-method", "the MCP method", z.string().optional(), { group: RUNTIME }),
-  flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional(), {
-    group: RUNTIME,
-  }),
-  flag("trace-id", "the X-Ray trace ID", z.string().optional(), { group: RUNTIME }),
-  flag("trace-parent", "the W3C trace parent", z.string().optional(), { group: RUNTIME }),
-  flag("trace-state", "the W3C trace state", z.string().optional(), { group: RUNTIME }),
-  flag("baggage", "the W3C baggage", z.string().optional(), { group: RUNTIME }),
-  flag(
-    "path",
-    "the path relative to the Gateway origin",
-    z.string().min(1, "requires a nonempty path").optional(),
-    { sensitive: true, group: GATEWAY },
-  ),
-  flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional(), {
-    group: GATEWAY,
-  }),
-  flag("mcp-session-id", "the MCP session ID", z.string().optional(), { group: MCP }),
-  flag("mcp-protocol-version", "the MCP protocol version", z.string().optional(), {
-    group: MCP,
-  }),
 ] as const;
 
-export type InvokeFlags = FlagsOf<typeof invokeFlags>;
+const INVOKE_FLAGS = {
+  runtime: invokeRuntimeFlags,
+  harness: invokeHarnessFlags,
+  gateway: invokeGatewayFlags,
+} as const;
 
-const RESOURCE_TYPES = ["runtime", "harness", "gateway"] as const;
+type RequestFlag = Exclude<(typeof INVOKE_FLAGS)[ProjectInvokableResource][number], { name: "id" }>;
+
+/**
+ One flag per name, in the help group of the resource types that accept it.
+**/
+function requestFlags(): RequestFlag[] {
+  const merged = new Map<string, { flag: RequestFlag; owners: ProjectInvokableResource[] }>();
+  for (const resourceType of RESOURCE_TYPES) {
+    for (const requestFlag of INVOKE_FLAGS[resourceType]) {
+      if (requestFlag.name === "id") continue;
+      const entry = merged.get(requestFlag.name) ?? { flag: requestFlag, owners: [] };
+      entry.owners.push(resourceType);
+      merged.set(requestFlag.name, entry);
+    }
+  }
+  return [...merged.values()].map(({ flag, owners }) => ({
+    ...flag,
+    group: owners.length === 1 ? `${RESOURCE_LABELS[owners[0]!]} options:` : "Request options:",
+  }));
+}
+
+const invokeFlags: readonly ((typeof resourceFlags)[number] | RequestFlag)[] = [
+  ...resourceFlags,
+  ...requestFlags(),
+];
+
+export type InvokeFlags = FlagsOf<typeof invokeFlags>;
 
 const isSet = (value: unknown) => value !== undefined && value !== false;
 
@@ -149,8 +122,8 @@ function selectResource(
       (name) => [resourceType, name] as [ProjectInvokableResource, string],
     ),
   );
-  if (declared.length === 1) return declared[0];
   if (!headless) return undefined;
+  if (declared.length === 1) return declared[0];
   if (declared.length === 0) {
     throw new InputValidationError(
       "This project has no Runtimes, harnesses, or Gateways to invoke.",

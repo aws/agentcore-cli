@@ -232,17 +232,18 @@ describe("invoke", () => {
   });
 
   test.each([
-    ["the sole Runtime", { runtimes: [RUNTIME] }, `/agentcore/runtime/invoke/${RUNTIME_ID}`],
-    [
-      "the sole Gateway",
-      { agentCoreGateways: [GATEWAY] },
-      `/agentcore/gateway/invoke/${GATEWAY_ID}`,
-    ],
-    ["nothing outside a project", undefined, "/agentcore/invoke"],
-  ] as const)("a bare invoke selects %s", async (_name, resources, path) => {
+    ["one resource", { runtimes: [RUNTIME] }],
+    ["no project", undefined],
+  ] as const)("a bare interactive invoke opens the picker with %s", async (_name, resources) => {
     const subject = await launches([], resources);
 
-    expect(subject.launches.map((launch) => launch.path)).toEqual([path]);
+    expect(subject.launches.map((launch) => launch.path)).toEqual(["/agentcore/invoke"]);
+  });
+
+  test("a headless invoke selects the sole resource", async () => {
+    const { core } = await run(["--payload", "{}"], { agentCoreGateways: [GATEWAY] });
+
+    expect(core.gateway.calls.some(({ method }) => method === "invokeGateway")).toBe(true);
   });
 
   test("resolves the --target deployment target for project names", async () => {

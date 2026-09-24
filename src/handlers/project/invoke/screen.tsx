@@ -14,7 +14,7 @@ import { HarnessChat } from "../../harness/invoke/screen";
 import { RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import { RESOURCE_LABELS } from "../selection";
+import { isProjectInvokableResource, RESOURCE_LABELS } from "../selection";
 import type { Project, ProjectInvokableResource, ResolvedProjectResources } from "../types";
 import { ProjectGate } from "../ProjectGate";
 
@@ -111,26 +111,29 @@ function ProjectInvokePicker({
 
   const rows = useMemo<ProjectInvokableRow[]>(
     () =>
-      (deployed?.resources ?? []).flatMap((resource): ProjectInvokableRow[] => {
-        if (!(resource.resourceType in RESOURCE_LABELS) || !("arn" in resource)) return [];
-        const resourceType = resource.resourceType as ProjectInvokableResource;
-        const { name, arn } = resource;
-        const runtime = project.spec.runtimes.find((candidate) => candidate.name === name);
-        const harness = project.spec.harnesses.find((candidate) => candidate.name === name);
-        return [
-          {
-            resourceType,
-            type: RESOURCE_LABELS[resourceType],
-            name,
-            arn,
-            protocol: resourceType === "runtime" ? (runtime?.protocol ?? "HTTP") : "-",
-            source:
-              (resourceType === "runtime" && runtime?.codeLocation) ||
-              (resourceType === "harness" && harness?.path) ||
-              "-",
-          },
-        ];
-      }),
+      (deployed?.resources ?? []).flatMap(
+        ({ resourceType, name, ...state }): ProjectInvokableRow[] => {
+          if (!isProjectInvokableResource(resourceType) || !("arn" in state)) return [];
+          const runtime =
+            resourceType === "runtime"
+              ? project.spec.runtimes.find((candidate) => candidate.name === name)
+              : undefined;
+          const harness =
+            resourceType === "harness"
+              ? project.spec.harnesses.find((candidate) => candidate.name === name)
+              : undefined;
+          return [
+            {
+              resourceType,
+              type: RESOURCE_LABELS[resourceType],
+              name,
+              arn: state.arn,
+              protocol: runtime ? (runtime.protocol ?? "HTTP") : "-",
+              source: runtime?.codeLocation ?? harness?.path ?? "-",
+            },
+          ];
+        },
+      ),
     [deployed, project],
   );
 

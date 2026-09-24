@@ -19,6 +19,34 @@ import {
 import { writeGatewayInvokeResponse } from "./response";
 import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
+export const invokeGatewayFlags = [
+  flag("id", "the ID of the Gateway", gatewayIdSchema),
+  flag(
+    "path",
+    "the path relative to the Gateway origin",
+    z.string().min(1, "requires a nonempty path").optional(),
+    { sensitive: true },
+  ),
+  flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional()),
+  flag("payload", "the inline payload to send", z.string().optional(), { sensitive: true }),
+  flag("content-type", "the payload content type", z.string().optional()),
+  flag("accept", "the accepted response content type", z.string().optional()),
+  flag("header", "an ordered application header", z.array(z.string()).optional(), {
+    sensitive: true,
+  }),
+  flag("bearer-token", "the Gateway bearer token", z.string().optional(), {
+    sensitive: true,
+  }),
+  flag("session-id", "the Runtime target session ID", z.string().optional()),
+  flag("mcp-session-id", "the MCP session ID", z.string().optional()),
+  flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
+  flag(
+    "output-file",
+    "the response output file",
+    z.string().min(1, "requires a nonempty path").optional(),
+  ),
+] as const;
+
 export const createInvokeGatewayHandler = (
   core: Core,
   io: AppIO,
@@ -27,33 +55,7 @@ export const createInvokeGatewayHandler = (
   createHandler({
     name: "invoke",
     description: "invoke an AgentCore Gateway",
-    flags: [
-      flag("id", "the ID of the Gateway", gatewayIdSchema),
-      flag(
-        "path",
-        "the path relative to the Gateway origin",
-        z.string().min(1, "requires a nonempty path").optional(),
-        { sensitive: true },
-      ),
-      flag("method", "the HTTP request method", z.enum(["GET", "POST", "DELETE"]).optional()),
-      flag("payload", "the inline payload to send", z.string().optional(), { sensitive: true }),
-      flag("content-type", "the payload content type", z.string().optional()),
-      flag("accept", "the accepted response content type", z.string().optional()),
-      flag("header", "an ordered application header", z.array(z.string()).optional(), {
-        sensitive: true,
-      }),
-      flag("bearer-token", "the Gateway bearer token", z.string().optional(), {
-        sensitive: true,
-      }),
-      flag("session-id", "the Runtime target session ID", z.string().optional()),
-      flag("mcp-session-id", "the MCP session ID", z.string().optional()),
-      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
-      flag(
-        "output-file",
-        "the response output file",
-        z.string().min(1, "requires a nonempty path").optional(),
-      ),
-    ],
+    flags: invokeGatewayFlags,
     handle: async (ctx, flags) => {
       const jsonOutput = ctx.require(JsonKey);
       if (flags.payload === undefined) {

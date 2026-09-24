@@ -7,6 +7,10 @@ export const RESOURCE_LABELS: Record<ProjectInvokableResource, string> = {
   gateway: "Gateway",
 };
 
+export function isProjectInvokableResource(value: string): value is ProjectInvokableResource {
+  return value in RESOURCE_LABELS;
+}
+
 export function projectResourceNames(
   project: Project,
   resourceType: ProjectInvokableResource,

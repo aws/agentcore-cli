@@ -18,40 +18,42 @@ import { writeRuntimeInvokeResponse } from "./response";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 import { invokeRuntimeTarget } from "./operation";
 
+export const invokeRuntimeFlags = [
+  flag("id", "the ID of the Runtime", runtimeIdSchema),
+  flag("payload", "the inline payload to send", z.string().optional(), {
+    sensitive: true,
+  }),
+  flag("qualifier", "the Runtime endpoint qualifier", z.string().optional()),
+  flag("content-type", "the payload content type", z.string().optional()),
+  flag("accept", "the accepted response content type", z.string().optional()),
+  flag("session-id", "the Runtime session ID", z.string().optional()),
+  flag("user-id", 'the Runtime user ID (default "default")', z.string().optional()),
+  flag("header", "an ordered application header", z.array(z.string()).optional(), {
+    sensitive: true,
+  }),
+  flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
+    sensitive: true,
+  }),
+  flag("mcp-session-id", "the MCP session ID", z.string().optional()),
+  flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
+  flag("mcp-method", "the MCP method", z.string().optional()),
+  flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional()),
+  flag("trace-id", "the X-Ray trace ID", z.string().optional()),
+  flag("trace-parent", "the W3C trace parent", z.string().optional()),
+  flag("trace-state", "the W3C trace state", z.string().optional()),
+  flag("baggage", "the W3C baggage", z.string().optional()),
+  flag(
+    "output-file",
+    "the response output file",
+    z.string().min(1, "requires a nonempty path").optional(),
+  ),
+] as const;
+
 export const createInvokeRuntimeHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "invoke",
     description: "invoke a Runtime",
-    flags: [
-      flag("id", "the ID of the Runtime", runtimeIdSchema),
-      flag("payload", "the inline payload to send", z.string().optional(), {
-        sensitive: true,
-      }),
-      flag("qualifier", "the Runtime endpoint qualifier", z.string().optional()),
-      flag("content-type", "the payload content type", z.string().optional()),
-      flag("accept", "the accepted response content type", z.string().optional()),
-      flag("session-id", "the Runtime session ID", z.string().optional()),
-      flag("user-id", 'the Runtime user ID (default "default")', z.string().optional()),
-      flag("header", "an ordered application header", z.array(z.string()).optional(), {
-        sensitive: true,
-      }),
-      flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
-        sensitive: true,
-      }),
-      flag("mcp-session-id", "the MCP session ID", z.string().optional()),
-      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
-      flag("mcp-method", "the MCP method", z.string().optional()),
-      flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional()),
-      flag("trace-id", "the X-Ray trace ID", z.string().optional()),
-      flag("trace-parent", "the W3C trace parent", z.string().optional()),
-      flag("trace-state", "the W3C trace state", z.string().optional()),
-      flag("baggage", "the W3C baggage", z.string().optional()),
-      flag(
-        "output-file",
-        "the response output file",
-        z.string().min(1, "requires a nonempty path").optional(),
-      ),
-    ],
+    flags: invokeRuntimeFlags,
     handle: async (ctx, flags) => {
       if (flags.payload === undefined) {
         const hasHeadlessOnlyFlag = Object.entries(flags).some(
