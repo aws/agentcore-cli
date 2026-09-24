@@ -10,7 +10,7 @@ import { TestCoreClient } from "./TestCoreClient";
 import { testIO } from "./testIO";
 import { tick, waitFor } from "./timing";
 import { createSilentLogger } from "./logging";
-import { IMPERATIVE_GLOBAL_CONFIG, TestGlobalConfigAccessor } from "./globalConfig";
+import { TestGlobalConfigAccessor } from "./globalConfig";
 import { DEFAULT_GLOBAL_CONFIG, type GlobalConfig } from "../globalConfig";
 
 // TUI test harness.
@@ -181,16 +181,6 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
       instance.rerender(<Root path={path} ctx={ctx} core={core} queryClient={queryClient} />),
     unmount: instance.unmount,
   };
-}
-
-export function renderImperativeScreen(
-  path: string,
-  options: RenderScreenOptions = {},
-): RenderScreenResult {
-  return renderScreen(path, {
-    ...options,
-    globalConfig: options.globalConfig ?? IMPERATIVE_GLOBAL_CONFIG,
-  });
 }
 
 // waitForText resolves once `text` appears in the latest frame.

@@ -9,12 +9,13 @@ import type {
   Harness,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   flatFrame,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 import { buildHarnessLinkNodes } from "./screen";
 
@@ -45,7 +46,13 @@ function getResponse(): GetHarnessResponse {
 function hubScreen() {
   const core = new TestCoreClient();
   core.harness.setGetResponse(getResponse());
-  return { core, r: renderImperativeScreen("/agentcore/harness/get/MyHarness-abc123", { core }) };
+  return {
+    core,
+    r: renderScreen("/agentcore/harness/get/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    }),
+  };
 }
 
 describe("harness hub screen", () => {
@@ -73,7 +80,10 @@ describe("harness hub screen", () => {
         failureReason: "Execution role is unavailable",
       },
     });
-    const r = renderImperativeScreen("/agentcore/harness/get/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/get/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(r.lastFrame, "show the full JSON definition");
     expect(r.lastFrame()).toMatch(/failureReason\s+Execution role is unavailable/);
   });
@@ -103,7 +113,10 @@ describe("harness hub screen", () => {
   test("shows the error message when the get call fails", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("harness not found"));
-    const r = renderImperativeScreen("/agentcore/harness/get/does-not-exist", { core });
+    const r = renderScreen("/agentcore/harness/get/does-not-exist", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Error:");
     expect(r.lastFrame()).toContain("harness not found");
@@ -184,7 +197,10 @@ describe("harness hub screen", () => {
         },
       ],
     });
-    const r = renderImperativeScreen("/agentcore/harness/get", { core });
+    const r = renderScreen("/agentcore/harness/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     // The redirect lands on the list, which fetches harnesses.
     await waitForText(r.lastFrame, "MyHarness");
@@ -274,7 +290,7 @@ function linkedHubScreen(
     name: "github-oauth",
     credentialProviderArn: OAUTH2_ARN,
   } as GetOauth2CredentialProviderResponse);
-  return { core, r: renderImperativeScreen(path, { core }) };
+  return { core, r: renderScreen(path, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG }) };
 }
 
 // markedLines returns the lines carrying the ❯ focus marker.
@@ -284,7 +300,7 @@ function markedLines(frame: string | undefined): string[] {
 
 // The action list has six entries, so five downs reach `update` and the sixth
 // crosses into the tree.
-async function focusTree(r: ReturnType<typeof renderImperativeScreen>, row = 0) {
+async function focusTree(r: ReturnType<typeof renderScreen>, row = 0) {
   for (let press = 0; press < 6 + row; press++) await r.press("down");
 }
 
@@ -727,7 +743,10 @@ describe("harness JSON detail screen", () => {
 
     const core = new TestCoreClient();
     core.harness.setGetResponse(response);
-    const r = renderImperativeScreen("/agentcore/harness/get/MyHarness-abc123/json", { core });
+    const r = renderScreen("/agentcore/harness/get/MyHarness-abc123/json", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "WRAP_SENTINEL");
     r.unmount();
@@ -736,7 +755,10 @@ describe("harness JSON detail screen", () => {
   test("renders the harness JSON and scrolls without crashing", async () => {
     const core = new TestCoreClient();
     core.harness.setGetResponse(getResponse());
-    const r = renderImperativeScreen("/agentcore/harness/get/MyHarness-abc123/json", { core });
+    const r = renderScreen("/agentcore/harness/get/MyHarness-abc123/json", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, '"harnessName"');
     await r.press("down");

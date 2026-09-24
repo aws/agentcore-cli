@@ -1,11 +1,12 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -39,7 +40,10 @@ describe("harness list screen", () => {
       harness({ harnessName: "alpha", harnessId: "alpha-1", harnessVersion: "99999" }),
       harness({ harnessName: "beta", harnessId: "beta-2" }),
     ]);
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "alpha");
     const frame = r.lastFrame()!;
@@ -55,7 +59,10 @@ describe("harness list screen", () => {
 
   test("makes one initial list request with context options", async () => {
     const core = coreWith([harness()]);
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitFor(() => core.harness.calls.some((call) => call.method === "listHarnesses"));
     expect(core.harness.calls.filter((call) => call.method === "listHarnesses")).toEqual([

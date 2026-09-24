@@ -3,9 +3,9 @@ import {
   cleanupScreens,
   menuEntries,
   renderScreen,
-  renderImperativeScreen,
   tick,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../testing";
 
 afterEach(cleanupScreens);
@@ -32,7 +32,7 @@ describe("menu rendering", () => {
   });
 
   test("lists standalone commands in the root menu when enabled", async () => {
-    const r = renderImperativeScreen("/agentcore");
+    const r = renderScreen("/agentcore", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     await waitForText(r.lastFrame, "type to choose a command");
 
     const entries = menuEntries(r.lastFrame()!);
@@ -50,7 +50,7 @@ describe("menu rendering", () => {
   });
 
   test("renders the harness subcommands when mounted at the harness path", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     await waitForText(r.lastFrame, "list");
 
     const frame = r.lastFrame()!;
@@ -71,7 +71,7 @@ describe("menu rendering", () => {
 
 describe("filtering", () => {
   test("typing narrows the options to matches", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     await waitForText(r.lastFrame, "list");
 
     await r.write("cr"); // matches "create" only
@@ -85,7 +85,7 @@ describe("filtering", () => {
   });
 
   test("filtering is case-insensitive", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     await waitForText(r.lastFrame, "list");
 
     await r.write("LIST");
@@ -94,7 +94,7 @@ describe("filtering", () => {
   });
 
   test("shows a no-matches message when nothing matches", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     await waitForText(r.lastFrame, "list");
 
     await r.write("zzz");
@@ -151,7 +151,7 @@ describe("navigation", () => {
   });
 
   test("esc from a nested menu returns to the parent menu", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     await waitForText(r.lastFrame, "agentcore → harness");
 
     await r.press("escape");

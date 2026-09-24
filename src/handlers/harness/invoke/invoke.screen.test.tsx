@@ -5,12 +5,13 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { GetHarnessResponse, HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   StreamController,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -57,7 +58,7 @@ function chatCore(): TestCoreClient {
 }
 
 // sendMessage types `text` into the prompt and presses enter.
-async function sendMessage(r: ReturnType<typeof renderImperativeScreen>, text: string) {
+async function sendMessage(r: ReturnType<typeof renderScreen>, text: string) {
   await r.write(text);
   await r.press("return");
 }
@@ -71,7 +72,10 @@ describe("invoke picker screen", () => {
         summary({ harnessName: "beta", harnessId: "beta-2" }),
       ],
     });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderScreen("/agentcore/harness/invoke", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "alpha");
     expect(r.lastFrame()).toContain("beta");
@@ -82,7 +86,10 @@ describe("invoke picker screen", () => {
   test("selecting a harness opens its chat", async () => {
     const core = chatCore();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderScreen("/agentcore/harness/invoke", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("return");
@@ -95,7 +102,10 @@ describe("invoke picker screen", () => {
   test("shows the error message when the list call fails", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("access denied"));
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderScreen("/agentcore/harness/invoke", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Error:");
     expect(r.lastFrame()).toContain("access denied");
@@ -105,7 +115,10 @@ describe("invoke picker screen", () => {
   test("esc returns to the harness menu", async () => {
     const core = new TestCoreClient();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderScreen("/agentcore/harness/invoke", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("escape");
@@ -116,7 +129,7 @@ describe("invoke picker screen", () => {
 
 describe("invoke chat screen", () => {
   test("sending a message streams the reply and appends a turn summary", async () => {
-    const r = renderImperativeScreen(CHAT_PATH, { core: chatCore() });
+    const r = renderScreen(CHAT_PATH, { core: chatCore(), globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "hi agent");
@@ -131,7 +144,7 @@ describe("invoke chat screen", () => {
 
   test("the session id is stable across sends and each send carries only the new message", async () => {
     const core = chatCore();
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "first");
@@ -155,7 +168,10 @@ describe("invoke chat screen", () => {
   test("a session id in the route resumes that session", async () => {
     const resumed = "resumed-session-0123456789abcdefghijklmn"; // 33+ chars
     const core = chatCore();
-    const r = renderImperativeScreen(`${CHAT_PATH}/${resumed}`, { core });
+    const r = renderScreen(`${CHAT_PATH}/${resumed}`, {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     // The bottom bar shows the resumed session immediately.
     await waitForText(r.lastFrame, `session: ${resumed}`);
@@ -194,7 +210,7 @@ describe("invoke chat screen", () => {
         },
       ],
     });
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     expect(r.lastFrame()).toContain("qualifier: DEFAULT");
@@ -227,7 +243,7 @@ describe("invoke chat screen", () => {
         },
       ],
     });
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await r.write("\x14"); // ctrl+t
@@ -240,7 +256,10 @@ describe("invoke chat screen", () => {
 
   test("a qualifier in the route targets that endpoint", async () => {
     const core = chatCore();
-    const r = renderImperativeScreen(`${CHAT_PATH}?qualifier=canary`, { core });
+    const r = renderScreen(`${CHAT_PATH}?qualifier=canary`, {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "qualifier: canary");
     await sendMessage(r, "hi");
@@ -313,7 +332,7 @@ describe("invoke chat screen", () => {
       { contentBlockStop: { contentBlockIndex: 0 } },
       { messageStop: { stopReason: "end_turn" } },
     );
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "weather?");
@@ -334,7 +353,7 @@ describe("invoke chat screen", () => {
     const core = chatCore();
     const stream = new StreamController<InvokeHarnessStreamOutput>();
     core.harness.queueInvokeStream(stream);
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "take your time");
@@ -356,7 +375,7 @@ describe("invoke chat screen", () => {
     const core = chatCore();
     const stream = new StreamController<InvokeHarnessStreamOutput>();
     core.harness.queueInvokeStream(stream);
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "hi");
@@ -376,7 +395,7 @@ describe("invoke chat screen", () => {
 
   test("an invoke failure renders a ✗ error item and recovers to idle", async () => {
     const core = chatCore();
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     // The harness detail is already fetched; only the upcoming invoke fails.
@@ -391,7 +410,7 @@ describe("invoke chat screen", () => {
   test("shows the error screen when the harness detail fails to load", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("harness not found"));
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "Error:");
     expect(r.lastFrame()).toContain("harness not found");
@@ -401,7 +420,10 @@ describe("invoke chat screen", () => {
   test("esc while idle pops back to the picker", async () => {
     const core = chatCore();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/invoke", { core });
+    const r = renderScreen("/agentcore/harness/invoke", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("return");
@@ -414,7 +436,7 @@ describe("invoke chat screen", () => {
 
   test("submitting an empty prompt does not invoke", async () => {
     const core = chatCore();
-    const r = renderImperativeScreen(CHAT_PATH, { core });
+    const r = renderScreen(CHAT_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await r.press("return");
@@ -429,7 +451,7 @@ describe("invoke chat screen", () => {
     // Regression: sending clears the input from outside TextInput, which used
     // to leave its cursor stranded past the end of the (now shorter) value —
     // backspace then deleted nothing.
-    const r = renderImperativeScreen(CHAT_PATH, { core: chatCore() });
+    const r = renderScreen(CHAT_PATH, { core: chatCore(), globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "hi agent");
@@ -445,7 +467,7 @@ describe("invoke chat screen", () => {
   });
 
   test("arrow keys scroll the transcript without crashing", async () => {
-    const r = renderImperativeScreen(CHAT_PATH, { core: chatCore() });
+    const r = renderScreen(CHAT_PATH, { core: chatCore(), globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "send a message…");
     await sendMessage(r, "hi agent");

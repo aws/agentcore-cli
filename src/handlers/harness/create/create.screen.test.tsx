@@ -1,11 +1,12 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { CreateHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -38,7 +39,10 @@ function coreForCreate(): TestCoreClient {
 describe("harness create wizard", () => {
   test("walks name → model → memory → tools → prompt → review and creates", async () => {
     const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     // Step: name.
     await waitForText(r.lastFrame, "the name of your harness");
@@ -120,7 +124,10 @@ describe("harness create wizard", () => {
   });
 
   test("reveals model fields only after enter and hides them again on escape", async () => {
-    const r = renderImperativeScreen("/agentcore/harness/create", { core: coreForCreate() });
+    const r = renderScreen("/agentcore/harness/create", {
+      core: coreForCreate(),
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -142,7 +149,10 @@ describe("harness create wizard", () => {
 
   test("selecting gemini collects the model id and api key arn", async () => {
     const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -185,7 +195,10 @@ describe("harness create wizard", () => {
 
   test("openai requires the model id and api key arn and sends them", async () => {
     const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -233,7 +246,10 @@ describe("harness create wizard", () => {
 
   test("litellm omits the optional fields left empty", async () => {
     const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -273,7 +289,10 @@ describe("harness create wizard", () => {
 
   test("service default sends no model", async () => {
     const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -304,7 +323,10 @@ describe("harness create wizard", () => {
   });
 
   test("rejects an invalid name and stays on the name step", async () => {
-    const r = renderImperativeScreen("/agentcore/harness/create", { core: coreForCreate() });
+    const r = renderScreen("/agentcore/harness/create", {
+      core: coreForCreate(),
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("9bad name");
@@ -318,7 +340,10 @@ describe("harness create wizard", () => {
 
   test("bring-your-own memory requires an ARN", async () => {
     const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -364,7 +389,10 @@ describe("harness create wizard", () => {
     core.harness.createHarness = async () => {
       throw new Error("name already exists");
     };
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
@@ -397,7 +425,10 @@ describe("harness create wizard", () => {
         status: "READY",
       },
     } as never);
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+    const r = renderScreen("/agentcore/harness/create", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     // Fastest path through the wizard: defaults everywhere.
     await waitForText(r.lastFrame, "the name of your harness");
@@ -431,7 +462,7 @@ describe("harness create wizard", () => {
     const core = coreForCreate();
     core.harness.setListResponse({ harnesses: [] });
     // Arrive from the harness menu so esc has somewhere to pop back to.
-    const r = renderImperativeScreen("/agentcore/harness", { core });
+    const r = renderScreen("/agentcore/harness", { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
     // `create` is the first menu item, so it is already selected.
     await waitForText(r.lastFrame, "❯ create");
     await r.press("return");

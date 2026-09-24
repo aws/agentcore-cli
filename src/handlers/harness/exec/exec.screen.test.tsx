@@ -6,12 +6,13 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { GetHarnessResponse, HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   cleanupScreens,
   StreamController,
   TestCoreClient,
   waitFor,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -57,7 +58,7 @@ function execCore(): TestCoreClient {
   return core;
 }
 
-async function type(r: ReturnType<typeof renderImperativeScreen>, text: string) {
+async function type(r: ReturnType<typeof renderScreen>, text: string) {
   await r.write(text);
   await r.press("return");
 }
@@ -66,7 +67,10 @@ describe("exec screen", () => {
   test("the exec route opens a picker, and selection lands in exec mode", async () => {
     const core = execCore();
     core.harness.setListResponse({ harnesses: [summary()] });
-    const r = renderImperativeScreen("/agentcore/harness/exec", { core });
+    const r = renderScreen("/agentcore/harness/exec", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "choose a harness to exec into");
     await waitForText(r.lastFrame, "MyHarness");
@@ -79,7 +83,7 @@ describe("exec screen", () => {
 
   test("enter runs the command in the chat session's container and shows output inline", async () => {
     const core = execCore();
-    const r = renderImperativeScreen(EXEC_PATH, { core });
+    const r = renderScreen(EXEC_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "run a command…");
     await type(r, "ls /");
@@ -103,7 +107,10 @@ describe("exec screen", () => {
   test("a session id in the route resumes that session", async () => {
     const resumed = "resumed-session-0123456789abcdefghijklmn"; // 33+ chars
     const core = execCore();
-    const r = renderImperativeScreen(`${EXEC_PATH}/${resumed}`, { core });
+    const r = renderScreen(`${EXEC_PATH}/${resumed}`, {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, `session: ${resumed}`);
     await type(r, "pwd");
@@ -120,7 +127,7 @@ describe("exec screen", () => {
       { chunk: { contentDelta: { stderr: "ls: cannot access '/nope'\n" } } },
       { chunk: { contentStop: { exitCode: 2, status: "COMPLETED" } } },
     );
-    const r = renderImperativeScreen(EXEC_PATH, { core });
+    const r = renderScreen(EXEC_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "run a command…");
     await type(r, "ls /nope");
@@ -131,7 +138,7 @@ describe("exec screen", () => {
   });
 
   test("ctrl+e flips between exec and chat mode", async () => {
-    const r = renderImperativeScreen(EXEC_PATH, { core: execCore() });
+    const r = renderScreen(EXEC_PATH, { core: execCore(), globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "run a command…");
     expect(r.lastFrame()).toContain("[ctrl+e] chat mode");
@@ -148,7 +155,10 @@ describe("exec screen", () => {
   test("chat turns and exec commands share one session and one transcript", async () => {
     const core = execCore();
     // Start on the invoke route (chat mode), then toggle into exec mode.
-    const r = renderImperativeScreen("/agentcore/harness/invoke/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/invoke/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "send a message…");
     await type(r, "hi agent");
@@ -177,7 +187,7 @@ describe("exec screen", () => {
     const core = execCore();
     const stream = new StreamController<InvokeAgentRuntimeCommandStreamOutput>();
     core.harness.queueExecStream(stream);
-    const r = renderImperativeScreen(EXEC_PATH, { core });
+    const r = renderScreen(EXEC_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "run a command…");
     await type(r, "sleep 999");
@@ -194,7 +204,7 @@ describe("exec screen", () => {
 
   test("an exec failure renders a ✗ error item and recovers to idle", async () => {
     const core = execCore();
-    const r = renderImperativeScreen(EXEC_PATH, { core });
+    const r = renderScreen(EXEC_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "run a command…");
     core.harness.setError(new Error("runtime unreachable"));
@@ -207,7 +217,7 @@ describe("exec screen", () => {
 
   test("empty input in exec mode does not run anything", async () => {
     const core = execCore();
-    const r = renderImperativeScreen(EXEC_PATH, { core });
+    const r = renderScreen(EXEC_PATH, { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "run a command…");
     await r.press("return");

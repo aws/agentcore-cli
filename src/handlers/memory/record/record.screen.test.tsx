@@ -7,10 +7,11 @@ import type {
 import type { MemorySummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 import stringWidth from "string-width";
 
@@ -46,7 +47,9 @@ function recordSummary(overrides: Partial<MemoryRecordSummary> = {}): MemoryReco
 
 describe("Memory record list flow", () => {
   test("renders the record command menu", async () => {
-    const screen = renderImperativeScreen("/agentcore/memory/record");
+    const screen = renderScreen("/agentcore/memory/record", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "inspect AgentCore Memory records");
     expect(screen.lastFrame()).toContain("list");
@@ -58,7 +61,10 @@ describe("Memory record list flow", () => {
     core.memory.setListResponse({
       memories: [memorySummary({ id: memoryId })],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/record/list", { core });
+    const screen = renderScreen("/agentcore/memory/record/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, memoryId);
     await screen.press("return");
@@ -72,7 +78,9 @@ describe("Memory record list flow", () => {
   });
 
   test("reveals the scope input only after enter and hides it again on escape", async () => {
-    const screen = renderImperativeScreen("/agentcore/memory/record/list/memory-1");
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     const fieldHelp = "the namespace value used to scope this request";
 
     await waitForText(screen.lastFrame, "scope type");
@@ -95,7 +103,10 @@ describe("Memory record list flow", () => {
     core.memory.setListMemoryRecordsResponse({
       memoryRecordSummaries: [recordSummary()],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/record/list", { core });
+    const screen = renderScreen("/agentcore/memory/record/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, memoryId);
     await screen.press("return");
@@ -116,7 +127,10 @@ describe("Memory record list flow", () => {
     core.memory.setListMemoryRecordsResponse({
       memoryRecordSummaries: [recordSummary()],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/record/list/memory-1", { core });
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "scope type");
     await screen.press("down");
@@ -139,9 +153,11 @@ describe("Memory record list flow", () => {
     core.memory.setListMemoryRecordsResponse({
       memoryRecordSummaries: [recordSummary()],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/record/list/memory-1", {
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1", {
       core,
       endpointUrl: memoryEndpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "scope type");
@@ -181,9 +197,9 @@ describe("Memory record list flow", () => {
         }),
       ],
     });
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers%2Facme",
-      { core },
+      { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG },
     );
 
     await waitForText(screen.lastFrame, "no-text");
@@ -195,7 +211,10 @@ describe("Memory record list flow", () => {
     core.memory.setListMemoryRecordsResponse({
       memoryRecordSummaries: [recordSummary()],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/record/list/memory-1", { core });
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "scope type");
     await screen.press("down");
@@ -233,9 +252,9 @@ describe("Memory record list flow", () => {
       ],
     });
     core.memory.setGetMemoryRecordResponse(response);
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers%2Facme",
-      { core },
+      { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG },
     );
 
     await waitForText(screen.lastFrame, "record blue");
@@ -275,9 +294,9 @@ describe("Memory record list flow", () => {
         }),
       ],
     });
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers%2Facme",
-      { core },
+      { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG },
     );
 
     await waitForText(screen.lastFrame, "total-market ETFs");
@@ -301,12 +320,11 @@ describe("Memory record list flow", () => {
       nextToken: "page-2",
     });
     core.memory.setListMemoryRecordsResponse({ memoryRecordSummaries: [] }, "page-2");
-    const screen = renderImperativeScreen(
-      "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "page 1 · more →");
     await screen.write("l");
@@ -314,20 +332,19 @@ describe("Memory record list flow", () => {
   });
 
   test("shows the scoped empty state and retries list failures", async () => {
-    const empty = renderImperativeScreen(
-      "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers",
-    );
+    const empty = renderScreen("/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(empty.lastFrame, "No Memory records found for namespace /customers.");
     empty.unmount();
 
     const core = new TestCoreClient();
     core.memory.setError(new Error("records unavailable"));
-    const failed = renderImperativeScreen(
-      "/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers",
-      {
-        core,
-      },
-    );
+    const failed = renderScreen("/agentcore/memory/record/list/memory-1/namespace/%2Fcustomers", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(failed.lastFrame, "records unavailable");
     expect(failed.lastFrame()).toContain("[r] retry");
@@ -341,7 +358,9 @@ describe("Memory record list flow", () => {
   });
 
   test("requires a non-empty namespace value", async () => {
-    const screen = renderImperativeScreen("/agentcore/memory/record/list/memory-1");
+    const screen = renderScreen("/agentcore/memory/record/list/memory-1", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "scope type");
     await screen.press("return"); // focus the namespace input

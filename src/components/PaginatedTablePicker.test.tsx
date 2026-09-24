@@ -8,10 +8,11 @@ import { QueryClient } from "@tanstack/react-query";
 import stringWidth from "string-width";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../testing";
 
 afterEach(cleanupScreens);
@@ -56,7 +57,10 @@ describe("paginated table picker contract", () => {
   test("retries a failed query", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("access denied"));
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "access denied");
     expect(r.lastFrame()).toContain("[r] retry");
@@ -80,7 +84,10 @@ describe("paginated table picker contract", () => {
       if (args[0] === "t2") throw new Error("page unavailable");
       return listHarnesses(...args);
     };
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
@@ -96,7 +103,10 @@ describe("paginated table picker contract", () => {
     const core = new TestCoreClient();
     const pending = Promise.withResolvers<ListHarnessesResponse>();
     core.harness.listHarnesses = async () => pending.promise;
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "loading harnesses");
     await r.press("escape");
@@ -106,7 +116,10 @@ describe("paginated table picker contract", () => {
   test("keeps Escape active after a query fails", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("access denied"));
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "access denied");
     await r.press("escape");
@@ -114,7 +127,9 @@ describe("paginated table picker contract", () => {
   });
 
   test("distinguishes first-page and later-page empty states", async () => {
-    const firstPage = renderImperativeScreen("/agentcore/harness/list");
+    const firstPage = renderScreen("/agentcore/harness/list", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(firstPage.lastFrame, "No harnesses found in this Region.");
     expect(firstPage.lastFrame()).not.toContain("page 1");
     await firstPage.press("escape");
@@ -127,7 +142,10 @@ describe("paginated table picker contract", () => {
       nextToken: "t2",
     });
     core.harness.setListResponse({ harnesses: [] }, "t2");
-    const laterPage = renderImperativeScreen("/agentcore/harness/list", { core });
+    const laterPage = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(laterPage.lastFrame, "page 1 · more →");
     await laterPage.write("l");
@@ -153,7 +171,10 @@ describe("paginated table picker contract", () => {
       "t2",
     );
     core.harness.setGetResponse(getResponse(first));
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     expect(r.lastFrame()).toContain("[←→/hl] page");
@@ -211,7 +232,11 @@ describe("paginated table picker contract", () => {
         queries: { retry: false, gcTime: Infinity, staleTime: 0 },
       },
     });
-    const r = renderImperativeScreen("/agentcore/harness/list", { core, queryClient });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      queryClient,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
@@ -261,7 +286,10 @@ describe("paginated table picker contract", () => {
       "t2",
     );
     core.harness.setGetResponse(getResponse(first));
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
@@ -286,7 +314,10 @@ describe("paginated table picker contract", () => {
     const core = coreWith([alpha, beta]);
     core.harness.setListResponse({ harnesses: [alpha, beta], nextToken: "t2" });
     core.harness.setGetResponse(getResponse(alpha));
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "beta");
     await r.press("down");
@@ -323,7 +354,10 @@ describe("paginated table picker contract", () => {
         }),
       ],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "orders-beta");
     await r.write("/");
@@ -379,7 +413,10 @@ describe("paginated table picker contract", () => {
       },
       "t2",
     );
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "matching-page-one");
     await r.write("/");
@@ -406,7 +443,10 @@ describe("paginated table picker contract", () => {
       ),
       nextToken: "t2",
     });
-    const r = renderImperativeScreen("/agentcore/harness/list", { core });
+    const r = renderScreen("/agentcore/harness/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     let lines = (r.lastFrame() ?? "").split("\n");
@@ -437,7 +477,10 @@ describe("paginated table picker contract", () => {
       }),
       nextToken: "t2",
     });
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await r.resize(60, 24);
     await waitFor(() => {
@@ -465,7 +508,10 @@ describe("paginated table picker contract", () => {
         }),
       ),
     });
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, suffixes[0]!);
     for (const width of [100, 80, 60]) {
@@ -492,7 +538,10 @@ describe("paginated table picker contract", () => {
   test("filters against rendered timestamps and raw identifiers", async () => {
     const core = new TestCoreClient();
     core.runtime.setListResponse({ agentRuntimes: [runtime()] });
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "AbCdEf1234");
     await r.write("/");

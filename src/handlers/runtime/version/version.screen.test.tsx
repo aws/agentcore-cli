@@ -5,10 +5,11 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -72,7 +73,10 @@ describe("Runtime version flow", () => {
     core.runtime.setListVersionsResponse({
       agentRuntimes: [runtime({ agentRuntimeId: runtimeId, agentRuntimeVersion: "9" })],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/version/list", { core });
+    const r = renderScreen("/agentcore/runtime/version/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, runtimeId);
     await r.press("return");
@@ -90,9 +94,11 @@ describe("Runtime version flow", () => {
     core.runtime.setListVersionsResponse({
       agentRuntimes: [runtime()],
     });
-    renderImperativeScreen("/agentcore/runtime/version/list/runtime-123", {
+    renderScreen("/agentcore/runtime/version/list/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeVersions"));
@@ -133,7 +139,10 @@ describe("Runtime version flow", () => {
         }),
       ],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/version/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "UPDATE_FAILED");
     const frame = r.lastFrame()!;
@@ -162,7 +171,10 @@ describe("Runtime version flow", () => {
       nextToken: "page-2",
     });
     core.runtime.setListVersionsResponse({ agentRuntimes: [] }, "page-2");
-    const r = renderImperativeScreen("/agentcore/runtime/version/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
@@ -171,13 +183,18 @@ describe("Runtime version flow", () => {
   });
 
   test("names the selected Runtime in empty and error states", async () => {
-    const empty = renderImperativeScreen("/agentcore/runtime/version/list/runtime-123");
+    const empty = renderScreen("/agentcore/runtime/version/list/runtime-123", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(empty.lastFrame, "No versions found for Runtime runtime-123.");
     empty.unmount();
 
     const core = new TestCoreClient();
     core.runtime.setError(new Error("version access denied"));
-    const error = renderImperativeScreen("/agentcore/runtime/version/list/runtime-123", { core });
+    const error = renderScreen("/agentcore/runtime/version/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(error.lastFrame, "Error loading versions for Runtime runtime-123");
     expect(error.lastFrame()).toContain("version access denied");
     expect(error.lastFrame()).toContain("[r] retry");
@@ -189,9 +206,11 @@ describe("Runtime version flow", () => {
       agentRuntimes: [runtime({ agentRuntimeVersion: "9" })],
     });
     core.runtime.setGetVersionResponse(getVersionResponse({ agentRuntimeVersion: "9" }));
-    const r = renderImperativeScreen("/agentcore/runtime/version/list/runtime-123", {
+    const r = renderScreen("/agentcore/runtime/version/list/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(r.lastFrame, "9");
@@ -217,8 +236,10 @@ describe("Runtime version flow", () => {
     parentCore.runtime.setListResponse({
       agentRuntimes: [runtime()],
     });
-    const parent = renderImperativeScreen("/agentcore/runtime/version/list", {
+    const parent = renderScreen("/agentcore/runtime/version/list", {
       core: parentCore,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
     await waitForText(parent.lastFrame, "runtime-123");
     await parent.press("escape");
@@ -236,7 +257,10 @@ describe("Runtime version flow", () => {
       agentRuntimes: [runtime()],
     });
     listCore.runtime.setGetVersionResponse(getVersionResponse());
-    const list = renderImperativeScreen("/agentcore/runtime/version/list", { core: listCore });
+    const list = renderScreen("/agentcore/runtime/version/list", {
+      core: listCore,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(list.lastFrame, "runtime-123");
     await list.press("return");
     await waitForText(list.lastFrame, "agentcore → runtime → version → list → runtime-123");
@@ -260,7 +284,10 @@ describe("Runtime version flow", () => {
     core.runtime.setListResponse({
       agentRuntimes: [runtime({ agentRuntimeId: "redirect-parent" })],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/version/get", { core });
+    const r = renderScreen("/agentcore/runtime/version/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "redirect-parent");
     expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(true);

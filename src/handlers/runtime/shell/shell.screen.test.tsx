@@ -5,13 +5,14 @@ import { ValueContext } from "../../../router";
 import type { RuntimeShellSession } from "../types";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   tick,
   type TtyInput,
   ttyTestIO,
   waitFor,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -80,8 +81,10 @@ async function interruptUntilExit(rendering: Promise<void>, stdin: TtyInput): Pr
 
 describe("RuntimeShellScreen", () => {
   test("a direct Runtime route skips the Runtime picker", async () => {
-    const screen = renderImperativeScreen("/agentcore/runtime/shell/checkout-AbCdEf1234", {
+    const screen = renderScreen("/agentcore/runtime/shell/checkout-AbCdEf1234", {
       core: core(),
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "prod");

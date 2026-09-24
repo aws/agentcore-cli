@@ -1,11 +1,12 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { HarnessVersionSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../../testing";
 
 afterEach(cleanupScreens);
@@ -48,7 +49,10 @@ function coreWithVersions(versions: HarnessVersionSummary[]): TestCoreClient {
 describe("harness version list screen", () => {
   test("without a harness id, picking a harness lists its versions", async () => {
     const core = coreWithVersions([version({ harnessVersion: "42" })]);
-    const r = renderImperativeScreen("/agentcore/harness/version/list", { core });
+    const r = renderScreen("/agentcore/harness/version/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "MyHarness");
     expect(r.lastFrame()).toContain("choose a harness to list versions for");
@@ -61,7 +65,10 @@ describe("harness version list screen", () => {
 
   test("makes one exact scoped version list call", async () => {
     const core = coreWithVersions([version()]);
-    const r = renderImperativeScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitFor(() => core.harness.calls.some((call) => call.method === "listHarnessVersions"));
     expect(core.harness.calls.filter((call) => call.method === "listHarnessVersions")).toEqual([
@@ -86,7 +93,10 @@ describe("harness version list screen", () => {
       version({ harnessVersion: "2", status: "UPDATE_FAILED" }),
       version({ harnessVersion: "10", status: "READY" }),
     ]);
-    const r = renderImperativeScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "UPDATE_FAILED");
     const frame = r.lastFrame()!;
@@ -109,7 +119,10 @@ describe("harness version list screen", () => {
         createdAt: new Date("2026-07-18T02:00:00.000Z"),
       }),
     ]);
-    const r = renderImperativeScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "UPDATE_FAILED");
     const frame = r.lastFrame()!;
@@ -123,7 +136,9 @@ describe("harness version list screen", () => {
   });
 
   test("uses harness-version wording for empty pages", async () => {
-    const firstPage = renderImperativeScreen("/agentcore/harness/version/list/MyHarness-abc123");
+    const firstPage = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(firstPage.lastFrame, "No versions found.");
     firstPage.unmount();
 
@@ -133,8 +148,10 @@ describe("harness version list screen", () => {
       nextToken: "v2",
     });
     core.harness.setListVersionsResponse({ harnessVersions: [] }, "v2");
-    const laterPage = renderImperativeScreen("/agentcore/harness/version/list/MyHarness-abc123", {
+    const laterPage = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(laterPage.lastFrame, "page 1 · more →");
@@ -157,7 +174,10 @@ describe("harness version list screen", () => {
         status: "READY",
       },
     } as Awaited<ReturnType<TestCoreClient["harness"]["getHarnessVersion"]>>);
-    const r = renderImperativeScreen("/agentcore/harness/version/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/version/list/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "READY");
     await r.press("return");
@@ -172,8 +192,10 @@ describe("harness version list screen", () => {
   test("retries a failed version detail without losing its selectors", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("version unavailable"));
-    const r = renderImperativeScreen("/agentcore/harness/version/get/MyHarness-abc123/42", {
+    const r = renderScreen("/agentcore/harness/version/get/MyHarness-abc123/42", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
     await waitForText(r.lastFrame, "version unavailable");
     expect(r.lastFrame()).toContain("[r] retry");

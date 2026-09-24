@@ -23,7 +23,6 @@ export { StreamController } from "./StreamController";
 export {
   compiledRootCommand,
   renderScreen,
-  renderImperativeScreen,
   cleanupScreens,
   keys,
   waitForText,

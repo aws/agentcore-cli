@@ -11,10 +11,11 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitForText,
   menuEntries,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../testing";
 
 afterEach(cleanupScreens);
@@ -112,7 +113,7 @@ function coreWithGateways(items: GatewaySummary[]): TestCoreClient {
 
 describe("Gateway menu and list", () => {
   test("renders the Gateway command menu without calling Core", async () => {
-    const screen = renderImperativeScreen("/agentcore/gateway");
+    const screen = renderScreen("/agentcore/gateway", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(screen.lastFrame, "manage AgentCore Gateways");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
@@ -124,9 +125,11 @@ describe("Gateway menu and list", () => {
 
   test("renders Gateway identity and calls list with exact Core options", async () => {
     const core = coreWithGateways([gateway()]);
-    const screen = renderImperativeScreen("/agentcore/gateway/list", {
+    const screen = renderScreen("/agentcore/gateway/list", {
       core,
       endpointUrl: ENDPOINT,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
@@ -148,20 +151,28 @@ describe("Gateway menu and list", () => {
     const loadingCore = new TestCoreClient();
     const pending = Promise.withResolvers<ListGatewaysResponse>();
     loadingCore.gateway.listGateways = async () => pending.promise;
-    const loading = renderImperativeScreen("/agentcore/gateway/list", { core: loadingCore });
+    const loading = renderScreen("/agentcore/gateway/list", {
+      core: loadingCore,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(loading.lastFrame, "loading Gateways");
     await loading.press("escape");
     await waitForText(loading.lastFrame, "manage AgentCore Gateways");
     loading.unmount();
 
-    const empty = renderImperativeScreen("/agentcore/gateway/list");
+    const empty = renderScreen("/agentcore/gateway/list", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(empty.lastFrame, "No Gateways found in this Region.");
     empty.unmount();
 
     const errorCore = new TestCoreClient();
     errorCore.gateway.setError(new Error("gateway unavailable"));
-    const error = renderImperativeScreen("/agentcore/gateway/list", { core: errorCore });
+    const error = renderScreen("/agentcore/gateway/list", {
+      core: errorCore,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(error.lastFrame, "gateway unavailable");
     expect(error.lastFrame()).toContain("[r] retry");
@@ -174,9 +185,11 @@ describe("Gateway menu and list", () => {
   test("selects a Gateway and renders only read-only hub actions", async () => {
     const core = coreWithGateways([gateway()]);
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen("/agentcore/gateway/list", {
+    const screen = renderScreen("/agentcore/gateway/list", {
       core,
       endpointUrl: ENDPOINT,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
@@ -203,23 +216,21 @@ describe("Gateway menu and list", () => {
     core.gateway.setGetResponse(
       gatewayDetail({ status: "FAILED", statusReasons: ["Role is unavailable", "Target failed"] }),
     );
-    const screen = renderImperativeScreen(
-      `/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`,
-      {
-        core,
-      },
-    );
+    const screen = renderScreen(`/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(screen.lastFrame, "show the full JSON definition");
     expect(screen.lastFrame()).toMatch(/statusReasons\s+Role is unavailable; Target failed/);
     screen.unmount();
 
     core.gateway.setGetResponse(gatewayDetail({ statusReasons: [] }));
-    const ready = renderImperativeScreen(
-      `/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`,
-      {
-        core,
-      },
-    );
+    const ready = renderScreen(`/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(ready.lastFrame, "show the full JSON definition");
     expect(ready.lastFrame()).not.toContain("statusReasons");
   });
@@ -227,12 +238,11 @@ describe("Gateway menu and list", () => {
   test("opens complete Gateway JSON from the detail action", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen(
-      `/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`,
-      {
-        core,
-      },
-    );
+    const screen = renderScreen(`/agentcore/gateway/get/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     await screen.press("return");
@@ -244,7 +254,10 @@ describe("Gateway menu and list", () => {
 
   test("bare Gateway get redirects to the Gateway picker", async () => {
     const core = coreWithGateways([gateway({ name: "redirected-gateway" })]);
-    const screen = renderImperativeScreen("/agentcore/gateway/get", { core });
+    const screen = renderScreen("/agentcore/gateway/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "redirected-gateway");
     expect(core.gateway.calls[0]?.method).toBe("listGateways");
@@ -253,7 +266,9 @@ describe("Gateway menu and list", () => {
 
 describe("Gateway Target flow", () => {
   test("renders the Target command menu without calling Core", async () => {
-    const screen = renderImperativeScreen("/agentcore/gateway/target");
+    const screen = renderScreen("/agentcore/gateway/target", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "manage Targets for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
@@ -268,7 +283,10 @@ describe("Gateway Target flow", () => {
     core.gateway.setListTargetsResponse({
       items: [target(TARGET_ID, "orders-target", TargetType.PASSTHROUGH)],
     });
-    const screen = renderImperativeScreen("/agentcore/gateway/target/list", { core });
+    const screen = renderScreen("/agentcore/gateway/target/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
@@ -292,11 +310,13 @@ describe("Gateway Target flow", () => {
         items: [target(TARGET_ID, "orders-target", TargetType.PASSTHROUGH)],
       })
       .setGetTargetResponse(targetDetail(TARGET_ID));
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       `/agentcore/gateway/target/list/${encodeURIComponent(GATEWAY_ID)}`,
       {
         core,
         endpointUrl: ENDPOINT,
+
+        globalConfig: IMPERATIVE_GLOBAL_CONFIG,
       },
     );
 
@@ -324,7 +344,10 @@ describe("Gateway Target flow", () => {
 
   test("bare Target get redirects to Gateway selection", async () => {
     const core = coreWithGateways([gateway({ name: "target-parent" })]);
-    const screen = renderImperativeScreen("/agentcore/gateway/target/get", { core });
+    const screen = renderScreen("/agentcore/gateway/target/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "target-parent");
     expect(core.gateway.calls[0]?.method).toBe("listGateways");
@@ -337,7 +360,10 @@ describe("Gateway Target flow", () => {
         items: [target(TARGET_ID, "orders-target", TargetType.PASSTHROUGH)],
       })
       .setGetTargetResponse(targetDetail(TARGET_ID));
-    const screen = renderImperativeScreen("/agentcore/gateway/target/list", { core });
+    const screen = renderScreen("/agentcore/gateway/target/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
@@ -356,7 +382,9 @@ describe("Gateway Target flow", () => {
 
 describe("Gateway Connector flow", () => {
   test("renders the separate Connector command menu without calling Core", async () => {
-    const screen = renderImperativeScreen("/agentcore/gateway/connector");
+    const screen = renderScreen("/agentcore/gateway/connector", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "manage connectors configured for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
@@ -371,7 +399,10 @@ describe("Gateway Connector flow", () => {
     core.gateway.setListConnectorsResponse({
       items: [target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR)],
     });
-    const screen = renderImperativeScreen("/agentcore/gateway/connector/list", { core });
+    const screen = renderScreen("/agentcore/gateway/connector/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
@@ -390,9 +421,9 @@ describe("Gateway Connector flow", () => {
         items: [target(CONNECTOR_ID, "search-connector", TargetType.CONNECTOR)],
       })
       .setGetConnectorResponse(targetDetail(CONNECTOR_ID, true));
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
-      { core },
+      { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG },
     );
 
     await waitForText(screen.lastFrame, "search-connector");
@@ -413,9 +444,9 @@ describe("Gateway Connector flow", () => {
   test("rejects a non-Connector Target opened through the Connector route", async () => {
     const core = new TestCoreClient();
     core.gateway.setError(new Error(`Gateway Target "${TARGET_ID}" is not connector-backed`));
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       `/agentcore/gateway/connector/get/${encodeURIComponent(GATEWAY_ID)}/${encodeURIComponent(TARGET_ID)}`,
-      { core },
+      { core, globalConfig: IMPERATIVE_GLOBAL_CONFIG },
     );
 
     await waitForText(screen.lastFrame, `Gateway Target "${TARGET_ID}" is not connector-backed`);
@@ -423,8 +454,9 @@ describe("Gateway Connector flow", () => {
   });
 
   test("shows the Gateway-level empty state when no Connectors exist", async () => {
-    const screen = renderImperativeScreen(
+    const screen = renderScreen(
       `/agentcore/gateway/connector/list/${encodeURIComponent(GATEWAY_ID)}`,
+      { globalConfig: IMPERATIVE_GLOBAL_CONFIG },
     );
 
     await waitForText(screen.lastFrame, "This Gateway has no connectors.");
@@ -433,7 +465,10 @@ describe("Gateway Connector flow", () => {
 
   test("bare Connector get redirects to Gateway selection", async () => {
     const core = coreWithGateways([gateway({ name: "connector-parent" })]);
-    const screen = renderImperativeScreen("/agentcore/gateway/connector/get", { core });
+    const screen = renderScreen("/agentcore/gateway/connector/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "connector-parent");
     expect(core.gateway.calls[0]?.method).toBe("listGateways");
@@ -442,7 +477,9 @@ describe("Gateway Connector flow", () => {
 
 describe("Gateway Rule flow", () => {
   test("renders the Rule command menu without calling Core", async () => {
-    const screen = renderImperativeScreen("/agentcore/gateway/rule");
+    const screen = renderScreen("/agentcore/gateway/rule", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "manage Rules for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
@@ -455,7 +492,10 @@ describe("Gateway Rule flow", () => {
   test("selects a Gateway before listing Rules", async () => {
     const core = coreWithGateways([gateway()]);
     core.gateway.setListRulesResponse({ gatewayRules: [rule()] });
-    const screen = renderImperativeScreen("/agentcore/gateway/rule/list", { core });
+    const screen = renderScreen("/agentcore/gateway/rule/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
@@ -475,12 +515,11 @@ describe("Gateway Rule flow", () => {
   test("opens the selected Rule JSON with exact selectors", async () => {
     const core = new TestCoreClient();
     core.gateway.setListRulesResponse({ gatewayRules: [rule()] }).setGetRuleResponse(ruleDetail());
-    const screen = renderImperativeScreen(
-      `/agentcore/gateway/rule/list/${encodeURIComponent(GATEWAY_ID)}`,
-      {
-        core,
-      },
-    );
+    const screen = renderScreen(`/agentcore/gateway/rule/list/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "Route orders");
     await screen.press("return");
@@ -498,12 +537,11 @@ describe("Gateway Rule flow", () => {
   test("keeps scoped lists empty and retryable", async () => {
     const core = new TestCoreClient();
     core.gateway.setError(new Error("rules unavailable"));
-    const screen = renderImperativeScreen(
-      `/agentcore/gateway/rule/list/${encodeURIComponent(GATEWAY_ID)}`,
-      {
-        core,
-      },
-    );
+    const screen = renderScreen(`/agentcore/gateway/rule/list/${encodeURIComponent(GATEWAY_ID)}`, {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "rules unavailable");
     expect(screen.lastFrame()).toContain("[r] retry");
@@ -515,7 +553,10 @@ describe("Gateway Rule flow", () => {
 
   test("bare Rule get redirects to Gateway selection", async () => {
     const core = coreWithGateways([gateway({ name: "rule-parent" })]);
-    const screen = renderImperativeScreen("/agentcore/gateway/rule/get", { core });
+    const screen = renderScreen("/agentcore/gateway/rule/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "rule-parent");
     expect(core.gateway.calls[0]?.method).toBe("listGateways");

@@ -3,7 +3,7 @@ import {
   cleanupScreens,
   compiledRootCommand,
   menuEntries,
-  renderImperativeScreen,
+  renderScreen,
   IMPERATIVE_GLOBAL_CONFIG,
   waitForText,
 } from "../testing";
@@ -43,7 +43,7 @@ describe("project resource creation guidance", () => {
   test.each(RESOURCES)(
     "$resource lists create in its TUI menu and opens project instructions",
     async ({ resource, label, parentDescription, addCommand }) => {
-      const r = renderImperativeScreen(`/agentcore/${resource}`);
+      const r = renderScreen(`/agentcore/${resource}`, { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
       await waitForText(r.lastFrame, "❯ create");
       expect(menuEntries(r.lastFrame()!).screens[0]).toBe("create");
@@ -75,7 +75,7 @@ describe("project resource creation guidance", () => {
   test.each(RESOURCES.filter(({ resource }) => resource !== "gateway"))(
     "$resource keeps project guidance when Gateway mutations are enabled",
     async ({ resource, label, addCommand }) => {
-      const r = renderImperativeScreen(`/agentcore/${resource}`, { globalConfig: MUTATION_CONFIG });
+      const r = renderScreen(`/agentcore/${resource}`, { globalConfig: MUTATION_CONFIG });
       await waitForText(r.lastFrame, "type to choose a command");
       const entries = menuEntries(r.lastFrame()!);
       expect(entries.screens[0]).toBe("create");

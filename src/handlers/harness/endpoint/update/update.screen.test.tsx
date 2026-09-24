@@ -4,11 +4,12 @@ import type {
   HarnessVersionSummary,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../../testing";
 
 afterEach(cleanupScreens);
@@ -72,7 +73,10 @@ function coreForUpdate(): TestCoreClient {
 describe("harness endpoint update wizard", () => {
   test("walks harness picker → endpoint picker → wizard", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/update", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/update", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("return");
@@ -85,8 +89,10 @@ describe("harness endpoint update wizard", () => {
 
   test("repointing at a new version submits only targetVersion", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/update/MyHarness-abc123/prod", {
+    const r = renderScreen("/agentcore/harness/endpoint/update/MyHarness-abc123/prod", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     // The endpoint's current target (version 1) is preselected; no "latest"
@@ -113,8 +119,10 @@ describe("harness endpoint update wizard", () => {
 
   test("keeping the version unchanged submits only the endpoint identity", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/update/MyHarness-abc123/prod", {
+    const r = renderScreen("/agentcore/harness/endpoint/update/MyHarness-abc123/prod", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(r.lastFrame, "● version 1");

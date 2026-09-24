@@ -5,7 +5,6 @@ import {
   compiledRootCommand,
   menuEntries,
   renderScreen,
-  renderImperativeScreen,
   IMPERATIVE_GLOBAL_CONFIG,
   waitForText,
 } from "../testing";
@@ -66,7 +65,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   });
 
   test("the harness menu", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
 
     await waitForText(r.lastFrame, "command line only");
     expect(menuEntries(r.lastFrame()!)).toEqual({
@@ -87,7 +86,9 @@ describe("menus list command-line-only subcommands below a divider", () => {
   });
 
   test("the divider is omitted when nothing is command line only", async () => {
-    const r = renderImperativeScreen("/agentcore/harness/endpoint");
+    const r = renderScreen("/agentcore/harness/endpoint", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "manage harness endpoints");
     expect(r.lastFrame()).not.toContain("command line only");

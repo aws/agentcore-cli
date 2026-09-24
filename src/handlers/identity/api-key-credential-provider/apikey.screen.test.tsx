@@ -6,12 +6,13 @@ import type {
 import { QueryClient } from "@tanstack/react-query";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   tick,
   waitFor,
   waitForText,
   menuEntries,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -57,7 +58,9 @@ function coreWithProviders(providers: ApiKeyCredentialProviderItem[]): TestCoreC
 
 describe("API key credential provider menu", () => {
   test("lists the read-only commands, then the rest as command line only", async () => {
-    const screen = renderImperativeScreen("/agentcore/identity/api-key-credential-provider");
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "get an API key credential provider");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
@@ -76,8 +79,10 @@ describe("API key credential provider picker", () => {
         lastUpdatedTime: new Date("2026-07-21T02:03:04.000Z"),
       }),
     ]);
-    const screen = renderImperativeScreen("/agentcore/identity/api-key-credential-provider/list", {
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "visible-provider");
@@ -90,9 +95,11 @@ describe("API key credential provider picker", () => {
 
   test("calls listApiKeyCredentialProviders with exact Core options", async () => {
     const core = coreWithProviders([providerItem()]);
-    renderImperativeScreen("/agentcore/identity/api-key-credential-provider/list", {
+    renderScreen("/agentcore/identity/api-key-credential-provider/list", {
       core,
       endpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitFor(() =>
@@ -110,8 +117,10 @@ describe("API key credential provider picker", () => {
 
   test("caps maxResults at the service limit of 20 on a tall terminal", async () => {
     const core = coreWithProviders([providerItem()]);
-    const screen = renderImperativeScreen("/agentcore/identity/api-key-credential-provider/list", {
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
     // Terminal taller than the 20-row service cap: page size must still clamp.
     await screen.resize(120, 60);
@@ -126,7 +135,9 @@ describe("API key credential provider picker", () => {
   });
 
   test("shows first-page and later-page empty states", async () => {
-    const empty = renderImperativeScreen("/agentcore/identity/api-key-credential-provider/list");
+    const empty = renderScreen("/agentcore/identity/api-key-credential-provider/list", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(empty.lastFrame, "No API key credential providers found in this Region.");
     empty.unmount();
 
@@ -136,8 +147,10 @@ describe("API key credential provider picker", () => {
       nextToken: "page-2",
     });
     core.identity.setListApiKeyResponse({ credentialProviders: [] }, "page-2");
-    const paged = renderImperativeScreen("/agentcore/identity/api-key-credential-provider/list", {
+    const paged = renderScreen("/agentcore/identity/api-key-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(paged.lastFrame, "page 1 · more →");
@@ -150,8 +163,10 @@ describe("API key credential provider picker", () => {
 
   test("bare get redirects to the picker", async () => {
     const core = coreWithProviders([providerItem({ name: "redirected" })]);
-    const screen = renderImperativeScreen("/agentcore/identity/api-key-credential-provider/get", {
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/get", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "redirected");
@@ -162,8 +177,10 @@ describe("API key credential provider picker", () => {
     const name = "api key blue";
     const core = coreWithProviders([providerItem({ name })]);
     core.identity.setGetApiKeyResponse(getResponse({ name }));
-    const screen = renderImperativeScreen("/agentcore/identity/api-key-credential-provider/list", {
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, name);
@@ -184,13 +201,12 @@ describe("API key credential provider detail", () => {
   test("renders a resource summary with only the detail action", async () => {
     const core = new TestCoreClient();
     core.identity.setGetApiKeyResponse(getResponse());
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/api-key-credential-provider/get/api-key-1",
-      {
-        core,
-        endpointUrl,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/get/api-key-1", {
+      core,
+      endpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     const frame = screen.lastFrame()!;
@@ -210,12 +226,11 @@ describe("API key credential provider detail", () => {
   test("opens the complete provider JSON", async () => {
     const core = new TestCoreClient();
     core.identity.setGetApiKeyResponse(getResponse());
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/api-key-credential-provider/get/api-key-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/get/api-key-1", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     await screen.press("return");
@@ -229,12 +244,11 @@ describe("API key credential provider detail", () => {
   test("retries a failed detail query", async () => {
     const core = new TestCoreClient();
     core.identity.setError(new Error("provider unavailable"));
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/api-key-credential-provider/get/api-key-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/get/api-key-1", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "provider unavailable");
     expect(screen.lastFrame()).toContain("[r] retry");
@@ -251,13 +265,12 @@ describe("API key credential provider detail", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: 0 } },
     });
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/api-key-credential-provider/get/api-key-1",
-      {
-        core,
-        queryClient,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/api-key-credential-provider/get/api-key-1", {
+      core,
+      queryClient,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     core.identity.setError(new Error("background refresh failed"));

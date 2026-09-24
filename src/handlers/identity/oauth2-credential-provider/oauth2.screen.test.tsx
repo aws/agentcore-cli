@@ -6,12 +6,13 @@ import type {
 import { QueryClient } from "@tanstack/react-query";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   tick,
   waitFor,
   waitForText,
   menuEntries,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -60,7 +61,9 @@ function coreWithProviders(providers: Oauth2CredentialProviderItem[]): TestCoreC
 
 describe("OAuth2 credential provider menu", () => {
   test("lists the read-only commands, then the rest as command line only", async () => {
-    const screen = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider");
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "get an OAuth2 credential provider");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
@@ -79,8 +82,10 @@ describe("OAuth2 credential provider picker", () => {
         lastUpdatedTime: new Date("2026-07-21T02:03:04.000Z"),
       }),
     ]);
-    const screen = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/list", {
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "visible-provider");
@@ -93,9 +98,11 @@ describe("OAuth2 credential provider picker", () => {
 
   test("calls listOauth2CredentialProviders with exact Core options", async () => {
     const core = coreWithProviders([providerItem()]);
-    renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/list", {
+    renderScreen("/agentcore/identity/oauth2-credential-provider/list", {
       core,
       endpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitFor(() =>
@@ -113,8 +120,10 @@ describe("OAuth2 credential provider picker", () => {
 
   test("caps maxResults at the service limit of 20 on a tall terminal", async () => {
     const core = coreWithProviders([providerItem()]);
-    const screen = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/list", {
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
     // Terminal taller than the 20-row service cap: page size must still clamp.
     await screen.resize(120, 60);
@@ -129,7 +138,9 @@ describe("OAuth2 credential provider picker", () => {
   });
 
   test("shows first-page and later-page empty states", async () => {
-    const empty = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/list");
+    const empty = renderScreen("/agentcore/identity/oauth2-credential-provider/list", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(empty.lastFrame, "No OAuth2 credential providers found in this Region.");
     empty.unmount();
 
@@ -139,8 +150,10 @@ describe("OAuth2 credential provider picker", () => {
       nextToken: "page-2",
     });
     core.identity.setListOauth2Response({ credentialProviders: [] }, "page-2");
-    const paged = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/list", {
+    const paged = renderScreen("/agentcore/identity/oauth2-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(paged.lastFrame, "page 1 · more →");
@@ -151,8 +164,10 @@ describe("OAuth2 credential provider picker", () => {
 
   test("bare get redirects to the picker", async () => {
     const core = coreWithProviders([providerItem({ name: "redirected" })]);
-    const screen = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/get", {
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, "redirected");
@@ -163,8 +178,10 @@ describe("OAuth2 credential provider picker", () => {
     const name = "oauth2 blue";
     const core = coreWithProviders([providerItem({ name })]);
     core.identity.setGetOauth2Response(getResponse({ name }));
-    const screen = renderImperativeScreen("/agentcore/identity/oauth2-credential-provider/list", {
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/list", {
       core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(screen.lastFrame, name);
@@ -185,13 +202,12 @@ describe("OAuth2 credential provider detail", () => {
   test("renders a resource summary with only the detail action", async () => {
     const core = new TestCoreClient();
     core.identity.setGetOauth2Response(getResponse());
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core,
-        endpointUrl,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core,
+      endpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     const frame = screen.lastFrame()!;
@@ -212,24 +228,22 @@ describe("OAuth2 credential provider detail", () => {
   test("shows a callback URL only when the service provides one", async () => {
     const withCallback = new TestCoreClient();
     withCallback.identity.setGetOauth2Response(getResponse());
-    const shown = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core: withCallback,
-      },
-    );
+    const shown = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core: withCallback,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(shown.lastFrame, "show the full JSON definition");
     expect(shown.lastFrame()).toContain("callbackUrl");
     shown.unmount();
 
     const noCallback = new TestCoreClient();
     noCallback.identity.setGetOauth2Response(getResponse({ callbackUrl: undefined }));
-    const hidden = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core: noCallback,
-      },
-    );
+    const hidden = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core: noCallback,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(hidden.lastFrame, "show the full JSON definition");
     expect(hidden.lastFrame()).not.toContain("callbackUrl");
   });
@@ -242,12 +256,11 @@ describe("OAuth2 credential provider detail", () => {
         failureReason: "authorization server metadata could not be loaded",
       }),
     );
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "authorization server metadata could not be loaded");
     const frame = screen.lastFrame()!;
@@ -258,12 +271,11 @@ describe("OAuth2 credential provider detail", () => {
   test("opens the complete provider JSON", async () => {
     const core = new TestCoreClient();
     core.identity.setGetOauth2Response(getResponse());
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     await screen.press("return");
@@ -277,12 +289,11 @@ describe("OAuth2 credential provider detail", () => {
   test("retries a failed detail query", async () => {
     const core = new TestCoreClient();
     core.identity.setError(new Error("provider unavailable"));
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "provider unavailable");
     expect(screen.lastFrame()).toContain("[r] retry");
@@ -299,13 +310,12 @@ describe("OAuth2 credential provider detail", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: 0 } },
     });
-    const screen = renderImperativeScreen(
-      "/agentcore/identity/oauth2-credential-provider/get/oauth2-1",
-      {
-        core,
-        queryClient,
-      },
-    );
+    const screen = renderScreen("/agentcore/identity/oauth2-credential-provider/get/oauth2-1", {
+      core,
+      queryClient,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     core.identity.setError(new Error("background refresh failed"));

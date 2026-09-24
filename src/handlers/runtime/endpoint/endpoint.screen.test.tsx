@@ -7,10 +7,11 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -106,7 +107,10 @@ describe("Runtime endpoint flow", () => {
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint()],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, runtimeId);
     await r.press("return");
@@ -124,9 +128,11 @@ describe("Runtime endpoint flow", () => {
     core.runtime.setListEndpointsResponse({
       runtimeEndpoints: [endpoint()],
     });
-    renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+    renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimeEndpoints"));
@@ -160,7 +166,10 @@ describe("Runtime endpoint flow", () => {
         }),
       ],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "production");
     const frame = r.lastFrame()!;
@@ -177,7 +186,9 @@ describe("Runtime endpoint flow", () => {
   });
 
   test("shows the Runtime-scoped empty state", async () => {
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123");
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "This Runtime has no endpoints.");
     expect(r.lastFrame()).toContain("runtime-123");
@@ -190,7 +201,10 @@ describe("Runtime endpoint flow", () => {
       nextToken: "page-2",
     });
     core.runtime.setListEndpointsResponse({ runtimeEndpoints: [] }, "page-2");
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
@@ -201,7 +215,10 @@ describe("Runtime endpoint flow", () => {
   test("names the selected Runtime in the error state", async () => {
     const core = new TestCoreClient();
     core.runtime.setError(new Error("endpoint access denied"));
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Error loading endpoints for Runtime runtime-123");
     expect(r.lastFrame()).toContain("endpoint access denied");
@@ -214,9 +231,11 @@ describe("Runtime endpoint flow", () => {
       runtimeEndpoints: [endpoint({ name: qualifier, id: qualifier })],
     });
     core.runtime.setGetEndpointResponse(getEndpointResponse({ name: qualifier, id: qualifier }));
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(r.lastFrame, qualifier);
@@ -246,8 +265,10 @@ describe("Runtime endpoint flow", () => {
   test("shows the endpoint failure reason only when the service provides one", async () => {
     const healthyCore = new TestCoreClient();
     healthyCore.runtime.setGetEndpointResponse(getEndpointResponse());
-    const healthy = renderImperativeScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+    const healthy = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
       core: healthyCore,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(healthy.lastFrame, "invoke this Runtime endpoint");
@@ -261,8 +282,10 @@ describe("Runtime endpoint flow", () => {
         failureReason: "Endpoint failed its health check",
       }),
     );
-    const failed = renderImperativeScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+    const failed = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
       core: failedCore,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
 
     await waitForText(failed.lastFrame, "Endpoint failed its health check");
@@ -272,7 +295,10 @@ describe("Runtime endpoint flow", () => {
   test("opens complete endpoint JSON from the detail action and returns to the summary", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetEndpointResponse(getEndpointResponse());
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/get/runtime-123/prod", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "invoke this Runtime endpoint");
     await r.press("down");
@@ -300,7 +326,10 @@ describe("Runtime endpoint flow", () => {
       .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
       .setGetEndpointResponse(getEndpointResponse())
       .setGetResponse(getRuntimeResponse());
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/list/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/list/runtime-123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "prod");
     await r.press("return");
@@ -321,8 +350,10 @@ describe("Runtime endpoint flow", () => {
     parentCore.runtime.setListResponse({
       agentRuntimes: [runtime()],
     });
-    const parent = renderImperativeScreen("/agentcore/runtime/endpoint/list", {
+    const parent = renderScreen("/agentcore/runtime/endpoint/list", {
       core: parentCore,
+
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
     await waitForText(parent.lastFrame, "runtime-123");
     await parent.press("escape");
@@ -340,7 +371,10 @@ describe("Runtime endpoint flow", () => {
       runtimeEndpoints: [endpoint()],
     });
     listCore.runtime.setGetEndpointResponse(getEndpointResponse());
-    const list = renderImperativeScreen("/agentcore/runtime/endpoint/list", { core: listCore });
+    const list = renderScreen("/agentcore/runtime/endpoint/list", {
+      core: listCore,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(list.lastFrame, "runtime-123");
     await list.press("return");
     await waitForText(list.lastFrame, "prod");
@@ -360,7 +394,10 @@ describe("Runtime endpoint flow", () => {
     core.runtime.setListResponse({
       agentRuntimes: [runtime({ agentRuntimeId: "redirect-parent" })],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/endpoint/get", { core });
+    const r = renderScreen("/agentcore/runtime/endpoint/get", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "redirect-parent");
     expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(true);

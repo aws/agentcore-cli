@@ -3,10 +3,11 @@ import type { ActorSummary, SessionSummary } from "@aws-sdk/client-bedrock-agent
 import type { MemorySummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -48,7 +49,10 @@ describe("Memory actor list flow", () => {
     core.memory.setListSessionsResponse({
       sessionSummaries: [session({ actorId })],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/actor/list", { core });
+    const screen = renderScreen("/agentcore/memory/actor/list", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(screen.lastFrame, memoryId);
     await screen.press("return");
@@ -87,13 +91,18 @@ describe("Memory actor list flow", () => {
   });
 
   test("shows empty and retry states for actor lists", async () => {
-    const empty = renderImperativeScreen("/agentcore/memory/actor/list/memory-1");
+    const empty = renderScreen("/agentcore/memory/actor/list/memory-1", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
     await waitForText(empty.lastFrame, "No actors found for Memory memory-1.");
     empty.unmount();
 
     const core = new TestCoreClient();
     core.memory.setError(new Error("actors unavailable"));
-    const failed = renderImperativeScreen("/agentcore/memory/actor/list/memory-1", { core });
+    const failed = renderScreen("/agentcore/memory/actor/list/memory-1", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(failed.lastFrame, "actors unavailable");
     core.memory.setError(undefined);

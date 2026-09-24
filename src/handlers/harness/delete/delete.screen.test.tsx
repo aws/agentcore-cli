@@ -1,11 +1,12 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
   TestCoreClient,
+  IMPERATIVE_GLOBAL_CONFIG,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -50,7 +51,10 @@ function coreWithHarness(): TestCoreClient {
 describe("harness delete screen", () => {
   test("without a harness id, picking a harness opens its confirmation", async () => {
     const core = coreWithHarness();
-    const r = renderImperativeScreen("/agentcore/harness/delete", { core });
+    const r = renderScreen("/agentcore/harness/delete", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "MyHarness");
     expect(r.lastFrame()).toContain("choose a harness to delete");
@@ -62,7 +66,10 @@ describe("harness delete screen", () => {
 
   test("shows the harness summary and a default-No confirmation", async () => {
     const core = coreWithHarness();
-    const r = renderImperativeScreen("/agentcore/harness/delete/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/delete/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Delete harness MyHarness?");
     const frame = r.lastFrame()!;
@@ -74,7 +81,10 @@ describe("harness delete screen", () => {
 
   test("`y` calls DeleteHarness and shows the result", async () => {
     const core = coreWithHarness();
-    const r = renderImperativeScreen("/agentcore/harness/delete/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/delete/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Delete harness MyHarness?");
     await r.write("y");
@@ -88,7 +98,10 @@ describe("harness delete screen", () => {
 
   test("enter after success returns to the harness list", async () => {
     const core = coreWithHarness();
-    const r = renderImperativeScreen("/agentcore/harness/delete/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/delete/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Delete harness MyHarness?");
     await r.write("y");
@@ -100,7 +113,10 @@ describe("harness delete screen", () => {
 
   test("`n` cancels without calling DeleteHarness", async () => {
     const core = coreWithHarness();
-    const r = renderImperativeScreen("/agentcore/harness/delete/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/delete/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Delete harness MyHarness?");
     await r.write("n");
@@ -115,7 +131,10 @@ describe("harness delete screen", () => {
     core.harness.deleteHarness = async () => {
       throw new Error("delete conflict");
     };
-    const r = renderImperativeScreen("/agentcore/harness/delete/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/delete/MyHarness-abc123", {
+      core,
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "Delete harness MyHarness?");
     await r.write("y");
