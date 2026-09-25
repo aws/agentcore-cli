@@ -2,17 +2,16 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import type { InvokeHarnessRequest } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   GetAgentRuntimeResponse,
+  GetGatewayResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import type { ProjectBackend, ResolveDeployedResourcesBackendInput } from "../../../core/project";
+import type { ProjectBackend } from "../../../core/project";
 import { ExitCode } from "../../../errors";
 import { startHttpServer, type HttpServerHandle } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { runWithExitCode } from "../../../runnable";
-import { ProjectKey, ValueContext, type Context } from "../../../router";
 import {
   createSilentLogger,
   TestCoreClient,
@@ -23,14 +22,9 @@ import {
   tick,
   waitFor,
 } from "../../../testing";
+import * as tui from "../../../tui";
 import { createRootHandler } from "../../index";
-import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
-import { RuntimeInvokeLaunchContextKey } from "../../runtime/invoke/launchContext";
-import type { RuntimeInvokeRequest } from "../../runtime/types";
-import type { Project } from "../types";
-import { createProjectInvokeHandler } from ".";
-import { createProjectInvokeHarnessHandler } from "./harness";
-import { createProjectInvokeRuntimeHandler } from "./runtime";
+import { RegionKey } from "../../keys";
 
 const servers: HttpServerHandle[] = [];
 const cleanups: Array<() => Promise<void>> = [];
@@ -40,14 +34,15 @@ const TARGET = {
   account: "111122223333",
   region: "eu-west-1",
 } as const;
+const arn = (resource: string) =>
+  `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}:${resource}`;
 const TARGET_CREDENTIALS = async () => ({
   accessKeyId: "target-access-key",
   secretAccessKey: "target-secret-key",
 });
 const RUNTIME_ID = "checkout-AbCdEf1234";
-const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}:runtime/${RUNTIME_ID}`;
 const HARNESS_ID = "support-AbCdEf1234";
-const HARNESS_ARN = `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}:harness/${HARNESS_ID}`;
+const GATEWAY_ID = "tools-AbCdEf1234";
 const RUNTIME = {
   name: "checkout",
   build: "CodeZip",
@@ -56,33 +51,23 @@ const RUNTIME = {
   runtimeVersion: "PYTHON_3_14",
 } as const;
 const HARNESS = { name: "support", path: "app/support" } as const;
+const GATEWAY = { name: "tools", targets: [] } as const;
 
-function body(...chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
-  return (async function* () {
-    yield* chunks;
-  })();
-}
+type Resources = {
+  runtimes?: readonly unknown[];
+  harnesses?: readonly unknown[];
+  agentCoreGateways?: readonly unknown[];
+};
 
 function header(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value.join(", ") : value;
 }
 
-async function inProject(
-  resources: {
-    runtimes?: unknown[];
-    harnesses?: unknown[];
-  },
-  options: { writeTargets?: boolean } = {},
-): Promise<void> {
-  const { path: root, cleanup } = await inTempDirectory("agentcore-project-invoke-reduced-");
+async function inProject(resources: Resources, options: { writeTargets?: boolean } = {}) {
+  const { path: root, cleanup } = await inTempDirectory("agentcore-project-invoke-");
   cleanups.push(cleanup);
   await mkdir(join(root, "agentcore"), { recursive: true });
-  const spec = ProjectSpecSchema.parse({
-    name: "orders",
-    version: 2,
-    runtimes: resources.runtimes ?? [],
-    harnesses: resources.harnesses ?? [],
-  });
+  const spec = ProjectSpecSchema.parse({ name: "orders", version: 2, ...resources });
   await writeFile(join(root, "agentcore", "agentcore.json"), JSON.stringify(spec));
   if (options.writeTargets !== false) {
     await writeFile(join(root, "agentcore", "aws-targets.json"), JSON.stringify([TARGET]));
@@ -90,7 +75,7 @@ async function inProject(
 }
 
 function backend() {
-  const calls: ResolveDeployedResourcesBackendInput[] = [];
+  const targets: string[] = [];
   const value: ProjectBackend = {
     async *build() {},
     async *deploy() {
@@ -98,54 +83,84 @@ function backend() {
       return { outputs: {} };
     },
     async resolveDeployedResources(project, input) {
-      calls.push(input);
-      return [
-        ...project.spec.runtimes.map(({ name }) => ({
-          resourceType: "runtime" as const,
+      targets.push(input.target.name);
+      const ids = { runtime: RUNTIME_ID, harness: HARNESS_ID, gateway: GATEWAY_ID };
+      return (
+        [
+          ["runtime", project.spec.runtimes],
+          ["harness", project.spec.harnesses],
+          ["gateway", project.spec.agentCoreGateways],
+        ] as const
+      ).flatMap(([resourceType, resources]) =>
+        resources.map(({ name }) => ({
+          resourceType,
           name,
-          id: RUNTIME_ID,
+          id: ids[resourceType],
           target: input.target,
           credentialProvider: TARGET_CREDENTIALS,
         })),
-        ...project.spec.harnesses.map(({ name }) => ({
-          resourceType: "harness" as const,
-          name,
-          id: HARNESS_ID,
-          target: input.target,
-          credentialProvider: TARGET_CREDENTIALS,
-        })),
-      ];
+      );
     },
     async resolveProjectResources() {
-      throw new Error("project invoke resolves deployed resources, not project resources");
+      throw new Error("invoke resolves deployed resources, not project resources");
     },
   };
-  return { calls, value };
+  return { targets, value };
 }
 
-function configureCore(core: TestCoreClient): void {
+async function routedCommand(
+  args: readonly string[],
+  resources: Resources | undefined,
+  options: { writeTargets?: boolean; isTTY?: boolean } = {},
+) {
+  if (resources) {
+    await inProject(resources, options);
+  } else {
+    cleanups.push((await inTempDirectory("agentcore-invoke-outside-")).cleanup);
+  }
+  const resolved = backend();
+  const core = new TestCoreClient({ backends: { CDK: resolved.value } });
   core.runtime
-    .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+    .setGetResponse({ agentRuntimeArn: arn(`runtime/${RUNTIME_ID}`) } as GetAgentRuntimeResponse)
     .setInvokeResponse({
       statusCode: 200,
       contentType: "text/plain",
-      body: body(Buffer.from("runtime response")),
+      body: (async function* () {
+        yield Buffer.from("runtime response");
+      })(),
     });
   core.harness
-    .setGetResponse({
-      harness: { harnessId: HARNESS_ID, harnessName: "support", arn: HARNESS_ARN },
-    } as GetHarnessResponse)
+    .setGetResponse({ harness: { arn: arn(`harness/${HARNESS_ID}`) } } as GetHarnessResponse)
     .setInvokeEvents(
       { messageStart: { role: "assistant" } },
-      { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "harness response" } } },
-      { contentBlockStop: { contentBlockIndex: 0 } },
       { messageStop: { stopReason: "end_turn" } },
     );
+  core.gateway
+    .setGetResponse({
+      gatewayArn: arn(`gateway/${GATEWAY_ID}`),
+      gatewayUrl: "https://tools.gateway.example.test/mcp",
+      authorizerType: "NONE",
+    } as GetGatewayResponse)
+    .setInvokeResponse({
+      statusCode: 200,
+      contentType: "application/json",
+      body: (async function* () {
+        yield Buffer.from("gateway response");
+      })(),
+    });
+  const io = testIO({ isTTY: options.isTTY });
+  const root = createRootHandler(core, {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
+  const route = () => root.route(["node", "agentcore", "invoke", ...args, "--region", "us-east-1"]);
+  return { core, io, resolved, route };
 }
 
 async function run(
-  args: string[],
-  resources: { runtimes?: unknown[]; harnesses?: unknown[] },
+  args: readonly string[],
+  resources: Resources | undefined,
   options: { writeTargets?: boolean } = {},
 ) {
   const subject = await routedCommand(args, resources, options);
@@ -153,30 +168,17 @@ async function run(
   return subject;
 }
 
-async function routedCommand(
-  args: string[],
-  resources: { runtimes?: unknown[]; harnesses?: unknown[] },
-  options: { writeTargets?: boolean; isTTY?: boolean } = {},
-) {
-  await inProject(resources, options);
-  const resolved = backend();
-  const core = new TestCoreClient({ backends: { CDK: resolved.value } });
-  configureCore(core);
-  const io = testIO({ isTTY: options.isTTY });
-  const root = createRootHandler(core, {
-    io: io.io,
-    logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor(),
-  });
-  const route = () => root.route(["node", "agentcore", "invoke", ...args]);
-  return { core, io, resolved, route };
-}
-
-function context(project: Project): Context {
-  return ValueContext.EmptyContext()
-    .withValue(ProjectKey, project)
-    .withValue(JsonKey, false)
-    .withValue(RegionKey, "us-east-1");
+async function launches(args: readonly string[], resources: Resources | undefined) {
+  const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+  try {
+    const subject = await run(args, resources);
+    return {
+      ...subject,
+      launches: render.mock.calls.map(([path, ctx]) => ({ path, region: ctx.value(RegionKey) })),
+    };
+  } finally {
+    render.mockRestore();
+  }
 }
 
 afterEach(async () => {
@@ -184,73 +186,161 @@ afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
 
-describe("project invoke", () => {
-  test.each([false, true])(
-    "reads stdin before progress, then hands off to the first Runtime chunk (local=%s)",
-    async (local) => {
-      const stream = new StreamController<Uint8Array>();
-      const server = local
-        ? await startHttpServer(() => ({
-            status: 200,
-            headers: { "Content-Type": "text/plain" },
-            body: stream,
-          }))
-        : undefined;
-      if (server) servers.push(server);
-      const subject = await routedCommand(
-        [
-          "runtime",
-          "--payload",
-          "-",
-          ...(server ? ["--local", "--port", String(server.port)] : []),
-        ],
-        { runtimes: [RUNTIME] },
-        { isTTY: true },
-      );
-      subject.core.runtime.setInvokeResponse({
-        statusCode: 200,
-        contentType: "text/plain",
-        body: stream,
+describe("invoke", () => {
+  test.each([
+    ["runtime", ["--runtime", "checkout", "--payload", "{}"], "runtime", "invokeRuntime"],
+    ["harness", ["--harness", "support", "--prompt", "hi"], "harness", "invokeHarness"],
+    [
+      "gateway",
+      ["--gateway", "tools", "--path", "/mcp", "--payload", "{}"],
+      "gateway",
+      "invokeGateway",
+    ],
+  ] as const)(
+    "invokes a project %s by name in its deployed region",
+    async (_type, args, client, method) => {
+      const { core, resolved } = await run([...args], {
+        runtimes: [RUNTIME],
+        harnesses: [HARNESS],
+        agentCoreGateways: [GATEWAY],
       });
-      const stdin = subject.io.io.stdin as unknown as PassThrough;
-      const pending = subject.route();
-      try {
-        await waitFor(() => stdin.listenerCount("readable") > 0);
-        stdin.write("{}");
-        await tick(120);
-        expect(subject.io.stderr()).toBe("");
-        stdin.end();
-        await waitFor(() => subject.io.stderr().includes("Invoking runtime..."));
-        expect(subject.io.stdout()).toBe("");
-        stream.emit(Buffer.from("first"));
-        await waitFor(() => subject.io.stdout() === "first");
-        const afterFirstChunk = subject.io.stderr();
-        await tick(120);
-        expect(subject.io.stderr()).toBe(afterFirstChunk);
-      } finally {
-        stdin.end();
-        stream.emit(Buffer.from("second"));
-        stream.end();
-        await pending;
-      }
-      expect(subject.io.stdout()).toBe("firstsecond");
+
+      const invoke = core[client].calls.find((call) => call.method === method)!;
+      expect(invoke.args[1]).toEqual({ region: TARGET.region, credentials: TARGET_CREDENTIALS });
+      expect(resolved.targets).toEqual(["default"]);
     },
   );
 
-  test.each([false, true])("keeps machine output free of progress (json=%s)", async (json) => {
-    const subject = await routedCommand(
-      ["runtime", "--payload", "{}", ...(json ? ["--json"] : [])],
-      { runtimes: [RUNTIME] },
-      { isTTY: json },
-    );
-    await subject.route();
-    expect(subject.io.stderr()).not.toContain("Invoking");
-    expect(subject.io.stderr()).not.toContain("\u001b");
-    if (json) expect(JSON.parse(subject.io.stdout()).body).toBe("runtime response");
-    else expect(subject.io.stdout()).toBe("runtime response");
+  test.each([
+    [["--runtime", "checkout"], `/agentcore/runtime/invoke/${RUNTIME_ID}`],
+    [
+      ["--harness", "support", "--qualifier", "prod"],
+      `/agentcore/harness/invoke/${HARNESS_ID}?qualifier=prod`,
+    ],
+    [["--gateway", "tools"], `/agentcore/gateway/invoke/${GATEWAY_ID}`],
+  ])("opens the TUI for %j", async (args, path) => {
+    const subject = await launches(args, {
+      runtimes: [RUNTIME],
+      harnesses: [HARNESS],
+      agentCoreGateways: [GATEWAY],
+    });
+
+    expect(subject.launches).toEqual([{ path, region: TARGET.region }]);
   });
 
-  test("auto-selects the sole local Runtime without resolving deployed resources", async () => {
+  test.each([
+    ["one resource", { runtimes: [RUNTIME] }],
+    ["no project", undefined],
+  ] as const)("a bare interactive invoke opens the picker with %s", async (_name, resources) => {
+    const subject = await launches([], resources);
+
+    expect(subject.launches.map((launch) => launch.path)).toEqual(["/agentcore/invoke"]);
+  });
+
+  test("resolves the --target deployment target for project names", async () => {
+    const { resolved } = await run(
+      ["--runtime", "checkout", "--payload", "{}", "--target", "default"],
+      {
+        runtimes: [RUNTIME],
+      },
+    );
+
+    expect(resolved.targets).toEqual(["default"]);
+  });
+
+  test.each([
+    {
+      name: "more than one resource flag",
+      args: ["--runtime", "checkout", "--harness", "support"],
+      resources: { runtimes: [RUNTIME], harnesses: [HARNESS] },
+      message: "specify exactly one of --runtime, --harness, --gateway",
+    },
+    {
+      name: "a headless invoke with no resource flag, even when the project has one resource",
+      args: ["--payload", "{}"],
+      resources: { runtimes: [RUNTIME] },
+      message: "specify exactly one of --runtime, --harness, --gateway",
+    },
+    {
+      name: "a bare --json invoke outside a project",
+      args: ["--json"],
+      resources: undefined,
+      message: "specify exactly one of --runtime, --harness, --gateway",
+    },
+    {
+      name: "a flag that belongs to another resource type",
+      args: ["--runtime", "checkout", "--prompt", "hi"],
+      resources: { runtimes: [RUNTIME] },
+      message: "--prompt does not apply to a Runtime",
+    },
+    {
+      name: "--local for a harness",
+      args: ["--harness", "support", "--local"],
+      resources: { harnesses: [HARNESS] },
+      message: "--local does not apply to a Harness",
+    },
+    {
+      name: "--target with an ID",
+      args: ["--gateway", GATEWAY_ID, "--target", "default"],
+      resources: { agentCoreGateways: [GATEWAY] },
+      message: "--target only applies to project resources",
+    },
+    {
+      name: "--local outside a project",
+      args: ["--runtime", RUNTIME_ID, "--local", "--payload", "{}"],
+      resources: undefined,
+      message: "--local only applies to project resources",
+    },
+    {
+      name: "a harness session ID that is too short",
+      args: ["--harness", "support", "--prompt", "hi", "--session-id", "short"],
+      resources: { harnesses: [HARNESS] },
+      message: "Invalid value for option '--session-id'",
+    },
+  ])("rejects $name", async ({ args, resources, message }) => {
+    const subject = await routedCommand(args, resources);
+
+    await expect(subject.route()).rejects.toThrow(message);
+  });
+
+  test("reads stdin before progress, then hands off to the first local Runtime chunk", async () => {
+    const stream = new StreamController<Uint8Array>();
+    const server = await startHttpServer(() => ({
+      status: 200,
+      headers: { "Content-Type": "text/plain" },
+      body: stream,
+    }));
+    servers.push(server);
+    const subject = await routedCommand(
+      ["--runtime", RUNTIME.name, "--local", "--port", String(server.port), "--payload", "-"],
+      { runtimes: [RUNTIME] },
+      { isTTY: true },
+    );
+    const stdin = subject.io.io.stdin as unknown as PassThrough;
+    const pending = subject.route();
+    try {
+      await waitFor(() => stdin.listenerCount("readable") > 0);
+      stdin.write("{}");
+      await tick(120);
+      expect(subject.io.stderr()).toBe("");
+      stdin.end();
+      await waitFor(() => subject.io.stderr().includes("Invoking runtime..."));
+      expect(subject.io.stdout()).toBe("");
+      stream.emit(Buffer.from("first"));
+      await waitFor(() => subject.io.stdout() === "first");
+      const afterFirstChunk = subject.io.stderr();
+      await tick(120);
+      expect(subject.io.stderr()).toBe(afterFirstChunk);
+    } finally {
+      stdin.end();
+      stream.emit(Buffer.from("second"));
+      stream.end();
+      await pending;
+    }
+    expect(subject.io.stdout()).toBe("firstsecond");
+  });
+
+  test("invokes a local Runtime without resolving deployed resources", async () => {
     let request:
       | {
           method: string;
@@ -282,7 +372,7 @@ describe("project invoke", () => {
     const payload = '{"prompt":"hi"}';
 
     const { core, io, resolved } = await run(
-      ["runtime", "--local", "--port", String(server.port), "--payload", payload],
+      ["--runtime", RUNTIME.name, "--local", "--port", String(server.port), "--payload", payload],
       { runtimes: [RUNTIME] },
       { writeTargets: false },
     );
@@ -300,7 +390,7 @@ describe("project invoke", () => {
     });
     expect(io.stdout()).toBe("local response");
     expect(io.stderr()).toContain(`runtime-session-id=${request?.sessionId}`);
-    expect(resolved.calls).toEqual([]);
+    expect(resolved.targets).toEqual([]);
     expect(core.runtime.calls).toEqual([]);
   });
 
@@ -346,10 +436,9 @@ describe("project invoke", () => {
 
     await run(
       [
-        "runtime",
-        "--local",
-        "--name",
+        "--runtime",
         RUNTIME.name,
+        "--local",
         "--port",
         String(server.port),
         "--payload",
@@ -392,7 +481,7 @@ describe("project invoke", () => {
     try {
       const code = await runWithExitCode(async () => {
         await run(
-          ["runtime", "--local", "--name", RUNTIME.name, "--port", String(port), "--payload", "{}"],
+          ["--runtime", RUNTIME.name, "--local", "--port", String(port), "--payload", "{}"],
           { runtimes: [RUNTIME] },
           { writeTargets: false },
         );
@@ -416,16 +505,7 @@ describe("project invoke", () => {
     }));
     servers.push(server);
     const subject = await routedCommand(
-      [
-        "runtime",
-        "--local",
-        "--name",
-        RUNTIME.name,
-        "--port",
-        String(server.port),
-        "--payload",
-        "{}",
-      ],
+      ["--runtime", RUNTIME.name, "--local", "--port", String(server.port), "--payload", "{}"],
       { runtimes: [RUNTIME] },
       { writeTargets: false },
     );
@@ -489,10 +569,9 @@ describe("project invoke", () => {
 
       await run(
         [
-          "runtime",
-          "--local",
-          "--name",
+          "--runtime",
           name,
+          "--local",
           "--port",
           String(server.port),
           "--payload",
@@ -517,200 +596,27 @@ describe("project invoke", () => {
   test.each([
     {
       name: "requires --local with --port",
-      args: ["runtime", "--port", "8081", "--payload", "{}"],
+      args: ["--runtime", RUNTIME.name, "--port", "8081", "--payload", "{}"],
       message: "--port requires --local",
     },
     {
       name: "rejects deployed-only flags locally",
-      args: ["runtime", "--local", "--name", RUNTIME.name, "--payload", "{}", "--target", "prod"],
+      args: ["--runtime", RUNTIME.name, "--local", "--payload", "{}", "--target", "prod"],
       message: "--target cannot be used with --local",
     },
     {
       name: "requires a local payload",
-      args: ["runtime", "--local", "--name", RUNTIME.name],
+      args: ["--runtime", RUNTIME.name, "--local"],
       message: "required option '--payload <payload>' not specified",
     },
     {
       name: "rejects MCP options for a local non-MCP Runtime",
-      args: [
-        "runtime",
-        "--local",
-        "--name",
-        RUNTIME.name,
-        "--payload",
-        "{}",
-        "--mcp-method",
-        "tools/list",
-      ],
+      args: ["--runtime", RUNTIME.name, "--local", "--payload", "{}", "--mcp-method", "tools/list"],
       message: "MCP options are only valid for MCP Runtimes",
     },
   ])("$name", async ({ args, message }) => {
     await expect(run([...args], { runtimes: [RUNTIME] }, { writeTargets: false })).rejects.toThrow(
       message,
     );
-  });
-
-  test("requires --name when invoking one of multiple local Runtimes", async () => {
-    await expect(
-      run(
-        ["runtime", "--local", "--payload", "{}"],
-        {
-          runtimes: [RUNTIME, { ...RUNTIME, name: "inventory" }],
-        },
-        { writeTargets: false },
-      ),
-    ).rejects.toThrow("Project has multiple Runtimes. Specify --name: checkout, inventory.");
-  });
-
-  test("invokes the sole Runtime with its existing payload contract in the target region", async () => {
-    const payload = '{"custom":"wire shape"}';
-    const { core, io, resolved } = await run(
-      ["runtime", "--payload", payload, "--content-type", "application/custom+json"],
-      { runtimes: [RUNTIME] },
-    );
-
-    const request = core.runtime.calls.find(({ method }) => method === "invokeRuntime")!
-      .args[0] as RuntimeInvokeRequest;
-    expect(new TextDecoder().decode(request.payload)).toBe(payload);
-    expect(request.contentType).toBe("application/custom+json");
-    expect(request.runtimeUserId).toBe("default");
-    expect(core.runtime.calls.at(-1)!.args[1]).toEqual({
-      region: TARGET.region,
-      credentials: TARGET_CREDENTIALS,
-    });
-    expect(io.stdout()).toBe("runtime response");
-    expect(resolved.calls).toEqual([{ target: TARGET }]);
-  });
-
-  test("invokes a named Harness with its existing prompt contract in the target region", async () => {
-    const { core, io } = await run(["harness", "--name", "support", "--prompt", "hello"], {
-      harnesses: [HARNESS],
-    });
-
-    const request = core.harness.calls.find(({ method }) => method === "invokeHarness")!
-      .args[0] as InvokeHarnessRequest;
-    expect(request).toMatchObject({
-      harnessArn: HARNESS_ARN,
-      qualifier: "DEFAULT",
-      messages: [{ role: "user", content: [{ text: "hello" }] }],
-    });
-    expect(core.harness.calls.at(-1)!.args[1]).toEqual({
-      region: TARGET.region,
-      credentials: TARGET_CREDENTIALS,
-    });
-    expect(JSON.parse(io.stdout()).transcript).toContainEqual({
-      kind: "text",
-      text: "harness response",
-      streaming: false,
-    });
-  });
-
-  test("requires --name when the project has multiple Runtimes", async () => {
-    await expect(
-      run(["runtime", "--payload", "{}"], {
-        runtimes: [RUNTIME, { ...RUNTIME, name: "inventory" }],
-      }),
-    ).rejects.toThrow(/multiple Runtimes.*--name.*checkout, inventory/s);
-  });
-
-  test("opens the existing Runtime TUI for bare and TUI-compatible Runtime invokes", async () => {
-    await inProject({ runtimes: [RUNTIME] });
-    const resolved = backend();
-    const core = new TestCoreClient({ backends: { CDK: resolved.value } });
-    const project = await core.projectManager.resolve({ filePath: process.cwd() });
-    const launches: { path: string; context: Context }[] = [];
-    const handler = createProjectInvokeRuntimeHandler(core, testIO().io, async (path, ctx) => {
-      launches.push({ path, context: ctx });
-    });
-
-    const bareFlags = {
-      name: undefined,
-      local: false,
-      port: undefined,
-      target: undefined,
-      payload: undefined,
-      qualifier: undefined,
-      "content-type": undefined,
-      accept: undefined,
-      "session-id": undefined,
-      "user-id": undefined,
-      header: undefined,
-      "bearer-token": undefined,
-      "mcp-session-id": undefined,
-      "mcp-protocol-version": undefined,
-      "mcp-method": undefined,
-      "mcp-name": undefined,
-      "trace-id": undefined,
-      "trace-parent": undefined,
-      "trace-state": undefined,
-      baggage: undefined,
-      "output-file": undefined,
-    };
-
-    await handler.handle(context(project!), bareFlags, {});
-
-    expect(launches[0]!.path).toBe(`/agentcore/runtime/invoke/${RUNTIME_ID}`);
-    expect(launches[0]!.context.require(RegionKey)).toBe(TARGET.region);
-    expect(launches[0]!.context.require(AwsCredentialProviderKey)).toBe(TARGET_CREDENTIALS);
-    expect(launches[0]!.context.require(RuntimeInvokeLaunchContextKey)).toMatchObject({
-      runtimeId: RUNTIME_ID,
-    });
-
-    await handler.handle(
-      context(project!),
-      {
-        ...bareFlags,
-        name: "checkout",
-        target: "default",
-        "session-id": "project-session",
-      },
-      {},
-    );
-
-    expect(launches[1]!.context.require(RuntimeInvokeLaunchContextKey)).toMatchObject({
-      runtimeId: RUNTIME_ID,
-      runtimeSessionId: "project-session",
-    });
-  });
-
-  test("opens the existing Harness TUI with the resolved project Harness", async () => {
-    await inProject({ harnesses: [HARNESS] });
-    const resolved = backend();
-    const core = new TestCoreClient({ backends: { CDK: resolved.value } });
-    const project = await core.projectManager.resolve({ filePath: process.cwd() });
-    const launches: { path: string; context: Context }[] = [];
-    const handler = createProjectInvokeHarnessHandler(core, testIO().io, async (path, ctx) => {
-      launches.push({ path, context: ctx });
-    });
-
-    await handler.handle(
-      context(project!),
-      {
-        name: "support",
-        target: "default",
-        prompt: undefined,
-        "session-id": undefined,
-        qualifier: "prod",
-      },
-      {},
-    );
-
-    expect(launches[0]!.path).toBe(`/agentcore/harness/invoke/${HARNESS_ID}?qualifier=prod`);
-    expect(launches[0]!.context.require(RegionKey)).toBe(TARGET.region);
-    expect(launches[0]!.context.require(AwsCredentialProviderKey)).toBe(TARGET_CREDENTIALS);
-  });
-
-  test("bare project invoke opens the project resource picker", async () => {
-    await inProject({ runtimes: [RUNTIME], harnesses: [HARNESS] });
-    const core = new TestCoreClient();
-    const project = await core.projectManager.resolve({ filePath: process.cwd() });
-    const launches: string[] = [];
-    const handler = createProjectInvokeHandler(core, testIO().io, async (path) => {
-      launches.push(path);
-    });
-
-    await handler.defaultHandler()!.handle(context(project!), {}, {});
-
-    expect(launches).toEqual(["/agentcore/invoke"]);
   });
 });

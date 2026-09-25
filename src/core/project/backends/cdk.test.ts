@@ -1015,6 +1015,7 @@ describe("CdkBackend.resolveDeployedResources", () => {
         },
       ],
       harnesses: [{ name: "support_agent", path: "app/support_agent" }],
+      agentCoreGateways: [{ name: "tools-gateway", targets: [] }],
     });
     await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
     const subject = harness({
@@ -1030,6 +1031,10 @@ describe("CdkBackend.resolveDeployedResources", () => {
           {
             ExportName: "AgentCore-example-default-Harness-support-agent-Id",
             OutputValue: "support_agent-AbCdEf1234",
+          },
+          {
+            ExportName: "AgentCore-example-default-Gateway-tools-gateway-Id",
+            OutputValue: "tools-gateway-abcdef1234",
           },
         ],
       },
@@ -1049,6 +1054,13 @@ describe("CdkBackend.resolveDeployedResources", () => {
         resourceType: "harness",
         name: "support_agent",
         id: "support_agent-AbCdEf1234",
+        target: TARGET,
+        credentialProvider: subject.credentials,
+      },
+      {
+        resourceType: "gateway",
+        name: "tools-gateway",
+        id: "tools-gateway-abcdef1234",
         target: TARGET,
         credentialProvider: subject.credentials,
       },

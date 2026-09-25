@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type {
   AgentRuntimeEndpoint,
   GetAgentRuntimeResponse,
+  GetGatewayResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
@@ -38,6 +39,7 @@ const project: Project = {
       },
     ],
     harnesses: [{ name: "support", path: "app/support" }],
+    agentCoreGateways: [{ name: "tools", targets: [] }],
   }),
 };
 
@@ -79,6 +81,13 @@ const DEPLOYED_RESOURCES: ResolvedDeployedResource[] = [
     target: TARGET,
     credentialProvider: TARGET_CREDENTIALS,
   },
+  {
+    resourceType: "gateway",
+    name: "tools",
+    id: "gateway-123",
+    target: TARGET,
+    credentialProvider: TARGET_CREDENTIALS,
+  },
 ];
 
 function core(
@@ -107,6 +116,12 @@ function core(
       arn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:harness/harness-123",
     },
   } as GetHarnessResponse);
+  value.gateway.setGetResponse({
+    gatewayId: "gateway-123",
+    gatewayUrl: "https://gateway-123.gateway.example.test/mcp",
+    authorizerType: "NONE",
+    status: "READY",
+  } as GetGatewayResponse);
   return value;
 }
 
@@ -209,7 +224,7 @@ describe("project invoke picker", () => {
     expect(screen.lastFrame()).toContain("support");
   });
 
-  test("lists project Runtime and Harness resources", async () => {
+  test("lists project Runtime, Harness, and Gateway resources", async () => {
     const screen = renderScreen("/agentcore/invoke", {
       core: core(),
       withContext: (ctx) => ctx.withValue(ProjectKey, project),
@@ -222,6 +237,29 @@ describe("project invoke picker", () => {
     expect(screen.lastFrame()).toContain("support");
     expect(screen.lastFrame()).toContain("Harness");
     expect(screen.lastFrame()).toContain("app/support");
+    expect(screen.lastFrame()).toContain("tools");
+    expect(screen.lastFrame()).toContain("Gateway");
+  });
+
+  test("opens the selected Gateway console with the target's credentials", async () => {
+    const value = core();
+    const screen = renderScreen("/agentcore/invoke", {
+      core: value,
+      withContext: (ctx) => ctx.withValue(ProjectKey, project),
+    });
+
+    await waitForText(screen.lastFrame, "checkout");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "gateway-123");
+    expect(value.gateway.calls.find(({ method }) => method === "getGateway")?.args[1]).toEqual({
+      region: TARGET.region,
+      endpointUrl: undefined,
+      credentials: TARGET_CREDENTIALS,
+    });
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a project resource to invoke");
   });
 
   test("opens the selected Harness chat in the same TUI", async () => {

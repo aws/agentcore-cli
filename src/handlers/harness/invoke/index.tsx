@@ -9,24 +9,26 @@ import { runWithProgress } from "../../../tui/progress";
 import { InputValidationError } from "../../../errors";
 import { invokeHarnessTurn } from "./operation.ts";
 
+export const invokeHarnessFlags = [
+  flag("id", "the ID of the harness", z.string().min(1).max(48)),
+  flag("prompt", "the message to send to the harness", z.string().optional()),
+  flag(
+    "session-id",
+    "the Runtime session ID to continue (33-100 characters)",
+    z.string().min(33).max(100).optional(),
+  ),
+  flag(
+    "qualifier",
+    "the harness endpoint qualifier to invoke (default DEFAULT)",
+    z.string().optional(),
+  ),
+] as const;
+
 export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "invoke",
     description: "invoke a harness",
-    flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
-      flag("prompt", "the message to send to the harness", z.string().optional()),
-      flag(
-        "session-id",
-        "the Runtime session ID to continue (33-100 characters)",
-        z.string().min(33).max(100).optional(),
-      ),
-      flag(
-        "qualifier",
-        "the harness endpoint qualifier to invoke (default DEFAULT)",
-        z.string().optional(),
-      ),
-    ],
+    flags: invokeHarnessFlags,
     handle: async (ctx, flags) => {
       // Without a prompt, open the interactive chat at this harness — resuming
       // the given session and targeting the given qualifier when passed. The

@@ -38,8 +38,6 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.4`.
   - [`agentcore dev`](#agentcore-dev)
   - [`agentcore deploy`](#agentcore-deploy)
   - [`agentcore invoke`](#agentcore-invoke)
-    - [`agentcore invoke runtime`](#agentcore-invoke-runtime)
-    - [`agentcore invoke harness`](#agentcore-invoke-harness)
   - [`agentcore log`](#agentcore-log)
     - [`agentcore log runtime`](#agentcore-log-runtime)
     - [`agentcore log harness`](#agentcore-log-harness)
@@ -647,58 +645,39 @@ deploy the project to AWS
 ### `agentcore invoke`
 
 ```text
-agentcore invoke [options] [command]
+agentcore invoke [options]
 ```
 
-invoke a Runtime or harness from the current project
-
-#### `agentcore invoke runtime`
-
-```text
-agentcore invoke runtime [options]
-```
-
-invoke a Runtime from the current project
+invoke a Runtime, harness, or Gateway
 
 **Options**
 
-- `--name <name>`: the logical project Runtime name
-- `--local`: invoke a local Runtime development server (default: false)
-- `--port <port>`: local Runtime development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)
-- `--target <target>`: project deployment target (default: default)
+- `--runtime <runtime>`: the Runtime to invoke: its name in this project, its ID, or its ARN
+- `--harness <harness>`: the harness to invoke: its name in this project, its ID, or its ARN
+- `--gateway <gateway>`: the Gateway to invoke: its name in this project, its ID, or its ARN
+- `--target <target>`: project deployment target (default: "default")
+- `--local`: invoke the local development server (project Runtime only) (default: false)
+- `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)
 - `--payload <payload>`: the inline payload to send
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--content-type <content-type>`: the payload content type
 - `--accept <accept>`: the accepted response content type
 - `--session-id <session-id>`: the Runtime session ID
-- `--user-id <user-id>`: the Runtime user ID (default "default")
 - `--header <header...>`: an ordered application header
 - `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
 - `--mcp-session-id <mcp-session-id>`: the MCP session ID
 - `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
+- `--output-file <output-file>`: the response output file
+- `--user-id <user-id>`: the Runtime user ID (default "default")
 - `--mcp-method <mcp-method>`: the MCP method
 - `--mcp-name <mcp-name>`: the MCP tool, resource, or prompt name
 - `--trace-id <trace-id>`: the X-Ray trace ID
 - `--trace-parent <trace-parent>`: the W3C trace parent
 - `--trace-state <trace-state>`: the W3C trace state
 - `--baggage <baggage>`: the W3C baggage
-- `--output-file <output-file>`: the response output file
-
-#### `agentcore invoke harness`
-
-```text
-agentcore invoke harness [options]
-```
-
-invoke a harness from the current project
-
-**Options**
-
-- `--name <name>`: the logical project harness name
-- `--target <target>`: project deployment target (default: "default")
 - `--prompt <prompt>`: the message to send to the harness
-- `--session-id <session-id>`: the Runtime session ID to continue (33-100 characters)
-- `--qualifier <qualifier>`: the harness endpoint qualifier to invoke (default DEFAULT)
+- `--path <path>`: the path relative to the Gateway origin
+- `--method <method>`: the HTTP request method
 
 ### `agentcore log`
 

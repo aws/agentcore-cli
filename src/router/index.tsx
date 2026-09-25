@@ -19,6 +19,7 @@ export {
   type Flag,
   type GlobalFlag,
   type Argument,
+  type FlagsOf,
   createHandler,
   flag,
   globalFlag,

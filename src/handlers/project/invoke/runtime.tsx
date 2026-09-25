@@ -1,267 +1,105 @@
-import z from "zod";
 import { ExitCode, InputValidationError, RuntimeInvokeResponseError } from "../../../errors";
 import { invokeLocalRuntime } from "../../../core/dev/localInvoke";
 import { DEV_PORTS } from "../../../core/dev/port";
 import type { AppIO } from "../../../io";
+import type { Context } from "../../../router";
 import { withUserCancellation } from "../../../runnable";
-import { createHandler, flag, ProjectKey } from "../../../router";
-import { renderTuiAt } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
-import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
-import { RuntimeInvokeLaunchContextKey } from "../../runtime/invoke/launchContext";
-import { invokeRuntimeTarget } from "../../runtime/invoke/operation";
+import { JsonKey } from "../../keys";
 import {
   parseRuntimeInvokeHeaders,
   resolveRuntimeInvokeSources,
-  resolveRuntimeInvokeTuiBearerToken,
 } from "../../runtime/invoke/request";
 import { writeRuntimeInvokeResponse } from "../../runtime/invoke/response";
-import type { Core } from "../../types";
-import { coreOptsFromCtx } from "../../utils";
-import { selectProjectResource } from "../selection";
+import type { Project } from "../types";
+import type { InvokeFlags } from ".";
 
-export const createProjectInvokeRuntimeHandler = (
-  core: Core,
+export async function invokeProjectRuntimeLocally(
   io: AppIO,
-  renderInvokeTui: typeof renderTuiAt = renderTuiAt,
-) =>
-  createHandler({
-    name: "runtime",
-    description: "invoke a Runtime from the current project",
-    flags: [
-      flag("name", "the logical project Runtime name", z.string().optional()),
-      flag("local", "invoke a local Runtime development server", z.boolean()),
-      flag(
-        "port",
-        "local Runtime development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)",
-        z.coerce.number().int().min(1).max(65535).optional(),
-      ),
-      flag("target", "project deployment target (default: default)", z.string().optional()),
-      flag("payload", "the inline payload to send", z.string().optional(), { sensitive: true }),
-      flag("qualifier", "the Runtime endpoint qualifier", z.string().optional()),
-      flag("content-type", "the payload content type", z.string().optional()),
-      flag("accept", "the accepted response content type", z.string().optional()),
-      flag("session-id", "the Runtime session ID", z.string().optional()),
-      flag("user-id", 'the Runtime user ID (default "default")', z.string().optional()),
-      flag("header", "an ordered application header", z.array(z.string()).optional(), {
-        sensitive: true,
-      }),
-      flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
-        sensitive: true,
-      }),
-      flag("mcp-session-id", "the MCP session ID", z.string().optional()),
-      flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
-      flag("mcp-method", "the MCP method", z.string().optional()),
-      flag("mcp-name", "the MCP tool, resource, or prompt name", z.string().optional()),
-      flag("trace-id", "the X-Ray trace ID", z.string().optional()),
-      flag("trace-parent", "the W3C trace parent", z.string().optional()),
-      flag("trace-state", "the W3C trace state", z.string().optional()),
-      flag("baggage", "the W3C baggage", z.string().optional()),
-      flag(
-        "output-file",
-        "the response output file",
-        z.string().min(1, "requires a nonempty path").optional(),
-      ),
-    ],
-    handle: async (ctx, flags) => {
-      const project = ctx.require(ProjectKey);
-      const jsonOutput = ctx.require(JsonKey);
+  ctx: Context,
+  runtime: Project["spec"]["runtimes"][number],
+  flags: InvokeFlags,
+): Promise<void> {
+  const jsonOutput = ctx.require(JsonKey);
+  if (jsonOutput && flags["output-file"] !== undefined) {
+    throw new InputValidationError("--json cannot be used with --output-file");
+  }
+  const protocol = runtime.protocol ?? "HTTP";
+  const unsupportedFlag = Object.entries({
+    target: flags.target,
+    qualifier: flags.qualifier,
+    "bearer-token": flags["bearer-token"],
+  }).find(([, value]) => value !== undefined)?.[0];
+  if (unsupportedFlag !== undefined) {
+    throw new InputValidationError(`--${unsupportedFlag} cannot be used with --local`);
+  }
+  if (
+    protocol !== "MCP" &&
+    [
+      flags["mcp-session-id"],
+      flags["mcp-protocol-version"],
+      flags["mcp-method"],
+      flags["mcp-name"],
+    ].some((value) => value !== undefined)
+  ) {
+    throw new InputValidationError("MCP options are only valid for MCP Runtimes");
+  }
+  if (flags.payload === undefined) {
+    throw new InputValidationError("required option '--payload <payload>' not specified", {
+      exitCode: ExitCode.USAGE,
+    });
+  }
 
-      if (!flags.local && flags.port !== undefined) {
-        throw new InputValidationError("--port requires --local");
-      }
-      if (flags.local) {
-        if (jsonOutput && flags["output-file"] !== undefined) {
-          throw new InputValidationError("--json cannot be used with --output-file");
-        }
-        const name = selectProjectResource(project, "runtime", flags.name, "invoke");
-        const runtime = project.spec.runtimes.find((candidate) => candidate.name === name)!;
-        const protocol = runtime.protocol ?? "HTTP";
-        const unsupportedFlag = Object.entries({
-          target: flags.target,
-          qualifier: flags.qualifier,
-          "bearer-token": flags["bearer-token"],
-        }).find(([, value]) => value !== undefined)?.[0];
-        if (unsupportedFlag !== undefined) {
-          throw new InputValidationError(`--${unsupportedFlag} cannot be used with --local`);
-        }
-        if (
-          protocol !== "MCP" &&
-          [
-            flags["mcp-session-id"],
-            flags["mcp-protocol-version"],
-            flags["mcp-method"],
-            flags["mcp-name"],
-          ].some((value) => value !== undefined)
-        ) {
-          throw new InputValidationError("MCP options are only valid for MCP Runtimes");
-        }
-        if (flags.payload === undefined) {
-          throw new InputValidationError("required option '--payload <payload>' not specified", {
-            exitCode: ExitCode.USAGE,
-          });
-        }
-
-        const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
-        const invoke = async (
-          signal: AbortSignal,
-          beforeOutput: () => Promise<void>,
-          sources: Awaited<ReturnType<typeof resolveRuntimeInvokeSources>>,
-        ) => {
-          const response = await invokeLocalRuntime(
-            {
-              port: flags.port ?? DEV_PORTS[protocol],
-              protocol,
-              payload: sources.payload,
-              contentType: flags["content-type"],
-              accept: flags.accept,
-              runtimeSessionId: flags["session-id"],
-              runtimeUserId: flags["user-id"],
-              applicationHeaders,
-              mcpSessionId: flags["mcp-session-id"],
-              mcpProtocolVersion: flags["mcp-protocol-version"],
-              mcpMethod: flags["mcp-method"],
-              mcpName: flags["mcp-name"],
-              traceId: flags["trace-id"],
-              traceParent: flags["trace-parent"],
-              traceState: flags["trace-state"],
-              baggage: flags.baggage,
-            },
-            signal,
-          );
-          // Local agent error bodies are useful diagnostics, so write them before returning nonzero.
-          await writeRuntimeInvokeResponse(response, {
-            stdout: io.stdout,
-            stderr: io.stderr,
-            outputFile: flags["output-file"],
-            json: jsonOutput,
-            signal,
-            beforeOutput,
-          });
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            throw new RuntimeInvokeResponseError(`HTTP ${response.statusCode}`);
-          }
-        };
-        await withUserCancellation(async (signal) => {
-          const sources = await resolveRuntimeInvokeSources(
-            { payload: flags.payload! },
-            io.stdin,
-            signal,
-          );
-          return runWithProgress((stop) => invoke(signal, stop, sources), {
-            io,
-            label: "Invoking runtime...",
-            interactive: !jsonOutput,
-          });
-        });
-        return;
-      }
-
-      const name = selectProjectResource(project, "runtime", flags.name, "invoke");
-      const deployed = await core.projectManager.resolveDeployedResource(project, {
-        target: flags.target ?? "default",
-        resourceType: "runtime",
-        name,
-      });
-      const invokeCtx = ctx
-        .withValue(RegionKey, deployed.target.region)
-        .withValue(AwsCredentialProviderKey, deployed.credentialProvider);
-
-      if (flags.payload === undefined) {
-        const hasHeadlessOnlyFlag = Object.entries(flags).some(
-          ([flagName, value]) =>
-            ![
-              "name",
-              "local",
-              "target",
-              "qualifier",
-              "payload",
-              "session-id",
-              "user-id",
-              "header",
-              "bearer-token",
-            ].includes(flagName) && value !== undefined,
-        );
-        if (invokeCtx.require(JsonKey) || hasHeadlessOnlyFlag) {
-          throw new InputValidationError("required option '--payload <payload>' not specified", {
-            exitCode: ExitCode.USAGE,
-          });
-        }
-        let path = `/agentcore/runtime/invoke/${encodeURIComponent(deployed.id)}`;
-        if (flags.qualifier !== undefined) path += `/${encodeURIComponent(flags.qualifier)}`;
-        const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
-        const bearerToken = await resolveRuntimeInvokeTuiBearerToken(
-          flags["bearer-token"],
-          io.stdin,
-        );
-        await renderInvokeTui(
-          path,
-          invokeCtx.withValue(RuntimeInvokeLaunchContextKey, {
-            runtimeId: deployed.id,
-            runtimeSessionId: flags["session-id"],
-            runtimeUserId: flags["user-id"],
-            applicationHeaders,
-            bearerToken,
-          }),
-          core,
-          io,
-        );
-        return;
-      }
-
-      if (jsonOutput && flags["output-file"] !== undefined) {
-        throw new InputValidationError("--json cannot be used with --output-file");
-      }
-      const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
-      const invoke = async (
-        signal: AbortSignal,
-        beforeOutput: () => Promise<void>,
-        sources: Awaited<ReturnType<typeof resolveRuntimeInvokeSources>>,
-      ) => {
-        const response = await invokeRuntimeTarget(
-          core.runtime,
-          {
-            runtimeId: deployed.id,
-            qualifier: flags.qualifier,
-            payload: sources.payload,
-            contentType: flags["content-type"],
-            accept: flags.accept,
-            runtimeSessionId: flags["session-id"],
-            runtimeUserId: flags["user-id"],
-            applicationHeaders,
-            bearerToken: sources.bearerToken,
-            mcpSessionId: flags["mcp-session-id"],
-            mcpProtocolVersion: flags["mcp-protocol-version"],
-            mcpMethod: flags["mcp-method"],
-            mcpName: flags["mcp-name"],
-            traceId: flags["trace-id"],
-            traceParent: flags["trace-parent"],
-            traceState: flags["trace-state"],
-            baggage: flags.baggage,
-          },
-          coreOptsFromCtx(invokeCtx),
-          signal,
-        );
-        await writeRuntimeInvokeResponse(response, {
-          stdout: io.stdout,
-          stderr: io.stderr,
-          outputFile: flags["output-file"],
-          json: jsonOutput,
-          signal,
-          beforeOutput,
-        });
-      };
-      await withUserCancellation(async (signal) => {
-        const sources = await resolveRuntimeInvokeSources(
-          { payload: flags.payload!, bearerToken: flags["bearer-token"] },
-          io.stdin,
-          signal,
-        );
-        return runWithProgress((stop) => invoke(signal, stop, sources), {
-          io,
-          label: "Invoking runtime...",
-          interactive: !jsonOutput,
-        });
-      });
-    },
+  const applicationHeaders = parseRuntimeInvokeHeaders(flags.header);
+  const invoke = async (
+    signal: AbortSignal,
+    beforeOutput: () => Promise<void>,
+    sources: Awaited<ReturnType<typeof resolveRuntimeInvokeSources>>,
+  ) => {
+    const response = await invokeLocalRuntime(
+      {
+        port: flags.port ?? DEV_PORTS[protocol],
+        protocol,
+        payload: sources.payload,
+        contentType: flags["content-type"],
+        accept: flags.accept,
+        runtimeSessionId: flags["session-id"],
+        runtimeUserId: flags["user-id"],
+        applicationHeaders,
+        mcpSessionId: flags["mcp-session-id"],
+        mcpProtocolVersion: flags["mcp-protocol-version"],
+        mcpMethod: flags["mcp-method"],
+        mcpName: flags["mcp-name"],
+        traceId: flags["trace-id"],
+        traceParent: flags["trace-parent"],
+        traceState: flags["trace-state"],
+        baggage: flags.baggage,
+      },
+      signal,
+    );
+    // Local agent error bodies are useful diagnostics, so write them before returning nonzero.
+    await writeRuntimeInvokeResponse(response, {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      outputFile: flags["output-file"],
+      json: jsonOutput,
+      signal,
+      beforeOutput,
+    });
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new RuntimeInvokeResponseError(`HTTP ${response.statusCode}`);
+    }
+  };
+  await withUserCancellation(async (signal) => {
+    const sources = await resolveRuntimeInvokeSources(
+      { payload: flags.payload! },
+      io.stdin,
+      signal,
+    );
+    return runWithProgress((stop) => invoke(signal, stop, sources), {
+      io,
+      label: "Invoking runtime...",
+      interactive: !jsonOutput,
+    });
   });
+}

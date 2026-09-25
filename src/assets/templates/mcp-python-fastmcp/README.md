@@ -29,4 +29,4 @@ sending JSON-RPC to `http://127.0.0.1:8000/mcp`.
 ## Deployment
 
 `agentcore deploy` deploys the server into Amazon Bedrock AgentCore. Invoke it with
-`agentcore invoke runtime`, supplying an MCP JSON-RPC payload (e.g. `tools/list`, `tools/call`).
+`agentcore invoke --runtime {{name}}`, supplying an MCP JSON-RPC payload (e.g. `tools/list`, `tools/call`).

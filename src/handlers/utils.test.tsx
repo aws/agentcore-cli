@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { ProjectSpecSchema } from "../projectSchemas/project";
+import { ProjectKey, ValueContext } from "../router";
+import { TestCoreClient } from "../testing";
+import { RegionKey } from "./keys";
+import type { ProjectManager, ResolveDeployedResourceInput } from "./project/types";
 import {
   assertMutuallyExclusiveFlags,
   parseJsonArrayFlag,
   parseJsonObjectFlag,
   parseTags,
+  resolveResource,
 } from "./utils";
 
 describe("structured JSON flags", () => {
@@ -113,5 +119,67 @@ describe("assertMutuallyExclusiveFlags", () => {
     ],
   ] as const)("rejects %s", (_label, names, flags, options, message) => {
     expect(() => assertMutuallyExclusiveFlags(flags, names, options)).toThrow(message);
+  });
+});
+
+describe("resolveResource", () => {
+  const credentials = async () => ({ accessKeyId: "target", secretAccessKey: "secret" });
+  const project = {
+    name: "orders",
+    rootPath: "/orders",
+    spec: ProjectSpecSchema.parse({
+      name: "orders",
+      version: 2,
+      agentCoreGateways: [{ name: "tools", targets: [] }],
+    }),
+  };
+
+  function setup() {
+    const core = new TestCoreClient();
+    const lookups: ResolveDeployedResourceInput[] = [];
+    Object.assign(core, {
+      projectManager: {
+        resolveDeployedResource: async (_project, input) => {
+          lookups.push(input);
+          return {
+            resourceType: input.resourceType,
+            name: input.name,
+            id: "tools-AbCd",
+            target: { name: input.target, account: "111122223333", region: "eu-west-1" },
+            credentialProvider: credentials,
+          };
+        },
+      } as Partial<ProjectManager>,
+    });
+    const ctx = ValueContext.EmptyContext()
+      .withValue(RegionKey, "us-west-2")
+      .withValue(ProjectKey, project);
+    return { core, ctx, lookups };
+  }
+
+  test("resolves a project name with the target's region and credentials", async () => {
+    const { core, ctx, lookups } = setup();
+
+    expect(await resolveResource(core, ctx, "gateway", "tools", "prod")).toEqual({
+      id: "tools-AbCd",
+      region: "eu-west-1",
+      credentials,
+    });
+    expect(lookups).toEqual([{ target: "prod", resourceType: "gateway", name: "tools" }]);
+  });
+
+  test.each([
+    ["an ID in the current region", "gw-1", { id: "gw-1", region: "us-west-2" }],
+    [
+      "an ARN in its own region",
+      "arn:aws:bedrock-agentcore:ap-south-1:111122223333:gateway/gw-1",
+      { id: "gw-1", region: "ap-south-1" },
+    ],
+  ])("resolves %s without any lookup", async (_name, identifier, expected) => {
+    const { core, ctx, lookups } = setup();
+
+    expect(await resolveResource(core, ctx, "gateway", identifier, "prod")).toEqual(expected);
+    expect(lookups).toEqual([]);
+    expect(core.gateway.calls).toEqual([]);
   });
 });

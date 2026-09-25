@@ -60,7 +60,7 @@ export function globalFlag<N extends string, T>(
 
 // FlagsOf maps a tuple of Flags to a typed object keyed by each flag's literal
 // name, with values typed by z.infer of each schema.
-type FlagsOf<F extends readonly Flag<string, any>[]> = {
+export type FlagsOf<F extends readonly Flag<string, any>[]> = {
   [E in F[number] as E["name"]]: E extends Flag<string, infer T> ? T : never;
 };
 

@@ -122,7 +122,11 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
       { assetDir: "templates/agent-python-minimal" },
-      { rootDirName: input.name },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) =>
+          templateRenderer.render(raw, { name: toPythonPackageName(input.name) }),
+      },
     );
     return { tree, spec: { runtimes: [buildRuntimeSpec(input)] } };
   },
@@ -186,6 +190,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const modelScaffold = resolveModelProviderScaffold(input);
     const context = {
       name: toNpmPackageName(input.name),
+      runtimeName: input.name,
       memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
       ...modelScaffold.templateRenderContext,
     };

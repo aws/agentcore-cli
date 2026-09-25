@@ -1,12 +1,16 @@
 import { createContext, useContext, useEffect } from "react";
-import type { Context } from "../router";
+import { ProjectKey, type Context } from "../router";
 import type z from "zod";
-import type { CoreOptions } from "../core/types";
+import type { AwsCredentialProvider, CoreOptions } from "../core/types";
 import type { AppIO } from "../io";
+import { regionFromArn, serviceIdFromArn } from "../core/arn";
 import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
 import { formatZodError } from "../router/schema";
 import { AwsCredentialProviderKey, EndpointKey, JsonKey, RegionKey } from "./keys";
 import { JsonRendererKey } from "../tui";
+import { projectResourceNames } from "./project/selection";
+import type { ProjectInvokableResource } from "./project/types";
+import type { Core } from "./types";
 
 // coreOptsFromCtx builds the standard CoreOptions handed to Core operations from
 // the values pinned on the context: the resolved region (always present, see the
@@ -19,6 +23,38 @@ export function coreOptsFromCtx(ctx: Context): CoreOptions {
     region: ctx.require(RegionKey),
     endpointUrl: ctx.value(EndpointKey),
     ...(credentialProvider ? { credentials: credentialProvider } : {}),
+  };
+}
+
+export type ResolvedResource = {
+  id: string;
+  region: string;
+  credentials?: AwsCredentialProvider;
+};
+
+export async function resolveResource(
+  core: Core,
+  ctx: Context,
+  resourceType: ProjectInvokableResource,
+  identifier: string,
+  target: string,
+): Promise<ResolvedResource> {
+  const project = ctx.value(ProjectKey);
+  if (project && projectResourceNames(project, resourceType).includes(identifier)) {
+    const deployed = await core.projectManager.resolveDeployedResource(project, {
+      target,
+      resourceType,
+      name: identifier,
+    });
+    return {
+      id: deployed.id,
+      region: deployed.target.region,
+      credentials: deployed.credentialProvider,
+    };
+  }
+  return {
+    id: serviceIdFromArn(identifier),
+    region: regionFromArn(identifier) ?? ctx.require(RegionKey),
   };
 }
 
