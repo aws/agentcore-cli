@@ -101,6 +101,19 @@ export interface Handler {
   children(): Handler[];
 }
 
+export interface HelpExample {
+  description: string;
+  command: string;
+}
+
+export interface ExamplesProvider {
+  examples(): HelpExample[];
+}
+
+export function isExamplesProvider(h: Handler): h is Handler & ExamplesProvider {
+  return typeof (h as Partial<ExamplesProvider>).examples === "function";
+}
+
 type CreateHandlerInput<
   F extends readonly Flag<string, any>[],
   A extends readonly Argument<string, any>[],
@@ -112,6 +125,7 @@ type CreateHandlerInput<
   handle?: HandleFn<F, A>;
   children?: Handler[];
   middlewares?: Middleware[];
+  examples?: HelpExample[];
 };
 
 const noOpHandler = async (_ctx: Context, _flags: any, _args: any): Promise<void> => {};
@@ -124,6 +138,7 @@ class BaseHandler implements Handler {
   _handle: HandleFn<any, any>;
   _children: Handler[];
   _middlewares: Middleware[];
+  _examples: HelpExample[];
 
   constructor(
     input: CreateHandlerInput<readonly Flag<string, any>[], readonly Argument<string, any>[]>,
@@ -135,6 +150,7 @@ class BaseHandler implements Handler {
     this._handle = (input.handle ?? noOpHandler) as HandleFn<any, any>;
     this._children = input.children ?? [];
     this._middlewares = input.middlewares ?? [];
+    this._examples = input.examples ?? [];
   }
 
   name(): string {
@@ -167,6 +183,10 @@ class BaseHandler implements Handler {
 
   middlewares(): Middleware[] {
     return this._middlewares;
+  }
+
+  examples(): HelpExample[] {
+    return this._examples;
   }
 }
 

@@ -20,6 +20,7 @@ export {
   type GlobalFlag,
   type Argument,
   type FlagsOf,
+  type HelpExample,
   createHandler,
   flag,
   globalFlag,
