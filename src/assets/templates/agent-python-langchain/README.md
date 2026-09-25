@@ -32,7 +32,7 @@ Environment variables for local development go in `agentcore/.env.local`
 
 ```bash
 agentcore deploy
-agentcore invoke --payload '{"prompt":"Hello!"}'
+agentcore invoke --runtime {{name}} --payload '{"prompt":"Hello!"}'
 ```
 
 Traces are collected automatically: AgentCore Runtime starts the agent under

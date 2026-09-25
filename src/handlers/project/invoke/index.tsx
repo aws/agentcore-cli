@@ -1,5 +1,5 @@
 import z from "zod";
-import { InputValidationError, ProjectStateError } from "../../../errors";
+import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { withProject } from "../../../middleware";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
@@ -19,7 +19,7 @@ import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
 import { assertMutuallyExclusiveFlags, resolveResource } from "../../utils";
 import { projectResourceNames } from "../selection";
-import { RESOURCE_LABELS, type Project, type ProjectInvokableResource } from "../types";
+import { RESOURCE_LABELS, type ProjectInvokableResource } from "../types";
 import { createInvokeRuntimeHandler, invokeRuntimeFlags } from "../../runtime/invoke";
 import { invokeProjectRuntimeLocally } from "./runtime";
 
@@ -103,31 +103,10 @@ type ResourceSelection = { resourceType: ProjectInvokableResource; identifier: s
 
 const isSet = (value: unknown) => value !== undefined && value !== false;
 
-function flaggedResource(flags: InvokeFlags): ResourceSelection | undefined {
-  assertMutuallyExclusiveFlags(flags, RESOURCE_TYPES);
+function flaggedResource(flags: InvokeFlags, headless: boolean): ResourceSelection | undefined {
+  assertMutuallyExclusiveFlags(flags, RESOURCE_TYPES, { exactlyOne: headless });
   const resourceType = RESOURCE_TYPES.find((type) => flags[type] !== undefined);
   return resourceType && { resourceType, identifier: flags[resourceType]! };
-}
-
-function soleProjectResource(project: Project | undefined): ResourceSelection {
-  if (!project) {
-    throw new ProjectStateError(
-      `No AgentCore project found at ${process.cwd()} or any parent directory. ` +
-        "Run from inside a project, or pass --runtime, --harness, or --gateway with an ID or ARN.",
-    );
-  }
-  const declared = RESOURCE_TYPES.flatMap((resourceType) =>
-    projectResourceNames(project, resourceType).map((identifier) => ({ resourceType, identifier })),
-  );
-  if (declared.length === 1) return declared[0]!;
-  if (declared.length === 0) {
-    throw new InputValidationError(
-      "This project has no Runtimes, harnesses, or Gateways to invoke.",
-    );
-  }
-  throw new InputValidationError(
-    `Choose a resource to invoke: ${declared.map(({ resourceType, identifier }) => `--${resourceType} ${identifier}`).join(", ")}.`,
-  );
 }
 
 export function createProjectInvokeHandler(core: Core, io: AppIO) {
@@ -144,8 +123,7 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
     handle: async (ctx, flags) => {
       const project = ctx.value(ProjectKey);
       const headless = ctx.require(JsonKey) || Object.values(flags).some(isSet);
-      const selection =
-        flaggedResource(flags) ?? (headless ? soleProjectResource(project) : undefined);
+      const selection = flaggedResource(flags, headless);
       if (!selection) {
         await renderTuiAt("/agentcore/invoke", ctx, core, io);
         return;

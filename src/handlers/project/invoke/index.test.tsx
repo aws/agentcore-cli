@@ -218,7 +218,6 @@ describe("invoke", () => {
       `/agentcore/harness/invoke/${HARNESS_ID}?qualifier=prod`,
     ],
     [["--gateway", "tools"], `/agentcore/gateway/invoke/${GATEWAY_ID}`],
-    [[], "/agentcore/invoke"],
   ])("opens the TUI for %j", async (args, path) => {
     const subject = await launches(args, {
       runtimes: [RUNTIME],
@@ -226,9 +225,7 @@ describe("invoke", () => {
       agentCoreGateways: [GATEWAY],
     });
 
-    expect(subject.launches).toEqual([
-      { path, region: path === "/agentcore/invoke" ? "us-east-1" : TARGET.region },
-    ]);
+    expect(subject.launches).toEqual([{ path, region: TARGET.region }]);
   });
 
   test.each([
@@ -238,12 +235,6 @@ describe("invoke", () => {
     const subject = await launches([], resources);
 
     expect(subject.launches.map((launch) => launch.path)).toEqual(["/agentcore/invoke"]);
-  });
-
-  test("a headless invoke selects the sole resource", async () => {
-    const { core } = await run(["--payload", "{}"], { agentCoreGateways: [GATEWAY] });
-
-    expect(core.gateway.calls.some(({ method }) => method === "invokeGateway")).toBe(true);
   });
 
   test("resolves the --target deployment target for project names", async () => {
@@ -262,26 +253,19 @@ describe("invoke", () => {
       name: "more than one resource flag",
       args: ["--runtime", "checkout", "--harness", "support"],
       resources: { runtimes: [RUNTIME], harnesses: [HARNESS] },
-      message: "--runtime, --harness are mutually exclusive",
+      message: "specify exactly one of --runtime, --harness, --gateway",
     },
     {
-      name: "a bare --json invoke with several resources",
-      args: ["--json"],
-      resources: { runtimes: [RUNTIME], harnesses: [HARNESS] },
-      message: "Choose a resource to invoke: --runtime checkout, --harness support.",
-    },
-    {
-      name: "a bare --json invoke in an empty project",
-      args: ["--json"],
-      resources: {},
-      message: "This project has no Runtimes, harnesses, or Gateways to invoke.",
+      name: "a headless invoke with no resource flag, even when the project has one resource",
+      args: ["--payload", "{}"],
+      resources: { runtimes: [RUNTIME] },
+      message: "specify exactly one of --runtime, --harness, --gateway",
     },
     {
       name: "a bare --json invoke outside a project",
       args: ["--json"],
       resources: undefined,
-      message:
-        "or any parent directory. Run from inside a project, or pass --runtime, --harness, or --gateway with an ID or ARN.",
+      message: "specify exactly one of --runtime, --harness, --gateway",
     },
     {
       name: "a flag that belongs to another resource type",
@@ -328,7 +312,7 @@ describe("invoke", () => {
     }));
     servers.push(server);
     const subject = await routedCommand(
-      ["--local", "--port", String(server.port), "--payload", "-"],
+      ["--runtime", RUNTIME.name, "--local", "--port", String(server.port), "--payload", "-"],
       { runtimes: [RUNTIME] },
       { isTTY: true },
     );
@@ -356,7 +340,7 @@ describe("invoke", () => {
     expect(subject.io.stdout()).toBe("firstsecond");
   });
 
-  test("auto-selects the sole local Runtime without resolving deployed resources", async () => {
+  test("invokes a local Runtime without resolving deployed resources", async () => {
     let request:
       | {
           method: string;
@@ -388,7 +372,7 @@ describe("invoke", () => {
     const payload = '{"prompt":"hi"}';
 
     const { core, io, resolved } = await run(
-      ["--local", "--port", String(server.port), "--payload", payload],
+      ["--runtime", RUNTIME.name, "--local", "--port", String(server.port), "--payload", payload],
       { runtimes: [RUNTIME] },
       { writeTargets: false },
     );
@@ -612,7 +596,7 @@ describe("invoke", () => {
   test.each([
     {
       name: "requires --local with --port",
-      args: ["--port", "8081", "--payload", "{}"],
+      args: ["--runtime", RUNTIME.name, "--port", "8081", "--payload", "{}"],
       message: "--port requires --local",
     },
     {

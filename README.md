@@ -32,7 +32,7 @@ Create a managed Harness project, deploy it, and send a prompt:
 agentcore create --name MyAssistant
 cd MyAssistant
 agentcore deploy
-agentcore invoke --prompt "Hey, what can you do for me?"
+agentcore invoke --harness MyAssistant --prompt "Hey, what can you do for me?"
 ```
 
 To start with code you own instead, create a Runtime project from a template.
