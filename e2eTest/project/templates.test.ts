@@ -14,49 +14,52 @@ type RuntimeTemplateTestCase = {
   protocol: "HTTP" | "MCP" | "A2A" | "AGUI";
   payload: Record<string, unknown>;
   invokeFlags?: string[];
+  skip?: boolean;
 };
 
 const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agent_python_minimal",
     template: "agent-python-minimal",
-    protocol: "HTTP",
+    protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_python_strands",
     template: "agent-python-strands",
-    protocol: "HTTP",
+    protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "py_strands_container",
     template: "agent-python-strands-container",
-    protocol: "HTTP",
+    protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
+    // Note: GH actions runners do not come with docker installed and does not allow nested virtualization (https://docs.github.com/en/actions/reference/runners/github-hosted-runners#limitations-for-arm64-macos-runners)
+    skip: process.platform === "darwin",
   },
   {
     name: "agent_python_langchain",
     template: "agent-python-langchain",
-    protocol: "HTTP",
+    protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_ts_strands",
     template: "agent-typescript-strands",
-    protocol: "HTTP",
+    protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_ts_vercel",
     template: "agent-typescript-vercel",
-    protocol: "HTTP",
+    protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "mcp_python_fastmcp",
     template: "mcp-python-fastmcp",
-    protocol: "MCP",
+    protocol: "MCP" as const,
     payload: {
       jsonrpc: "2.0",
       id: 1,
@@ -79,7 +82,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "a2a_python_strands",
     template: "a2a-python-strands",
-    protocol: "A2A",
+    protocol: "A2A" as const,
     payload: {
       jsonrpc: "2.0",
       id: "agentcore-e2e",
@@ -96,7 +99,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agui_python_strands",
     template: "agui-python-strands",
-    protocol: "AGUI",
+    protocol: "AGUI" as const,
     payload: {
       threadId: "agentcore-e2e",
       runId: "agentcore-e2e",
@@ -107,7 +110,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
       forwardedProps: {},
     },
   },
-] as const;
+].filter((r) => !r.skip);
 
 const ProjectCreatedSchema = z.object({
   project: z.object({ path: z.string() }),
