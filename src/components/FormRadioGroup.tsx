@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { darkTheme } from "./ui/_core.js";
+import { darkTheme, glyphs } from "./ui/_core.js";
 
 const theme = darkTheme;
 
@@ -12,10 +12,10 @@ export interface FormRadioGroupProps {
   name?: string;
   helpText: string;
   options: FormRadioOption[];
-  // highlighted/hovered row
-  focusedIndex: number;
-  // row that user selects / hits ENTER on
-  selectedIndex?: number;
+  // Row currently owned by the keyboard. Omit while a revealed input has focus.
+  focusedIndex?: number;
+  // Current radio value. It remains marked while focus moves into a revealed input.
+  selectedIndex: number;
 }
 
 // FormRadioGroup renders a column of radio rows. It is fully controlled: the
@@ -48,18 +48,25 @@ export function FormRadioGroup({
         {options.map((option, i) => {
           const focused = i === focusedIndex;
           const selected = i === selectedIndex;
-          // A selected row uses the selection color; a hovered (focused) row
-          // uses the brighter focus color; everything else is neutral.
-          const accentColor = selected
-            ? theme.colors.selection
-            : focused
-              ? theme.colors.focus
+          // Focus and selection are separate states: the pointer follows the
+          // keyboard, while the radio marker preserves the chosen value.
+          const accentColor = focused
+            ? theme.colors.focus
+            : selected
+              ? theme.colors.selection
               : undefined;
           const highlighted = focused || selected;
           return (
             <Box key={option.label} flexDirection="row">
               <Box width={2} flexShrink={0}>
-                <Text color={accentColor ?? theme.colors.muted}>{highlighted ? "●" : "○"}</Text>
+                <Text color={focused ? theme.colors.focus : theme.colors.muted}>
+                  {focused ? `${glyphs.pointer} ` : "  "}
+                </Text>
+              </Box>
+              <Box width={2} flexShrink={0}>
+                <Text color={selected ? theme.colors.selection : theme.colors.muted}>
+                  {selected ? "●" : "○"}
+                </Text>
               </Box>
               <Box width={columnWidth} flexShrink={0}>
                 <Text bold={highlighted} color={accentColor ?? theme.colors.text}>

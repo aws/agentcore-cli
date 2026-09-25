@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import z from "zod";
+import { FormRadioGroup, type FormRadioOption } from "../../../../components/FormRadioGroup";
 import { FormTextInput } from "../../../../components/FormTextInput";
 import { darkTheme } from "../../../../components/ui/_core.js";
 import {
@@ -226,22 +227,13 @@ function AddGatewayWizard({
       </Step>
 
       <Step stepKey="authorizer" prompt="how should inbound callers authenticate?">
-        <ChoiceField
-          choices={AUTHORIZER_CHOICES}
-          value={values.authorizerType}
-          onChange={(authorizerType) => set({ authorizerType })}
+        <AuthorizerField
+          authorizerType={values.authorizerType}
+          discoveryUrl={values.discoveryUrl}
+          allowedClients={values.allowedClients}
+          onChange={(update) => set(update)}
         />
       </Step>
-
-      {values.authorizerType === "CUSTOM_JWT" && (
-        <Step stepKey="jwt" title="JWT" prompt="configure the OIDC issuer">
-          <CustomJwtField
-            discoveryUrl={values.discoveryUrl}
-            allowedClients={values.allowedClients}
-            onChange={(update) => set(update)}
-          />
-        </Step>
-      )}
 
       <Step stepKey="search" prompt="enable semantic search over this Gateway's tools?">
         <ChoiceField
@@ -267,38 +259,62 @@ function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
   return path === "" ? issue.message : `${path}: ${issue.message}`;
 }
 
-function CustomJwtField({
+function AuthorizerField({
+  authorizerType,
   discoveryUrl,
   allowedClients,
   onChange,
 }: {
+  authorizerType: GatewayAuthorizerType;
   discoveryUrl: string;
   allowedClients: string;
   onChange: (
-    update: Pick<GatewayFormValues, "discoveryUrl"> | Pick<GatewayFormValues, "allowedClients">,
+    update: Partial<Pick<GatewayFormValues, "authorizerType" | "discoveryUrl" | "allowedClients">>,
   ) => void;
 }) {
   const { advance, back } = useWizard();
-  const [focused, setFocused] = useState<"discovery" | "clients">("discovery");
+  const index = AUTHORIZER_CHOICES.findIndex((choice) => choice.value === authorizerType);
+  const [focusedField, setFocusedField] = useState<number | null>(null);
   const [error, setError] = useState<string>();
 
   useKeyHints([
-    { key: "↑↓", label: "switch field" },
+    { key: "↑↓", label: "navigate" },
     { key: "enter", label: "continue" },
   ]);
 
   useInput((_input, key) => {
+    if (focusedField === null) {
+      if (key.escape) {
+        back();
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        const nextIndex = key.upArrow
+          ? Math.max(0, index - 1)
+          : Math.min(AUTHORIZER_CHOICES.length - 1, index + 1);
+        onChange({ authorizerType: AUTHORIZER_CHOICES[nextIndex]!.value });
+        setError(undefined);
+        return;
+      }
+      if (key.return) {
+        if (authorizerType === "CUSTOM_JWT") setFocusedField(0);
+        else advance();
+      }
+      return;
+    }
+
     if (key.escape) {
-      back();
+      setFocusedField(null);
+      setError(undefined);
       return;
     }
     if (key.upArrow) {
-      setFocused("discovery");
+      setFocusedField(focusedField === 0 ? null : focusedField - 1);
       setError(undefined);
       return;
     }
     if (key.downArrow) {
-      setFocused("clients");
+      setFocusedField(Math.min(1, focusedField + 1));
       setError(undefined);
       return;
     }
@@ -306,12 +322,12 @@ function CustomJwtField({
 
     const discoveryIssue = firstIssue(OidcDiscoveryUrlSchema, discoveryUrl.trim());
     if (discoveryIssue !== undefined) {
-      setFocused("discovery");
+      setFocusedField(0);
       setError(discoveryIssue);
       return;
     }
-    if (focused === "discovery") {
-      setFocused("clients");
+    if (focusedField === 0) {
+      setFocusedField(1);
       setError(undefined);
       return;
     }
@@ -340,32 +356,47 @@ function CustomJwtField({
     advance();
   });
 
+  const options: FormRadioOption[] = AUTHORIZER_CHOICES.map(({ label, description }) => ({
+    label,
+    description: description ?? "",
+  }));
+
   return (
     <Box flexDirection="column">
-      <FormTextInput
-        name="discovery URL"
-        helpText="HTTPS URL ending in /.well-known/openid-configuration"
-        placeholder="https://idp.example.com/.well-known/openid-configuration"
-        errorText=""
-        value={discoveryUrl}
-        onChange={(value) => {
-          onChange({ discoveryUrl: value });
-          setError(undefined);
-        }}
-        focused={focused === "discovery"}
+      <FormRadioGroup
+        helpText=""
+        options={options}
+        focusedIndex={focusedField === null ? index : undefined}
+        selectedIndex={index}
       />
-      <FormTextInput
-        name="allowed clients"
-        helpText="one or more OAuth client IDs, separated by commas"
-        placeholder="agentcore-cli, internal-tools"
-        errorText=""
-        value={allowedClients}
-        onChange={(value) => {
-          onChange({ allowedClients: value });
-          setError(undefined);
-        }}
-        focused={focused === "clients"}
-      />
+      {focusedField !== null && authorizerType === "CUSTOM_JWT" && (
+        <>
+          <FormTextInput
+            name="discovery URL"
+            helpText="HTTPS URL ending in /.well-known/openid-configuration"
+            placeholder="https://idp.example.com/.well-known/openid-configuration"
+            errorText=""
+            value={discoveryUrl}
+            onChange={(value) => {
+              onChange({ discoveryUrl: value });
+              setError(undefined);
+            }}
+            focused={focusedField === 0}
+          />
+          <FormTextInput
+            name="allowed clients"
+            helpText="one or more OAuth client IDs, separated by commas"
+            placeholder="agentcore-cli, internal-tools"
+            errorText=""
+            value={allowedClients}
+            onChange={(value) => {
+              onChange({ allowedClients: value });
+              setError(undefined);
+            }}
+            focused={focusedField === 1}
+          />
+        </>
+      )}
       {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
     </Box>
   );
