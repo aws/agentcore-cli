@@ -22,7 +22,7 @@ function priority({ key, label }: KeyHintItem): number {
   if (key === "esc" || label === "back") return 0;
   if (key === "enter" || key.includes(glyphs.enter) || label === "select") return 1;
   if (key.includes("↑") || key.includes("↓")) return 2;
-  if (key.includes("←") || key.includes("→") || key === "/" || key === "ctrl+c") return 4;
+  if (key.includes("←") || key.includes("→") || key === "/") return 4;
   return 3;
 }
 
@@ -47,13 +47,23 @@ function fitKeys(keys: KeyHintItem[], columns: number): KeyHintItem[] {
   return keys.filter((_, index) => selected.has(index));
 }
 
+// ctrl+c quits on every screen, so KeyHint always shows it, pinned right with its width reserved.
+const QUIT: KeyHintItem = { key: "ctrl+c", label: "quit" };
+
 export const KeyHint: React.FC<KeyHintProps> = ({ keys, theme = darkTheme }) => {
   const { columns } = useWindowSize();
+  const screenKeys = keys.filter((k) => k.key !== QUIT.key);
+  const shown = [...fitKeys(screenKeys, columns - itemWidth(QUIT) - ITEM_GAP), QUIT];
 
   return (
     <Box width={columns} height={1} overflow="hidden" gap={ITEM_GAP}>
-      {fitKeys(keys, columns).map(({ key, label }) => (
-        <Box key={key} flexShrink={0} gap={1}>
+      {shown.map(({ key, label }) => (
+        <Box
+          key={key}
+          flexShrink={0}
+          gap={1}
+          {...(key === QUIT.key && { flexGrow: 1, justifyContent: "flex-end" })}
+        >
           <Text bold dimColor>
             [{key}]
           </Text>

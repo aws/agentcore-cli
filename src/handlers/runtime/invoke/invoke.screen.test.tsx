@@ -343,15 +343,24 @@ describe("Runtime invoke JSON console", () => {
     });
 
     await waitForText(screen.lastFrame, "Ready");
-    await screen.resize(80, 24);
-    expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
+    await screen.resize(100, 24);
     expect(screen.lastFrame()).toContain(
       "[enter] send  [⇧↵] newline  [ctrl+t] target  [↑↓] scroll  [esc] back",
     );
 
+    // ctrl+c quit is pinned right with its width reserved, so at 80 columns the
+    // lower-priority ctrl+t hint is what gets dropped.
+    await screen.resize(80, 24);
+    expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
+    expect(screen.lastFrame()).toMatch(
+      /\[enter\] send {2}\[⇧↵\] newline {2}\[↑↓\] scroll {2}\[esc\] back +\[ctrl\+c\] quit$/,
+    );
+
     await screen.resize(60, 24);
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
-    expect(screen.lastFrame()).toContain("[enter] send  [⇧↵] newline  [↑↓] scroll  [esc] back");
+    expect(screen.lastFrame()).toMatch(
+      /\[enter\] send {2}\[⇧↵\] newline {2}\[esc\] back +\[ctrl\+c\] quit$/,
+    );
   });
 
   test("keeps the next JSON draft while the current response streams", async () => {

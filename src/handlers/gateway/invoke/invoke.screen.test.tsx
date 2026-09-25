@@ -734,9 +734,14 @@ describe("Gateway invoke JSON console", () => {
     const screen = renderImperativeScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
+    await screen.resize(100, 24);
+    expect(screen.lastFrame()).toContain("[ctrl+p] path");
+
+    // ctrl+c quit is pinned right with its width reserved, so at 80 columns the
+    // lower-priority ctrl+p hint is what gets dropped.
     await screen.resize(80, 24);
     expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
-    expect(screen.lastFrame()).toContain("[ctrl+p] path");
+    expect(screen.lastFrame()).toMatch(/\[esc\] back +\[ctrl\+c\] quit$/);
 
     await screen.resize(60, 24);
     expect(screen.lastFrame()).toContain("[enter] send");
