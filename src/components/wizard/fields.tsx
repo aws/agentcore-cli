@@ -152,6 +152,7 @@ export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFi
         description: choice.description ?? "",
       }))}
       focusedIndex={index}
+      selectedIndex={index}
     />
   );
 }

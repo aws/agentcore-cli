@@ -127,8 +127,8 @@ function MemoryRecordScopeScreen({ memoryId }: MemoryRecordScopeScreenProps) {
           name="scope type"
           helpText="choose how the service should match record namespaces"
           options={scopeOptions}
-          focusedIndex={focusedIndex}
-          selectedIndex={editing ? focusedIndex : undefined}
+          focusedIndex={editing ? undefined : focusedIndex}
+          selectedIndex={focusedIndex}
         />
         {editing && (
           <FormTextInput

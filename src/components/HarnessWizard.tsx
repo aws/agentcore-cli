@@ -761,8 +761,8 @@ function ModelStep({
         name="choose a model"
         helpText="the provider and model that will power the harness"
         options={rows}
-        focusedIndex={index}
-        selectedIndex={focusedField !== null ? index : undefined}
+        focusedIndex={focusedField === null ? index : undefined}
+        selectedIndex={index}
       />
       {focusedField !== null &&
         provider.fields.map((field, i) => (
@@ -869,8 +869,8 @@ function MemoryStep({
         name="choose a memory configuration"
         helpText="how should the harness remember conversations?"
         options={MEMORY_OPTIONS}
-        focusedIndex={index}
-        selectedIndex={editing ? index : undefined}
+        focusedIndex={editing ? undefined : index}
+        selectedIndex={index}
       />
       {editing && value.kind === "byo" && (
         <FormTextInput
