@@ -8,22 +8,13 @@ import { createGetGatewayTargetHandler } from "./get";
 import { createListGatewayTargetsHandler } from "./list";
 import { createUpdateGatewayTargetHandler } from "./update";
 
-export function createGatewayTargetHandler(
-  core: Core,
-  io: AppIO,
-  imperativeMutationCommands = false,
-): Router {
-  const router = new Router("target", "manage Targets for an AgentCore Gateway")
+export function createGatewayTargetHandler(core: Core, io: AppIO): Router {
+  return new Router("target", "manage Targets for an AgentCore Gateway")
     .default(renderTui(core, io))
-    .supportedTuiCommands("get", "list");
-  if (imperativeMutationCommands) {
-    router
-      .handler(createCreateGatewayTargetHandler(core, io))
-      .handler(createUpdateGatewayTargetHandler(core, io));
-  }
-  router
+    .supportedTuiCommands("get", "list")
+    .handler(createCreateGatewayTargetHandler(core, io))
+    .handler(createUpdateGatewayTargetHandler(core, io))
     .handler(createGetGatewayTargetHandler(core))
-    .handler(createListGatewayTargetsHandler(core));
-  if (imperativeMutationCommands) router.handler(createDeleteGatewayTargetHandler(core));
-  return router;
+    .handler(createListGatewayTargetsHandler(core))
+    .handler(createDeleteGatewayTargetHandler(core));
 }

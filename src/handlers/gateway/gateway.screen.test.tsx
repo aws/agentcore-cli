@@ -116,8 +116,8 @@ describe("Gateway menu and list", () => {
 
     await waitForText(screen.lastFrame, "manage AgentCore Gateways");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["create", "get", "list", "invoke", "target", "connector", "rule", "policy"],
-      cliOnly: [],
+      screens: ["get", "list", "invoke", "target", "connector", "rule", "policy"],
+      cliOnly: ["create", "update", "delete"],
     });
     expect(screen.core.gateway.calls).toEqual([]);
   });
@@ -258,7 +258,7 @@ describe("Gateway Target flow", () => {
     await waitForText(screen.lastFrame, "manage Targets for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: [],
+      cliOnly: ["create", "update", "delete"],
     });
     expect(screen.core.gateway.calls).toEqual([]);
   });
@@ -361,7 +361,7 @@ describe("Gateway Connector flow", () => {
     await waitForText(screen.lastFrame, "manage connectors configured for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: [],
+      cliOnly: ["create", "update", "delete"],
     });
     expect(screen.core.gateway.calls).toEqual([]);
   });
@@ -447,7 +447,7 @@ describe("Gateway Rule flow", () => {
     await waitForText(screen.lastFrame, "manage Rules for an AgentCore Gateway");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: [],
+      cliOnly: ["create", "update", "delete"],
     });
     expect(screen.core.gateway.calls).toEqual([]);
   });

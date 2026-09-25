@@ -98,7 +98,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
     root.handler(createIdentityHandler(core, io));
     root.handler(createRuntimeHandler(core, io));
     root.handler(createMemoryHandler(core, io));
-    root.handler(createGatewayHandler(core, io, globalConfig));
+    root.handler(createGatewayHandler(core, io));
     root.handler(createPaymentHandler(core, io));
   }
   root.handler(createEvalHandler(core, io));

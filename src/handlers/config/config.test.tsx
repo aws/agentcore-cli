@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createRootHandler } from "../index";
 import { createSilentLogger, TestCoreClient, testIO } from "../../testing";
@@ -62,13 +62,10 @@ describe("config", () => {
     expect(JSON.parse(await run(["imperative-commands"]))).toBe(false);
   });
 
-  test("persists the root gate independently of the existing Gateway gate", async () => {
-    await run(["imperative-mutation-commands", "true"]);
-    expect(JSON.parse(await run(["imperative-commands"]))).toBe(false);
+  test("persists the imperative flag across config accessor instances", async () => {
     for (const enabled of [true, false]) {
       expect(JSON.parse(await run(["imperative-commands", String(enabled)]))).toBe(enabled);
       expect(JSON.parse(await run(["imperative-commands"]))).toBe(enabled);
-      expect(JSON.parse(await run(["imperative-mutation-commands"]))).toBe(true);
     }
   });
 
@@ -86,35 +83,44 @@ describe("config", () => {
     await expect(run([])).rejects.toThrow("Failed to deserialize");
   });
 
-  test("imperative mutations default to false for existing and missing config files", async () => {
-    expect(JSON.parse(await run(["imperative-mutation-commands"]))).toBe(false);
-    await rm(configPath);
-    expect(JSON.parse(await run(["imperative-mutation-commands"]))).toBe(false);
-  });
+  test.each([false, true, "true"])(
+    "ignores a retired mutation flag value of %s in an existing config",
+    async (legacyValue) => {
+      for (const enabled of [false, true]) {
+        await writeFile(
+          configPath,
+          JSON.stringify({
+            ...validConfigOverrides,
+            "imperative-mutation-commands": legacyValue,
+            "imperative-commands": enabled,
+          }),
+        );
+        const config = JSON.parse(await run([]));
+        expect(config["imperative-commands"]).toBe(enabled);
+        expect(config).not.toHaveProperty("imperative-mutation-commands");
+        expect(config).toMatchObject(validConfigOverrides);
+      }
+    },
+  );
 
-  test("persists the mutation flag across config accessor instances", async () => {
-    for (const enabled of [true, false]) {
-      expect(JSON.parse(await run(["imperative-mutation-commands", String(enabled)]))).toBe(
-        enabled,
-      );
-      expect(JSON.parse(await run(["imperative-mutation-commands"]))).toBe(enabled);
-    }
-  });
-
-  test("rejects an invalid mutation flag without changing the saved value", async () => {
-    await run(["imperative-mutation-commands", "true"]);
-    await expect(run(["imperative-mutation-commands", "banana"])).rejects.toThrow(
+  test("rejects reading or setting the retired mutation flag", async () => {
+    await expect(run(["imperative-mutation-commands"])).rejects.toThrow(InputValidationError);
+    await expect(run(["imperative-mutation-commands", "true"])).rejects.toThrow(
       InputValidationError,
     );
-    expect(JSON.parse(await run(["imperative-mutation-commands"]))).toBe(true);
+    expect(JSON.parse(await run(["imperative-commands"]))).toBe(false);
   });
 
-  test("rejects a non-boolean mutation flag read from disk", async () => {
+  test("drops the retired flag when saving another setting", async () => {
     await writeFile(
       configPath,
-      JSON.stringify({ ...validConfigOverrides, "imperative-mutation-commands": "true" }),
+      JSON.stringify({ ...validConfigOverrides, "imperative-mutation-commands": true }),
     );
-    await expect(run([])).rejects.toThrow("Failed to deserialize");
+    await run(["imperative-commands", "true"]);
+    const saved = JSON.parse(await readFile(configPath, "utf8"));
+    expect(saved).not.toHaveProperty("imperative-mutation-commands");
+    expect(saved["imperative-commands"]).toBe(true);
+    expect(JSON.parse(await run(["telemetry.endpoint"]))).toBe("https://example.com");
   });
 
   test("prints a nested object when a branch key is passed", async () => {

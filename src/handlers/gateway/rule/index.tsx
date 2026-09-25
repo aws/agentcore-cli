@@ -8,20 +8,13 @@ import { createGetGatewayRuleHandler } from "./get";
 import { createListGatewayRulesHandler } from "./list";
 import { createUpdateGatewayRuleHandler } from "./update";
 
-export function createGatewayRuleHandler(
-  core: Core,
-  io: AppIO,
-  imperativeMutationCommands = false,
-): Router {
-  const router = new Router("rule", "manage Rules for an AgentCore Gateway")
+export function createGatewayRuleHandler(core: Core, io: AppIO): Router {
+  return new Router("rule", "manage Rules for an AgentCore Gateway")
     .default(renderTui(core, io))
-    .supportedTuiCommands("get", "list");
-  if (imperativeMutationCommands) {
-    router
-      .handler(createCreateGatewayRuleHandler(core, io))
-      .handler(createUpdateGatewayRuleHandler(core, io));
-  }
-  router.handler(createGetGatewayRuleHandler(core)).handler(createListGatewayRulesHandler(core));
-  if (imperativeMutationCommands) router.handler(createDeleteGatewayRuleHandler(core));
-  return router;
+    .supportedTuiCommands("get", "list")
+    .handler(createCreateGatewayRuleHandler(core, io))
+    .handler(createUpdateGatewayRuleHandler(core, io))
+    .handler(createGetGatewayRuleHandler(core))
+    .handler(createListGatewayRulesHandler(core))
+    .handler(createDeleteGatewayRuleHandler(core));
 }

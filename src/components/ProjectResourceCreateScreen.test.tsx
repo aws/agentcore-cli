@@ -11,8 +11,6 @@ import type { ProjectCreateResource } from "./ProjectResourceCreateScreen";
 
 afterEach(cleanupScreens);
 
-const MUTATION_CONFIG = { ...IMPERATIVE_GLOBAL_CONFIG, "imperative-mutation-commands": true };
-
 const RESOURCES = [
   {
     resource: "runtime",
@@ -25,12 +23,6 @@ const RESOURCES = [
     label: "Memory",
     parentDescription: "inspect AgentCore Memories",
     addCommand: "agentcore add memory",
-  },
-  {
-    resource: "gateway",
-    label: "Gateway",
-    parentDescription: "manage AgentCore Gateways",
-    addCommand: "agentcore add gateway --name MyGateway",
   },
 ] as const satisfies {
   resource: ProjectCreateResource;
@@ -57,6 +49,7 @@ describe("project resource creation guidance", () => {
       expect(frame).toContain(addCommand);
       expect(frame).toContain("agentcore deploy");
       expect(frame).not.toContain("┌");
+      expect(frame).not.toContain("this command runs from the command line");
 
       await r.press("escape");
       await waitForText(r.lastFrame, parentDescription);
@@ -71,26 +64,4 @@ describe("project resource creation guidance", () => {
       expect(command?.commands.some((candidate) => candidate.name() === "create")).toBe(false);
     }
   });
-
-  test.each(RESOURCES.filter(({ resource }) => resource !== "gateway"))(
-    "$resource keeps project guidance when Gateway mutations are enabled",
-    async ({ resource, label, addCommand }) => {
-      const r = renderImperativeScreen(`/agentcore/${resource}`, { globalConfig: MUTATION_CONFIG });
-      await waitForText(r.lastFrame, "type to choose a command");
-      const entries = menuEntries(r.lastFrame()!);
-      expect(entries.screens[0]).toBe("create");
-      expect(entries.cliOnly).not.toContain("create");
-
-      await r.press("return");
-      await waitForText(r.lastFrame, `Create an AgentCore ${label}`);
-      expect(r.lastFrame()).toContain(addCommand);
-      expect(r.lastFrame()).not.toContain("this command runs from the command line");
-
-      const command = compiledRootCommand(undefined, MUTATION_CONFIG).commands.find(
-        (candidate) => candidate.name() === resource,
-      );
-      expect(command?.commands.some((candidate) => candidate.name() === "create")).toBe(false);
-      r.unmount();
-    },
-  );
 });
