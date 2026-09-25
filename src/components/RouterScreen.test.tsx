@@ -170,4 +170,16 @@ describe("navigation", () => {
     expect(r.lastFrame()).toContain("❯ create");
     r.unmount();
   });
+
+  test("footer shows the esc hint only when there is a parent menu", async () => {
+    const root = renderScreen("/agentcore");
+    await waitForText(root.lastFrame, "❯ create");
+    expect(root.lastFrame()).not.toContain("[esc]");
+    root.unmount();
+
+    const nested = renderImperativeScreen("/agentcore/harness");
+    await waitForText(nested.lastFrame, "agentcore → harness");
+    expect(nested.lastFrame()).toContain("[esc] back");
+    nested.unmount();
+  });
 });
