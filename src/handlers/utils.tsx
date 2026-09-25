@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect } from "react";
 import type { Context } from "../router";
-import type z from "zod";
+import z from "zod";
 import type { CoreOptions } from "../core/types";
 import type { AppIO } from "../io";
 import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
@@ -69,7 +69,7 @@ export function parseJsonFlagWithSchema<T>(
   const parsed = parseJsonFlag<unknown>(name, raw);
   if (parsed === undefined) return undefined;
 
-  const result = schema.safeParse(parsed);
+  const result = strictened(schema).safeParse(parsed);
   if (!result.success) {
     throw new InputValidationError(
       `Invalid value for option '--${name}': ${formatZodError(result.error)}`,
@@ -77,6 +77,11 @@ export function parseJsonFlagWithSchema<T>(
     );
   }
   return result.data;
+}
+
+// Top level only: a nested typo (model.bedrockModelConfig.modelIdd) still slips through.
+function strictened<T>(schema: z.ZodType<T>): z.ZodType<T> {
+  return schema instanceof z.ZodObject ? (schema.strict() as unknown as z.ZodType<T>) : schema;
 }
 
 export function parseJsonObjectFlag<T extends object>(name: string, raw: string): T;
