@@ -1,7 +1,7 @@
 import { Option } from "commander";
 import { InputValidationError } from "../errors";
 import type { Context } from "./context";
-import type { Flag, GlobalFlag } from "./handler";
+import type { Flag, GlobalFlag, HelpExample } from "./handler";
 import { coerce, formatZodError, inspect } from "./schema";
 
 // toOption builds a Commander Option from a flag's schema. A boolean that defaults
@@ -52,6 +52,12 @@ export function formatParameterDetails(flags: Flag[]): string | undefined {
   });
 
   return `\nParameter details:\n\n${sections.join("\n\n")}\n`;
+}
+
+export function formatExamples(examples: HelpExample[]): string | undefined {
+  if (examples.length === 0) return undefined;
+  const sections = examples.map(({ description, command }) => `  ${description}\n  $ ${command}`);
+  return `\nExamples:\n\n${sections.join("\n\n")}\n`;
 }
 
 // attributeName mirrors how Commander camelCases an option name into the key it

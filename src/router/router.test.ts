@@ -810,6 +810,27 @@ test("commands without long-form flag help have no Parameter details section", a
 
   expect(out).toContain("--id");
   expect(out).not.toContain("Parameter details:");
+  expect(out).not.toContain("Examples:");
+});
+
+test("handlers with examples render an Examples section", async () => {
+  const get = createHandler({
+    name: "get",
+    description: "",
+    examples: [
+      { description: "Get a thing", command: "app get --id a" },
+      { description: "Get it as JSON", command: "app get --id a --json" },
+    ],
+    handle: async () => {},
+  });
+  const root = new Router("app");
+  root.handler(get);
+
+  const out = await helpOutput(root, ["app", "get", "--help"]);
+
+  expect(out).toContain(
+    "Examples:\n\n  Get a thing\n  $ app get --id a\n\n  Get it as JSON\n  $ app get --id a --json\n",
+  );
 });
 
 // --- telemetry: command path recording -------------------------------------

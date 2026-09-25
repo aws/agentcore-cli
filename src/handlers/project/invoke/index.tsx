@@ -120,6 +120,27 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
     description: "invoke a Runtime, harness, or Gateway",
     flags: invokeFlags,
     middlewares: [withProject({ projectManager: core.projectManager, optional: true })],
+    examples: [
+      { description: "Choose a project resource to invoke", command: "agentcore invoke" },
+      {
+        description: "Send a payload to a project Runtime",
+        command: `agentcore invoke --runtime checkout --payload '{"prompt":"Hello"}'`,
+      },
+      {
+        description: "Send a prompt to a harness by ID",
+        command: `agentcore invoke --harness support-AbCdEf1234 --prompt "Hello"`,
+      },
+      {
+        description: "List the tools on a Gateway by ARN",
+        command:
+          "agentcore invoke --gateway arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/tools-AbCdEf1234 " +
+          `--path /mcp --payload '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`,
+      },
+      {
+        description: "Invoke a Runtime on the local development server",
+        command: `agentcore invoke --runtime checkout --local --payload '{"prompt":"Hello"}'`,
+      },
+    ],
     handle: async (ctx, flags) => {
       const project = ctx.value(ProjectKey);
       const headless = ctx.require(JsonKey) || Object.values(flags).some(isSet);
