@@ -215,7 +215,7 @@ function AddGatewayWizard({
       <Step stepKey="name" prompt="what should this Gateway be called?">
         <TextField
           label="Gateway name"
-          help="letters, digits, hyphens and underscores; the deployed <project>-<target>-<name> must fit 100 characters"
+          help="letters, digits and hyphens; the deployed <project>-<target>-<name> must fit 100 characters"
           placeholder="tools"
           value={values.name}
           onChange={(name) => set({ name })}
@@ -313,6 +313,11 @@ function CustomJwtField({
     if (focused === "discovery") {
       setFocused("clients");
       setError(undefined);
+      return;
+    }
+
+    if (splitCommaList(allowedClients).length === 0) {
+      setError("At least one OAuth client ID is required");
       return;
     }
 
