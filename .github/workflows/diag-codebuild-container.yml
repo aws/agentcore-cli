@@ -1,0 +1,74 @@
+# TEMPORARY diagnostic — do not merge. Probes container `dev` behaviour on the CodeBuild runner.
+name: diag-codebuild-container
+on:
+  pull_request:
+    branches: [refactor]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "e2e-linux"]'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v6
+      - name: Docker environment
+        run: |
+          set -x
+          docker version
+          docker info 2>/dev/null | grep -i -E "Server Version|Storage Driver|Cgroup|Kernel|Operating System|Security|userland|iptables|bridge|Default Address" || true
+          cat /etc/resolv.conf || true
+          ip -4 addr 2>/dev/null | grep -E "inet " || true
+          id; echo "HOME=$HOME"; ls -la "$HOME/.aws" 2>&1 || true
+      - name: Output streaming test
+        run: timeout 90 docker run --rm public.ecr.aws/docker/library/python:3.12-slim-trixie python -c "print('hello from container', flush=True)"
+      - name: Port publish test
+        run: |
+          set -x
+          docker run -d --name diag-http -p 127.0.0.1:18080:8080 --add-host host.docker.internal:host-gateway public.ecr.aws/docker/library/python:3.12-slim-trixie python -m http.server 8080 --bind 0.0.0.0
+          sleep 5
+          docker ps -a --filter name=diag-http
+          docker logs diag-http 2>&1 | head -5
+          curl -sS -m 5 -o /dev/null -w "curl 127.0.0.1:18080 status=%{http_code}\n" http://127.0.0.1:18080/ || echo "curl failed rc=$?"
+          docker exec diag-http python -c "import urllib.request;print('host.docker.internal reach ->', urllib.request.urlopen('http://host.docker.internal:18080/',timeout=5).status)" || echo "host-gateway reach failed"
+          docker exec diag-http python -c "import socket;print('dns pypi.org ->', socket.gethostbyname('pypi.org'))" || echo "dns failed"
+          docker rm -f diag-http
+      - name: Build and run the strands container template
+        env:
+          AGENTCORE_TELEMETRY_DISABLED: "1"
+        run: |
+          set -x
+          bun install --frozen-lockfile
+          bun run build
+          mkdir -p /tmp/diag && cd /tmp/diag
+          node "$GITHUB_WORKSPACE/dist/index.js" create --name diag --template empty --skip-git --json
+          cd diag
+          node "$GITHUB_WORKSPACE/dist/index.js" add runtime --name c --template agent-python-strands-container --json
+          ls app/c
+          docker build -q -t diag-c app/c
+          docker run -d --name diag-c -p 127.0.0.1:18082:8080 --add-host host.docker.internal:host-gateway \
+            -e PORT=8080 -e LOCAL_DEV=1 -e AWS_REGION=us-east-1 -e AWS_DEFAULT_REGION=us-east-1 \
+            -e AWS_ACCESS_KEY_ID=AKIADIAGNOSTICONLY -e AWS_SECRET_ACCESS_KEY=diagnostic-only \
+            -e OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318 \
+            -e OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://host.docker.internal:4318/v1/traces \
+            -e OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://host.docker.internal:4318/v1/logs \
+            -e OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf -e OTEL_SDK_DISABLED=false \
+            -e OTEL_TRACES_EXPORTER=otlp -e OTEL_LOGS_EXPORTER=otlp -e OTEL_METRICS_EXPORTER=none \
+            -e AGENT_OBSERVABILITY_ENABLED=true -e OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true \
+            -e OTEL_SERVICE_NAME=c diag-c
+          for i in $(seq 1 18); do
+            sleep 5; echo "--- t=$((i*5))s status: $(docker ps -a --filter name=diag-c --format '{{.Status}}')"
+            docker logs --tail 15 diag-c 2>&1
+            if curl -sS -m 3 -o /dev/null -w "curl 127.0.0.1:18082/ping status=%{http_code}\n" http://127.0.0.1:18082/ping; then break; fi
+          done
+          docker top diag-c || true
+          docker exec diag-c sh -c 'grep -E "State|Threads" /proc/1/status; echo "wchan: $(cat /proc/1/wchan)"' || true
+          docker exec diag-c python -c "import socket;s=socket.socket();print('in-container connect 127.0.0.1:8080 ->', s.connect_ex(('127.0.0.1',8080)))" || true
+          docker exec diag-c python -c "import urllib.request;print('in-container /ping ->', urllib.request.urlopen('http://127.0.0.1:8080/ping',timeout=5).read()[:200])" || true
+          docker rm -f diag-c
