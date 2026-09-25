@@ -6,6 +6,14 @@ import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import { HarnessSpecSchema } from "../../../../projectSchemas/harness";
 
+const CONFIGURATION = "Configuration:";
+const TOOLS_AND_SKILLS = "Tools and skills:";
+const MEMORY_AND_CONTEXT = "Memory and context:";
+const INVOCATION_LIMITS = "Invocation limits:";
+const ENVIRONMENT = "Environment:";
+const FILESYSTEM_STORAGE = "Filesystem storage:";
+const ACCESS_AND_PERMISSIONS = "Access and permissions:";
+
 /** The model a harness runs on when none is configured; `agentcore create`'s
  * harness path shares it so the two entry points cannot drift. */
 export const DEFAULT_HARNESS_MODEL = {
@@ -18,57 +26,113 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
     name: "harness",
     description: "add a harness to the current project",
     flags: [
-      flag("name", "the name of the harness", z.string().optional()),
+      flag("name", "the name of the harness", z.string().optional(), { group: CONFIGURATION }),
+      flag("model", "model configuration (JSON)", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
+      flag("system-prompt", "the agent's system prompt", z.string().optional(), {
+        group: CONFIGURATION,
+      }),
       flag(
-        "execution-role-arn",
-        "IAM role the harness assumes; a default role is created when omitted",
-        z.string().optional(),
+        "tags",
+        "tags as key=value (repeatable) or JSON object",
+        z.array(z.string()).optional(),
+        {
+          group: CONFIGURATION,
+        },
       ),
-      flag("system-prompt", "the agent's system prompt", z.string().optional()),
-      flag("model", "model configuration (JSON)", z.string().optional()),
-      flag("tools", "tools available to the agent (JSON)", z.string().optional()),
-      flag("skills", "skills available to the agent (JSON)", z.string().optional()),
+      flag("tools", "tools available to the agent (JSON)", z.string().optional(), {
+        group: TOOLS_AND_SKILLS,
+      }),
       flag(
         "allowed-tools",
         "tool allowlist patterns (e.g. * or @serverName/toolName)",
         z.array(z.string()).optional(),
+        { group: TOOLS_AND_SKILLS },
       ),
-      flag("memory", "memory configuration (JSON)", z.string().optional()),
-      flag("truncation", "context truncation configuration (JSON)", z.string().optional()),
+      flag("skills", "skills available to the agent (JSON)", z.string().optional(), {
+        group: TOOLS_AND_SKILLS,
+      }),
+      flag("memory", "memory configuration (JSON)", z.string().optional(), {
+        group: MEMORY_AND_CONTEXT,
+      }),
+      flag("truncation", "context truncation configuration (JSON)", z.string().optional(), {
+        group: MEMORY_AND_CONTEXT,
+      }),
+      flag("max-iterations", "max agent loop iterations per invocation", z.number().optional(), {
+        group: INVOCATION_LIMITS,
+      }),
+      flag("max-tokens", "max total output tokens per invocation", z.number().optional(), {
+        group: INVOCATION_LIMITS,
+      }),
+      flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional(), {
+        group: INVOCATION_LIMITS,
+      }),
       flag(
-        "network-mode",
-        "network mode for the harness environment (PUBLIC or VPC)",
+        "container-uri",
+        "ECR container image URI; alternative to --dockerfile",
         z.string().optional(),
+        { group: ENVIRONMENT },
       ),
-      flag("network-config", "VPC network configuration (JSON)", z.string().optional()),
-      flag("lifecycle-config", "lifecycle configuration (JSON)", z.string().optional()),
-      flag("session-storage-path", "mount path for session storage", z.string().optional()),
-      flag("efs-access-points", "EFS access point configurations (JSON)", z.string().optional()),
-      flag("s3-access-points", "S3 access point configurations (JSON)", z.string().optional()),
+      flag(
+        "dockerfile",
+        "path to local Dockerfile to build the harness image; alternative to --container-uri",
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
       flag(
         "environment-variables",
         "environment variables (JSON object of key/value strings)",
         z.string().optional(),
+        { group: ENVIRONMENT },
       ),
-      flag("container-uri", "ECR container image URI", z.string().optional()),
+      flag(
+        "network-mode",
+        "network mode for the harness environment (PUBLIC or VPC)",
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag("network-config", "VPC network configuration (JSON)", z.string().optional(), {
+        group: ENVIRONMENT,
+      }),
+      flag(
+        "lifecycle-config",
+        "session idle timeout and instance lifetime configuration (JSON)",
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag("session-storage-path", "mount path for session storage", z.string().optional(), {
+        group: FILESYSTEM_STORAGE,
+      }),
+      flag(
+        "efs-access-points",
+        "EFS access point configurations (JSON; requires VPC)",
+        z.string().optional(),
+        { group: FILESYSTEM_STORAGE },
+      ),
+      flag(
+        "s3-access-points",
+        "S3 access point configurations (JSON; requires VPC)",
+        z.string().optional(),
+        { group: FILESYSTEM_STORAGE },
+      ),
+      flag(
+        "execution-role-arn",
+        "IAM role the harness assumes; a default role is created when omitted",
+        z.string().optional(),
+        { group: ACCESS_AND_PERMISSIONS },
+      ),
       flag(
         "authorizer-type",
         "inbound authorizer type (AWS_IAM or CUSTOM_JWT)",
         z.string().optional(),
+        { group: ACCESS_AND_PERMISSIONS },
       ),
       flag(
         "authorizer-configuration",
         "inbound authorizer configuration (JSON)",
         z.string().optional(),
-      ),
-      flag("max-iterations", "max agent loop iterations per invocation", z.number().optional()),
-      flag("max-tokens", "max total output tokens per invocation", z.number().optional()),
-      flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
-      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
-      flag(
-        "dockerfile",
-        "path to local dockerfile to use as the container image for the harness",
-        z.string().optional(),
+        { group: ACCESS_AND_PERMISSIONS },
       ),
     ],
     handle: async (ctx, flags) => {
