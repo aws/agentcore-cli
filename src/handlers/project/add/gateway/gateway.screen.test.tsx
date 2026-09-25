@@ -21,6 +21,8 @@ describe("project add gateway wizard", () => {
     const screen = renderScreen("/agentcore/add/gateway");
 
     await waitForText(screen.lastFrame, "what should this Gateway be called?");
+    expect(screen.lastFrame()).toContain("letters, digits and hyphens");
+    expect(screen.lastFrame()).not.toContain("underscores");
     await screen.write("tools");
     await screen.press("return");
 
@@ -118,7 +120,7 @@ describe("project add gateway wizard", () => {
     screen.unmount();
   });
 
-  test("validates both CUSTOM_JWT fields before advancing", async () => {
+  test("validates the CUSTOM_JWT discovery URL before advancing", async () => {
     await inProject();
     const screen = renderScreen("/agentcore/add/gateway");
 
@@ -135,6 +137,28 @@ describe("project add gateway wizard", () => {
     await screen.press("return");
     await waitForText(screen.lastFrame, "OIDC discovery URL must use HTTPS");
 
+    expect(screen.lastFrame()).toContain("configure the OIDC issuer");
+    screen.unmount();
+  });
+
+  test("requires at least one CUSTOM_JWT client before advancing", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/gateway");
+
+    await waitForText(screen.lastFrame, "what should this Gateway be called?");
+    await screen.write("secure");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "configure the OIDC issuer");
+    await screen.write("https://idp.example.com/.well-known/openid-configuration");
+    await screen.press("return");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "At least one OAuth client ID is required");
     expect(screen.lastFrame()).toContain("configure the OIDC issuer");
     screen.unmount();
   });
