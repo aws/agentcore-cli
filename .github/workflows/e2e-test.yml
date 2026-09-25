@@ -43,7 +43,7 @@ jobs:
       is-authorized: ${{ steps.check.outputs.is_authorized }}
     steps:
       - name: Fetch secrets from Secrets Manager
-        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
         with:
           role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
           repo: AUTHORIZED_USERS
@@ -83,9 +83,8 @@ jobs:
           # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html
           - name: Linux
             runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "e2e-linux"]'
-          # TODO: re-enable these once secret fetching (https://github.com/aws/agentcore-devx-devtools/blob/main/.github/actions/fetch-secrets/action.yml) is windows compatible.
-          # - name: Windows
-          #   runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0", "e2e-windows"]'
+          - name: Windows
+            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0", "e2e-windows"]'
 
           # CodeBuild does not support macOS.
           # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
@@ -103,7 +102,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: bun install --frozen-lockfile
       - name: Fetch E2E role from Secrets Manager
-        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
         with:
           role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
           repo: E2E_AWS_ROLE_ARN
