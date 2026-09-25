@@ -1,5 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
-import type { Command } from "commander";
+import { Command, Option } from "commander";
+import stringWidth from "string-width";
 import {
   cleanupScreens,
   compiledRootCommand,
@@ -9,7 +10,7 @@ import {
   IMPERATIVE_GLOBAL_CONFIG,
   waitForText,
 } from "../testing";
-import { isTuiCommandSupported } from "../router";
+import { CommandKey, isTuiCommandSupported } from "../router";
 
 afterEach(cleanupScreens);
 
@@ -178,6 +179,7 @@ describe("option help groups", () => {
 
   test("a grouped command renders one section per heading, in --help order", async () => {
     const r = renderScreen("/agentcore/eval/batch-evaluation/evaluate");
+    await r.resize(220, 200);
 
     await waitForText(r.lastFrame, "this command runs from the command line");
     const frame = r.lastFrame()!;
@@ -192,6 +194,22 @@ describe("option help groups", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(frame).not.toContain(headingLine("other options"));
     expect(frame).not.toContain(headingLine("options"));
+    const command = CLI_ONLY.find(
+      ([path]) => path.join("/") === "agentcore/eval/batch-evaluation/evaluate",
+    )![1];
+    const help = command.createHelp();
+    const descriptionColumns = help
+      .visibleOptions(command)
+      .filter((option) => option.long !== "--help")
+      .map((option) => {
+        const line = frame
+          .split("\n")
+          .find((line) => line.trimStart().startsWith(help.optionTerm(option)))!;
+        const description = help.optionDescription(option);
+        expect(line).toContain(description);
+        return stringWidth(line.slice(0, line.indexOf(description)));
+      });
+    expect(new Set(descriptionColumns).size).toBe(1);
     r.unmount();
   });
 
@@ -203,6 +221,85 @@ describe("option help groups", () => {
     expect(frame).toContain(headingLine("options"));
     expect(frame).not.toContain(headingLine("configuration"));
     expect(frame).not.toContain(headingLine("source filters"));
+    r.unmount();
+  });
+
+  test("arguments and visible option groups stay aligned across resizes", async () => {
+    const root = compiledRootCommand();
+    const longest = new Option("--longest-visible-option <value>", "LASTVALUE").helpGroup("Last:");
+    root.addCommand(
+      new Command("layout-probe")
+        .argument("<input>", "ARGUMENTVALUE")
+        .addOption(new Option("--short <value>", "FIRSTVALUE").helpGroup("First:"))
+        .addOption(longest)
+        .addOption(new Option(`--${"hidden".repeat(20)} <value>`, "HIDDENVALUE").hideHelp()),
+    );
+    const r = renderScreen("/agentcore/layout-probe", {
+      withContext: (ctx) => ctx.withValue(CommandKey, root),
+    });
+
+    for (const width of [140, 60, 101, 140]) {
+      await r.resize(width, 100);
+      await waitForText(r.lastFrame, "LASTVALUE");
+      const frame = r.lastFrame()!;
+      const columns = ["ARGUMENTVALUE", "FIRSTVALUE", "LASTVALUE"].map((value) => {
+        const line = frame.split("\n").find((line) => line.includes(value))!;
+        return stringWidth(line.slice(0, line.indexOf(value)));
+      });
+
+      expect(new Set(columns).size).toBe(1);
+      if (width === 140) expect(columns[0]).toBe(stringWidth(longest.flags) + 5);
+      expect(frame).not.toContain("HIDDENVALUE");
+      expect(frame).not.toContain("--help");
+      expect(frame.split("\n").every((line) => stringWidth(line) <= width)).toBe(true);
+    }
+    r.unmount();
+  });
+
+  test("a scrolled help table remains reachable and clamps when the terminal grows", async () => {
+    const root = compiledRootCommand();
+    const command = new Command("scroll-probe").addOption(
+      new Option("--short <value>", "FIRSTVALUE").helpGroup("First:"),
+    );
+    for (let index = 0; index < 14; index += 1) {
+      command.addOption(
+        new Option(
+          `--field-${index} <value>`,
+          `Field ${index} has a description that wraps in a narrow terminal`,
+        ).helpGroup("More options:"),
+      );
+    }
+    command.addOption(
+      new Option("--longest-option-below-the-fold <value>", "FINALVALUE").helpGroup("Last:"),
+    );
+    root.addCommand(command);
+    const r = renderScreen("/agentcore/scroll-probe", {
+      withContext: (ctx) => ctx.withValue(CommandKey, root),
+    });
+
+    await r.resize(80, 16);
+    await waitForText(r.lastFrame, "FIRSTVALUE");
+    expect(r.lastFrame()).not.toContain("FINALVALUE");
+
+    for (const width of [80, 60]) {
+      await r.resize(width, 16);
+      for (let page = 0; page < 30 && !r.lastFrame()?.includes("FINALVALUE"); page += 1) {
+        await r.write("\u001b[6~");
+      }
+      await waitForText(r.lastFrame, "FINALVALUE");
+      await r.write("\u001b[6~");
+      const bottom = r.lastFrame();
+      await r.write("\u001b[6~");
+      expect(r.lastFrame()).toBe(bottom);
+      expect(r.lastFrame()).toContain("FINALVALUE");
+    }
+
+    await r.resize(180, 100);
+    await waitForText(r.lastFrame, "this command runs from the command line");
+    expect(r.lastFrame()).toContain("FIRSTVALUE");
+    expect(r.lastFrame()).toContain("FINALVALUE");
+    await r.press("escape");
+    await waitForText(r.lastFrame, "add project resources");
     r.unmount();
   });
 });

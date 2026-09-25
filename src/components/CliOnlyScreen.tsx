@@ -90,7 +90,6 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
   const command = resolveCommand(ctx.require(CommandKey), path);
   const help = command.createHelp();
 
-  const table = (rows: [string, string][]) => Object.fromEntries(rows);
   // --help is Commander's own and means nothing on a screen that is the help.
   const optionGroups: [string, [string, string][]][] = [];
   for (const option of help.visibleOptions(command)) {
@@ -101,11 +100,9 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
     if (group) group[1].push(row);
     else optionGroups.push([title, [row]]);
   }
-  const args = table(
-    help
-      .visibleArguments(command)
-      .map((argument) => [help.argumentTerm(argument), help.argumentDescription(argument)]),
-  );
+  const args = help
+    .visibleArguments(command)
+    .map((argument) => [help.argumentTerm(argument), help.argumentDescription(argument)] as const);
   const details = commandParameterDetails(command);
 
   return (
@@ -113,16 +110,12 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
       <Text color={theme.colors.muted}>this command runs from the command line</Text>
       <Text> </Text>
       <Text color={theme.colors.primary}>{`  ${help.commandUsage(command)}`}</Text>
-      {Object.keys(args).length > 0 && (
-        <Section title="arguments">
-          <KeyValueTable items={args} />
-        </Section>
-      )}
-      {optionGroups.map(([title, rows]) => (
-        <Section key={title} title={title}>
-          <KeyValueTable items={table(rows)} />
-        </Section>
-      ))}
+      <KeyValueTable
+        sections={[
+          { title: "arguments", rows: args },
+          ...optionGroups.map(([title, rows]) => ({ title, rows })),
+        ]}
+      />
       {details !== undefined && (
         // formatParameterDetails already carries its own heading and layout.
         <Text color={theme.colors.muted}>{details.trim()}</Text>
@@ -133,20 +126,6 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
 
 const sectionTitle = (group: string | undefined) =>
   group ? group.replace(/:$/, "").toLowerCase() : "options";
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text color={theme.colors.text}>{title}</Text>
-      {/* A column, so the table stretches to the full width and its key
-          column's share is a share of the screen, not of the table's own
-          content. */}
-      <Box paddingLeft={2} flexDirection="column">
-        {children}
-      </Box>
-    </Box>
-  );
-}
 
 // CommandFallbackScreen is the route for any command path Root does not map to
 // a screen of its own: a command group renders its menu, a leaf renders its
