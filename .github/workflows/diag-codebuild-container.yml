@@ -7,7 +7,9 @@ permissions:
   contents: read
 jobs:
   probe:
-    runs-on: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "e2e-linux"]'
+    runs-on:
+      - codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      - e2e-linux
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
