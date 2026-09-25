@@ -177,7 +177,8 @@ function CommandMenu({
         { key: "type", label: "filter" },
         { key: "↑↓", label: "navigate" },
         { key: "enter", label: "select" },
-        { key: "esc", label: "back" },
+        // The root has no parent, so esc does nothing there; don't advertise it.
+        ...(path.length > 1 ? [{ key: "esc", label: "back" }] : []),
         { key: "ctrl+c", label: "quit" },
       ]}
     >
