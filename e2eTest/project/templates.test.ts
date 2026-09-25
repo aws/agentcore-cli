@@ -5,12 +5,15 @@ import { join } from "node:path";
 import z from "zod";
 import { E2E_PREFIX, TAGS } from "../constants";
 import { CliRunner, parseResult, type RunResult } from "../helpers/run";
-import { retry } from "../helpers/retry";
+import { detectContainerTool } from "../helpers/container";
+import { NonRetryableError, retry } from "../helpers/retry";
 import { TIMEOUT_MS } from "../timeouts";
 
 type RuntimeTemplateTestCase = {
   name: string;
   template: string;
+  /** Container templates need a container runtime on the host for local `dev`. */
+  build: "CodeZip" | "Container";
   protocol: "HTTP" | "MCP" | "A2A" | "AGUI";
   payload: Record<string, unknown>;
   invokeFlags?: string[];
@@ -20,42 +23,49 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agent_python_minimal",
     template: "agent-python-minimal",
+    build: "CodeZip",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_python_strands",
     template: "agent-python-strands",
+    build: "CodeZip",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "py_strands_container",
     template: "agent-python-strands-container",
+    build: "Container",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_python_langchain",
     template: "agent-python-langchain",
+    build: "CodeZip",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_ts_strands",
     template: "agent-typescript-strands",
+    build: "CodeZip",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "agent_ts_vercel",
     template: "agent-typescript-vercel",
+    build: "CodeZip",
     protocol: "HTTP",
     payload: { prompt: "Reply with a short greeting." },
   },
   {
     name: "mcp_python_fastmcp",
     template: "mcp-python-fastmcp",
+    build: "CodeZip",
     protocol: "MCP",
     payload: {
       jsonrpc: "2.0",
@@ -79,6 +89,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "a2a_python_strands",
     template: "a2a-python-strands",
+    build: "CodeZip",
     protocol: "A2A",
     payload: {
       jsonrpc: "2.0",
@@ -96,6 +107,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agui_python_strands",
     template: "agui-python-strands",
+    build: "CodeZip",
     protocol: "AGUI",
     payload: {
       threadId: "agentcore-e2e",
@@ -177,11 +189,13 @@ describe(
 
     describe("local invocation", { sequential: true }, () => {
       const runtimePorts = new Map<string, number>();
+      const runtimeFailures = new Map<string, string>();
+      const containerTool = detectContainerTool();
       let dev: ReturnType<CliRunner["start"]> | undefined;
       let pendingOutput = "";
       let devOutput = "";
 
-      /** Given dev-process output, records the ports announced by running runtimes. */
+      /** Given dev-process output, records announced ports and startup failures per runtime. */
       const captureDevOutput = (chunk: Buffer) => {
         const text = chunk.toString();
         devOutput += text;
@@ -189,10 +203,13 @@ describe(
         const lines = pendingOutput.split(/\r?\n/);
         pendingOutput = lines.pop() ?? "";
 
-        // parse the out for the ports each agent is running on
+        // parse the output for the ports each agent is running on, and for agents
+        // the supervisor gave up on (dev keeps serving the others, so it never exits)
         for (const line of lines) {
-          const match = line.match(/Agent '([^']+)' is running on port (\d+)\./);
-          if (match?.[1] && match[2]) runtimePorts.set(match[1], Number(match[2]));
+          const running = line.match(/Agent '([^']+)' is running on port (\d+)\./);
+          if (running?.[1] && running[2]) runtimePorts.set(running[1], Number(running[2]));
+          const failed = line.match(/Agent '([^']+)' failed to start: (.*)$/);
+          if (failed?.[1] && failed[2]) runtimeFailures.set(failed[1], failed[2]);
         }
       };
 
@@ -210,10 +227,14 @@ describe(
         await new Promise<void>((resolve) => dev?.once("close", resolve));
       });
 
-      test.each(RUNTIME_TEMPLATES)(
+      test.for(RUNTIME_TEMPLATES)(
         "$name runs locally",
         { concurrent: true, timeout: TIMEOUT_MS.PROJECT_INVOKE },
-        async (runtime) => {
+        async (runtime, { skip }) => {
+          skip(
+            runtime.build === "Container" && !containerTool,
+            "no container runtime (docker, podman, or finch) is available on this host",
+          );
           const sessionId = getSessionId(`${runtime.name}`);
 
           // The server may take a bit to get ready, so we retry on a timeout.
@@ -224,6 +245,13 @@ describe(
             if (dev.exitCode !== null) {
               throw new Error(
                 `agentcore dev exited with code ${dev.exitCode ?? "unknown"}.  \nstdout/stderr = ${devOutput}`,
+              );
+            }
+
+            const failure = runtimeFailures.get(runtime.name);
+            if (failure) {
+              throw new NonRetryableError(
+                `Runtime '${runtime.name}' failed to start: ${failure}\nstdout/stderr = ${devOutput}`,
               );
             }
 
