@@ -337,6 +337,7 @@ function VersionStep({
           helpText="which harness version should this endpoint serve?"
           options={options}
           focusedIndex={index}
+          selectedIndex={index}
         />
       )}
     </Box>

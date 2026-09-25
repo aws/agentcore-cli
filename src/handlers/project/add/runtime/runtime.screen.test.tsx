@@ -47,8 +47,9 @@ function templateRows(frame: string): string[] {
     frame
       .split("\n")
       .map((line) => line.replace(/[│┃|]/g, " ").replace(/\s+/g, " ").trim())
-      // A radio row starts with its marker; the stepper's markers sit mid-line.
-      .filter((line) => /^[●○] /.test(line))
+      // A radio row starts with its optional focus pointer and selection marker;
+      // the stepper's markers sit mid-line.
+      .filter((line) => /^(?:❯ )?[●○] /.test(line))
   );
 }
 
@@ -73,7 +74,7 @@ describe("project add runtime wizard", () => {
     // --template, and it is the first row, so the step opens at the top of its
     // list rather than partway down it.
     await waitForText(r.lastFrame, "choose a template");
-    expect(templateRows(r.lastFrame()!)[0]).toStartWith("● agent-python-minimal ");
+    expect(templateRows(r.lastFrame()!)[0]).toStartWith("❯ ● agent-python-minimal ");
     await r.press("return");
 
     await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");

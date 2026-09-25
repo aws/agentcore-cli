@@ -467,8 +467,8 @@ function ModelField({
           key="provider"
           helpText="choose a model"
           options={options}
-          focusedIndex={providerIndex}
-          selectedIndex={focusedField !== null ? providerIndex : undefined}
+          focusedIndex={focusedField === null ? providerIndex : undefined}
+          selectedIndex={providerIndex}
         />
         {focusedField !== null &&
           fields.map((field, fieldIndex) => (

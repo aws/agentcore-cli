@@ -93,7 +93,11 @@ describe("project add gateway wizard", () => {
     await screen.press("down");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "configure the OIDC issuer");
+    await waitForText(screen.lastFrame, "discovery URL");
+    expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
+    expect(screen.lastFrame()).toContain("● CUSTOM_JWT");
+    expect(screen.lastFrame()).not.toContain("❯ ● CUSTOM_JWT");
+    expect(screen.lastFrame()).not.toContain("○ JWT");
     await screen.write("https://idp.example.com/.well-known/openid-configuration");
     await screen.press("return");
     await screen.write("agentcore-cli, internal-tools");
@@ -132,12 +136,12 @@ describe("project add gateway wizard", () => {
     await screen.press("down");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "configure the OIDC issuer");
+    await waitForText(screen.lastFrame, "discovery URL");
     await screen.write("http://idp.example.com");
     await screen.press("return");
     await waitForText(screen.lastFrame, "OIDC discovery URL must use HTTPS");
 
-    expect(screen.lastFrame()).toContain("configure the OIDC issuer");
+    expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
     screen.unmount();
   });
 
@@ -153,13 +157,34 @@ describe("project add gateway wizard", () => {
     await screen.press("down");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "configure the OIDC issuer");
+    await waitForText(screen.lastFrame, "discovery URL");
     await screen.write("https://idp.example.com/.well-known/openid-configuration");
     await screen.press("return");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "At least one OAuth client ID is required");
-    expect(screen.lastFrame()).toContain("configure the OIDC issuer");
+    expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
+    screen.unmount();
+  });
+
+  test("esc collapses CUSTOM_JWT inputs back into the authorizer choice", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/gateway");
+
+    await waitForText(screen.lastFrame, "what should this Gateway be called?");
+    await screen.write("secure");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "discovery URL");
+
+    await screen.press("escape");
+
+    await waitForText(screen.lastFrame, "● CUSTOM_JWT");
+    expect(screen.lastFrame()).not.toContain("discovery URL");
+    expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
     screen.unmount();
   });
 
