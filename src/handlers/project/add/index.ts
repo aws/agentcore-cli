@@ -30,6 +30,7 @@ export function createAddProjectResourceHandler(
   const projectAdd = new Router("add", "add project resources").supportedTuiCommands(
     "runtime",
     "memory",
+    "gateway",
   );
   projectAdd.default(renderTui(core, config.io));
   // withProject first, so it is the outermost wrapper: a resource added outside
