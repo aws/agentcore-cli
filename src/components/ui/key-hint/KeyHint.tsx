@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, Box, Spacer, useWindowSize } from "ink";
+import { Text, Box, useWindowSize } from "ink";
 import stringWidth from "string-width";
 import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
@@ -47,33 +47,29 @@ function fitKeys(keys: KeyHintItem[], columns: number): KeyHintItem[] {
   return keys.filter((_, index) => selected.has(index));
 }
 
-// ctrl+c quits on every screen (Ink's exitOnCtrlC), so KeyHint owns its hint and
-// pins it to the right edge; a key that's always available then never moves.
+// ctrl+c quits on every screen, so KeyHint always shows it, pinned right with its width reserved.
 const QUIT: KeyHintItem = { key: "ctrl+c", label: "quit" };
 
 export const KeyHint: React.FC<KeyHintProps> = ({ keys, theme = darkTheme }) => {
   const { columns } = useWindowSize();
   const screenKeys = keys.filter((k) => k.key !== QUIT.key);
-  // Reserve QUIT's width so it's never the hint fitKeys drops.
-  const room = columns - itemWidth(QUIT) - ITEM_GAP;
+  const shown = [...fitKeys(screenKeys, columns - itemWidth(QUIT) - ITEM_GAP), QUIT];
 
   return (
     <Box width={columns} height={1} overflow="hidden" gap={ITEM_GAP}>
-      {fitKeys(screenKeys, room).map((item) => (
-        <Hint key={item.key} item={item} theme={theme} />
+      {shown.map(({ key, label }) => (
+        <Box
+          key={key}
+          flexShrink={0}
+          gap={1}
+          {...(key === QUIT.key && { flexGrow: 1, justifyContent: "flex-end" })}
+        >
+          <Text bold dimColor>
+            [{key}]
+          </Text>
+          <Text color={theme.colors.muted}>{label}</Text>
+        </Box>
       ))}
-      <Spacer />
-      <Hint item={QUIT} theme={theme} />
     </Box>
   );
 };
-
-// Takes `item` rather than spread props because React reserves `key`.
-const Hint: React.FC<{ item: KeyHintItem; theme: InkUITheme }> = ({ item, theme }) => (
-  <Box flexShrink={0} gap={1}>
-    <Text bold dimColor>
-      [{item.key}]
-    </Text>
-    <Text color={theme.colors.muted}>{item.label}</Text>
-  </Box>
-);
