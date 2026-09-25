@@ -1,16 +1,9 @@
-import {
-  isExamplesProvider,
-  type Argument,
-  type Flag,
-  type GlobalFlag,
-  type Handler,
-} from "./handler";
+import type { Argument, Flag, GlobalFlag, Handler } from "./handler";
 import { type Middleware, type MiddlewareProvider, isMiddlewareProvider } from "./middleware";
 import { type Context, type ContextKey, ValueContext, contextKey } from "./context";
 import {
   applyGlobalFlags,
   attributeName,
-  formatExamples,
   formatParameterDetails,
   parseFlags,
   toOption,
@@ -232,11 +225,6 @@ export function compile(
     c.addHelpOption(
       new Option("-h, --help", "display help for command").helpGroup("Other options:"),
     );
-  }
-
-  const examples = formatExamples(isExamplesProvider(node) ? node.examples() : []);
-  if (examples) {
-    c.addHelpText("after", examples);
   }
 
   // Flags with long-form documentation get a "Parameter details" section after

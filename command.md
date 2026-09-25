@@ -652,9 +652,9 @@ invoke a Runtime, harness, or Gateway
 
 **Options**
 
-- `--runtime <runtime>`: the Runtime to invoke: a project name, ID, or ARN
-- `--harness <harness>`: the harness to invoke: a project name, ID, or ARN
-- `--gateway <gateway>`: the Gateway to invoke: a project name, ID, or ARN
+- `--runtime <runtime>`: the Runtime to invoke: its name in this project, its ID, or its ARN
+- `--harness <harness>`: the harness to invoke: its name in this project, its ID, or its ARN
+- `--gateway <gateway>`: the Gateway to invoke: its name in this project, its ID, or its ARN
 - `--target <target>`: project deployment target (default: "default")
 - `--local`: invoke the local development server (project Runtime only) (default: false)
 - `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)

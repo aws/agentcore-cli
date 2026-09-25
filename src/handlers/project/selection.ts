@@ -1,11 +1,5 @@
 import { InputValidationError, ResourceNotFoundError } from "../../errors";
-import type { Project, ProjectInvokableResource } from "./types";
-
-export const RESOURCE_LABELS: Record<ProjectInvokableResource, string> = {
-  runtime: "Runtime",
-  harness: "Harness",
-  gateway: "Gateway",
-};
+import { RESOURCE_LABELS, type Project, type ProjectInvokableResource } from "./types";
 
 export function projectResourceNames(
   project: Project,

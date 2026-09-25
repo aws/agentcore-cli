@@ -400,6 +400,12 @@ export type ExportHarnessResult = {
 
 export type ProjectInvokableResource = Extract<ProjectResource, "harness" | "runtime" | "gateway">;
 
+export const RESOURCE_LABELS: Record<ProjectInvokableResource, string> = {
+  runtime: "Runtime",
+  harness: "Harness",
+  gateway: "Gateway",
+};
+
 export type RemoveResourceInput =
   | {
       resourceType:

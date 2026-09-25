@@ -13,8 +13,12 @@ import { HarnessChat } from "../../harness/invoke/screen";
 import { AwsCredentialProviderKey, RegionKey } from "../../keys";
 import { RuntimeInvokeConsole } from "../../runtime/invoke/screen";
 import type { ScreenProps } from "../../types";
-import { RESOURCE_LABELS } from "../selection";
-import type { Project, ResolvedDeployedResource, ResolvedDeployedResources } from "../types";
+import {
+  RESOURCE_LABELS,
+  type Project,
+  type ResolvedDeployedResource,
+  type ResolvedDeployedResources,
+} from "../types";
 import { ProjectGate } from "../ProjectGate";
 
 type ProjectInvokableRow = Record<string, unknown> &

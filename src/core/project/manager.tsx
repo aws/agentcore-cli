@@ -24,6 +24,7 @@ import type {
   RemoveResourceResult,
   RemoveResourcesResult,
 } from "../../handlers/project/types";
+import { RESOURCE_LABELS } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
 import {
   FsReadWriteJson,
@@ -1049,9 +1050,7 @@ export class FsProjectManager implements ProjectManager {
     // provider. Trusting a backend's target echo would let it redirect the call.
     if (resource) return { ...resource, target: resolved.target };
 
-    const label = { runtime: "Runtime", harness: "Harness", gateway: "Gateway" }[
-      input.resourceType
-    ];
+    const label = RESOURCE_LABELS[input.resourceType];
     throw new ProjectStateError(
       `${label} '${input.name}' is not deployed to target '${input.target}'. ` +
         `Run 'agentcore deploy --target ${input.target}' first.`,
