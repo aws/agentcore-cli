@@ -8,6 +8,7 @@ import { coreOptsFromCtx } from "../../utils";
 import { HarnessPicker } from "../../../components/HarnessPicker";
 import { HarnessEndpointPicker } from "../../../components/HarnessEndpointPicker";
 import { Layout } from "../../../components/Layout";
+import { isCommandAvailable } from "../../../components/CommandGate";
 import { Divider } from "../../../components/ui/divider";
 import { Markdown } from "../../../components/ui/markdown";
 import { Spinner } from "../../../components/ui/spinner";
@@ -96,6 +97,7 @@ export function HarnessChat({
   onBack,
 }: HarnessChatProps) {
   const opts = coreOptsFromCtx(ctx);
+  const canExec = isCommandAvailable(ctx, ["agentcore", "harness", "exec"]);
   const { columns, rows } = useWindowSize();
   const navigate = useNavigate();
 
@@ -203,6 +205,7 @@ export function HarnessChat({
   // runExec runs a shell command in the chat session's container (exec mode)
   // and folds the streamed stdout/stderr into an exec transcript item.
   const runExec = async (text: string) => {
+    if (!canExec) return;
     const command = text.trim();
     const arn = detail.data?.harness?.arn;
     if (command === "" || streamingRef.current || !arn) return;
@@ -271,7 +274,7 @@ export function HarnessChat({
   useInput(
     (input, key) => {
       if (key.ctrl && input === "e") {
-        toggleMode();
+        if (canExec) toggleMode();
         return;
       }
       if (key.ctrl && input === "t") {
@@ -330,7 +333,9 @@ export function HarnessChat({
             ]
           : [
               { key: "enter", label: mode === "exec" ? "run" : "send" },
-              { key: "ctrl+e", label: mode === "exec" ? "chat mode" : "exec mode" },
+              ...(canExec
+                ? [{ key: "ctrl+e", label: mode === "exec" ? "chat mode" : "exec mode" }]
+                : []),
               { key: "ctrl+t", label: "endpoint" },
               { key: "↑↓", label: "scroll" },
               { key: "esc", label: "back" },

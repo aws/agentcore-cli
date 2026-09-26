@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type {
+  GetAgentRuntimeEndpointResponse,
   GetAgentRuntimeResponse,
   GetHarnessResponse,
   GetMemoryOutput,
+  ListAgentRuntimeEndpointsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import { DEFAULT_GLOBAL_CONFIG, type GlobalConfig } from "../../../globalConfig";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
@@ -11,6 +14,7 @@ import {
   cleanupScreens,
   flatFrame,
   inTempDirectory,
+  IMPERATIVE_GLOBAL_CONFIG,
   renderScreen,
   TestCoreClient,
   waitFor,
@@ -102,9 +106,14 @@ function core(
   return value;
 }
 
-function renderStatus(value: TestCoreClient, seed: Project = RUNTIME_PROJECT) {
+function renderStatus(
+  value: TestCoreClient,
+  seed: Project = RUNTIME_PROJECT,
+  globalConfig: GlobalConfig = DEFAULT_GLOBAL_CONFIG,
+) {
   return renderScreen("/agentcore/status", {
     core: value,
+    globalConfig,
     withContext: (ctx) => ctx.withValue(ProjectKey, seed),
   });
 }
@@ -214,6 +223,87 @@ describe("project status screen", () => {
     await waitForText(screen.lastFrame, "agentcore → harness → get → " + HARNESS_ID);
   });
 
+  test.each([false, true])(
+    "Harness actions from project status respect imperative-commands=%s",
+    async (enabled) => {
+      const value = core([deployed("harness", "support", { arn: `${ARN}:harness/${HARNESS_ID}` })]);
+      const screen = renderStatus(
+        value,
+        project({ harnesses: [{ name: "support", path: "app/support" }] }),
+        enabled ? IMPERATIVE_GLOBAL_CONFIG : DEFAULT_GLOBAL_CONFIG,
+      );
+      await waitForGroup(screen, "support");
+      await screen.press("down");
+      await screen.press("return");
+      await waitForText(screen.lastFrame, "show the full JSON definition");
+
+      const frame = flatFrame(screen.lastFrame);
+      for (const description of [
+        "update this harness",
+        "chat with this harness",
+        "run shell commands in this harness",
+      ]) {
+        if (enabled) expect(frame).toContain(description);
+        else expect(frame).not.toContain(description);
+      }
+      expect(frame).toContain("list this harness's endpoints");
+      expect(frame).toContain("list this harness's versions");
+      if (enabled) {
+        for (let press = 0; press < 5; press++) await screen.press("down");
+        expect(focusedLine(screen.lastFrame())).toContain("update");
+        await screen.press("return");
+        await waitForText(screen.lastFrame, "choose a model");
+        expect(flatFrame(screen.lastFrame)).toContain("harness → update");
+      } else {
+        await screen.press("return");
+        await waitForText(screen.lastFrame, '"harnessId"');
+      }
+      expect(value.harness.calls.every(({ method }) => method === "getHarness")).toBe(true);
+    },
+  );
+
+  test("disabled Runtime execution leaves endpoint and JSON navigation available", async () => {
+    const value = core();
+    value.runtime.setListEndpointsResponse({
+      runtimeEndpoints: [
+        {
+          name: "delete",
+          status: "READY",
+          agentRuntimeEndpointArn: `${ARN}:runtime/${RUNTIME_ID}/runtime-endpoint/delete`,
+        },
+      ],
+    } as ListAgentRuntimeEndpointsResponse);
+    value.runtime.setGetEndpointResponse({
+      name: "delete",
+      status: "READY",
+      liveVersion: "1",
+    } as GetAgentRuntimeEndpointResponse);
+    const screen = renderStatus(value);
+
+    await waitForGroup(screen);
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "READY");
+    expect(flatFrame(screen.lastFrame)).not.toContain("invoke this Runtime");
+    expect(flatFrame(screen.lastFrame)).not.toContain("open an interactive terminal");
+    expect(focusedLine(screen.lastFrame())).toContain("endpoints");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "delete");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "liveVersion");
+    expect(flatFrame(screen.lastFrame)).not.toContain("invoke this Runtime endpoint");
+    expect(focusedLine(screen.lastFrame())).toContain("detail");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, '"liveVersion"');
+    expect(value.runtime.calls.every(({ method }) => /^(get|list)/.test(method))).toBe(true);
+    const call = value.runtime.calls.find(({ method }) => method === "getRuntimeEndpoint")!;
+    expect(call.args).toEqual([
+      RUNTIME_ID,
+      "delete",
+      expect.objectContaining({ region: TARGET.region }),
+    ]);
+  });
+
   test("escape from a detail page returns to the status screen", async () => {
     const screen = renderStatus(core());
 
@@ -290,9 +380,7 @@ describe("project status screen", () => {
     await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "READY");
-    // invoke → shell → endpoints.
-    await screen.press("down");
-    await screen.press("down");
+    // With imperative commands off, endpoints is the first action.
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "agentcore → runtime → endpoint → list → " + RUNTIME_ID);

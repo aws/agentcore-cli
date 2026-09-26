@@ -19,24 +19,33 @@ import {
   type LinkedResourceNode,
 } from "../../../components/LinkedResources";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
+import { isCommandAvailable } from "../../../components/CommandGate";
 
 // The actions offered for a harness, in menu order. Each routes into the
 // corresponding flow with the harness preselected.
-const ACTIONS: { name: string; description: string; to: (id: string) => string }[] = [
+const ACTIONS: {
+  name: string;
+  description: string;
+  to: (id: string) => string;
+  readOnly?: boolean;
+}[] = [
   {
     name: "detail",
     description: "show the full JSON definition",
     to: (id) => `/agentcore/harness/get/${id}/json`,
+    readOnly: true,
   },
   {
     name: "endpoints",
     description: "list this harness's endpoints",
     to: (id) => `/agentcore/harness/endpoint/list/${id}`,
+    readOnly: true,
   },
   {
     name: "versions",
     description: "list this harness's versions",
     to: (id) => `/agentcore/harness/version/list/${id}`,
+    readOnly: true,
   },
   {
     name: "invoke",
@@ -311,7 +320,11 @@ export function HarnessGetScreen(props: ScreenProps) {
       }}
       actions={
         harnessId && harness
-          ? ACTIONS.map((action) => ({
+          ? ACTIONS.filter(
+              (action) =>
+                action.readOnly ||
+                isCommandAvailable(props.ctx, ["agentcore", "harness", action.name]),
+            ).map((action) => ({
               name: action.name,
               description: action.description,
               onSelect: () => navigate(action.to(harnessId)),

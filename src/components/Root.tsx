@@ -135,6 +135,7 @@ import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
 import { RegionKey } from "../handlers/keys.tsx";
 import { RegionPinContext } from "../handlers/utils.tsx";
 import type { Context } from "../router";
+import { CommandGate } from "./CommandGate";
 
 export interface RootProps {
   // path is the command path to the executing node (e.g. "/agentcore").
@@ -260,60 +261,39 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<HarnessGetJsonScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/harness/list" element={<HarnessListScreen ctx={ctx} core={core} />} />
-      <Route
-        path="agentcore/harness/create"
-        element={<HarnessCreateScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/update"
-        element={<HarnessUpdateScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/update/:harnessId"
-        element={<HarnessUpdateScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/delete"
-        element={<HarnessDeleteScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/delete/:harnessId"
-        element={<HarnessDeleteScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/invoke"
-        element={<HarnessInvokeScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/invoke/:harnessId"
-        element={<HarnessInvokeScreen ctx={ctx} core={core} />}
-      />
-      {/* Deep link that resumes an existing runtime session in the chat. */}
-      <Route
-        path="agentcore/harness/invoke/:harnessId/:sessionId"
-        element={<HarnessInvokeScreen ctx={ctx} core={core} />}
-      />
-      <Route path="agentcore/harness/exec" element={<HarnessExecScreen ctx={ctx} core={core} />} />
-      <Route
-        path="agentcore/harness/exec/:harnessId"
-        element={<HarnessExecScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/exec/:harnessId/:sessionId"
-        element={<HarnessExecScreen ctx={ctx} core={core} />}
-      />
+      <Route path="agentcore/harness/create" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessCreateScreen ctx={ctx} core={core} />} />
+      </Route>
+      <Route path="agentcore/harness/update" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessUpdateScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessUpdateScreen ctx={ctx} core={core} />} />
+      </Route>
+      <Route path="agentcore/harness/delete" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessDeleteScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessDeleteScreen ctx={ctx} core={core} />} />
+      </Route>
+      <Route path="agentcore/harness/invoke" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessInvokeScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessInvokeScreen ctx={ctx} core={core} />} />
+        {/* Deep link that resumes an existing runtime session in the chat. */}
+        <Route
+          path=":harnessId/:sessionId"
+          element={<HarnessInvokeScreen ctx={ctx} core={core} />}
+        />
+      </Route>
+      <Route path="agentcore/harness/exec" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessExecScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessExecScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId/:sessionId" element={<HarnessExecScreen ctx={ctx} core={core} />} />
+      </Route>
       <Route
         path="agentcore/harness/endpoint"
         element={<HarnessEndpointScreen ctx={ctx} core={core} />}
       />
-      <Route
-        path="agentcore/harness/endpoint/create"
-        element={<HarnessCreateEndpointScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/endpoint/create/:harnessId"
-        element={<HarnessCreateEndpointScreen ctx={ctx} core={core} />}
-      />
+      <Route path="agentcore/harness/endpoint/create" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessCreateEndpointScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessCreateEndpointScreen ctx={ctx} core={core} />} />
+      </Route>
       {/* Bare `endpoint get` (no target) has nothing to show — send the
               user to the endpoint listing (same idea for `version get`). */}
       <Route
@@ -332,30 +312,22 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/harness/endpoint/list/:harnessId"
         element={<HarnessListEndpointsScreen ctx={ctx} core={core} />}
       />
-      <Route
-        path="agentcore/harness/endpoint/update"
-        element={<HarnessUpdateEndpointScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/endpoint/update/:harnessId"
-        element={<HarnessUpdateEndpointScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/endpoint/update/:harnessId/:endpointName"
-        element={<HarnessUpdateEndpointScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/endpoint/delete"
-        element={<HarnessDeleteEndpointScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/endpoint/delete/:harnessId"
-        element={<HarnessDeleteEndpointScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/harness/endpoint/delete/:harnessId/:endpointName"
-        element={<HarnessDeleteEndpointScreen ctx={ctx} core={core} />}
-      />
+      <Route path="agentcore/harness/endpoint/update" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessUpdateEndpointScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessUpdateEndpointScreen ctx={ctx} core={core} />} />
+        <Route
+          path=":harnessId/:endpointName"
+          element={<HarnessUpdateEndpointScreen ctx={ctx} core={core} />}
+        />
+      </Route>
+      <Route path="agentcore/harness/endpoint/delete" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<HarnessDeleteEndpointScreen ctx={ctx} core={core} />} />
+        <Route path=":harnessId" element={<HarnessDeleteEndpointScreen ctx={ctx} core={core} />} />
+        <Route
+          path=":harnessId/:endpointName"
+          element={<HarnessDeleteEndpointScreen ctx={ctx} core={core} />}
+        />
+      </Route>
       <Route
         path="agentcore/harness/version"
         element={<HarnessVersionScreen ctx={ctx} core={core} />}
@@ -456,30 +428,22 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/memory/get/:memoryId/json"
         element={<MemoryGetJsonScreen ctx={ctx} core={core} />}
       />
-      <Route
-        path="agentcore/runtime/invoke"
-        element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/runtime/invoke/:runtimeId"
-        element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/runtime/invoke/:runtimeId/:qualifier"
-        element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/runtime/shell"
-        element={<RuntimeShellScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/runtime/shell/:runtimeId"
-        element={<RuntimeShellScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/runtime/shell/:runtimeId/:qualifier"
-        element={<RuntimeShellScreen ctx={ctx} core={core} />}
-      />
+      <Route path="agentcore/runtime/invoke" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<RuntimeInvokeScreen ctx={ctx} core={core} />} />
+        <Route path=":runtimeId" element={<RuntimeInvokeScreen ctx={ctx} core={core} />} />
+        <Route
+          path=":runtimeId/:qualifier"
+          element={<RuntimeInvokeScreen ctx={ctx} core={core} />}
+        />
+      </Route>
+      <Route path="agentcore/runtime/shell" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<RuntimeShellScreen ctx={ctx} core={core} />} />
+        <Route path=":runtimeId" element={<RuntimeShellScreen ctx={ctx} core={core} />} />
+        <Route
+          path=":runtimeId/:qualifier"
+          element={<RuntimeShellScreen ctx={ctx} core={core} />}
+        />
+      </Route>
       <Route path="agentcore/gateway" element={<GatewayScreen ctx={ctx} core={core} />} />
       <Route
         path="agentcore/gateway/create"
@@ -498,14 +462,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/gateway/get/:gatewayId/json"
         element={<GatewayGetJsonScreen ctx={ctx} core={core} />}
       />
-      <Route
-        path="agentcore/gateway/invoke"
-        element={<GatewayInvokeScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/gateway/invoke/:gatewayId"
-        element={<GatewayInvokeScreen ctx={ctx} core={core} />}
-      />
+      <Route path="agentcore/gateway/invoke" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<GatewayInvokeScreen ctx={ctx} core={core} />} />
+        <Route path=":gatewayId" element={<GatewayInvokeScreen ctx={ctx} core={core} />} />
+      </Route>
       <Route
         path="agentcore/gateway/target"
         element={<GatewayTargetScreen ctx={ctx} core={core} />}
@@ -567,14 +527,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/gateway/policy"
         element={<Navigate to="/agentcore/gateway/policy/generate" replace />}
       />
-      <Route
-        path="agentcore/gateway/policy/generate"
-        element={<GatewayPolicyGenerateScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/gateway/policy/generate/:gatewayId"
-        element={<GatewayPolicyGenerateScreen ctx={ctx} core={core} />}
-      />
+      <Route path="agentcore/gateway/policy/generate" element={<CommandGate ctx={ctx} />}>
+        <Route index element={<GatewayPolicyGenerateScreen ctx={ctx} core={core} />} />
+        <Route path=":gatewayId" element={<GatewayPolicyGenerateScreen ctx={ctx} core={core} />} />
+      </Route>
       <Route path="agentcore/eval" element={<EvalScreen ctx={ctx} core={core} />} />
       <Route path="agentcore/eval/evaluator" element={<EvaluatorScreen ctx={ctx} core={core} />} />
       <Route

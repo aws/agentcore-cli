@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
+import { isCommandAvailable } from "../../../components/CommandGate";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
@@ -22,16 +23,19 @@ const ACTIONS = [
     name: "endpoints",
     description: "list this Runtime's endpoints",
     to: (id: string) => `/agentcore/runtime/endpoint/list/${encodeURIComponent(id)}`,
+    readOnly: true,
   },
   {
     name: "versions",
     description: "list immutable Runtime versions",
     to: (id: string) => `/agentcore/runtime/version/list/${encodeURIComponent(id)}`,
+    readOnly: true,
   },
   {
     name: "detail",
     description: "show the full JSON definition",
     to: (id: string) => `/agentcore/runtime/get/${encodeURIComponent(id)}/json`,
+    readOnly: true,
   },
 ] as const;
 
@@ -65,7 +69,11 @@ export function RuntimeGetScreen(props: ScreenProps) {
       }}
       actions={
         runtimeId && detail.data
-          ? ACTIONS.map((action) => ({
+          ? ACTIONS.filter(
+              (action) =>
+                ("readOnly" in action && action.readOnly) ||
+                isCommandAvailable(props.ctx, ["agentcore", "runtime", action.name]),
+            ).map((action) => ({
               name: action.name,
               description: action.description,
               onSelect: () =>

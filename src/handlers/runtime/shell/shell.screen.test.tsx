@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { renderTuiAt } from "../../../tui";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "../../keys";
-import { ValueContext } from "../../../router";
+import { CommandKey, ValueContext } from "../../../router";
 import type { RuntimeShellSession } from "../types";
 import {
   cleanupScreens,
+  compiledRootCommand,
+  IMPERATIVE_GLOBAL_CONFIG,
   renderImperativeScreen,
   TestCoreClient,
   tick,
@@ -79,6 +81,30 @@ async function interruptUntilExit(rendering: Promise<void>, stdin: TtyInput): Pr
 }
 
 describe("RuntimeShellScreen", () => {
+  test("renderTuiAt blocks a direct shell before opening a session when disabled", async () => {
+    const value = core();
+    const { streams, stdin } = ttyTestIO();
+    const ctx = ValueContext.EmptyContext()
+      .withValue(CommandKey, compiledRootCommand(value))
+      .withValue(RegionKey, "us-east-1")
+      .withValue(EndpointKey, undefined)
+      .withValue(JsonKey, false)
+      .withValue(DebugKey, false);
+    const rendering = renderTuiAt(
+      "/agentcore/runtime/shell/checkout-AbCdEf1234/prod",
+      ctx,
+      value,
+      streams.io,
+    );
+    try {
+      await waitFor(() => streams.stdout().includes("the platform for production AI agents"));
+      expect(value.runtime.calls).toEqual([]);
+      expect(streams.stderr()).not.toContain("Connected");
+    } finally {
+      await interruptUntilExit(rendering, stdin);
+    }
+  });
+
   test("a direct Runtime route skips the Runtime picker", async () => {
     const screen = renderImperativeScreen("/agentcore/runtime/shell/checkout-AbCdEf1234", {
       core: core(),
@@ -102,6 +128,7 @@ describe("RuntimeShellScreen", () => {
     value.runtime.setShellSession(failedSession);
     const { streams, stdin } = ttyTestIO();
     const ctx = ValueContext.EmptyContext()
+      .withValue(CommandKey, compiledRootCommand(value, IMPERATIVE_GLOBAL_CONFIG))
       .withValue(RegionKey, "us-east-1")
       .withValue(EndpointKey, undefined)
       .withValue(JsonKey, false)
@@ -134,6 +161,7 @@ describe("RuntimeShellScreen", () => {
     const value = core();
     const { streams } = ttyTestIO();
     const ctx = ValueContext.EmptyContext()
+      .withValue(CommandKey, compiledRootCommand(value, IMPERATIVE_GLOBAL_CONFIG))
       .withValue(RegionKey, "us-east-1")
       .withValue(EndpointKey, undefined)
       .withValue(JsonKey, false)
@@ -150,6 +178,7 @@ describe("RuntimeShellScreen", () => {
     value.runtime.setError(new Error("shell lookup failed"));
     const { streams } = ttyTestIO();
     const ctx = ValueContext.EmptyContext()
+      .withValue(CommandKey, compiledRootCommand(value, IMPERATIVE_GLOBAL_CONFIG))
       .withValue(RegionKey, "us-east-1")
       .withValue(EndpointKey, undefined)
       .withValue(JsonKey, false)
@@ -164,6 +193,7 @@ describe("RuntimeShellScreen", () => {
     const value = core();
     const { streams, stdin } = ttyTestIO();
     const ctx = ValueContext.EmptyContext()
+      .withValue(CommandKey, compiledRootCommand(value, IMPERATIVE_GLOBAL_CONFIG))
       .withValue(RegionKey, "us-east-1")
       .withValue(EndpointKey, undefined)
       .withValue(JsonKey, false)

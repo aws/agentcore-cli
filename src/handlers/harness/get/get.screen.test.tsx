@@ -9,6 +9,7 @@ import type {
   Harness,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  renderScreen,
   renderImperativeScreen,
   waitForText,
   waitFor,
@@ -289,6 +290,26 @@ async function focusTree(r: ReturnType<typeof renderImperativeScreen>, row = 0) 
 }
 
 describe("harness hub linked resources", () => {
+  test.each([
+    [2, "gateway", "getGateway", GATEWAY_ID],
+    [3, "identity", "getOauth2CredentialProvider", "github-oauth"],
+  ] as const)(
+    "linked row %i remains readable with imperative commands off",
+    async (row, family, method, id) => {
+      const core = new TestCoreClient();
+      core.harness.setGetResponse({ harness: linkedHarness() });
+      const r = renderScreen("/agentcore/harness/get/MyHarness-abc123", { core });
+      await waitForText(r.lastFrame, "linked resources");
+      for (let press = 0; press < 3 + row; press++) await r.press("down");
+      await r.press("return");
+      await waitFor(() => core[family].calls.some((call) => call.method === method));
+      expect(core[family].calls.find((call) => call.method === method)!.args).toEqual([
+        id,
+        expect.objectContaining({ region: LINK_REGION }),
+      ]);
+    },
+  );
+
   test("lists one row per linked resource under a titled divider", async () => {
     const { r } = linkedHubScreen();
 

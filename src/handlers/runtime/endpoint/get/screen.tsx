@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../../components/JsonDetail";
 import { ResourceDetailScreen } from "../../../../components/ResourceDetailScreen";
+import { isCommandAvailable } from "../../../../components/CommandGate";
 import type { ScreenProps } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
@@ -61,7 +62,11 @@ export function RuntimeGetEndpointScreen(props: ScreenProps) {
                 description: "show the full JSON definition",
                 onSelect: () => navigate(endpointPath(runtimeId, qualifier, "json")),
               },
-            ]
+            ].filter(
+              (action) =>
+                action.name === "detail" ||
+                isCommandAvailable(props.ctx, ["agentcore", "runtime", action.name]),
+            )
           : []
       }
       loadingLabel={`loading endpoint ${qualifier ?? ""} for Runtime ${runtimeId ?? ""}…`}

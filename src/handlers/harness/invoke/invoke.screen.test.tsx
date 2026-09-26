@@ -5,6 +5,8 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { GetHarnessResponse, HarnessSummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  compiledRootCommand,
+  renderScreen,
   renderImperativeScreen,
   waitForText,
   waitFor,
@@ -12,6 +14,8 @@ import {
   StreamController,
   TestCoreClient,
 } from "../../../testing";
+import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
+import { CommandKey } from "../../../router";
 
 afterEach(cleanupScreens);
 
@@ -61,6 +65,40 @@ async function sendMessage(r: ReturnType<typeof renderImperativeScreen>, text: s
   await r.write(text);
   await r.press("return");
 }
+
+describe("project invocation with imperative commands disabled", () => {
+  test.each([false, true])("exec access follows the imperative flag %s", async (enabled) => {
+    const core = chatCore();
+    const globalConfig = { ...DEFAULT_GLOBAL_CONFIG, "imperative-commands": enabled };
+    const command = compiledRootCommand(core, globalConfig)
+      .commands.find((child) => child.name() === "invoke")!
+      .commands.find((child) => child.name() === "harness")!;
+    const r = renderScreen(CHAT_PATH, {
+      core,
+      globalConfig,
+      withContext: (ctx) => ctx.withValue(CommandKey, command),
+    });
+
+    await waitForText(r.lastFrame, "send a message");
+    expect(r.lastFrame()!.includes("ctrl+e")).toBe(enabled);
+    await r.write("\u0005");
+    if (enabled) {
+      await waitForText(r.lastFrame, "run a command");
+      await sendMessage(r, "pwd");
+      await waitFor(() =>
+        core.harness.calls.some((call) => call.method === "invokeAgentRuntimeCommand"),
+      );
+    } else {
+      expect(r.lastFrame()).not.toContain("run a command");
+      await sendMessage(r, "hello");
+      await waitForText(r.lastFrame, "Hello from the agent");
+      expect(core.harness.calls.some((call) => call.method === "invokeHarness")).toBe(true);
+      expect(core.harness.calls.some((call) => call.method === "invokeAgentRuntimeCommand")).toBe(
+        false,
+      );
+    }
+  });
+});
 
 describe("invoke picker screen", () => {
   test("lists harnesses with a chat-flavored subtitle", async () => {

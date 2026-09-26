@@ -8,11 +8,15 @@ import type {
 import type { RuntimeInvokeRequest } from "../types";
 import {
   cleanupScreens,
+  compiledRootCommand,
+  renderScreen,
   renderImperativeScreen,
   TestCoreClient,
   waitFor,
   waitForText,
 } from "../../../testing";
+import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
+import { CommandKey } from "../../../router";
 import { RuntimeInvokeLaunchContextKey } from "./launchContext";
 
 const REGION = "us-east-1";
@@ -70,6 +74,55 @@ function displayedSessionId(frame: string | undefined): string | undefined {
 }
 
 describe("Runtime invoke routing", () => {
+  test("project invocation only switches endpoints while imperative commands are off", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setListEndpointsResponse({
+        runtimeEndpoints: [endpoint(), endpoint({ name: "canary", id: "canary" })],
+      });
+    const launch = compiledRootCommand(core)
+      .commands.find((command) => command.name() === "invoke")!
+      .commands.find((command) => command.name() === "runtime")!;
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      globalConfig: DEFAULT_GLOBAL_CONFIG,
+      withContext: (ctx) => ctx.withValue(CommandKey, launch),
+    });
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+    await screen.write("\x14");
+    await waitForText(screen.lastFrame, "choose another endpoint");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+    await screen.write("\x14");
+    await waitForText(screen.lastFrame, "canary");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+    await screen.write("{}");
+    await screen.press("return");
+    await waitFor(() => invokeRequests(core).length === 1);
+    expect(invokeRequests(core)[0]).toMatchObject({ runtimeId: RUNTIME_ID, qualifier: "canary" });
+    expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
+  });
+
+  test("back from a project's initial endpoint picker cannot open the account Runtime picker", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setListEndpointsResponse({ runtimeEndpoints: [endpoint()] });
+    const launch = compiledRootCommand(core)
+      .commands.find((command) => command.name() === "invoke")!
+      .commands.find((command) => command.name() === "runtime")!;
+    const screen = renderScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, {
+      core,
+      globalConfig: DEFAULT_GLOBAL_CONFIG,
+      withContext: (ctx) => ctx.withValue(CommandKey, launch),
+    });
+    await waitForText(screen.lastFrame, QUALIFIER);
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "the platform for production AI agents");
+    expect(core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
+  });
+
   test("selects a Runtime and endpoint before opening one console", async () => {
     const runtimeId = "runtime/blue one";
     const qualifier = "prod/green one";

@@ -9,6 +9,7 @@ import cliTruncate from "cli-truncate";
 import type { ScreenProps } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 import { Layout } from "../../../components/Layout";
+import { isCommandAvailable } from "../../../components/CommandGate";
 import { MultilineInput } from "../../../components/MultilineInput";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
@@ -158,6 +159,7 @@ export function RuntimeInvokeConsole({
   onBack,
 }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
+  const canSelectRuntime = isCommandAvailable(ctx, ["agentcore", "runtime", "invoke"]);
   const navigate = useNavigate();
   const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
@@ -304,7 +306,13 @@ export function RuntimeInvokeConsole({
     (input, key) => {
       if (key.ctrl) {
         if (input === "v" && !abortRef.current) setPrettyJson((current) => !current);
-        else if (input === "t" && !abortRef.current) setTargetPicker({ stage: "runtime" });
+        else if (input === "t" && !abortRef.current) {
+          setTargetPicker(
+            canSelectRuntime
+              ? { stage: "runtime" }
+              : { stage: "endpoint", runtimeId: target.runtimeId },
+          );
+        }
         return;
       }
       if (key.escape) {
@@ -371,7 +379,7 @@ export function RuntimeInvokeConsole({
           }
           setTargetPicker(null);
         }}
-        onEscape={() => setTargetPicker({ stage: "runtime" })}
+        onEscape={() => setTargetPicker(canSelectRuntime ? { stage: "runtime" } : null)}
       />
     );
   }
@@ -396,7 +404,7 @@ export function RuntimeInvokeConsole({
                     },
                   ]
                 : [{ key: `${glyphs.shift}${glyphs.enter}`, label: "newline" }]),
-              { key: "ctrl+t", label: "target" },
+              { key: "ctrl+t", label: canSelectRuntime ? "target" : "endpoint" },
               { key: "↑↓", label: "scroll" },
               { key: "esc", label: "back" },
               { key: "ctrl+c", label: "quit" },
