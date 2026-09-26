@@ -152,6 +152,47 @@ describe("eval batch-insights run", () => {
     });
   });
 
+  test("forwards --output-config so insight results land in the caller's log group", async () => {
+    const { core } = await run([
+      "eval",
+      "batch-insights",
+      "run",
+      "--name",
+      "insights_run",
+      "--agent",
+      "agent-1",
+      "--output-config",
+      '{"cloudWatchConfig":{"logGroupName":"/company/agent-insights","metricsNamespace":"Company/AgentInsights","resultDestination":"DEDICATED_LOG_GROUP"}}',
+      "--json",
+    ]);
+
+    expect(core.eval.calls[0]?.args[0]).toMatchObject({
+      outputConfig: {
+        cloudWatchConfig: {
+          logGroupName: "/company/agent-insights",
+          metricsNamespace: "Company/AgentInsights",
+          resultDestination: "DEDICATED_LOG_GROUP",
+        },
+      },
+    });
+  });
+
+  test("rejects malformed --output-config JSON", async () => {
+    await expect(
+      run([
+        "eval",
+        "batch-insights",
+        "run",
+        "--name",
+        "insights_run",
+        "--agent",
+        "agent-1",
+        "--output-config",
+        "{not json",
+      ]),
+    ).rejects.toThrow(/Invalid JSON for option '--output-config'/);
+  });
+
   test("rejects explicit analysis configuration with an online evaluation source", async () => {
     await expect(
       run([
