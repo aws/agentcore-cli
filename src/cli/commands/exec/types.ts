@@ -38,8 +38,6 @@ export type ExecResult = Result & {
   reconnectAttempts?: number;
   /** True if the session was kicked by another client (close code 4000). */
   wasKicked?: boolean;
-  /** True if the initial connection reattached an existing shell. */
-  isReconnect?: boolean;
   /** True if the user explicitly detached with Ctrl+] (shell is still alive on the VM). */
   detached?: boolean;
   /** Buffered stdout from a one-shot command (populated when --json is set). */

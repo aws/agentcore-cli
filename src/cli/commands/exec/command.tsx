@@ -219,7 +219,7 @@ export async function runExecLoop(options: ExecOptions = {}): Promise<void> {
           const ctx = await loadExecContext(shellOptions);
           const r = await handleShellSession(ctx, shellOptions);
           recorder.set({
-            is_reconnect: r.isReconnect ?? Boolean(shellOptions.shellId),
+            is_reconnect: Boolean(shellOptions.shellId),
             exit_code: r.exitCode ?? (r.success ? 0 : 1),
             reconnect_attempts: r.reconnectAttempts ?? 0,
             was_kicked: r.wasKicked ?? false,
