@@ -10,18 +10,12 @@ import {
 } from "../../testing";
 import { createRootHandler } from "../index";
 
-// Gateways and their Targets, connectors, and Rules are created and changed
-// through AgentCore projects, so the standalone group only reads, invokes,
-// and deletes sub-resources.
-const REMOVED = [
-  "gateway create",
-  "gateway update",
-  "gateway delete",
-  ...["target", "connector", "rule"].flatMap((group) => [
-    `gateway ${group} create`,
-    `gateway ${group} update`,
-  ]),
-];
+// Gateways and their Targets, connectors, and Rules are created, changed, and
+// deleted through AgentCore projects, so the standalone group only reads and
+// invokes them.
+const REMOVED = ["", "target ", "connector ", "rule "].flatMap((group) =>
+  ["create", "update", "delete"].map((mutation) => `gateway ${group}${mutation}`),
+);
 
 function setup(enabled?: boolean) {
   const core = new TestCoreClient();
@@ -76,7 +70,7 @@ describe("Gateway command availability", () => {
     ]);
     for (const group of ["target", "connector", "rule"]) {
       const sub = gateway.commands.find((child) => child.name() === group)!;
-      expect(sub.commands.map((child) => child.name())).toEqual(["get", "list", "delete"]);
+      expect(sub.commands.map((child) => child.name())).toEqual(["get", "list"]);
     }
     expect(gateway.commands.find((child) => child.name() === "policy")?.commands[0]?.name()).toBe(
       "generate",

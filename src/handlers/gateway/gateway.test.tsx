@@ -91,9 +91,9 @@ describe("gateway command hierarchy", () => {
       "rule",
       "policy",
     ]);
-    expect(target?.children().map((child) => child.name())).toEqual(["get", "list", "delete"]);
-    expect(connector?.children().map((child) => child.name())).toEqual(["get", "list", "delete"]);
-    expect(rule?.children().map((child) => child.name())).toEqual(["get", "list", "delete"]);
+    expect(target?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(connector?.children().map((child) => child.name())).toEqual(["get", "list"]);
+    expect(rule?.children().map((child) => child.name())).toEqual(["get", "list"]);
     expect(policy?.children().map((child) => child.name())).toEqual(["generate"]);
   });
 

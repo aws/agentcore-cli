@@ -11,9 +11,9 @@ import { createGatewayPolicyHandler } from "./policy";
 import { createGatewayRuleHandler } from "./rule";
 import { createGatewayTargetHandler } from "./target";
 
-// Gateways, and their Targets, connectors, and Rules, are created and changed
-// through AgentCore projects (`agentcore add gateway`, then `agentcore deploy`),
-// so this group has no create or update commands and no Gateway delete.
+// Gateways, and their Targets, connectors, and Rules, are created, changed,
+// and deleted through AgentCore projects (`agentcore add gateway`, then
+// `agentcore deploy`), so this group only reads and invokes them.
 export function createGatewayHandler(core: Core, io: AppIO): Router {
   return new Router("gateway", "manage AgentCore Gateways")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))

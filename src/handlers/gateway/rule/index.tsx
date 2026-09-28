@@ -2,7 +2,6 @@ import type { AppIO } from "../../../io";
 import { Router } from "../../../router";
 import { renderTui } from "../../../tui";
 import type { Core } from "../../types";
-import { createDeleteGatewayRuleHandler } from "./delete";
 import { createGetGatewayRuleHandler } from "./get";
 import { createListGatewayRulesHandler } from "./list";
 
@@ -11,6 +10,5 @@ export function createGatewayRuleHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
     .handler(createGetGatewayRuleHandler(core))
-    .handler(createListGatewayRulesHandler(core))
-    .handler(createDeleteGatewayRuleHandler(core));
+    .handler(createListGatewayRulesHandler(core));
 }
