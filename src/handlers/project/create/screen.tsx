@@ -263,7 +263,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       </Step>
 
       {values.kind === "harness" && (
-        <Step stepKey="model">
+        <Step stepKey="model" title="model provider">
           <ModelField value={values.model} onChange={(model) => patch({ model })} />
         </Step>
       )}
@@ -465,7 +465,7 @@ function ModelField({
       >
         <FormRadioGroup
           key="provider"
-          helpText="choose a model"
+          helpText="choose a model provider"
           options={options}
           focusedIndex={providerIndex}
           selectedIndex={focusedField !== null ? providerIndex : undefined}

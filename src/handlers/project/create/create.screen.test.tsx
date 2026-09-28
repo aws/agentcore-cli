@@ -47,7 +47,7 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5";
 
 describe("project create wizard", () => {
-  test("harness flow: name → type → model → review → created", async () => {
+  test("harness flow: name → type → model provider → review → created", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const core = new TestCoreClient();
@@ -69,7 +69,8 @@ describe("project create wizard", () => {
     await r.press("return");
 
     // Model step: fields stay hidden until the provider is confirmed.
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
+    expect(r.lastFrame()).toContain("● model provider ──");
     expect(r.lastFrame()).toContain("● bedrock");
     expect(r.lastFrame()).not.toContain("bedrock (recommended)");
     expect(r.lastFrame()).toContain("○ openai");
@@ -130,7 +131,7 @@ describe("project create wizard", () => {
 
     // Enter focuses the selected provider's model field. The cursor starts at
     // the end of the prefilled id, so typing appends.
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return");
     await r.write("-test");
     await r.press("return");
@@ -166,7 +167,7 @@ describe("project create wizard", () => {
     await r.press("down"); // harness
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down");
     expect(r.lastFrame()).toContain("● openai");
     await r.press("return"); // focus model id
@@ -224,7 +225,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await r.press("down"); // harness
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
 
     await r.press("down"); // openai
     await r.press("return"); // model id
@@ -246,7 +247,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await r.press("down"); // harness
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
 
     await r.press("down"); // openai
     await waitForText(r.lastFrame, "● openai");
@@ -273,7 +274,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await r.press("down"); // harness
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
 
     const frame = r.lastFrame()!;
     const lines = frame.split("\n");
@@ -547,7 +548,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -590,7 +591,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return"); // focus model id
     await r.press("return"); // accept model id
     await waitForText(r.lastFrame, "this project will be created");
@@ -632,7 +633,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "what kind of agent to start with?");
     await r.press("down"); // harness
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
