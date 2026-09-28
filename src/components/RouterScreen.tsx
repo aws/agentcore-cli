@@ -2,7 +2,12 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
-import { CommandKey, isTuiCommandSupported } from "../router";
+import {
+  CommandKey,
+  commandMenuSectionStart,
+  isListedInMenu,
+  isTuiCommandSupported,
+} from "../router";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
@@ -12,6 +17,7 @@ import { RegionPinContext } from "../handlers/utils";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
+const CLI_ONLY_SECTION = "command line only";
 
 // rootCommand walks up to the top of the Commander tree.
 function rootCommand(c: Command): Command {
@@ -47,6 +53,8 @@ interface Option {
   // cliOnly marks a subcommand without a screen; it is listed under a divider
   // and opens its help instead.
   cliOnly: boolean;
+  // section is the divider title this option is listed under, if any.
+  section?: string;
 }
 
 export interface TuiOnlyCommand {
@@ -95,14 +103,27 @@ function CommandMenu({
     pinRegion(undefined);
   }, [pinRegion]);
 
-  // Screen-backed commands first, then the command-line-only ones, so the
-  // divider between them falls at one place in the list.
+  // Commands in registration order, then the command-line-only ones under their
+  // own divider. A section the router declared with menuSection covers the
+  // commands from where it was declared up to the next one. A command the
+  // router listed with listInMenu stays in place, styled like one with a
+  // screen; selecting it still opens its help.
   const options: Option[] = useMemo(() => {
-    const actual = command.commands.map((c) => ({
-      name: c.name(),
-      description: c.description(),
-      cliOnly: !isTuiCommandSupported(c),
-    }));
+    // Each command's section is the nearest divider declared at or above it.
+    const sectionOf = (index: number) =>
+      command.commands
+        .slice(0, index + 1)
+        .map(commandMenuSectionStart)
+        .findLast((title) => title !== undefined);
+    const actual: Option[] = command.commands.map((c, index) => {
+      const cliOnly = !isTuiCommandSupported(c) && !isListedInMenu(c);
+      return {
+        name: c.name(),
+        description: c.description(),
+        cliOnly,
+        section: cliOnly ? CLI_ONLY_SECTION : sectionOf(index),
+      };
+    });
     const actualNames = new Set(actual.map((option) => option.name));
     const tuiOnly = tuiOnlyCommands
       .filter((option) => !actualNames.has(option.name))
@@ -209,11 +230,12 @@ function CommandMenu({
           ) : (
             filtered.map((o, i) => {
               const isHl = i === highlight;
-              // The divider sits above the first command-line-only option.
-              const startsCliOnly = o.cliOnly && !filtered[i - 1]?.cliOnly;
+              // A section's divider sits above its first option.
+              const startsSection =
+                o.section !== undefined && o.section !== filtered[i - 1]?.section;
               return (
                 <React.Fragment key={o.name}>
-                  {startsCliOnly && <Divider title="command line only" />}
+                  {startsSection && <Divider title={o.section} />}
                   <Box paddingX={1}>
                     <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
                     <Text

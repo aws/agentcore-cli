@@ -38,8 +38,21 @@ describe("menus list command-line-only subcommands below a divider", () => {
 
     await waitForText(r.lastFrame, "command line only");
     expect(menuEntries(r.lastFrame()!)).toEqual({
-      screens: ["create", "add", "remove", "deploy", "invoke", "status", "build", "eval"],
-      cliOnly: ["export", "dev", "log", "traces", "feedback", "config", "update"],
+      screens: [
+        "create",
+        "add",
+        "remove",
+        "dev",
+        "build",
+        "deploy",
+        "status",
+        "invoke",
+        "log",
+        "traces",
+        "export",
+        "eval",
+      ],
+      cliOnly: ["feedback", "config", "update"],
     });
     r.unmount();
   });

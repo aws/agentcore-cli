@@ -32,11 +32,11 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.4`.
     - [`agentcore add payment-manager`](#agentcore-add-payment-manager)
     - [`agentcore add payment-connector`](#agentcore-add-payment-connector)
     - [`agentcore add runtime-endpoint`](#agentcore-add-runtime-endpoint)
-  - [`agentcore export`](#agentcore-export)
-    - [`agentcore export harness`](#agentcore-export-harness)
   - [`agentcore remove`](#agentcore-remove)
   - [`agentcore dev`](#agentcore-dev)
+  - [`agentcore build`](#agentcore-build)
   - [`agentcore deploy`](#agentcore-deploy)
+  - [`agentcore status`](#agentcore-status)
   - [`agentcore invoke`](#agentcore-invoke)
   - [`agentcore log`](#agentcore-log)
     - [`agentcore log runtime`](#agentcore-log-runtime)
@@ -48,8 +48,8 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.4`.
     - [`agentcore traces harness`](#agentcore-traces-harness)
       - [`agentcore traces harness list`](#agentcore-traces-harness-list)
       - [`agentcore traces harness get`](#agentcore-traces-harness-get)
-  - [`agentcore status`](#agentcore-status)
-  - [`agentcore build`](#agentcore-build)
+  - [`agentcore export`](#agentcore-export)
+    - [`agentcore export harness`](#agentcore-export-harness)
 - [Evaluation commands](#evaluation-commands)
   - [`agentcore eval`](#agentcore-eval)
     - [`agentcore eval evaluator`](#agentcore-eval-evaluator)
@@ -570,28 +570,6 @@ add a named endpoint (version alias) to a runtime
 - `--version <version>`: the runtime version this endpoint points to (default: 1)
 - `--description <description>`: description of the endpoint
 
-### `agentcore export`
-
-```text
-agentcore export [options] [command]
-```
-
-convert project resources into editable code you own
-
-#### `agentcore export harness`
-
-```text
-agentcore export harness [options]
-```
-
-convert a harness into an editable Strands Runtime agent
-
-**Options**
-
-- `--name <name>`: the name of an in-project harness to export
-- `--arn <arn>`: the ARN of a deployed harness to fetch from the service and export
-- `--target-agent-name <target-agent-name>`: the name of the generated Runtime agent (default &lt;harnessName&gt;Agent)
-
 ### `agentcore remove`
 
 ```text
@@ -629,6 +607,14 @@ run the project locally for development
 - `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (agents stream to the terminal) (default: "headless")
 - `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
 
+### `agentcore build`
+
+```text
+agentcore build [options]
+```
+
+build the project's deployable artifacts
+
 ### `agentcore deploy`
 
 ```text
@@ -641,6 +627,18 @@ deploy the project to AWS
 
 - `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
 - `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+
+### `agentcore status`
+
+```text
+agentcore status [options]
+```
+
+show the status of the project's deployed resources
+
+**Options**
+
+- `--target <target>`: name of the aws-targets.json entry to report on (default: "default")
 
 ### `agentcore invoke`
 
@@ -827,25 +825,27 @@ download a Harness trace's log records to a JSON file
 - `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
 - `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
 
-### `agentcore status`
+### `agentcore export`
 
 ```text
-agentcore status [options]
+agentcore export [options] [command]
 ```
 
-show the status of the project's deployed resources
+convert project resources into editable code you own
+
+#### `agentcore export harness`
+
+```text
+agentcore export harness [options]
+```
+
+convert a harness into an editable Strands Runtime agent
 
 **Options**
 
-- `--target <target>`: name of the aws-targets.json entry to report on (default: "default")
-
-### `agentcore build`
-
-```text
-agentcore build [options]
-```
-
-build the project's deployable artifacts
+- `--name <name>`: the name of an in-project harness to export
+- `--arn <arn>`: the ARN of a deployed harness to fetch from the service and export
+- `--target-agent-name <target-agent-name>`: the name of the generated Runtime agent (default &lt;harnessName&gt;Agent)
 
 ## Evaluation commands
 

@@ -31,9 +31,9 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
 
   const withProjectMiddleware = withProject({ projectManager });
   const config = { projectManager, io, bedrockAgentImporter: core.bedrockAgentImporter };
+  // Returned in workflow order, which is the order `--help` and the TUI menu list them in.
   const projectBoundHandlers = [
     createAddProjectResourceHandler(config, core),
-    createExportProjectResourceHandler({ projectManager, core, io }),
     createRemoveProjectHandler({
       projectManager,
       io,
@@ -56,23 +56,24 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
       isInteractive: () => process.stdout.isTTY === true,
       watchFile,
     }),
-    createDeployProjectHandler({
-      projectManager,
-      io,
-      middlewares: [withProjectMiddleware],
-    }),
-    createProjectInvokeHandler(core, io),
-    createProjectLogHandler(core, io),
-    createProjectTracesHandler(core, io),
-    createStatusProjectHandler({
-      projectManager,
-      middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
-    }),
     createBuildProjectHandler({
       projectManager,
       io,
       middlewares: [withProjectMiddleware],
     }),
+    createDeployProjectHandler({
+      projectManager,
+      io,
+      middlewares: [withProjectMiddleware],
+    }),
+    createStatusProjectHandler({
+      projectManager,
+      middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
+    }),
+    createProjectInvokeHandler(core, io),
+    createProjectLogHandler(core, io),
+    createProjectTracesHandler(core, io),
+    createExportProjectResourceHandler({ projectManager, core, io }),
   ];
 
   return [createHandler, ...projectBoundHandlers];

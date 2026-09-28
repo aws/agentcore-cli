@@ -34,6 +34,13 @@ export const ProjectKey = contextKey<Project>("project");
 // RoutedCommand keeps the compiled handler and Commander command tree together.
 // TUI consumers can therefore read handler metadata without module-level state.
 class RoutedCommand extends Command {
+  // menuSectionStart is the title of the divider the parent router's menu
+  // draws above this command, if the router declared one before it.
+  menuSectionStart?: string;
+  // listedInMenu keeps a command without a screen in place in the parent's
+  // menu instead of moving it under the "command line only" divider.
+  listedInMenu = false;
+
   constructor(readonly handler: Handler) {
     super(handler.name());
   }
@@ -41,6 +48,14 @@ class RoutedCommand extends Command {
 
 export function isTuiCommandSupported(command: Command): boolean {
   return command instanceof RoutedCommand ? command.handler.doesSupportTui() : true;
+}
+
+export function commandMenuSectionStart(command: Command): string | undefined {
+  return command instanceof RoutedCommand ? command.menuSectionStart : undefined;
+}
+
+export function isListedInMenu(command: Command): boolean {
+  return command instanceof RoutedCommand && command.listedInMenu;
 }
 
 // commandParameterDetails is the "Parameter details" section `--help` appends
@@ -59,6 +74,15 @@ interface TuiChildSupportProvider {
 
 function isTuiChildSupportProvider(h: Handler): h is Handler & TuiChildSupportProvider {
   return typeof (h as Partial<TuiChildSupportProvider>).supportsTuiCommand === "function";
+}
+
+interface MenuLayoutProvider {
+  menuSectionStartOf(commandName: string): string | undefined;
+  isListedInMenu(commandName: string): boolean;
+}
+
+function isMenuLayoutProvider(h: Handler): h is Handler & MenuLayoutProvider {
+  return typeof (h as Partial<MenuLayoutProvider>).menuSectionStartOf === "function";
 }
 
 function withEffectiveTuiSupport(handler: Handler, supported: boolean): Handler {
@@ -261,7 +285,12 @@ export function compile(
       const childTuiSupported =
         effectiveTuiSupport &&
         (!isTuiChildSupportProvider(node) || node.supportsTuiCommand(child.name()));
-      c.addCommand(compile(child, ctx, nextStack, childGlobals, childTuiSupported));
+      const childCommand = compile(child, ctx, nextStack, childGlobals, childTuiSupported);
+      if (isMenuLayoutProvider(node) && childCommand instanceof RoutedCommand) {
+        childCommand.menuSectionStart = node.menuSectionStartOf(child.name());
+        childCommand.listedInMenu = node.isListedInMenu(child.name());
+      }
+      c.addCommand(childCommand);
     }
     // A group may also carry a default handler that runs when it is invoked
     // without a subcommand. It executes with this group's own middleware and can
@@ -293,6 +322,9 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   private globalFlags: GlobalFlag[] = [];
   private defaultHandle?: DefaultHandle;
   private tuiCommandNames?: ReadonlySet<string>;
+  private sectionStarts = new Map<string, string>();
+  private pendingSection?: string;
+  private menuListed = new Set<string>();
   private cliVersion?: string;
 
   constructor(
@@ -309,6 +341,10 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   handler(handler: Handler): this {
     this.handlers.push(handler);
+    if (this.pendingSection !== undefined) {
+      this.sectionStarts.set(handler.name(), this.pendingSection);
+      this.pendingSection = undefined;
+    }
     return this;
   }
 
@@ -327,6 +363,33 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   supportsTuiCommand(commandName: string): boolean {
     return this.tuiCommandNames?.has(commandName) ?? true;
+  }
+
+  // menuSection draws a titled divider in this router's interactive menu above
+  // the next registered handler; the commands after it belong to that section
+  // until the next divider. `--help` is unaffected: it lists commands in
+  // registration order.
+  menuSection(title: string): this {
+    this.pendingSection = title;
+    return this;
+  }
+
+  menuSectionStartOf(commandName: string): string | undefined {
+    return this.sectionStarts.get(commandName);
+  }
+
+  // listInMenu keeps the named children in their registered place in this
+  // router's interactive menu, styled like the commands with a screen, instead
+  // of moving them under the "command line only" divider. Selecting one still
+  // opens its help; command-line behavior is untouched. Names that are not
+  // registered children are ignored.
+  listInMenu(...commands: string[]): this {
+    for (const command of commands) this.menuListed.add(command);
+    return this;
+  }
+
+  isListedInMenu(commandName: string): boolean {
+    return this.menuListed.has(commandName);
   }
 
   // default registers a handler that runs when this group is selected without a

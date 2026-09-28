@@ -13,6 +13,8 @@ import {
   flag,
   globalFlag,
   isTuiCommandSupported,
+  commandMenuSectionStart,
+  isListedInMenu,
   type Context,
   type Handler,
   type Middleware,
@@ -90,6 +92,39 @@ test("middleware applies only to the subtree where it is declared", async () => 
 });
 
 // --- TUI command support ---------------------------------------------------
+
+test("menuSection starts a divider at the next registered handler without reordering", () => {
+  const root = new Router("app")
+    .handler(leaf("a", () => {}))
+    .menuSection("later")
+    .handler(leaf("b", () => {}))
+    .handler(leaf("c", () => {}));
+
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map((child) => child.name())).toEqual(["a", "b", "c"]);
+  expect(command.commands.map(commandMenuSectionStart)).toEqual([undefined, "later", undefined]);
+});
+
+test("a trailing menuSection with no handler after it draws no divider", () => {
+  const root = new Router("app").handler(leaf("a", () => {})).menuSection("unused");
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map(commandMenuSectionStart)).toEqual([undefined]);
+});
+
+test("listInMenu marks only the named children, including ones registered later", () => {
+  const root = new Router("app")
+    .listInMenu("b", "missing")
+    .handler(leaf("a", () => {}))
+    .handler(leaf("b", () => {}));
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map(isListedInMenu)).toEqual([false, true]);
+});
+
+test("a router keeps registration order", () => {
+  const root = new Router("app").handler(leaf("b", () => {})).handler(leaf("a", () => {}));
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map((child) => child.name())).toEqual(["b", "a"]);
+});
 
 test("all commands support the TUI when no allowlist is configured", () => {
   const nested = new Router("nested").handler(leaf("deep", () => {}));

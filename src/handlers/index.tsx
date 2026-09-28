@@ -93,18 +93,23 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   createProjectHandlers(core, io).forEach((handler) => {
     root.handler(handler);
   });
+  root.handler(createEvalHandler(core, io));
   if (globalConfig["imperative-commands"]) {
+    root.menuSection("resources");
+    root.handler(createGatewayHandler(core, io));
     root.handler(createHarnessHandler(core, io));
     root.handler(createIdentityHandler(core, io));
-    root.handler(createRuntimeHandler(core, io));
     root.handler(createMemoryHandler(core, io));
-    root.handler(createGatewayHandler(core, io));
     root.handler(createPaymentHandler(core, io));
+    root.handler(createRuntimeHandler(core, io));
   }
-  root.handler(createEvalHandler(core, io));
   root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
   root.handler(createUpdateHandler(io));
+
+  // These have no screen of their own but belong with the commands around
+  // them, so the menu keeps them in place; selecting one opens its help.
+  root.listInMenu("dev", "log", "traces", "export", "payment");
 
   // Invoking with no subcommand launches the interactive TUI.
   root.default(renderTui(core, io));

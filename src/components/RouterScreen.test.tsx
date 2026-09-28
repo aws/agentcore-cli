@@ -10,6 +10,39 @@ import {
 
 afterEach(cleanupScreens);
 
+const PROJECT_WORKFLOW = [
+  "create",
+  "add",
+  "remove",
+  "dev",
+  "build",
+  "deploy",
+  "status",
+  "invoke",
+  "log",
+  "traces",
+  "export",
+  "eval",
+];
+
+// menuGroups reads a RouterScreen frame's option names in display order,
+// grouped under the divider each follows (untitled for the leading group).
+function menuGroups(frame: string): { title: string | undefined; names: string[] }[] {
+  const groups: { title: string | undefined; names: string[] }[] = [];
+  for (const line of frame.split("\n")) {
+    const divider = /^── (.+?) ─/.exec(line);
+    if (divider) {
+      groups.push({ title: divider[1], names: [] });
+      continue;
+    }
+    const option = /^\s{1,3}(?:❯ )?\s*([a-z][a-z0-9-]*)\s{2,}\S/.exec(line);
+    if (!option) continue;
+    if (groups.length === 0) groups.push({ title: undefined, names: [] });
+    groups[groups.length - 1]!.names.push(option[1]!);
+  }
+  return groups;
+}
+
 // RouterScreen is the interactive command menu. These tests mount it through the
 // real Root at a command path and drive it with key presses, asserting on the
 // rendered frames — behavior a user would see, not internal state.
@@ -37,9 +70,70 @@ describe("menu rendering", () => {
 
     const entries = menuEntries(r.lastFrame()!);
     expect(entries.screens).toEqual(
-      expect.arrayContaining(["harness", "identity", "runtime", "memory", "gateway"]),
+      expect.arrayContaining(["harness", "identity", "runtime", "memory", "gateway", "payment"]),
     );
-    expect(entries.cliOnly).toContain("payment");
+    expect(entries.cliOnly).not.toContain("payment");
+    r.unmount();
+  });
+
+  test("lists the resources alphabetically under a resources divider after the project commands", async () => {
+    const r = renderImperativeScreen("/agentcore");
+    await waitForText(r.lastFrame, "── resources");
+
+    expect(menuGroups(r.lastFrame()!)).toEqual([
+      { title: undefined, names: PROJECT_WORKFLOW },
+      {
+        title: "resources",
+        names: ["gateway", "harness", "identity", "memory", "payment", "runtime"],
+      },
+      { title: "command line only", names: ["feedback", "config", "update"] },
+    ]);
+    r.unmount();
+  });
+
+  test("lists the same project workflow with no resources section when standalone commands are disabled", async () => {
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "type to choose a command");
+
+    const frame = r.lastFrame()!;
+    expect(frame).not.toContain("── resources");
+    expect(menuGroups(frame)).toEqual([
+      { title: undefined, names: PROJECT_WORKFLOW },
+      { title: "command line only", names: ["feedback", "config", "update"] },
+    ]);
+    r.unmount();
+  });
+
+  test("selecting a listed command without a screen opens its help", async () => {
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "type to choose a command");
+
+    await r.write("dev");
+    await waitForText(r.lastFrame, "❯ dev");
+    await r.press("return");
+    await waitForText(r.lastFrame, "agentcore dev [options]");
+    r.unmount();
+  });
+
+  test("keeps the resources divider when filtering leaves a resource", async () => {
+    const r = renderImperativeScreen("/agentcore");
+    await waitForText(r.lastFrame, "type to choose a command");
+
+    await r.write("harn");
+    await waitForText(r.lastFrame, "❯ harness");
+    const frame = r.lastFrame()!;
+    expect(frame).toContain("── resources");
+    expect(frame).not.toContain("── command line only");
+    r.unmount();
+  });
+
+  test("filtering to the project workflow leaves no resources divider", async () => {
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "type to choose a command");
+
+    await r.write("dep");
+    await waitForText(r.lastFrame, "❯ deploy");
+    expect(r.lastFrame()).not.toContain("── resources");
     r.unmount();
   });
 
