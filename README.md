@@ -315,6 +315,7 @@ Projects use JSON schema files in the `agentcore/` directory:
 **Operations**
 
 - [Local Development](docs/local-development.md) - Dev server and debugging
+- [Proxy](docs/proxy.md) - Use the CLI behind an HTTP(S) proxy
 - [Transaction Search](docs/transaction_search.md) - Trace + log search across agent invocations
 - [Telemetry](docs/telemetry.md) - CLI usage telemetry — what's collected and how to opt out
 - [TUI Harness](docs/tui-harness.md) - Programmatic TUI driver for testing
