@@ -28,7 +28,6 @@ describe("project add gateway wizard", () => {
 
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     expect(screen.lastFrame()).toContain("❯ ● NONE (default)");
-    expect(screen.lastFrame()).toContain("● NONE (default)");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "enable semantic search over this Gateway's tools?");
@@ -54,7 +53,7 @@ describe("project add gateway wizard", () => {
     screen.unmount();
   });
 
-  test("uses the arrow for focus and space to select an authorizer", async () => {
+  test("moves the authorizer selection with the arrow keys", async () => {
     await inProject();
     const screen = renderScreen("/agentcore/add/gateway");
 
@@ -65,15 +64,13 @@ describe("project add gateway wizard", () => {
 
     await screen.press("down");
 
-    expect(screen.lastFrame()).toContain("● NONE (default)");
-    expect(screen.lastFrame()).toContain("❯ ○ AWS_IAM");
-    expect(screen.lastFrame()).not.toContain("● AWS_IAM");
-
-    await screen.write(" ");
-
+    // The pointer and the radio marker travel together: the row the keyboard
+    // is on is the value, as in every other radio step.
     await waitForText(screen.lastFrame, "❯ ● AWS_IAM");
+    expect(screen.lastFrame()).toContain("○ NONE (default)");
     expect(screen.lastFrame()).not.toContain("● NONE (default)");
     await screen.press("return");
+
     await waitForText(screen.lastFrame, "enable semantic search over this Gateway's tools?");
     screen.unmount();
   });
@@ -116,10 +113,11 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    expect(screen.lastFrame()).toContain("● NONE (default)");
-    expect(screen.lastFrame()).toContain("❯ ○ CUSTOM_JWT");
-    await screen.write(" ");
+    await waitForText(screen.lastFrame, "❯ ● CUSTOM_JWT");
+    await screen.press("return");
 
+    // The inputs open in place under the choice. The pointer follows focus
+    // into them while the radio marker keeps showing the chosen authorizer.
     await waitForText(screen.lastFrame, "discovery URL");
     expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
     expect(screen.lastFrame()).toContain("● CUSTOM_JWT");
@@ -161,7 +159,7 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.write(" ");
+    await screen.press("return");
 
     await waitForText(screen.lastFrame, "discovery URL");
     await screen.write("http://idp.example.com");
@@ -182,7 +180,7 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.write(" ");
+    await screen.press("return");
 
     await waitForText(screen.lastFrame, "discovery URL");
     await screen.write("https://idp.example.com/.well-known/openid-configuration");
@@ -204,14 +202,34 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.write(" ");
+    await screen.press("return");
     await waitForText(screen.lastFrame, "discovery URL");
 
     await screen.press("escape");
 
-    await waitForText(screen.lastFrame, "● CUSTOM_JWT");
+    await waitForText(screen.lastFrame, "❯ ● CUSTOM_JWT");
     expect(screen.lastFrame()).not.toContain("discovery URL");
     expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
+    screen.unmount();
+  });
+
+  test("up from the first CUSTOM_JWT input returns focus to the authorizer choice", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/gateway");
+
+    await waitForText(screen.lastFrame, "what should this Gateway be called?");
+    await screen.write("secure");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "discovery URL");
+
+    await screen.press("up");
+
+    await waitForText(screen.lastFrame, "❯ ● CUSTOM_JWT");
+    expect(screen.lastFrame()).not.toContain("discovery URL");
     screen.unmount();
   });
 

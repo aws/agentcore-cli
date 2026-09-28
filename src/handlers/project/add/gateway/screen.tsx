@@ -273,45 +273,27 @@ function AuthorizerField({
   ) => void;
 }) {
   const { advance, back } = useWizard();
-  const selectedIndex = AUTHORIZER_CHOICES.findIndex((choice) => choice.value === authorizerType);
-  const [cursorIndex, setCursorIndex] = useState(selectedIndex);
+  const index = AUTHORIZER_CHOICES.findIndex((choice) => choice.value === authorizerType);
   const [focusedField, setFocusedField] = useState<number | null>(null);
   const [error, setError] = useState<string>();
 
-  useKeyHints(
-    focusedField === null
-      ? [
-          { key: "↑↓", label: "navigate" },
-          { key: "space", label: "select" },
-          { key: "enter", label: "continue" },
-        ]
-      : [
-          { key: "↑↓", label: "switch field" },
-          { key: "enter", label: "continue" },
-        ],
-  );
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "enter", label: "continue" },
+  ]);
 
-  useInput((input, key) => {
+  useInput((_input, key) => {
     if (focusedField === null) {
       if (key.escape) {
         back();
         return;
       }
-      if (key.upArrow) {
-        setCursorIndex((current) => Math.max(0, current - 1));
+      if (key.upArrow || key.downArrow) {
+        const nextIndex = key.upArrow
+          ? Math.max(0, index - 1)
+          : Math.min(AUTHORIZER_CHOICES.length - 1, index + 1);
+        onChange({ authorizerType: AUTHORIZER_CHOICES[nextIndex]!.value });
         setError(undefined);
-        return;
-      }
-      if (key.downArrow) {
-        setCursorIndex((current) => Math.min(AUTHORIZER_CHOICES.length - 1, current + 1));
-        setError(undefined);
-        return;
-      }
-      if (input === " ") {
-        const nextAuthorizerType = AUTHORIZER_CHOICES[cursorIndex]!.value;
-        onChange({ authorizerType: nextAuthorizerType });
-        setError(undefined);
-        if (nextAuthorizerType === "CUSTOM_JWT") setFocusedField(0);
         return;
       }
       if (key.return) {
@@ -384,8 +366,8 @@ function AuthorizerField({
       <FormRadioGroup
         helpText=""
         options={options}
-        focusedIndex={focusedField === null ? cursorIndex : undefined}
-        selectedIndex={selectedIndex}
+        focusedIndex={focusedField === null ? index : undefined}
+        selectedIndex={index}
       />
       {focusedField !== null && authorizerType === "CUSTOM_JWT" && (
         <>
