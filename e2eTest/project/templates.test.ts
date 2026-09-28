@@ -36,7 +36,8 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
     // Note: GH actions mac runners do not come with docker installed and does not allow nested virtualization (https://docs.github.com/en/actions/reference/runners/github-hosted-runners#limitations-for-arm64-macos-runners)
-    skip: process.env.CI === "true" && process.platform === "darwin",
+    // windows are also unable to run the linux container without a vm.
+    skip: process.env.CI === "true" && process.platform !== "linux",
   },
   {
     name: "agent_python_langchain",
