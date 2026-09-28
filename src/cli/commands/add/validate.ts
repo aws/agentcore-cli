@@ -213,21 +213,24 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     return { valid: true };
   }
 
-  // Non-MCP protocols: validate framework
-  if (!options.framework) {
-    return { valid: false, error: '--framework is required' };
-  }
+  // BYO agents do not require a framework, but validate one when supplied.
+  let fwResult: ReturnType<typeof SDKFrameworkSchema.safeParse> | undefined;
+  if (!isByoPath || options.framework) {
+    if (!options.framework) {
+      return { valid: false, error: '--framework is required' };
+    }
 
-  const fwResult = SDKFrameworkSchema.safeParse(options.framework);
-  if (!fwResult.success) {
-    return { valid: false, error: `Invalid framework: ${options.framework}` };
-  }
+    fwResult = SDKFrameworkSchema.safeParse(options.framework);
+    if (!fwResult.success) {
+      return { valid: false, error: `Invalid framework: ${options.framework}` };
+    }
 
-  // Validate framework is supported for the protocol
-  if (protocol !== 'HTTP') {
-    const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
-    if (!supportedFrameworks.includes(options.framework)) {
-      return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
+    // Validate framework is supported for the protocol
+    if (protocol !== 'HTTP') {
+      const supportedFrameworks = getSupportedFrameworksForProtocol(protocol);
+      if (!supportedFrameworks.includes(options.framework)) {
+        return { valid: false, error: `${options.framework} does not support ${protocol} protocol` };
+      }
     }
   }
 
@@ -240,9 +243,11 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     return { valid: false, error: `Invalid model provider: ${options.modelProvider}` };
   }
 
-  const supportedProviders = getSupportedModelProviders(options.framework);
-  if (!supportedProviders.includes(options.modelProvider)) {
-    return { valid: false, error: `${options.framework} does not support ${options.modelProvider}` };
+  if (!isByoPath || options.framework) {
+    const supportedProviders = getSupportedModelProviders(options.framework!);
+    if (!supportedProviders.includes(options.modelProvider)) {
+      return { valid: false, error: `${options.framework} does not support ${options.modelProvider}` };
+    }
   }
 
   if (!options.language) {
@@ -266,7 +271,7 @@ export function validateAddAgentOptions(options: AddAgentOptions): ValidationRes
     // TypeScript-only, the other open-source frameworks are Python-only).
     if (
       (langResult.data === 'Python' || langResult.data === 'TypeScript') &&
-      !isFrameworkSupportedForLanguage(langResult.data, fwResult.data)
+      !isFrameworkSupportedForLanguage(langResult.data, fwResult!.data!)
     ) {
       const supported = getFrameworksForLanguage(langResult.data).join(', ');
       return {
