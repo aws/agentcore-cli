@@ -31,6 +31,15 @@ export const HarnessNameSchema = z
   );
 export const HarnessModelProviderSchema = z.enum(["bedrock", "open_ai", "gemini", "lite_llm"]);
 export type HarnessModelProvider = z.infer<typeof HarnessModelProviderSchema>;
+
+/** The model a harness runs on when none is configured; `agentcore create`'s
+ * harness path and the `harness create` screen share it so the entry points
+ * cannot drift. It lives here, not in a handler, so the TUI can import it
+ * without pulling in the handler tree (which imports the TUI back). */
+export const DEFAULT_HARNESS_MODEL = {
+  provider: "bedrock",
+  modelId: "global.anthropic.claude-sonnet-5",
+} as const satisfies { provider: HarnessModelProvider; modelId: string };
 export const MAX_LITE_LLM_API_BASE_LENGTH = 16383;
 export const BedrockApiFormatSchema = z.enum(["converse_stream", "responses", "chat_completions"]);
 export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;

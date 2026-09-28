@@ -106,7 +106,6 @@ import {
   Oauth2CredentialProviderGetJsonScreen,
 } from "../handlers/identity/oauth2-credential-provider/get/screen.tsx";
 import { GatewayScreen } from "../handlers/gateway/screen.tsx";
-import { GatewayCreateScreen } from "../handlers/gateway/create/screen.tsx";
 import { GatewayGetJsonScreen, GatewayGetScreen } from "../handlers/gateway/get/screen.tsx";
 import { GatewayListScreen } from "../handlers/gateway/list/screen.tsx";
 import { GatewayTargetScreen } from "../handlers/gateway/target/screen.tsx";
@@ -483,7 +482,7 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route path="agentcore/gateway" element={<GatewayScreen ctx={ctx} core={core} />} />
       <Route
         path="agentcore/gateway/create"
-        element={<GatewayCreateScreen ctx={ctx} core={core} />}
+        element={<ProjectResourceCreateScreen ctx={ctx} core={core} resource="gateway" />}
       />
       <Route
         path="agentcore/gateway/get"

@@ -1,6 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { CreateHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import { DEFAULT_HARNESS_MODEL } from "../../project/add/harness";
+import { DEFAULT_HARNESS_MODEL } from "../../../projectSchemas/harness";
 import {
   renderImperativeScreen,
   waitForText,

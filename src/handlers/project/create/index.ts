@@ -20,12 +20,12 @@ import {
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
+  DEFAULT_HARNESS_MODEL,
   HarnessModelProviderSchema,
   HarnessSpecSchema,
   type HarnessModelProvider,
 } from "../../../projectSchemas/harness";
 import { InputValidationError } from "../../../errors";
-import { DEFAULT_HARNESS_MODEL } from "../add/harness";
 import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";

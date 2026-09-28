@@ -293,6 +293,33 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("the litellm fields stay inside the model step in an 80x24 terminal", async () => {
+    const r = renderScreen("/agentcore/create");
+    await r.resize(80, 24);
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("CompactApp");
+    await r.press("return");
+    await r.press("down"); // harness
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("down");
+    await r.press("down");
+    await r.press("down"); // litellm
+    await r.press("return");
+    await waitForText(r.lastFrame, "the litellm model to use");
+
+    const lines = r.lastFrame()!.split("\n");
+    expect(lines).toHaveLength(24);
+    expect(lines[0]).toContain("agentcore → create");
+    expect(lines).toContain(" choose a model provider");
+    expect(lines).toContain(" model ID");
+    expect(lines).toContain(" API key ARN");
+    expect(lines.at(-2)).toBe("─".repeat(80));
+    expect(lines.at(-1)).toContain("[enter] continue");
+    r.unmount();
+  });
+
   test("template flow: strands goes straight to review (no memory question)", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);

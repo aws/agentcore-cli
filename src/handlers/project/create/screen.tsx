@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
+import { ScrollView } from "ink-scroll-view";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { HarnessModelProvider } from "../../../projectSchemas/harness";
@@ -432,36 +433,43 @@ function ModelField({
   }));
 
   return (
-    <Box flexDirection="column">
-      <FormRadioGroup
-        helpText="choose a model provider"
-        options={options}
-        focusedIndex={providerIndex}
-        selectedIndex={focusedField !== null ? providerIndex : undefined}
-      />
-      {focusedField !== null &&
-        fields.map((field, fieldIndex) => (
-          <FormTextInput
-            key={`${value.provider}.${field.key}`}
-            name={field.name}
-            helpText={field.helpText}
-            placeholder={field.placeholder}
-            errorText=""
-            value={config[field.key]}
-            onChange={(next) => {
-              onChange({
-                ...value,
-                configs: {
-                  ...value.configs,
-                  [value.provider]: { ...config, [field.key]: next },
-                },
-              });
-              setError(null);
-            }}
-            focused={focusedField === fieldIndex}
-          />
-        ))}
-      {error && <Text color={theme.colors.error}>{error}</Text>}
+    <Box flexDirection="column" flexGrow={1} minHeight={0}>
+      <ScrollView flexGrow={1} minHeight={0}>
+        <FormRadioGroup
+          key="provider"
+          helpText="choose a model provider"
+          options={options}
+          focusedIndex={providerIndex}
+          selectedIndex={focusedField !== null ? providerIndex : undefined}
+        />
+        {focusedField !== null &&
+          fields.map((field, fieldIndex) => (
+            <FormTextInput
+              key={`${value.provider}.${field.key}`}
+              name={field.name}
+              helpText={field.helpText}
+              placeholder={field.placeholder}
+              errorText=""
+              value={config[field.key]}
+              onChange={(next) => {
+                onChange({
+                  ...value,
+                  configs: {
+                    ...value.configs,
+                    [value.provider]: { ...config, [field.key]: next },
+                  },
+                });
+                setError(null);
+              }}
+              focused={focusedField === fieldIndex}
+            />
+          ))}
+        {error && (
+          <Text key="error" color={theme.colors.error}>
+            {error}
+          </Text>
+        )}
+      </ScrollView>
     </Box>
   );
 }

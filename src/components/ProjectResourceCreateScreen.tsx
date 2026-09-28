@@ -40,8 +40,8 @@ interface ProjectResourceCreateScreenProps extends ScreenProps {
   resource: ProjectCreateResource;
 }
 
-// This is informational only. Gateway routes here only when its imperative
-// create command is disabled; Runtime and Memory always use project creation.
+// This is informational only: Runtimes, Memories, and Gateways are created
+// through AgentCore projects, so there is no standalone create command.
 export function ProjectResourceCreateScreen({ resource }: ProjectResourceCreateScreenProps) {
   const config = RESOURCES[resource];
 

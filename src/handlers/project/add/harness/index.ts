@@ -4,7 +4,7 @@ import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits } from "../shared";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
-import { HarnessSpecSchema } from "../../../../projectSchemas/harness";
+import { DEFAULT_HARNESS_MODEL, HarnessSpecSchema } from "../../../../projectSchemas/harness";
 
 const CONFIGURATION = "Configuration:";
 const TOOLS_AND_SKILLS = "Tools and skills:";
@@ -13,14 +13,6 @@ const INVOCATION_LIMITS = "Invocation limits:";
 const ENVIRONMENT = "Environment:";
 const FILESYSTEM_STORAGE = "Filesystem storage:";
 const ACCESS_AND_PERMISSIONS = "Access and permissions:";
-
-/** The model a harness runs on when none is configured; `agentcore create`'s
- * harness path and the `harness create` screen share it so the entry points
- * cannot drift. */
-export const DEFAULT_HARNESS_MODEL = {
-  provider: "bedrock",
-  modelId: "global.anthropic.claude-sonnet-5",
-} as const;
 
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
   createHandler({

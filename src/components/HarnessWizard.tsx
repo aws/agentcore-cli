@@ -7,7 +7,7 @@ import type {
   UpdateHarnessRequest,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CreateHarnessInput } from "../handlers/harness/types";
-import { DEFAULT_HARNESS_MODEL } from "../handlers/project/add/harness";
+import { DEFAULT_HARNESS_MODEL } from "../projectSchemas/harness";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
