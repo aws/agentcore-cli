@@ -29,7 +29,7 @@ async function run(args: string[], opts?: { core?: TestCoreClient }) {
 }
 
 describe("project add harness", () => {
-  const defaultModel = { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-4-6" };
+  const defaultModel = { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-5" };
 
   test.each<[string, string[], Record<string, unknown>]>([
     ["minimal — name only", ["--name", "x"], { model: defaultModel }],

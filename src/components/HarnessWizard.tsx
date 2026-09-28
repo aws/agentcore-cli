@@ -7,6 +7,7 @@ import type {
   UpdateHarnessRequest,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CreateHarnessInput } from "../handlers/harness/types";
+import { DEFAULT_HARNESS_MODEL } from "../handlers/project/add/harness";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
@@ -30,8 +31,8 @@ const theme = darkTheme;
 export type MemoryKind = "managed" | "byo" | "disabled";
 
 // ModelKind selects the provider member of the API's HarnessModelConfiguration
-// union; "default" means "don't send a model" (service default on create, keep
-// the current one on update).
+// union; "default" means "don't send a model", which only the update flow
+// offers (as "keep current").
 export type ModelKind = "default" | "bedrock" | "gemini" | "openai" | "litellm";
 
 // HarnessFormValues is the flat, editable shape the wizard collects. It is
@@ -64,6 +65,19 @@ export function emptyHarnessForm(): HarnessFormValues {
     systemPrompt: "",
     passthroughTools: [],
   };
+}
+
+// defaultModelId is the model ID a provider starts with in the create flow.
+function defaultModelId(kind: ModelKind): string {
+  return kind === DEFAULT_HARNESS_MODEL.provider ? DEFAULT_HARNESS_MODEL.modelId : "";
+}
+
+// newHarnessForm is where the create flow starts: the shared default harness
+// model, preselected and prefilled.
+export function newHarnessForm(): HarnessFormValues {
+  const values = emptyHarnessForm();
+  values.model = { ...values.model, kind: "bedrock", modelId: defaultModelId("bedrock") };
+  return values;
 }
 
 // fromHarness maps an existing harness into form values so the update flow
@@ -143,7 +157,7 @@ function toMemoryConfiguration(values: HarnessFormValues): HarnessMemoryConfigur
 }
 
 // toModelConfiguration builds the provider member of the model union, or
-// undefined for "default" (service default on create, keep current on update).
+// undefined for "default" (keep current on update).
 function toModelConfiguration(values: HarnessFormValues): CreateHarnessInput["model"] {
   const model = values.model;
   switch (model.kind) {
@@ -282,7 +296,7 @@ export function HarnessWizard({
     return mode === "create" ? all : all.filter((step) => step.key !== "name");
   }, [mode]);
 
-  const [initialValues] = useState<HarnessFormValues>(() => initial ?? emptyHarnessForm());
+  const [initialValues] = useState<HarnessFormValues>(() => initial ?? newHarnessForm());
   const [values, setValues] = useState<HarnessFormValues>(initialValues);
   const [stepIndex, setStepIndex] = useState(0);
   const [phase, setPhase] = useState<WizardPhase>({ kind: "form" });
@@ -558,8 +572,8 @@ interface ModelField {
 }
 
 // MODEL_PROVIDERS mirrors the API's HarnessModelConfiguration union: one row
-// per provider, plus the "default" opt-out, each declaring the fields the
-// provider needs.
+// per provider, plus the "default" opt-out the update flow offers as "keep
+// current", each declaring the fields the provider needs.
 const MODEL_PROVIDERS: {
   kind: ModelKind;
   label: string;
@@ -568,8 +582,8 @@ const MODEL_PROVIDERS: {
 }[] = [
   {
     kind: "default",
-    label: "service default",
-    description: "let the service choose the model",
+    label: "keep current",
+    description: "leave the model configuration untouched",
     fields: [],
   },
   {
@@ -581,7 +595,7 @@ const MODEL_PROVIDERS: {
         key: "modelId",
         name: "model ID",
         helpText: "a Bedrock model or inference profile ID",
-        placeholder: "us.anthropic.claude-sonnet-4-6",
+        placeholder: DEFAULT_HARNESS_MODEL.modelId,
         required: true,
         requiredError: "enter a Bedrock model or inference profile ID",
       },
@@ -679,12 +693,26 @@ function ModelStep({
   onNext: () => void;
   onBack: () => void;
 }) {
-  const index = MODEL_PROVIDERS.findIndex((provider) => provider.kind === value.kind);
-  const provider = MODEL_PROVIDERS[index]!;
+  // Create always sends a model, so it has no "keep current" row.
+  const providers =
+    mode === "create"
+      ? MODEL_PROVIDERS.filter((provider) => provider.kind !== "default")
+      : MODEL_PROVIDERS;
+  const index = providers.findIndex((provider) => provider.kind === value.kind);
+  const provider = providers[index]!;
   // focusedField indexes into provider.fields while editing; null while the
   // radio list has focus.
   const [focusedField, setFocusedField] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // select switches provider. In create, a model ID still at the previous
+  // provider's default is swapped for the next provider's, so the Bedrock
+  // default never lands in another provider's field.
+  const select = (kind: ModelKind) => {
+    const untouched = mode === "create" && value.modelId === defaultModelId(value.kind);
+    onChange({ ...value, kind, ...(untouched ? { modelId: defaultModelId(kind) } : {}) });
+    setError(null);
+  };
 
   useInput((_input, key) => {
     if (focusedField === null) {
@@ -693,14 +721,11 @@ function ModelStep({
         return;
       }
       if (key.upArrow) {
-        onChange({ ...value, kind: MODEL_PROVIDERS[Math.max(0, index - 1)]!.kind });
-        setError(null);
+        select(providers[Math.max(0, index - 1)]!.kind);
         return;
       }
       if (key.downArrow) {
-        const next = MODEL_PROVIDERS[Math.min(MODEL_PROVIDERS.length - 1, index + 1)]!;
-        onChange({ ...value, kind: next.kind });
-        setError(null);
+        select(providers[Math.min(providers.length - 1, index + 1)]!.kind);
         return;
       }
       if (key.return) {
@@ -749,11 +774,10 @@ function ModelStep({
     }
   });
 
-  const rows: FormRadioOption[] = MODEL_PROVIDERS.map((row) =>
-    row.kind === "default" && mode === "update"
-      ? { label: "keep current", description: "leave the model configuration untouched" }
-      : { label: row.label, description: row.description },
-  );
+  const rows: FormRadioOption[] = providers.map((row) => ({
+    label: row.label,
+    description: row.description,
+  }));
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -781,7 +805,7 @@ function ModelStep({
           />
         ))}
       {error && <Text color={theme.colors.error}>{error}</Text>}
-      {index !== 0 && (
+      {provider.kind !== "default" && (
         <Text color={theme.colors.info}>
           use the command line to pass additional params, e.g.,{" "}
           <Text color={theme.colors.primary}>agentcore harness create --name …</Text>

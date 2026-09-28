@@ -15,10 +15,11 @@ const FILESYSTEM_STORAGE = "Filesystem storage:";
 const ACCESS_AND_PERMISSIONS = "Access and permissions:";
 
 /** The model a harness runs on when none is configured; `agentcore create`'s
- * harness path shares it so the two entry points cannot drift. */
+ * harness path and the `harness create` screen share it so the entry points
+ * cannot drift. */
 export const DEFAULT_HARNESS_MODEL = {
   provider: "bedrock",
-  modelId: "global.anthropic.claude-sonnet-4-6",
+  modelId: "global.anthropic.claude-sonnet-5",
 } as const;
 
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>

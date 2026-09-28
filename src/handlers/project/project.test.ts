@@ -82,7 +82,7 @@ describe("project create", () => {
     );
     expect(harness.model).toEqual({
       provider: "bedrock",
-      modelId: "global.anthropic.claude-sonnet-4-6",
+      modelId: "global.anthropic.claude-sonnet-5",
     });
     expect(harness.memory).toEqual({ mode: "managed" });
     expect(harness.systemPrompt).toBeUndefined();

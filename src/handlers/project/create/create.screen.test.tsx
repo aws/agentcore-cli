@@ -44,7 +44,7 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
   return inputs;
 }
 
-const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-4-6";
+const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5";
 
 describe("project create wizard", () => {
   test("harness flow: name → type → model → review → created", async () => {

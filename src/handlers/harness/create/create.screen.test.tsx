@@ -1,5 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { CreateHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import { DEFAULT_HARNESS_MODEL } from "../../project/add/harness";
 import {
   renderImperativeScreen,
   waitForText,
@@ -10,12 +11,13 @@ import {
 
 afterEach(cleanupScreens);
 
-// Behavior tests for the create-harness wizard: name → model → memory → tools
-// → prompt → review → submit. Key input drives the whole flow;
+// Behavior tests for the create-harness wizard: name → model provider → memory
+// → tools → prompt → review → submit. Key input drives the whole flow;
 // assertions check both what the user sees and the exact request Core receives.
 
+// Bedrock is preselected with the shared default model ID filled in.
 const DEFAULT_MODEL = {
-  bedrockModelConfig: { modelId: "us.anthropic.claude-sonnet-4-6" },
+  bedrockModelConfig: { modelId: DEFAULT_HARNESS_MODEL.modelId },
 };
 
 // The browser tool is enabled by default in the wizard, so an untouched tools
@@ -45,16 +47,16 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
 
-    // Step: model — service default is preselected; pick bedrock instead and
-    // enter a model id.
+    // Step: model provider — bedrock is preselected with the default model ID;
+    // enter reveals it and enter again accepts it.
     await waitForText(r.lastFrame, "choose a model provider");
     expect(r.lastFrame()).toContain("● model provider ──");
-    expect(r.lastFrame()).toContain("● service default");
+    expect(r.lastFrame()).toContain("● bedrock");
+    expect(r.lastFrame()).not.toContain("service default");
+    expect(r.lastFrame()).not.toContain("keep current");
     expect(r.lastFrame()).not.toContain("(recommended)");
-    await r.press("down"); // bedrock
-    await waitForText(r.lastFrame, "● bedrock");
     await r.press("return"); // focus the model id field
-    await r.write("us.anthropic.claude-sonnet-4-6");
+    await waitForText(r.lastFrame, DEFAULT_HARNESS_MODEL.modelId);
     await r.press("return");
 
     // Step: memory — managed is preselected; keep it.
@@ -128,7 +130,6 @@ describe("harness create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // bedrock
     await waitForText(r.lastFrame, "● bedrock");
     expect(r.lastFrame()).not.toContain("model ID");
 
@@ -150,7 +151,6 @@ describe("harness create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // bedrock
     await r.press("down"); // gemini
     await waitForText(r.lastFrame, "● gemini");
     await r.press("return"); // focus the model id field
@@ -193,7 +193,6 @@ describe("harness create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // bedrock
     await r.press("down"); // gemini
     await r.press("down"); // openai
     await waitForText(r.lastFrame, "● openai");
@@ -241,7 +240,6 @@ describe("harness create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // bedrock
     await r.press("down"); // gemini
     await r.press("down"); // openai
     await r.press("down"); // litellm
@@ -272,35 +270,25 @@ describe("harness create wizard", () => {
     r.unmount();
   });
 
-  test("service default sends no model", async () => {
-    const core = coreForCreate();
-    const r = renderImperativeScreen("/agentcore/harness/create", { core });
+  test("switching providers leaves the Bedrock default out of other providers' model ID", async () => {
+    const r = renderImperativeScreen("/agentcore/harness/create", { core: coreForCreate() });
 
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
     await r.press("return");
 
-    // Service default is the first option and preselected.
     await waitForText(r.lastFrame, "choose a model provider");
-    expect(r.lastFrame()).toContain("● service default");
-    await r.press("return");
+    await r.press("down"); // gemini
+    await waitForText(r.lastFrame, "● gemini");
+    await r.press("return"); // focus the model id field
+    await waitForText(r.lastFrame, "model ID");
+    expect(r.lastFrame()).not.toContain(DEFAULT_HARNESS_MODEL.modelId);
+    await r.press("escape");
 
-    await waitForText(r.lastFrame, "how should the harness remember conversations?");
+    await r.press("up"); // back to bedrock restores its default
+    await waitForText(r.lastFrame, "● bedrock");
     await r.press("return");
-    await waitForText(r.lastFrame, "which tools should the agent be able to use?");
-    await r.press("return");
-    await waitForText(r.lastFrame, "type or paste the agent's instructions");
-    await r.press("return"); // enter on an empty prompt continues
-    await waitForText(r.lastFrame, "sent to CreateHarness");
-    await r.press("return");
-
-    await waitFor(() => core.harness.calls.some((c) => c.method === "createHarness"));
-    const call = core.harness.calls.find((c) => c.method === "createHarness")!;
-    expect(call.args[0]).toEqual({
-      harnessName: "my_agent",
-      memory: { managedMemoryConfiguration: {} },
-      tools: [BROWSER_TOOL],
-    });
+    await waitForText(r.lastFrame, DEFAULT_HARNESS_MODEL.modelId);
     r.unmount();
   });
 
@@ -325,7 +313,8 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("return"); // service default — no model sent
+    await r.press("return"); // reveal the default bedrock model id
+    await r.press("return"); // accept it
 
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     await r.press("down"); // bring your own
@@ -350,6 +339,7 @@ describe("harness create wizard", () => {
     const call = core.harness.calls.find((c) => c.method === "createHarness")!;
     expect(call.args[0]).toEqual({
       harnessName: "my_agent",
+      model: DEFAULT_MODEL,
       memory: {
         agentCoreMemoryConfiguration: {
           arn: "arn:aws:bedrock-agentcore:us-east-1:123:memory/m-1",
@@ -371,7 +361,8 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("return"); // service default — no model sent
+    await r.press("return"); // reveal the default bedrock model id
+    await r.press("return"); // accept it
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     await r.press("return");
     await waitForText(r.lastFrame, "which tools should the agent be able to use?");
@@ -405,7 +396,8 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("return"); // service default — no model sent
+    await r.press("return"); // reveal the default bedrock model id
+    await r.press("return"); // accept it
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     await r.press("return");
     await waitForText(r.lastFrame, "which tools should the agent be able to use?");
