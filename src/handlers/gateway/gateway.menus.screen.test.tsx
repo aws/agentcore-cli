@@ -25,6 +25,8 @@ describe("Gateway menus", () => {
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
+  // Only the Gateway menu lists "create", and it opens project guidance
+  // rather than a command (see the project resource creation guidance tests).
   test.each(GROUPS)("%s lists no create or update commands when enabled", async (group) => {
     const screen = renderScreen(`/agentcore/${group}`, {
       globalConfig: IMPERATIVE_GLOBAL_CONFIG,
@@ -32,7 +34,7 @@ describe("Gateway menus", () => {
     await waitForText(screen.lastFrame, "type to choose a command");
     const entries = menuEntries(screen.lastFrame()!);
     const names = [...entries.screens, ...entries.cliOnly];
-    expect(names).not.toContain("create");
+    expect(names.includes("create")).toBe(group === "gateway");
     expect(names).not.toContain("update");
     expect(entries.cliOnly).toEqual(group === "gateway" ? [] : ["delete"]);
     expect(screen.core.gateway.calls).toEqual([]);

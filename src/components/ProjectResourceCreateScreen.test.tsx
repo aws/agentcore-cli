@@ -24,6 +24,12 @@ const RESOURCES = [
     parentDescription: "inspect AgentCore Memories",
     addCommand: "agentcore add memory",
   },
+  {
+    resource: "gateway",
+    label: "Gateway",
+    parentDescription: "manage AgentCore Gateways",
+    addCommand: "agentcore add gateway --name MyGateway",
+  },
 ] as const satisfies {
   resource: ProjectCreateResource;
   label: string;
