@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { HarnessModelProvider } from "../../../projectSchemas/harness";
@@ -366,28 +365,6 @@ function ModelField({
   const config = value.configs[value.provider];
   const [focusedField, setFocusedField] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollViewRef>(null);
-
-  const keepFocusedFieldVisible = useCallback(() => {
-    const scroll = scrollRef.current;
-    if (!scroll) return;
-    if (focusedField === null) {
-      scroll.scrollToTop();
-      return;
-    }
-
-    const position = scroll.getItemPosition(focusedField + 1);
-    if (!position) return;
-    const viewportHeight = scroll.getViewportHeight();
-    const offset = scroll.getScrollOffset();
-    const bottom = position.top + position.height;
-    if (position.top < offset) scroll.scrollTo(position.top);
-    else if (bottom > offset + viewportHeight) scroll.scrollTo(bottom - viewportHeight);
-  }, [focusedField]);
-
-  useEffect(() => {
-    keepFocusedFieldVisible();
-  }, [keepFocusedFieldVisible, value.provider, error]);
 
   useKeyHints([
     { key: "↑↓", label: "navigate" },
@@ -455,49 +432,36 @@ function ModelField({
   }));
 
   return (
-    <Box flexDirection="column" flexGrow={1} minHeight={0}>
-      <ScrollView
-        ref={scrollRef}
-        flexGrow={1}
-        minHeight={0}
-        onItemHeightChange={keepFocusedFieldVisible}
-        onViewportSizeChange={keepFocusedFieldVisible}
-      >
-        <FormRadioGroup
-          key="provider"
-          helpText="choose a model provider"
-          options={options}
-          focusedIndex={providerIndex}
-          selectedIndex={focusedField !== null ? providerIndex : undefined}
-        />
-        {focusedField !== null &&
-          fields.map((field, fieldIndex) => (
-            <FormTextInput
-              key={`${value.provider}.${field.key}`}
-              name={field.name}
-              helpText={field.helpText}
-              placeholder={field.placeholder}
-              errorText=""
-              value={config[field.key]}
-              onChange={(next) => {
-                onChange({
-                  ...value,
-                  configs: {
-                    ...value.configs,
-                    [value.provider]: { ...config, [field.key]: next },
-                  },
-                });
-                setError(null);
-              }}
-              focused={focusedField === fieldIndex}
-            />
-          ))}
-        {error && (
-          <Text key="error" color={theme.colors.error}>
-            {error}
-          </Text>
-        )}
-      </ScrollView>
+    <Box flexDirection="column">
+      <FormRadioGroup
+        helpText="choose a model provider"
+        options={options}
+        focusedIndex={providerIndex}
+        selectedIndex={focusedField !== null ? providerIndex : undefined}
+      />
+      {focusedField !== null &&
+        fields.map((field, fieldIndex) => (
+          <FormTextInput
+            key={`${value.provider}.${field.key}`}
+            name={field.name}
+            helpText={field.helpText}
+            placeholder={field.placeholder}
+            errorText=""
+            value={config[field.key]}
+            onChange={(next) => {
+              onChange({
+                ...value,
+                configs: {
+                  ...value.configs,
+                  [value.provider]: { ...config, [field.key]: next },
+                },
+              });
+              setError(null);
+            }}
+            focused={focusedField === fieldIndex}
+          />
+        ))}
+      {error && <Text color={theme.colors.error}>{error}</Text>}
     </Box>
   );
 }
