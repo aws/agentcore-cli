@@ -117,6 +117,7 @@ describe("RuntimeShellScreen", () => {
     await waitFor(() => streams.stdout().includes(detailText));
     const initialDetails = streams.stdout().split(detailText).length;
     stdin.write("\x1b[B");
+    stdin.write("\x1b[B");
     await waitFor(() => streams.stdout().includes("❯ shell"));
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("prod"));

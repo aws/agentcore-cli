@@ -290,7 +290,8 @@ describe("project status screen", () => {
     await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "READY");
-    // invoke → shell → endpoints.
+    // detail → invoke → shell → endpoints.
+    await screen.press("down");
     await screen.press("down");
     await screen.press("down");
     await screen.press("return");

@@ -7,6 +7,11 @@ import { coreOptsFromCtx } from "../../utils";
 
 const ACTIONS = [
   {
+    name: "detail",
+    description: "show the full JSON definition",
+    to: (id: string) => `/agentcore/runtime/get/${encodeURIComponent(id)}/json`,
+  },
+  {
     name: "invoke",
     description: "invoke this Runtime",
     to: (id: string) => `/agentcore/runtime/invoke/${encodeURIComponent(id)}`,
@@ -27,11 +32,6 @@ const ACTIONS = [
     name: "versions",
     description: "list immutable Runtime versions",
     to: (id: string) => `/agentcore/runtime/version/list/${encodeURIComponent(id)}`,
-  },
-  {
-    name: "detail",
-    description: "show the full JSON definition",
-    to: (id: string) => `/agentcore/runtime/get/${encodeURIComponent(id)}/json`,
   },
 ] as const;
 

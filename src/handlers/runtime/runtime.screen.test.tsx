@@ -213,14 +213,15 @@ describe("runtime hub", () => {
     expect(failed.lastFrame()).toMatch(/failureReason\s+Image could not be pulled/);
   });
 
-  test("renders invoke first with endpoint, version, and detail actions", async () => {
+  test("renders detail first, then invoke, shell, endpoint, and version actions", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse(getRuntimeResponse());
     const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
     const frame = r.lastFrame()!;
-    expect(frame).toMatch(/❯ invoke\s+invoke this Runtime/);
+    expect(frame).toMatch(/❯ detail\s+show the full JSON definition/);
+    expect(frame).toMatch(/invoke\s+invoke this Runtime/);
     expect(frame).toMatch(/shell\s+open an interactive terminal/);
     expect(frame).toContain("versions");
     expect(frame).toContain("endpoints");
@@ -251,9 +252,9 @@ describe("runtime hub", () => {
   });
 
   test.each([
-    ["shell", 1],
-    ["endpoints", 2],
-    ["versions", 3],
+    ["shell", 2],
+    ["endpoints", 3],
+    ["versions", 4],
   ] as const)(
     "selecting %s opens its encoded Runtime-scoped route",
     async (action, downPresses) => {
@@ -313,8 +314,7 @@ describe("runtime hub", () => {
     const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
-    for (let index = 0; index < 4; index += 1) await r.press("down");
-    await r.press("return");
+    await r.press("return"); // detail is the first action
     await waitForText(r.lastFrame, "agentcore → runtime → get → runtime-123 → json");
     const frame = r.lastFrame()!;
     expect(frame).toContain('"agentRuntimeId"');
@@ -410,8 +410,7 @@ describe("runtime hub", () => {
     await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
     await waitForText(r.lastFrame, "show the full JSON definition");
-    for (let index = 0; index < 4; index += 1) await r.press("down");
-    await r.press("return");
+    await r.press("return"); // detail is the first action
     await waitForText(r.lastFrame, '"agentRuntimeId"');
     await r.press("escape");
     await waitFor(() => {
@@ -446,6 +445,8 @@ describe("runtime hub", () => {
     const listCallsBeforeInvoke = core.runtime.calls.filter(
       (call) => call.method === "listRuntimes",
     ).length;
+    await r.press("down"); // invoke
+    await waitForText(r.lastFrame, "❯ invoke");
     await r.press("return");
     await waitForText(r.lastFrame, "choose an endpoint to invoke");
     await waitForText(r.lastFrame, "prod");
