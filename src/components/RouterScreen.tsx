@@ -7,6 +7,7 @@ import {
   CommandKey,
   commandMenuSectionStart,
   isListedInMenu,
+  isProjectRequired,
   isTuiCommandSupported,
 } from "../router";
 import {
@@ -23,6 +24,7 @@ import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
 import { scrollWindow } from "./scrollWindow";
+import { useNoProjectDetected } from "../handlers/project/ProjectGate";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
@@ -66,6 +68,7 @@ interface Option {
   cliOnly: boolean;
   // section is the divider title this option is listed under, if any.
   section?: string;
+  projectRequired?: boolean;
 }
 
 export interface TuiOnlyCommand {
@@ -105,6 +108,7 @@ export function RouterScreen(props: RouterScreenProps) {
 }
 
 function CommandMenu({
+  core,
   banner,
   path,
   tuiOnlyCommands = [],
@@ -113,6 +117,7 @@ function CommandMenu({
   command,
 }: RouterScreenProps & { command: Command }) {
   const navigate = useNavigate();
+  const noProject = useNoProjectDetected(core);
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
@@ -143,6 +148,7 @@ function CommandMenu({
         hint: optionHints?.[c.name()],
         cliOnly,
         section: cliOnly ? CLI_ONLY_SECTION : sectionOf(index),
+        projectRequired: isProjectRequired(c),
       };
     });
     const actualNames = new Set(actual.map((option) => option.name));
@@ -238,6 +244,7 @@ function CommandMenu({
           highlight={highlight}
           isRawModeSupported={Boolean(isRawModeSupported)}
           nameWidth={nameWidth}
+          noProject={noProject}
           query={query}
           onQueryChange={(value) => {
             setQuery(value);
@@ -257,6 +264,7 @@ interface CommandMenuBodyProps {
   highlight: number;
   isRawModeSupported: boolean;
   nameWidth: number;
+  noProject: boolean;
   query: string;
   onQueryChange: (value: string) => void;
 }
@@ -276,6 +284,7 @@ function CommandMenuBody({
   highlight,
   isRawModeSupported,
   nameWidth,
+  noProject,
   query,
   onQueryChange,
 }: CommandMenuBodyProps) {
@@ -344,7 +353,7 @@ function CommandMenuBody({
                   color={
                     isHighlighted
                       ? theme.colors.focus
-                      : option.cliOnly
+                      : option.cliOnly || (option.projectRequired && noProject)
                         ? theme.colors.muted
                         : theme.colors.text
                   }

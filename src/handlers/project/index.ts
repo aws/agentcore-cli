@@ -20,7 +20,10 @@ import { createProjectInvokeHandler } from "./invoke";
 import { createProjectLogHandler } from "./log";
 import { createProjectTracesHandler } from "./traces";
 
-export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
+export function createProjectHandlers(
+  core: Core,
+  io: AppIO,
+): { createHandler: Handler; projectBoundHandlers: Handler[] } {
   const projectManager: ProjectManager = core.projectManager;
 
   const createHandler = createCreateProjectHandler({
@@ -76,5 +79,5 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
     createExportProjectResourceHandler({ projectManager, core, io }),
   ];
 
-  return [createHandler, ...projectBoundHandlers];
+  return { createHandler, projectBoundHandlers };
 }

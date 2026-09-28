@@ -41,7 +41,10 @@ class RoutedCommand extends Command {
   // menu instead of moving it under the "cli" divider.
   listedInMenu = false;
 
-  constructor(readonly handler: Handler) {
+  constructor(
+    readonly handler: Handler,
+    readonly projectRequired: boolean,
+  ) {
     super(handler.name());
   }
 }
@@ -56,6 +59,10 @@ export function commandMenuSectionStart(command: Command): string | undefined {
 
 export function isListedInMenu(command: Command): boolean {
   return command instanceof RoutedCommand && command.listedInMenu;
+}
+
+export function isProjectRequired(command: Command): boolean {
+  return command instanceof RoutedCommand && command.projectRequired;
 }
 
 // commandParameterDetails is the "Parameter details" section `--help` appends
@@ -221,10 +228,11 @@ export function compile(
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
   tuiSupported = true,
+  projectRequired = false,
 ): Command {
   const effectiveTuiSupport = tuiSupported && node.doesSupportTui();
   const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
-  const c = new RoutedCommand(compiledNode);
+  const c = new RoutedCommand(compiledNode, projectRequired);
   c.addHelpCommand(false);
   const defaultHelp = c.createHelp();
   c.configureHelp({
@@ -285,7 +293,16 @@ export function compile(
       const childTuiSupported =
         effectiveTuiSupport &&
         (!isTuiChildSupportProvider(node) || node.supportsTuiCommand(child.name()));
-      const childCommand = compile(child, ctx, nextStack, childGlobals, childTuiSupported);
+      const childProjectRequired =
+        projectRequired || (node instanceof Router && node.commandRequiresProject(child.name()));
+      const childCommand = compile(
+        child,
+        ctx,
+        nextStack,
+        childGlobals,
+        childTuiSupported,
+        childProjectRequired,
+      );
       if (isMenuLayoutProvider(node) && childCommand instanceof RoutedCommand) {
         childCommand.menuSectionStart = node.menuSectionStartOf(child.name());
         childCommand.listedInMenu = node.isListedInMenu(child.name());
@@ -325,6 +342,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   private sectionStarts = new Map<string, string>();
   private pendingSection?: string;
   private menuListed = new Set<string>();
+  private readonly projectCommandNames = new Set<string>();
   private cliVersion?: string;
 
   constructor(
@@ -390,6 +408,18 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   isListedInMenu(commandName: string): boolean {
     return this.menuListed.has(commandName);
+  }
+
+  projectHandlers(...handlers: Handler[]): this {
+    for (const handler of handlers) {
+      this.handler(handler);
+      this.projectCommandNames.add(handler.name());
+    }
+    return this;
+  }
+
+  commandRequiresProject(commandName: string): boolean {
+    return this.projectCommandNames.has(commandName);
   }
 
   // default registers a handler that runs when this group is selected without a
