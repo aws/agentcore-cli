@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../aws';
 import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-cloudformation';
 
@@ -13,7 +14,11 @@ export interface BootstrapStatus {
  * Check if an AWS environment is bootstrapped by looking for the CDKToolkit stack.
  */
 export async function checkBootstrapStatus(region: string): Promise<BootstrapStatus> {
-  const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
+  const cfn = new CloudFormationClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
 
   try {
     const resp = await cfn.send(new DescribeStacksCommand({ StackName: CDK_TOOLKIT_STACK_NAME }));
