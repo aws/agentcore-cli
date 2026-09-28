@@ -320,6 +320,55 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("the model step scrolls only to reveal a field that is out of view", async () => {
+    const r = renderScreen("/agentcore/create");
+    await r.resize(80, 24);
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("CompactApp");
+    await r.press("return");
+    await r.press("down"); // harness
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("down");
+    await r.press("down");
+    await r.press("down"); // litellm
+    const settledLines = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return r.lastFrame()!.split("\n");
+    };
+    const firstContentLine = 4;
+
+    // Model ID and API key ARN are already visible, so the view stays put.
+    await r.press("return");
+    await waitForText(r.lastFrame, "the litellm model to use");
+    expect((await settledLines())[firstContentLine]).toBe(" choose a model provider");
+    await r.press("down");
+    expect((await settledLines())[firstContentLine]).toBe(" choose a model provider");
+
+    // API base URL is below the fold: scroll just far enough to show it.
+    await r.press("down");
+    await waitForText(r.lastFrame, "https://…");
+    const scrolled = await settledLines();
+    expect(scrolled[firstContentLine]).not.toBe(" choose a model provider");
+    expect(scrolled).toContain(" model ID");
+    expect(scrolled).toContain(" API base URL");
+
+    // Moving back up to fields that are still visible does not shift the view.
+    await r.press("up");
+    expect((await settledLines())[firstContentLine]).toBe(scrolled[firstContentLine]);
+    await r.press("up");
+    expect((await settledLines())[firstContentLine]).toBe(scrolled[firstContentLine]);
+
+    // Returning to the provider list shows it from the top again.
+    await r.press("up");
+    await waitFor(
+      () => r.lastFrame()!.split("\n")[firstContentLine] === " choose a model provider",
+    );
+    expect(r.lastFrame()).not.toContain("model ID");
+    r.unmount();
+  });
+
   test("template flow: strands goes straight to review (no memory question)", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);

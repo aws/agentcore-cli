@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import { ScrollView } from "ink-scroll-view";
+import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { HarnessModelProvider } from "../../../projectSchemas/harness";
@@ -364,8 +364,38 @@ function ModelField({
   const providerIndex = MODEL_PROVIDERS.findIndex((option) => option.provider === value.provider);
   const fields = modelFields(value.provider);
   const config = value.configs[value.provider];
-  const [focusedField, setFocusedField] = useState<number | null>(null);
+  const [focusedField, setFocusedFieldState] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
+  // The offset when focus last moved, captured at key press while the layout
+  // is settled. Scrolling is always measured from it rather than from the
+  // live offset: newly revealed fields are measured before the viewport has
+  // grown, so an adjustment made from a stale viewport height would otherwise
+  // stick and push already visible fields around.
+  const anchorOffsetRef = useRef(0);
+  const setFocusedField = (next: number | null) => {
+    anchorOffsetRef.current = next === null ? 0 : (scrollRef.current?.getScrollOffset() ?? 0);
+    setFocusedFieldState(next);
+  };
+
+  const keepFocusedFieldVisible = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const position = scroll.getItemPosition(focusedField === null ? 0 : focusedField + 1);
+    if (!position) return;
+    const viewportHeight = scroll.getViewportHeight();
+    const bottom = position.top + position.height;
+    let target = anchorOffsetRef.current;
+    if (position.top < target) target = position.top;
+    else if (bottom > target + viewportHeight) {
+      target = Math.min(position.top, bottom - viewportHeight);
+    }
+    if (target !== scroll.getScrollOffset()) scroll.scrollTo(target);
+  }, [focusedField]);
+
+  useLayoutEffect(() => {
+    keepFocusedFieldVisible();
+  }, [keepFocusedFieldVisible]);
 
   useKeyHints([
     { key: "↑↓", label: "navigate" },
@@ -434,7 +464,13 @@ function ModelField({
 
   return (
     <Box flexDirection="column" flexGrow={1} minHeight={0}>
-      <ScrollView flexGrow={1} minHeight={0}>
+      <ScrollView
+        ref={scrollRef}
+        flexGrow={1}
+        minHeight={0}
+        onItemHeightChange={keepFocusedFieldVisible}
+        onViewportSizeChange={keepFocusedFieldVisible}
+      >
         <FormRadioGroup
           key="provider"
           helpText="choose a model provider"
