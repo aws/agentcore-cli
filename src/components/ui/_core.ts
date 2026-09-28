@@ -111,6 +111,7 @@ const unicode = unicodeSupported(process.env, process.platform);
 
 const unicodeGlyphs = {
   pointer: "❯",
+  leftArrow: "←",
   check: "✔",
   cross: "✗",
   done: "✓",
@@ -128,6 +129,7 @@ const unicodeGlyphs = {
 
 const asciiGlyphs: typeof unicodeGlyphs = {
   pointer: ">",
+  leftArrow: "<-",
   check: "*",
   cross: "x",
   done: "*",

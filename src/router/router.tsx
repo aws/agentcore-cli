@@ -27,6 +27,8 @@ export const PlatformKey = contextKey<NodeJS.Platform>("platform");
 export const CommandRunMetricEventKey =
   contextKey<MetricEvent<"cli.command_run">>("commandRunMetricEvent");
 
+export const FirstRunKey = contextKey<boolean>("firstRun");
+
 export const GlobalConfigAccessorKey: ContextKey<GlobalConfigAccessor> =
   contextKey<GlobalConfigAccessor>("globalConfigAccessor");
 export const ProjectKey = contextKey<Project>("project");
