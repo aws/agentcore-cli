@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, Box, useStdout } from "ink";
+import { Text, Box, useWindowSize } from "ink";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
@@ -26,8 +26,8 @@ export const Divider: React.FC<DividerProps> = ({
   width,
   theme = darkTheme,
 }) => {
-  const { stdout } = useStdout();
-  const totalWidth = width ?? stdout?.columns ?? 80;
+  const { columns: terminalColumns } = useWindowSize();
+  const totalWidth = width ?? terminalColumns;
   const char = CHARS[style];
 
   let line: string;

@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text, useWindowSize } from "ink";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
@@ -26,8 +26,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   width,
   theme = darkTheme,
 }) => {
-  const { stdout } = useStdout();
-  const termWidth = stdout?.columns ?? 80;
+  const { columns: termWidth } = useWindowSize();
 
   // Clamp value to [0, 100]
   const pct = Math.min(100, Math.max(0, value));

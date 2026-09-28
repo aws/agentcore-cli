@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text, useWindowSize } from "ink";
 import cliTruncate from "cli-truncate";
 import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
@@ -36,10 +36,9 @@ export const TaskList: React.FC<TaskListProps> = ({
   tailLines = DEFAULT_TAIL_LINES,
   theme = darkTheme,
 }) => {
-  const { stdout } = useStdout();
-  // `||`, not `??`: a pty can report 0 columns, which would truncate every
-  // tail line to nothing. Match Ink's own layout fallback of 80.
-  const columns = stdout?.columns || 80;
+  // useWindowSize falls back to 80 columns when a pty reports 0, which would
+  // otherwise truncate every tail line to nothing.
+  const { columns } = useWindowSize();
 
   return (
     <Box flexDirection="column">

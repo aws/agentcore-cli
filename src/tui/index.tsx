@@ -14,6 +14,7 @@ import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
 import { ExitCode, InvalidEnvironmentError } from "../errors";
 import { TuiExitMessageKey } from "./exitMessage";
+import { clearScreenOnNarrowing } from "./resize";
 
 // renderJson pretty-prints a value as indented JSON. It is the output
 // counterpart to renderTui: handlers call it to emit machine-readable results
@@ -61,6 +62,7 @@ export async function renderTuiAt(
 
   // alternateScreen switches the terminal to its alternate buffer so the TUI
   // takes over the screen and the prior scrollback is restored on exit (like Vim).
+  const stopClearingOnResize = clearScreenOnNarrowing(io.stdout);
   const { waitUntilExit } = render(<Root path={path} ctx={tuiContext} core={core} />, {
     stdin: io.stdin,
     stdout: io.stdout,
@@ -69,7 +71,11 @@ export async function renderTuiAt(
     alternateScreen: true,
     incrementalRendering: true,
   });
-  await waitUntilExit();
+  try {
+    await waitUntilExit();
+  } finally {
+    stopClearingOnResize();
+  }
   if (exitMessage !== undefined) {
     io.stdout.write(exitMessage.endsWith("\n") ? exitMessage : `${exitMessage}\n`);
   }

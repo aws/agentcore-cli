@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text, useWindowSize } from "ink";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 import { tokenizeLine } from "./highlight.js";
@@ -30,8 +30,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   wrap = false,
   theme = darkTheme,
 }) => {
-  const { stdout } = useStdout();
-  const termWidth = stdout?.columns ?? 80;
+  const { columns: termWidth } = useWindowSize();
 
   const lines = code.split("\n");
   const visibleLines = maxHeight ? lines.slice(0, maxHeight) : lines;

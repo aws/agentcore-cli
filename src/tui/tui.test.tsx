@@ -119,3 +119,39 @@ describe("TUI stream boundary", () => {
     expect(listCalls().some((call) => call.args[0] === "page-2")).toBe(false);
   });
 });
+
+describe("TUI resize", () => {
+  const ERASE_SCREEN = "\u001B[2J\u001B[H";
+
+  function resize(stdout: NodeJS.WriteStream, columns: number) {
+    Object.defineProperty(stdout, "columns", { configurable: true, value: columns });
+    stdout.emit("resize");
+  }
+
+  test("narrowing wipes the screen before the frame is repainted", async () => {
+    const { streams, stdin } = ttyTestIO(120, 40);
+    const root = createRootHandler(new TestCoreClient(), {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const routePromise = root.route(["node", "agentcore"]);
+    await waitFor(() => streams.stdout().includes("deploy"));
+
+    const beforeNarrow = streams.stdout().length;
+    resize(streams.io.stdout, 60);
+    await waitFor(() => streams.stdout().slice(beforeNarrow).includes("deploy"));
+    const narrowed = streams.stdout().slice(beforeNarrow);
+    expect(narrowed.startsWith(ERASE_SCREEN)).toBe(true);
+    expect(narrowed.indexOf("deploy")).toBeGreaterThan(0);
+
+    const beforeWiden = streams.stdout().length;
+    resize(streams.io.stdout, 100);
+    await tick();
+    expect(streams.stdout().slice(beforeWiden)).not.toContain(ERASE_SCREEN);
+
+    stdin.write(String.fromCharCode(3));
+    await expect(routePromise).resolves.toBeUndefined();
+    expect(streams.io.stdout.listenerCount("resize")).toBe(0);
+  });
+});

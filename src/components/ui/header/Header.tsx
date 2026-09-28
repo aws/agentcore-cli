@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, Box, useStdout } from "ink";
+import { Text, Box, useWindowSize } from "ink";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 
@@ -21,8 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   style = "box",
   theme = darkTheme,
 }) => {
-  const { stdout } = useStdout();
-  const w = stdout?.columns ?? 80;
+  const { columns: w } = useWindowSize();
   const fullTitle = version ? `${title} v${version}` : title;
 
   if (style === "box") {
