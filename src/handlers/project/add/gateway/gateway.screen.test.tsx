@@ -27,6 +27,7 @@ describe("project add gateway wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
+    expect(screen.lastFrame()).toContain("❯ ● NONE (default)");
     expect(screen.lastFrame()).toContain("● NONE (default)");
     await screen.press("return");
 
@@ -50,6 +51,30 @@ describe("project add gateway wizard", () => {
         exceptionLevel: "NONE",
       },
     ]);
+    screen.unmount();
+  });
+
+  test("uses the arrow for focus and space to select an authorizer", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/gateway");
+
+    await waitForText(screen.lastFrame, "what should this Gateway be called?");
+    await screen.write("secure");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
+
+    await screen.press("down");
+
+    expect(screen.lastFrame()).toContain("● NONE (default)");
+    expect(screen.lastFrame()).toContain("❯ ○ AWS_IAM");
+    expect(screen.lastFrame()).not.toContain("● AWS_IAM");
+
+    await screen.write(" ");
+
+    await waitForText(screen.lastFrame, "❯ ● AWS_IAM");
+    expect(screen.lastFrame()).not.toContain("● NONE (default)");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "enable semantic search over this Gateway's tools?");
     screen.unmount();
   });
 
@@ -91,7 +116,9 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.press("return");
+    expect(screen.lastFrame()).toContain("● NONE (default)");
+    expect(screen.lastFrame()).toContain("❯ ○ CUSTOM_JWT");
+    await screen.write(" ");
 
     await waitForText(screen.lastFrame, "discovery URL");
     expect(screen.lastFrame()).toContain("how should inbound callers authenticate?");
@@ -134,7 +161,7 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.press("return");
+    await screen.write(" ");
 
     await waitForText(screen.lastFrame, "discovery URL");
     await screen.write("http://idp.example.com");
@@ -155,7 +182,7 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.press("return");
+    await screen.write(" ");
 
     await waitForText(screen.lastFrame, "discovery URL");
     await screen.write("https://idp.example.com/.well-known/openid-configuration");
@@ -177,7 +204,7 @@ describe("project add gateway wizard", () => {
     await waitForText(screen.lastFrame, "how should inbound callers authenticate?");
     await screen.press("down");
     await screen.press("down");
-    await screen.press("return");
+    await screen.write(" ");
     await waitForText(screen.lastFrame, "discovery URL");
 
     await screen.press("escape");
