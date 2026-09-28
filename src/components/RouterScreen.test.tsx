@@ -8,7 +8,6 @@ import {
   tick,
   waitForText,
 } from "../testing";
-import { DEFAULT_GLOBAL_CONFIG } from "../globalConfig";
 import type { Project } from "../handlers/project/types";
 import { glyphs } from "./ui/_core";
 
@@ -72,29 +71,34 @@ describe("menu rendering", () => {
     r.unmount();
   });
 
-  test("marks create as the starting point on the first run only", async () => {
+  test("marks create as the starting point only when no project is detected", async () => {
     const startHere = `${glyphs.leftArrow} start here`;
-    const firstRun = renderScreen("/agentcore", {
-      globalConfig: { ...DEFAULT_GLOBAL_CONFIG, isFirstRun: true },
-    });
-    await waitForText(firstRun.lastFrame, startHere);
-    expect(firstRun.lastFrame()).toContain("create");
-    firstRun.unmount();
 
-    const returning = renderScreen("/agentcore");
-    await waitForText(returning.lastFrame, "type to choose a command");
-    expect(returning.lastFrame()).not.toContain(startHere);
-    returning.unmount();
+    const noProjectCore = new TestCoreClient();
+    noProjectCore.projectManager.resolve = async () => undefined;
+    const withoutProject = renderScreen("/agentcore", { core: noProjectCore });
+    await waitForText(withoutProject.lastFrame, startHere);
+    expect(withoutProject.lastFrame()).toContain("create");
+    withoutProject.unmount();
+
+    const projectCore = new TestCoreClient();
+    projectCore.projectManager.resolve = async () => ({}) as Project;
+    const withProject = renderScreen("/agentcore", { core: projectCore });
+    await waitForText(withProject.lastFrame, "type to choose a command");
+    await tick(20);
+    expect(withProject.lastFrame()).not.toContain(startHere);
+    withProject.unmount();
   });
 
   test("shows the no-project banner only when no enclosing project is detected", async () => {
-    const banner = "No project detected -- create a new project to get started";
+    const banner = "No project detected - create a new project to get started";
 
     const noProjectCore = new TestCoreClient();
     noProjectCore.projectManager.resolve = async () => undefined;
     const withoutProject = renderScreen("/agentcore", { core: noProjectCore });
     await waitForText(withoutProject.lastFrame, banner);
     const frame = withoutProject.lastFrame()!;
+    expect(frame).toContain(`${glyphs.info} ${banner}`);
     expect(frame.indexOf("type to choose a command")).toBeLessThan(frame.indexOf(banner));
     expect(frame.indexOf(banner)).toBeLessThan(frame.indexOf("create"));
     withoutProject.unmount();

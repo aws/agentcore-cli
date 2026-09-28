@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
 import { CommandKey, isTuiCommandSupported } from "../router";
 import { Layout } from "./Layout";
+import { Alert } from "./ui/alert";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
@@ -208,13 +209,7 @@ function CommandMenu({
 
         <Divider />
 
-        {banner && (
-          <Box paddingX={1} paddingY={1}>
-            <Text bold color={theme.colors.warning}>
-              {banner}
-            </Text>
-          </Box>
-        )}
+        {banner && <Alert>{banner}</Alert>}
 
         {/* Options */}
         <Box flexDirection="column">
@@ -245,7 +240,7 @@ function CommandMenu({
                       {o.name.padEnd(nameWidth)}
                     </Text>
                     <Text color={theme.colors.muted}>{o.description}</Text>
-                    {o.hint && <Text color={theme.colors.focus}> {o.hint}</Text>}
+                    {o.hint && <Text color={theme.colors.secondary}> {o.hint}</Text>}
                   </Box>
                 </React.Fragment>
               );

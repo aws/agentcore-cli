@@ -1,14 +1,7 @@
 import { render, cleanup } from "ink-testing-library";
 import { QueryClient } from "@tanstack/react-query";
 import type { Command } from "commander";
-import {
-  ValueContext,
-  compile,
-  CommandKey,
-  FirstRunKey,
-  PlatformKey,
-  type Context,
-} from "../router";
+import { ValueContext, compile, CommandKey, PlatformKey, type Context } from "../router";
 import { RegionKey, JsonKey, DebugKey, EndpointKey } from "../handlers/keys";
 import { JsonRendererKey } from "../tui";
 import { createRootHandler } from "../handlers";
@@ -62,7 +55,6 @@ function baseContext(
 ): Context {
   return ValueContext.EmptyContext()
     .withValue(CommandKey, compiledRootCommand(core, globalConfig))
-    .withValue(FirstRunKey, globalConfig.isFirstRun ?? false)
     .withValue(RegionKey, "us-east-1")
     .withValue(PlatformKey, platform)
     .withValue(EndpointKey, endpointUrl)
