@@ -6,7 +6,7 @@ import { useFinishFlow } from "../../../components/useFinishFlow";
 const MENU_PATH = "/agentcore/harness";
 
 // HarnessCreateScreen is the interactive create-harness flow: a step wizard
-// (name → model → memory → tools → prompt → advanced → review) that ends in a
+// (name → model provider → memory → tools → prompt → review) that ends in a
 // CreateHarness call. Success lands on the new harness's hub, with esc from
 // there returning to the harness menu rather than the finished wizard.
 export function HarnessCreateScreen(props: ScreenProps) {

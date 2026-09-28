@@ -71,7 +71,7 @@ describe("harness update wizard", () => {
     await waitForText(r.lastFrame, "MyHarness");
     expect(r.lastFrame()).toContain("choose a harness to update");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     r.unmount();
   });
 

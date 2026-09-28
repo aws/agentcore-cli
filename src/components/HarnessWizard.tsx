@@ -254,7 +254,7 @@ export interface HarnessWizardProps extends ScreenProps {
 const NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/;
 
 // HarnessWizard is the interactive step flow behind `harness create` and
-// `harness update`: name → model → memory → tools → prompt → review, then
+// `harness update`: name → model provider → memory → tools → prompt → review, then
 // submit. Update mode skips the name step (harnesses cannot be renamed) and
 // submits only what changed.
 export function HarnessWizard({
@@ -273,7 +273,7 @@ export function HarnessWizard({
   const steps: Step[] = useMemo(() => {
     const all: Step[] = [
       { key: "name", title: "name" },
-      { key: "model", title: "model" },
+      { key: "model", title: "model provider" },
       { key: "memory", title: "memory" },
       { key: "tools", title: "tools" },
       { key: "prompt", title: "prompt" },
@@ -758,7 +758,7 @@ function ModelStep({
   return (
     <Box flexDirection="column" paddingX={1}>
       <FormRadioGroup
-        name="choose a model"
+        name="choose a model provider"
         helpText="the provider and model that will power the harness"
         options={rows}
         focusedIndex={index}

@@ -36,7 +36,7 @@ function coreForCreate(): TestCoreClient {
 }
 
 describe("harness create wizard", () => {
-  test("walks name → model → memory → tools → prompt → review and creates", async () => {
+  test("walks name → model provider → memory → tools → prompt → review and creates", async () => {
     const core = coreForCreate();
     const r = renderImperativeScreen("/agentcore/harness/create", { core });
 
@@ -47,7 +47,8 @@ describe("harness create wizard", () => {
 
     // Step: model — service default is preselected; pick bedrock instead and
     // enter a model id.
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
+    expect(r.lastFrame()).toContain("● model provider ──");
     expect(r.lastFrame()).toContain("● service default");
     expect(r.lastFrame()).not.toContain("(recommended)");
     await r.press("down"); // bedrock
@@ -126,7 +127,7 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down"); // bedrock
     await waitForText(r.lastFrame, "● bedrock");
     expect(r.lastFrame()).not.toContain("model ID");
@@ -148,7 +149,7 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down"); // bedrock
     await r.press("down"); // gemini
     await waitForText(r.lastFrame, "● gemini");
@@ -191,7 +192,7 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down"); // bedrock
     await r.press("down"); // gemini
     await r.press("down"); // openai
@@ -239,7 +240,7 @@ describe("harness create wizard", () => {
     await r.write("my_agent");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down"); // bedrock
     await r.press("down"); // gemini
     await r.press("down"); // openai
@@ -280,7 +281,7 @@ describe("harness create wizard", () => {
     await r.press("return");
 
     // Service default is the first option and preselected.
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     expect(r.lastFrame()).toContain("● service default");
     await r.press("return");
 
@@ -323,7 +324,7 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return"); // service default — no model sent
 
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
@@ -369,7 +370,7 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return"); // service default — no model sent
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     await r.press("return");
@@ -403,7 +404,7 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "the name of your harness");
     await r.write("my_agent");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a model");
+    await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return"); // service default — no model sent
     await waitForText(r.lastFrame, "how should the harness remember conversations?");
     await r.press("return");
