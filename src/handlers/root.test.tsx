@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "./index";
 import { DEFAULT_GLOBAL_CONFIG } from "../globalConfig";
+import { isProjectRequired } from "../router";
 import {
   compiledRootCommand,
   createSilentLogger,
@@ -54,6 +55,22 @@ describe("createRootHandler", () => {
     expect(add.commands.map((child) => child.name())).toEqual(
       expect.arrayContaining(["harness", "runtime", "memory", "gateway"]),
     );
+  });
+
+  test("marks the commands that need an enclosing project", () => {
+    const required = compiledRootCommand().commands.filter(isProjectRequired);
+    expect(required.map((child) => child.name())).toEqual([
+      "add",
+      "export",
+      "remove",
+      "dev",
+      "deploy",
+      "invoke",
+      "log",
+      "traces",
+      "status",
+      "build",
+    ]);
   });
 
   test.each(STANDALONE_COMMANDS)("rejects disabled %s before command dispatch", async (name) => {

@@ -12,6 +12,7 @@ export {
   type DefaultHandlerProvider,
   isDefaultHandlerProvider,
   isTuiCommandSupported,
+  isProjectRequired,
   commandParameterDetails,
 } from "./router";
 export {

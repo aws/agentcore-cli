@@ -13,6 +13,7 @@ import {
   flag,
   globalFlag,
   isTuiCommandSupported,
+  isProjectRequired,
   type Context,
   type Handler,
   type Middleware,
@@ -121,6 +122,21 @@ test("a TUI allowlist supports named children and excludes other subtrees", () =
   expect(isTuiCommandSupported(top)).toBe(true);
   expect(isTuiCommandSupported(nestedCommand)).toBe(false);
   expect(isTuiCommandSupported(deep)).toBe(false);
+});
+
+test("project handlers mark themselves and every descendant", () => {
+  const nested = new Router("nested").handler(leaf("deep", () => {}));
+  const root = new Router("app").handler(leaf("top", () => {})).projectHandlers(nested);
+
+  const command = compile(root, ValueContext.EmptyContext());
+  const top = command.commands.find((child) => child.name() === "top")!;
+  const nestedCommand = command.commands.find((child) => child.name() === "nested")!;
+  const deep = nestedCommand.commands.find((child) => child.name() === "deep")!;
+
+  expect(isProjectRequired(command)).toBe(false);
+  expect(isProjectRequired(top)).toBe(false);
+  expect(isProjectRequired(nestedCommand)).toBe(true);
+  expect(isProjectRequired(deep)).toBe(true);
 });
 
 // --- default handler (group invoked without a subcommand) ------------------

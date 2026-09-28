@@ -34,13 +34,20 @@ export const ProjectKey = contextKey<Project>("project");
 // RoutedCommand keeps the compiled handler and Commander command tree together.
 // TUI consumers can therefore read handler metadata without module-level state.
 class RoutedCommand extends Command {
-  constructor(readonly handler: Handler) {
+  constructor(
+    readonly handler: Handler,
+    readonly projectRequired: boolean,
+  ) {
     super(handler.name());
   }
 }
 
 export function isTuiCommandSupported(command: Command): boolean {
   return command instanceof RoutedCommand ? command.handler.doesSupportTui() : true;
+}
+
+export function isProjectRequired(command: Command): boolean {
+  return command instanceof RoutedCommand && command.projectRequired;
 }
 
 // commandParameterDetails is the "Parameter details" section `--help` appends
@@ -197,10 +204,11 @@ export function compile(
   stack: Middleware[] = [],
   inheritedGlobals: GlobalFlag[] = [],
   tuiSupported = true,
+  projectRequired = false,
 ): Command {
   const effectiveTuiSupport = tuiSupported && node.doesSupportTui();
   const compiledNode = withEffectiveTuiSupport(node, effectiveTuiSupport);
-  const c = new RoutedCommand(compiledNode);
+  const c = new RoutedCommand(compiledNode, projectRequired);
   c.addHelpCommand(false);
   const defaultHelp = c.createHelp();
   c.configureHelp({
@@ -261,7 +269,11 @@ export function compile(
       const childTuiSupported =
         effectiveTuiSupport &&
         (!isTuiChildSupportProvider(node) || node.supportsTuiCommand(child.name()));
-      c.addCommand(compile(child, ctx, nextStack, childGlobals, childTuiSupported));
+      const childProjectRequired =
+        projectRequired || (node instanceof Router && node.commandRequiresProject(child.name()));
+      c.addCommand(
+        compile(child, ctx, nextStack, childGlobals, childTuiSupported, childProjectRequired),
+      );
     }
     // A group may also carry a default handler that runs when it is invoked
     // without a subcommand. It executes with this group's own middleware and can
@@ -293,6 +305,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   private globalFlags: GlobalFlag[] = [];
   private defaultHandle?: DefaultHandle;
   private tuiCommandNames?: ReadonlySet<string>;
+  private readonly projectCommandNames = new Set<string>();
   private cliVersion?: string;
 
   constructor(
@@ -327,6 +340,18 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   supportsTuiCommand(commandName: string): boolean {
     return this.tuiCommandNames?.has(commandName) ?? true;
+  }
+
+  projectHandlers(...handlers: Handler[]): this {
+    for (const handler of handlers) {
+      this.handler(handler);
+      this.projectCommandNames.add(handler.name());
+    }
+    return this;
+  }
+
+  commandRequiresProject(commandName: string): boolean {
+    return this.projectCommandNames.has(commandName);
   }
 
   // default registers a handler that runs when this group is selected without a

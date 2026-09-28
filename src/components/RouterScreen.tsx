@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
-import { CommandKey, isTuiCommandSupported } from "../router";
+import { CommandKey, ProjectKey, isProjectRequired, isTuiCommandSupported } from "../router";
 import { Layout } from "./Layout";
 import { Alert } from "./ui/alert";
 import { Divider } from "./ui/divider";
@@ -10,6 +10,7 @@ import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
+import { useProject } from "../handlers/project/ProjectGate";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
@@ -49,6 +50,7 @@ interface Option {
   // cliOnly marks a subcommand without a screen; it is listed under a divider
   // and opens its help instead.
   cliOnly: boolean;
+  projectRequired?: boolean;
 }
 
 export interface TuiOnlyCommand {
@@ -86,6 +88,8 @@ export function RouterScreen(props: RouterScreenProps) {
 }
 
 function CommandMenu({
+  ctx,
+  core,
   path,
   tuiOnlyCommands = [],
   optionHints,
@@ -93,6 +97,7 @@ function CommandMenu({
   command,
 }: RouterScreenProps & { command: Command }) {
   const navigate = useNavigate();
+  const noProject = useProject(core, ctx.value(ProjectKey)).isError;
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
@@ -111,6 +116,7 @@ function CommandMenu({
       description: c.description(),
       hint: optionHints?.[c.name()],
       cliOnly: !isTuiCommandSupported(c),
+      projectRequired: isProjectRequired(c),
     }));
     const actualNames = new Set(actual.map((option) => option.name));
     const tuiOnly = tuiOnlyCommands
@@ -232,7 +238,7 @@ function CommandMenu({
                       color={
                         isHl
                           ? theme.colors.focus
-                          : o.cliOnly
+                          : o.cliOnly || (o.projectRequired && noProject)
                             ? theme.colors.muted
                             : theme.colors.text
                       }
