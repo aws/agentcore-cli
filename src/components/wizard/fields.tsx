@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type z from "zod";
 import { FormTextInput } from "../FormTextInput";
+import { FormTextArea } from "../FormTextArea";
 import { FormRadioGroup } from "../FormRadioGroup";
 import { FormCheckboxMultiSelect } from "../FormCheckboxMultiSelect";
 import { KeyValueTable } from "../KeyValueTable";
@@ -102,6 +103,75 @@ export function TextField({
               ? validateEntry(next, { label, required, schema, number, decimal })
               : undefined,
           );
+        }}
+      />
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
+  );
+}
+
+export interface TextAreaFieldProps {
+  // label names the value in validation messages ("<label> is required").
+  label: string;
+  help?: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  schema?: z.ZodType;
+}
+
+// TextAreaField collects a value that arrives multi-line: an agent's
+// instructions, pasted configuration. Enter inserts a newline and ctrl+d
+// continues, which is what the hand-written harness wizard's prompt step
+// already did — the cost of multi-line paste is that enter can no longer mean
+// "continue". The one exception is an empty value: FormTextArea leaves that
+// enter alone, so it answers the step the way enter does on every other field,
+// which for a required value is the message saying so.
+export function TextAreaField({
+  label,
+  help = "",
+  placeholder = "",
+  value,
+  onChange,
+  required = false,
+  schema,
+}: TextAreaFieldProps) {
+  const { advance, back, isLast } = useWizard();
+  const [error, setError] = useState<string>();
+
+  useKeyHints([
+    { key: "enter", label: "newline" },
+    { key: "ctrl+d", label: isLast ? "submit" : "continue" },
+  ]);
+
+  useInput((input, key) => {
+    if (key.escape) {
+      back();
+      return;
+    }
+    const continues = (key.ctrl && input === "d") || (key.return && value === "");
+    if (!continues) return;
+
+    const issue = validateEntry(value, { label, required, schema });
+    if (issue !== undefined) {
+      setError(issue);
+      return;
+    }
+    setError(undefined);
+    advance();
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormTextArea
+        name=""
+        helpText={help}
+        placeholder={placeholder}
+        value={value}
+        onChange={(next) => {
+          onChange(next);
+          setError(undefined);
         }}
       />
       {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}

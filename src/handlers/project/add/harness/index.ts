@@ -4,7 +4,9 @@ import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits } from "../shared";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
+import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import { DEFAULT_HARNESS_MODEL, HarnessSpecSchema } from "../../../../projectSchemas/harness";
+import type { AddResourceInput, Project } from "../../types";
 
 const CONFIGURATION = "Configuration:";
 const TOOLS_AND_SKILLS = "Tools and skills:";
@@ -13,6 +15,22 @@ const INVOCATION_LIMITS = "Invocation limits:";
 const ENVIRONMENT = "Environment:";
 const FILESYSTEM_STORAGE = "Filesystem storage:";
 const ACCESS_AND_PERMISSIONS = "Access and permissions:";
+
+// toAddHarnessInput validates what either entry point collected — the flags,
+// or the wizard's answers — against the one spec schema, then checks the
+// deployed name the way every add does. Both paths therefore refuse the same
+// input with the same message.
+export function toAddHarnessInput(
+  project: Project,
+  targets: readonly AwsDeploymentTarget[],
+  input: unknown,
+): AddResourceInput {
+  const result = HarnessSpecSchema.safeParse(input);
+  if (!result.success)
+    throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  requireDeployedNameFits("Harness", project.name, result.data.name, "_", 40, targets);
+  return { resourceType: "harness", resourceConfig: result.data };
+}
 
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -162,27 +180,17 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         dockerfile: flags["dockerfile"],
       };
 
-      const result = HarnessSpecSchema.safeParse(harnessInput);
-      if (!result.success)
-        throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
-
       const project = ctx.require(ProjectKey);
-      requireDeployedNameFits(
-        "Harness",
-        project.name,
-        result.data.name,
-        "_",
-        40,
+      const input = toAddHarnessInput(
+        project,
         await config.projectManager.listTargets(project),
+        harnessInput,
       );
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "harness",
-          resourceConfig: result.data,
-        },
+        input,
         `added harness '${flags["name"]}' to '${project.name}'`,
       );
     },

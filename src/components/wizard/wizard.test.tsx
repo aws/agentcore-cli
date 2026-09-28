@@ -13,6 +13,7 @@ import {
   ResourceChoiceField,
   RevealChoiceField,
   Summary,
+  TextAreaField,
   TextField,
   type Choice,
 } from "./fields";
@@ -753,6 +754,116 @@ describe("RevealChoiceField", () => {
 
     await waitFor(() => (d.lastFrame() ?? "").includes("review"), 1000);
     expect(d.lastFrame()).toContain("mint");
+    d.unmount();
+  });
+});
+
+// TextAreaField has its own harness because its key handling is the opposite of
+// every other field's: enter belongs to the value, so continuing needs ctrl+d.
+describe("TextAreaField", () => {
+  function driveTextArea(onSubmit: (instructions: string) => void) {
+    function Harness() {
+      const [instructions, setInstructions] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => onSubmit(instructions)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="instructions" prompt="what are the instructions?">
+            <TextAreaField
+              label="Instructions"
+              value={instructions}
+              onChange={setInstructions}
+              required
+              schema={z.string().refine((value) => !value.includes("TODO"), "no TODOs")}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter builds up the value and ctrl+d submits it", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea((instructions) => {
+      submitted = instructions;
+    });
+
+    // The field publishes its hints after the first paint, so wait for them.
+    await waitFor(() => (d.lastFrame() ?? "").includes("[ctrl+d] submit"), 1000);
+    expect(d.lastFrame()).toContain("[enter] newline");
+    // The step is last, so on any other field this enter would submit.
+    await d.write("You are a pirate.");
+    await d.press("return");
+    await d.write("Answer in rhyme.");
+    expect(submitted).toBeUndefined();
+    expect(d.lastFrame()).toContain("Answer in rhyme.");
+
+    await d.press("ctrl+d");
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("You are a pirate.\nAnswer in rhyme.");
+    d.unmount();
+  });
+
+  test("enter on an empty required value says so instead of continuing", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea((instructions) => {
+      submitted = instructions;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("what are the instructions?"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Instructions is required"), 1000);
+    expect(submitted).toBeUndefined();
+
+    // ctrl+d on the same empty value is refused for the same reason.
+    await d.press("ctrl+d");
+    expect(d.lastFrame()).toContain("Instructions is required");
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("ctrl+d on a value the schema rejects stays on the step", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea((instructions) => {
+      submitted = instructions;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("what are the instructions?"), 1000);
+    await d.write("TODO write this later");
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("no TODOs"), 1000);
+    expect(submitted).toBeUndefined();
+
+    // Typing again clears the message, and the corrected value goes through.
+    await d.write("!");
+    expect(d.lastFrame()).not.toContain("no TODOs");
     d.unmount();
   });
 });

@@ -28,6 +28,7 @@ const WITH_SCREENS = [
   "gateway-connector",
   "online-eval",
   "online-insight",
+  "harness",
 ];
 
 describe("project add menu", () => {

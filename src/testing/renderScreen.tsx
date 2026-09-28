@@ -130,6 +130,8 @@ export const keys = {
   down: "[B",
   left: "[D",
   right: "[C",
+  // The end-of-transmission control character, which Ink reports as ctrl+d.
+  "ctrl+d": "\u0004",
 } as const;
 
 // cleanupScreens unmounts every screen rendered so far. ink-testing-library

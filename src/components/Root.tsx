@@ -135,6 +135,7 @@ import { AddGatewayTargetScreen } from "../handlers/project/add/gateway-target/s
 import { AddGatewayConnectorScreen } from "../handlers/project/add/gateway-connector/screen.tsx";
 import { AddOnlineEvalScreen } from "../handlers/project/add/online-eval/screen.tsx";
 import { AddOnlineInsightScreen } from "../handlers/project/add/online-insight/screen.tsx";
+import { AddHarnessScreen } from "../handlers/project/add/harness/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
@@ -918,6 +919,7 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/add/online-insight"
         element={<AddOnlineInsightScreen ctx={ctx} core={core} />}
       />
+      <Route path="agentcore/add/harness" element={<AddHarnessScreen ctx={ctx} core={core} />} />
       <Route path="agentcore/remove" element={<ProjectRemoveScreen ctx={ctx} core={core} />} />
       <Route
         path="agentcore/remove/:resourceType"
