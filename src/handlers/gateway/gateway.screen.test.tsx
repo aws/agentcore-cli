@@ -114,7 +114,7 @@ describe("Gateway menu and list", () => {
   test("renders the Gateway command menu without calling Core", async () => {
     const screen = renderImperativeScreen("/agentcore/gateway");
 
-    await waitForText(screen.lastFrame, "manage AgentCore Gateways");
+    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["create", "get", "list", "invoke", "target", "connector", "rule", "policy"],
       cliOnly: [],
@@ -152,7 +152,7 @@ describe("Gateway menu and list", () => {
 
     await waitForText(loading.lastFrame, "loading Gateways");
     await loading.press("escape");
-    await waitForText(loading.lastFrame, "manage AgentCore Gateways");
+    await waitForText(loading.lastFrame, "inspect AgentCore Gateways");
     loading.unmount();
 
     const empty = renderImperativeScreen("/agentcore/gateway/list");

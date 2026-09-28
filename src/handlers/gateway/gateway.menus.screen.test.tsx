@@ -20,7 +20,7 @@ describe("Gateway menus", () => {
     expect(entries.screens).not.toContain("gateway");
     expect(entries.cliOnly).not.toContain("create");
     expect(entries.cliOnly).not.toContain("delete");
-    expect(screen.frames.join("\n")).not.toContain("manage AgentCore Gateways");
+    expect(screen.frames.join("\n")).not.toContain("inspect AgentCore Gateways");
     expect(screen.frames.join("\n")).not.toContain("this command runs from the command line");
     expect(screen.core.gateway.calls).toEqual([]);
   });
@@ -73,7 +73,7 @@ describe("Gateway menus", () => {
       expect(screen.core.gateway.calls).toEqual([]);
       await waitForText(
         screen.lastFrame,
-        enabled ? "manage AgentCore Gateways" : "the platform for production AI agents",
+        enabled ? "inspect AgentCore Gateways" : "the platform for production AI agents",
       );
       if (!enabled) {
         expect(menuEntries(screen.lastFrame()!).screens).not.toContain("gateway");

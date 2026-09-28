@@ -93,7 +93,9 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   createProjectHandlers(core, io).forEach((handler) => {
     root.handler(handler);
   });
+
   root.handler(createEvalHandler(core, io));
+
   if (globalConfig["imperative-commands"]) {
     root.menuSection("resources");
     root.handler(createGatewayHandler(core, io));

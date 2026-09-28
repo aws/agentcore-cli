@@ -27,7 +27,7 @@ const RESOURCES = [
   {
     resource: "gateway",
     label: "Gateway",
-    parentDescription: "manage AgentCore Gateways",
+    parentDescription: "inspect AgentCore Gateways",
     addCommand: "agentcore add gateway --name MyGateway",
   },
 ] as const satisfies {
