@@ -1,12 +1,35 @@
 import { Text, useApp } from "ink";
 import { useEffect } from "react";
-import { CommandKey } from "../router";
+import { useQuery } from "@tanstack/react-query";
+import { CommandKey, FirstRunKey } from "../router";
 import { BrandBanner } from "../components/BrandBanner";
 import { RouterScreen } from "../components/RouterScreen";
+import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
 
+const FIRST_RUN_HINTS = { create: `${glyphs.leftArrow} start here` };
+const NO_PROJECT_BANNER = "No project detected -- create a new project to get started";
+
 export function RootScreen(props: ScreenProps) {
-  return <RouterScreen {...props} banner={<BrandBanner />} path={["agentcore"]} />;
+  const from = process.cwd();
+  const projectDetected = useQuery({
+    queryKey: ["project-detected", from],
+    queryFn: async () =>
+      (await props.core.projectManager.resolve({
+        filePath: from,
+      })) !== undefined,
+    gcTime: 0,
+  });
+
+  return (
+    <RouterScreen
+      {...props}
+      banner={<BrandBanner />}
+      path={["agentcore"]}
+      optionHints={props.ctx.value(FirstRunKey) ? FIRST_RUN_HINTS : undefined}
+      alert={projectDetected.data === false ? NO_PROJECT_BANNER : undefined}
+    />
+  );
 }
 
 // HelpScreen is the final safety net for a route that does not resolve to an

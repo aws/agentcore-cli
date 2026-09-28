@@ -1,6 +1,16 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { PACKAGE_VERSION } from "../constants";
-import { cleanupScreens, menuEntries, renderScreen, tick, waitForText } from "../testing";
+import {
+  cleanupScreens,
+  menuEntries,
+  renderScreen,
+  TestCoreClient,
+  tick,
+  waitForText,
+} from "../testing";
+import { DEFAULT_GLOBAL_CONFIG } from "../globalConfig";
+import type { Project } from "../handlers/project/types";
+import { glyphs } from "./ui/_core";
 
 afterEach(cleanupScreens);
 
@@ -170,6 +180,42 @@ describe("menu rendering", () => {
     // The focus caret marks the highlighted row; the first option is create.
     expect(r.lastFrame()).toContain("❯ create");
     r.unmount();
+  });
+
+  test("marks create as the starting point on the first run only", async () => {
+    const startHere = `${glyphs.leftArrow} start here`;
+    const firstRun = renderScreen("/agentcore", {
+      globalConfig: { ...DEFAULT_GLOBAL_CONFIG, isFirstRun: true },
+    });
+    await waitForText(firstRun.lastFrame, startHere);
+    expect(firstRun.lastFrame()).toContain("create");
+    firstRun.unmount();
+
+    const returning = renderScreen("/agentcore");
+    await waitForText(returning.lastFrame, "type to choose a command");
+    expect(returning.lastFrame()).not.toContain(startHere);
+    returning.unmount();
+  });
+
+  test("shows the no-project banner only when no enclosing project is detected", async () => {
+    const banner = "No project detected -- create a new project to get started";
+
+    const noProjectCore = new TestCoreClient();
+    noProjectCore.projectManager.resolve = async () => undefined;
+    const withoutProject = renderScreen("/agentcore", { core: noProjectCore });
+    await waitForText(withoutProject.lastFrame, banner);
+    const frame = withoutProject.lastFrame()!;
+    expect(frame.indexOf("type to choose a command")).toBeLessThan(frame.indexOf(banner));
+    expect(frame.indexOf(banner)).toBeLessThan(frame.indexOf("create"));
+    withoutProject.unmount();
+
+    const core = new TestCoreClient();
+    core.projectManager.resolve = async () => ({}) as Project;
+    const withProject = renderScreen("/agentcore", { core });
+    await waitForText(withProject.lastFrame, "type to choose a command");
+    await tick(20);
+    expect(withProject.lastFrame()).not.toContain(banner);
+    withProject.unmount();
   });
 });
 

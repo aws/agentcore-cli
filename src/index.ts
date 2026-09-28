@@ -20,7 +20,7 @@ import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
 import { PACKAGE_VERSION } from "./constants";
-import { CommandRunMetricEventKey, ValueContext } from "./router";
+import { CommandRunMetricEventKey, FirstRunKey, ValueContext } from "./router";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -86,10 +86,9 @@ process.exit(
         globalConfigAccessor,
       });
 
-      const context = ValueContext.EmptyContext().withValue(
-        CommandRunMetricEventKey,
-        commandRunMetricEvent,
-      );
+      const context = ValueContext.EmptyContext()
+        .withValue(CommandRunMetricEventKey, commandRunMetricEvent)
+        .withValue(FirstRunKey, globalConfig.isFirstRun ?? false);
 
       // Handle the request
       await rootHandler.route(argv, context);
