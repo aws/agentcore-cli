@@ -16,6 +16,7 @@ import {
   shouldHideBrandBanner,
 } from "./BrandBanner";
 import { Layout } from "./Layout";
+import { Alert } from "./ui/alert";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
@@ -262,8 +263,9 @@ interface CommandMenuBodyProps {
 
 function alertRows(alert: string | undefined, columns: number): number {
   if (!alert) return 0;
-  const contentColumns = Math.max(1, columns - 2);
-  return 2 + Math.ceil(stringWidth(alert) / contentColumns);
+  // Two border/padding columns sit on each side of the alert content.
+  const contentColumns = Math.max(1, columns - 4);
+  return 2 + Math.ceil(stringWidth(`${glyphs.info} ${alert}`) / contentColumns);
 }
 
 function CommandMenuBody({
@@ -301,13 +303,7 @@ function CommandMenuBody({
 
       <Divider />
 
-      {alert && (
-        <Box paddingX={1} paddingY={1}>
-          <Text bold color={theme.colors.warning}>
-            {alert}
-          </Text>
-        </Box>
-      )}
+      {alert && <Alert>{alert}</Alert>}
 
       <Box flexDirection="column" height={menuHeight} overflow="hidden">
         {filtered.length === 0 ? (
@@ -356,7 +352,7 @@ function CommandMenuBody({
                   {option.name.padEnd(nameWidth)}
                 </Text>
                 <Text color={theme.colors.muted}>{option.description}</Text>
-                {option.hint && <Text color={theme.colors.focus}> {option.hint}</Text>}
+                {option.hint && <Text color={theme.colors.secondary}> {option.hint}</Text>}
               </Box>
             );
           })

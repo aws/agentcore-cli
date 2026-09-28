@@ -1,14 +1,14 @@
 import { Text, useApp } from "ink";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CommandKey, FirstRunKey } from "../router";
+import { CommandKey } from "../router";
 import { BrandBanner } from "../components/BrandBanner";
 import { RouterScreen } from "../components/RouterScreen";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
 
-const FIRST_RUN_HINTS = { create: `${glyphs.leftArrow} start here` };
-const NO_PROJECT_BANNER = "No project detected -- create a new project to get started";
+const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
+const NO_PROJECT_BANNER = "No project detected - create a new project to get started";
 
 export function RootScreen(props: ScreenProps) {
   const from = process.cwd();
@@ -20,14 +20,15 @@ export function RootScreen(props: ScreenProps) {
       })) !== undefined,
     gcTime: 0,
   });
+  const noProjectDetected = projectDetected.data === false;
 
   return (
     <RouterScreen
       {...props}
       banner={<BrandBanner />}
       path={["agentcore"]}
-      optionHints={props.ctx.value(FirstRunKey) ? FIRST_RUN_HINTS : undefined}
-      alert={projectDetected.data === false ? NO_PROJECT_BANNER : undefined}
+      optionHints={noProjectDetected ? NO_PROJECT_HINTS : undefined}
+      alert={noProjectDetected ? NO_PROJECT_BANNER : undefined}
     />
   );
 }
