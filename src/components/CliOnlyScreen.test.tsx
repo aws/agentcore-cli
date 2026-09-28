@@ -162,21 +162,23 @@ describe("paths without a screen of their own", () => {
   );
 
   test("a group drills down to a leaf's help and back", async () => {
-    const r = renderScreen("/agentcore/gateway", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
+    const r = renderScreen("/agentcore/gateway/target", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "command line only");
-    await r.write("create");
-    await waitForText(r.lastFrame, "❯ create");
+    await r.write("delete");
+    await waitForText(r.lastFrame, "❯ delete");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "agentcore → gateway → create");
+    await waitForText(r.lastFrame, "agentcore → gateway → target → delete");
     const frame = r.lastFrame()!.replace(/\s+/g, " ");
     expect(frame).toContain("this command runs from the command line");
-    expect(frame).toContain("agentcore gateway create [options]");
-    expect(frame).toContain("--authorizer-type");
+    expect(frame).toContain("agentcore gateway target delete [options]");
+    expect(frame).toContain("--target-id");
 
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore Gateways");
+    await waitForText(r.lastFrame, "manage Targets for an AgentCore Gateway");
     r.unmount();
   });
 });
@@ -207,7 +209,9 @@ describe("option help groups", () => {
   });
 
   test("a command whose flags carry no group keeps a single options section", async () => {
-    const r = renderScreen("/agentcore/gateway/create", { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
+    const r = renderScreen("/agentcore/gateway/target/delete", {
+      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    });
 
     await waitForText(r.lastFrame, "this command runs from the command line");
     const frame = r.lastFrame()!;

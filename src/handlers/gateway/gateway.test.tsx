@@ -83,38 +83,17 @@ describe("gateway command hierarchy", () => {
 
     expect(gateway?.flags().map((flag) => flag.name)).not.toContain("interactive");
     expect(gateway?.children().map((child) => child.name())).toEqual([
-      "create",
-      "update",
       "get",
       "list",
-      "delete",
       "invoke",
       "target",
       "connector",
       "rule",
       "policy",
     ]);
-    expect(target?.children().map((child) => child.name())).toEqual([
-      "create",
-      "update",
-      "get",
-      "list",
-      "delete",
-    ]);
-    expect(connector?.children().map((child) => child.name())).toEqual([
-      "create",
-      "update",
-      "get",
-      "list",
-      "delete",
-    ]);
-    expect(rule?.children().map((child) => child.name())).toEqual([
-      "create",
-      "update",
-      "get",
-      "list",
-      "delete",
-    ]);
+    expect(target?.children().map((child) => child.name())).toEqual(["get", "list", "delete"]);
+    expect(connector?.children().map((child) => child.name())).toEqual(["get", "list", "delete"]);
+    expect(rule?.children().map((child) => child.name())).toEqual(["get", "list", "delete"]);
     expect(policy?.children().map((child) => child.name())).toEqual(["generate"]);
   });
 
@@ -133,16 +112,6 @@ describe("gateway command hierarchy", () => {
     ["Rule list", ["gateway", "rule", "list"]],
   ] as const)("marks bare %s as TUI-supported", (_label, args) => {
     expect(supportsTui(args)).toBe(true);
-  });
-
-  test.each([
-    ["Gateway create", ["gateway", "create"], /--name/],
-    ["Target create", ["gateway", "target", "create"], /--gateway-id/],
-    ["Connector create", ["gateway", "connector", "create"], /--gateway-id/],
-    ["Rule create", ["gateway", "rule", "create"], /--gateway-id/],
-  ] as const)("keeps bare CLI-only %s out of the TUI", async (_label, args, error) => {
-    expect(supportsTui(args)).toBe(false);
-    await expectError(run([...args]), error, InputValidationError);
   });
 });
 

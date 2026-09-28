@@ -11,7 +11,7 @@ import { DEFAULT_GLOBAL_CONFIG } from "../../globalConfig";
 afterEach(cleanupScreens);
 const GROUPS = ["gateway", "gateway/target", "gateway/connector", "gateway/rule"];
 
-describe("Gateway mutation menus", () => {
+describe("Gateway menus", () => {
   test.each(GROUPS)("%s redirects to root when the parent flag is off", async (group) => {
     const screen = renderScreen(`/agentcore/${group}`);
     await waitForText(screen.lastFrame, "the platform for production AI agents");
@@ -25,14 +25,16 @@ describe("Gateway mutation menus", () => {
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
-  test.each(GROUPS)("%s preserves enabled CLI-only mutations", async (group) => {
+  test.each(GROUPS)("%s lists no create or update commands when enabled", async (group) => {
     const screen = renderScreen(`/agentcore/${group}`, {
       globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
-    await waitForText(screen.lastFrame, "command line only");
+    await waitForText(screen.lastFrame, "type to choose a command");
     const entries = menuEntries(screen.lastFrame()!);
-    expect(entries.cliOnly).toEqual(["create", "update", "delete"]);
-    expect(entries.screens).not.toContain("create");
+    const names = [...entries.screens, ...entries.cliOnly];
+    expect(names).not.toContain("create");
+    expect(names).not.toContain("update");
+    expect(entries.cliOnly).toEqual(group === "gateway" ? [] : ["delete"]);
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -52,28 +54,26 @@ describe("Gateway mutation menus", () => {
     expect(menuEntries(screen.lastFrame()!).screens).not.toContain("gateway");
   });
 
-  test.each([false, true])("direct create route matches parent flag %s", async (enabled) => {
-    const screen = renderScreen("/agentcore/gateway/create", {
-      globalConfig: enabled ? IMPERATIVE_GLOBAL_CONFIG : DEFAULT_GLOBAL_CONFIG,
-    });
-    await waitForText(
-      screen.lastFrame,
-      enabled ? "this command runs from the command line" : "Create an AgentCore Gateway",
-    );
-    expect(screen.lastFrame()?.includes("agentcore add gateway")).toBe(!enabled);
-    expect(screen.lastFrame()?.includes("--authorizer-type")).toBe(enabled);
-    await screen.press("escape");
-    expect(screen.core.gateway.calls).toEqual([]);
-    await waitForText(
-      screen.lastFrame,
-      enabled ? "manage AgentCore Gateways" : "the platform for production AI agents",
-    );
-    if (enabled) {
-      expect(menuEntries(screen.lastFrame()!).cliOnly).toEqual(["create", "update", "delete"]);
-    } else {
-      expect(menuEntries(screen.lastFrame()!).screens).not.toContain("gateway");
-    }
-  });
+  test.each([false, true])(
+    "direct create route opens project guidance for parent flag %s",
+    async (enabled) => {
+      const screen = renderScreen("/agentcore/gateway/create", {
+        globalConfig: enabled ? IMPERATIVE_GLOBAL_CONFIG : DEFAULT_GLOBAL_CONFIG,
+      });
+      await waitForText(screen.lastFrame, "Create an AgentCore Gateway");
+      expect(screen.lastFrame()).toContain("agentcore add gateway --name MyGateway");
+      expect(screen.lastFrame()).not.toContain("this command runs from the command line");
+      await screen.press("escape");
+      expect(screen.core.gateway.calls).toEqual([]);
+      await waitForText(
+        screen.lastFrame,
+        enabled ? "manage AgentCore Gateways" : "the platform for production AI agents",
+      );
+      if (!enabled) {
+        expect(menuEntries(screen.lastFrame()!).screens).not.toContain("gateway");
+      }
+    },
+  );
 
   test.each(
     GROUPS.flatMap((group) =>

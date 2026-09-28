@@ -8,7 +8,6 @@ import {
   DeleteGatewayCommand,
   DeleteGatewayRuleCommand,
   DeleteGatewayTargetCommand,
-  type DeleteGatewayResponse,
   type DeleteGatewayRuleResponse,
   type DeleteGatewayTargetResponse,
   GetGatewayCommand,
@@ -61,22 +60,6 @@ async function run(
 }
 
 describe("gateway delete commands", () => {
-  test("deletes a Gateway", async () => {
-    const response = { gatewayId: GATEWAY_ID, status: "DELETING" } as DeleteGatewayResponse;
-    const core = new TestCoreClient();
-    core.gateway.setDeleteResponse(response);
-
-    const result = await run(["gateway", "delete", "--id", GATEWAY_ID], core);
-
-    expect(core.gateway.calls).toEqual([
-      {
-        method: "deleteGateway",
-        args: [GATEWAY_ID, { region: REGION }],
-      },
-    ]);
-    expect(JSON.parse(result.stdout)).toEqual(response);
-  });
-
   test("deletes a Target", async () => {
     const response = { targetId: TARGET_ID, status: "DELETING" } as DeleteGatewayTargetResponse;
     const core = new TestCoreClient();
@@ -168,7 +151,6 @@ describe("gateway delete commands", () => {
 
 describe("gateway delete validation", () => {
   test.each([
-    ["Gateway selector", ["gateway", "delete"], /--id/],
     ["Target parent", ["gateway", "target", "delete"], /--gateway-id/],
     ["Target selector", ["gateway", "target", "delete", "--gateway-id", GATEWAY_ID], /--target-id/],
     ["Connector parent", ["gateway", "connector", "delete"], /--gateway-id/],
@@ -504,7 +486,7 @@ class GatewayDeleteFixture {
 }
 
 test(
-  "deletes a Rule, Target, Connector, and Gateway through the real Core",
+  "deletes a Rule, Target, and Connector through the real Core",
   async () => {
     const fixture = new GatewayDeleteFixture();
     const resources: FixtureResources = { targetIds: [] };
@@ -571,15 +553,6 @@ test(
             gatewayIdentifier: state.gatewayId,
             targetId: state.connectorId,
           }),
-        ),
-      );
-
-      const gatewayStdout = await runFixture(["gateway", "delete", "--id", state.gatewayId]);
-      matchGolden(FIXTURES, "gateway-delete.golden.json", gatewayStdout);
-      expect(JSON.parse(gatewayStdout).gatewayId).toBe(state.gatewayId);
-      await fixture.verifyMissing(() =>
-        createControlClient({ region: "us-east-1" }).send(
-          new GetGatewayCommand({ gatewayIdentifier: state.gatewayId }),
         ),
       );
     } finally {
