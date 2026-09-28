@@ -35,6 +35,16 @@ export function useProject(core: Core, seed?: Project): UseQueryResult<Project> 
   });
 }
 
+export function useNoProjectDetected(core: Core): boolean {
+  const from = process.cwd();
+  const detected = useQuery({
+    queryKey: ["project-detected", from],
+    queryFn: async () => (await core.projectManager.resolve({ filePath: from })) !== undefined,
+    gcTime: 0,
+  });
+  return detected.data === false;
+}
+
 export interface LoadingFrameProps {
   breadcrumb: string[];
   description?: string;

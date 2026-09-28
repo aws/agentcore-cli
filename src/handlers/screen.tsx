@@ -1,25 +1,16 @@
 import { Text, useApp } from "ink";
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { CommandKey } from "../router";
 import { RouterScreen } from "../components/RouterScreen";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
+import { useNoProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const NO_PROJECT_BANNER = "No project detected - create a new project to get started";
 
 export function RootScreen(props: ScreenProps) {
-  const from = process.cwd();
-  const projectDetected = useQuery({
-    queryKey: ["project-detected", from],
-    queryFn: async () =>
-      (await props.core.projectManager.resolve({
-        filePath: from,
-      })) !== undefined,
-    gcTime: 0,
-  });
-  const noProjectDetected = projectDetected.data === false;
+  const noProjectDetected = useNoProjectDetected(props.core);
 
   return (
     <RouterScreen

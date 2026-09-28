@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
-import { CommandKey, ProjectKey, isProjectRequired, isTuiCommandSupported } from "../router";
+import { CommandKey, isProjectRequired, isTuiCommandSupported } from "../router";
 import { Layout } from "./Layout";
 import { Alert } from "./ui/alert";
 import { Divider } from "./ui/divider";
@@ -10,7 +10,7 @@ import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
-import { useProject } from "../handlers/project/ProjectGate";
+import { useNoProjectDetected } from "../handlers/project/ProjectGate";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
@@ -88,7 +88,6 @@ export function RouterScreen(props: RouterScreenProps) {
 }
 
 function CommandMenu({
-  ctx,
   core,
   path,
   tuiOnlyCommands = [],
@@ -97,7 +96,7 @@ function CommandMenu({
   command,
 }: RouterScreenProps & { command: Command }) {
   const navigate = useNavigate();
-  const noProject = useProject(core, ctx.value(ProjectKey)).isError;
+  const noProject = useNoProjectDetected(core);
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
