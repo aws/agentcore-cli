@@ -485,6 +485,37 @@ test("invokeAgentRuntimeCommand sends the command on the data client with the ab
   expect(sent[0]!.options).toEqual({ abortSignal: controller.signal });
 });
 
+test("Runtime exec sends the command and aborts an established stream", async () => {
+  const sent: { command: unknown; options: unknown }[] = [];
+  const core = coreWithDataSend(async (command, options) => {
+    sent.push({ command, options });
+    return {
+      stream: (async function* () {
+        yield { chunk: { contentDelta: { stdout: "first" } } };
+        await new Promise(() => {});
+      })(),
+    };
+  });
+  const request = {
+    agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test-123",
+    body: { command: "ls" },
+  };
+  const controller = new AbortController();
+  const response = await core.runtime.invokeAgentRuntimeCommand(
+    request,
+    { region: "us-east-1" },
+    controller.signal,
+  );
+  expect(sent[0]!.command).toBeInstanceOf(InvokeAgentRuntimeCommandCommand);
+  expect((sent[0]!.command as InvokeAgentRuntimeCommandCommand).input).toEqual(request);
+  expect(sent[0]!.options).toEqual({ abortSignal: controller.signal });
+  const iterator = response.stream![Symbol.asyncIterator]();
+  expect((await iterator.next()).value).toEqual({ chunk: { contentDelta: { stdout: "first" } } });
+  const pending = iterator.next();
+  controller.abort();
+  await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+});
+
 test("invokeRuntime maps all modeled IAM fields and response metadata", async () => {
   const sent: { command: unknown; options: unknown }[] = [];
   const body = (async function* () {

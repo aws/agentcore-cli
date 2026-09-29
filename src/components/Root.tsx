@@ -42,7 +42,9 @@ import { MemoryScreen } from "../handlers/memory/screen.tsx";
 import { MemoryGetJsonScreen, MemoryGetScreen } from "../handlers/memory/get/screen.tsx";
 import { MemoryListScreen } from "../handlers/memory/list/screen.tsx";
 import { RuntimeInvokeScreen } from "../handlers/runtime/invoke/screen.tsx";
+import { RuntimeInvokeLaunchSessionContext } from "../handlers/runtime/invoke/launchContext.ts";
 import { RuntimeShellScreen } from "../handlers/runtime/shell/screen.tsx";
+import { RuntimeExecScreen } from "../handlers/runtime/exec/screen.tsx";
 import { EvalScreen } from "../handlers/eval/screen.tsx";
 import { EvaluatorScreen } from "../handlers/eval/evaluator/screen.tsx";
 import { EvaluatorListScreen } from "../handlers/eval/evaluator/list/screen.tsx";
@@ -131,6 +133,7 @@ import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
 import { AddGatewayScreen } from "../handlers/project/add/gateway/screen.tsx";
 import { AddGatewayTargetScreen } from "../handlers/project/add/gateway-target/screen.tsx";
 import { AddGatewayConnectorScreen } from "../handlers/project/add/gateway-connector/screen.tsx";
+import { AddOnlineEvalScreen } from "../handlers/project/add/online-eval/screen.tsx";
 import { AddOnlineInsightScreen } from "../handlers/project/add/online-insight/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
@@ -161,15 +164,23 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
   // across re-renders (a fresh client would drop the cache and refetch). An
   // injected client (tests) takes precedence.
   const [defaultQueryClient] = useState(() => new QueryClient());
+  const [launchSessionConsumed, setLaunchSessionConsumed] = useState(false);
   const client = queryClient ?? defaultQueryClient;
 
   return (
     <QueryClientProvider client={client}>
-      {/* initialEntries seeds the in-memory history with the CLI command path,
-          then leaves navigation to the router so screens can useNavigate. */}
-      <MemoryRouter initialEntries={[path]}>
-        <PinnedRegion ctx={ctx} core={core} />
-      </MemoryRouter>
+      <RuntimeInvokeLaunchSessionContext.Provider
+        value={{
+          consumed: launchSessionConsumed,
+          consume: () => setLaunchSessionConsumed(true),
+        }}
+      >
+        {/* initialEntries seeds the in-memory history with the CLI command path,
+            then leaves navigation to the router so screens can useNavigate. */}
+        <MemoryRouter initialEntries={[path]}>
+          <PinnedRegion ctx={ctx} core={core} />
+        </MemoryRouter>
+      </RuntimeInvokeLaunchSessionContext.Provider>
     </QueryClientProvider>
   );
 }
@@ -474,6 +485,15 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/runtime/shell"
         element={<RuntimeShellScreen ctx={ctx} core={core} />}
+      />
+      <Route path="agentcore/runtime/exec" element={<RuntimeExecScreen ctx={ctx} core={core} />} />
+      <Route
+        path="agentcore/runtime/exec/:runtimeId"
+        element={<RuntimeExecScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/runtime/exec/:runtimeId/:qualifier"
+        element={<RuntimeExecScreen ctx={ctx} core={core} />}
       />
       <Route
         path="agentcore/runtime/shell/:runtimeId"
@@ -889,6 +909,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/add/gateway-connector"
         element={<AddGatewayConnectorScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/add/online-eval"
+        element={<AddOnlineEvalScreen ctx={ctx} core={core} />}
       />
       <Route
         path="agentcore/add/online-insight"

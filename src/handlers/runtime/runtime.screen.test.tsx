@@ -225,7 +225,8 @@ describe("runtime hub", () => {
     expect(frame).toMatch(/shell\s+open an interactive terminal/);
     expect(frame).toContain("versions");
     expect(frame).toContain("endpoints");
-    for (const excluded of ["exec", "update", "create", "delete"]) {
+    expect(frame).toMatch(/exec\s+run a shell command/);
+    for (const excluded of ["update", "create", "delete"]) {
       expect(frame).not.toContain(excluded);
     }
   });

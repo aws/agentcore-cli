@@ -33,6 +33,7 @@ export function createAddProjectResourceHandler(
     "gateway",
     "gateway-target",
     "gateway-connector",
+    "online-eval",
     "online-insight",
   );
   projectAdd.default(renderTui(core, config.io));

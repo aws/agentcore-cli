@@ -340,7 +340,7 @@ describe("MultiChoiceField and numeric TextField", () => {
     { value: "blue", label: "blue", description: "the third" },
   ];
 
-  function driveFields(onSubmit: (summary: string) => void) {
+  function driveFields(onSubmit: (summary: string) => void, minSelections = 0) {
     function Harness() {
       const [colours, setColours] = useState<string[]>([]);
       const [days, setDays] = useState("30");
@@ -353,7 +353,13 @@ describe("MultiChoiceField and numeric TextField", () => {
           successLabel="all done"
         >
           <Step stepKey="colours" prompt="pick some colours">
-            <MultiChoiceField choices={COLOURS} value={colours} onChange={setColours} />
+            <MultiChoiceField
+              choices={COLOURS}
+              value={colours}
+              onChange={setColours}
+              minSelections={minSelections}
+              minSelectionsMessage="Pick at least one colour"
+            />
           </Step>
           <Step stepKey="days" prompt="how many days?">
             <TextField
@@ -413,6 +419,17 @@ describe("MultiChoiceField and numeric TextField", () => {
 
     await waitFor(() => submitted !== undefined, 1000);
     expect(submitted).toBe("red,blue|30");
+    d.unmount();
+  });
+
+  test("a minimum selection count blocks an empty answer", async () => {
+    const d = driveFields(() => {}, 1);
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("pick some colours"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Pick at least one colour"), 1000);
+    expect(d.lastFrame()).toContain("pick some colours");
     d.unmount();
   });
 

@@ -716,6 +716,8 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   private listEndpointResponses = new Map<string | undefined, ListAgentRuntimeEndpointsResponse>();
   private invokeResponse: RuntimeInvokeResponse = DEFAULT_RUNTIME_INVOKE_RESPONSE;
   private invokeBodies: AsyncIterable<Uint8Array>[] = [];
+  private execEvents: InvokeAgentRuntimeCommandStreamOutput[] = [];
+  private execStreams: AsyncIterable<InvokeAgentRuntimeCommandStreamOutput>[] = [];
   private shellSession: RuntimeShellSession = {
     runtimeSessionId: "runtime-session-012345678901234567890123",
     kicked: false,
@@ -773,6 +775,32 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   queueInvokeBody(body: AsyncIterable<Uint8Array>): this {
     this.invokeBodies.push(body);
     return this;
+  }
+
+  setExecEvents(...events: InvokeAgentRuntimeCommandStreamOutput[]): this {
+    this.execEvents = events;
+    return this;
+  }
+
+  queueExecStream(stream: AsyncIterable<InvokeAgentRuntimeCommandStreamOutput>): this {
+    this.execStreams.push(stream);
+    return this;
+  }
+
+  async invokeAgentRuntimeCommand(
+    request: InvokeAgentRuntimeCommandRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InvokeAgentRuntimeCommandResponse> {
+    this.calls.push({ method: "invokeAgentRuntimeCommand", args: [request, options, signal] });
+    if (this.error) throw this.error;
+    const stream = this.execStreams.shift() ?? events(this.execEvents);
+    return {
+      contentType: "application/json",
+      statusCode: 200,
+      runtimeSessionId: request.runtimeSessionId,
+      stream: signal ? abortable(stream, signal) : stream,
+    };
   }
 
   setError(error: Error | undefined): this {

@@ -54,4 +54,19 @@ describe("online evaluation custom validation", () => {
       }).success,
     ).toBe(true);
   });
+  it("limits online evaluations to ten evaluators", () => {
+    const source = { ...base, agent: "agent" };
+    expect(
+      OnlineEvalConfigSchema.safeParse({
+        ...source,
+        evaluators: Array.from({ length: 10 }, (_, index) => `Builtin.Evaluator${index}`),
+      }).success,
+    ).toBe(true);
+    expect(
+      OnlineEvalConfigSchema.safeParse({
+        ...source,
+        evaluators: Array.from({ length: 11 }, (_, index) => `Builtin.Evaluator${index}`),
+      }).success,
+    ).toBe(false);
+  });
 });

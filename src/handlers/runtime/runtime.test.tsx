@@ -118,6 +118,7 @@ describe("runtime command hierarchy", () => {
       "list",
       "invoke",
       "shell",
+      "exec",
       "version",
       "endpoint",
       "logs",

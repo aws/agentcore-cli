@@ -79,6 +79,23 @@ Global flags (declared at the root, available on every command):
 
 Run `agentcore --version` to check the installed CLI version.
 
+### Runtime Exec
+
+Select a deployed Runtime in `agentcore status` and choose **exec**, or enable
+standalone commands for direct access:
+
+```bash
+agentcore config imperative-commands true
+agentcore runtime exec --id MyAgent-AbCdEf1234 --command "pwd"
+agentcore runtime exec --id MyAgent-AbCdEf1234 --qualifier DEFAULT
+```
+
+Without `--command`, exec opens a command-by-command TUI. Use `--session-id` to
+resume a session and `--timeout` for a command timeout of 1-3600 seconds.
+One-shot commands return JSON output, status, exit code, and session ID.
+Escape interrupts the local stream, not necessarily the remote process.
+Use `runtime shell` for a native interactive terminal.
+
 ## Extending the CDK app
 
 `agentcore/cdk/` has two source files. `bin/cdk.ts` reads the project once

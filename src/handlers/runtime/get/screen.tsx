@@ -33,6 +33,12 @@ const ACTIONS = [
     description: "list immutable Runtime versions",
     to: (id: string) => `/agentcore/runtime/version/list/${encodeURIComponent(id)}`,
   },
+  {
+    name: "exec",
+    description: "run a shell command",
+    to: (id: string) => `/agentcore/runtime/exec/${encodeURIComponent(id)}`,
+    returnsToDetails: true,
+  },
 ] as const;
 
 function useRuntimeDetail({ ctx, core }: ScreenProps, runtimeId: string | undefined) {

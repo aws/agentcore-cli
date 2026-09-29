@@ -26,6 +26,7 @@ const WITH_SCREENS = [
   "gateway",
   "gateway-target",
   "gateway-connector",
+  "online-eval",
   "online-insight",
 ];
 

@@ -21,6 +21,12 @@ import type { Logger } from "../logging";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { invokeRuntime } from "./invokeRuntime";
 import { toClientConfig } from "./utils";
+import {
+  InvokeAgentRuntimeCommandCommand,
+  type InvokeAgentRuntimeCommandRequest,
+  type InvokeAgentRuntimeCommandResponse,
+} from "@aws-sdk/client-bedrock-agentcore";
+import { abortable } from "./abortable";
 
 export type OpenRuntimeShell = (
   request: RuntimeShellRequest,
@@ -36,6 +42,18 @@ export class RuntimeClient implements CoreRuntimeClient {
       throw new Error("Runtime shell transport is not configured");
     },
   ) {}
+
+  async invokeAgentRuntimeCommand(
+    request: InvokeAgentRuntimeCommandRequest,
+    options: CoreOptions,
+    abortSignal?: AbortSignal,
+  ): Promise<InvokeAgentRuntimeCommandResponse> {
+    const response = await this.clients
+      .data(toClientConfig(options))
+      .send(new InvokeAgentRuntimeCommandCommand(request), { abortSignal });
+    if (!response.stream || !abortSignal) return response;
+    return { ...response, stream: abortable(response.stream, abortSignal) };
+  }
 
   invokeRuntime(
     request: RuntimeInvokeRequest,

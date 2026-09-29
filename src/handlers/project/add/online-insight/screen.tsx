@@ -87,10 +87,6 @@ interface OnlineInsightFormValues extends TrafficSourceFormValues {
   description: string;
 }
 
-function firstError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function insightsOf(values: OnlineInsightFormValues): string[] {
   return [
     ...values.builtinInsights,
@@ -203,7 +199,10 @@ function AddOnlineInsightWizard({
             targets,
           );
         } catch (error) {
-          ctx.addIssue({ code: "custom", message: firstError(error) });
+          ctx.addIssue({
+            code: "custom",
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       }),
     [project.name, targets],
