@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
-import { Box, Text, useApp, useInput, useStdin } from "ink";
+import { Box, Text, useApp, useInput, useStdin, useWindowSize } from "ink";
 import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
 import {
@@ -14,10 +14,15 @@ import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
+import { useScrollWindow } from "./scrollWindow";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
 const CLI_ONLY_SECTION = "cli";
+// MENU_CHROME_ROWS is everything the menu screen renders around the option
+// list: the Layout header and footer (2 each), the filter input, and the
+// divider under it.
+const MENU_CHROME_ROWS = 6;
 
 // rootCommand walks up to the top of the Commander tree.
 function rootCommand(c: Command): Command {
@@ -150,6 +155,10 @@ function CommandMenu({
   // match is index 0, which is what a fresh query resets to.
   const highlight = Math.min(index, Math.max(0, filtered.length - 1));
 
+  const { rows } = useWindowSize();
+  const sections = useMemo(() => filtered.map((o) => o.section), [filtered]);
+  const view = useScrollWindow(sections, highlight, rows - MENU_CHROME_ROWS);
+
   const base = "/" + path.join("/");
 
   // Width of the name column so descriptions line up (longest name + a gap).
@@ -207,10 +216,10 @@ function CommandMenu({
         { key: "ctrl+c", label: "quit" },
       ]}
     >
-      <Box flexDirection="column">
+      <Box flexDirection="column" flexShrink={1} minHeight={0} overflow="hidden">
         {/* Filter input. TextInput owns text editing; the highlight resets to
             the best match whenever the query changes. */}
-        <Box paddingX={1}>
+        <Box paddingX={1} minHeight={0}>
           <TextInput
             value={query}
             onChange={(v) => {
@@ -226,37 +235,40 @@ function CommandMenu({
         <Divider />
 
         {/* Options */}
-        <Box flexDirection="column">
+        <Box flexDirection="column" flexShrink={0}>
           {filtered.length === 0 ? (
-            <Box paddingX={1}>
+            <Box paddingX={1} flexShrink={0}>
               <Text color={theme.colors.text}>No matches</Text>
             </Box>
           ) : (
-            filtered.map((o, i) => {
-              const isHl = i === highlight;
-              // A section's divider sits above its first option.
-              const startsSection =
-                o.section !== undefined && o.section !== filtered[i - 1]?.section;
-              return (
-                <React.Fragment key={o.name}>
-                  {startsSection && <Divider title={o.section} />}
-                  <Box paddingX={1}>
-                    <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
-                    <Text
-                      bold={isHl}
-                      color={
-                        isHl
-                          ? theme.colors.focus
-                          : o.cliOnly
-                            ? theme.colors.muted
-                            : theme.colors.text
-                      }
-                    >
-                      {o.name.padEnd(nameWidth)}
+            view.rows.map((row) => {
+              if (row.kind === "section") {
+                return <Divider key={`section:${row.title}`} title={row.title} />;
+              }
+              if (row.kind !== "item") {
+                return (
+                  <Box key={row.kind} paddingX={1} flexShrink={0}>
+                    <Text color={theme.colors.muted}>
+                      {`  ${row.kind === "more-above" ? "↑" : "↓"} ${row.count} more`}
                     </Text>
-                    <Text color={theme.colors.muted}>{o.description}</Text>
                   </Box>
-                </React.Fragment>
+                );
+              }
+              const o = filtered[row.index]!;
+              const isHl = row.index === highlight;
+              return (
+                <Box key={o.name} paddingX={1} flexShrink={0}>
+                  <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
+                  <Text
+                    bold={isHl}
+                    color={
+                      isHl ? theme.colors.focus : o.cliOnly ? theme.colors.muted : theme.colors.text
+                    }
+                  >
+                    {o.name.padEnd(nameWidth)}
+                  </Text>
+                  <Text color={theme.colors.muted}>{o.description}</Text>
+                </Box>
               );
             })
           )}

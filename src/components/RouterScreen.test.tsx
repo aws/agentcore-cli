@@ -255,3 +255,162 @@ describe("navigation", () => {
     nested.unmount();
   });
 });
+
+describe("short terminals", () => {
+  const ROWS = 15;
+
+  // fullMenu renders the root menu at the default height, where every option fits.
+  async function fullMenu() {
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "── cli");
+    const frame = r.lastFrame()!;
+    r.unmount();
+    const titles = new Map<string, string | undefined>();
+    for (const group of menuGroups(frame)) {
+      for (const name of group.names) titles.set(name, group.title);
+    }
+    // Option rows keyed by name, without the highlight caret.
+    const lines = new Map<string, string>();
+    for (const line of frame.split("\n")) {
+      const name = /^\s{1,3}(?:❯ )?\s*([a-z][a-z0-9-]*)\s{2,}\S/.exec(line)?.[1];
+      if (name) lines.set(name, line.replace("❯", " "));
+    }
+    return { names: [...titles.keys()], titles, lines };
+  }
+
+  function highlighted(frame: string): string | undefined {
+    return /❯ ([a-z][a-z0-9-]*)/.exec(frame)?.[1];
+  }
+
+  function more(frame: string, arrow: "↑" | "↓"): number | undefined {
+    const count = new RegExp(`^\\s+${arrow} (\\d+) more`, "m").exec(frame)?.[1];
+    return count === undefined ? undefined : Number(count);
+  }
+
+  async function shortMenu() {
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "❯ create");
+    await r.resize(100, ROWS);
+    return r;
+  }
+
+  // expectConsistentWindow checks one short frame against the full menu: it
+  // fills the terminal exactly, every listed option is a whole row under its
+  // own section title, and the markers account for every hidden option.
+  function expectConsistentWindow(frame: string, full: Awaited<ReturnType<typeof fullMenu>>) {
+    expect(frame.split("\n")).toHaveLength(ROWS);
+    const groups = menuGroups(frame);
+    const visible = groups.flatMap((group) => group.names);
+    expect(visible.length).toBeGreaterThan(0);
+    for (const group of groups) {
+      for (const name of group.names) expect(group.title).toBe(full.titles.get(name));
+    }
+    const optionLines = frame
+      .split("\n")
+      .filter((line) => /^\s{1,3}(?:❯ )?\s*[a-z][a-z0-9-]*\s{2,}\S/.test(line));
+    expect(optionLines.map((line) => line.replace("❯", " "))).toEqual(
+      visible.map((name) => full.lines.get(name)!),
+    );
+    const first = full.names.indexOf(visible[0]!);
+    expect(full.names.slice(first, first + visible.length)).toEqual(visible);
+    expect(more(frame, "↑")).toBe(first > 0 ? first : undefined);
+    const below = full.names.length - first - visible.length;
+    expect(more(frame, "↓")).toBe(below > 0 ? below : undefined);
+  }
+
+  test("keeps the highlighted command visible while moving down through every option", async () => {
+    const full = await fullMenu();
+    const r = await shortMenu();
+
+    const seen: string[] = [];
+    for (let i = 0; i < full.names.length; i++) {
+      if (i > 0) await r.press("down");
+      await waitForText(r.lastFrame, `❯ ${full.names[i]}`);
+      const frame = r.lastFrame()!;
+      seen.push(highlighted(frame)!);
+      expectConsistentWindow(frame, full);
+    }
+    expect(seen).toEqual(full.names);
+    r.unmount();
+  });
+
+  test("reaches the last command-line-only option and scrolls back up to the first", async () => {
+    const full = await fullMenu();
+    const r = await shortMenu();
+    const last = full.names[full.names.length - 1]!;
+
+    for (let i = 1; i < full.names.length; i++) await r.press("down");
+    await waitForText(r.lastFrame, `❯ ${last}`);
+    let frame = r.lastFrame()!;
+    expect(frame).toContain("── cli");
+    expect(more(frame, "↑")).toBeGreaterThan(0);
+    expect(more(frame, "↓")).toBeUndefined();
+
+    for (let i = 1; i < full.names.length; i++) {
+      await r.press("up");
+      expectConsistentWindow(r.lastFrame()!, full);
+    }
+    await waitForText(r.lastFrame, "❯ create");
+    frame = r.lastFrame()!;
+    expect(more(frame, "↑")).toBeUndefined();
+    expect(more(frame, "↓")).toBeGreaterThan(0);
+    r.unmount();
+  });
+
+  test("a window starting mid-section shows that section's title first", async () => {
+    const full = await fullMenu();
+    const r = await shortMenu();
+
+    const target = full.names.indexOf("runtime");
+    for (let i = 0; i < target; i++) await r.press("down");
+    await waitForText(r.lastFrame, "❯ runtime");
+    const groups = menuGroups(r.lastFrame()!);
+    expect(groups[0]!.title).toBe("resources");
+    expect(groups[0]!.names[0]).not.toBe("eval");
+    r.unmount();
+  });
+
+  test("typing a filter returns the window to the top", async () => {
+    const full = await fullMenu();
+    const r = await shortMenu();
+
+    for (let i = 1; i < full.names.length; i++) await r.press("down");
+    await waitForText(r.lastFrame, "❯ update");
+    await r.write("e");
+    const first = full.names.find((name) => name.includes("e"))!;
+    await waitForText(r.lastFrame, `❯ ${first}`);
+    expect(more(r.lastFrame()!, "↑")).toBeUndefined();
+    r.unmount();
+  });
+
+  test("resizing taller shows the whole list again", async () => {
+    const full = await fullMenu();
+    const r = await shortMenu();
+
+    for (let i = 1; i < full.names.length; i++) await r.press("down");
+    await waitForText(r.lastFrame, "❯ update");
+    await r.resize(100, 40);
+    const frame = r.lastFrame()!;
+    expect(menuGroups(frame).flatMap((group) => group.names)).toEqual(full.names);
+    expect(frame).not.toContain(" more");
+    expect(frame).toContain("❯ update");
+    r.unmount();
+  });
+
+  test("resizing shorter keeps the highlight visible", async () => {
+    const full = await fullMenu();
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "❯ create");
+
+    const target = full.names.indexOf("harness");
+    for (let i = 0; i < target; i++) await r.press("down");
+    await waitForText(r.lastFrame, "❯ harness");
+    await r.resize(100, ROWS);
+    expectConsistentWindow(r.lastFrame()!, full);
+    expect(r.lastFrame()).toContain("❯ harness");
+
+    await r.resize(100, 7);
+    expect(r.lastFrame()).toContain("❯ harness");
+    r.unmount();
+  });
+});
