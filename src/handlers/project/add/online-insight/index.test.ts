@@ -149,6 +149,31 @@ describe("project add online-insight", () => {
     );
   });
 
+  test("rejects a name whose deployed form exceeds the service limit", async () => {
+    const { cleanup } = await initProject({
+      name: "TestProject",
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+
+    await expectError(
+      run([
+        "add",
+        "online-insight",
+        "--name",
+        `a${"x".repeat(28)}`,
+        "--agent",
+        "agent",
+        "--insight",
+        INSIGHT,
+        "--sampling-rate",
+        "50",
+      ]),
+      "The maximum is 48",
+      InputValidationError,
+    );
+  });
+
   test("rejects when the existing spec is invalid", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],

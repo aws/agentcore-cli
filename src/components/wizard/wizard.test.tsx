@@ -446,6 +446,88 @@ describe("MultiChoiceField and numeric TextField", () => {
     await waitFor(() => (d.lastFrame() ?? "").includes("Days must be a whole number"), 1000);
     d.unmount();
   });
+
+  test("a decimal field validates the parsed number", async () => {
+    let submitted = false;
+
+    function Harness() {
+      const [rate, setRate] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => {
+            submitted = true;
+          }}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="rate" prompt="sampling rate?">
+            <TextField
+              label="Sampling rate"
+              value={rate}
+              onChange={setRate}
+              required
+              decimal
+              schema={z.number().min(0.01).max(100)}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<Harness />);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+
+    await tick();
+    instance.stdin.write("12.5");
+    await tick();
+    instance.stdin.write(keys.return);
+    await waitFor(() => submitted, 1000);
+    instance.unmount();
+  });
+
+  test("a decimal field refuses non-numeric text", async () => {
+    function Harness() {
+      const [rate, setRate] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => {}}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="rate" prompt="sampling rate?">
+            <TextField
+              label="Sampling rate"
+              value={rate}
+              onChange={setRate}
+              required
+              decimal
+              schema={z.number().min(0.01).max(100)}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<Harness />);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+
+    await tick();
+    instance.stdin.write("ten");
+    await tick();
+    instance.stdin.write(keys.return);
+    await waitFor(() => (instance.lastFrame() ?? "").includes("Sampling rate must be a number"));
+    instance.unmount();
+  });
 });
 
 // ResourceChoiceField is a ChoiceField over the project spec; what these cover

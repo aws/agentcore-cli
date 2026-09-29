@@ -25,16 +25,20 @@ interface ValidateOptions {
   // number validates the number the answer parses to rather than the text, so a
   // numeric flag's own schema can bound the field.
   number?: boolean;
+  decimal?: boolean;
 }
 
 function validateEntry(
   value: string,
-  { label, required, schema, number = false }: ValidateOptions,
+  { label, required, schema, number = false, decimal = false }: ValidateOptions,
 ): string | undefined {
   if (value.trim() === "") return required ? `${label} is required` : undefined;
   if (number && !/^\d+$/.test(value)) return `${label} must be a whole number`;
+  if (decimal && !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) {
+    return `${label} must be a number`;
+  }
   if (!schema) return undefined;
-  return firstIssue(schema, number ? Number(value) : value);
+  return firstIssue(schema, number || decimal ? Number(value) : value);
 }
 
 export interface TextFieldProps {
@@ -47,6 +51,7 @@ export interface TextFieldProps {
   schema?: z.ZodType;
   live?: boolean;
   number?: boolean;
+  decimal?: boolean;
 }
 
 export function TextField({
@@ -59,6 +64,7 @@ export function TextField({
   schema,
   live = false,
   number = false,
+  decimal = false,
 }: TextFieldProps) {
   const { advance, back, isLast } = useWizard();
   const [error, setError] = useState<string>();
@@ -72,7 +78,7 @@ export function TextField({
     }
     if (!key.return) return;
 
-    const issue = validateEntry(value, { label, required, schema, number });
+    const issue = validateEntry(value, { label, required, schema, number, decimal });
     if (issue !== undefined) {
       setError(issue);
       return;
@@ -93,7 +99,7 @@ export function TextField({
           onChange(next);
           setError(
             live && next.trim() !== ""
-              ? validateEntry(next, { label, required, schema, number })
+              ? validateEntry(next, { label, required, schema, number, decimal })
               : undefined,
           );
         }}
@@ -157,12 +163,12 @@ export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFi
   );
 }
 
-export interface ResourceChoiceFieldProps<T> extends ChoiceFieldProps<T> {
+export type ResourceChoiceFieldProps<T> = ChoiceFieldProps<T> & {
   // What the step says when the project has none of the resource yet: what is
   // missing, and (in the hint) the command that adds one.
   emptyMessage: string;
   emptyHint?: string;
-}
+};
 
 // ResourceChoiceField is a ChoiceField whose options come from the project
 // spec. What it adds is the empty state: a project without the resource is the
@@ -179,10 +185,10 @@ export function ResourceChoiceField<T>({
   return <ChoiceField {...choice} />;
 }
 
-export interface ResourceEmptyStateProps {
+export type ResourceEmptyStateProps = {
   message: string;
   hint?: string;
-}
+};
 
 // ResourceEmptyState is the step a project without the resource lands on. It is
 // exported for compound fields over a resource list — one that opens an input
@@ -206,7 +212,7 @@ export function ResourceEmptyState({ message, hint }: ResourceEmptyStateProps) {
   );
 }
 
-export interface RevealedInput<T> {
+export type RevealedInput<T> = {
   // opensFor says which rows have the follow-up: enter on one of them opens the
   // input; on any other row, enter continues.
   opensFor: (value: T) => boolean;
@@ -221,11 +227,11 @@ export interface RevealedInput<T> {
   onChange: (value: string) => void;
   required?: boolean;
   schema?: z.ZodType;
-}
+};
 
-export interface RevealChoiceFieldProps<T> extends ChoiceFieldProps<T> {
+export type RevealChoiceFieldProps<T> = ChoiceFieldProps<T> & {
   input: RevealedInput<T>;
-}
+};
 
 // RevealChoiceField is a ChoiceField where some rows have a follow-up question:
 // enter on such a row opens one text input under the rows, the way the harness
@@ -266,7 +272,10 @@ export function RevealChoiceField<T>({
         return;
       }
       if (key.return) {
-        if (input.opensFor(choices[index]!.value)) setEditing(true);
+        // With nothing to choose there is nothing to open; continue rather than
+        // throw, though callers show a ResourceEmptyState before it comes to that.
+        const current = choices[index];
+        if (current !== undefined && input.opensFor(current.value)) setEditing(true);
         else advance();
       }
       return;

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import z from "zod";
@@ -26,7 +26,7 @@ import { GatewayNameSchema } from "../../../../projectSchemas/runtime";
 import { ProjectKey } from "../../../../router";
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
-import { LoadingFrame, ProjectGate, projectQueryKey } from "../../ProjectGate";
+import { LoadingFrame, ProjectGate, projectQueryKey, useProjectTargets } from "../../ProjectGate";
 import { requireDeployedNameFits } from "../shared";
 import { toAddGatewayInput, type GatewayInput } from "./index";
 
@@ -117,10 +117,6 @@ function summaryOf(values: GatewayFormValues): Record<string, string> {
   };
 }
 
-function targetsQueryKey(project: Project) {
-  return ["project-targets", project.rootPath] as const;
-}
-
 export function AddGatewayScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   return (
@@ -138,10 +134,7 @@ export function AddGatewayScreen({ ctx, core }: ScreenProps) {
 
 function AddGatewayLoader({ project, core }: { project: Project; core: ScreenProps["core"] }) {
   const navigate = useNavigate();
-  const targets = useQuery({
-    queryKey: targetsQueryKey(project),
-    queryFn: () => core.projectManager.listTargets(project),
-  });
+  const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
     return <AddGatewayWizard project={project} targets={targets.data} core={core} />;

@@ -20,7 +20,14 @@ function addSubcommands(): string[] {
 
 // The resources with a wizard. Everything else is listed below the menu's
 // "command line only" divider and opens its help instead.
-const WITH_SCREENS = ["runtime", "memory", "gateway", "gateway-target", "gateway-connector"];
+const WITH_SCREENS = [
+  "runtime",
+  "memory",
+  "gateway",
+  "gateway-target",
+  "gateway-connector",
+  "online-insight",
+];
 
 describe("project add menu", () => {
   test("lists every add resource", async () => {

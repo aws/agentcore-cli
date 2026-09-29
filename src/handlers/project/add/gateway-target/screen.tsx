@@ -12,7 +12,6 @@ import {
   Wizard,
   type Choice,
 } from "../../../../components/wizard";
-import type { Credential } from "../../../../projectSchemas/credential";
 import {
   TARGET_TYPE_AUTH_CONFIG,
   type AgentCoreGateway,
@@ -136,24 +135,7 @@ function runtimeEndpointChoices(runtime: ProjectRuntime | undefined): Choice<str
   ];
 }
 
-function oauthCredentialChoices(credentials: readonly Credential[]): Choice<string>[] {
-  return credentials
-    .filter((credential) => credential.authorizerType === "OAuthCredentialProvider")
-    .map((credential) => ({
-      value: credential.name,
-      label: credential.name,
-      description: "OAuth 2.0 credential provider",
-    }));
-}
-
-export function splitScopes(value: string): string[] {
-  return value
-    .split(/[\s,]+/)
-    .map((scope) => scope.trim())
-    .filter((scope) => scope !== "");
-}
-
-interface GatewayTargetFormValues {
+type GatewayTargetFormValues = {
   gateway: string;
   kind: TargetKind;
   endpoint: string;
@@ -165,14 +147,14 @@ interface GatewayTargetFormValues {
   auth: AuthChoice;
   credential: string;
   scopes: string;
-}
+};
 
 // toGatewayTargetInput is the answers as the flag path would state them; the
 // shared builder then does what it does for the flags.
 export function toGatewayTargetInput(values: GatewayTargetFormValues): GatewayTargetShortcutInput {
   const isEndpoint = values.kind === "endpoint";
   const isOauth = values.auth === "oauth";
-  const scopes = splitScopes(values.scopes);
+  const scopes = values.scopes.split(/[\s,]+/).filter((scope) => scope !== "");
   return {
     gateway: values.gateway,
     name: values.name,
@@ -203,7 +185,7 @@ function summaryOf(values: GatewayTargetFormValues): Record<string, string> {
           ? "Gateway IAM role"
           : "none",
     ...(values.auth === "oauth"
-      ? { scopes: splitScopes(values.scopes).join(", ") || "(none)" }
+      ? { scopes: toGatewayTargetInput(values).outboundAuth.scopes?.join(", ") ?? "(none)" }
       : {}),
   };
 }
@@ -234,7 +216,14 @@ function AddGatewayTargetWizard({
   const queryClient = useQueryClient();
   const gateways = project.spec.agentCoreGateways ?? [];
   const runtimes = project.spec.runtimes;
-  const credentials = oauthCredentialChoices(project.spec.credentials);
+  // Only OAuth credentials can back a shortcut Target's outbound auth.
+  const credentials: Choice<string>[] = project.spec.credentials
+    .filter((credential) => credential.authorizerType === "OAuthCredentialProvider")
+    .map((credential) => ({
+      value: credential.name,
+      label: credential.name,
+      description: "OAuth 2.0 credential provider",
+    }));
 
   const [values, setValues] = useState<GatewayTargetFormValues>({
     gateway: gateways[0]?.name ?? "",
