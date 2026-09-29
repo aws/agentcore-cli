@@ -174,12 +174,21 @@ export function ResourceChoiceField<T>({
   ...choice
 }: ResourceChoiceFieldProps<T>) {
   if (choice.choices.length === 0) {
-    return <EmptyResources message={emptyMessage} hint={emptyHint} />;
+    return <ResourceEmptyState message={emptyMessage} hint={emptyHint} />;
   }
   return <ChoiceField {...choice} />;
 }
 
-function EmptyResources({ message, hint }: { message: string; hint?: string }) {
+export interface ResourceEmptyStateProps {
+  message: string;
+  hint?: string;
+}
+
+// ResourceEmptyState is the step a project without the resource lands on. It is
+// exported for compound fields over a resource list — one that opens an input
+// under the chosen row, say — which cannot be a ResourceChoiceField but should
+// look the same when there is nothing to choose.
+export function ResourceEmptyState({ message, hint }: ResourceEmptyStateProps) {
   const { back } = useWizard();
 
   // Nothing to choose, so enter has nothing to do; the footer offers esc only.

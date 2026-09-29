@@ -69,7 +69,7 @@ async function reachKindStep(screen: RenderScreenResult): Promise<void> {
 async function reachAuthStep(screen: RenderScreenResult, name: string): Promise<void> {
   await reachKindStep(screen);
   await screen.press("return");
-  await waitForText(screen.lastFrame, "what is the MCP server's HTTPS endpoint?");
+  await waitForText(screen.lastFrame, "an HTTPS URL the Gateway can reach");
   await screen.write(ENDPOINT);
   await screen.press("return");
   await waitForText(screen.lastFrame, "what should this Target be called?");
@@ -106,9 +106,15 @@ describe("project add gateway-target wizard", () => {
     await waitForText(screen.lastFrame, "what is the Target?");
     expect(screen.lastFrame()).toContain("❯ ● an MCP server I host elsewhere");
     expect(screen.lastFrame()).toContain("○ a Runtime in this project");
+    expect(screen.lastFrame()).not.toContain("an HTTPS URL the Gateway can reach");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "what is the MCP server's HTTPS endpoint?");
+    // The endpoint input opens in place under the MCP server row: the pointer
+    // follows focus into it while the radio marker keeps the chosen kind.
+    await waitForText(screen.lastFrame, "an HTTPS URL the Gateway can reach");
+    expect(screen.lastFrame()).toContain("what is the Target?");
+    expect(screen.lastFrame()).toContain("● an MCP server I host elsewhere");
+    expect(screen.lastFrame()).not.toContain("❯ ● an MCP server I host elsewhere");
     await screen.write(ENDPOINT);
     await screen.press("return");
 
@@ -244,7 +250,9 @@ describe("project add gateway-target wizard", () => {
     expect(screen.lastFrame()).not.toContain("api-key");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "which scopes should the token request?");
+    // The scopes input opens under the chosen credential.
+    await waitForText(screen.lastFrame, "separate several with spaces or commas");
+    expect(screen.lastFrame()).toContain("which OAuth credential should it use?");
     await screen.write("read, write");
     await screen.press("return");
 
@@ -317,12 +325,12 @@ describe("project add gateway-target wizard", () => {
     await reachKindStep(screen);
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "what is the MCP server's HTTPS endpoint?");
+    await waitForText(screen.lastFrame, "an HTTPS URL the Gateway can reach");
     await screen.write("http://mcp.example.com");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "must use HTTPS");
-    expect(screen.lastFrame()).toContain("what is the MCP server's HTTPS endpoint?");
+    await waitForText(screen.lastFrame, "Endpoint must use HTTPS");
+    expect(screen.lastFrame()).toContain("what is the Target?");
     screen.unmount();
   });
 
@@ -333,13 +341,68 @@ describe("project add gateway-target wizard", () => {
     await reachKindStep(screen);
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "what is the MCP server's HTTPS endpoint?");
+    await waitForText(screen.lastFrame, "an HTTPS URL the Gateway can reach");
     await screen.write("not-a-url");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "must be a valid HTTPS URL");
+    await waitForText(screen.lastFrame, "Endpoint must be a valid HTTPS URL");
     screen.unmount();
   });
+
+  test("an empty endpoint keeps the step", async () => {
+    await inProject();
+    await addGateway();
+    const screen = renderScreen("/agentcore/add/gateway-target");
+    await reachKindStep(screen);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "an HTTPS URL the Gateway can reach");
+
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "Endpoint is required");
+    expect(screen.lastFrame()).toContain("what is the Target?");
+    screen.unmount();
+  });
+
+  test("esc collapses the endpoint input back into the kind rows", async () => {
+    await inProject();
+    await addGateway();
+    const screen = renderScreen("/agentcore/add/gateway-target");
+    await reachKindStep(screen);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "an HTTPS URL the Gateway can reach");
+
+    await screen.press("escape");
+
+    await waitForText(screen.lastFrame, "❯ ● an MCP server I host elsewhere");
+    expect(screen.lastFrame()).not.toContain("an HTTPS URL the Gateway can reach");
+    expect(screen.lastFrame()).toContain("what is the Target?");
+    screen.unmount();
+  });
+
+  test("scopes may be left empty", async () => {
+    const projectRoot = await projectWith({ credentials: [OAUTH_CREDENTIAL] });
+    const screen = renderScreen("/agentcore/add/gateway-target");
+    await reachAuthStep(screen, "plain");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "which OAuth credential should it use?");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "separate several with spaces or commas");
+
+    await screen.press("return");
+
+    await waitForFlatText(screen.lastFrame, "scopes (none)");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "added Target 'plain'");
+    // No scopes key at all, as `--outbound-auth oauth --credential-name oauth` writes it.
+    expect((await targetsOf(projectRoot))[0].outboundAuth).toEqual({
+      type: "OAUTH",
+      credentialName: "oauth",
+    });
+    screen.unmount();
+  }, 15000);
 
   test("a rejected add reports itself and hands the form back", async () => {
     const projectRoot = await inProject();

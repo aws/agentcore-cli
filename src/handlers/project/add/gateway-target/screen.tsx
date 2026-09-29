@@ -1,13 +1,20 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
+import { FormRadioGroup, type FormRadioOption } from "../../../../components/FormRadioGroup";
+import { FormTextInput } from "../../../../components/FormTextInput";
+import { darkTheme } from "../../../../components/ui/_core.js";
 import {
   ChoiceField,
   ResourceChoiceField,
+  ResourceEmptyState,
   Step,
   Summary,
   TextField,
   Wizard,
+  useKeyHints,
+  useWizard,
   type Choice,
 } from "../../../../components/wizard";
 import type { Credential } from "../../../../projectSchemas/credential";
@@ -17,6 +24,7 @@ import {
   type GatewayTargetType,
 } from "../../../../projectSchemas/gateway";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
+import type z from "zod";
 import { ProjectKey } from "../../../../router";
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
@@ -27,6 +35,7 @@ import {
   type GatewayTargetShortcutInput,
 } from "./index";
 
+const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "gateway-target"];
 const DESCRIPTION = "add a Target to a project Gateway";
 const ADD_MENU = "/agentcore/add";
@@ -292,31 +301,19 @@ function AddGatewayTargetWizard({
       </Step>
 
       <Step stepKey="kind" prompt="what is the Target?">
-        <ChoiceField
+        <TargetKindField
           help={
             acceptsRuntimeTargets(gateway)
               ? ""
               : `Gateway '${values.gateway}' has protocolType MCP, so it takes MCP servers only; a Runtime Target needs a Gateway with protocolType None`
           }
           choices={kindChoices(gateway)}
-          value={values.kind}
-          onChange={(kind) => set({ kind, auth: authChoices(kind)[0]!.value })}
+          kind={values.kind}
+          endpoint={values.endpoint}
+          onKindChange={(kind) => set({ kind, auth: authChoices(kind)[0]!.value })}
+          onEndpointChange={(endpoint) => set({ endpoint })}
         />
       </Step>
-
-      {!isRuntime && (
-        <Step stepKey="endpoint" prompt="what is the MCP server's HTTPS endpoint?">
-          <TextField
-            label="Endpoint"
-            help="an HTTPS URL the Gateway can reach"
-            placeholder="https://mcp.example.com/mcp"
-            value={values.endpoint}
-            onChange={(endpoint) => set({ endpoint })}
-            required
-            schema={HttpsEndpointSchema}
-          />
-        </Step>
-      )}
 
       {isRuntime && (
         <Step stepKey="runtime" prompt="which Runtime?">
@@ -361,25 +358,20 @@ function AddGatewayTargetWizard({
 
       {isOauth && (
         <Step stepKey="credential" prompt="which OAuth credential should it use?">
-          <ResourceChoiceField
-            choices={credentials}
-            value={values.credential}
-            onChange={(credential) => set({ credential })}
-            emptyMessage="no OAuth credentials in this project"
-            emptyHint="add one with  agentcore add credentials oauth"
-          />
-        </Step>
-      )}
-
-      {isOauth && (
-        <Step stepKey="scopes" prompt="which scopes should the token request?">
-          <TextField
-            label="Scopes"
-            help="optional · separate several with spaces or commas"
-            placeholder="read write"
-            value={values.scopes}
-            onChange={(scopes) => set({ scopes })}
-          />
+          {credentials.length === 0 ? (
+            <ResourceEmptyState
+              message="no OAuth credentials in this project"
+              hint="add one with  agentcore add credentials oauth"
+            />
+          ) : (
+            <OauthCredentialField
+              choices={credentials}
+              credential={values.credential}
+              scopes={values.scopes}
+              onCredentialChange={(credential) => set({ credential })}
+              onScopesChange={(scopes) => set({ scopes })}
+            />
+          )}
         </Step>
       )}
 
@@ -387,5 +379,198 @@ function AddGatewayTargetWizard({
         <Summary items={summaryOf(values)} />
       </Step>
     </Wizard>
+  );
+}
+
+function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
+  const result = schema.safeParse(value);
+  if (result.success) return undefined;
+  const issue = result.error.issues[0];
+  if (!issue) return "invalid value";
+  const path = issue.path.join(".");
+  return path === "" ? issue.message : `${path}: ${issue.message}`;
+}
+
+// useRevealedInput is the key handling the two compound fields below share: a
+// radio whose chosen row may open one text input underneath it, the way the
+// harness model step opens a model ID. Arrows move the value while the rows
+// have focus; enter either continues or opens the input; from the input, esc
+// or up returns to the rows and enter runs `submit`, which validates and
+// continues or reports why not.
+function useRevealedInput<T>({
+  choices,
+  value,
+  onChange,
+  opens,
+  submit,
+}: {
+  choices: Choice<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  // opens says whether enter on the current row reveals the input.
+  opens: boolean;
+  // submit validates the revealed input; it returns the message that blocks
+  // continuing, or undefined to continue.
+  submit: () => string | undefined;
+}) {
+  const { advance, back } = useWizard();
+  const found = choices.findIndex((choice) => choice.value === value);
+  const index = found === -1 ? 0 : found;
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "enter", label: "continue" },
+  ]);
+
+  useInput((_input, key) => {
+    if (!editing) {
+      if (key.escape) {
+        back();
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        const nextIndex = key.upArrow
+          ? Math.max(0, index - 1)
+          : Math.min(choices.length - 1, index + 1);
+        onChange(choices[nextIndex]!.value);
+        setError(undefined);
+        return;
+      }
+      if (key.return) {
+        if (opens) setEditing(true);
+        else advance();
+      }
+      return;
+    }
+
+    if (key.escape || key.upArrow) {
+      setEditing(false);
+      setError(undefined);
+      return;
+    }
+    if (!key.return) return;
+
+    const issue = submit();
+    if (issue !== undefined) {
+      setError(issue);
+      return;
+    }
+    setError(undefined);
+    advance();
+  });
+
+  const options: FormRadioOption[] = choices.map(({ label, description }) => ({
+    label,
+    description: description ?? "",
+  }));
+
+  return { index, editing, error, clearError: () => setError(undefined), options };
+}
+
+// TargetKindField asks what the Target is and, for an MCP server, where: the
+// endpoint input opens under that row, so the answer that only exists for one
+// kind is asked right there rather than as a step of its own.
+function TargetKindField({
+  help,
+  choices,
+  kind,
+  endpoint,
+  onKindChange,
+  onEndpointChange,
+}: {
+  help: string;
+  choices: Choice<TargetKind>[];
+  kind: TargetKind;
+  endpoint: string;
+  onKindChange: (kind: TargetKind) => void;
+  onEndpointChange: (endpoint: string) => void;
+}) {
+  const { index, editing, error, clearError, options } = useRevealedInput({
+    choices,
+    value: kind,
+    onChange: onKindChange,
+    opens: kind === "endpoint",
+    submit: () => {
+      if (endpoint.trim() === "") return "Endpoint is required";
+      const issue = firstIssue(HttpsEndpointSchema, endpoint);
+      return issue === undefined ? undefined : `Endpoint ${issue}`;
+    },
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormRadioGroup
+        helpText={help}
+        options={options}
+        focusedIndex={editing ? undefined : index}
+        selectedIndex={index}
+      />
+      {editing && (
+        <FormTextInput
+          name="endpoint"
+          helpText="an HTTPS URL the Gateway can reach"
+          placeholder="https://mcp.example.com/mcp"
+          errorText=""
+          value={endpoint}
+          onChange={(value) => {
+            onEndpointChange(value);
+            clearError();
+          }}
+        />
+      )}
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
+  );
+}
+
+// OauthCredentialField picks the OAuth credential and, under the chosen one,
+// takes the scopes the token should request. Scopes are optional, so enter on
+// the empty input continues.
+function OauthCredentialField({
+  choices,
+  credential,
+  scopes,
+  onCredentialChange,
+  onScopesChange,
+}: {
+  choices: Choice<string>[];
+  credential: string;
+  scopes: string;
+  onCredentialChange: (credential: string) => void;
+  onScopesChange: (scopes: string) => void;
+}) {
+  const { index, editing, error, clearError, options } = useRevealedInput({
+    choices,
+    value: credential,
+    onChange: onCredentialChange,
+    opens: true,
+    submit: () => undefined,
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormRadioGroup
+        helpText=""
+        options={options}
+        focusedIndex={editing ? undefined : index}
+        selectedIndex={index}
+      />
+      {editing && (
+        <FormTextInput
+          name="scopes"
+          helpText="optional · separate several with spaces or commas"
+          placeholder="read write"
+          errorText=""
+          value={scopes}
+          onChange={(value) => {
+            onScopesChange(value);
+            clearError();
+          }}
+        />
+      )}
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
   );
 }
