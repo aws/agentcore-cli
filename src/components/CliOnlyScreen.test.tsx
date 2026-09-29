@@ -6,8 +6,6 @@ import {
   compiledRootCommand,
   menuEntries,
   renderScreen,
-  renderImperativeScreen,
-  IMPERATIVE_GLOBAL_CONFIG,
   waitForText,
 } from "../testing";
 import { CommandKey, isTuiCommandSupported } from "../router";
@@ -18,7 +16,7 @@ afterEach(cleanupScreens);
 // a screen, so a command added later is covered without a new test. `help` is
 // Commander's own, not one of ours.
 function cliOnlyCommands(
-  command = compiledRootCommand(undefined, IMPERATIVE_GLOBAL_CONFIG),
+  command = compiledRootCommand(),
   path: string[] = [],
 ): [string[], Command][] {
   const here = [...path, command.name()];
@@ -37,7 +35,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("the root menu", async () => {
     const r = renderScreen("/agentcore");
 
-    await waitForText(r.lastFrame, "command line only");
+    await waitForText(r.lastFrame, "── cli ");
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [
         "create",
@@ -52,6 +50,12 @@ describe("menus list command-line-only subcommands below a divider", () => {
         "traces",
         "export",
         "eval",
+        "gateway",
+        "harness",
+        "identity",
+        "memory",
+        "payment",
+        "runtime",
       ],
       cliOnly: ["feedback", "config", "update"],
     });
@@ -61,7 +65,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("the eval menu", async () => {
     const r = renderScreen("/agentcore/eval");
 
-    await waitForText(r.lastFrame, "command line only");
+    await waitForText(r.lastFrame, "── cli ");
     expect(menuEntries(r.lastFrame()!).cliOnly).toEqual(["ondemand"]);
     r.unmount();
   });
@@ -69,7 +73,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("a menu whose every subcommand is command line only", async () => {
     const r = renderScreen("/agentcore/eval/ondemand");
 
-    await waitForText(r.lastFrame, "command line only");
+    await waitForText(r.lastFrame, "── cli ");
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [],
       cliOnly: ["evaluate", "simulate"],
@@ -78,9 +82,9 @@ describe("menus list command-line-only subcommands below a divider", () => {
   });
 
   test("the harness menu", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness");
 
-    await waitForText(r.lastFrame, "command line only");
+    await waitForText(r.lastFrame, "── cli ");
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [
         "create",
@@ -99,10 +103,10 @@ describe("menus list command-line-only subcommands below a divider", () => {
   });
 
   test("the divider is omitted when nothing is command line only", async () => {
-    const r = renderImperativeScreen("/agentcore/harness/endpoint");
+    const r = renderScreen("/agentcore/harness/endpoint");
 
     await waitForText(r.lastFrame, "manage harness endpoints");
-    expect(r.lastFrame()).not.toContain("command line only");
+    expect(r.lastFrame()).not.toContain("── cli ");
     r.unmount();
   });
 });
@@ -115,7 +119,7 @@ describe("every command-line-only command opens on screen", () => {
   test.each(CLI_ONLY.map(([path, command]) => [path.join(" "), path, command] as const))(
     "%s opens its menu or help, and esc returns to the parent",
     async (_label, path, command) => {
-      const r = renderScreen("/" + path.join("/"), { globalConfig: IMPERATIVE_GLOBAL_CONFIG });
+      const r = renderScreen("/" + path.join("/"));
       // Wide and tall enough that no option term wraps and nothing is below the
       // fold; scrolling and wrapping have their own tests.
       await r.resize(220, 200);
@@ -124,7 +128,7 @@ describe("every command-line-only command opens on screen", () => {
       if (command.commands.length > 0) {
         // A group opens its own menu, with every child under the divider.
         await waitForText(r.lastFrame, path.join(" → "));
-        await waitForText(r.lastFrame, "command line only");
+        await waitForText(r.lastFrame, "── cli ");
         expect(menuEntries(r.lastFrame()!).screens).toEqual([]);
       } else {
         await waitForText(r.lastFrame, "this command runs from the command line");
@@ -149,23 +153,20 @@ describe("every command-line-only command opens on screen", () => {
 });
 
 describe("paths without a screen of their own", () => {
-  test.each(["/agentcore/gateway/no-such-command", "/agentcore/payment"])(
-    "%s retains the standard help fallback",
-    async (path) => {
-      const r = renderScreen(path);
+  test("an unknown command retains the standard help fallback", async () => {
+    const r = renderScreen("/agentcore/gateway/no-such-command");
 
-      await waitForText(() => r.frames.join("\n"), "Usage:");
-      const output = r.frames.join("\n");
-      expect(output).toMatch(/^\s+create\s+/m);
-      expect(output).not.toContain("command line only");
-      r.unmount();
-    },
-  );
+    await waitForText(() => r.frames.join("\n"), "Usage:");
+    const output = r.frames.join("\n");
+    expect(output).toMatch(/^\s+create\s+/m);
+    expect(output).not.toContain("── cli ");
+    r.unmount();
+  });
 
   test("a group drills down to a leaf's help and back", async () => {
     const r = renderScreen("/agentcore/eval/evaluator");
 
-    await waitForText(r.lastFrame, "command line only");
+    await waitForText(r.lastFrame, "── cli ");
     await r.write("delete");
     await waitForText(r.lastFrame, "❯ delete");
     await r.press("return");

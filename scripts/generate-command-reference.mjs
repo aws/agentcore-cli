@@ -26,7 +26,11 @@ const DEFAULT_GROUPS = [
       "export",
     ],
   },
-  { id: "evaluation", title: "Evaluation commands", commands: ["eval"] },
+  {
+    id: "resources",
+    title: "Resource commands",
+    commands: ["eval", "gateway", "harness", "identity", "memory", "payment", "runtime"],
+  },
   {
     id: "settings",
     title: "CLI settings and feedback",

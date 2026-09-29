@@ -6,7 +6,7 @@ import type {
 import { QueryClient } from "@tanstack/react-query";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   tick,
   waitFor,
@@ -80,7 +80,7 @@ describe("runtime picker", () => {
         lastUpdatedAt: new Date("2026-07-19T01:02:03.000Z"),
       }),
     ]);
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "orders");
     const frame = r.lastFrame()!;
@@ -98,7 +98,7 @@ describe("runtime picker", () => {
 
   test("calls listRuntimes once with exact Core options", async () => {
     const core = coreWithRuntimes([runtime()]);
-    renderImperativeScreen("/agentcore/runtime/list", { core, endpointUrl: runtimeEndpointUrl });
+    renderScreen("/agentcore/runtime/list", { core, endpointUrl: runtimeEndpointUrl });
 
     await waitFor(() => core.runtime.calls.some((call) => call.method === "listRuntimes"));
     expect(core.runtime.calls.filter((call) => call.method === "listRuntimes")).toEqual([
@@ -117,7 +117,7 @@ describe("runtime picker", () => {
   });
 
   test("shows the first-page empty state", async () => {
-    const r = renderImperativeScreen("/agentcore/runtime/list");
+    const r = renderScreen("/agentcore/runtime/list");
 
     await waitForText(r.lastFrame, "No Runtimes found in this Region.");
   });
@@ -129,7 +129,7 @@ describe("runtime picker", () => {
       nextToken: "page-2",
     });
     core.runtime.setListResponse({ agentRuntimes: [] }, "page-2");
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "page 1 · more →");
     await r.write("l");
@@ -139,7 +139,7 @@ describe("runtime picker", () => {
 
   test("Esc returns to the Runtime menu from a successful direct entry", async () => {
     const core = coreWithRuntimes([runtime()]);
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "checkout");
     await r.press("escape");
@@ -151,7 +151,7 @@ describe("runtime picker", () => {
     const core = coreWithRuntimes([
       runtime({ agentRuntimeId: "redirected-Ab12Cd34Ef", agentRuntimeName: "redirected" }),
     ]);
-    const r = renderImperativeScreen("/agentcore/runtime/get", { core });
+    const r = renderScreen("/agentcore/runtime/get", { core });
 
     await waitForText(r.lastFrame, "redirected");
     expect(core.runtime.calls[0]?.method).toBe("listRuntimes");
@@ -162,7 +162,7 @@ describe("runtime hub", () => {
   test("fetches the route ID with exact Core options and renders its summary", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", {
+    const r = renderScreen("/agentcore/runtime/get/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
     });
@@ -190,7 +190,7 @@ describe("runtime hub", () => {
   test("shows the Runtime failure reason only when the service provides one", async () => {
     const healthyCore = new TestCoreClient();
     healthyCore.runtime.setGetResponse(getRuntimeResponse());
-    const healthy = renderImperativeScreen("/agentcore/runtime/get/runtime-123", {
+    const healthy = renderScreen("/agentcore/runtime/get/runtime-123", {
       core: healthyCore,
     });
 
@@ -205,7 +205,7 @@ describe("runtime hub", () => {
         failureReason: "Image could not be pulled",
       }),
     );
-    const failed = renderImperativeScreen("/agentcore/runtime/get/runtime-123", {
+    const failed = renderScreen("/agentcore/runtime/get/runtime-123", {
       core: failedCore,
     });
 
@@ -216,7 +216,7 @@ describe("runtime hub", () => {
   test("renders detail first, then invoke, shell, endpoint, and version actions", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
     const frame = r.lastFrame()!;
@@ -242,7 +242,7 @@ describe("runtime hub", () => {
         agentRuntimeName: "encoded-runtime",
       }),
     );
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, runtimeId);
     await r.press("return");
@@ -282,7 +282,7 @@ describe("runtime hub", () => {
           ],
         });
       }
-      const r = renderImperativeScreen(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`, {
+      const r = renderScreen(`/agentcore/runtime/get/${encodeURIComponent(runtimeId)}`, {
         core,
       });
 
@@ -312,7 +312,7 @@ describe("runtime hub", () => {
         ),
       }),
     );
-    const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "show the full JSON definition");
     await r.press("return"); // detail is the first action
@@ -334,7 +334,7 @@ describe("runtime hub", () => {
   test("retries a failed hub query without leaving the route", async () => {
     const core = new TestCoreClient();
     core.runtime.setError(new Error("runtime unavailable"));
-    const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", { core });
+    const r = renderScreen("/agentcore/runtime/get/runtime-123", { core });
 
     await waitForText(r.lastFrame, "runtime unavailable");
     expect(r.lastFrame()).toContain("agentcore → runtime → get → runtime-123");
@@ -356,7 +356,7 @@ describe("runtime hub", () => {
         queries: { retry: false, gcTime: Infinity, staleTime: 0 },
       },
     });
-    const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123", {
+    const r = renderScreen("/agentcore/runtime/get/runtime-123", {
       core,
       queryClient,
     });
@@ -378,7 +378,7 @@ describe("runtime hub", () => {
   test("retries a failed JSON query without leaving the route", async () => {
     const core = new TestCoreClient();
     core.runtime.setError(new Error("detail unavailable"));
-    const r = renderImperativeScreen("/agentcore/runtime/get/runtime-123/json", { core });
+    const r = renderScreen("/agentcore/runtime/get/runtime-123/json", { core });
 
     await waitForText(r.lastFrame, "detail unavailable");
     expect(r.lastFrame()).toContain("[r] retry");
@@ -394,7 +394,7 @@ describe("runtime hub", () => {
   test("Esc from the hub returns through history to the Runtime picker", async () => {
     const core = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
@@ -406,7 +406,7 @@ describe("runtime hub", () => {
   test("Esc from Runtime JSON returns through history to the Runtime hub", async () => {
     const core = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     core.runtime.setGetResponse(getRuntimeResponse());
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
@@ -438,7 +438,7 @@ describe("runtime hub", () => {
         },
       ],
     });
-    const r = renderImperativeScreen("/agentcore/runtime/list", { core });
+    const r = renderScreen("/agentcore/runtime/list", { core });
 
     await waitForText(r.lastFrame, "runtime-123");
     await r.press("return");
@@ -466,7 +466,7 @@ describe("runtime hub", () => {
     const hubCore = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     const hubPending = Promise.withResolvers<GetAgentRuntimeResponse>();
     hubCore.runtime.getRuntime = async () => hubPending.promise;
-    const hub = renderImperativeScreen("/agentcore/runtime/list", { core: hubCore });
+    const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 
     await waitForText(hub.lastFrame, "runtime-123");
     await hub.press("return");
@@ -480,7 +480,7 @@ describe("runtime hub", () => {
     hubCore.runtime.getRuntime = async () => {
       throw new Error("hub failed");
     };
-    const hub = renderImperativeScreen("/agentcore/runtime/list", { core: hubCore });
+    const hub = renderScreen("/agentcore/runtime/list", { core: hubCore });
 
     await waitForText(hub.lastFrame, "runtime-123");
     await hub.press("return");
@@ -491,7 +491,7 @@ describe("runtime hub", () => {
 
     const jsonCore = coreWithRuntimes([runtime({ agentRuntimeId: "runtime-123" })]);
     jsonCore.runtime.setGetResponse(getRuntimeResponse());
-    const json = renderImperativeScreen("/agentcore/runtime/list", { core: jsonCore });
+    const json = renderScreen("/agentcore/runtime/list", { core: jsonCore });
 
     await waitForText(json.lastFrame, "runtime-123");
     await json.press("return");

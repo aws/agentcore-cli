@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_GLOBAL_CONFIG } from "../../globalConfig";
 import { compile, ValueContext } from "../../router";
 import {
   createSilentLogger,
-  IMPERATIVE_GLOBAL_CONFIG,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -17,17 +15,12 @@ const REMOVED = ["", "target ", "connector ", "rule "].flatMap((group) =>
   ["create", "update", "delete"].map((mutation) => `gateway ${group}${mutation}`),
 );
 
-function setup(enabled?: boolean) {
+function setup() {
   const core = new TestCoreClient();
-  const globalConfig =
-    enabled === undefined
-      ? DEFAULT_GLOBAL_CONFIG
-      : { ...DEFAULT_GLOBAL_CONFIG, "imperative-commands": enabled };
   const root = createRootHandler(core, {
     io: testIO().io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({ initialConfigData: globalConfig }),
-    globalConfig,
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   const command = compile(root, ValueContext.EmptyContext());
   command.configureOutput({ writeErr: () => {}, writeOut: () => {} });
@@ -46,19 +39,16 @@ describe("Gateway command availability", () => {
       io: testIO().io,
       logger: createSilentLogger(),
       globalConfigAccessor,
-      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     });
     expect(root.children().map((child) => child.name())).toContain("gateway");
     expect(reads).toBe(0);
   });
 
-  test.each([undefined, false, true])("builds the Gateway group for parent flag %s", (enabled) => {
-    const { command } = setup(enabled);
-    const gateway = command.commands.find((child) => child.name() === "gateway");
-    expect(Boolean(gateway)).toBe(enabled === true);
+  test("builds the Gateway group", () => {
+    const { command } = setup();
+    const gateway = command.commands.find((child) => child.name() === "gateway")!;
     const add = command.commands.find((child) => child.name() === "add")!;
     expect(add.commands.map((child) => child.name())).toContain("gateway");
-    if (!gateway) return;
     expect(gateway.commands.map((child) => child.name())).toEqual([
       "get",
       "list",
@@ -78,15 +68,13 @@ describe("Gateway command availability", () => {
   });
 
   test.each(REMOVED)("rejects %s without calling Core", async (path) => {
-    for (const enabled of [undefined, false, true]) {
-      for (const args of [[], ["--json"], ["--name", "removed"]]) {
-        const { core, command } = setup(enabled);
-        await expect(
-          command.parseAsync(["node", "agentcore", ...path.split(" "), ...args]),
-        ).rejects.toThrow();
-        expect(core.gateway.calls).toEqual([]);
-        expect(core.policy.calls).toEqual([]);
-      }
+    for (const args of [[], ["--json"], ["--name", "removed"]]) {
+      const { core, command } = setup();
+      await expect(
+        command.parseAsync(["node", "agentcore", ...path.split(" "), ...args]),
+      ).rejects.toThrow();
+      expect(core.gateway.calls).toEqual([]);
+      expect(core.policy.calls).toEqual([]);
     }
   });
 });

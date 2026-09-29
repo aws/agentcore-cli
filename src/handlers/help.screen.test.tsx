@@ -29,7 +29,7 @@ describe("HelpScreen", () => {
     expect(output).toContain("Usage:");
     expect(output).toMatch(/^\s+create\s+/m);
     expect(output).toContain("eval");
-    expect(output).not.toMatch(/^\s+harness\s+/m);
+    expect(output).toMatch(/^\s+harness\s+/m);
     expect(output).toContain("config");
   });
 });

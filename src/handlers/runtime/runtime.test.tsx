@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { CoreClient } from "../../core";
 import {
-  IMPERATIVE_GLOBAL_CONFIG,
   createSilentLogger,
   expectError,
   fixtureFactories,
@@ -70,12 +69,9 @@ function createFixtureCore(): CoreClient {
 async function run(args: string[]): Promise<string> {
   const io = testIO();
   const root = createRootHandler(createFixtureCore(), {
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     io: io.io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
@@ -86,12 +82,9 @@ function testRuntimeCommand() {
   const core = new TestCoreClient();
   const io = testIO();
   const root = createRootHandler(core, {
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     io: io.io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   return {
@@ -103,12 +96,9 @@ function testRuntimeCommand() {
 describe("runtime command hierarchy", () => {
   test("registers the Runtime command hierarchy", () => {
     const root = createRootHandler(createFixtureCore(), {
-      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
       io: testIO().io,
       logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor({
-        initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-      }),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const runtime = root.children().find((child) => child.name() === "runtime");
 

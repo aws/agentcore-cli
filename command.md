@@ -50,7 +50,7 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.4`.
       - [`agentcore traces harness get`](#agentcore-traces-harness-get)
   - [`agentcore export`](#agentcore-export)
     - [`agentcore export harness`](#agentcore-export-harness)
-- [Evaluation commands](#evaluation-commands)
+- [Resource commands](#resource-commands)
   - [`agentcore eval`](#agentcore-eval)
     - [`agentcore eval evaluator`](#agentcore-eval-evaluator)
       - [`agentcore eval evaluator llm-as-a-judge`](#agentcore-eval-evaluator-llm-as-a-judge)
@@ -123,6 +123,101 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.4`.
       - [`agentcore eval recommendation get`](#agentcore-eval-recommendation-get)
       - [`agentcore eval recommendation list`](#agentcore-eval-recommendation-list)
       - [`agentcore eval recommendation delete`](#agentcore-eval-recommendation-delete)
+  - [`agentcore gateway`](#agentcore-gateway)
+    - [`agentcore gateway get`](#agentcore-gateway-get)
+    - [`agentcore gateway list`](#agentcore-gateway-list)
+    - [`agentcore gateway invoke`](#agentcore-gateway-invoke)
+    - [`agentcore gateway target`](#agentcore-gateway-target)
+      - [`agentcore gateway target get`](#agentcore-gateway-target-get)
+      - [`agentcore gateway target list`](#agentcore-gateway-target-list)
+    - [`agentcore gateway connector`](#agentcore-gateway-connector)
+      - [`agentcore gateway connector get`](#agentcore-gateway-connector-get)
+      - [`agentcore gateway connector list`](#agentcore-gateway-connector-list)
+    - [`agentcore gateway rule`](#agentcore-gateway-rule)
+      - [`agentcore gateway rule get`](#agentcore-gateway-rule-get)
+      - [`agentcore gateway rule list`](#agentcore-gateway-rule-list)
+    - [`agentcore gateway policy`](#agentcore-gateway-policy)
+      - [`agentcore gateway policy generate`](#agentcore-gateway-policy-generate)
+  - [`agentcore harness`](#agentcore-harness)
+    - [`agentcore harness create`](#agentcore-harness-create)
+    - [`agentcore harness get`](#agentcore-harness-get)
+    - [`agentcore harness list`](#agentcore-harness-list)
+    - [`agentcore harness update`](#agentcore-harness-update)
+    - [`agentcore harness delete`](#agentcore-harness-delete)
+    - [`agentcore harness invoke`](#agentcore-harness-invoke)
+    - [`agentcore harness exec`](#agentcore-harness-exec)
+    - [`agentcore harness logs`](#agentcore-harness-logs)
+    - [`agentcore harness traces`](#agentcore-harness-traces)
+      - [`agentcore harness traces list`](#agentcore-harness-traces-list)
+      - [`agentcore harness traces get`](#agentcore-harness-traces-get)
+    - [`agentcore harness endpoint`](#agentcore-harness-endpoint)
+      - [`agentcore harness endpoint create`](#agentcore-harness-endpoint-create)
+      - [`agentcore harness endpoint get`](#agentcore-harness-endpoint-get)
+      - [`agentcore harness endpoint list`](#agentcore-harness-endpoint-list)
+      - [`agentcore harness endpoint update`](#agentcore-harness-endpoint-update)
+      - [`agentcore harness endpoint delete`](#agentcore-harness-endpoint-delete)
+    - [`agentcore harness version`](#agentcore-harness-version)
+      - [`agentcore harness version get`](#agentcore-harness-version-get)
+      - [`agentcore harness version list`](#agentcore-harness-version-list)
+  - [`agentcore identity`](#agentcore-identity)
+    - [`agentcore identity api-key-credential-provider`](#agentcore-identity-api-key-credential-provider)
+      - [`agentcore identity api-key-credential-provider create`](#agentcore-identity-api-key-credential-provider-create)
+      - [`agentcore identity api-key-credential-provider get`](#agentcore-identity-api-key-credential-provider-get)
+      - [`agentcore identity api-key-credential-provider list`](#agentcore-identity-api-key-credential-provider-list)
+      - [`agentcore identity api-key-credential-provider update`](#agentcore-identity-api-key-credential-provider-update)
+      - [`agentcore identity api-key-credential-provider delete`](#agentcore-identity-api-key-credential-provider-delete)
+    - [`agentcore identity oauth2-credential-provider`](#agentcore-identity-oauth2-credential-provider)
+      - [`agentcore identity oauth2-credential-provider create`](#agentcore-identity-oauth2-credential-provider-create)
+      - [`agentcore identity oauth2-credential-provider get`](#agentcore-identity-oauth2-credential-provider-get)
+      - [`agentcore identity oauth2-credential-provider list`](#agentcore-identity-oauth2-credential-provider-list)
+      - [`agentcore identity oauth2-credential-provider update`](#agentcore-identity-oauth2-credential-provider-update)
+      - [`agentcore identity oauth2-credential-provider delete`](#agentcore-identity-oauth2-credential-provider-delete)
+    - [`agentcore identity payment-credential-provider`](#agentcore-identity-payment-credential-provider)
+      - [`agentcore identity payment-credential-provider get`](#agentcore-identity-payment-credential-provider-get)
+      - [`agentcore identity payment-credential-provider list`](#agentcore-identity-payment-credential-provider-list)
+  - [`agentcore memory`](#agentcore-memory)
+    - [`agentcore memory get`](#agentcore-memory-get)
+    - [`agentcore memory list`](#agentcore-memory-list)
+    - [`agentcore memory event`](#agentcore-memory-event)
+      - [`agentcore memory event get`](#agentcore-memory-event-get)
+      - [`agentcore memory event list`](#agentcore-memory-event-list)
+    - [`agentcore memory record`](#agentcore-memory-record)
+      - [`agentcore memory record get`](#agentcore-memory-record-get)
+      - [`agentcore memory record list`](#agentcore-memory-record-list)
+    - [`agentcore memory actor`](#agentcore-memory-actor)
+      - [`agentcore memory actor list`](#agentcore-memory-actor-list)
+    - [`agentcore memory session`](#agentcore-memory-session)
+      - [`agentcore memory session list`](#agentcore-memory-session-list)
+  - [`agentcore payment`](#agentcore-payment)
+    - [`agentcore payment manager`](#agentcore-payment-manager)
+      - [`agentcore payment manager get`](#agentcore-payment-manager-get)
+      - [`agentcore payment manager list`](#agentcore-payment-manager-list)
+    - [`agentcore payment connector`](#agentcore-payment-connector)
+      - [`agentcore payment connector get`](#agentcore-payment-connector-get)
+      - [`agentcore payment connector list`](#agentcore-payment-connector-list)
+    - [`agentcore payment session`](#agentcore-payment-session)
+      - [`agentcore payment session get`](#agentcore-payment-session-get)
+      - [`agentcore payment session list`](#agentcore-payment-session-list)
+    - [`agentcore payment instrument`](#agentcore-payment-instrument)
+      - [`agentcore payment instrument get`](#agentcore-payment-instrument-get)
+      - [`agentcore payment instrument list`](#agentcore-payment-instrument-list)
+      - [`agentcore payment instrument balance`](#agentcore-payment-instrument-balance)
+  - [`agentcore runtime`](#agentcore-runtime)
+    - [`agentcore runtime get`](#agentcore-runtime-get)
+    - [`agentcore runtime list`](#agentcore-runtime-list)
+    - [`agentcore runtime invoke`](#agentcore-runtime-invoke)
+    - [`agentcore runtime shell`](#agentcore-runtime-shell)
+    - [`agentcore runtime exec`](#agentcore-runtime-exec)
+    - [`agentcore runtime version`](#agentcore-runtime-version)
+      - [`agentcore runtime version get`](#agentcore-runtime-version-get)
+      - [`agentcore runtime version list`](#agentcore-runtime-version-list)
+    - [`agentcore runtime endpoint`](#agentcore-runtime-endpoint)
+      - [`agentcore runtime endpoint get`](#agentcore-runtime-endpoint-get)
+      - [`agentcore runtime endpoint list`](#agentcore-runtime-endpoint-list)
+    - [`agentcore runtime logs`](#agentcore-runtime-logs)
+    - [`agentcore runtime traces`](#agentcore-runtime-traces)
+      - [`agentcore runtime traces list`](#agentcore-runtime-traces-list)
+      - [`agentcore runtime traces get`](#agentcore-runtime-traces-get)
 - [CLI settings and feedback](#cli-settings-and-feedback)
   - [`agentcore feedback`](#agentcore-feedback)
   - [`agentcore config`](#agentcore-config)
@@ -200,29 +295,29 @@ add a harness to the current project
 **Options**
 
 - `--name <name>`: the name of the harness
-- `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes; a default role is created when omitted
-- `--system-prompt <system-prompt>`: the agent's system prompt
 - `--model <model>`: model configuration (JSON)
+- `--system-prompt <system-prompt>`: the agent's system prompt
+- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
 - `--tools <tools>`: tools available to the agent (JSON)
-- `--skills <skills>`: skills available to the agent (JSON)
 - `--allowed-tools <allowed-tools...>`: tool allowlist patterns (e.g. \* or @serverName/toolName)
+- `--skills <skills>`: skills available to the agent (JSON)
 - `--memory <memory>`: memory configuration (JSON)
 - `--truncation <truncation>`: context truncation configuration (JSON)
-- `--network-mode <network-mode>`: network mode for the harness environment (PUBLIC or VPC)
-- `--network-config <network-config>`: VPC network configuration (JSON)
-- `--lifecycle-config <lifecycle-config>`: lifecycle configuration (JSON)
-- `--session-storage-path <session-storage-path>`: mount path for session storage
-- `--efs-access-points <efs-access-points>`: EFS access point configurations (JSON)
-- `--s3-access-points <s3-access-points>`: S3 access point configurations (JSON)
-- `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
-- `--container-uri <container-uri>`: ECR container image URI
-- `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
-- `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 - `--max-iterations <max-iterations>`: max agent loop iterations per invocation
 - `--max-tokens <max-tokens>`: max total output tokens per invocation
 - `--timeout-seconds <timeout-seconds>`: max duration in seconds per invocation
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
-- `--dockerfile <dockerfile>`: path to local dockerfile to use as the container image for the harness
+- `--container-uri <container-uri>`: ECR container image URI; alternative to --dockerfile
+- `--dockerfile <dockerfile>`: path to local Dockerfile to build the harness image; alternative to --container-uri
+- `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
+- `--network-mode <network-mode>`: network mode for the harness environment (PUBLIC or VPC)
+- `--network-config <network-config>`: VPC network configuration (JSON)
+- `--lifecycle-config <lifecycle-config>`: session idle timeout and instance lifetime configuration (JSON)
+- `--session-storage-path <session-storage-path>`: mount path for session storage
+- `--efs-access-points <efs-access-points>`: EFS access point configurations (JSON; requires VPC)
+- `--s3-access-points <s3-access-points>`: S3 access point configurations (JSON; requires VPC)
+- `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes; a default role is created when omitted
+- `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
+- `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 
 #### `agentcore add memory`
 
@@ -255,25 +350,25 @@ add a Runtime to the current project
 **Options**
 
 - `--name <name>`: the name of the Runtime (required)
+- `--type <type>`: create generates new agent code (the default); import translates a Bedrock Agent version
+- `--template <template>`: template for the Runtime code (default: agent-python-minimal); available templates listed below
+- `--model-provider <model-provider>`: model provider for supported templates (Bedrock, Anthropic, OpenAI, or Gemini)
+- `--api-key <api-key>`: API key for non-Bedrock providers on supported templates; '-' for stdin, 'file://path' for file
 - `--description <description>`: an optional description of the Runtime
-- `--type <type>`: create scaffolds new agent code (the default); import translates a Bedrock Agent version
-- `--agent-id <agent-id>`: Bedrock Agent ID to import (requires --type import)
-- `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --type import)
-- `--template <template>`: a preset of flags for scaffolding the Runtime; compatible flags override preset values
-- `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --type import)
-- `--model-provider <model-provider>`: model provider for the scaffolded Runtime code (Bedrock, Anthropic, OpenAI, or Gemini)
-- `--api-key <api-key>`: API key for non-Bedrock providers: '-' for stdin, 'file://path' for file
-- `--role-arn <role-arn>`: IAM role ARN that provides permissions for the Runtime
-- `--additional-policies <additional-policies...>`: additional IAM policy ARNs or policy document paths for the execution role
+- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
 - `--network-mode <network-mode>`: network mode for the Runtime environment (PUBLIC or VPC)
 - `--network-config <network-config>`: VPC network configuration (JSON)
+- `--lifecycle-configuration <lifecycle-configuration>`: session idle timeout and instance lifetime configuration (JSON)
+- `--filesystem-configurations <filesystem-configurations>`: filesystem mount configurations (JSON)
+- `--role-arn <role-arn>`: IAM role ARN that provides permissions for the Runtime
+- `--additional-policies <additional-policies...>`: additional IAM policy ARNs or policy document paths for the execution role
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 - `--request-header-allowlist <request-header-allowlist...>`: request headers to pass through to the Runtime
-- `--lifecycle-configuration <lifecycle-configuration>`: lifecycle configuration (JSON)
-- `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
-- `--filesystem-configurations <filesystem-configurations>`: filesystem mount configurations (JSON)
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--agent-id <agent-id>`: Bedrock Agent ID to import (requires --type import)
+- `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --type import)
+- `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --type import)
 
 #### `agentcore add online-eval`
 
@@ -847,7 +942,7 @@ convert a harness into an editable Strands Runtime agent
 - `--arn <arn>`: the ARN of a deployed harness to fetch from the service and export
 - `--target-agent-name <target-agent-name>`: the name of the generated Runtime agent (default &lt;harnessName&gt;Agent)
 
-## Evaluation commands
+## Resource commands
 
 ### `agentcore eval`
 
@@ -1817,6 +1912,1260 @@ delete a recommendation by ID
 **Options**
 
 - `--id <id>`: the ID of the recommendation to delete (required)
+
+### `agentcore gateway`
+
+```text
+agentcore gateway [options] [command]
+```
+
+inspect AgentCore Gateways
+
+#### `agentcore gateway get`
+
+```text
+agentcore gateway get [options]
+```
+
+get an AgentCore Gateway
+
+**Options**
+
+- `--id <id>`: the ID of the Gateway (required)
+
+#### `agentcore gateway list`
+
+```text
+agentcore gateway list [options]
+```
+
+list AgentCore Gateways
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore gateway invoke`
+
+```text
+agentcore gateway invoke [options]
+```
+
+invoke an AgentCore Gateway
+
+**Options**
+
+- `--id <id>`: the ID of the Gateway (required)
+- `--path <path>`: the path relative to the Gateway origin
+- `--method <method>`: the HTTP request method
+- `--payload <payload>`: the inline payload to send
+- `--content-type <content-type>`: the payload content type
+- `--accept <accept>`: the accepted response content type
+- `--header <header...>`: an ordered application header
+- `--bearer-token <bearer-token>`: the Gateway bearer token
+- `--session-id <session-id>`: the Runtime target session ID
+- `--mcp-session-id <mcp-session-id>`: the MCP session ID
+- `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
+- `--output-file <output-file>`: the response output file
+
+#### `agentcore gateway target`
+
+```text
+agentcore gateway target [options] [command]
+```
+
+manage Targets for an AgentCore Gateway
+
+##### `agentcore gateway target get`
+
+```text
+agentcore gateway target get [options]
+```
+
+get a Gateway Target
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--target-id <target-id>`: the ID of the Gateway Target (required)
+
+##### `agentcore gateway target list`
+
+```text
+agentcore gateway target list [options]
+```
+
+list Targets for an AgentCore Gateway
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore gateway connector`
+
+```text
+agentcore gateway connector [options] [command]
+```
+
+manage connectors configured for an AgentCore Gateway
+
+##### `agentcore gateway connector get`
+
+```text
+agentcore gateway connector get [options]
+```
+
+get a connector-backed Gateway Target
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--id <id>`: the ID of the connector-backed Gateway Target (required)
+
+##### `agentcore gateway connector list`
+
+```text
+agentcore gateway connector list [options]
+```
+
+list connectors configured for an AgentCore Gateway
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore gateway rule`
+
+```text
+agentcore gateway rule [options] [command]
+```
+
+manage Rules for an AgentCore Gateway
+
+##### `agentcore gateway rule get`
+
+```text
+agentcore gateway rule get [options]
+```
+
+get a Gateway Rule
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--rule-id <rule-id>`: the ID of the Gateway Rule (required)
+
+##### `agentcore gateway rule list`
+
+```text
+agentcore gateway rule list [options]
+```
+
+list Rules for an AgentCore Gateway
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID of the Gateway (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore gateway policy`
+
+```text
+agentcore gateway policy [options] [command]
+```
+
+generate Cedar policies for an AgentCore Gateway
+
+##### `agentcore gateway policy generate`
+
+```text
+agentcore gateway policy generate [options]
+```
+
+generate a Cedar policy for a Gateway from a natural-language prompt
+
+**Options**
+
+- `--gateway-id <gateway-id>`: the ID or ARN of the Gateway the policy applies to (required)
+- `--policy-engine-id <policy-engine-id>`: the ID or ARN of the Policy Engine (default the Gateway's attached engine)
+- `--prompt <prompt>`: what the policy should allow or deny (inline, file://&lt;path&gt;, or - for stdin)
+- `--name <name>`: name of the generation request (default cli\_generation\_&lt;timestamp&gt;)
+
+### `agentcore harness`
+
+```text
+agentcore harness [options] [command]
+```
+
+manage AgentCore harnesses
+
+#### `agentcore harness create`
+
+```text
+agentcore harness create [options]
+```
+
+create a harness
+
+**Options**
+
+- `--name <name>`: the name of the harness (required)
+- `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes; a default role is created when omitted
+- `--system-prompt <system-prompt>`: the agent's system prompt
+- `--model <model>`: model configuration (JSON HarnessModelConfiguration)
+- `--tools <tools>`: tools available to the agent (JSON HarnessTool[])
+- `--skills <skills>`: skills available to the agent (JSON HarnessSkill[])
+- `--allowed-tools <allowed-tools...>`: tool allowlist patterns (e.g. \* or @serverName/toolName)
+- `--memory <memory>`: memory configuration (JSON HarnessMemoryConfiguration)
+- `--truncation <truncation>`: context truncation configuration (JSON HarnessTruncationConfiguration)
+- `--environment <environment>`: compute environment configuration (JSON HarnessEnvironmentProviderRequest)
+- `--environment-artifact <environment-artifact>`: environment artifact, e.g. a container image (JSON HarnessEnvironmentArtifact)
+- `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
+- `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON AuthorizerConfiguration)
+- `--max-iterations <max-iterations>`: max agent loop iterations per invocation
+- `--max-tokens <max-tokens>`: max total output tokens per invocation
+- `--timeout-seconds <timeout-seconds>`: max duration in seconds per invocation
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
+#### `agentcore harness get`
+
+```text
+agentcore harness get [options]
+```
+
+get a harness
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+
+#### `agentcore harness list`
+
+```text
+agentcore harness list [options]
+```
+
+list harnesses
+
+**Options**
+
+- `--next-token <next-token>`: next token to use on paginated
+- `--max-results <max-results>`: max number of items to return
+
+#### `agentcore harness update`
+
+```text
+agentcore harness update [options]
+```
+
+update a harness (creates a new version)
+
+**Options**
+
+- `--id <id>`: the ID of the harness to update (required)
+- `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes
+- `--system-prompt <system-prompt>`: the agent's system prompt
+- `--model <model>`: model configuration (JSON HarnessModelConfiguration)
+- `--tools <tools>`: tools available to the agent (JSON HarnessTool[])
+- `--skills <skills>`: skills available to the agent (JSON HarnessSkill[])
+- `--allowed-tools <allowed-tools...>`: tool allowlist patterns (e.g. \* or @serverName/toolName)
+- `--memory <memory>`: memory configuration (JSON HarnessMemoryConfiguration)
+- `--clear-memory <clear-memory>`: clear the memory configuration (pass true)
+- `--truncation <truncation>`: context truncation configuration (JSON HarnessTruncationConfiguration)
+- `--environment <environment>`: compute environment configuration (JSON HarnessEnvironmentProviderRequest)
+- `--environment-artifact <environment-artifact>`: environment artifact, e.g. a container image (JSON HarnessEnvironmentArtifact)
+- `--clear-environment-artifact <clear-environment-artifact>`: clear the environment artifact (pass true)
+- `--environment-variables <environment-variables>`: environment variables (JSON object; replaces all existing)
+- `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON AuthorizerConfiguration)
+- `--clear-authorizer-configuration <clear-authorizer-configuration>`: clear the authorizer configuration (pass true)
+- `--max-iterations <max-iterations>`: max agent loop iterations per invocation
+- `--max-tokens <max-tokens>`: max total output tokens per invocation
+- `--timeout-seconds <timeout-seconds>`: max duration in seconds per invocation
+
+#### `agentcore harness delete`
+
+```text
+agentcore harness delete [options]
+```
+
+delete a harness
+
+**Options**
+
+- `--id <id>`: the ID of the harness to delete (required)
+- `--delete-managed-memory <delete-managed-memory>`: whether to also delete the managed Memory (default true; pass false to keep it)
+
+#### `agentcore harness invoke`
+
+```text
+agentcore harness invoke [options]
+```
+
+invoke a harness
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--prompt <prompt>`: the message to send to the harness
+- `--session-id <session-id>`: the Runtime session ID to continue (33-100 characters)
+- `--qualifier <qualifier>`: the harness endpoint qualifier to invoke (default DEFAULT)
+
+#### `agentcore harness exec`
+
+```text
+agentcore harness exec [options]
+```
+
+run a shell command in a harness
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--command <command>`: the shell command to run
+- `--session-id <session-id>`: the Runtime session ID to run in (33-100 characters)
+- `--qualifier <qualifier>`: the harness endpoint qualifier to run in (default DEFAULT)
+- `--timeout <timeout>`: seconds to wait for the command (1-3600)
+
+#### `agentcore harness logs`
+
+```text
+agentcore harness logs [options]
+```
+
+stream or search a harness's logs
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the harness endpoint qualifier
+- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--tail`: tail new log records (default: false)
+- `--level <level>`: filter by log level (error, warn, info, debug)
+- `--query <query>`: CloudWatch Logs filter pattern
+- `--limit <limit>`: maximum number of log records to return in search mode
+
+#### `agentcore harness traces`
+
+```text
+agentcore harness traces [options] [command]
+```
+
+inspect a harness's traces
+
+##### `agentcore harness traces list`
+
+```text
+agentcore harness traces list [options]
+```
+
+list a harness's recent traces
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the harness endpoint qualifier
+- `--limit <limit>`: maximum number of traces to display (default: 20)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+##### `agentcore harness traces get`
+
+```text
+agentcore harness traces get [options] <trace-id>
+```
+
+download a harness trace's log records to a JSON file
+
+**Arguments**
+
+- `trace-id` (required): the trace ID to download
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the harness endpoint qualifier
+- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+#### `agentcore harness endpoint`
+
+```text
+agentcore harness endpoint [options] [command]
+```
+
+manage harness endpoints
+
+##### `agentcore harness endpoint create`
+
+```text
+agentcore harness endpoint create [options]
+```
+
+create a harness endpoint
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--name <name>`: the name of the endpoint (required)
+- `--target-version <target-version>`: the harness version the endpoint points to (default latest)
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
+##### `agentcore harness endpoint get`
+
+```text
+agentcore harness endpoint get [options]
+```
+
+get a harness endpoint
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
+
+##### `agentcore harness endpoint list`
+
+```text
+agentcore harness endpoint list [options]
+```
+
+list a harness's endpoints
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--next-token <next-token>`: next token to use on paginated
+- `--max-results <max-results>`: max number of items to return
+
+##### `agentcore harness endpoint update`
+
+```text
+agentcore harness endpoint update [options]
+```
+
+update a harness endpoint
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
+- `--target-version <target-version>`: the harness version the endpoint points to
+
+##### `agentcore harness endpoint delete`
+
+```text
+agentcore harness endpoint delete [options]
+```
+
+delete a harness endpoint
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
+
+#### `agentcore harness version`
+
+```text
+agentcore harness version [options] [command]
+```
+
+inspect harness versions
+
+##### `agentcore harness version get`
+
+```text
+agentcore harness version get [options]
+```
+
+get a specific version of a harness
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--version <version>`: the harness version to get (required)
+
+##### `agentcore harness version list`
+
+```text
+agentcore harness version list [options]
+```
+
+list a harness's versions
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--next-token <next-token>`: next token to use on paginated
+- `--max-results <max-results>`: max number of items to return
+
+### `agentcore identity`
+
+```text
+agentcore identity [options] [command]
+```
+
+manage AgentCore Identity resources
+
+#### `agentcore identity api-key-credential-provider`
+
+```text
+agentcore identity api-key-credential-provider [options] [command]
+```
+
+manage API key credential providers
+
+##### `agentcore identity api-key-credential-provider create`
+
+```text
+agentcore identity api-key-credential-provider create [options]
+```
+
+create an API key credential provider
+
+**Options**
+
+- `--name <name>`: the name of the API key credential provider (required)
+- `--api-key <api-key>`: the API key (file://path or - for stdin; inline values are rejected)
+- `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
+- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+
+##### `agentcore identity api-key-credential-provider get`
+
+```text
+agentcore identity api-key-credential-provider get [options]
+```
+
+get an API key credential provider
+
+**Options**
+
+- `--name <name>`: the name of the API key credential provider (required)
+
+##### `agentcore identity api-key-credential-provider list`
+
+```text
+agentcore identity api-key-credential-provider list [options]
+```
+
+list API key credential providers
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+##### `agentcore identity api-key-credential-provider update`
+
+```text
+agentcore identity api-key-credential-provider update [options]
+```
+
+update an API key credential provider
+
+**Options**
+
+- `--name <name>`: the name of the API key credential provider (required)
+- `--api-key <api-key>`: the new API key (file://path or - for stdin; inline values are rejected)
+- `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
+
+##### `agentcore identity api-key-credential-provider delete`
+
+```text
+agentcore identity api-key-credential-provider delete [options]
+```
+
+delete an API key credential provider
+
+**Options**
+
+- `--name <name>`: the name of the API key credential provider (required)
+
+#### `agentcore identity oauth2-credential-provider`
+
+```text
+agentcore identity oauth2-credential-provider [options] [command]
+```
+
+manage OAuth2 credential providers
+
+##### `agentcore identity oauth2-credential-provider create`
+
+```text
+agentcore identity oauth2-credential-provider create [options]
+```
+
+create an OAuth2 credential provider
+
+**Options**
+
+- `--name <name>`: the name of the OAuth2 credential provider (required)
+- `--vendor <vendor>`: the OAuth2 vendor (e.g. CustomOauth2, GithubOauth2) (required)
+- `--client-secret <client-secret>`: the client secret (file://path or - for stdin; inline values are rejected)
+- `--client-secret-reference <client-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
+- `--client-id <client-id>`: OAuth2 client ID (guided custom OAuth2)
+- `--discovery-url <discovery-url>`: OAuth2 discovery URL (guided custom OAuth2)
+- `--authorization-server-metadata <authorization-server-metadata>`: authorization server metadata JSON (guided custom OAuth2)
+- `--provider-configuration <provider-configuration>`: complete OAuth2 provider configuration JSON (alternative to guided flags)
+- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+
+##### `agentcore identity oauth2-credential-provider get`
+
+```text
+agentcore identity oauth2-credential-provider get [options]
+```
+
+get an OAuth2 credential provider
+
+**Options**
+
+- `--name <name>`: the name of the OAuth2 credential provider (required)
+
+##### `agentcore identity oauth2-credential-provider list`
+
+```text
+agentcore identity oauth2-credential-provider list [options]
+```
+
+list OAuth2 credential providers
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+##### `agentcore identity oauth2-credential-provider update`
+
+```text
+agentcore identity oauth2-credential-provider update [options]
+```
+
+update an OAuth2 credential provider
+
+**Options**
+
+- `--name <name>`: the name of the OAuth2 credential provider (required)
+- `--vendor <vendor>`: the OAuth2 vendor
+- `--client-secret <client-secret>`: the client secret (file://path or - for stdin; inline values are rejected)
+- `--client-secret-reference <client-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
+- `--client-id <client-id>`: OAuth2 client ID (guided custom OAuth2)
+- `--discovery-url <discovery-url>`: OAuth2 discovery URL (guided custom OAuth2)
+- `--authorization-server-metadata <authorization-server-metadata>`: authorization server metadata JSON (guided custom OAuth2)
+- `--provider-configuration <provider-configuration>`: complete OAuth2 provider configuration JSON (alternative to guided flags)
+
+##### `agentcore identity oauth2-credential-provider delete`
+
+```text
+agentcore identity oauth2-credential-provider delete [options]
+```
+
+delete an OAuth2 credential provider
+
+**Options**
+
+- `--name <name>`: the name of the OAuth2 credential provider (required)
+
+#### `agentcore identity payment-credential-provider`
+
+```text
+agentcore identity payment-credential-provider [options] [command]
+```
+
+manage payment credential providers
+
+##### `agentcore identity payment-credential-provider get`
+
+```text
+agentcore identity payment-credential-provider get [options]
+```
+
+get a payment credential provider
+
+**Options**
+
+- `--name <name>`: the payment credential provider name (required)
+
+##### `agentcore identity payment-credential-provider list`
+
+```text
+agentcore identity payment-credential-provider list [options]
+```
+
+list payment credential providers
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+### `agentcore memory`
+
+```text
+agentcore memory [options] [command]
+```
+
+inspect AgentCore Memories
+
+#### `agentcore memory get`
+
+```text
+agentcore memory get [options]
+```
+
+get an AgentCore Memory
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--view <view>`: response view
+
+#### `agentcore memory list`
+
+```text
+agentcore memory list [options]
+```
+
+list AgentCore Memories
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore memory event`
+
+```text
+agentcore memory event [options] [command]
+```
+
+inspect AgentCore Memory events
+
+##### `agentcore memory event get`
+
+```text
+agentcore memory event get [options]
+```
+
+get an AgentCore Memory Event
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--actor-id <actor-id>`: the ID of the actor (required)
+- `--session-id <session-id>`: the session ID (required)
+- `--event-id <event-id>`: the event ID (required)
+
+##### `agentcore memory event list`
+
+```text
+agentcore memory event list [options]
+```
+
+list AgentCore Memory events
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--actor-id <actor-id>`: the ID of the actor (required)
+- `--session-id <session-id>`: the session ID (required)
+- `--include-payloads`: includes event payloads in the response (default: false)
+- `--branch <branch>`: filter events by branch name
+- `--include-parent-branches`: includes parent branches when filtering by branch (default: false)
+- `--metadata-filters <metadata-filters>`: event metadata filters as JSON
+- `--max-results <max-results>`: maximum number of events to return; default 20
+- `--next-token <next-token>`: pagination token returned by a previous request
+
+#### `agentcore memory record`
+
+```text
+agentcore memory record [options] [command]
+```
+
+inspect AgentCore Memory records
+
+##### `agentcore memory record get`
+
+```text
+agentcore memory record get [options]
+```
+
+get an AgentCore Memory record
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--record-id <record-id>`: the ID of the Memory record (required)
+
+##### `agentcore memory record list`
+
+```text
+agentcore memory record list [options]
+```
+
+list AgentCore Memory records
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--namespace <namespace>`: filter by namespace prefix
+- `--namespace-path <namespace-path>`: filter by namespace hierarchy
+- `--strategy-id <strategy-id>`: filter by Memory strategy ID
+- `--metadata-filters <metadata-filters>`: Memory record metadata filters as JSON
+- `--max-results <max-results>`: maximum number of records to return
+- `--next-token <next-token>`: pagination token returned by a previous request
+
+#### `agentcore memory actor`
+
+```text
+agentcore memory actor [options] [command]
+```
+
+inspect actors in AgentCore Memories
+
+##### `agentcore memory actor list`
+
+```text
+agentcore memory actor list [options]
+```
+
+list actors in an AgentCore Memory
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--max-results <max-results>`: maximum number of actors to return
+- `--next-token <next-token>`: pagination token returned by a previous request
+
+#### `agentcore memory session`
+
+```text
+agentcore memory session [options] [command]
+```
+
+inspect sessions in AgentCore Memories
+
+##### `agentcore memory session list`
+
+```text
+agentcore memory session list [options]
+```
+
+list sessions in an AgentCore Memory
+
+**Options**
+
+- `--id <id>`: the ID of the Memory (required)
+- `--actor-id <actor-id>`: the ID of the actor (required)
+- `--max-results <max-results>`: maximum number of sessions to return
+- `--next-token <next-token>`: pagination token returned by a previous request
+
+### `agentcore payment`
+
+```text
+agentcore payment [options] [command]
+```
+
+inspect AgentCore Payments
+
+#### `agentcore payment manager`
+
+```text
+agentcore payment manager [options] [command]
+```
+
+manage AgentCore payment managers
+
+##### `agentcore payment manager get`
+
+```text
+agentcore payment manager get [options]
+```
+
+get a payment manager by id
+
+**Options**
+
+- `--id <id>`: the payment manager ID (required)
+
+##### `agentcore payment manager list`
+
+```text
+agentcore payment manager list [options]
+```
+
+list payment managers
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore payment connector`
+
+```text
+agentcore payment connector [options] [command]
+```
+
+manage connectors under a payment manager
+
+##### `agentcore payment connector get`
+
+```text
+agentcore payment connector get [options]
+```
+
+get a payment connector by id
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--connector-id <connector-id>`: the payment connector ID (required)
+
+##### `agentcore payment connector list`
+
+```text
+agentcore payment connector list [options]
+```
+
+list the connectors of a payment manager
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore payment session`
+
+```text
+agentcore payment session [options] [command]
+```
+
+manage payment sessions (budget-limited payment contexts)
+
+##### `agentcore payment session get`
+
+```text
+agentcore payment session get [options]
+```
+
+get a payment session by id
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--session-id <session-id>`: the payment session ID (required)
+- `--user-id <user-id>`: the application user ID associated with the session (required)
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+##### `agentcore payment session list`
+
+```text
+agentcore payment session list [options]
+```
+
+list an application user's payment sessions under a payment manager
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--user-id <user-id>`: the application user ID to list sessions for (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+#### `agentcore payment instrument`
+
+```text
+agentcore payment instrument [options] [command]
+```
+
+manage payment instruments (embedded crypto wallets)
+
+##### `agentcore payment instrument get`
+
+```text
+agentcore payment instrument get [options]
+```
+
+get a payment instrument by id
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--instrument-id <instrument-id>`: the payment instrument ID (required)
+- `--user-id <user-id>`: the application user ID associated with the instrument (required)
+- `--connector-id <connector-id>`: optionally restrict the lookup to this payment connector
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+##### `agentcore payment instrument list`
+
+```text
+agentcore payment instrument list [options]
+```
+
+list an application user's payment instruments under a payment manager
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--user-id <user-id>`: the application user ID to list instruments for (required)
+- `--connector-id <connector-id>`: optionally filter instruments by this payment connector
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+##### `agentcore payment instrument balance`
+
+```text
+agentcore payment instrument balance [options]
+```
+
+get a payment instrument's token balance on a specific chain
+
+**Options**
+
+- `--manager-id <manager-id>`: the parent payment manager ID (required)
+- `--connector-id <connector-id>`: the instrument's payment connector ID (required)
+- `--instrument-id <instrument-id>`: the payment instrument ID (required)
+- `--user-id <user-id>`: the application user ID associated with the instrument (required)
+- `--chain <chain>`: the blockchain chain to query (BASE | BASE\_SEPOLIA | ETHEREUM | SOLANA | SOLANA\_DEVNET) (required)
+- `--token <token>`: the token to query (USDC) (default: "USDC")
+- `--agent-name <agent-name>`: optional observability label, not an agent selector
+
+### `agentcore runtime`
+
+```text
+agentcore runtime [options] [command]
+```
+
+inspect AgentCore Runtimes
+
+#### `agentcore runtime get`
+
+```text
+agentcore runtime get [options]
+```
+
+get an AgentCore Runtime
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+
+#### `agentcore runtime list`
+
+```text
+agentcore runtime list [options]
+```
+
+list AgentCore Runtimes
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore runtime invoke`
+
+```text
+agentcore runtime invoke [options]
+```
+
+invoke a Runtime
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--payload <payload>`: the inline payload to send
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--content-type <content-type>`: the payload content type
+- `--accept <accept>`: the accepted response content type
+- `--session-id <session-id>`: the Runtime session ID
+- `--user-id <user-id>`: the Runtime user ID (default "default")
+- `--header <header...>`: an ordered application header
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--mcp-session-id <mcp-session-id>`: the MCP session ID
+- `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
+- `--mcp-method <mcp-method>`: the MCP method
+- `--mcp-name <mcp-name>`: the MCP tool, resource, or prompt name
+- `--trace-id <trace-id>`: the X-Ray trace ID
+- `--trace-parent <trace-parent>`: the W3C trace parent
+- `--trace-state <trace-state>`: the W3C trace state
+- `--baggage <baggage>`: the W3C baggage
+- `--output-file <output-file>`: the response output file
+
+#### `agentcore runtime shell`
+
+```text
+agentcore runtime shell [options]
+```
+
+open an interactive shell in a Runtime
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--session-id <session-id>`: the Runtime session ID to use
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+
+#### `agentcore runtime exec`
+
+```text
+agentcore runtime exec [options]
+```
+
+run a shell command in a Runtime
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--command <command>`: the command to run
+- `--qualifier <qualifier>`: the endpoint qualifier (default DEFAULT)
+- `--session-id <session-id>`: the Runtime session ID
+- `--timeout <timeout>`: command timeout in seconds (1-3600)
+
+#### `agentcore runtime version`
+
+```text
+agentcore runtime version [options] [command]
+```
+
+inspect AgentCore Runtime versions
+
+##### `agentcore runtime version get`
+
+```text
+agentcore runtime version get [options]
+```
+
+get a specific Runtime version
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--version <version>`: the Runtime version to get (required)
+
+##### `agentcore runtime version list`
+
+```text
+agentcore runtime version list [options]
+```
+
+list a Runtime's versions
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore runtime endpoint`
+
+```text
+agentcore runtime endpoint [options] [command]
+```
+
+inspect AgentCore Runtime endpoints
+
+##### `agentcore runtime endpoint get`
+
+```text
+agentcore runtime endpoint get [options]
+```
+
+get a Runtime endpoint
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--qualifier <qualifier>`: the endpoint name (qualifier) (required)
+
+##### `agentcore runtime endpoint list`
+
+```text
+agentcore runtime endpoint list [options]
+```
+
+list a Runtime's endpoints
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+#### `agentcore runtime logs`
+
+```text
+agentcore runtime logs [options]
+```
+
+stream or search a Runtime's logs
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--tail`: tail new log records (default: false)
+- `--level <level>`: filter by log level (error, warn, info, debug)
+- `--query <query>`: CloudWatch Logs filter pattern
+- `--limit <limit>`: maximum number of log records to return in search mode
+
+#### `agentcore runtime traces`
+
+```text
+agentcore runtime traces [options] [command]
+```
+
+inspect a Runtime's traces
+
+##### `agentcore runtime traces list`
+
+```text
+agentcore runtime traces list [options]
+```
+
+list a Runtime's recent traces
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--limit <limit>`: maximum number of traces to display (default: 20)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+##### `agentcore runtime traces get`
+
+```text
+agentcore runtime traces get [options] <trace-id>
+```
+
+download a trace's log records to a JSON file
+
+**Arguments**
+
+- `trace-id` (required): the trace ID to download
+
+**Options**
+
+- `--id <id>`: the ID of the Runtime (required)
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
 
 ## CLI settings and feedback
 

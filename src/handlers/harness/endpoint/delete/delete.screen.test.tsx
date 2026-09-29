@@ -1,7 +1,7 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
@@ -53,7 +53,7 @@ function coreWithEndpoint(): TestCoreClient {
 describe("harness endpoint delete screen", () => {
   test("walks from harness picker to endpoint picker to confirmation", async () => {
     const core = coreWithEndpoint();
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/delete", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/delete", { core });
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("return");
@@ -66,7 +66,7 @@ describe("harness endpoint delete screen", () => {
 
   test("`y` calls DeleteHarnessEndpoint and shows the result", async () => {
     const core = coreWithEndpoint();
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/delete/MyHarness-abc123/prod", {
+    const r = renderScreen("/agentcore/harness/endpoint/delete/MyHarness-abc123/prod", {
       core,
     });
 
@@ -82,7 +82,7 @@ describe("harness endpoint delete screen", () => {
 
   test("`n` cancels without calling DeleteHarnessEndpoint", async () => {
     const core = coreWithEndpoint();
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/delete/MyHarness-abc123/prod", {
+    const r = renderScreen("/agentcore/harness/endpoint/delete/MyHarness-abc123/prod", {
       core,
     });
 

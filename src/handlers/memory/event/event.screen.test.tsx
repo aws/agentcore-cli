@@ -3,7 +3,7 @@ import type { ActorSummary, Event, SessionSummary } from "@aws-sdk/client-bedroc
 import type { MemorySummary } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
@@ -67,7 +67,7 @@ describe("Memory event list flow", () => {
     core.memory.setListEventsResponse({
       events: [event({ memoryId, actorId, sessionId })],
     });
-    const screen = renderImperativeScreen("/agentcore/memory/event/list", { core });
+    const screen = renderScreen("/agentcore/memory/event/list", { core });
 
     await waitForText(screen.lastFrame, memoryId);
     await screen.press("return");
@@ -112,7 +112,7 @@ describe("Memory event list flow", () => {
   test("calls listEvents with the exact route scope and Core options", async () => {
     const core = new TestCoreClient();
     core.memory.setListEventsResponse({ events: [event()] });
-    renderImperativeScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1", {
+    renderScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1", {
       core,
       endpointUrl: memoryEndpointUrl,
     });
@@ -149,12 +149,9 @@ describe("Memory event list flow", () => {
         metadata: { tenant: { stringValue: "acme" } },
       }),
     });
-    const screen = renderImperativeScreen(
-      "/agentcore/memory/event/list/memory-1/actor-1/session-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1", {
+      core,
+    });
 
     await waitForText(screen.lastFrame, "event blue");
     const frame = screen.lastFrame()!;
@@ -187,12 +184,9 @@ describe("Memory event list flow", () => {
       nextToken: "page-2",
     });
     core.memory.setListEventsResponse({ events: [] }, "page-2");
-    const screen = renderImperativeScreen(
-      "/agentcore/memory/event/list/memory-1/actor-1/session-1",
-      {
-        core,
-      },
-    );
+    const screen = renderScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1", {
+      core,
+    });
 
     await waitForText(screen.lastFrame, "page 1 · more →");
     await screen.write("l");
@@ -200,18 +194,15 @@ describe("Memory event list flow", () => {
   });
 
   test("shows scoped empty and retry states", async () => {
-    const empty = renderImperativeScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1");
+    const empty = renderScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1");
     await waitForText(empty.lastFrame, "No events found for session session-1.");
     empty.unmount();
 
     const core = new TestCoreClient();
     core.memory.setError(new Error("events unavailable"));
-    const failed = renderImperativeScreen(
-      "/agentcore/memory/event/list/memory-1/actor-1/session-1",
-      {
-        core,
-      },
-    );
+    const failed = renderScreen("/agentcore/memory/event/list/memory-1/actor-1/session-1", {
+      core,
+    });
 
     await waitForText(failed.lastFrame, "events unavailable");
     expect(failed.lastFrame()).toContain("[r] retry");

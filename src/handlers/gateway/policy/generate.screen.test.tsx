@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { GatewaySummary, GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import {
-  cleanupScreens,
-  renderImperativeScreen,
-  TestCoreClient,
-  waitForText,
-} from "../../../testing";
+import { cleanupScreens, renderScreen, TestCoreClient, waitForText } from "../../../testing";
 
 afterEach(cleanupScreens);
 
@@ -38,7 +33,7 @@ function coreWith(engineArn: string | undefined): TestCoreClient {
 
 describe("gateway policy generate screen", () => {
   test("picks a gateway, then shows its engine and the prompt", async () => {
-    const screen = renderImperativeScreen("/agentcore/gateway/policy/generate", {
+    const screen = renderScreen("/agentcore/gateway/policy/generate", {
       core: coreWith(ENGINE_ARN),
     });
 
@@ -53,7 +48,7 @@ describe("gateway policy generate screen", () => {
   });
 
   test("escape returns the form through the picker to the Gateway menu", async () => {
-    const screen = renderImperativeScreen("/agentcore/gateway/policy/generate", {
+    const screen = renderScreen("/agentcore/gateway/policy/generate", {
       core: coreWith(ENGINE_ARN),
     });
 
@@ -69,7 +64,7 @@ describe("gateway policy generate screen", () => {
   });
 
   test("explains when the gateway has no engine and offers no prompt", async () => {
-    const screen = renderImperativeScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
+    const screen = renderScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
       core: coreWith(undefined),
     });
 
@@ -91,7 +86,7 @@ describe("gateway policy generate screen", () => {
         { statement: PERMIT, findings: [] },
       ],
     };
-    const screen = renderImperativeScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
+    const screen = renderScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
       core,
     });
     await waitForText(screen.lastFrame, PLACEHOLDER);
@@ -120,7 +115,7 @@ describe("gateway policy generate screen", () => {
   test("aborts the run and returns to the picker on esc while generating", async () => {
     const core = coreWith(ENGINE_ARN);
     core.policy.hang = true;
-    const screen = renderImperativeScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
+    const screen = renderScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
       core,
     });
     await waitForText(screen.lastFrame, PLACEHOLDER);
@@ -137,7 +132,7 @@ describe("gateway policy generate screen", () => {
   test("shows the error and returns to the form on esc", async () => {
     const core = coreWith(ENGINE_ARN);
     core.policy.error = new Error("policy generation 'gen-1' failed: bad prompt");
-    const screen = renderImperativeScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
+    const screen = renderScreen(`/agentcore/gateway/policy/generate/${GATEWAY_ID}`, {
       core,
     });
     await waitForText(screen.lastFrame, PLACEHOLDER);
