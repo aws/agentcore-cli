@@ -30,6 +30,8 @@ const WITH_SCREENS = [
   "online-insight",
   "harness",
   "config-bundle",
+  "policy-engine",
+  "policy",
 ];
 
 describe("project add menu", () => {

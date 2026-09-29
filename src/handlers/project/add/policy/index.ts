@@ -2,6 +2,7 @@ import z from "zod";
 import { SourceResolver } from "../../../../io";
 import type { PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
+import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
 
@@ -18,6 +19,39 @@ const VALIDATION_MODES = {
   "ignore-all-findings": "IGNORE_ALL_FINDINGS",
 } as const;
 const ENFORCEMENT_MODES = { active: "ACTIVE", "log-only": "LOG_ONLY" } as const;
+
+export type PolicyEnforcementMode = keyof typeof ENFORCEMENT_MODES;
+
+// PolicyInput is the policy as the flags state it, with the statement already
+// resolved to text and, when it came from a file, the path it came from.
+export type PolicyInput = {
+  engine: string;
+  name: string;
+  statement: string;
+  sourceFile?: string;
+  description?: string;
+  validationMode?: keyof typeof VALIDATION_MODES;
+  enforcementMode?: PolicyEnforcementMode;
+  authorizationPhase?: keyof typeof PHASES;
+};
+
+// toAddPolicyInput is the one place a Policy is built from user input — the
+// flags, or the wizard's answers — so both infer the authorization phase from
+// the statement the same way and map modes to the same values.
+export function toAddPolicyInput(input: PolicyInput): AddResourceInput {
+  const policy: z.input<typeof PolicySchema> = {
+    name: input.name,
+    description: input.description,
+    statement: input.statement,
+    sourceFile: input.sourceFile,
+    validationMode: input.validationMode && VALIDATION_MODES[input.validationMode],
+    enforcementMode: input.enforcementMode && ENFORCEMENT_MODES[input.enforcementMode],
+    authorizationPhase: input.authorizationPhase
+      ? PHASES[input.authorizationPhase]
+      : inferAuthorizationPhase(input.statement),
+  };
+  return { resourceType: "policy", engineName: input.engine, resourceConfig: policy };
+}
 
 export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -57,29 +91,20 @@ export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
         ? flags.statement.slice("file://".length)
         : undefined;
 
-      const authorizationPhase = flags["authorization-phase"]
-        ? PHASES[flags["authorization-phase"]]
-        : inferAuthorizationPhase(statement);
-
-      const policy: z.input<typeof PolicySchema> = {
-        name: flags.name,
-        description: flags.description,
-        statement,
-        sourceFile,
-        validationMode: flags["validation-mode"] && VALIDATION_MODES[flags["validation-mode"]],
-        enforcementMode: flags["enforcement-mode"] && ENFORCEMENT_MODES[flags["enforcement-mode"]],
-        authorizationPhase,
-      };
-
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "policy",
-          engineName: flags.engine,
-          resourceConfig: policy,
-        },
+        toAddPolicyInput({
+          engine: flags.engine,
+          name: flags.name,
+          statement,
+          sourceFile,
+          description: flags.description,
+          validationMode: flags["validation-mode"],
+          enforcementMode: flags["enforcement-mode"],
+          authorizationPhase: flags["authorization-phase"],
+        }),
         `added Policy '${flags.name}' to Policy Engine '${flags.engine}' in '${project.name}'`,
       );
     },

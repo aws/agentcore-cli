@@ -37,6 +37,8 @@ export function createAddProjectResourceHandler(
     "online-insight",
     "harness",
     "config-bundle",
+    "policy-engine",
+    "policy",
   );
   projectAdd.default(renderTui(core, config.io));
   // withProject first, so it is the outermost wrapper: a resource added outside
