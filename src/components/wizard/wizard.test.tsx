@@ -11,6 +11,7 @@ import {
   ChoiceField,
   MultiChoiceField,
   ResourceChoiceField,
+  RevealChoiceField,
   Summary,
   TextField,
   type Choice,
@@ -532,6 +533,127 @@ describe("ResourceChoiceField", () => {
 
     await waitFor(() => (d.lastFrame() ?? "").includes("picked"), 1000);
     expect(d.lastFrame()).toContain("payments");
+    d.unmount();
+  });
+});
+
+// RevealChoiceField opens one input under a chosen row; these cover which rows
+// open it, that the input validates like a TextField, and the way back out.
+describe("RevealChoiceField", () => {
+  function driveReveal() {
+    function Harness() {
+      const [flavour, setFlavour] = useState("preset");
+      const [custom, setCustom] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => {}}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="flavour" prompt="which flavour?">
+            <RevealChoiceField
+              choices={[
+                { value: "preset", label: "preset", description: "the built-in one" },
+                { value: "custom", label: "custom", description: "type your own" },
+              ]}
+              value={flavour}
+              onChange={setFlavour}
+              input={{
+                opensFor: (value) => value === "custom",
+                label: "Flavour",
+                name: "flavour",
+                help: "lowercase letters only",
+                value: custom,
+                onChange: setCustom,
+                required: true,
+                schema: z.string().regex(/^[a-z]+$/, "letters only please"),
+              }}
+            />
+          </Step>
+          <Step stepKey="review" prompt="review">
+            <Summary items={{ flavour, custom: custom === "" ? "(none)" : custom }} />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter on a row without a follow-up continues", async () => {
+    const d = driveReveal();
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● preset"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("review"), 1000);
+    expect(d.lastFrame()).toContain("preset");
+    expect(d.lastFrame()).not.toContain("lowercase letters only");
+    d.unmount();
+  });
+
+  test("enter on the revealing row opens the input, which validates before continuing", async () => {
+    const d = driveReveal();
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● preset"), 1000);
+    await d.press("down");
+    await d.press("return");
+
+    // The rows keep the value; the pointer moves into the input.
+    await waitFor(() => (d.lastFrame() ?? "").includes("lowercase letters only"), 1000);
+    expect(d.lastFrame()).toContain("● custom");
+    expect(d.lastFrame()).not.toContain("❯ ● custom");
+
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("Flavour is required"), 1000);
+
+    await d.write("Mint");
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("letters only please"), 1000);
+    expect(d.lastFrame()).toContain("which flavour?");
+    d.unmount();
+  });
+
+  test("a valid input continues, and esc from it returns to the rows keeping what was typed", async () => {
+    const d = driveReveal();
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● preset"), 1000);
+    await d.press("down");
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("lowercase letters only"), 1000);
+    await d.write("mint");
+
+    await d.press("escape");
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● custom"), 1000);
+    expect(d.lastFrame()).not.toContain("lowercase letters only");
+
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("mint"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("review"), 1000);
+    expect(d.lastFrame()).toContain("mint");
     d.unmount();
   });
 });

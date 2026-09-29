@@ -329,7 +329,7 @@ describe("project add gateway-target wizard", () => {
     await screen.write("http://mcp.example.com");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "Endpoint must use HTTPS");
+    await waitForText(screen.lastFrame, "must use HTTPS");
     expect(screen.lastFrame()).toContain("what is the Target?");
     screen.unmount();
   });
@@ -345,7 +345,7 @@ describe("project add gateway-target wizard", () => {
     await screen.write("not-a-url");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "Endpoint must be a valid HTTPS URL");
+    await waitForText(screen.lastFrame, "must be a valid HTTPS URL");
     screen.unmount();
   });
 

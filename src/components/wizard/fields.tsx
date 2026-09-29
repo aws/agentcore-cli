@@ -206,6 +206,122 @@ export function ResourceEmptyState({ message, hint }: ResourceEmptyStateProps) {
   );
 }
 
+export interface RevealedInput<T> {
+  // opensFor says which rows have the follow-up: enter on one of them opens the
+  // input; on any other row, enter continues.
+  opensFor: (value: T) => boolean;
+  // label names the value in validation messages ("<label> is required").
+  label: string;
+  // name is the heading over the input and help the line under it, as on a
+  // FormTextInput.
+  name: string;
+  help?: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  schema?: z.ZodType;
+}
+
+export interface RevealChoiceFieldProps<T> extends ChoiceFieldProps<T> {
+  input: RevealedInput<T>;
+}
+
+// RevealChoiceField is a ChoiceField where some rows have a follow-up question:
+// enter on such a row opens one text input under the rows, the way the harness
+// model step opens a model ID. The rows keep showing the value while the input
+// has focus; esc or up returns to them; enter on the input validates it the way
+// a TextField would and continues. A question that exists for one row only is
+// asked there rather than as a step of its own.
+export function RevealChoiceField<T>({
+  help = "",
+  choices,
+  value,
+  onChange,
+  input,
+}: RevealChoiceFieldProps<T>) {
+  const { advance, back, isLast } = useWizard();
+  const found = choices.findIndex((choice) => choice.value === value);
+  const index = found === -1 ? 0 : found;
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "enter", label: isLast ? "submit" : "continue" },
+  ]);
+
+  useInput((_input, key) => {
+    if (!editing) {
+      if (key.escape) {
+        back();
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        const nextIndex = key.upArrow
+          ? Math.max(0, index - 1)
+          : Math.min(choices.length - 1, index + 1);
+        onChange(choices[nextIndex]!.value);
+        setError(undefined);
+        return;
+      }
+      if (key.return) {
+        if (input.opensFor(choices[index]!.value)) setEditing(true);
+        else advance();
+      }
+      return;
+    }
+
+    if (key.escape || key.upArrow) {
+      setEditing(false);
+      setError(undefined);
+      return;
+    }
+    if (!key.return) return;
+
+    const issue = validateEntry(input.value, {
+      label: input.label,
+      required: input.required ?? false,
+      schema: input.schema,
+    });
+    if (issue !== undefined) {
+      setError(issue);
+      return;
+    }
+    setError(undefined);
+    advance();
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormRadioGroup
+        name=""
+        helpText={help}
+        options={choices.map((choice) => ({
+          label: choice.label,
+          description: choice.description ?? "",
+        }))}
+        focusedIndex={editing ? undefined : index}
+        selectedIndex={index}
+      />
+      {editing && (
+        <FormTextInput
+          name={input.name}
+          helpText={input.help ?? ""}
+          placeholder={input.placeholder ?? ""}
+          errorText=""
+          value={input.value}
+          onChange={(next) => {
+            input.onChange(next);
+            setError(undefined);
+          }}
+        />
+      )}
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
+  );
+}
+
 export interface MultiChoiceFieldProps<T> {
   help?: string;
   choices: Choice<T>[];

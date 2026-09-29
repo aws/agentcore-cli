@@ -6,6 +6,7 @@ export {
   ChoiceField,
   ResourceChoiceField,
   ResourceEmptyState,
+  RevealChoiceField,
   MultiChoiceField,
   Summary,
   type Choice,
@@ -13,6 +14,8 @@ export {
   type ChoiceFieldProps,
   type ResourceChoiceFieldProps,
   type ResourceEmptyStateProps,
+  type RevealChoiceFieldProps,
+  type RevealedInput,
   type MultiChoiceFieldProps,
   type SummaryProps,
 } from "./fields";
