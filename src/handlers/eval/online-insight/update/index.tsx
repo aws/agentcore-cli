@@ -6,6 +6,7 @@ import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { OnlineEvalOutputConfigFlag } from "../../online-eval/outputConfig";
 
 const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
 const ARN_PREFIX = "arn:";
@@ -58,6 +59,7 @@ export const createUpdateOnlineInsightHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
       ),
       flag("role-arn", "replace the IAM role the online insight assumes", z.string().optional()),
+      ...OnlineEvalOutputConfigFlag.flags,
     ],
     handle: async (ctx, flags) => {
       if (flags["endpoint"] && flags["clear-endpoint"] === "true")
@@ -98,6 +100,7 @@ export const createUpdateOnlineInsightHandler = (core: Core, io: AppIO) =>
             await source.resolveText("data-source-config", flags["data-source-config"]),
           ),
           evaluationExecutionRoleArn: flags["role-arn"],
+          outputConfig: await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], source),
         },
         coreOptsFromCtx(ctx),
       );

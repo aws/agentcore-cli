@@ -744,6 +744,7 @@ export class EvalClient implements CoreEvalClient {
         evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
         dataSourceConfig,
         kmsKeyArn: input.kmsKeyArn,
+        outputConfig: input.outputConfig,
       }),
     );
   }
@@ -1092,6 +1093,7 @@ export class EvalClient implements CoreEvalClient {
       dataSourceConfig,
       insights: input.insightIds.map((insightId) => ({ insightId })),
       clusteringConfig: input.clusteringConfig,
+      outputConfig: input.outputConfig,
       evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
       enableOnCreate: input.enableOnCreate ?? true,
     });
@@ -1162,6 +1164,11 @@ export class EvalClient implements CoreEvalClient {
         dataSourceConfig,
         insights,
         clusteringConfig,
+        // Not merged from `current` the way rule/insights are: GET echoes back the
+        // service-managed default group under /aws/bedrock-agentcore/evaluations/,
+        // which the write APIs reject, so re-sending it would break every update
+        // that leaves --output-config off. Matches `online-eval update`.
+        outputConfig: update.outputConfig,
         evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
       }),
     );

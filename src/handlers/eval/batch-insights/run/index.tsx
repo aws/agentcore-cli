@@ -5,6 +5,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
+import { BatchOutputConfig } from "../../batch-evaluation/outputConfig";
 import { SessionSource } from "../../sessionSource";
 
 const CONFIGURATION = "Configuration:";
@@ -36,6 +37,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
         z.array(z.string()).optional(),
         { group: ANALYSIS },
       ),
+      ...BatchOutputConfig.flags,
     ],
     handle: async (ctx, flags) => {
       const resolver = new SourceResolver({ stdin: io.stdin });
@@ -57,6 +59,7 @@ export const createRunBatchInsightsHandler = (core: Core, io: AppIO) =>
           evaluatorIds: flags["evaluators"],
           source,
           kmsKeyArn: flags["kms-key-arn"],
+          outputConfig: await BatchOutputConfig.resolve(flags["output-config"], resolver),
         },
         coreOptsFromCtx(ctx),
       );

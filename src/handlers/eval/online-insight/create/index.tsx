@@ -6,6 +6,7 @@ import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
+import { OnlineEvalOutputConfigFlag } from "../../online-eval/outputConfig";
 
 const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
 const ARN_PREFIX = "arn:";
@@ -63,6 +64,7 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
         "a description of the config's monitoring purpose",
         z.string().optional(),
       ),
+      ...OnlineEvalOutputConfigFlag.flags,
     ],
     handle: async (ctx, flags) => {
       for (const id of flags["insight"]) {
@@ -91,6 +93,7 @@ export const createCreateOnlineInsightHandler = (core: Core, io: AppIO) =>
         ),
         insightIds: flags["insight"],
         clusteringConfig: frequencies ? { frequencies } : undefined,
+        outputConfig: await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], source),
         evaluationExecutionRoleArn: flags["role-arn"],
         enableOnCreate:
           flags["enable-on-create"] === undefined
