@@ -40,6 +40,24 @@ async function finishSampling(screen: RenderScreenResult, samplingRate = "10"): 
   await screen.press("return");
 }
 
+async function reachEvaluatorStep(screen: RenderScreenResult, name: string): Promise<void> {
+  await waitForText(screen.lastFrame, "what should this online evaluation config be called?");
+  await screen.write(name);
+  await screen.press("return");
+  await waitForText(screen.lastFrame, "where should sessions be sampled from?");
+  await screen.press("return");
+  await waitForText(screen.lastFrame, "which Runtime should be monitored?");
+  await screen.press("return");
+  await waitForText(screen.lastFrame, "which evaluators should score it?");
+}
+
+async function selectCustomEvaluatorInput(screen: RenderScreenResult): Promise<void> {
+  for (let index = 0; index < 16; index++) await screen.press("down");
+  await screen.write(" ");
+  await screen.press("return");
+  await waitForText(screen.lastFrame, "Custom evaluator IDs or ARNs");
+}
+
 describe("project add online-eval wizard", () => {
   test("adds a Runtime-backed config using a project evaluator", async () => {
     const projectRoot = await inProject();
@@ -188,6 +206,62 @@ describe("project add online-eval wizard", () => {
 
     await waitForText(screen.lastFrame, "Select at least one evaluator");
     expect(screen.lastFrame()).toContain("which evaluators should score it?");
+    screen.unmount();
+  });
+
+  test("adds custom evaluator ARNs and Builtin IDs not shown in the picker", async () => {
+    const projectRoot = await inProject();
+    const screen = renderScreen("/agentcore/add/online-eval");
+    await reachEvaluatorStep(screen, "custom_evaluators");
+    await selectCustomEvaluatorInput(screen);
+
+    const customArn = "arn:aws:bedrock-agentcore:us-east-1:111122223333:evaluator/custom-evaluator";
+    await screen.write(`Builtin.NewEvaluator, ${customArn}`);
+    await screen.press("return");
+    await finishSampling(screen);
+    await waitForText(
+      screen.lastFrame,
+      "this online evaluation config will be added to agentcore.json",
+    );
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "added online-eval config 'custom_evaluators'");
+
+    expect((await projectSpec(projectRoot)).onlineEvalConfigs[0]).toMatchObject({
+      evaluators: ["Builtin.NewEvaluator", customArn],
+    });
+    screen.unmount();
+  });
+
+  test("prevents selecting more than ten evaluators from the picker", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/online-eval");
+    await reachEvaluatorStep(screen, "picker_limit");
+
+    for (let index = 0; index < 10; index++) {
+      await screen.write(" ");
+      await screen.press("down");
+    }
+    await screen.write(" ");
+
+    await waitForText(screen.lastFrame, "At most 10 evaluators may be selected");
+    expect(screen.lastFrame()).toContain("which evaluators should score it?");
+    screen.unmount();
+  });
+
+  test("enforces the ten evaluator limit across picker and custom entries", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/online-eval");
+    await reachEvaluatorStep(screen, "combined_limit");
+
+    await screen.write(" ");
+    await selectCustomEvaluatorInput(screen);
+    await screen.write(
+      Array.from({ length: 10 }, (_, index) => `Builtin.CustomEvaluator${index}`).join(", "),
+    );
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "At most 10 evaluators may be selected");
+    expect(screen.lastFrame()).toContain("Custom evaluator IDs or ARNs");
     screen.unmount();
   });
 

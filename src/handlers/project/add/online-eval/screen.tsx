@@ -1,17 +1,26 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import z from "zod";
+import { FormCheckboxMultiSelect } from "../../../../components/FormCheckboxMultiSelect";
+import { FormTextInput } from "../../../../components/FormTextInput";
+import { darkTheme } from "../../../../components/ui/_core.js";
 import {
-  MultiChoiceField,
   Step,
   Summary,
   TextField,
   Wizard,
+  useKeyHints,
+  useWizard,
   type Choice,
 } from "../../../../components/wizard";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
-import { OnlineEvalConfigNameSchema } from "../../../../projectSchemas/online-eval-config";
+import {
+  ONLINE_EVAL_MAX_EVALUATORS,
+  OnlineEvalConfigNameSchema,
+  OnlineEvalEvaluatorsSchema,
+} from "../../../../projectSchemas/online-eval-config";
 import { ProjectKey } from "../../../../router";
 import type { ScreenProps } from "../../../types";
 import { LoadingFrame, ProjectGate, projectQueryKey, useProjectTargets } from "../../ProjectGate";
@@ -19,6 +28,7 @@ import type { Project } from "../../types";
 import { requireDeployedNameFits } from "../shared";
 import {
   initialTrafficSourceValues,
+  splitCommaList,
   toTrafficSourceInput,
   trafficSourceSteps,
   trafficSourceSummary,
@@ -27,12 +37,15 @@ import {
 import {
   ONLINE_EVAL_DEPLOYED_NAME_MAX_LENGTH,
   toAddOnlineEvalInput,
+  validateEvaluatorReferences,
   type OnlineEvalInput,
 } from "./index";
 
+const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "online-eval"];
 const DESCRIPTION = "add an online evaluation config to the current project";
 const ADD_MENU = "/agentcore/add";
+const CUSTOM_EVALUATORS = Symbol("custom evaluators");
 
 const BUILTIN_EVALUATOR_CHOICES: Choice<string>[] = [
   {
@@ -120,6 +133,8 @@ const BUILTIN_EVALUATOR_CHOICES: Choice<string>[] = [
 interface OnlineEvalFormValues extends TrafficSourceFormValues {
   name: string;
   evaluators: string[];
+  includeCustomEvaluators: boolean;
+  customEvaluators: string;
   samplingRate: string;
 }
 
@@ -127,11 +142,27 @@ function firstError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function evaluatorsOf(values: OnlineEvalFormValues): string[] {
+  return unique([
+    ...values.evaluators,
+    ...(values.includeCustomEvaluators ? splitCommaList(values.customEvaluators) : []),
+  ]);
+}
+
+function evaluatorLimitIssue(evaluators: readonly string[]): string | undefined {
+  const result = OnlineEvalEvaluatorsSchema.safeParse(evaluators);
+  return result.success ? undefined : result.error.issues[0]?.message;
+}
+
 export function toOnlineEvalInput(values: OnlineEvalFormValues): OnlineEvalInput {
   return {
     name: values.name,
     ...toTrafficSourceInput(values),
-    evaluators: values.evaluators,
+    evaluators: evaluatorsOf(values),
     samplingRate: Number(values.samplingRate),
   };
 }
@@ -140,7 +171,7 @@ function summaryOf(values: OnlineEvalFormValues): Record<string, string> {
   return {
     config: values.name,
     ...trafficSourceSummary(values),
-    evaluators: values.evaluators.join(", "),
+    evaluators: evaluatorsOf(values).join(", "),
     sampling: `${values.samplingRate}%`,
   };
 }
@@ -196,6 +227,8 @@ function AddOnlineEvalWizard({
     ...initialTrafficSourceValues(initialRuntime),
     name: "",
     evaluators: [],
+    includeCustomEvaluators: false,
+    customEvaluators: "",
     samplingRate: "",
   });
   const set = (update: Partial<OnlineEvalFormValues>) =>
@@ -264,13 +297,13 @@ function AddOnlineEvalWizard({
       {trafficSourceSteps({ values, runtimes, onChange: set })}
 
       <Step stepKey="evaluators" prompt="which evaluators should score it?">
-        <MultiChoiceField
-          help="project and built-in evaluators · space toggles"
+        <EvaluatorSelectionField
+          project={project}
           choices={evaluatorChoices}
-          value={values.evaluators}
-          onChange={(evaluators) => set({ evaluators })}
-          minSelections={1}
-          minSelectionsMessage="Select at least one evaluator"
+          evaluators={values.evaluators}
+          includeCustomEvaluators={values.includeCustomEvaluators}
+          customEvaluators={values.customEvaluators}
+          onChange={(update) => set(update)}
         />
       </Step>
 
@@ -291,5 +324,170 @@ function AddOnlineEvalWizard({
         <Summary items={summaryOf(values)} />
       </Step>
     </Wizard>
+  );
+}
+
+type EvaluatorSelectionUpdate = Partial<
+  Pick<OnlineEvalFormValues, "evaluators" | "includeCustomEvaluators" | "customEvaluators">
+>;
+
+function EvaluatorSelectionField({
+  project,
+  choices,
+  evaluators,
+  includeCustomEvaluators,
+  customEvaluators,
+  onChange,
+}: {
+  project: Project;
+  choices: Choice<string>[];
+  evaluators: string[];
+  includeCustomEvaluators: boolean;
+  customEvaluators: string;
+  onChange: (update: EvaluatorSelectionUpdate) => void;
+}) {
+  const { advance, back } = useWizard();
+  const [cursor, setCursor] = useState(0);
+  const [customFocused, setCustomFocused] = useState(false);
+  const [error, setError] = useState<string>();
+  const allChoices: Choice<string | typeof CUSTOM_EVALUATORS>[] = [
+    ...choices,
+    {
+      value: CUSTOM_EVALUATORS,
+      label: "Custom evaluator IDs or ARNs",
+      description: "enter additional Builtin.* identifiers or evaluator ARNs",
+    },
+  ];
+
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "space", label: "toggle" },
+    { key: "enter", label: "continue" },
+  ]);
+
+  useInput((input, key) => {
+    if (customFocused) {
+      if (key.escape || key.upArrow) {
+        setCustomFocused(false);
+        setError(undefined);
+        return;
+      }
+      if (!key.return) return;
+
+      const custom = splitCommaList(customEvaluators);
+      if (custom.length === 0) {
+        setError("At least one custom evaluator ID or ARN is required");
+        return;
+      }
+      try {
+        validateEvaluatorReferences(project, custom);
+      } catch (validationError) {
+        setError(firstError(validationError));
+        return;
+      }
+
+      const limitIssue = evaluatorLimitIssue(unique([...evaluators, ...custom]));
+      if (limitIssue !== undefined) {
+        setError(limitIssue);
+        return;
+      }
+
+      setError(undefined);
+      advance();
+      return;
+    }
+
+    if (key.escape) {
+      back();
+      return;
+    }
+    if (key.upArrow) {
+      setCursor((current) => Math.max(0, current - 1));
+      return;
+    }
+    if (key.downArrow) {
+      setCursor((current) => Math.min(allChoices.length - 1, current + 1));
+      return;
+    }
+    if (input === " ") {
+      const selected = allChoices[cursor]!.value;
+      if (selected === CUSTOM_EVALUATORS) {
+        if (!includeCustomEvaluators && evaluators.length >= ONLINE_EVAL_MAX_EVALUATORS) {
+          setError("At most 10 evaluators may be selected");
+          return;
+        }
+        onChange({ includeCustomEvaluators: !includeCustomEvaluators });
+        setError(undefined);
+        return;
+      }
+
+      const toggled = evaluators.includes(selected)
+        ? evaluators.filter((evaluator) => evaluator !== selected)
+        : [...evaluators, selected];
+      const combined = unique([
+        ...toggled,
+        ...(includeCustomEvaluators ? splitCommaList(customEvaluators) : []),
+      ]);
+      const limitIssue = evaluatorLimitIssue(combined);
+      if (limitIssue !== undefined) {
+        setError(limitIssue);
+        return;
+      }
+
+      onChange({
+        evaluators: choices
+          .filter((choice) => toggled.includes(choice.value))
+          .map((choice) => choice.value),
+      });
+      setError(undefined);
+      return;
+    }
+    if (!key.return) return;
+
+    if (evaluators.length === 0 && !includeCustomEvaluators) {
+      setError("Select at least one evaluator");
+      return;
+    }
+    if (includeCustomEvaluators) {
+      setCustomFocused(true);
+      setError(undefined);
+      return;
+    }
+
+    setError(undefined);
+    advance();
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormCheckboxMultiSelect
+        name=""
+        helpText="select up to 10 project, built-in, or custom evaluators"
+        options={allChoices.map((choice) => ({
+          label: choice.label,
+          description: choice.description ?? "",
+          checked:
+            choice.value === CUSTOM_EVALUATORS
+              ? includeCustomEvaluators
+              : evaluators.includes(choice.value),
+        }))}
+        cursorIndex={customFocused ? -1 : cursor}
+      />
+      {includeCustomEvaluators && (
+        <FormTextInput
+          name="Custom evaluator IDs or ARNs"
+          helpText="comma-separated Builtin.* identifiers or evaluator ARNs"
+          placeholder="Builtin.Helpfulness, arn:aws:bedrock-agentcore:..."
+          errorText=""
+          value={customEvaluators}
+          onChange={(value) => {
+            onChange({ customEvaluators: value });
+            setError(undefined);
+          }}
+          focused={customFocused}
+        />
+      )}
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
   );
 }

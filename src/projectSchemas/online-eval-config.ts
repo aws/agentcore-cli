@@ -1,5 +1,7 @@
 import { TagsSchema } from "./tags";
 import { z } from "zod";
+
+export const ONLINE_EVAL_MAX_EVALUATORS = 10;
 export const OnlineEvalConfigNameSchema = z
   .string()
   .min(1, "Name is required")
@@ -15,6 +17,9 @@ export const ClusteringConfigSchema = z.object({
     .max(3),
 });
 export type ClusteringConfig = z.infer<typeof ClusteringConfigSchema>;
+export const OnlineEvalEvaluatorsSchema = z
+  .array(z.string().min(1))
+  .max(ONLINE_EVAL_MAX_EVALUATORS, "At most 10 evaluators may be selected");
 export const OnlineEvalConfigSchema = z
   .object({
     name: OnlineEvalConfigNameSchema,
@@ -22,7 +27,7 @@ export const OnlineEvalConfigSchema = z
     endpoint: z.string().min(1).optional(),
     logGroupNames: z.array(z.string().min(1)).min(1).max(5).optional(),
     serviceNames: z.array(z.string().min(1)).min(1).optional(),
-    evaluators: z.array(z.string().min(1)).optional(),
+    evaluators: OnlineEvalEvaluatorsSchema.optional(),
     insights: z.array(z.string().min(1)).optional(),
     clusteringConfig: ClusteringConfigSchema.optional(),
     samplingRate: z.number().min(0.01).max(100),
