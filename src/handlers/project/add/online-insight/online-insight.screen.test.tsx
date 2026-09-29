@@ -19,24 +19,16 @@ afterEach(cleanup);
 afterEach(cleanupScreens);
 
 async function chooseFailureAnalysis(screen: RenderScreenResult): Promise<void> {
-  await waitForText(screen.lastFrame, "which built-in insights should be produced?");
+  await waitForText(screen.lastFrame, "which insights should run?");
   await screen.write(" ");
-  await screen.press("return");
-  await waitForText(screen.lastFrame, "add any other insight identifiers?");
   await screen.press("return");
 }
 
 async function finishDefaults(screen: RenderScreenResult, samplingRate = "10"): Promise<void> {
-  await waitForText(screen.lastFrame, "how often should insight clusters be generated?");
+  await waitForText(screen.lastFrame, "how should insight sessions be sampled and clustered?");
   await screen.press("return");
-  await waitForText(screen.lastFrame, "what percentage of sessions should be sampled?");
   await screen.write(samplingRate);
   await screen.press("return");
-  await waitForText(screen.lastFrame, "describe this config's monitoring purpose");
-  await screen.press("return");
-  await waitForText(screen.lastFrame, "enable this config when it is deployed?");
-  await screen.press("return");
-  await waitForText(screen.lastFrame, "add tags to this online insight config?");
   await screen.press("return");
 }
 
@@ -59,24 +51,12 @@ describe("project add online-insight wizard", () => {
 
     await chooseFailureAnalysis(screen);
 
-    await waitForText(screen.lastFrame, "how often should insight clusters be generated?");
+    await waitForText(screen.lastFrame, "how should insight sessions be sampled and clustered?");
     await screen.write(" ");
     await screen.press("return");
-
-    await waitForText(screen.lastFrame, "what percentage of sessions should be sampled?");
     await screen.write("12.5");
     await screen.press("return");
-
-    await waitForText(screen.lastFrame, "describe this config's monitoring purpose");
     await screen.write("Monitor production sessions");
-    await screen.press("return");
-
-    await waitForText(screen.lastFrame, "enable this config when it is deployed?");
-    expect(screen.lastFrame()).toContain("● enabled (default)");
-    await screen.press("return");
-
-    await waitForText(screen.lastFrame, "add tags to this online insight config?");
-    await screen.write("team=checkout, environment=production");
     await screen.press("return");
 
     await waitForText(
@@ -101,12 +81,11 @@ describe("project add online-insight wizard", () => {
       clusteringConfig: { frequencies: ["DAILY"] },
       samplingRate: 12.5,
       description: "Monitor production sessions",
-      tags: { team: "checkout", environment: "production" },
     });
     screen.unmount();
   });
 
-  test("adds a custom-log config with services, custom insights, clustering, and paused state", async () => {
+  test("adds a custom-log config with services, a custom insight, and clustering", async () => {
     const projectRoot = await inProject();
     const screen = renderScreen("/agentcore/add/online-insight");
 
@@ -126,33 +105,24 @@ describe("project add online-insight wizard", () => {
     await screen.write("checkout, inventory");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "which built-in insights should be produced?");
+    await waitForText(screen.lastFrame, "which insights should run?");
     await screen.press("down");
     await screen.write(" ");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.write(" ");
+    expect(screen.lastFrame()).toContain("Custom insight ARN");
     await screen.press("return");
-
-    await waitForText(screen.lastFrame, "add any other insight identifiers?");
     await screen.write("arn:aws:bedrock-agentcore:us-east-1:111122223333:insight/custom");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "how often should insight clusters be generated?");
+    await waitForText(screen.lastFrame, "how should insight sessions be sampled and clustered?");
     await screen.write(" ");
     await screen.press("down");
     await screen.write(" ");
     await screen.press("return");
-
-    await waitForText(screen.lastFrame, "what percentage of sessions should be sampled?");
     await screen.write("0.5");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "describe this config's monitoring purpose");
-    await screen.press("return");
-
-    await waitForText(screen.lastFrame, "enable this config when it is deployed?");
-    await screen.press("down");
-    await screen.press("return");
-
-    await waitForText(screen.lastFrame, "add tags to this online insight config?");
-    await screen.write('{"owner":"observability"}');
     await screen.press("return");
 
     await waitForText(
@@ -172,8 +142,6 @@ describe("project add online-insight wizard", () => {
       ],
       clusteringConfig: { frequencies: ["DAILY", "WEEKLY"] },
       samplingRate: 0.5,
-      enableOnCreate: false,
-      tags: { owner: "observability" },
     });
     screen.unmount();
   });
@@ -216,7 +184,7 @@ describe("project add online-insight wizard", () => {
     screen.unmount();
   });
 
-  test("requires either a built-in or custom insight identifier", async () => {
+  test("requires at least one built-in or custom insight", async () => {
     await inProject();
     const screen = renderScreen("/agentcore/add/online-insight");
 
@@ -227,13 +195,36 @@ describe("project add online-insight wizard", () => {
     await screen.press("return");
     await waitForText(screen.lastFrame, "which Runtime should be monitored?");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "which built-in insights should be produced?");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "add any other insight identifiers?");
+    await waitForText(screen.lastFrame, "which insights should run?");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "Insight identifiers is required");
-    expect(screen.lastFrame()).toContain("add any other insight identifiers?");
+    await waitForText(screen.lastFrame, "At least one insight is required");
+    expect(screen.lastFrame()).toContain("which insights should run?");
+    screen.unmount();
+  });
+
+  test("requires an ARN when the custom insight option is selected", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/online-insight");
+
+    await waitForText(screen.lastFrame, "what should this online insight config be called?");
+    await screen.write("custom_insight");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "where should sessions be sampled from?");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "which Runtime should be monitored?");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "which insights should run?");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.press("down");
+    await screen.write(" ");
+    await screen.press("return");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "At least one custom insight ARN is required");
+    expect(screen.lastFrame()).toContain("which insights should run?");
+    expect(screen.lastFrame()).toContain("Custom insight ARN");
     screen.unmount();
   });
 
@@ -249,14 +240,13 @@ describe("project add online-insight wizard", () => {
     await waitForText(screen.lastFrame, "which Runtime should be monitored?");
     await screen.press("return");
     await chooseFailureAnalysis(screen);
-    await waitForText(screen.lastFrame, "how often should insight clusters be generated?");
+    await waitForText(screen.lastFrame, "how should insight sessions be sampled and clustered?");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "what percentage of sessions should be sampled?");
     await screen.write("0.001");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, ">=0.01");
-    expect(screen.lastFrame()).toContain("what percentage of sessions should be sampled?");
+    expect(screen.lastFrame()).toContain("how should insight sessions be sampled and clustered?");
     screen.unmount();
   });
 

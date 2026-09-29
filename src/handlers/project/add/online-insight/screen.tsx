@@ -1,53 +1,48 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import z from "zod";
+import { FormCheckboxMultiSelect } from "../../../../components/FormCheckboxMultiSelect";
+import { FormTextInput } from "../../../../components/FormTextInput";
+import { darkTheme } from "../../../../components/ui/_core.js";
 import {
-  ChoiceField,
-  MultiChoiceField,
   Step,
   Summary,
   TextField,
   Wizard,
+  useKeyHints,
+  useWizard,
   type Choice,
 } from "../../../../components/wizard";
-import { InputValidationError } from "../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import { OnlineEvalConfigNameSchema } from "../../../../projectSchemas/online-eval-config";
-import { TagsSchema } from "../../../../projectSchemas/tags";
 import { ProjectKey } from "../../../../router";
 import type { ScreenProps } from "../../../types";
-import { parseTags } from "../../../utils";
 import { LoadingFrame, ProjectGate, projectQueryKey, useProjectTargets } from "../../ProjectGate";
 import type { Project } from "../../types";
 import { requireDeployedNameFits } from "../shared";
 import {
+  initialTrafficSourceValues,
+  splitCommaList,
+  toTrafficSourceInput,
+  trafficSourceSteps,
+  trafficSourceSummary,
+  type TrafficSourceFormValues,
+} from "../traffic-source-fields";
+import {
   ONLINE_INSIGHT_DEPLOYED_NAME_MAX_LENGTH,
   toAddOnlineInsightInput,
-  validateInsightIds,
   type OnlineInsightInput,
 } from "./index";
 
+const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "online-insight"];
 const DESCRIPTION = "add an online insight config to the current project";
 const ADD_MENU = "/agentcore/add";
-const DEFAULT_ENDPOINT = "DEFAULT";
 
-type SourceType = "runtime" | "logs";
 type ClusteringFrequency = "DAILY" | "WEEKLY" | "MONTHLY";
-
-const SOURCE_CHOICES: Choice<SourceType>[] = [
-  {
-    value: "runtime",
-    label: "project Runtime",
-    description: "sample traffic from a Runtime declared in agentcore.json",
-  },
-  {
-    value: "logs",
-    label: "CloudWatch logs",
-    description: "read one or more custom CloudWatch log groups",
-  },
-];
+const CUSTOM_INSIGHT = "CUSTOM";
 
 const BUILTIN_INSIGHT_CHOICES: Choice<string>[] = [
   {
@@ -67,148 +62,65 @@ const BUILTIN_INSIGHT_CHOICES: Choice<string>[] = [
   },
 ];
 
+const INSIGHT_CHOICES: Choice<string>[] = [
+  ...BUILTIN_INSIGHT_CHOICES,
+  {
+    value: CUSTOM_INSIGHT,
+    label: "Custom insight ARN",
+    description: "use an insight defined outside the built-in set",
+  },
+];
+
 const CLUSTERING_CHOICES: Choice<ClusteringFrequency>[] = [
   { value: "DAILY", label: "DAILY" },
   { value: "WEEKLY", label: "WEEKLY" },
   { value: "MONTHLY", label: "MONTHLY" },
 ];
 
-const ENABLE_CHOICES: Choice<boolean>[] = [
-  {
-    value: true,
-    label: "enabled (default)",
-    description: "start producing insights as soon as the project is deployed",
-  },
-  {
-    value: false,
-    label: "paused",
-    description: "deploy the config without enabling it",
-  },
-];
-
-interface OnlineInsightFormValues {
+interface OnlineInsightFormValues extends TrafficSourceFormValues {
   name: string;
-  sourceType: SourceType;
-  runtime: string;
-  endpoint: string;
-  logGroups: string;
-  serviceNames: string;
   builtinInsights: string[];
+  includeCustomInsight: boolean;
   customInsights: string;
   clusteringFrequencies: ClusteringFrequency[];
   samplingRate: string;
   description: string;
-  enableOnCreate: boolean;
-  tags: string;
-}
-
-function splitCommaList(value: string): string[] {
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry !== "");
-}
-
-function parseTagsText(value: string): Record<string, string> | undefined {
-  const trimmed = value.trim();
-  if (trimmed === "") return undefined;
-
-  const parsed = parseTags(trimmed.startsWith("{") ? [trimmed] : splitCommaList(trimmed));
-  const result = TagsSchema.safeParse(parsed);
-  if (!result.success) throw new InputValidationError(z.prettifyError(result.error));
-  return result.data;
 }
 
 function firstError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const LogGroupsSchema = z.string().superRefine((value, ctx) => {
-  const logGroups = splitCommaList(value);
-  if (logGroups.length === 0) {
-    ctx.addIssue({ code: "custom", message: "At least one log group is required" });
-  } else if (logGroups.length > 5) {
-    ctx.addIssue({ code: "custom", message: "At most five log groups may be supplied" });
-  }
-});
-
-const ServiceNamesSchema = z.string().superRefine((value, ctx) => {
-  if (splitCommaList(value).length === 0) {
-    ctx.addIssue({
-      code: "custom",
-      message: "Enter at least one service name or leave this blank",
-    });
-  }
-});
-
-const TagsInputSchema = z.string().superRefine((value, ctx) => {
-  try {
-    parseTagsText(value);
-  } catch (error) {
-    ctx.addIssue({ code: "custom", message: firstError(error) });
-  }
-});
-
-function customInsightsSchema(hasBuiltinInsights: boolean) {
-  return z.string().superRefine((value, ctx) => {
-    const customInsights = splitCommaList(value);
-    if (!hasBuiltinInsights && customInsights.length === 0) {
-      ctx.addIssue({ code: "custom", message: "At least one insight is required" });
-      return;
-    }
-    try {
-      validateInsightIds(customInsights);
-    } catch (error) {
-      ctx.addIssue({ code: "custom", message: firstError(error) });
-    }
-  });
+function insightsOf(values: OnlineInsightFormValues): string[] {
+  return [
+    ...values.builtinInsights,
+    ...(values.includeCustomInsight ? splitCommaList(values.customInsights) : []),
+  ];
 }
 
 export function toOnlineInsightInput(values: OnlineInsightFormValues): OnlineInsightInput {
   return {
     name: values.name,
-    agent: values.sourceType === "runtime" ? values.runtime : undefined,
-    endpoint:
-      values.sourceType === "runtime" && values.endpoint !== DEFAULT_ENDPOINT
-        ? values.endpoint
-        : undefined,
-    logGroupNames: values.sourceType === "logs" ? splitCommaList(values.logGroups) : undefined,
-    serviceNames:
-      values.sourceType === "logs" && values.serviceNames.trim() !== ""
-        ? splitCommaList(values.serviceNames)
-        : undefined,
-    insights: [...values.builtinInsights, ...splitCommaList(values.customInsights)],
+    ...toTrafficSourceInput(values),
+    insights: insightsOf(values),
     clusteringFrequencies:
       values.clusteringFrequencies.length === 0 ? undefined : values.clusteringFrequencies,
     samplingRate: Number(values.samplingRate),
     description: values.description === "" ? undefined : values.description,
-    enableOnCreate: values.enableOnCreate ? undefined : false,
-    tags: parseTagsText(values.tags),
   };
 }
 
 function summaryOf(values: OnlineInsightFormValues): Record<string, string> {
-  const insights = [...values.builtinInsights, ...splitCommaList(values.customInsights)];
-  const logGroups = splitCommaList(values.logGroups);
-  const serviceNames = splitCommaList(values.serviceNames);
   return {
     config: values.name,
-    source:
-      values.sourceType === "runtime"
-        ? `${values.runtime}:${values.endpoint}`
-        : logGroups.join(", "),
-    ...(values.sourceType === "logs" && serviceNames.length > 0
-      ? { services: serviceNames.join(", ") }
-      : {}),
-    insights: insights.join(", "),
+    ...trafficSourceSummary(values),
+    insights: insightsOf(values).join(", "),
     clustering:
       values.clusteringFrequencies.length === 0
         ? "(none)"
         : values.clusteringFrequencies.join(", "),
     sampling: `${values.samplingRate}%`,
     description: values.description === "" ? "(none)" : values.description,
-    enabled: values.enableOnCreate ? "yes" : "no",
-    tags: values.tags.trim() === "" ? "(none)" : values.tags,
   };
 }
 
@@ -266,42 +178,17 @@ function AddOnlineInsightWizard({
   const runtimes = project.spec.runtimes;
   const initialRuntime = runtimes[0]?.name ?? "";
   const [values, setValues] = useState<OnlineInsightFormValues>({
+    ...initialTrafficSourceValues(initialRuntime),
     name: "",
-    sourceType: runtimes.length === 0 ? "logs" : "runtime",
-    runtime: initialRuntime,
-    endpoint: DEFAULT_ENDPOINT,
-    logGroups: "",
-    serviceNames: "",
     builtinInsights: [],
+    includeCustomInsight: false,
     customInsights: "",
     clusteringFrequencies: [],
     samplingRate: "",
     description: "",
-    enableOnCreate: true,
-    tags: "",
   });
   const set = (update: Partial<OnlineInsightFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
-
-  const sourceChoices =
-    runtimes.length === 0
-      ? SOURCE_CHOICES.filter((choice) => choice.value === "logs")
-      : SOURCE_CHOICES;
-  const runtimeChoices: Choice<string>[] = runtimes.map((runtime) => ({
-    value: runtime.name,
-    label: runtime.name,
-    description: runtime.description ?? runtime.codeLocation,
-  }));
-  const selectedRuntime = runtimes.find((runtime) => runtime.name === values.runtime);
-  const namedEndpoints = Object.keys(selectedRuntime?.endpoints ?? {});
-  const endpointChoices: Choice<string>[] = [
-    {
-      value: DEFAULT_ENDPOINT,
-      label: `${DEFAULT_ENDPOINT} (default)`,
-      description: "sample traffic sent to the Runtime's default endpoint",
-    },
-    ...namedEndpoints.map((endpoint) => ({ value: endpoint, label: endpoint })),
-  ];
 
   const nameSchema = useMemo(
     () =>
@@ -320,10 +207,6 @@ function AddOnlineInsightWizard({
         }
       }),
     [project.name, targets],
-  );
-  const insightSchema = useMemo(
-    () => customInsightsSchema(values.builtinInsights.length > 0),
-    [values.builtinInsights.length],
   );
 
   return (
@@ -358,131 +241,23 @@ function AddOnlineInsightWizard({
         />
       </Step>
 
-      <Step stepKey="source" prompt="where should sessions be sampled from?">
-        <ChoiceField
-          choices={sourceChoices}
-          value={values.sourceType}
-          onChange={(sourceType) => set({ sourceType })}
+      {trafficSourceSteps({ values, runtimes, onChange: set })}
+
+      <Step stepKey="insights" prompt="which insights should run?">
+        <InsightSelectionField
+          builtinInsights={values.builtinInsights}
+          includeCustomInsight={values.includeCustomInsight}
+          customInsights={values.customInsights}
+          onChange={(update) => set(update)}
         />
       </Step>
 
-      {values.sourceType === "runtime" && (
-        <Step stepKey="runtime" prompt="which Runtime should be monitored?">
-          <ChoiceField
-            choices={runtimeChoices}
-            value={values.runtime}
-            onChange={(runtime) => set({ runtime, endpoint: DEFAULT_ENDPOINT })}
-          />
-        </Step>
-      )}
-
-      {values.sourceType === "runtime" && namedEndpoints.length > 0 && (
-        <Step stepKey="endpoint" prompt="which Runtime endpoint should be monitored?">
-          <ChoiceField
-            choices={endpointChoices}
-            value={values.endpoint}
-            onChange={(endpoint) => set({ endpoint })}
-          />
-        </Step>
-      )}
-
-      {values.sourceType === "logs" && (
-        <Step stepKey="log-groups" prompt="which CloudWatch log groups contain the sessions?">
-          <TextField
-            label="Log groups"
-            help="one to five names, separated by commas"
-            placeholder="/aws/bedrock-agentcore/runtimes/example"
-            value={values.logGroups}
-            onChange={(logGroups) => set({ logGroups })}
-            required
-            schema={LogGroupsSchema}
-          />
-        </Step>
-      )}
-
-      {values.sourceType === "logs" && (
-        <Step stepKey="services" prompt="limit traces to particular service names?">
-          <TextField
-            label="Service names"
-            help="optional · separate multiple names with commas"
-            placeholder="checkout, inventory"
-            value={values.serviceNames}
-            onChange={(serviceNames) => set({ serviceNames })}
-            schema={ServiceNamesSchema}
-          />
-        </Step>
-      )}
-
-      <Step stepKey="builtins" prompt="which built-in insights should be produced?">
-        <MultiChoiceField
-          help="select none if you will provide an insight ARN next · space toggles"
-          choices={BUILTIN_INSIGHT_CHOICES}
-          value={values.builtinInsights}
-          onChange={(builtinInsights) => set({ builtinInsights })}
-        />
-      </Step>
-
-      <Step stepKey="custom-insights" prompt="add any other insight identifiers?">
-        <TextField
-          label="Insight identifiers"
-          help="optional when a built-in is selected · comma-separated Builtin.Insight.* IDs or ARNs"
-          placeholder="arn:aws:bedrock-agentcore:..."
-          value={values.customInsights}
-          onChange={(customInsights) => set({ customInsights })}
-          required={values.builtinInsights.length === 0}
-          schema={insightSchema}
-        />
-      </Step>
-
-      <Step stepKey="clustering" prompt="how often should insight clusters be generated?">
-        <MultiChoiceField
-          help="optional · select one or more cadences with space"
-          choices={CLUSTERING_CHOICES}
-          value={values.clusteringFrequencies}
-          onChange={(clusteringFrequencies) => set({ clusteringFrequencies })}
-        />
-      </Step>
-
-      <Step stepKey="sampling" prompt="what percentage of sessions should be sampled?">
-        <TextField
-          label="Sampling rate"
-          help="a percentage from 0.01 through 100"
-          placeholder="10"
-          value={values.samplingRate}
-          onChange={(samplingRate) => set({ samplingRate })}
-          required
-          decimal
-          schema={z.number().min(0.01).max(100)}
-        />
-      </Step>
-
-      <Step stepKey="description" prompt="describe this config's monitoring purpose">
-        <TextField
-          label="Description"
-          help="optional · at most 200 characters"
-          placeholder="Monitor production checkout sessions"
-          value={values.description}
-          onChange={(description) => set({ description })}
-          schema={z.string().max(200)}
-        />
-      </Step>
-
-      <Step stepKey="enabled" prompt="enable this config when it is deployed?">
-        <ChoiceField
-          choices={ENABLE_CHOICES}
-          value={values.enableOnCreate}
-          onChange={(enableOnCreate) => set({ enableOnCreate })}
-        />
-      </Step>
-
-      <Step stepKey="tags" prompt="add tags to this online insight config?">
-        <TextField
-          label="Tags"
-          help="optional · comma-separated key=value pairs, or a JSON object"
-          placeholder="team=checkout, environment=production"
-          value={values.tags}
-          onChange={(tags) => set({ tags })}
-          schema={TagsInputSchema}
+      <Step stepKey="settings" prompt="how should insight sessions be sampled and clustered?">
+        <InsightSettingsField
+          clusteringFrequencies={values.clusteringFrequencies}
+          samplingRate={values.samplingRate}
+          description={values.description}
+          onChange={(update) => set(update)}
         />
       </Step>
 
@@ -490,5 +265,289 @@ function AddOnlineInsightWizard({
         <Summary items={summaryOf(values)} />
       </Step>
     </Wizard>
+  );
+}
+
+type InsightSelectionUpdate = Partial<
+  Pick<OnlineInsightFormValues, "builtinInsights" | "includeCustomInsight" | "customInsights">
+>;
+
+function InsightSelectionField({
+  builtinInsights,
+  includeCustomInsight,
+  customInsights,
+  onChange,
+}: {
+  builtinInsights: string[];
+  includeCustomInsight: boolean;
+  customInsights: string;
+  onChange: (update: InsightSelectionUpdate) => void;
+}) {
+  const { advance, back } = useWizard();
+  const [cursor, setCursor] = useState(0);
+  const [customFocused, setCustomFocused] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "space", label: "toggle" },
+    { key: "enter", label: "continue" },
+  ]);
+
+  useInput((input, key) => {
+    if (customFocused) {
+      if (key.escape || key.upArrow) {
+        setCustomFocused(false);
+        setError(undefined);
+        return;
+      }
+      if (!key.return) return;
+
+      const customArns = splitCommaList(customInsights);
+      if (customArns.length === 0) {
+        setError("At least one custom insight ARN is required");
+        return;
+      }
+      const invalidArn = customArns.find((arn) => !arn.startsWith("arn:"));
+      if (invalidArn !== undefined) {
+        setError(`invalid insight "${invalidArn}": must be a full ARN`);
+        return;
+      }
+
+      setError(undefined);
+      advance();
+      return;
+    }
+
+    if (key.escape) {
+      back();
+      return;
+    }
+    if (key.upArrow) {
+      setCursor((current) => Math.max(0, current - 1));
+      return;
+    }
+    if (key.downArrow) {
+      setCursor((current) => Math.min(INSIGHT_CHOICES.length - 1, current + 1));
+      return;
+    }
+    if (input === " ") {
+      const selected = INSIGHT_CHOICES[cursor]!.value;
+      if (selected === CUSTOM_INSIGHT) {
+        onChange({ includeCustomInsight: !includeCustomInsight });
+      } else {
+        const toggled = builtinInsights.includes(selected)
+          ? builtinInsights.filter((insight) => insight !== selected)
+          : [...builtinInsights, selected];
+        onChange({
+          builtinInsights: BUILTIN_INSIGHT_CHOICES.filter((choice) =>
+            toggled.includes(choice.value),
+          ).map((choice) => choice.value),
+        });
+      }
+      setError(undefined);
+      return;
+    }
+    if (!key.return) return;
+
+    if (builtinInsights.length === 0 && !includeCustomInsight) {
+      setError("At least one insight is required");
+      return;
+    }
+    if (includeCustomInsight) {
+      setCustomFocused(true);
+      setError(undefined);
+      return;
+    }
+
+    setError(undefined);
+    advance();
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormCheckboxMultiSelect
+        name=""
+        helpText="select one or more insights with space"
+        options={INSIGHT_CHOICES.map((choice) => ({
+          label: choice.label,
+          description: choice.description ?? "",
+          checked:
+            choice.value === CUSTOM_INSIGHT
+              ? includeCustomInsight
+              : builtinInsights.includes(choice.value),
+        }))}
+        cursorIndex={customFocused ? -1 : cursor}
+      />
+      {includeCustomInsight && (
+        <FormTextInput
+          name="Custom insight ARN"
+          helpText="separate multiple ARNs with commas"
+          placeholder="arn:aws:bedrock-agentcore:..."
+          errorText=""
+          value={customInsights}
+          onChange={(value) => {
+            onChange({ customInsights: value });
+            setError(undefined);
+          }}
+          focused={customFocused}
+        />
+      )}
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
+  );
+}
+
+type InsightSettingsUpdate = Partial<
+  Pick<OnlineInsightFormValues, "clusteringFrequencies" | "samplingRate" | "description">
+>;
+
+const SamplingRateSchema = z.number().min(0.01).max(100);
+const DescriptionSchema = z.string().max(200);
+
+function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
+  const result = schema.safeParse(value);
+  if (result.success) return undefined;
+  const issue = result.error.issues[0];
+  if (!issue) return "invalid value";
+  const path = issue.path.join(".");
+  return path === "" ? issue.message : `${path}: ${issue.message}`;
+}
+
+function samplingRateIssue(value: string): string | undefined {
+  if (value.trim() === "") return "Sampling rate is required";
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return "Sampling rate must be a number";
+  return firstIssue(SamplingRateSchema, Number(value));
+}
+
+function InsightSettingsField({
+  clusteringFrequencies,
+  samplingRate,
+  description,
+  onChange,
+}: {
+  clusteringFrequencies: ClusteringFrequency[];
+  samplingRate: string;
+  description: string;
+  onChange: (update: InsightSettingsUpdate) => void;
+}) {
+  const { advance, back } = useWizard();
+  const [focusedField, setFocusedField] = useState(0);
+  const [clusteringCursor, setClusteringCursor] = useState(0);
+  const [error, setError] = useState<string>();
+
+  useKeyHints([
+    { key: "↑↓", label: "navigate" },
+    { key: "space", label: "toggle cadence" },
+    { key: "enter", label: "continue" },
+  ]);
+
+  useInput((input, key) => {
+    if (key.escape) {
+      back();
+      return;
+    }
+
+    if (focusedField === 0) {
+      if (key.upArrow) {
+        setClusteringCursor((current) => Math.max(0, current - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setClusteringCursor((current) => Math.min(CLUSTERING_CHOICES.length - 1, current + 1));
+        return;
+      }
+      if (input === " ") {
+        const cadence = CLUSTERING_CHOICES[clusteringCursor]!.value;
+        const toggled = clusteringFrequencies.includes(cadence)
+          ? clusteringFrequencies.filter((frequency) => frequency !== cadence)
+          : [...clusteringFrequencies, cadence];
+        onChange({
+          clusteringFrequencies: CLUSTERING_CHOICES.filter((choice) =>
+            toggled.includes(choice.value),
+          ).map((choice) => choice.value),
+        });
+        return;
+      }
+      if (key.return) {
+        setFocusedField(1);
+        setError(undefined);
+      }
+      return;
+    }
+
+    if (key.upArrow) {
+      setFocusedField(focusedField - 1);
+      setError(undefined);
+      return;
+    }
+    if (key.downArrow && focusedField === 1) {
+      setFocusedField(2);
+      setError(undefined);
+      return;
+    }
+    if (!key.return) return;
+
+    const samplingIssue = samplingRateIssue(samplingRate);
+    if (samplingIssue !== undefined) {
+      setFocusedField(1);
+      setError(samplingIssue);
+      return;
+    }
+    if (focusedField === 1) {
+      setFocusedField(2);
+      setError(undefined);
+      return;
+    }
+
+    const descriptionIssue =
+      description === "" ? undefined : firstIssue(DescriptionSchema, description);
+    if (descriptionIssue !== undefined) {
+      setError(descriptionIssue);
+      return;
+    }
+
+    setError(undefined);
+    advance();
+  });
+
+  return (
+    <Box flexDirection="column">
+      <FormCheckboxMultiSelect
+        name="Clustering cadence"
+        helpText="optional · select one or more cadences with space"
+        options={CLUSTERING_CHOICES.map((choice) => ({
+          label: choice.label,
+          description: choice.description ?? "",
+          checked: clusteringFrequencies.includes(choice.value),
+        }))}
+        cursorIndex={focusedField === 0 ? clusteringCursor : -1}
+      />
+      <FormTextInput
+        name="Sampling rate"
+        helpText="required · percentage from 0.01 through 100"
+        placeholder="10"
+        errorText=""
+        value={samplingRate}
+        onChange={(value) => {
+          onChange({ samplingRate: value });
+          setError(undefined);
+        }}
+        focused={focusedField === 1}
+      />
+      <FormTextInput
+        name="Description"
+        helpText="optional · at most 200 characters"
+        placeholder="Monitor production checkout sessions"
+        errorText=""
+        value={description}
+        onChange={(value) => {
+          onChange({ description: value });
+          setError(undefined);
+        }}
+        focused={focusedField === 2}
+      />
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
   );
 }
