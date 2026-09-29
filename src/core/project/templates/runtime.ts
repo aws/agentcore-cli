@@ -10,7 +10,7 @@ import type {
   ScaffoldRuntimeInput,
 } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import { memoryEnvVarName } from "../../../projectSchemas/memory";
+import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/memory";
 import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
 
@@ -171,7 +171,10 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       name: toPythonPackageName(input.name),
       modelProvider,
       modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
-      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
+      // Even without a memory resource (China scaffolds omit it — AgentCore
+      // Memory is not available there), the rendered module reads the default
+      // memory's env var so adding a memory later needs no code edit.
+      memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
       enableOtel: true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
@@ -184,8 +187,10 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name, isDir) => {
-          if (isDir && name === "memory") return memory !== undefined;
+        filter: (name) => {
+          // The memory module is always included: main.py imports it
+          // unconditionally and it degrades to no memory when its env var is
+          // absent (the China scaffold omits the memory resource).
           if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
           return true;
         },

@@ -4,7 +4,7 @@ from strands.models.bedrock import BedrockModel
 
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
-    return BedrockModel(model_id="{{modelId}}")
+    return BedrockModel(model_id={{safeJson modelId}})
 {{/if}}
 {{#if (eq modelProvider "Anthropic")}}
 import os
@@ -41,7 +41,7 @@ def load_model() -> AnthropicModel:
     """Get authenticated Anthropic model client."""
     return AnthropicModel(
         client_args={"api_key": _get_api_key()},
-        model_id="{{modelId}}",
+        model_id={{safeJson modelId}},
         max_tokens=5000,
     )
 {{/if}}
@@ -80,7 +80,7 @@ def load_model() -> OpenAIModel:
     """Get authenticated OpenAI model client."""
     return OpenAIModel(
         client_args={"api_key": _get_api_key()},
-        model_id="{{modelId}}",
+        model_id={{safeJson modelId}},
     )
 {{/if}}
 {{#if (eq modelProvider "Gemini")}}
@@ -118,7 +118,7 @@ def load_model() -> GeminiModel:
     """Get authenticated Gemini model client."""
     return GeminiModel(
         client_args={"api_key": _get_api_key()},
-        model_id="{{modelId}}",
+        model_id={{safeJson modelId}},
     )
 {{/if}}
 {{#if (eq modelProvider "LiteLLM")}}
@@ -164,6 +164,6 @@ def load_model() -> LiteLLMModel:
     {{/if}}
     return LiteLLMModel(
         client_args=client_args,
-        model_id="{{modelId}}",
+        model_id={{safeJson modelId}},
     )
 {{/if}}

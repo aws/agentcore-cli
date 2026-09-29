@@ -233,8 +233,13 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       let importBedrockAgent: ImportBedrockAgentInput | undefined;
       if (isImport) {
         // The import path calls Amazon Bedrock, which is not available in the
-        // aws-cn partition — fail before any Bedrock call is made.
-        if (deploymentTargets.some((target) => isChinaRegion(target.region))) {
+        // aws-cn partition — fail before any Bedrock call is made. Check the
+        // command's resolved region too: it selects the source agent's region
+        // and can be a China region even when no China target is configured.
+        if (
+          deploymentTargets.some((target) => isChinaRegion(target.region)) ||
+          isChinaRegion(ctx.require(RegionKey))
+        ) {
           throw new RegionUnsupportedFeatureError(
             "--type import translates a Bedrock Agent, and Amazon Bedrock is not available in " +
               "China regions (cn-north-1, cn-northwest-1).",

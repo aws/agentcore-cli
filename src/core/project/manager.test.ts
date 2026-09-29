@@ -17,6 +17,7 @@ import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import {
   FsProjectManager,
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
+  MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
 } from "./manager";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
@@ -671,6 +672,7 @@ describe("FsProjectManager.addResource", () => {
       edit: (spec: {
         runtimes: { name: string; modelProvider?: string }[];
         harnesses: unknown[];
+        memories?: unknown[];
       }) => void,
     ) {
       const specPath = join(project.rootPath, "agentcore", "agentcore.json");
@@ -755,6 +757,41 @@ describe("FsProjectManager.addResource", () => {
       const { steps, error } = await deployOutcome(subject, project);
       expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(steps.join("\n")).not.toContain("cannot verify");
+    });
+
+    test("strips the default memory from a China runtime scaffold", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1", "uv");
+
+      const steps: string[] = [];
+      const iterator = subject.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "cn_mem",
+          scaffoldRuntimeInput: {
+            ...AGENT_PYTHON_STRANDS,
+            runtimeName: "cn_mem",
+            modelProvider: "LiteLLM",
+            modelId: "deepseek/deepseek-chat",
+          },
+        },
+      });
+      const error = await (async () => {
+        try {
+          for (;;) {
+            const next = await iterator.next();
+            if (next.done) return undefined;
+            if (next.value.type === "step") steps.push(next.value.message);
+          }
+        } catch (e) {
+          return e;
+        }
+      })();
+
+      // The memory is stripped with a note before the scaffold proceeds to
+      // dependency checks (which fail in this environment).
+      expect(steps.join("\n")).toContain(MEMORY_STRIPPED_CN_MESSAGE);
+      expect(String(error)).toContain("uv is missing");
     });
 
     test("lets a model-provider template through for commercial-only targets", async () => {

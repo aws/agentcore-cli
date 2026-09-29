@@ -592,6 +592,19 @@ describe("project add runtime --type import", () => {
     expect(core.importedBedrockAgents).toEqual([]);
   });
 
+  test("rejects the import when --region is a China region even without a China target", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
+
+    const args = [...importArgs.slice(0, -2), "--region", "cn-north-1"];
+    await expect(run(args, { core })).rejects.toThrow(
+      /Amazon Bedrock is not available in China regions/,
+    );
+    expect(core.importedBedrockAgents).toEqual([]);
+  });
+
   test("requires --agent-id and --agent-alias-id with --type import", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);

@@ -1197,6 +1197,33 @@ describe("create in China regions", () => {
       await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
     );
     expect(spec.runtimes[0].modelProvider).toBe("LiteLLM");
+    // The template's default memory is dropped in China (AgentCore Memory has
+    // no CloudFormation type there), while the memory module stays in the code.
+    expect(spec.memories ?? []).toEqual([]);
+    expect(existsSync(join(projectRoot, "app", "agent", "memory"))).toBe(true);
+  });
+
+  test("escapes quotes in --model-id in the scaffolded model code", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "QuotedModel",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "lite_llm",
+      "--model-id",
+      'openai/we"ird',
+      ...skips,
+      "--region",
+      "cn-north-1",
+    ]);
+
+    const projectRoot = join(directory, "QuotedModel");
+    const loadPy = await readFile(join(projectRoot, "app", "agent", "model", "load.py"), "utf8");
+    expect(loadPy).toContain('model_id="openai/we\\"ird"');
   });
 
   test("allows a provider-free template", async () => {

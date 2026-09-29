@@ -122,6 +122,15 @@ export const HARNESS_CN_MESSAGE =
   "instead (e.g. --template agent-python-minimal) or start from --template empty.";
 
 /**
+ * Shown when the default memory is dropped from a China scaffold. The rendered
+ * code keeps the memory module (it degrades to no memory while its env var is
+ * absent), so a memory can be added without code changes once available.
+ */
+export const MEMORY_STRIPPED_CN_MESSAGE =
+  "AgentCore Memory is not available in China regions (cn-north-1, cn-northwest-1); " +
+  "scaffolding without the default memory";
+
+/**
  * Shown when a LiteLLM runtime template targets a China (aws-cn) region without
  * an explicit model id: the LiteLLM default routes to Amazon Bedrock, which is
  * not available there.
@@ -381,16 +390,38 @@ export class FsProjectManager implements ProjectManager {
     const scaffoldedPaths: string[] = [];
     let envFile: EnvLocalFile | undefined;
 
-    switch (input.resourceType) {
-      case "harness": {
-        // Harnesses are not part of the China launch; reject before scaffolding
-        // when any deployment target is in a China region.
-        {
-          const targets = await this.listTargets(project);
-          if (targets.some((target) => isChinaRegion(target.region))) {
-            throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
+    // A project with a China (aws-cn) deployment target can only add the
+    // resource families whose CloudFormation types exist there (Runtime,
+    // Gateway, credential). Runtimes additionally gate on the model provider
+    // — Bedrock/Anthropic/OpenAI/Gemini are unreachable, LiteLLM needs an
+    // explicit model id (its default routes to Bedrock) — and the default
+    // memory is dropped from the scaffold (see MEMORY_STRIPPED_CN_MESSAGE);
+    // provider-free scaffolds (framework "none": minimal, MCP) stay available
+    // as the bring-your-own-implementation path.
+    if ((await this.listTargets(project)).some((target) => isChinaRegion(target.region))) {
+      if (input.resourceType === "harness") {
+        throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
+      }
+      if (input.resourceType === "runtime") {
+        const { framework, modelProvider, modelId, memory } =
+          input.resourceConfig.scaffoldRuntimeInput;
+        if (framework !== "none") {
+          if ((modelProvider ?? "Bedrock") !== "LiteLLM") {
+            throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
+          }
+          if (modelId === undefined) {
+            throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
           }
         }
+        if (memory !== undefined) {
+          input.resourceConfig.scaffoldRuntimeInput.memory = undefined;
+          yield { type: "step", message: MEMORY_STRIPPED_CN_MESSAGE };
+        }
+      }
+    }
+
+    switch (input.resourceType) {
+      case "harness": {
         yield { type: "step", message: `Scaffolding harness in project` };
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
         scaffoldedPaths.push(outputPath);
@@ -405,25 +436,6 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
-        // Framework templates render model-provider client code, which cannot
-        // reach Bedrock/Anthropic/OpenAI/Gemini from the aws-cn partition;
-        // reject before any scaffolding when a deployment target is in a China
-        // region. LiteLLM can route to a reachable provider, but only with an
-        // explicit model id (its default routes to Bedrock). Provider-free
-        // scaffolds (framework "none": minimal, MCP) stay available as the
-        // bring-your-own-implementation path.
-        if (input.resourceConfig.scaffoldRuntimeInput.framework !== "none") {
-          const targets = await this.listTargets(project);
-          if (targets.some((target) => isChinaRegion(target.region))) {
-            const { modelProvider, modelId } = input.resourceConfig.scaffoldRuntimeInput;
-            if ((modelProvider ?? "Bedrock") !== "LiteLLM") {
-              throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
-            }
-            if (modelId === undefined) {
-              throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
-            }
-          }
-        }
         await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
         yield { type: "step", message: "Scaffolding runtime in project" };
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);

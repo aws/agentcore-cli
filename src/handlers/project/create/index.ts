@@ -30,6 +30,7 @@ import { isChinaRegion } from "../../../core/partition";
 import {
   HARNESS_CN_MESSAGE,
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
+  MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
 } from "../../../core/project/manager";
 import { JsonKey, RegionKey } from "../../keys";
@@ -147,12 +148,21 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         // Apply the China gate at creation when the command's resolved region
         // (--region flag, env, or profile) already says aws-cn, so the most
         // common workflow fails before scaffolding instead of at deploy.
-        if (isChinaRegion(ctx.require(RegionKey)) && scaffoldRuntimeInput.framework !== "none") {
-          if ((scaffoldRuntimeInput.modelProvider ?? "Bedrock") !== "LiteLLM") {
-            throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
+        if (isChinaRegion(ctx.require(RegionKey))) {
+          if (scaffoldRuntimeInput.framework !== "none") {
+            if ((scaffoldRuntimeInput.modelProvider ?? "Bedrock") !== "LiteLLM") {
+              throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
+            }
+            if (scaffoldRuntimeInput.modelId === undefined) {
+              throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
+            }
           }
-          if (scaffoldRuntimeInput.modelId === undefined) {
-            throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
+          // AgentCore Memory is not available in China regions; scaffold
+          // without the template's default memory (the rendered code degrades
+          // to no memory until its env var appears).
+          if (scaffoldRuntimeInput.memory !== undefined) {
+            scaffoldRuntimeInput.memory = undefined;
+            config.io.stderr.write(`${MEMORY_STRIPPED_CN_MESSAGE}\n`);
           }
         }
         createInput = { ...base, scaffoldRuntimeInput };
