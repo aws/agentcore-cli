@@ -54,6 +54,12 @@ describe("gateway-connector wizard helpers", () => {
     expect(withProjectKb.safeParse("docs").success).toBe(true);
     expect(withProjectKb.safeParse("ABCDEFGHIJ").success).toBe(true);
     expect(withProjectKb.safeParse("other").success).toBe(false);
+
+    // A value that is both, which the spec rejects as ambiguous, is refused
+    // here too, so the wizard says so on the step rather than on submit.
+    const ambiguous = knowledgeBaseSchema(["ABCDEFGHIJ"]).safeParse("ABCDEFGHIJ");
+    expect(ambiguous.success).toBe(false);
+    expect(ambiguous.error?.issues[0]?.message).toContain("both a Knowledge Base ID");
   });
 });
 

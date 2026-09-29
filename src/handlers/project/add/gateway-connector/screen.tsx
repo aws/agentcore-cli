@@ -44,15 +44,27 @@ const CONNECTOR_CHOICES: Choice<ConnectorId>[] = [
 
 // knowledgeBaseSchema accepts what the project spec accepts for a connector's
 // knowledgeBaseId: a real ten-character ID, or the name of a knowledgeBases[]
-// entry declared in this project.
+// entry declared in this project. Like the spec, it refuses a value that is
+// both, since the reference would be ambiguous; checking here means the wizard
+// says so on the step rather than when the spec is written.
 export function knowledgeBaseSchema(projectKnowledgeBases: readonly string[]): z.ZodType {
   const names =
     projectKnowledgeBases.length > 0 ? ` or one of ${projectKnowledgeBases.join(", ")}` : "";
-  return z
-    .string()
-    .refine((value) => REAL_KB_ID_PATTERN.test(value) || projectKnowledgeBases.includes(value), {
-      message: `must be a ten-character Knowledge Base ID (A–Z, 0–9)${names}`,
-    });
+  return z.string().superRefine((value, ctx) => {
+    const looksLikeId = REAL_KB_ID_PATTERN.test(value);
+    const isProjectName = projectKnowledgeBases.includes(value);
+    if (looksLikeId && isProjectName) {
+      ctx.addIssue({
+        code: "custom",
+        message: `'${value}' is both a Knowledge Base ID and the name of a Knowledge Base in this project; rename the project Knowledge Base so the reference is unambiguous`,
+      });
+    } else if (!looksLikeId && !isProjectName) {
+      ctx.addIssue({
+        code: "custom",
+        message: `must be a ten-character Knowledge Base ID (A–Z, 0–9)${names}`,
+      });
+    }
+  });
 }
 
 function gatewayChoices(gateways: readonly AgentCoreGateway[]): Choice<string>[] {
