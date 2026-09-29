@@ -132,6 +132,7 @@ import { AddRuntimeScreen } from "../handlers/project/add/runtime/screen.tsx";
 import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
 import { AddGatewayScreen } from "../handlers/project/add/gateway/screen.tsx";
 import { AddGatewayTargetScreen } from "../handlers/project/add/gateway-target/screen.tsx";
+import { AddOnlineEvalScreen } from "../handlers/project/add/online-eval/screen.tsx";
 import { AddOnlineInsightScreen } from "../handlers/project/add/online-insight/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
@@ -903,6 +904,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/add/gateway-target"
         element={<AddGatewayTargetScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/add/online-eval"
+        element={<AddOnlineEvalScreen ctx={ctx} core={core} />}
       />
       <Route
         path="agentcore/add/online-insight"

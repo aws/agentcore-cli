@@ -3,8 +3,77 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-config";
 import { parseJsonFlag } from "../../../utils";
+import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
+import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits } from "../shared";
+
+export const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
+const ARN_PREFIX = "arn:";
+export const ONLINE_EVAL_DEPLOYED_NAME_MAX_LENGTH = 48;
+
+export interface OnlineEvalInput {
+  name: string;
+  agent?: string;
+  endpoint?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
+  evaluators?: string[];
+  samplingRate: number;
+  description?: string;
+  enableOnCreate?: boolean;
+  tags?: Record<string, string>;
+}
+
+export function validateEvaluatorReferences(project: Project, evaluators: readonly string[]): void {
+  const projectEvaluators = new Set(project.spec.evaluators.map((evaluator) => evaluator.name));
+  for (const evaluator of evaluators) {
+    if (
+      !evaluator.startsWith(BUILTIN_EVALUATOR_PREFIX) &&
+      !evaluator.startsWith(ARN_PREFIX) &&
+      !projectEvaluators.has(evaluator)
+    ) {
+      throw new InputValidationError(
+        `unknown evaluator "${evaluator}": use a project evaluator name, a ${BUILTIN_EVALUATOR_PREFIX}* identifier, or a full ARN`,
+      );
+    }
+  }
+}
+
+export function toAddOnlineEvalInput(
+  project: Project,
+  targets: readonly AwsDeploymentTarget[],
+  input: OnlineEvalInput,
+): AddResourceInput {
+  requireDeployedNameFits(
+    "Online-eval config",
+    project.name,
+    input.name,
+    "_",
+    ONLINE_EVAL_DEPLOYED_NAME_MAX_LENGTH,
+    targets,
+  );
+  validateEvaluatorReferences(project, input.evaluators ?? []);
+
+  const parsed = OnlineEvalConfigSchema.safeParse({
+    name: input.name,
+    agent: input.agent,
+    endpoint: input.endpoint,
+    logGroupNames: input.logGroupNames,
+    serviceNames: input.serviceNames,
+    evaluators: input.evaluators,
+    samplingRate: input.samplingRate,
+    description: input.description,
+    enableOnCreate: input.enableOnCreate,
+    tags: input.tags,
+  });
+  if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
+
+  return {
+    resourceType: "online-eval",
+    resourceConfig: parsed.data,
+  };
+}
 
 export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -56,42 +125,31 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
-      requireDeployedNameFits(
-        "Online-eval config",
-        project.name,
-        flags["name"],
-        "_",
-        48,
+      const input = toAddOnlineEvalInput(
+        project,
         await config.projectManager.listTargets(project),
+        {
+          name: flags["name"],
+          agent: flags["agent"],
+          endpoint: flags["endpoint"],
+          logGroupNames: flags["log-group-name"],
+          serviceNames: flags["service-name"],
+          evaluators: flags["evaluators"],
+          samplingRate: flags["sampling-rate"],
+          description: flags["description"],
+          enableOnCreate:
+            flags["enable-on-create"] === undefined
+              ? undefined
+              : flags["enable-on-create"] === "true",
+          tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
+        },
       );
-
-      const candidate = {
-        name: flags["name"],
-        agent: flags["agent"],
-        endpoint: flags["endpoint"],
-        logGroupNames: flags["log-group-name"],
-        serviceNames: flags["service-name"],
-        evaluators: flags["evaluators"],
-        samplingRate: flags["sampling-rate"],
-        description: flags["description"],
-        enableOnCreate:
-          flags["enable-on-create"] === undefined
-            ? undefined
-            : flags["enable-on-create"] === "true",
-        tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
-      };
-
-      const parsed = OnlineEvalConfigSchema.safeParse(candidate);
-      if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
 
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "online-eval",
-          resourceConfig: parsed.data,
-        },
+        input,
         `added online-eval config '${flags["name"]}' to '${project.name}'`,
       );
     },

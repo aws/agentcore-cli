@@ -167,6 +167,28 @@ describe("project add online-eval", () => {
     );
   });
 
+  test("rejects an evaluator name that is not declared in the project", async () => {
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
+
+    await expectError(
+      run([
+        "add",
+        "online-eval",
+        "--name",
+        "x",
+        "--agent",
+        "agent",
+        "--evaluators",
+        "not_in_project",
+        "--sampling-rate",
+        "50",
+      ]),
+      'unknown evaluator "not_in_project"',
+      InputValidationError,
+    );
+  });
+
   test("rejects when the existing spec is invalid", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],

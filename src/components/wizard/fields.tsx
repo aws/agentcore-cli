@@ -336,6 +336,8 @@ export interface MultiChoiceFieldProps<T> {
   choices: Choice<T>[];
   value: T[];
   onChange: (value: T[]) => void;
+  minSelections?: number;
+  minSelectionsMessage?: string;
 }
 
 // MultiChoiceField answers with a subset of its choices, always ordered as the
@@ -345,9 +347,12 @@ export function MultiChoiceField<T>({
   choices,
   value,
   onChange,
+  minSelections = 0,
+  minSelectionsMessage,
 }: MultiChoiceFieldProps<T>) {
   const { advance, back, isLast } = useWizard();
   const [cursor, setCursor] = useState(0);
+  const [error, setError] = useState<string>();
 
   useKeyHints([
     { key: "↑↓", label: "navigate" },
@@ -376,22 +381,36 @@ export function MultiChoiceField<T>({
       onChange(
         choices.filter((choice) => selected.includes(choice.value)).map((choice) => choice.value),
       );
+      setError(undefined);
       return;
     }
-    if (key.return) advance();
+    if (key.return) {
+      if (value.length < minSelections) {
+        setError(
+          minSelectionsMessage ??
+            `Select at least ${minSelections} ${minSelections === 1 ? "option" : "options"}`,
+        );
+        return;
+      }
+      setError(undefined);
+      advance();
+    }
   });
 
   return (
-    <FormCheckboxMultiSelect
-      name=""
-      helpText={help}
-      options={choices.map((choice) => ({
-        label: choice.label,
-        description: choice.description ?? "",
-        checked: value.includes(choice.value),
-      }))}
-      cursorIndex={cursor}
-    />
+    <Box flexDirection="column">
+      <FormCheckboxMultiSelect
+        name=""
+        helpText={help}
+        options={choices.map((choice) => ({
+          label: choice.label,
+          description: choice.description ?? "",
+          checked: value.includes(choice.value),
+        }))}
+        cursorIndex={cursor}
+      />
+      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
+    </Box>
   );
 }
 
