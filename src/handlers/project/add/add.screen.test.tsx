@@ -31,6 +31,7 @@ const WITH_SCREENS = [
   "harness",
   "config-bundle",
   "payment-manager",
+  "payment-connector",
 ];
 
 describe("project add menu", () => {

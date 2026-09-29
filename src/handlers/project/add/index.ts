@@ -38,6 +38,7 @@ export function createAddProjectResourceHandler(
     "harness",
     "config-bundle",
     "payment-manager",
+    "payment-connector",
   );
   projectAdd.default(renderTui(core, config.io));
   // withProject first, so it is the outermost wrapper: a resource added outside
