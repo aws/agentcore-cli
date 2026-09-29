@@ -36,5 +36,10 @@ export {
 export { createSilentLogger, assertLogsMatch, type LogQuery } from "./logging";
 export { TestGlobalConfigAccessor } from "./globalConfig";
 export { inTempDirectory, type TempDirectory } from "./fs";
-export { initProject, type InitProjectOptions, type InitializedProject } from "./projects";
+export {
+  initProject,
+  inProjectCore,
+  type InitProjectOptions,
+  type InitializedProject,
+} from "./projects";
 export { expectError } from "./errors";

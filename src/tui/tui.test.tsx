@@ -1,13 +1,13 @@
 import { test, expect, describe } from "bun:test";
 import { Command } from "commander";
 import { createRootHandler } from "../handlers";
-import { ExitCode, InvalidEnvironmentError, ProjectStateError } from "../errors";
+import { ExitCode, InputValidationError, InvalidEnvironmentError } from "../errors";
 import { renderJson } from "./index";
 import { handoffArgs } from "./handoff";
 import type { Project } from "../handlers/project/types";
 import {
   createSilentLogger,
-  inTempDirectory,
+  inProjectCore,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -120,28 +120,30 @@ describe("TUI stream boundary", () => {
 
 describe("TUI handoff", () => {
   test("selecting dev closes the TUI and runs the dev command", async () => {
-    const { cleanup } = await inTempDirectory();
-    try {
-      const { streams, stdin } = ttyTestIO();
-      const root = createRootHandler(new TestCoreClient(), {
-        io: streams.io,
-        logger: createSilentLogger(),
-        globalConfigAccessor: new TestGlobalConfigAccessor(),
-      });
-      const routePromise = root.route(["node", "agentcore", "--region", "us-west-2"]);
-      await waitFor(() => streams.stdout().includes("type to choose a command"));
+    const core = new TestCoreClient();
+    core.projectManager.resolve = async () =>
+      ({
+        name: "test-project",
+        rootPath: process.cwd(),
+        spec: { runtimes: [] } as unknown as Project["spec"],
+      }) as Project;
+    const { streams, stdin } = ttyTestIO();
+    const root = createRootHandler(core, {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const routePromise = root.route(["node", "agentcore", "--region", "us-west-2"]);
+    await waitFor(() => streams.stdout().includes("type to choose a command"));
 
-      stdin.write("dev");
-      await waitFor(() => streams.stdout().includes("❯ dev"));
-      stdin.write("\r");
+    stdin.write("dev");
+    await waitFor(() => streams.stdout().includes("❯ dev"));
+    stdin.write("\r");
 
-      // Outside a project, dev's own project check is what fails: proof the
-      // TUI handed off to the dev command rather than showing its help.
-      const error = await routePromise.catch((error) => error);
-      expect(error).toBeInstanceOf(ProjectStateError);
-    } finally {
-      await cleanup();
-    }
+    // The project has no runtimes, so dev's own validation fails: proof the
+    // TUI handed off to the dev command rather than showing its help.
+    const error = await routePromise.catch((error) => error);
+    expect(error).toBeInstanceOf(InputValidationError);
   });
 
   test("carries over global flags given on the command line", async () => {
@@ -168,7 +170,7 @@ describe("TUI resize", () => {
 
   test("shrinking redraws once after resizing settles", async () => {
     const { streams, stdin } = ttyTestIO(120, 40);
-    const root = createRootHandler(new TestCoreClient(), {
+    const root = createRootHandler(inProjectCore(), {
       io: streams.io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -202,7 +204,7 @@ describe("TUI resize", () => {
 
   test("repaints when a shrink gesture returns to the cached size", async () => {
     const { streams, stdin } = ttyTestIO(100, 40);
-    const root = createRootHandler(new TestCoreClient(), {
+    const root = createRootHandler(inProjectCore(), {
       io: streams.io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -241,21 +243,35 @@ describe("TUI launch", () => {
       globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const routePromise = root.route(["node", "agentcore"]);
-    await waitFor(() => streams.stdout().includes("add project resources"));
+    await waitFor(() => streams.stdout().includes("read/write global config values"));
     stdin.write(String.fromCharCode(3));
     await routePromise;
     return streams.stdout();
   }
 
-  test("the first frame outside a project already carries the banner", async () => {
+  test("outside a project the first frame shows create under the banner and hides project commands and eval", async () => {
     const out = await launchRootMenu(undefined);
     expect(out.indexOf(BANNER)).toBeGreaterThan(-1);
     expect(out.indexOf(BANNER)).toBeLessThan(out.indexOf(CREATE_ROW));
+    for (const hidden of [
+      "add project resources",
+      "deploy the project to AWS",
+      "evaluate and optimize",
+    ]) {
+      expect(out).not.toContain(hidden);
+    }
   });
 
-  test("create is never drawn inside a project", async () => {
+  test("inside a project create is never drawn and the rest of the menu is", async () => {
     const out = await launchRootMenu({} as Project);
     expect(out).not.toContain(CREATE_ROW);
     expect(out).not.toContain(BANNER);
+    for (const shown of [
+      "add project resources",
+      "deploy the project to AWS",
+      "evaluate and optimize",
+    ]) {
+      expect(out).toContain(shown);
+    }
   });
 });

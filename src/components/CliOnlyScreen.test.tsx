@@ -7,6 +7,7 @@ import {
   menuEntries,
   renderScreen,
   waitForText,
+  inProjectCore,
 } from "../testing";
 import { CommandKey, isTuiCommandSupported } from "../router";
 
@@ -38,12 +39,11 @@ const CLI_ONLY = cliOnlyCommands();
 
 describe("menus list command-line-only subcommands below a divider", () => {
   test("the root menu", async () => {
-    const r = renderScreen("/agentcore");
+    const r = renderScreen("/agentcore", { core: inProjectCore() });
 
-    await waitForText(r.lastFrame, "── cli ");
+    await waitForText(r.lastFrame, "❯ add");
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [
-        "create",
         "add",
         "remove",
         "dev",
@@ -124,7 +124,7 @@ describe("every command-line-only command opens on screen", () => {
   test.each(CLI_ONLY.map(([path, command]) => [path.join(" "), path, command] as const))(
     "%s opens its menu or help, and esc returns to the parent",
     async (_label, path, command) => {
-      const r = renderScreen("/" + path.join("/"));
+      const r = renderScreen("/" + path.join("/"), { core: inProjectCore() });
       // Wide and tall enough that no option term wraps and nothing is below the
       // fold; scrolling and wrapping have their own tests.
       await r.resize(220, 200);

@@ -8,8 +8,9 @@ import type { ScreenProps } from "./types";
 import { useProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
-const NO_PROJECT_BANNER = "No project detected - create a new project to get started";
+const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
 const PROJECT_HIDDEN_OPTIONS = ["create"];
+const NO_PROJECT_HIDDEN_OPTIONS = ["eval"];
 
 export function RootScreen(props: ScreenProps) {
   const projectDetected = useProjectDetected(props.core);
@@ -21,8 +22,14 @@ export function RootScreen(props: ScreenProps) {
       banner={<BrandBanner />}
       path={["agentcore"]}
       optionHints={noProjectDetected ? NO_PROJECT_HINTS : undefined}
-      alert={noProjectDetected ? NO_PROJECT_BANNER : undefined}
-      hiddenOptions={projectDetected ? PROJECT_HIDDEN_OPTIONS : undefined}
+      alert={noProjectDetected ? NO_PROJECT_ALERT : undefined}
+      hiddenOptions={
+        projectDetected
+          ? PROJECT_HIDDEN_OPTIONS
+          : noProjectDetected
+            ? NO_PROJECT_HIDDEN_OPTIONS
+            : undefined
+      }
     />
   );
 }

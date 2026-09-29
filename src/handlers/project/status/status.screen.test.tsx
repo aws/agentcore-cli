@@ -306,6 +306,7 @@ describe("project status screen", () => {
 
   test("several targets: asks which, keeps the choice and its region across a detail page, esc returns to the choice, and a menu unpins", async () => {
     const value = core(RUNTIME_RESOURCES, [TARGET, STAGING]);
+    value.projectManager.resolve = async () => RUNTIME_PROJECT;
     const screen = renderStatus(value);
 
     await waitForText(screen.lastFrame, "choose a deployment target");

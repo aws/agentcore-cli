@@ -156,13 +156,15 @@ function CommandMenu({
     const actualNames = new Set(actual.map((option) => option.name));
     const tuiOnly = tuiOnlyCommands
       .filter((option) => !actualNames.has(option.name))
-      .map((option) => ({ ...option, hint: optionHints?.[option.name], cliOnly: false }));
+      .map((option): Option => ({ ...option, hint: optionHints?.[option.name], cliOnly: false }));
     return [
       ...tuiOnly,
       ...actual.filter((option) => !option.cliOnly),
       ...actual.filter((option) => option.cliOnly),
-    ].filter((option) => !hiddenOptions?.includes(option.name));
-  }, [command, optionHints, hiddenOptions, tuiOnlyCommands]);
+    ].filter(
+      (option) => !hiddenOptions?.includes(option.name) && !(option.projectRequired && noProject),
+    );
+  }, [command, optionHints, hiddenOptions, noProject, tuiOnlyCommands]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -246,7 +248,6 @@ function CommandMenu({
           highlight={highlight}
           isRawModeSupported={Boolean(isRawModeSupported)}
           nameWidth={nameWidth}
-          noProject={noProject}
           query={query}
           onQueryChange={(value) => {
             setQuery(value);
@@ -266,7 +267,6 @@ interface CommandMenuBodyProps {
   highlight: number;
   isRawModeSupported: boolean;
   nameWidth: number;
-  noProject: boolean;
   query: string;
   onQueryChange: (value: string) => void;
 }
@@ -286,7 +286,6 @@ function CommandMenuBody({
   highlight,
   isRawModeSupported,
   nameWidth,
-  noProject,
   query,
   onQueryChange,
 }: CommandMenuBodyProps) {
@@ -355,7 +354,7 @@ function CommandMenuBody({
                   color={
                     isHighlighted
                       ? theme.colors.focus
-                      : option.cliOnly || (option.projectRequired && noProject)
+                      : option.cliOnly
                         ? theme.colors.muted
                         : theme.colors.text
                   }

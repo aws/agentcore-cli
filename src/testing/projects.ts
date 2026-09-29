@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { createRootHandler, type RootHandlerConfig } from "../handlers";
 import type { Core } from "../handlers/types";
+import type { Project } from "../handlers/project/types";
 import { inTempDirectory } from "./fs";
 import { createSilentLogger } from "./logging";
 import { testIO } from "./testIO";
@@ -59,4 +60,10 @@ export async function initProject(options: InitProjectOptions = {}): Promise<Ini
     await cleanup();
     throw error;
   }
+}
+
+export function inProjectCore(): TestCoreClient {
+  const core = new TestCoreClient();
+  core.projectManager.resolve = async () => ({}) as Project;
+  return core;
 }
