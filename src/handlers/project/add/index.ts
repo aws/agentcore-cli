@@ -31,6 +31,7 @@ export function createAddProjectResourceHandler(
     "runtime",
     "memory",
     "gateway",
+    "gateway-target",
   );
   projectAdd.default(renderTui(core, config.io));
   // withProject first, so it is the outermost wrapper: a resource added outside

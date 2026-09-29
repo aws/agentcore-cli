@@ -157,6 +157,46 @@ export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFi
   );
 }
 
+export interface ResourceChoiceFieldProps<T> extends ChoiceFieldProps<T> {
+  // What the step says when the project has none of the resource yet: what is
+  // missing, and (in the hint) the command that adds one.
+  emptyMessage: string;
+  emptyHint?: string;
+}
+
+// ResourceChoiceField is a ChoiceField whose options come from the project
+// spec. What it adds is the empty state: a project without the resource is the
+// most likely first run, and the step should say what to add and let esc leave
+// — to the add menu when this is the first step — rather than draw an empty list.
+export function ResourceChoiceField<T>({
+  emptyMessage,
+  emptyHint,
+  ...choice
+}: ResourceChoiceFieldProps<T>) {
+  if (choice.choices.length === 0) {
+    return <EmptyResources message={emptyMessage} hint={emptyHint} />;
+  }
+  return <ChoiceField {...choice} />;
+}
+
+function EmptyResources({ message, hint }: { message: string; hint?: string }) {
+  const { back } = useWizard();
+
+  // Nothing to choose, so enter has nothing to do; the footer offers esc only.
+  useKeyHints([]);
+
+  useInput((_input, key) => {
+    if (key.escape) back();
+  });
+
+  return (
+    <Box flexDirection="column">
+      <Text color={theme.colors.text}>{message}</Text>
+      {hint !== undefined && <Text color={theme.colors.muted}>{hint}</Text>}
+    </Box>
+  );
+}
+
 export interface MultiChoiceFieldProps<T> {
   help?: string;
   choices: Choice<T>[];

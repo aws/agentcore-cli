@@ -7,7 +7,14 @@ import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
 import { AgentCoreCLIError } from "../../errors";
 import { Wizard, type WizardSubmitResult } from "./Wizard";
 import { Step } from "./Step";
-import { ChoiceField, MultiChoiceField, Summary, TextField } from "./fields";
+import {
+  ChoiceField,
+  MultiChoiceField,
+  ResourceChoiceField,
+  Summary,
+  TextField,
+  type Choice,
+} from "./fields";
 
 afterEach(cleanupScreens);
 
@@ -436,6 +443,95 @@ describe("MultiChoiceField and numeric TextField", () => {
     await d.press("return");
 
     await waitFor(() => (d.lastFrame() ?? "").includes("Days must be a whole number"), 1000);
+    d.unmount();
+  });
+});
+
+// ResourceChoiceField is a ChoiceField over the project spec; what these cover
+// is the empty state a project without the resource lands on.
+describe("ResourceChoiceField", () => {
+  function driveResources(choices: Choice<string>[], onCancel: () => void) {
+    function Harness() {
+      const [gateway, setGateway] = useState(choices[0]?.value ?? "");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={onCancel}
+          onSubmit={async () => {}}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="gateway" prompt="which Gateway?">
+            <ResourceChoiceField
+              choices={choices}
+              value={gateway}
+              onChange={setGateway}
+              emptyMessage="no Gateways in this project"
+              emptyHint="add one with  agentcore add gateway"
+            />
+          </Step>
+          <Step stepKey="review" prompt="review">
+            <Summary items={{ picked: gateway }} />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("with nothing to choose it names what is missing and esc leaves", async () => {
+    let cancelled = false;
+    const d = driveResources([], () => {
+      cancelled = true;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("no Gateways in this project"), 1000);
+    expect(d.lastFrame()).toContain("add one with  agentcore add gateway");
+    // Only esc is on offer: enter has nothing to select. The field publishes
+    // its hints after the first paint, so wait for the default enter hint to go.
+    await waitFor(() => !(d.lastFrame() ?? "").includes("[enter]"), 1000);
+    expect(d.lastFrame()).toContain("[esc] back");
+
+    await d.press("return");
+    expect(d.lastFrame()).toContain("no Gateways in this project");
+    expect(cancelled).toBe(false);
+
+    await d.press("escape");
+    await waitFor(() => cancelled, 1000);
+    d.unmount();
+  });
+
+  test("with resources it is a choice over them", async () => {
+    const d = driveResources(
+      [
+        { value: "tools", label: "tools", description: "the first" },
+        { value: "payments", label: "payments", description: "the second" },
+      ],
+      () => {},
+    );
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● tools"), 1000);
+    expect(d.lastFrame()).not.toContain("no Gateways");
+    await d.press("down");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("picked"), 1000);
+    expect(d.lastFrame()).toContain("payments");
     d.unmount();
   });
 });
