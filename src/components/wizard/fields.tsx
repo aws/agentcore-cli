@@ -163,12 +163,12 @@ export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFi
   );
 }
 
-export interface ResourceChoiceFieldProps<T> extends ChoiceFieldProps<T> {
+export type ResourceChoiceFieldProps<T> = ChoiceFieldProps<T> & {
   // What the step says when the project has none of the resource yet: what is
   // missing, and (in the hint) the command that adds one.
   emptyMessage: string;
   emptyHint?: string;
-}
+};
 
 // ResourceChoiceField is a ChoiceField whose options come from the project
 // spec. What it adds is the empty state: a project without the resource is the
@@ -185,10 +185,10 @@ export function ResourceChoiceField<T>({
   return <ChoiceField {...choice} />;
 }
 
-export interface ResourceEmptyStateProps {
+export type ResourceEmptyStateProps = {
   message: string;
   hint?: string;
-}
+};
 
 // ResourceEmptyState is the step a project without the resource lands on. It is
 // exported for compound fields over a resource list — one that opens an input
@@ -212,7 +212,7 @@ export function ResourceEmptyState({ message, hint }: ResourceEmptyStateProps) {
   );
 }
 
-export interface RevealedInput<T> {
+export type RevealedInput<T> = {
   // opensFor says which rows have the follow-up: enter on one of them opens the
   // input; on any other row, enter continues.
   opensFor: (value: T) => boolean;
@@ -227,11 +227,11 @@ export interface RevealedInput<T> {
   onChange: (value: string) => void;
   required?: boolean;
   schema?: z.ZodType;
-}
+};
 
-export interface RevealChoiceFieldProps<T> extends ChoiceFieldProps<T> {
+export type RevealChoiceFieldProps<T> = ChoiceFieldProps<T> & {
   input: RevealedInput<T>;
-}
+};
 
 // RevealChoiceField is a ChoiceField where some rows have a follow-up question:
 // enter on such a row opens one text input under the rows, the way the harness
@@ -272,7 +272,10 @@ export function RevealChoiceField<T>({
         return;
       }
       if (key.return) {
-        if (input.opensFor(choices[index]!.value)) setEditing(true);
+        // With nothing to choose there is nothing to open; continue rather than
+        // throw, though callers show a ResourceEmptyState before it comes to that.
+        const current = choices[index];
+        if (current !== undefined && input.opensFor(current.value)) setEditing(true);
         else advance();
       }
       return;

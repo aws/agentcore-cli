@@ -35,14 +35,14 @@ export type OutboundAuthInput = {
 
 // The two shortcut Targets: an MCP server at an HTTPS endpoint, or a Runtime
 // declared in this project. Exactly one of endpoint and runtime is set.
-export interface GatewayTargetShortcutInput {
+export type GatewayTargetShortcutInput = {
   gateway: string;
   name: string;
   endpoint?: string;
   runtime?: string;
   runtimeEndpoint?: string;
   outboundAuth: OutboundAuthInput;
-}
+};
 
 // toAddGatewayTargetInput builds the Target both shortcut entry points produce —
 // the flags, or the wizard's answers — including the credential lookup and

@@ -17,7 +17,7 @@ import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
-import { authChoices, splitScopes } from "./screen";
+import { authChoices, toGatewayTargetInput } from "./screen";
 
 const ENDPOINT = "https://mcp.example.com";
 const OAUTH_CREDENTIAL = {
@@ -86,9 +86,20 @@ describe("gateway-target wizard helpers", () => {
     expect(authChoices("runtime").map((choice) => choice.value)).toEqual(["iam", "oauth"]);
   });
 
-  test("splits scopes on spaces and commas", () => {
-    expect(splitScopes("read, write  admin")).toEqual(["read", "write", "admin"]);
-    expect(splitScopes("  ")).toEqual([]);
+  test("splits scopes on spaces and commas, and leaves them out when blank", () => {
+    const values = {
+      gateway: "tools",
+      kind: "endpoint" as const,
+      endpoint: ENDPOINT,
+      runtime: "",
+      runtimeEndpoint: undefined,
+      name: "secure",
+      auth: "oauth" as const,
+      credential: "oauth",
+      scopes: "read, write  admin",
+    };
+    expect(toGatewayTargetInput(values).outboundAuth.scopes).toEqual(["read", "write", "admin"]);
+    expect(toGatewayTargetInput({ ...values, scopes: "  " }).outboundAuth.scopes).toBeUndefined();
   });
 });
 
