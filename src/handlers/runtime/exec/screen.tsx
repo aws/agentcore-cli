@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { useEffect, useRef, useState } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useWindowSize } from "../../../components/ui/useWindowSize";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";

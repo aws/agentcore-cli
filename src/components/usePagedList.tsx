@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWindowSize } from "ink";
+import { useWindowSize } from "./ui/useWindowSize";
 
 // CHROME_ROWS is everything a picker screen renders around the table rows:
 // the Layout header and footer (2 each), the DataTable column-header row and

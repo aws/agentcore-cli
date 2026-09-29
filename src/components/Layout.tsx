@@ -1,5 +1,6 @@
 import React from "react";
-import { Box, useWindowSize } from "ink";
+import { Box } from "ink";
+import { useWindowSize } from "./ui/useWindowSize";
 import { Header, type HeaderProps } from "./Header";
 import { Footer } from "./Footer";
 import type { KeyHintProps } from "./ui/key-hint";

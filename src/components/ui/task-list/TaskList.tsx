@@ -1,5 +1,6 @@
 import React from "react";
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text } from "ink";
+import { useWindowSize } from "../useWindowSize";
 import cliTruncate from "cli-truncate";
 import { darkTheme, glyphs } from "../_core.js";
 import type { InkUITheme } from "../_core.js";

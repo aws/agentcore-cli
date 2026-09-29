@@ -409,8 +409,29 @@ describe("short terminals", () => {
     expectConsistentWindow(r.lastFrame()!, full);
     expect(r.lastFrame()).toContain("❯ harness");
 
-    await r.resize(100, 7);
+    // The banner, header, filter, and footer leave the list a single row.
+    await r.resize(100, 11);
     expect(r.lastFrame()).toContain("❯ harness");
+    r.unmount();
+  });
+
+  test("a nested menu, without the banner, uses the rows the banner would take", async () => {
+    const r = renderScreen("/agentcore/harness");
+    await waitForText(r.lastFrame, "❯ ");
+    const full = menuGroups(r.lastFrame()!).flatMap((group) => group.names);
+
+    await r.resize(100, 7);
+    for (let i = 0; i < full.length; i++) {
+      if (i > 0) await r.press("down");
+      await waitForText(r.lastFrame, `❯ ${full[i]}`);
+      expect(r.lastFrame()!.split("\n")).toHaveLength(7);
+    }
+
+    await r.resize(100, ROWS);
+    const frame = r.lastFrame()!;
+    const visible = menuGroups(frame).flatMap((group) => group.names);
+    expect(visible.length + (more(frame, "↑") ?? 0)).toBe(full.length);
+    expect(frame).toContain(`❯ ${full[full.length - 1]}`);
     r.unmount();
   });
 });

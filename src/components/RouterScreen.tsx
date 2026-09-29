@@ -1,5 +1,6 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
-import { Box, Text, useApp, useInput, useStdin, useWindowSize } from "ink";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Box, Text, measureElement, useApp, useInput, useStdin, type DOMElement } from "ink";
+import { useWindowSize } from "./ui/useWindowSize";
 import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
 import {
@@ -19,10 +20,6 @@ import { useScrollWindow } from "./scrollWindow";
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
 const CLI_ONLY_SECTION = "cli";
-// MENU_CHROME_ROWS is everything the menu screen renders around the option
-// list: the Layout header and footer (2 each), the filter input, and the
-// divider under it.
-const MENU_CHROME_ROWS = 6;
 
 // rootCommand walks up to the top of the Commander tree.
 function rootCommand(c: Command): Command {
@@ -155,9 +152,20 @@ function CommandMenu({
   // match is index 0, which is what a fresh query resets to.
   const highlight = Math.min(index, Math.max(0, filtered.length - 1));
 
-  const { rows } = useWindowSize();
+  // The list gets whatever height the screen leaves it (the root menu adds a
+  // banner, a long header can wrap), so measure it whenever the terminal
+  // changes size rather than subtracting a fixed count of chrome rows. The
+  // list fills that space whatever it holds, so its contents don't matter.
+  // Until the first measurement the list is clipped to the terminal height.
+  const { columns, rows } = useWindowSize();
+  const listRef = useRef<DOMElement>(null);
+  const [listRows, setListRows] = useState<number>();
+  useEffect(() => {
+    if (!listRef.current) return;
+    setListRows(measureElement(listRef.current).height);
+  }, [columns, rows]);
   const sections = useMemo(() => filtered.map((o) => o.section), [filtered]);
-  const view = useScrollWindow(sections, highlight, rows - MENU_CHROME_ROWS);
+  const view = useScrollWindow(sections, highlight, listRows ?? rows);
 
   const base = "/" + path.join("/");
 
@@ -216,10 +224,10 @@ function CommandMenu({
         { key: "ctrl+c", label: "quit" },
       ]}
     >
-      <Box flexDirection="column" flexShrink={1} minHeight={0} overflow="hidden">
+      <Box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
         {/* Filter input. TextInput owns text editing; the highlight resets to
             the best match whenever the query changes. */}
-        <Box paddingX={1} minHeight={0}>
+        <Box paddingX={1} flexShrink={0}>
           <TextInput
             value={query}
             onChange={(v) => {
@@ -235,7 +243,14 @@ function CommandMenu({
         <Divider />
 
         {/* Options */}
-        <Box flexDirection="column" flexShrink={0}>
+        <Box
+          ref={listRef}
+          flexDirection="column"
+          flexGrow={1}
+          flexShrink={1}
+          minHeight={0}
+          overflow="hidden"
+        >
           {filtered.length === 0 ? (
             <Box paddingX={1} flexShrink={0}>
               <Text color={theme.colors.text}>No matches</Text>

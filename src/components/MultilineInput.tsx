@@ -1,6 +1,7 @@
 import { useState } from "react";
 import cliTruncate from "cli-truncate";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useWindowSize } from "./ui/useWindowSize";
 import { darkTheme } from "./ui/_core.js";
 
 const theme = darkTheme;
