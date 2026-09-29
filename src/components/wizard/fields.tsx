@@ -25,16 +25,20 @@ interface ValidateOptions {
   // number validates the number the answer parses to rather than the text, so a
   // numeric flag's own schema can bound the field.
   number?: boolean;
+  decimal?: boolean;
 }
 
 function validateEntry(
   value: string,
-  { label, required, schema, number = false }: ValidateOptions,
+  { label, required, schema, number = false, decimal = false }: ValidateOptions,
 ): string | undefined {
   if (value.trim() === "") return required ? `${label} is required` : undefined;
   if (number && !/^\d+$/.test(value)) return `${label} must be a whole number`;
+  if (decimal && !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) {
+    return `${label} must be a number`;
+  }
   if (!schema) return undefined;
-  return firstIssue(schema, number ? Number(value) : value);
+  return firstIssue(schema, number || decimal ? Number(value) : value);
 }
 
 export interface TextFieldProps {
@@ -47,6 +51,7 @@ export interface TextFieldProps {
   schema?: z.ZodType;
   live?: boolean;
   number?: boolean;
+  decimal?: boolean;
 }
 
 export function TextField({
@@ -59,6 +64,7 @@ export function TextField({
   schema,
   live = false,
   number = false,
+  decimal = false,
 }: TextFieldProps) {
   const { advance, back, isLast } = useWizard();
   const [error, setError] = useState<string>();
@@ -72,7 +78,7 @@ export function TextField({
     }
     if (!key.return) return;
 
-    const issue = validateEntry(value, { label, required, schema, number });
+    const issue = validateEntry(value, { label, required, schema, number, decimal });
     if (issue !== undefined) {
       setError(issue);
       return;
@@ -93,7 +99,7 @@ export function TextField({
           onChange(next);
           setError(
             live && next.trim() !== ""
-              ? validateEntry(next, { label, required, schema, number })
+              ? validateEntry(next, { label, required, schema, number, decimal })
               : undefined,
           );
         }}

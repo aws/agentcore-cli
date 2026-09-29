@@ -6,6 +6,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { darkTheme, glyphs } from "../../components/ui/_core.js";
 import { ProjectStateError } from "../../errors/errors";
 import { projectNotFoundMessage } from "../../middleware/withProject";
+import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { Core } from "../types";
 import type { Project } from "./types";
 
@@ -32,6 +33,20 @@ export function useProject(core: Core, seed?: Project): UseQueryResult<Project> 
     // A seeded project is authoritative — it is what the launching command ran
     // against — so it is never refetched from the cwd.
     ...(seed && { initialData: seed, staleTime: Infinity }),
+  });
+}
+
+export function projectTargetsQueryKey(project: Project) {
+  return ["project-targets", project.rootPath] as const;
+}
+
+export function useProjectTargets(
+  core: Core,
+  project: Project,
+): UseQueryResult<readonly AwsDeploymentTarget[]> {
+  return useQuery({
+    queryKey: projectTargetsQueryKey(project),
+    queryFn: () => core.projectManager.listTargets(project),
   });
 }
 
