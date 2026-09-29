@@ -14,7 +14,7 @@ on:
 jobs:
   check-release:
     if: "!github.event.deleted"
-    runs-on: ubuntu-latest
+    runs-on: ["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "verify-linux"]
     permissions:
       pull-requests: read
     outputs:
@@ -53,8 +53,9 @@ jobs:
 
   publish:
     needs: verify
-    # npm provenance is only issued from GitHub-hosted runners.
-    runs-on: ubuntu-latest
+    # Trusted publishing works from this runner, provenance would not: npm only signs
+    # provenance on GitHub-hosted runners, and the org's hosted pool never picks this repo up.
+    runs-on: ["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "verify-linux"]
     environment:
       name: npm-publish
       url: https://www.npmjs.com/package/@aws/agentcore
@@ -113,7 +114,7 @@ jobs:
           if npm view "@aws/agentcore@$VERSION" version >/dev/null 2>&1; then
             echo "@aws/agentcore@$VERSION is already on npm, skipping publish"
           else
-            npm publish "$TARBALL" --provenance --access public --tag "$DIST_TAG"
+            npm publish "$TARBALL" --access public --tag "$DIST_TAG"
           fi
 
       - env:
