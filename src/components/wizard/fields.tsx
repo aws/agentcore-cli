@@ -31,19 +31,30 @@ interface ValidateOptions {
   // numeric flag's own schema can bound the field.
   number?: boolean;
   decimal?: boolean;
+  // json parses the value before the schema sees it, so a malformed blob is
+  // reported as bad JSON rather than as a shape the schema cannot read.
+  json?: boolean;
 }
 
 function validateEntry(
   value: string,
-  { label, required, schema, number = false, decimal = false }: ValidateOptions,
+  { label, required, schema, number = false, decimal = false, json = false }: ValidateOptions,
 ): string | undefined {
   if (value.trim() === "") return required ? `${label} is required` : undefined;
   if (number && !/^\d+$/.test(value)) return `${label} must be a whole number`;
   if (decimal && !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) {
     return `${label} must be a number`;
   }
+  let parsed: unknown = number || decimal ? Number(value) : value;
+  if (json) {
+    try {
+      parsed = JSON.parse(value);
+    } catch (cause) {
+      return `${label} is not valid JSON: ${(cause as Error).message}`;
+    }
+  }
   if (!schema) return undefined;
-  return firstIssue(schema, number || decimal ? Number(value) : value);
+  return firstIssue(schema, parsed);
 }
 
 export interface TextFieldProps {
@@ -122,7 +133,15 @@ export interface TextAreaFieldProps {
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
+  // schema validates the parsed JSON when `json` is set, and the raw text
+  // otherwise — the same rules TextField applies.
   schema?: z.ZodType;
+  // json parses the value before validating it and reports malformed JSON.
+  json?: boolean;
+  // example is a dimmed line above the editor, kept on screen while the user
+  // types. A placeholder cannot do this job — it disappears on the first
+  // keystroke, exactly when a fiddly value most needs a shape to copy from.
+  example?: string;
 }
 
 // TextAreaField collects a value that arrives multi-line: an agent's
@@ -140,6 +159,8 @@ export function TextAreaField({
   onChange,
   required = false,
   schema,
+  json = false,
+  example,
 }: TextAreaFieldProps) {
   const { advance, back, isLast } = useWizard();
   const [error, setError] = useState<string>();
@@ -157,7 +178,7 @@ export function TextAreaField({
     const continues = (key.ctrl && input === "d") || (key.return && value === "");
     if (!continues) return;
 
-    const issue = validateEntry(value, { label, required, schema });
+    const issue = validateEntry(value, { label, required, schema, json });
     if (issue !== undefined) {
       setError(issue);
       return;
@@ -168,6 +189,7 @@ export function TextAreaField({
 
   return (
     <Box flexDirection="column">
+      {example !== undefined && <Text color={theme.colors.muted}>{`for example  ${example}`}</Text>}
       <FormTextArea
         name=""
         helpText={help}

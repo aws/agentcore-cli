@@ -29,6 +29,7 @@ const WITH_SCREENS = [
   "online-eval",
   "online-insight",
   "harness",
+  "config-bundle",
 ];
 
 describe("project add menu", () => {

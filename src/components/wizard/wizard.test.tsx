@@ -868,6 +868,109 @@ describe("TextAreaField", () => {
   });
 });
 
+// The json and example options belong to a TextAreaField that collects a pasted
+// blob: the value is parsed before the schema sees it, and the shape to copy
+// stays on screen while it is typed.
+describe("TextAreaField with json", () => {
+  const EXAMPLE = '{"ok": true}';
+
+  function driveJson(onSubmit: (blob: string) => void) {
+    function Harness() {
+      const [blob, setBlob] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => onSubmit(blob)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="blob" prompt="paste the configuration">
+            <TextAreaField
+              label="Configuration"
+              example={EXAMPLE}
+              value={blob}
+              onChange={setBlob}
+              required
+              json
+              schema={z.object({ ok: z.boolean() })}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("malformed JSON is reported as such, not as a schema failure", async () => {
+    let submitted: string | undefined;
+    const d = driveJson((blob) => {
+      submitted = blob;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("paste the configuration"), 1000);
+    await d.write('{"ok":');
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Configuration is not valid JSON"), 1000);
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("well-formed JSON the schema rejects names the path", async () => {
+    let submitted: string | undefined;
+    const d = driveJson((blob) => {
+      submitted = blob;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("paste the configuration"), 1000);
+    await d.write('{"ok": "yes"}');
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("ok: Invalid input"), 1000);
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("the example stays on screen while typing, and a valid value submits", async () => {
+    let submitted: string | undefined;
+    const d = driveJson((blob) => {
+      submitted = blob;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes(`for example  ${EXAMPLE}`), 1000);
+    await d.write('{"ok":');
+    expect(d.lastFrame()).toContain(`for example  ${EXAMPLE}`);
+    await d.press("return");
+    await d.write("true}");
+    await d.press("ctrl+d");
+
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe('{"ok":\ntrue}');
+    d.unmount();
+  });
+});
+
 describe("Wizard authoring guards", () => {
   // Ink's own render rather than ink-testing-library: a render-time throw
   // reaches Ink's error boundary and rejects waitUntilExit, which the testing
