@@ -8,8 +8,30 @@ import {
 } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
+import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
+
+// The curated-connector shortcut as the flags state it: which connector, and
+// for bedrock-knowledge-bases, which Knowledge Base.
+export interface GatewayConnectorShortcutInput {
+  gateway: string;
+  name: string;
+  connector: ConnectorId;
+  knowledgeBase?: string;
+}
+
+// toAddGatewayConnectorInput builds the Target both shortcut entry points
+// produce — the flags, or the wizard's answers — so both write the same
+// connector configuration. The full --connector-configuration path bypasses
+// it on purpose.
+export function toAddGatewayConnectorInput(input: GatewayConnectorShortcutInput): AddResourceInput {
+  return {
+    resourceType: "gateway-target",
+    gatewayName: input.gateway,
+    resourceConfig: connectorTargetFromShortcut(input.name, input.connector, input.knowledgeBase),
+  };
+}
 
 export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -60,10 +82,10 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
       }
 
       const project = ctx.require(ProjectKey);
-      let target: AgentCoreGatewayTarget;
+      let input: AddResourceInput;
       if (usesConfiguration) {
         const source = new SourceResolver({ stdin: config.io.stdin });
-        target = parseJsonFlagWithSchema(
+        const target = parseJsonFlagWithSchema(
           "connector-configuration",
           await source.resolveText("connector-configuration", flags["connector-configuration"]),
           AgentCoreGatewayTargetSchema,
@@ -73,24 +95,26 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
             '--connector-configuration must have targetType: "connector"',
           );
         }
+        input = {
+          resourceType: "gateway-target",
+          gatewayName: flags.gateway,
+          resourceConfig: target,
+        };
       } else {
-        target = connectorTargetFromShortcut(
-          flags.name!,
-          flags.connector!,
-          flags["knowledge-base"],
-        );
+        input = toAddGatewayConnectorInput({
+          gateway: flags.gateway,
+          name: flags.name!,
+          connector: flags.connector!,
+          knowledgeBase: flags["knowledge-base"],
+        });
       }
 
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "gateway-target",
-          gatewayName: flags.gateway,
-          resourceConfig: target,
-        },
-        `added Connector Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
+        input,
+        `added Connector Target '${input.resourceConfig.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
         { resourceType: "gateway-connector" },
       );
     },
