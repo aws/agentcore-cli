@@ -14,12 +14,12 @@ import { addProjectResource } from "../shared";
 
 // The curated-connector shortcut as the flags state it: which connector, and
 // for bedrock-knowledge-bases, which Knowledge Base.
-export interface GatewayConnectorShortcutInput {
+export type GatewayConnectorShortcutInput = {
   gateway: string;
   name: string;
   connector: ConnectorId;
   knowledgeBase?: string;
-}
+};
 
 // toAddGatewayConnectorInput builds the Target both shortcut entry points
 // produce — the flags, or the wizard's answers — so both write the same

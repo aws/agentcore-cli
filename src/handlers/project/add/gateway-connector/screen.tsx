@@ -63,7 +63,7 @@ function gatewayChoices(gateways: readonly AgentCoreGateway[]): Choice<string>[]
   }));
 }
 
-interface GatewayConnectorFormValues {
+type GatewayConnectorFormValues = {
   gateway: string;
   connector: ConnectorId;
   knowledgeBase: string;
@@ -71,7 +71,7 @@ interface GatewayConnectorFormValues {
   // The name is prefilled with the connector's name and follows it until the
   // user edits it; after that it is theirs.
   nameEdited: boolean;
-}
+};
 
 // toGatewayConnectorInput is the answers as the flag path would state them; the
 // shared builder then writes exactly what `--connector` writes.
