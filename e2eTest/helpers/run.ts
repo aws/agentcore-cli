@@ -15,17 +15,16 @@ function requireEnv(key: string): string {
   return value;
 }
 
-/** Given a command argument, returns a shell-safe representation for the current platform. */
-function quoteShellArg(value: string): string {
-  if (process.platform === "win32") {
-    return `"${value.replaceAll('"', '\\"')}"`;
-  }
-  return `'${value.replaceAll("'", "'\\''")}'`;
+/** Given a whitespace-separated command, returns its executable and leading arguments. */
+function parseCommand(value: string): { executable: string; baseArgs: string[] } {
+  const [executable, ...baseArgs] = value.trim().split(/\s+/);
+  if (!executable) throw new Error("AGENTCORE_CLI_PATH is empty");
+  return { executable, baseArgs };
 }
 
 /** Minimal abstraction to handle the running of CLI commands **/
 export class CliRunner {
-  private readonly command = requireEnv("AGENTCORE_CLI_PATH");
+  private readonly command = parseCommand(requireEnv("AGENTCORE_CLI_PATH"));
 
   /** Given arguments and a working directory, runs the CLI and captures its result. */
   run(args: string[], cwd: string): Promise<RunResult> {
@@ -42,11 +41,9 @@ export class CliRunner {
 
   /** Given arguments and a working directory, starts the CLI and returns its child process. */
   start(args: string[], cwd: string) {
-    const command = [this.command, ...args.map(quoteShellArg)].join(" ");
-    return spawn(command, {
+    return spawn(this.command.executable, [...this.command.baseArgs, ...args], {
       cwd,
       env: { ...process.env, AGENTCORE_TELEMETRY_DISABLED: "1", FORCE_COLOR: "0" },
-      shell: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
   }
