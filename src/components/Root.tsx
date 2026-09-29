@@ -137,6 +137,7 @@ import { AddOnlineEvalScreen } from "../handlers/project/add/online-eval/screen.
 import { AddOnlineInsightScreen } from "../handlers/project/add/online-insight/screen.tsx";
 import { AddHarnessScreen } from "../handlers/project/add/harness/screen.tsx";
 import { AddConfigBundleScreen } from "../handlers/project/add/config-bundle/screen.tsx";
+import { AddPaymentManagerScreen } from "../handlers/project/add/payment-manager/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
@@ -924,6 +925,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/add/config-bundle"
         element={<AddConfigBundleScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/add/payment-manager"
+        element={<AddPaymentManagerScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/remove" element={<ProjectRemoveScreen ctx={ctx} core={core} />} />
       <Route

@@ -4,11 +4,79 @@ import {
   DEFAULT_AUTO_PAYMENT,
   DEFAULT_SPEND_LIMIT,
   PaymentAuthorizerTypeSchema,
+  PaymentManagerSchema,
   PaymentSpendLimitSchema,
+  type PaymentAuthorizerType,
 } from "../../../../projectSchemas/payment";
 import { createHandler, flag, ProjectKey } from "../../../../router";
+import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
+
+export type PaymentManagerInput = {
+  name: string;
+  authorizerType?: PaymentAuthorizerType;
+  discoveryUrl?: string;
+  allowedClients?: string[];
+  allowedAudience?: string[];
+  allowedScopes?: string[];
+  description?: string;
+  autoPayment?: boolean;
+  defaultSpendLimit?: string;
+  paymentToolAllowlist?: string[];
+  networkPreferences?: string[];
+};
+
+export function toAddPaymentManagerInput(input: PaymentManagerInput): AddResourceInput {
+  const authorizerType = input.authorizerType ?? "AWS_IAM";
+  const jwtValues = [
+    input.discoveryUrl,
+    input.allowedClients,
+    input.allowedAudience,
+    input.allowedScopes,
+  ];
+  if (authorizerType === "CUSTOM_JWT" && !input.discoveryUrl) {
+    throw new InputValidationError("CUSTOM_JWT requires --discovery-url");
+  }
+  if (authorizerType !== "CUSTOM_JWT" && jwtValues.some((value) => value !== undefined)) {
+    throw new InputValidationError("JWT authorization flags are valid only with CUSTOM_JWT");
+  }
+
+  const defaultSpendLimit = input.defaultSpendLimit ?? DEFAULT_SPEND_LIMIT;
+  const spendLimit = PaymentSpendLimitSchema.safeParse(defaultSpendLimit);
+  if (!spendLimit.success) {
+    throw new InputValidationError(z.prettifyError(spendLimit.error), {
+      cause: spendLimit.error,
+    });
+  }
+
+  const manager = PaymentManagerSchema.safeParse({
+    name: input.name,
+    authorizerType,
+    authorizerConfiguration:
+      authorizerType === "CUSTOM_JWT"
+        ? {
+            customJWTAuthorizer: {
+              discoveryUrl: input.discoveryUrl!,
+              allowedClients: input.allowedClients,
+              allowedAudience: input.allowedAudience,
+              allowedScopes: input.allowedScopes,
+            },
+          }
+        : undefined,
+    connectors: [],
+    description: input.description,
+    autoPayment: input.autoPayment ?? DEFAULT_AUTO_PAYMENT,
+    defaultSpendLimit: spendLimit.data,
+    paymentToolAllowlist: input.paymentToolAllowlist,
+    networkPreferences: input.networkPreferences,
+  });
+  if (!manager.success) {
+    throw new InputValidationError(z.prettifyError(manager.error), { cause: manager.error });
+  }
+
+  return { resourceType: "payment-manager", resourceConfig: manager.data };
+}
 
 export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -48,23 +116,20 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
       flag("network-preferences", "preferred payment networks", z.array(z.string()).optional()),
     ],
     handle: async (ctx, flags) => {
-      const jwtFlags = [
-        flags["discovery-url"],
-        flags["allowed-clients"],
-        flags["allowed-audience"],
-        flags["allowed-scopes"],
-      ];
-      if (flags["authorizer-type"] === "CUSTOM_JWT" && !flags["discovery-url"]) {
-        throw new InputValidationError("CUSTOM_JWT requires --discovery-url");
-      }
-      if (
-        flags["authorizer-type"] !== "CUSTOM_JWT" &&
-        jwtFlags.some((value) => value !== undefined)
-      ) {
-        throw new InputValidationError("JWT authorization flags are valid only with CUSTOM_JWT");
-      }
-
       const project = ctx.require(ProjectKey);
+      const input = toAddPaymentManagerInput({
+        name: flags.name,
+        authorizerType: flags["authorizer-type"],
+        discoveryUrl: flags["discovery-url"],
+        allowedClients: flags["allowed-clients"],
+        allowedAudience: flags["allowed-audience"],
+        allowedScopes: flags["allowed-scopes"],
+        description: flags.description,
+        autoPayment: flags["auto-payment"],
+        defaultSpendLimit: flags["default-spend-limit"],
+        paymentToolAllowlist: flags["tool-allowlist"],
+        networkPreferences: flags["network-preferences"],
+      });
       const notes: string[] = [];
       if (flags["auto-payment"]) {
         notes.push(
@@ -83,30 +148,7 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
         ctx,
         config,
         project,
-        {
-          resourceType: "payment-manager",
-          resourceConfig: {
-            name: flags.name,
-            authorizerType: flags["authorizer-type"],
-            authorizerConfiguration:
-              flags["authorizer-type"] === "CUSTOM_JWT"
-                ? {
-                    customJWTAuthorizer: {
-                      discoveryUrl: flags["discovery-url"]!,
-                      allowedClients: flags["allowed-clients"],
-                      allowedAudience: flags["allowed-audience"],
-                      allowedScopes: flags["allowed-scopes"],
-                    },
-                  }
-                : undefined,
-            connectors: [],
-            description: flags.description,
-            autoPayment: flags["auto-payment"],
-            defaultSpendLimit: flags["default-spend-limit"],
-            paymentToolAllowlist: flags["tool-allowlist"],
-            networkPreferences: flags["network-preferences"],
-          },
-        },
+        input,
         `added payment manager '${flags.name}' to '${project.name}'`,
         { notes },
       );
