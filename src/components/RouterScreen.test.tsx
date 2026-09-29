@@ -181,7 +181,7 @@ describe("menu rendering", () => {
     r.unmount();
   });
 
-  test("marks create as the starting point only when no project is detected", async () => {
+  test("marks create as the starting point without a project and hides it inside one", async () => {
     const startHere = `${glyphs.leftArrow} start here`;
 
     const noProjectCore = new TestCoreClient();
@@ -194,9 +194,8 @@ describe("menu rendering", () => {
     const projectCore = new TestCoreClient();
     projectCore.projectManager.resolve = async () => ({}) as Project;
     const withProject = renderScreen("/agentcore", { core: projectCore });
-    await waitForText(withProject.lastFrame, "type to choose a command");
-    await tick(20);
-    expect(withProject.lastFrame()).not.toContain(startHere);
+    await waitForText(withProject.lastFrame, "❯ add");
+    expect(menuEntries(withProject.lastFrame()!).screens).not.toContain("create");
     withProject.unmount();
   });
 

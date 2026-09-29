@@ -50,14 +50,14 @@ export function useProjectTargets(
   });
 }
 
-export function useNoProjectDetected(core: Core): boolean {
+export function useProjectDetected(core: Core): boolean | undefined {
   const from = process.cwd();
   const detected = useQuery({
     queryKey: ["project-detected", from],
     queryFn: async () => (await core.projectManager.resolve({ filePath: from })) !== undefined,
     gcTime: 0,
   });
-  return detected.data === false;
+  return detected.data;
 }
 
 export interface LoadingFrameProps {

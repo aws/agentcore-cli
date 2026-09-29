@@ -5,13 +5,15 @@ import { BrandBanner } from "../components/BrandBanner";
 import { RouterScreen } from "../components/RouterScreen";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
-import { useNoProjectDetected } from "./project/ProjectGate";
+import { useProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const NO_PROJECT_BANNER = "No project detected - create a new project to get started";
+const PROJECT_HIDDEN_OPTIONS = ["create"];
 
 export function RootScreen(props: ScreenProps) {
-  const noProjectDetected = useNoProjectDetected(props.core);
+  const projectDetected = useProjectDetected(props.core);
+  const noProjectDetected = projectDetected === false;
 
   return (
     <RouterScreen
@@ -20,6 +22,7 @@ export function RootScreen(props: ScreenProps) {
       path={["agentcore"]}
       optionHints={noProjectDetected ? NO_PROJECT_HINTS : undefined}
       alert={noProjectDetected ? NO_PROJECT_BANNER : undefined}
+      hiddenOptions={projectDetected ? PROJECT_HIDDEN_OPTIONS : undefined}
     />
   );
 }

@@ -24,7 +24,7 @@ import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
 import { scrollWindow } from "./scrollWindow";
-import { useNoProjectDetected } from "../handlers/project/ProjectGate";
+import { useProjectDetected } from "../handlers/project/ProjectGate";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
@@ -90,6 +90,7 @@ export interface RouterScreenProps extends ScreenProps {
   optionHints?: Readonly<Record<string, string>>;
   // alert is optional guidance rendered between the filter and menu options.
   alert?: string;
+  hiddenOptions?: readonly string[];
 }
 
 // RouterScreen renders the interactive command menu for a Router node: a filter
@@ -114,10 +115,11 @@ function CommandMenu({
   tuiOnlyCommands = [],
   optionHints,
   alert,
+  hiddenOptions,
   command,
 }: RouterScreenProps & { command: Command }) {
   const navigate = useNavigate();
-  const noProject = useNoProjectDetected(core);
+  const noProject = useProjectDetected(core) === false;
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
@@ -159,8 +161,8 @@ function CommandMenu({
       ...tuiOnly,
       ...actual.filter((option) => !option.cliOnly),
       ...actual.filter((option) => option.cliOnly),
-    ];
-  }, [command, optionHints, tuiOnlyCommands]);
+    ].filter((option) => !hiddenOptions?.includes(option.name));
+  }, [command, optionHints, hiddenOptions, tuiOnlyCommands]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
