@@ -9,6 +9,7 @@ export {
   ResourceEmptyState,
   RevealChoiceField,
   MultiChoiceField,
+  MultiTextField,
   Summary,
   firstIssue,
   type Choice,
@@ -20,5 +21,7 @@ export {
   type RevealChoiceFieldProps,
   type RevealedInput,
   type MultiChoiceFieldProps,
+  type MultiTextFieldProps,
+  type TextInputSpec,
   type SummaryProps,
 } from "./fields";

@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { Step, Summary, TextAreaField, TextField, Wizard } from "../../../../components/wizard";
+import {
+  MultiTextField,
+  Step,
+  Summary,
+  TextAreaField,
+  TextField,
+  Wizard,
+} from "../../../../components/wizard";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import {
   ConfigBundleBranchNameSchema,
@@ -198,25 +205,30 @@ function AddConfigBundleWizard({
         />
       </Step>
 
-      <Step stepKey="branch" prompt="which branch holds the initial configuration?">
-        <TextField
-          label="Branch name"
-          help={`prefilled with the flag's default, ${DEFAULT_BRANCH_NAME} · letters, digits, _ / and -`}
-          placeholder={DEFAULT_BRANCH_NAME}
-          value={values.branchName}
-          onChange={(branchName) => set({ branchName })}
-          schema={ConfigBundleBranchNameSchema}
-        />
-      </Step>
-
-      <Step stepKey="commit" prompt="describe the initial configuration (optional)">
-        <TextField
-          label="Commit message"
-          help="up to 500 characters · enter on an empty message skips it"
-          placeholder="initial configuration"
-          value={values.commitMessage}
-          onChange={(commitMessage) => set({ commitMessage })}
-          schema={ConfigBundleCommitMessageSchema}
+      {/* The branch and the message describing what lands on it are one answer
+          about the initial version, so they share a step. */}
+      <Step stepKey="version" prompt="how should the initial configuration be recorded?">
+        <MultiTextField
+          inputs={[
+            {
+              key: "branch",
+              label: "Branch name",
+              help: `prefilled with the flag's default, ${DEFAULT_BRANCH_NAME} · letters, digits, _ / and -`,
+              placeholder: DEFAULT_BRANCH_NAME,
+              value: values.branchName,
+              onChange: (branchName) => set({ branchName }),
+              schema: ConfigBundleBranchNameSchema,
+            },
+            {
+              key: "commit",
+              label: "Commit message",
+              help: "optional · up to 500 characters",
+              placeholder: "initial configuration",
+              value: values.commitMessage,
+              onChange: (commitMessage) => set({ commitMessage }),
+              schema: ConfigBundleCommitMessageSchema,
+            },
+          ]}
         />
       </Step>
 

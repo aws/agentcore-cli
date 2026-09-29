@@ -10,6 +10,7 @@ import { Step } from "./Step";
 import {
   ChoiceField,
   MultiChoiceField,
+  MultiTextField,
   ResourceChoiceField,
   RevealChoiceField,
   Summary,
@@ -967,6 +968,126 @@ describe("TextAreaField with json", () => {
 
     await waitFor(() => submitted !== undefined, 1000);
     expect(submitted).toBe('{"ok":\ntrue}');
+    d.unmount();
+  });
+});
+
+// MultiTextField stacks several inputs on one step; these cover how focus moves
+// between them and that the last enter checks them all.
+describe("MultiTextField", () => {
+  function driveInputs(onSubmit: (summary: string) => void, onCancel: () => void = () => {}) {
+    function Harness() {
+      const [first, setFirst] = useState("");
+      const [second, setSecond] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={onCancel}
+          onSubmit={async () => onSubmit(`${first}|${second}`)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="pair" prompt="two answers">
+            <MultiTextField
+              inputs={[
+                {
+                  key: "first",
+                  label: "First",
+                  help: "required · letters only",
+                  value: first,
+                  onChange: setFirst,
+                  required: true,
+                  schema: NAME_SCHEMA,
+                },
+                {
+                  key: "second",
+                  label: "Second",
+                  help: "optional",
+                  value: second,
+                  onChange: setSecond,
+                },
+              ]}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter moves down through the inputs and submits from the last", async () => {
+    let submitted: string | undefined;
+    const d = driveInputs((summary) => {
+      submitted = summary;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("two answers"), 1000);
+    await d.write("alpha");
+    await d.press("return");
+    expect(submitted).toBeUndefined();
+    await d.write("beta");
+    await d.press("return");
+
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("alpha|beta");
+    d.unmount();
+  });
+
+  test("an input skipped with the arrows is checked on the last enter", async () => {
+    let submitted: string | undefined;
+    const d = driveInputs((summary) => {
+      submitted = summary;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("two answers"), 1000);
+    await d.press("down");
+    await d.write("beta");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("First is required"), 1000);
+    expect(submitted).toBeUndefined();
+
+    // Focus went back to the offending input, so typing fixes it in place.
+    await d.write("alpha");
+    await d.press("return");
+    await d.press("return");
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("alpha|beta");
+    d.unmount();
+  });
+
+  test("esc leaves the step", async () => {
+    let cancelled = false;
+    const d = driveInputs(
+      () => {},
+      () => {
+        cancelled = true;
+      },
+    );
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("two answers"), 1000);
+    await d.press("escape");
+    await waitFor(() => cancelled, 1000);
     d.unmount();
   });
 });

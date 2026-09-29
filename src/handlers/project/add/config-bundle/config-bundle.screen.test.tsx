@@ -56,12 +56,12 @@ describe("project add config-bundle wizard", () => {
     // The components step is a textarea, so enter is a newline and ctrl+d moves on.
     await screen.press("ctrl+d");
 
-    // The branch is prefilled with the flag's default.
-    await waitForText(screen.lastFrame, "which branch holds the initial configuration?");
+    // Branch and commit message share a step. The branch is prefilled with the
+    // flag's default; enter moves down to the message, and enter again continues.
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
     expect(screen.lastFrame()).toContain("❯ mainline");
+    expect(screen.lastFrame()).toContain("Commit message");
     await screen.press("return");
-
-    await waitForText(screen.lastFrame, "describe the initial configuration");
     await screen.press("return");
 
     await waitForText(
@@ -109,11 +109,9 @@ describe("project add config-bundle wizard", () => {
     await screen.press("ctrl+d");
 
     // The prefilled default typed over: mainline → mainline/eu.
-    await waitForText(screen.lastFrame, "which branch holds the initial configuration?");
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
     await screen.write("/eu");
     await screen.press("return");
-
-    await waitForText(screen.lastFrame, "describe the initial configuration");
     await screen.write("initial flags");
     await screen.press("return");
 
@@ -128,6 +126,41 @@ describe("project add config-bundle wizard", () => {
     });
     screen.unmount();
   }, 15000);
+
+  test("an invalid branch name keeps the step", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/config-bundle");
+    await reachComponentsStep(screen);
+    await screen.write(COMPONENTS);
+    await screen.press("ctrl+d");
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
+
+    // The prefilled mainline typed out to "mainline x": a space breaks the pattern.
+    await screen.write(" x");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "Value must match");
+    expect(screen.lastFrame()).toContain("how should the initial configuration be recorded?");
+    screen.unmount();
+  });
+
+  test("a branch skipped with the arrows is still checked on the last enter", async () => {
+    await inProject();
+    const screen = renderScreen("/agentcore/add/config-bundle");
+    await reachComponentsStep(screen);
+    await screen.write(COMPONENTS);
+    await screen.press("ctrl+d");
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
+
+    await screen.write(" x");
+    await screen.press("down");
+    await screen.write("note");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "Value must match");
+    expect(screen.lastFrame()).not.toContain("this configuration bundle will be added");
+    screen.unmount();
+  });
 
   test("malformed components JSON does not advance", async () => {
     await inProject();
@@ -155,7 +188,7 @@ describe("project add config-bundle wizard", () => {
     // rather than only that something was the wrong type.
     await waitForFlatText(screen.lastFrame, "mycomponent: Invalid input: expected object");
     expect(screen.lastFrame()).toContain("which components does the bundle configure?");
-    expect(screen.lastFrame()).not.toContain("which branch holds the initial configuration?");
+    expect(screen.lastFrame()).not.toContain("how should the initial configuration be recorded?");
     screen.unmount();
   });
 
@@ -174,9 +207,8 @@ describe("project add config-bundle wizard", () => {
     expect(screen.lastFrame()).toContain("which components does the bundle configure?");
 
     await screen.press("ctrl+d");
-    await waitForText(screen.lastFrame, "which branch holds the initial configuration?");
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "describe the initial configuration");
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
@@ -214,9 +246,8 @@ describe("project add config-bundle wizard", () => {
 
     // Advancing proves the example parses and satisfies the schema — an example
     // that does not work is worse than none.
-    await waitForText(screen.lastFrame, "which branch holds the initial configuration?");
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "describe the initial configuration");
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
@@ -284,9 +315,8 @@ describe("project add config-bundle wizard", () => {
     await reachComponentsStep(screen);
     await screen.write(COMPONENTS);
     await screen.press("ctrl+d");
-    await waitForText(screen.lastFrame, "which branch holds the initial configuration?");
+    await waitForText(screen.lastFrame, "how should the initial configuration be recorded?");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "describe the initial configuration");
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
