@@ -3,11 +3,76 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-config";
 import { parseJsonFlag } from "../../../utils";
+import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
+import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, requireDeployedNameFits } from "../shared";
 
-const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
+export const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
 const ARN_PREFIX = "arn:";
+export const ONLINE_INSIGHT_DEPLOYED_NAME_MAX_LENGTH = 48;
+
+export interface OnlineInsightInput {
+  name: string;
+  agent?: string;
+  endpoint?: string;
+  logGroupNames?: string[];
+  serviceNames?: string[];
+  insights: string[];
+  clusteringFrequencies?: Array<"DAILY" | "WEEKLY" | "MONTHLY">;
+  samplingRate: number;
+  description?: string;
+  enableOnCreate?: boolean;
+  tags?: Record<string, string>;
+}
+
+export function validateInsightIds(insights: readonly string[]): void {
+  for (const id of insights) {
+    if (!id.startsWith(BUILTIN_INSIGHT_PREFIX) && !id.startsWith(ARN_PREFIX)) {
+      throw new InputValidationError(
+        `invalid insight "${id}": must be a ${BUILTIN_INSIGHT_PREFIX}* identifier or a full ARN`,
+      );
+    }
+  }
+}
+
+export function toAddOnlineInsightInput(
+  project: Project,
+  targets: readonly AwsDeploymentTarget[],
+  input: OnlineInsightInput,
+): AddResourceInput {
+  requireDeployedNameFits(
+    "Online insight config",
+    project.name,
+    input.name,
+    "_",
+    ONLINE_INSIGHT_DEPLOYED_NAME_MAX_LENGTH,
+    targets,
+  );
+  validateInsightIds(input.insights);
+
+  const parsed = OnlineEvalConfigSchema.safeParse({
+    name: input.name,
+    agent: input.agent,
+    endpoint: input.endpoint,
+    logGroupNames: input.logGroupNames,
+    serviceNames: input.serviceNames,
+    insights: input.insights,
+    clusteringConfig: input.clusteringFrequencies
+      ? { frequencies: input.clusteringFrequencies }
+      : undefined,
+    samplingRate: input.samplingRate,
+    description: input.description,
+    enableOnCreate: input.enableOnCreate,
+    tags: input.tags,
+  });
+  if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
+
+  return {
+    resourceType: "online-insight",
+    resourceConfig: parsed.data,
+  };
+}
 
 export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -63,43 +128,32 @@ export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) 
       flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
-      for (const id of flags["insight"]) {
-        if (!id.startsWith(BUILTIN_INSIGHT_PREFIX) && !id.startsWith(ARN_PREFIX))
-          throw new InputValidationError(
-            `invalid insight "${id}": must be a ${BUILTIN_INSIGHT_PREFIX}* identifier or a full ARN`,
-          );
-      }
-
-      const frequencies = flags["clustering-frequency"];
-      const candidate = {
-        name: flags["name"],
-        agent: flags["agent"],
-        endpoint: flags["endpoint"],
-        logGroupNames: flags["log-group-name"],
-        serviceNames: flags["service-name"],
-        insights: flags["insight"],
-        clusteringConfig: frequencies ? { frequencies } : undefined,
-        samplingRate: flags["sampling-rate"],
-        description: flags["description"],
-        enableOnCreate:
-          flags["enable-on-create"] === undefined
-            ? undefined
-            : flags["enable-on-create"] === "true",
-        tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
-      };
-
-      const parsed = OnlineEvalConfigSchema.safeParse(candidate);
-      if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
-
       const project = ctx.require(ProjectKey);
+      const input = toAddOnlineInsightInput(
+        project,
+        await config.projectManager.listTargets(project),
+        {
+          name: flags["name"],
+          agent: flags["agent"],
+          endpoint: flags["endpoint"],
+          logGroupNames: flags["log-group-name"],
+          serviceNames: flags["service-name"],
+          insights: flags["insight"],
+          clusteringFrequencies: flags["clustering-frequency"],
+          samplingRate: flags["sampling-rate"],
+          description: flags["description"],
+          enableOnCreate:
+            flags["enable-on-create"] === undefined
+              ? undefined
+              : flags["enable-on-create"] === "true",
+          tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
+        },
+      );
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "online-insight",
-          resourceConfig: parsed.data,
-        },
+        input,
         `added online-insight config '${flags["name"]}' to '${project.name}'`,
       );
     },
