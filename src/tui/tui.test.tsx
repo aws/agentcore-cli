@@ -4,6 +4,7 @@ import { createRootHandler } from "../handlers";
 import { ExitCode, InvalidEnvironmentError, ProjectStateError } from "../errors";
 import { renderJson } from "./index";
 import { handoffArgs } from "./handoff";
+import type { Project } from "../handlers/project/types";
 import {
   createSilentLogger,
   inTempDirectory,
@@ -223,5 +224,38 @@ describe("TUI resize", () => {
 
     stdin.write(String.fromCharCode(3));
     await expect(routePromise).resolves.toBeUndefined();
+  });
+});
+
+describe("TUI launch", () => {
+  const CREATE_ROW = "create a new AgentCore project";
+  const BANNER = "No project detected - create a new project to get started";
+
+  async function launchRootMenu(project: Project | undefined): Promise<string> {
+    const core = new TestCoreClient();
+    core.projectManager.resolve = async () => project;
+    const { streams, stdin } = ttyTestIO();
+    const root = createRootHandler(core, {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const routePromise = root.route(["node", "agentcore"]);
+    await waitFor(() => streams.stdout().includes("add project resources"));
+    stdin.write(String.fromCharCode(3));
+    await routePromise;
+    return streams.stdout();
+  }
+
+  test("the first frame outside a project already carries the banner", async () => {
+    const out = await launchRootMenu(undefined);
+    expect(out.indexOf(BANNER)).toBeGreaterThan(-1);
+    expect(out.indexOf(BANNER)).toBeLessThan(out.indexOf(CREATE_ROW));
+  });
+
+  test("create is never drawn inside a project", async () => {
+    const out = await launchRootMenu({} as Project);
+    expect(out).not.toContain(CREATE_ROW);
+    expect(out).not.toContain(BANNER);
   });
 });

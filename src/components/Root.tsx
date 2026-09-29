@@ -7,7 +7,7 @@ import {
   useLocation,
   useNavigationType,
 } from "react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Core, ScreenProps } from "../handlers/types.tsx";
 import { HarnessScreen } from "../handlers/harness/screen.tsx";
 import { HarnessGetScreen, HarnessGetJsonScreen } from "../handlers/harness/get/screen.tsx";
@@ -155,25 +155,17 @@ export interface RootProps {
 
   ctx: Context;
 
-  // queryClient is an optional override for the react-query client. Production
-  // leaves it unset (a stable one is created per mount); tests inject one — e.g.
-  // with retries disabled — to keep behavior deterministic and fast.
-  queryClient?: QueryClient;
+  queryClient: QueryClient;
 }
 
 // Root is the top of the Ink React tree, rendered by the `agentcore` default
 // handler when the CLI is invoked without a subcommand: the MemoryRouter over
 // the app's routes plus the react-query client every screen fetches through.
 export function Root({ path, ctx, core, queryClient }: RootProps) {
-  // Create the QueryClient once per mount; a lazy initializer keeps it stable
-  // across re-renders (a fresh client would drop the cache and refetch). An
-  // injected client (tests) takes precedence.
-  const [defaultQueryClient] = useState(() => new QueryClient());
   const [launchSessionConsumed, setLaunchSessionConsumed] = useState(false);
-  const client = queryClient ?? defaultQueryClient;
 
   return (
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={queryClient}>
       <RuntimeInvokeLaunchSessionContext.Provider
         value={{
           consumed: launchSessionConsumed,
