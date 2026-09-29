@@ -29,6 +29,7 @@ interface HarnessOptions {
   onSubmit?: () => WizardSubmitResult;
   onCancel?: () => void;
   onDone?: () => void;
+  successNotes?: string[];
 }
 
 // A schema with a shape a stray space breaks, the way a resource-name schema
@@ -42,7 +43,7 @@ const YES_NO = [
 
 // TestWizard has one conditional step, so the branch behaviour under test is
 // expressed the way a screen expresses it: `{condition && <Step/>}`.
-function TestWizard({ onSubmit, onCancel, onDone }: HarnessOptions) {
+function TestWizard({ onSubmit, onCancel, onDone, successNotes }: HarnessOptions) {
   const [name, setName] = useState("");
   const [wantsExtra, setWantsExtra] = useState(false);
   const [extra, setExtra] = useState("");
@@ -57,6 +58,7 @@ function TestWizard({ onSubmit, onCancel, onDone }: HarnessOptions) {
       runningLabel="working…"
       successLabel="all done"
       successHint="enter exits"
+      successNotes={successNotes}
     >
       <Step stepKey="name" prompt="what is your name?">
         <TextField label="name" value={name} onChange={setName} required schema={NAME_SCHEMA} />
@@ -219,6 +221,24 @@ describe("Wizard shell", () => {
 
     await waitForFrame(d, "✔ all done");
     expect(submits).toBe(1);
+    d.unmount();
+  });
+
+  test("renders notes on the success screen", async () => {
+    const d = drive({
+      successNotes: ["Warning: the completed action needs follow-up."],
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+    await waitForFrame(d, "want the extra question?");
+    await d.press("return");
+    await waitForFrame(d, "review");
+    await d.press("return");
+
+    await waitForFrame(d, "Warning: the completed action needs follow-up.");
+    expect(d.lastFrame()).toContain("✔ all done");
     d.unmount();
   });
 

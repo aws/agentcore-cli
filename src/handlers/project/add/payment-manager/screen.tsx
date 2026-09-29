@@ -30,7 +30,7 @@ import type { ScreenProps } from "../../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
 import { splitCommaList } from "../traffic-source-fields";
-import { toAddPaymentManagerInput, type PaymentManagerInput } from "./index";
+import { paymentManagerNotes, toAddPaymentManagerInput, type PaymentManagerInput } from "./index";
 
 const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "payment-manager"];
@@ -177,6 +177,11 @@ function AddPaymentManagerWizard({
       }}
       runningLabel={`adding payment manager ${values.name}…`}
       successLabel={`added payment manager '${values.name}' to '${project.name}'`}
+      successNotes={paymentManagerNotes(
+        values.name,
+        values.autoPayment,
+        project.spec.runtimes.length > 0,
+      )}
       successNextSteps={["agentcore deploy"]}
       onDone={() => navigate(ADD_MENU)}
       doneLabel="go back"

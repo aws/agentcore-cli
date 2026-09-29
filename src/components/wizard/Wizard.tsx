@@ -29,6 +29,7 @@ export interface WizardProps {
   runningLabel: string;
   successLabel: string;
   successHint?: string;
+  successNotes?: string[];
   successNextSteps?: string[];
   onDone?: () => void;
   doneLabel?: string;
@@ -43,6 +44,7 @@ export function Wizard({
   runningLabel,
   successLabel,
   successHint,
+  successNotes,
   successNextSteps,
   onDone,
   doneLabel = "continue",
@@ -150,6 +152,7 @@ export function Wizard({
               <SuccessBody
                 title={successLabel}
                 hint={successHint}
+                notes={successNotes}
                 nextSteps={successNextSteps}
                 onDone={onDone ?? (() => exit())}
                 doneLabel={doneLabel}

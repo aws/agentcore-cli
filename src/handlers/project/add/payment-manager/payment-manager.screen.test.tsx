@@ -77,6 +77,12 @@ describe("project add payment-manager wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added payment manager 'payments' to 'TestProject'");
+    await screen.resize(80, 24);
+    const success = flatFrame(screen.lastFrame);
+    expect(success).toContain("auto-payment is ENABLED");
+    expect(success).toContain("settle 402 responses without human approval");
+    expect(success).toContain("does not modify runtime source code");
+    expect(success).toContain("Configure the Payments SDK or plugin");
     expect(screen.lastFrame()).toContain("agentcore deploy");
     expect((await projectSpec(projectRoot)).payments).toEqual([
       {
@@ -147,6 +153,8 @@ describe("project add payment-manager wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added payment manager 'securePayments'");
+    expect(screen.lastFrame()).not.toContain("auto-payment is ENABLED");
+    expect(screen.lastFrame()).toContain("does not modify runtime source code");
     expect((await projectSpec(projectRoot)).payments[0]).toEqual({
       name: "securePayments",
       authorizerType: "CUSTOM_JWT",

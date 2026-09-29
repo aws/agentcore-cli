@@ -27,6 +27,27 @@ export type PaymentManagerInput = {
   networkPreferences?: string[];
 };
 
+export function paymentManagerNotes(
+  name: string,
+  autoPayment: boolean,
+  hasRuntimes: boolean,
+): string[] {
+  const notes: string[] = [];
+  if (autoPayment) {
+    notes.push(
+      `Warning: auto-payment is ENABLED for manager '${name}'. Agents can automatically settle ` +
+        "402 responses without human approval. Use --no-auto-payment to require manual approval.",
+    );
+  }
+  if (hasRuntimes) {
+    notes.push(
+      "Warning: agentcore add payment-manager does not modify runtime source code. " +
+        "Configure the Payments SDK or plugin in supported runtimes before invoking payment-enabled agents.",
+    );
+  }
+  return notes;
+}
+
 export function toAddPaymentManagerInput(input: PaymentManagerInput): AddResourceInput {
   const authorizerType = input.authorizerType ?? "AWS_IAM";
   const jwtValues = [
@@ -130,19 +151,11 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
         paymentToolAllowlist: flags["tool-allowlist"],
         networkPreferences: flags["network-preferences"],
       });
-      const notes: string[] = [];
-      if (flags["auto-payment"]) {
-        notes.push(
-          `Warning: auto-payment is ENABLED for manager '${flags.name}'. Agents can automatically settle ` +
-            "402 responses without human approval. Use --no-auto-payment to require manual approval.",
-        );
-      }
-      if (project.spec.runtimes.length > 0) {
-        notes.push(
-          "Warning: agentcore add payment-manager does not modify runtime source code. " +
-            "Configure the Payments SDK or plugin in supported runtimes before invoking payment-enabled agents.",
-        );
-      }
+      const notes = paymentManagerNotes(
+        flags.name,
+        flags["auto-payment"],
+        project.spec.runtimes.length > 0,
+      );
 
       await addProjectResource(
         ctx,
