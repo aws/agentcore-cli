@@ -41,7 +41,7 @@ async function systemPromptOf(projectRoot: string, name: string) {
 }
 
 // reachModelStep answers the name and prompt steps, leaving the wizard on the
-// model step: where every test about the model list starts.
+// model step: where every test about the model provider starts.
 async function reachModelStep(screen: RenderScreenResult, name: string): Promise<void> {
   await waitForText(screen.lastFrame, "what should this harness be called?");
   await screen.write(name);
@@ -49,7 +49,15 @@ async function reachModelStep(screen: RenderScreenResult, name: string): Promise
   await waitForText(screen.lastFrame, "what is the agent's system prompt?");
   await screen.write("You are a pirate.");
   await screen.press("ctrl+d");
-  await waitForText(screen.lastFrame, "which model should it run on?");
+  await waitForText(screen.lastFrame, "choose a model provider");
+}
+
+// acceptDefaultModel confirms the preselected provider and its default model
+// ID: enter opens the model ID input, enter again accepts what is in it.
+async function acceptDefaultModel(screen: RenderScreenResult): Promise<void> {
+  await screen.press("return");
+  await waitForText(screen.lastFrame, DEFAULT_HARNESS_MODEL.modelId);
+  await screen.press("return");
 }
 
 // The review line describes the prompt exactly as system-prompt.md will hold
@@ -101,14 +109,24 @@ describe("project add harness wizard", () => {
     expect(screen.lastFrame()).toContain("what is the agent's system prompt?");
     await screen.press("ctrl+d");
 
-    await waitForText(screen.lastFrame, "which model should it run on?");
-    expect(screen.lastFrame()).toContain("❯ ● Claude Sonnet 5 (default)");
-    expect(screen.lastFrame()).toContain(DEFAULT_HARNESS_MODEL.modelId);
+    // The model step is the one `agentcore create` asks for a config-based
+    // project: the same provider list, bedrock preselected, and the fields
+    // hidden until the provider is confirmed.
+    await waitForText(screen.lastFrame, "choose a model provider");
+    expect(screen.lastFrame()).toContain("● model provider ──");
+    expect(screen.lastFrame()).toContain("❯ ● bedrock");
+    expect(screen.lastFrame()).toContain("○ openai");
+    expect(screen.lastFrame()).toContain("○ gemini");
+    expect(screen.lastFrame()).toContain("○ litellm");
+    expect(screen.lastFrame()).not.toContain("model ID");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, DEFAULT_HARNESS_MODEL.modelId);
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
     const review = flatFrame(screen.lastFrame);
     expect(review).toContain("harness assistant");
+    expect(review).toContain("provider bedrock");
     expect(review).toContain(`model ${DEFAULT_HARNESS_MODEL.modelId}`);
     expect(review).toContain("system prompt You are a pirate. (+1 more line)");
     await screen.press("return");
@@ -152,97 +170,129 @@ describe("project add harness wizard", () => {
     await screen.press("ctrl+d");
 
     await waitForText(screen.lastFrame, "System prompt is required");
-    expect(screen.lastFrame()).not.toContain("which model should it run on?");
+    expect(screen.lastFrame()).not.toContain("choose a model provider");
 
     // Enter on the empty editor answers the step the same way.
     await screen.press("return");
     expect(screen.lastFrame()).toContain("System prompt is required");
-    expect(screen.lastFrame()).not.toContain("which model should it run on?");
+    expect(screen.lastFrame()).not.toContain("choose a model provider");
     screen.unmount();
   });
 
-  test("moves the model selection with the arrow keys", async () => {
-    await inProject();
+  test("a provider other than Bedrock asks for its model ID and API key ARN", async () => {
+    const projectRoot = await inProject();
     const screen = renderScreen("/agentcore/add/harness");
     await reachModelStep(screen, "assistant");
 
     await screen.press("down");
-
     // The pointer and the radio marker travel together, as in every radio step.
-    await waitForText(screen.lastFrame, "❯ ● Claude Sonnet 4.6");
-    expect(screen.lastFrame()).toContain("○ Claude Sonnet 5 (default)");
+    await waitForText(screen.lastFrame, "❯ ● openai");
+    expect(screen.lastFrame()).toContain("○ bedrock");
     await screen.press("return");
 
-    await waitForFlatText(screen.lastFrame, "model global.anthropic.claude-sonnet-4-6");
-    screen.unmount();
-  });
+    // The inputs open in place under the list, the model ID prefilled with the
+    // provider's default. The pointer follows focus into them while the radio
+    // marker keeps showing the choice.
+    await waitForText(screen.lastFrame, "model ID");
+    expect(screen.lastFrame()).toContain("gpt-5");
+    expect(screen.lastFrame()).toContain("API key ARN");
+    expect(screen.lastFrame()).toContain("● openai");
+    expect(screen.lastFrame()).not.toContain("❯ ● openai");
+    await screen.press("return"); // on to the API key ARN
+    await screen.press("return"); // empty → the field says what is missing
+    await waitForText(screen.lastFrame, "enter an API key ARN for openai");
+    const apiKeyArn =
+      "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/apikeycredentialprovider/OpenAIKey";
+    await screen.write(apiKeyArn);
+    await screen.press("return");
 
-  test("takes a Bedrock model the list does not name, typed in place", async () => {
+    await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
+    const review = flatFrame(screen.lastFrame);
+    expect(review).toContain("provider openai");
+    expect(review).toContain("model gpt-5");
+    expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "added harness 'assistant'");
+    expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
+      provider: "open_ai",
+      modelId: "gpt-5",
+      apiKeyArn,
+    });
+    screen.unmount();
+  }, 15000);
+
+  test("LiteLLM takes an optional API base URL and writes it", async () => {
+    const projectRoot = await inProject();
+    const screen = renderScreen("/agentcore/add/harness");
+    await reachModelStep(screen, "assistant");
+
+    await screen.press("down"); // openai
+    await screen.press("down"); // gemini
+    await screen.press("down"); // litellm
+    await waitForText(screen.lastFrame, "❯ ● litellm");
+    await screen.press("return");
+
+    // LiteLLM is the one provider with an API base; its key is optional.
+    await waitForText(screen.lastFrame, "API base URL");
+    expect(screen.lastFrame()).toContain(`bedrock/${DEFAULT_HARNESS_MODEL.modelId}`);
+    await screen.press("return"); // keep the default model ID
+    await screen.press("return"); // no API key ARN
+    await screen.write("https://llm.example.com/v1");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
+    const review = flatFrame(screen.lastFrame);
+    expect(review).toContain("provider litellm");
+    expect(review).toContain("API base URL https://llm.example.com/v1");
+    expect(review).not.toContain("API key ARN");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "added harness 'assistant'");
+    expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
+      provider: "lite_llm",
+      modelId: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
+      apiBase: "https://llm.example.com/v1",
+    });
+    screen.unmount();
+  }, 15000);
+
+  test("an edited model ID is what gets written", async () => {
     const projectRoot = await inProject();
     const screen = renderScreen("/agentcore/add/harness");
     await reachModelStep(screen, "custom_model");
 
-    await screen.press("down");
-    await screen.press("down");
-    await screen.press("down");
-    await waitForText(screen.lastFrame, "❯ ● another Bedrock model");
-    expect(screen.lastFrame()).not.toContain("model ID");
     await screen.press("return");
-
-    // The input opens in place under the list. The pointer follows focus into
-    // it while the radio marker keeps showing the choice.
     await waitForText(screen.lastFrame, "model ID");
-    expect(screen.lastFrame()).toContain("which model should it run on?");
-    expect(screen.lastFrame()).toContain("● another Bedrock model");
-    expect(screen.lastFrame()).not.toContain("❯ ● another Bedrock model");
-    await screen.write("us.anthropic.claude-opus-4-8");
+    // The input opens on the default ID; typing extends it.
+    await screen.write("-test");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
-    expect(flatFrame(screen.lastFrame)).toContain("model us.anthropic.claude-opus-4-8");
+    expect(flatFrame(screen.lastFrame)).toContain(`model ${DEFAULT_HARNESS_MODEL.modelId}-test`);
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added harness 'custom_model'");
     expect((await harnessYaml(projectRoot, "custom_model")).model).toEqual({
       provider: "bedrock",
-      modelId: "us.anthropic.claude-opus-4-8",
+      modelId: `${DEFAULT_HARNESS_MODEL.modelId}-test`,
     });
     screen.unmount();
   }, 15000);
 
-  test("an empty model ID keeps the step and says what is missing", async () => {
+  test("esc collapses the model inputs back into the provider list", async () => {
     await inProject();
     const screen = renderScreen("/agentcore/add/harness");
     await reachModelStep(screen, "assistant");
 
-    await screen.press("down");
-    await screen.press("down");
-    await screen.press("down");
-    await screen.press("return");
-    await waitForText(screen.lastFrame, "model ID");
-    await screen.press("return");
-
-    await waitForText(screen.lastFrame, "Model ID is required");
-    expect(screen.lastFrame()).toContain("which model should it run on?");
-    screen.unmount();
-  });
-
-  test("esc collapses the model ID input back into the list", async () => {
-    await inProject();
-    const screen = renderScreen("/agentcore/add/harness");
-    await reachModelStep(screen, "assistant");
-
-    await screen.press("down");
-    await screen.press("down");
-    await screen.press("down");
     await screen.press("return");
     await waitForText(screen.lastFrame, "model ID");
 
     await screen.press("escape");
 
-    await waitForText(screen.lastFrame, "❯ ● another Bedrock model");
-    expect(screen.lastFrame()).not.toContain("model ID");
-    expect(screen.lastFrame()).toContain("which model should it run on?");
+    await waitFor(() => !(screen.lastFrame() ?? "").includes("model ID"));
+    expect(screen.lastFrame()).toContain("❯ ● bedrock");
+    expect(screen.lastFrame()).toContain("choose a model provider");
     screen.unmount();
   });
 
@@ -286,7 +336,7 @@ describe("project add harness wizard", () => {
     await run(["add", "harness", "--name", "assistant"]);
     const screen = renderScreen("/agentcore/add/harness");
     await reachModelStep(screen, "assistant");
-    await screen.press("return");
+    await acceptDefaultModel(screen);
     await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
     await screen.press("return");
 

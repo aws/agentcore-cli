@@ -40,6 +40,15 @@ export const DEFAULT_HARNESS_MODEL = {
   provider: "bedrock",
   modelId: "global.anthropic.claude-sonnet-5",
 } as const satisfies { provider: HarnessModelProvider; modelId: string };
+
+/** The model ID each provider starts with when none is given: the flag path's
+ * default and the wizards' prefilled answer, so the entry points cannot drift. */
+export const HARNESS_DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
+  bedrock: DEFAULT_HARNESS_MODEL.modelId,
+  open_ai: "gpt-5",
+  gemini: "gemini-2.5-flash",
+  lite_llm: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
+};
 export const MAX_LITE_LLM_API_BASE_LENGTH = 16383;
 export const BedrockApiFormatSchema = z.enum(["converse_stream", "responses", "chat_completions"]);
 export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;

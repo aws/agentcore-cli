@@ -1,92 +1,47 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
 import type z from "zod";
-import { FormRadioGroup, type FormRadioOption } from "../../../../components/FormRadioGroup";
-import { FormTextInput } from "../../../../components/FormTextInput";
-import { darkTheme } from "../../../../components/ui/_core.js";
-import {
-  Step,
-  Summary,
-  TextAreaField,
-  TextField,
-  Wizard,
-  firstIssue,
-  useKeyHints,
-  useWizard,
-  type Choice,
-} from "../../../../components/wizard";
+import { Step, Summary, TextAreaField, TextField, Wizard } from "../../../../components/wizard";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
-import {
-  DEFAULT_HARNESS_MODEL,
-  HarnessModelSchema,
-  HarnessNameSchema,
-  type HarnessSpecSchema,
-} from "../../../../projectSchemas/harness";
+import { HarnessNameSchema, type HarnessSpecSchema } from "../../../../projectSchemas/harness";
 import { ProjectKey } from "../../../../router";
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
+import {
+  HarnessModelField,
+  emptyHarnessModel,
+  harnessModelSummary,
+  toHarnessModelInput,
+  type HarnessModelValues,
+} from "../../HarnessModelField";
 import { LoadingFrame, ProjectGate, projectQueryKey } from "../../ProjectGate";
 import { requireDeployedNameFits } from "../shared";
 import { toAddHarnessInput } from "./index";
 
-const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "harness"];
 const DESCRIPTION = "add a harness to the current project";
 const ADD_MENU = "/agentcore/add";
 
 type HarnessSpecInput = z.input<typeof HarnessSpecSchema>;
 
-// OTHER_MODEL is the list entry that reveals a text input for a Bedrock model
-// or inference profile ID the list does not name.
-const OTHER_MODEL = "other";
-
-// The Bedrock IDs the CLI already names: the default every entry point shares
-// first, then the ones its docs and help text use. Anything else is typed in.
-const MODEL_CHOICES: Choice<string>[] = [
-  {
-    value: DEFAULT_HARNESS_MODEL.modelId,
-    label: "Claude Sonnet 5 (default)",
-    description: DEFAULT_HARNESS_MODEL.modelId,
-  },
-  {
-    value: "global.anthropic.claude-sonnet-4-6",
-    label: "Claude Sonnet 4.6",
-    description: "global.anthropic.claude-sonnet-4-6",
-  },
-  {
-    value: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    label: "Claude Sonnet 4.5",
-    description: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-  },
-  {
-    value: OTHER_MODEL,
-    label: "another Bedrock model",
-    description: "type a model or inference profile ID",
-  },
-];
-
 interface HarnessFormValues {
   name: string;
   systemPrompt: string;
-  // The model list's answer. OTHER_MODEL means customModelId holds the ID.
-  modelChoice: string;
-  customModelId: string;
-}
-
-function modelIdOf(values: HarnessFormValues): string {
-  return values.modelChoice === OTHER_MODEL ? values.customModelId.trim() : values.modelChoice;
+  // The model step is the one `agentcore create` asks for a config-based
+  // project, so a harness added here and one a project starts with are
+  // configured the same way.
+  model: HarnessModelValues;
 }
 
 // toHarnessInput is the answers as the flag path would state them: `--name`,
-// `--model` with the shared Bedrock provider, `--system-prompt`. Everything
-// else keeps the default it would have had, so a harness added here and one
-// added with those three flags are the same harness.
+// `--model`, `--system-prompt`. Everything else keeps the default it would
+// have had, so a harness added here and one added with those three flags are
+// the same harness.
 export function toHarnessInput(values: HarnessFormValues): HarnessSpecInput {
   return {
     name: values.name,
-    model: { provider: DEFAULT_HARNESS_MODEL.provider, modelId: modelIdOf(values) },
+    model: toHarnessModelInput(values.model),
     systemPrompt: values.systemPrompt,
   };
 }
@@ -106,7 +61,7 @@ export function promptPreview(prompt: string): string {
 function summaryOf(values: HarnessFormValues): Record<string, string> {
   return {
     harness: values.name,
-    model: modelIdOf(values),
+    ...harnessModelSummary(values.model),
     "system prompt": promptPreview(values.systemPrompt),
   };
 }
@@ -163,12 +118,11 @@ function AddHarnessWizard({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [values, setValues] = useState<HarnessFormValues>({
+  const [values, setValues] = useState<HarnessFormValues>(() => ({
     name: "",
     systemPrompt: "",
-    modelChoice: DEFAULT_HARNESS_MODEL.modelId,
-    customModelId: "",
-  });
+    model: emptyHarnessModel(),
+  }));
   const set = (update: Partial<HarnessFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
 
@@ -232,114 +186,13 @@ function AddHarnessWizard({
         />
       </Step>
 
-      <Step stepKey="model" prompt="which model should it run on?">
-        <ModelField
-          modelChoice={values.modelChoice}
-          customModelId={values.customModelId}
-          onChange={(update) => set(update)}
-        />
+      <Step stepKey="model" title="model provider">
+        <HarnessModelField value={values.model} onChange={(model) => set({ model })} />
       </Step>
 
       <Step stepKey="review" prompt="this harness will be added to agentcore.json">
         <Summary items={summaryOf(values)} />
       </Step>
     </Wizard>
-  );
-}
-
-// ModelField is a compound field: one useInput over the model list and the
-// text input the last entry reveals. The arrows move the value; enter continues
-// with a listed model, or opens the input for one that is not listed, with esc
-// or up stepping back out to the list.
-function ModelField({
-  modelChoice,
-  customModelId,
-  onChange,
-}: {
-  modelChoice: string;
-  customModelId: string;
-  onChange: (update: Partial<Pick<HarnessFormValues, "modelChoice" | "customModelId">>) => void;
-}) {
-  const { advance, back } = useWizard();
-  const found = MODEL_CHOICES.findIndex((choice) => choice.value === modelChoice);
-  const index = found === -1 ? 0 : found;
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string>();
-
-  useKeyHints([
-    { key: "↑↓", label: "navigate" },
-    { key: "enter", label: "continue" },
-  ]);
-
-  useInput((_input, key) => {
-    if (!editing) {
-      if (key.escape) {
-        back();
-        return;
-      }
-      if (key.upArrow || key.downArrow) {
-        const nextIndex = key.upArrow
-          ? Math.max(0, index - 1)
-          : Math.min(MODEL_CHOICES.length - 1, index + 1);
-        onChange({ modelChoice: MODEL_CHOICES[nextIndex]!.value });
-        setError(undefined);
-        return;
-      }
-      if (key.return) {
-        if (modelChoice === OTHER_MODEL) setEditing(true);
-        else advance();
-      }
-      return;
-    }
-
-    if (key.escape || key.upArrow) {
-      setEditing(false);
-      setError(undefined);
-      return;
-    }
-    if (!key.return) return;
-
-    // The same schema the flag path parses `--model` with, so an ID it would
-    // refuse is refused here, in its words.
-    const issue = firstIssue(HarnessModelSchema, {
-      provider: DEFAULT_HARNESS_MODEL.provider,
-      modelId: customModelId.trim(),
-    });
-    if (issue !== undefined) {
-      setError(issue);
-      return;
-    }
-    setError(undefined);
-    advance();
-  });
-
-  const options: FormRadioOption[] = MODEL_CHOICES.map(({ label, description }) => ({
-    label,
-    description: description ?? "",
-  }));
-
-  return (
-    <Box flexDirection="column">
-      <FormRadioGroup
-        helpText=""
-        options={options}
-        focusedIndex={editing ? undefined : index}
-        selectedIndex={index}
-      />
-      {editing && (
-        <FormTextInput
-          name="model ID"
-          helpText="a Bedrock model ID or inference profile ID"
-          placeholder="us.anthropic.claude-…"
-          errorText=""
-          value={customModelId}
-          onChange={(value) => {
-            onChange({ customModelId: value });
-            setError(undefined);
-          }}
-        />
-      )}
-      {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
-    </Box>
   );
 }
