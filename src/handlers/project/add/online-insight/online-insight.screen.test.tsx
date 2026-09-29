@@ -146,10 +146,10 @@ describe("project add online-insight wizard", () => {
     screen.unmount();
   });
 
-  test("offers named endpoints for the selected project Runtime", async () => {
+  test("distinguishes a named DEFAULT endpoint from the Runtime default", async () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
-    spec.runtimes[0].endpoints = { PROD: { version: 1 } };
+    spec.runtimes[0].endpoints = { DEFAULT: { version: 1 } };
     await writeProjectSpec(projectRoot, spec);
     const screen = renderScreen("/agentcore/add/online-insight");
 
@@ -162,8 +162,8 @@ describe("project add online-insight wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "which Runtime endpoint should be monitored?");
-    expect(screen.lastFrame()).toContain("DEFAULT (default)");
-    expect(screen.lastFrame()).toContain("PROD");
+    expect(screen.lastFrame()).toContain("NO ENDPOINT (default)");
+    expect(screen.lastFrame()).toContain("DEFAULT");
     await screen.press("down");
     await screen.press("return");
 
@@ -173,13 +173,13 @@ describe("project add online-insight wizard", () => {
       screen.lastFrame,
       "this online insight config will be added to agentcore.json",
     );
-    expect(flatFrame(screen.lastFrame)).toContain("source agent:PROD");
+    expect(flatFrame(screen.lastFrame)).toContain("source agent:DEFAULT");
     await screen.press("return");
     await waitForText(screen.lastFrame, "added online-insight config 'endpoint_insights'");
 
     expect((await projectSpec(projectRoot)).onlineEvalConfigs[0]).toMatchObject({
       agent: "agent",
-      endpoint: "PROD",
+      endpoint: "DEFAULT",
     });
     screen.unmount();
   });

@@ -148,7 +148,7 @@ describe("project add online-eval wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "which Runtime endpoint should be monitored?");
-    expect(screen.lastFrame()).toContain("DEFAULT (default)");
+    expect(screen.lastFrame()).toContain("NO ENDPOINT (default)");
     expect(screen.lastFrame()).toContain("PROD");
     await screen.press("down");
     await screen.press("return");

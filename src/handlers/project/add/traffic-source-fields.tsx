@@ -9,14 +9,12 @@ import {
 } from "../../../components/wizard";
 import type { Project } from "../types";
 
-export const DEFAULT_TRAFFIC_SOURCE_ENDPOINT = "DEFAULT";
-
 export type TrafficSourceType = "runtime" | "logs";
 
 export interface TrafficSourceFormValues {
   sourceType: TrafficSourceType;
   runtime: string;
-  endpoint: string;
+  endpoint: string | undefined;
   logGroups: string;
   serviceNames: string;
 }
@@ -63,7 +61,7 @@ export function initialTrafficSourceValues(runtime: string): TrafficSourceFormVa
   return {
     sourceType: runtime === "" ? "logs" : "runtime",
     runtime,
-    endpoint: DEFAULT_TRAFFIC_SOURCE_ENDPOINT,
+    endpoint: undefined,
     logGroups: "",
     serviceNames: "",
   };
@@ -72,10 +70,7 @@ export function initialTrafficSourceValues(runtime: string): TrafficSourceFormVa
 export function toTrafficSourceInput(values: TrafficSourceFormValues) {
   return {
     agent: values.sourceType === "runtime" ? values.runtime : undefined,
-    endpoint:
-      values.sourceType === "runtime" && values.endpoint !== DEFAULT_TRAFFIC_SOURCE_ENDPOINT
-        ? values.endpoint
-        : undefined,
+    endpoint: values.sourceType === "runtime" ? values.endpoint : undefined,
     logGroupNames: values.sourceType === "logs" ? splitCommaList(values.logGroups) : undefined,
     serviceNames:
       values.sourceType === "logs" && values.serviceNames.trim() !== ""
@@ -89,7 +84,7 @@ export function trafficSourceSummary(values: TrafficSourceFormValues): Record<st
   return {
     source:
       values.sourceType === "runtime"
-        ? `${values.runtime}:${values.endpoint}`
+        ? `${values.runtime}:${values.endpoint ?? "DEFAULT"}`
         : splitCommaList(values.logGroups).join(", "),
     ...(values.sourceType === "logs" && serviceNames.length > 0
       ? { services: serviceNames.join(", ") }
@@ -122,10 +117,10 @@ export function trafficSourceSteps({
   }));
   const selectedRuntime = runtimes.find((runtime) => runtime.name === values.runtime);
   const namedEndpoints = Object.keys(selectedRuntime?.endpoints ?? {});
-  const endpointChoices: Choice<string>[] = [
+  const endpointChoices: Choice<string | undefined>[] = [
     {
-      value: DEFAULT_TRAFFIC_SOURCE_ENDPOINT,
-      label: `${DEFAULT_TRAFFIC_SOURCE_ENDPOINT} (default)`,
+      value: undefined,
+      label: "NO ENDPOINT (default)",
       description: "sample traffic sent to the Runtime's default endpoint",
     },
     ...namedEndpoints.map((endpoint) => ({ value: endpoint, label: endpoint })),
@@ -145,9 +140,7 @@ export function trafficSourceSteps({
             <ChoiceField
               choices={runtimeChoices}
               value={values.runtime}
-              onChange={(runtime) =>
-                onChange({ runtime, endpoint: DEFAULT_TRAFFIC_SOURCE_ENDPOINT })
-              }
+              onChange={(runtime) => onChange({ runtime, endpoint: undefined })}
             />
           </Step>,
         ]
