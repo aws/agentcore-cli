@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.31.0] - 2026-09-29
+
+### Added
+- feat: add the BedrockManagedAgents template (#2449) (347d11b1)
+
+### Fixed
+- fix: make esbuild available at runtime (#2126) (87623e51)
+
 ## [0.30.0] - 2026-09-15
 
 ### Fixed
