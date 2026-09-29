@@ -12,6 +12,7 @@ import {
   TextAreaField,
   TextField,
   Wizard,
+  firstIssue,
   useKeyHints,
   useWizard,
   type Choice,
@@ -91,12 +92,15 @@ export function toHarnessInput(values: HarnessFormValues): HarnessSpecInput {
 }
 
 // promptPreview keeps the review to one line: the prompt's first line, cut
-// short, with a count of what follows it.
+// short, with a count of what follows it. It reads the prompt exactly as it
+// will be saved — no trimming — so a leading blank line or a trailing newline
+// left by an extra enter shows up here rather than only in system-prompt.md.
 export function promptPreview(prompt: string): string {
-  const lines = prompt.trim().split("\n");
+  const lines = prompt.split("\n");
   const first = lines[0] ?? "";
   const shown = first.length > 60 ? `${first.slice(0, 59)}…` : first;
-  return lines.length > 1 ? `${shown} (+${lines.length - 1} more lines)` : shown;
+  const rest = lines.length - 1;
+  return rest > 0 ? `${shown} (+${rest} more ${rest === 1 ? "line" : "lines"})` : shown;
 }
 
 function summaryOf(values: HarnessFormValues): Record<string, string> {
@@ -241,15 +245,6 @@ function AddHarnessWizard({
       </Step>
     </Wizard>
   );
-}
-
-function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
-  const result = schema.safeParse(value);
-  if (result.success) return undefined;
-  const issue = result.error.issues[0];
-  if (!issue) return "invalid value";
-  const path = issue.path.join(".");
-  return path === "" ? issue.message : `${path}: ${issue.message}`;
 }
 
 // ModelField is a compound field: one useInput over the model list and the

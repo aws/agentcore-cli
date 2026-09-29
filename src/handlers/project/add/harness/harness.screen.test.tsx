@@ -24,6 +24,7 @@ import { DEFAULT_HARNESS_MODEL } from "../../../../projectSchemas/harness";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
+import { promptPreview } from "./screen";
 
 const { cleanup, inProject, projectSpec, run } =
   createGatewayProjectTestHarness("add-harness-wizard");
@@ -50,6 +51,32 @@ async function reachModelStep(screen: RenderScreenResult, name: string): Promise
   await screen.press("ctrl+d");
   await waitForText(screen.lastFrame, "which model should it run on?");
 }
+
+// The review line describes the prompt exactly as system-prompt.md will hold
+// it, blank lines included, so what the user confirms is what gets written.
+describe("promptPreview", () => {
+  test.each([
+    ["a one-line prompt", "You are a pirate.", "You are a pirate."],
+    [
+      "counts the lines after the first",
+      "You are a pirate.\nAnswer in rhyme.",
+      "You are a pirate. (+1 more line)",
+    ],
+    ["keeps a leading blank line", "\nYou are a pirate.", " (+1 more line)"],
+    [
+      "counts a trailing newline left by enter",
+      "You are a pirate.\n",
+      "You are a pirate. (+1 more line)",
+    ],
+    [
+      "cuts a long first line short",
+      `${"x".repeat(70)}\ny\nz`,
+      `${"x".repeat(59)}… (+2 more lines)`,
+    ],
+  ])("%s", (_label, prompt, preview) => {
+    expect(promptPreview(prompt)).toBe(preview);
+  });
+});
 
 describe("project add harness wizard", () => {
   test("collects a name, prompt and model, then scaffolds the same harness as the flags", async () => {
@@ -83,7 +110,7 @@ describe("project add harness wizard", () => {
     const review = flatFrame(screen.lastFrame);
     expect(review).toContain("harness assistant");
     expect(review).toContain(`model ${DEFAULT_HARNESS_MODEL.modelId}`);
-    expect(review).toContain("system prompt You are a pirate. (+1 more lines)");
+    expect(review).toContain("system prompt You are a pirate. (+1 more line)");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added harness 'assistant' to 'TestProject'");

@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { useNavigate } from "react-router";
-import z from "zod";
 import { FormRadioGroup, type FormRadioOption } from "../../../../components/FormRadioGroup";
 import { FormTextInput } from "../../../../components/FormTextInput";
 import { darkTheme } from "../../../../components/ui/_core.js";
@@ -12,6 +11,7 @@ import {
   Summary,
   TextField,
   Wizard,
+  firstIssue,
   useKeyHints,
   useWizard,
   type Choice,
@@ -241,15 +241,6 @@ function AddGatewayWizard({
       </Step>
     </Wizard>
   );
-}
-
-function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
-  const result = schema.safeParse(value);
-  if (result.success) return undefined;
-  const issue = result.error.issues[0];
-  if (!issue) return "invalid value";
-  const path = issue.path.join(".");
-  return path === "" ? issue.message : `${path}: ${issue.message}`;
 }
 
 function AuthorizerField({

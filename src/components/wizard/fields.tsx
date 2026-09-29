@@ -11,10 +11,14 @@ import { useKeyHints, useWizard } from "./context";
 
 const theme = darkTheme;
 
-function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
+// firstIssue renders the schema's own message, so a wizard rejects exactly what
+// the flag-driven path rejects and says the same thing about it. Exported for
+// compound fields that validate a revealed input against a flag's schema.
+export function firstIssue(schema: z.ZodType, value: unknown): string | undefined {
   const parsed = schema.safeParse(value);
   if (parsed.success) return undefined;
-  const issue = parsed.error.issues[0]!;
+  const issue = parsed.error.issues[0];
+  if (!issue) return "invalid value";
   const path = issue.path.join(".");
   return path === "" ? issue.message : `${path}: ${issue.message}`;
 }

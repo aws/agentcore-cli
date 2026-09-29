@@ -10,6 +10,7 @@ export {
   RevealChoiceField,
   MultiChoiceField,
   Summary,
+  firstIssue,
   type Choice,
   type TextFieldProps,
   type TextAreaFieldProps,
