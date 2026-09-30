@@ -78,7 +78,7 @@ export async function resolvePaymentCredentialEnvEntries(input: {
   name: string;
   provider: PaymentProvider;
   flags: PaymentCredentialInputFlags;
-  io: AppIO;
+  io?: Pick<AppIO, "stdin">;
 }): Promise<EnvLocalEntry[]> {
   const { name, provider, flags, io } = input;
   const invalidFlags = (provider === "CoinbaseCDP" ? STRIPE_FLAGS : COINBASE_FLAGS).filter(
@@ -92,7 +92,7 @@ export async function resolvePaymentCredentialEnvEntries(input: {
     );
   }
 
-  const resolver = new SourceResolver({ stdin: io.stdin });
+  const resolver = new SourceResolver({ stdin: io?.stdin });
   if (provider === "StripePrivy") {
     const appId = normalizedIdentifier("appId", flags["app-id"]);
     const authorizationId = normalizedIdentifier("authorizationId", flags["authorization-id"]);

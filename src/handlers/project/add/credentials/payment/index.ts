@@ -1,9 +1,34 @@
 import z from "zod";
-import { PaymentProviderSchema } from "../../../../../projectSchemas/payment";
+import type { AppIO } from "../../../../../io";
+import { PaymentProviderSchema, type PaymentProvider } from "../../../../../projectSchemas/payment";
 import { createHandler, flag } from "../../../../../router";
 import type { AddProjectResourceConfig } from "../../types";
-import { addCredentialToProject } from "../shared";
-import { paymentCredentialInputFlags, resolvePaymentCredentialEnvEntries } from "./input";
+import { addCredentialToProject, type AddCredentialInput } from "../shared";
+import {
+  paymentCredentialInputFlags,
+  resolvePaymentCredentialEnvEntries,
+  type PaymentCredentialInputFlags,
+} from "./input";
+
+export type PaymentCredentialInput = {
+  name: string;
+  provider: PaymentProvider;
+  flags: PaymentCredentialInputFlags;
+  io?: Pick<AppIO, "stdin">;
+};
+
+export async function toAddPaymentCredentialInput(
+  input: PaymentCredentialInput,
+): Promise<AddCredentialInput> {
+  return {
+    resourceConfig: {
+      authorizerType: "PaymentCredentialProvider",
+      name: input.name,
+      provider: input.provider,
+    },
+    envEntries: await resolvePaymentCredentialEnvEntries(input),
+  };
+}
 
 export const createAddPaymentCredentialHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -15,19 +40,15 @@ export const createAddPaymentCredentialHandler = (config: AddProjectResourceConf
       ...paymentCredentialInputFlags,
     ],
     handle: async (ctx, flags) => {
-      const envEntries = await resolvePaymentCredentialEnvEntries({
-        name: flags.name,
-        provider: flags.provider,
-        flags,
-        io: config.io,
-      });
-      await addCredentialToProject(ctx, config, {
-        resourceConfig: {
-          authorizerType: "PaymentCredentialProvider",
+      await addCredentialToProject(
+        ctx,
+        config,
+        await toAddPaymentCredentialInput({
           name: flags.name,
           provider: flags.provider,
-        },
-        envEntries,
-      });
+          flags,
+          io: config.io,
+        }),
+      );
     },
   });

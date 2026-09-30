@@ -12,7 +12,7 @@ export function createAddCredentialsHandler(config: AddProjectResourceConfig, co
     "add AgentCore Identity credential providers to the current project",
   )
     .default(renderTui(core, config.io))
-    .supportedTuiCommands("api-key", "oauth");
+    .supportedTuiCommands("api-key", "oauth", "payment");
   credentials.handler(createAddApiKeyCredentialHandler(config));
   credentials.handler(createAddOauthCredentialHandler(config));
   credentials.handler(createAddPaymentCredentialHandler(config));

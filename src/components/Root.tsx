@@ -147,6 +147,7 @@ import { AddLlmAsAJudgeEvaluatorScreen } from "../handlers/project/add/evaluator
 import { AddCodeBasedEvaluatorScreen } from "../handlers/project/add/evaluator/code-based/screen.tsx";
 import { AddApiKeyCredentialScreen } from "../handlers/project/add/credentials/api-key/screen.tsx";
 import { AddOauthCredentialScreen } from "../handlers/project/add/credentials/oauth/screen.tsx";
+import { AddPaymentCredentialScreen } from "../handlers/project/add/credentials/payment/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { ProjectDetectedKey } from "../handlers/project/context.ts";
@@ -973,6 +974,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/add/credentials/oauth"
         element={<AddOauthCredentialScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/add/credentials/payment"
+        element={<AddPaymentCredentialScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/remove" element={<ProjectRemoveScreen ctx={ctx} core={core} />} />
       <Route
