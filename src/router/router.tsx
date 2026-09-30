@@ -38,7 +38,7 @@ class RoutedCommand extends Command {
   // draws above this command, if the router declared one before it.
   menuSectionStart?: string;
   // listedInMenu keeps a command without a screen in place in the parent's
-  // menu instead of moving it under the "command line only" divider.
+  // menu instead of moving it under the "cli" divider.
   listedInMenu = false;
 
   constructor(readonly handler: Handler) {
@@ -380,7 +380,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
 
   // listInMenu keeps the named children in their registered place in this
   // router's interactive menu, styled like the commands with a screen, instead
-  // of moving them under the "command line only" divider. Selecting one still
+  // of moving them under the "cli" divider. Selecting one still
   // opens its help; command-line behavior is untouched. Names that are not
   // registered children are ignored.
   listInMenu(...commands: string[]): this {

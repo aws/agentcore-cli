@@ -7,7 +7,17 @@ import { cleanupScreens, keys, tick, ttyTestIO, waitFor } from "../../testing";
 import { AgentCoreCLIError } from "../../errors";
 import { Wizard, type WizardSubmitResult } from "./Wizard";
 import { Step } from "./Step";
-import { ChoiceField, MultiChoiceField, Summary, TextField } from "./fields";
+import {
+  ChoiceField,
+  MultiChoiceField,
+  MultiTextField,
+  ResourceChoiceField,
+  RevealChoiceField,
+  Summary,
+  TextAreaField,
+  TextField,
+  type Choice,
+} from "./fields";
 
 afterEach(cleanupScreens);
 
@@ -332,7 +342,7 @@ describe("MultiChoiceField and numeric TextField", () => {
     { value: "blue", label: "blue", description: "the third" },
   ];
 
-  function driveFields(onSubmit: (summary: string) => void) {
+  function driveFields(onSubmit: (summary: string) => void, minSelections = 0) {
     function Harness() {
       const [colours, setColours] = useState<string[]>([]);
       const [days, setDays] = useState("30");
@@ -345,7 +355,13 @@ describe("MultiChoiceField and numeric TextField", () => {
           successLabel="all done"
         >
           <Step stepKey="colours" prompt="pick some colours">
-            <MultiChoiceField choices={COLOURS} value={colours} onChange={setColours} />
+            <MultiChoiceField
+              choices={COLOURS}
+              value={colours}
+              onChange={setColours}
+              minSelections={minSelections}
+              minSelectionsMessage="Pick at least one colour"
+            />
           </Step>
           <Step stepKey="days" prompt="how many days?">
             <TextField
@@ -408,6 +424,17 @@ describe("MultiChoiceField and numeric TextField", () => {
     d.unmount();
   });
 
+  test("a minimum selection count blocks an empty answer", async () => {
+    const d = driveFields(() => {}, 1);
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("pick some colours"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Pick at least one colour"), 1000);
+    expect(d.lastFrame()).toContain("pick some colours");
+    d.unmount();
+  });
+
   test("a number outside the schema's range keeps the step", async () => {
     let submitted: string | undefined;
     const d = driveFields((summary) => {
@@ -436,6 +463,631 @@ describe("MultiChoiceField and numeric TextField", () => {
     await d.press("return");
 
     await waitFor(() => (d.lastFrame() ?? "").includes("Days must be a whole number"), 1000);
+    d.unmount();
+  });
+
+  test("a decimal field validates the parsed number", async () => {
+    let submitted = false;
+
+    function Harness() {
+      const [rate, setRate] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => {
+            submitted = true;
+          }}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="rate" prompt="sampling rate?">
+            <TextField
+              label="Sampling rate"
+              value={rate}
+              onChange={setRate}
+              required
+              decimal
+              schema={z.number().min(0.01).max(100)}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<Harness />);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+
+    await tick();
+    instance.stdin.write("12.5");
+    await tick();
+    instance.stdin.write(keys.return);
+    await waitFor(() => submitted, 1000);
+    instance.unmount();
+  });
+
+  test("a decimal field refuses non-numeric text", async () => {
+    function Harness() {
+      const [rate, setRate] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => {}}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="rate" prompt="sampling rate?">
+            <TextField
+              label="Sampling rate"
+              value={rate}
+              onChange={setRate}
+              required
+              decimal
+              schema={z.number().min(0.01).max(100)}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<Harness />);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+
+    await tick();
+    instance.stdin.write("ten");
+    await tick();
+    instance.stdin.write(keys.return);
+    await waitFor(() => (instance.lastFrame() ?? "").includes("Sampling rate must be a number"));
+    instance.unmount();
+  });
+});
+
+// ResourceChoiceField is a ChoiceField over the project spec; what these cover
+// is the empty state a project without the resource lands on.
+describe("ResourceChoiceField", () => {
+  function driveResources(choices: Choice<string>[], onCancel: () => void) {
+    function Harness() {
+      const [gateway, setGateway] = useState(choices[0]?.value ?? "");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={onCancel}
+          onSubmit={async () => {}}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="gateway" prompt="which Gateway?">
+            <ResourceChoiceField
+              choices={choices}
+              value={gateway}
+              onChange={setGateway}
+              emptyMessage="no Gateways in this project"
+              emptyHint="add one with  agentcore add gateway"
+            />
+          </Step>
+          <Step stepKey="review" prompt="review">
+            <Summary items={{ picked: gateway }} />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("with nothing to choose it names what is missing and esc leaves", async () => {
+    let cancelled = false;
+    const d = driveResources([], () => {
+      cancelled = true;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("no Gateways in this project"), 1000);
+    expect(d.lastFrame()).toContain("add one with  agentcore add gateway");
+    // Only esc is on offer: enter has nothing to select. The field publishes
+    // its hints after the first paint, so wait for the default enter hint to go.
+    await waitFor(() => !(d.lastFrame() ?? "").includes("[enter]"), 1000);
+    expect(d.lastFrame()).toContain("[esc] back");
+
+    await d.press("return");
+    expect(d.lastFrame()).toContain("no Gateways in this project");
+    expect(cancelled).toBe(false);
+
+    await d.press("escape");
+    await waitFor(() => cancelled, 1000);
+    d.unmount();
+  });
+
+  test("with resources it is a choice over them", async () => {
+    const d = driveResources(
+      [
+        { value: "tools", label: "tools", description: "the first" },
+        { value: "payments", label: "payments", description: "the second" },
+      ],
+      () => {},
+    );
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● tools"), 1000);
+    expect(d.lastFrame()).not.toContain("no Gateways");
+    await d.press("down");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("picked"), 1000);
+    expect(d.lastFrame()).toContain("payments");
+    d.unmount();
+  });
+});
+
+// RevealChoiceField opens one input under a chosen row; these cover which rows
+// open it, that the input validates like a TextField, and the way back out.
+describe("RevealChoiceField", () => {
+  function driveReveal() {
+    function Harness() {
+      const [flavour, setFlavour] = useState("preset");
+      const [custom, setCustom] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => {}}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="flavour" prompt="which flavour?">
+            <RevealChoiceField
+              choices={[
+                { value: "preset", label: "preset", description: "the built-in one" },
+                { value: "custom", label: "custom", description: "type your own" },
+              ]}
+              value={flavour}
+              onChange={setFlavour}
+              input={{
+                opensFor: (value) => value === "custom",
+                label: "Flavour",
+                name: "flavour",
+                help: "lowercase letters only",
+                value: custom,
+                onChange: setCustom,
+                required: true,
+                schema: z.string().regex(/^[a-z]+$/, "letters only please"),
+              }}
+            />
+          </Step>
+          <Step stepKey="review" prompt="review">
+            <Summary items={{ flavour, custom: custom === "" ? "(none)" : custom }} />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter on a row without a follow-up continues", async () => {
+    const d = driveReveal();
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● preset"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("review"), 1000);
+    expect(d.lastFrame()).toContain("preset");
+    expect(d.lastFrame()).not.toContain("lowercase letters only");
+    d.unmount();
+  });
+
+  test("enter on the revealing row opens the input, which validates before continuing", async () => {
+    const d = driveReveal();
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● preset"), 1000);
+    await d.press("down");
+    await d.press("return");
+
+    // The rows keep the value; the pointer moves into the input.
+    await waitFor(() => (d.lastFrame() ?? "").includes("lowercase letters only"), 1000);
+    expect(d.lastFrame()).toContain("● custom");
+    expect(d.lastFrame()).not.toContain("❯ ● custom");
+
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("Flavour is required"), 1000);
+
+    await d.write("Mint");
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("letters only please"), 1000);
+    expect(d.lastFrame()).toContain("which flavour?");
+    d.unmount();
+  });
+
+  test("a valid input continues, and esc from it returns to the rows keeping what was typed", async () => {
+    const d = driveReveal();
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● preset"), 1000);
+    await d.press("down");
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("lowercase letters only"), 1000);
+    await d.write("mint");
+
+    await d.press("escape");
+    await waitFor(() => (d.lastFrame() ?? "").includes("❯ ● custom"), 1000);
+    expect(d.lastFrame()).not.toContain("lowercase letters only");
+
+    await d.press("return");
+    await waitFor(() => (d.lastFrame() ?? "").includes("mint"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("review"), 1000);
+    expect(d.lastFrame()).toContain("mint");
+    d.unmount();
+  });
+});
+
+// TextAreaField has its own harness because its key handling is the opposite of
+// every other field's: enter belongs to the value, so continuing needs ctrl+d.
+describe("TextAreaField", () => {
+  function driveTextArea(onSubmit: (instructions: string) => void) {
+    function Harness() {
+      const [instructions, setInstructions] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => onSubmit(instructions)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="instructions" prompt="what are the instructions?">
+            <TextAreaField
+              label="Instructions"
+              value={instructions}
+              onChange={setInstructions}
+              required
+              schema={z.string().refine((value) => !value.includes("TODO"), "no TODOs")}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter builds up the value and ctrl+d submits it", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea((instructions) => {
+      submitted = instructions;
+    });
+
+    // The field publishes its hints after the first paint, so wait for them.
+    await waitFor(() => (d.lastFrame() ?? "").includes("[ctrl+d] submit"), 1000);
+    expect(d.lastFrame()).toContain("[enter] newline");
+    // The step is last, so on any other field this enter would submit.
+    await d.write("You are a pirate.");
+    await d.press("return");
+    await d.write("Answer in rhyme.");
+    expect(submitted).toBeUndefined();
+    expect(d.lastFrame()).toContain("Answer in rhyme.");
+
+    await d.press("ctrl+d");
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("You are a pirate.\nAnswer in rhyme.");
+    d.unmount();
+  });
+
+  test("enter on an empty required value says so instead of continuing", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea((instructions) => {
+      submitted = instructions;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("what are the instructions?"), 1000);
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Instructions is required"), 1000);
+    expect(submitted).toBeUndefined();
+
+    // ctrl+d on the same empty value is refused for the same reason.
+    await d.press("ctrl+d");
+    expect(d.lastFrame()).toContain("Instructions is required");
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("ctrl+d on a value the schema rejects stays on the step", async () => {
+    let submitted: string | undefined;
+    const d = driveTextArea((instructions) => {
+      submitted = instructions;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("what are the instructions?"), 1000);
+    await d.write("TODO write this later");
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("no TODOs"), 1000);
+    expect(submitted).toBeUndefined();
+
+    // Typing again clears the message, and the corrected value goes through.
+    await d.write("!");
+    expect(d.lastFrame()).not.toContain("no TODOs");
+    d.unmount();
+  });
+});
+
+// The json and example options belong to a TextAreaField that collects a pasted
+// blob: the value is parsed before the schema sees it, and the shape to copy
+// stays on screen while it is typed.
+describe("TextAreaField with json", () => {
+  const EXAMPLE = '{"ok": true}';
+
+  function driveJson(onSubmit: (blob: string) => void) {
+    function Harness() {
+      const [blob, setBlob] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={() => {}}
+          onSubmit={async () => onSubmit(blob)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="blob" prompt="paste the configuration">
+            <TextAreaField
+              label="Configuration"
+              example={EXAMPLE}
+              value={blob}
+              onChange={setBlob}
+              required
+              json
+              schema={z.object({ ok: z.boolean() })}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("malformed JSON is reported as such, not as a schema failure", async () => {
+    let submitted: string | undefined;
+    const d = driveJson((blob) => {
+      submitted = blob;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("paste the configuration"), 1000);
+    await d.write('{"ok":');
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("Configuration is not valid JSON"), 1000);
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("well-formed JSON the schema rejects names the path", async () => {
+    let submitted: string | undefined;
+    const d = driveJson((blob) => {
+      submitted = blob;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("paste the configuration"), 1000);
+    await d.write('{"ok": "yes"}');
+    await d.press("ctrl+d");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("ok: Invalid input"), 1000);
+    expect(submitted).toBeUndefined();
+    d.unmount();
+  });
+
+  test("the example stays on screen while typing, and a valid value submits", async () => {
+    let submitted: string | undefined;
+    const d = driveJson((blob) => {
+      submitted = blob;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes(`for example  ${EXAMPLE}`), 1000);
+    await d.write('{"ok":');
+    expect(d.lastFrame()).toContain(`for example  ${EXAMPLE}`);
+    await d.press("return");
+    await d.write("true}");
+    await d.press("ctrl+d");
+
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe('{"ok":\ntrue}');
+    d.unmount();
+  });
+});
+
+// MultiTextField stacks several inputs on one step; these cover how focus moves
+// between them and that the last enter checks them all.
+describe("MultiTextField", () => {
+  function driveInputs(onSubmit: (summary: string) => void, onCancel: () => void = () => {}) {
+    function Harness() {
+      const [first, setFirst] = useState("");
+      const [second, setSecond] = useState("");
+      return (
+        <Wizard
+          breadcrumb={["agentcore", "test"]}
+          onCancel={onCancel}
+          onSubmit={async () => onSubmit(`${first}|${second}`)}
+          runningLabel="working…"
+          successLabel="all done"
+        >
+          <Step stepKey="pair" prompt="two answers">
+            <MultiTextField
+              inputs={[
+                {
+                  key: "first",
+                  label: "First",
+                  help: "required · letters only",
+                  value: first,
+                  onChange: setFirst,
+                  required: true,
+                  schema: NAME_SCHEMA,
+                },
+                {
+                  key: "second",
+                  label: "Second",
+                  help: "optional",
+                  value: second,
+                  onChange: setSecond,
+                },
+              ]}
+            />
+          </Step>
+        </Wizard>
+      );
+    }
+
+    const instance = render(<></>);
+    Object.defineProperties(instance.stdout, {
+      columns: { configurable: true, value: 100 },
+      rows: { configurable: true, value: 40 },
+    });
+    instance.rerender(<Harness />);
+    return {
+      lastFrame: instance.lastFrame,
+      write: async (input: string) => {
+        await tick();
+        instance.stdin.write(input);
+        await tick();
+      },
+      press: async (key: keyof typeof keys) => {
+        await tick();
+        instance.stdin.write(keys[key]);
+        await tick();
+      },
+      unmount: instance.unmount,
+    };
+  }
+
+  test("enter moves down through the inputs and submits from the last", async () => {
+    let submitted: string | undefined;
+    const d = driveInputs((summary) => {
+      submitted = summary;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("two answers"), 1000);
+    await d.write("alpha");
+    await d.press("return");
+    expect(submitted).toBeUndefined();
+    await d.write("beta");
+    await d.press("return");
+
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("alpha|beta");
+    d.unmount();
+  });
+
+  test("an input skipped with the arrows is checked on the last enter", async () => {
+    let submitted: string | undefined;
+    const d = driveInputs((summary) => {
+      submitted = summary;
+    });
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("two answers"), 1000);
+    await d.press("down");
+    await d.write("beta");
+    await d.press("return");
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("First is required"), 1000);
+    expect(submitted).toBeUndefined();
+
+    // Focus went back to the offending input, so typing fixes it in place.
+    await d.write("alpha");
+    await d.press("return");
+    await d.press("return");
+    await waitFor(() => submitted !== undefined, 1000);
+    expect(submitted).toBe("alpha|beta");
+    d.unmount();
+  });
+
+  test("esc leaves the step", async () => {
+    let cancelled = false;
+    const d = driveInputs(
+      () => {},
+      () => {
+        cancelled = true;
+      },
+    );
+
+    await waitFor(() => (d.lastFrame() ?? "").includes("two answers"), 1000);
+    await d.press("escape");
+    await waitFor(() => cancelled, 1000);
     d.unmount();
   });
 });

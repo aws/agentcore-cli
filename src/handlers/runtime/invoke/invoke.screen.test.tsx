@@ -8,7 +8,7 @@ import type {
 import type { RuntimeInvokeRequest } from "../types";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
@@ -90,7 +90,7 @@ describe("Runtime invoke routing", () => {
       .setGetResponse({
         agentRuntimeArn: `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${runtimeId}`,
       } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen("/agentcore/runtime/invoke", { core });
+    const screen = renderScreen("/agentcore/runtime/invoke", { core });
 
     await waitForText(screen.lastFrame, runtimeId);
     await screen.press("return");
@@ -104,12 +104,56 @@ describe("Runtime invoke routing", () => {
     await waitForText(screen.lastFrame, "Enter JSON payload");
   });
 
+  test("Esc backs out from a menu-launched console through the pickers to home", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setListResponse({ agentRuntimes: [runtime()] })
+      .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const screen = renderScreen("/agentcore", { core });
+
+    await screen.write("runtime");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await screen.write("invoke");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, RUNTIME_ID);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "choose an endpoint to invoke");
+    await waitForText(screen.lastFrame, QUALIFIER);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose an endpoint to invoke");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Runtime to invoke");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "agentcore → the platform for production AI agents");
+  });
+
+  test("Esc backs out of a direct console launch without prior router history", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose an endpoint to invoke");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Runtime to invoke");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+  });
+
   test("esc from an initial endpoint picker returns to the Runtime picker", async () => {
     const core = new TestCoreClient();
     core.runtime.setListEndpointsResponse({ runtimeEndpoints: [endpoint()] }).setListResponse({
       agentRuntimes: [runtime({ agentRuntimeId: "back-to-runtime-picker" })],
     });
-    const screen = renderImperativeScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, { core });
+    const screen = renderScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, { core });
 
     await waitForText(screen.lastFrame, QUALIFIER);
     await screen.press("escape");
@@ -124,7 +168,7 @@ describe("Runtime invoke routing", () => {
     core.runtime
       .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, {
+    const screen = renderScreen(`/agentcore/runtime/invoke/${RUNTIME_ID}`, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
@@ -140,11 +184,15 @@ describe("Runtime invoke routing", () => {
     expect(screen.lastFrame()).not.toContain("MCP session ID");
   });
 
-  test("escape switches endpoints without restoring the launch session", async () => {
+  test("backing out keeps launch authentication but starts a new session", async () => {
     const nextQualifier = "back-endpoint";
     const core = new TestCoreClient();
     core.runtime
-      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setGetResponse({
+        agentRuntimeArn: RUNTIME_ARN,
+        authorizerConfiguration: { customJWTAuthorizer: {} },
+        requestHeaderConfiguration: { requestHeaderAllowlist: ["X-Tenant"] },
+      } as GetAgentRuntimeResponse)
       .setListEndpointsResponse({
         runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
       })
@@ -153,31 +201,83 @@ describe("Runtime invoke routing", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
           runtimeId: RUNTIME_ID,
           runtimeSessionId: "cli-selected-session",
+          runtimeUserId: "user-123",
+          applicationHeaders: [["X-Tenant", "retail"]],
+          bearerToken: "secret-token",
         }),
     });
 
     await waitForText(screen.lastFrame, "Session ID: cli-selected-session");
     await screen.press("escape");
     await waitForText(screen.lastFrame, nextQualifier);
+    await waitForText(screen.lastFrame, "choose an endpoint to invoke");
     await screen.press("return");
     await waitForText(
       screen.lastFrame,
       `agentcore → runtime → invoke → ${RUNTIME_ID} → ${nextQualifier}`,
     );
+    await waitForText(screen.lastFrame, "Ready · Session ID:");
     const nextSessionId = displayedSessionId(screen.lastFrame());
     expect(nextSessionId).toMatch(UUID_PATTERN);
     expect(nextSessionId).not.toBe("cli-selected-session");
+    expect(screen.lastFrame()).toContain("Context user/JWT/1h");
 
     await screen.write("{}");
     await screen.press("return");
     await waitFor(() => invokeRequests(core).length === 1);
-    expect(invokeRequests(core)[0]!.runtimeSessionId).toBe(nextSessionId);
+    expect(invokeRequests(core)[0]).toMatchObject({
+      runtimeSessionId: nextSessionId,
+      runtimeUserId: "user-123",
+      applicationHeaders: [["X-Tenant", "retail"]],
+      bearerToken: "secret-token",
+    });
+  });
+
+  test("re-entering Invoke from the Runtime menu does not restore the launch session", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setListEndpointsResponse({ runtimeEndpoints: [endpoint()] })
+      .setListResponse({ agentRuntimes: [runtime()] });
+    const screen = renderScreen(CONSOLE_PATH, {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(RuntimeInvokeLaunchContextKey, {
+          runtimeId: RUNTIME_ID,
+          runtimeSessionId: "cli-selected-session",
+          runtimeUserId: "user-123",
+          applicationHeaders: [["X-Tenant", "retail"]],
+          bearerToken: "secret-token",
+        }),
+    });
+
+    await waitForText(screen.lastFrame, "Session ID: cli-selected-session");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose an endpoint to invoke");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "choose a Runtime to invoke");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await screen.write("invoke");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "choose a Runtime to invoke");
+    await waitForText(screen.lastFrame, RUNTIME_ID);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "choose an endpoint to invoke");
+    await waitForText(screen.lastFrame, QUALIFIER);
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "Enter JSON payload");
+    await waitForText(screen.lastFrame, "Ready · Session ID:");
+
+    expect(displayedSessionId(screen.lastFrame())).toMatch(UUID_PATTERN);
+    expect(displayedSessionId(screen.lastFrame())).not.toBe("cli-selected-session");
+    expect(screen.lastFrame()).toContain("Context user/JWT/1h");
   });
 
   test("shows the full Runtime lookup error", async () => {
@@ -187,7 +287,7 @@ describe("Runtime invoke routing", () => {
         name: "AccessDeniedException",
       });
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "AccessDeniedException");
     await waitForText(screen.lastFrame, "not authorized for this Runtime");
@@ -200,7 +300,7 @@ describe("Runtime invoke routing", () => {
       lookupSignal = signal;
       return new Promise(() => {});
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitFor(() => lookupSignal !== undefined);
     screen.unmount();
@@ -219,7 +319,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Enter JSON payload");
     expect(screen.lastFrame()!.split("\n")).not.toContain("JSON payload");
@@ -242,7 +342,7 @@ describe("Runtime invoke JSON console", () => {
   test("rejects invalid JSON locally without clearing the editor or invoking", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"prompt":');
@@ -262,7 +362,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{");
@@ -289,7 +389,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"a":1}');
@@ -310,7 +410,7 @@ describe("Runtime invoke JSON console", () => {
   test("keeps blank multiline rows inside the four-line editor", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     const initialStatusLine = screen
@@ -338,7 +438,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.setGetResponse({
       agentRuntimeArn: `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${runtimeId}`,
     } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(`/agentcore/runtime/invoke/${runtimeId}/${QUALIFIER}`, {
+    const screen = renderScreen(`/agentcore/runtime/invoke/${runtimeId}/${QUALIFIER}`, {
       core,
     });
 
@@ -373,7 +473,7 @@ describe("Runtime invoke JSON console", () => {
             : responseBody(Buffer.from("done")),
       };
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"turn":1}');
@@ -405,7 +505,7 @@ describe("Runtime invoke JSON console", () => {
           yield Buffer.from(" response");
         })(),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -437,7 +537,7 @@ describe("Runtime invoke JSON console", () => {
         runtimeSessionId: "returned-runtime",
         body: responseBody(Buffer.from("data: one\n\ndata: two\n\n")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -472,7 +572,7 @@ describe("Runtime invoke JSON console", () => {
         contentType,
         body: responseBody(body),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -488,7 +588,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async () => {
       throw Object.assign(new Error("connection failed"), { name: "NetworkError" });
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -510,7 +610,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async () => {
       throw error;
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -530,7 +630,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async () => {
       throw failure;
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -552,7 +652,7 @@ describe("Runtime invoke JSON console", () => {
           throw Object.assign(new Error("stream failed"), { name: "StreamReadError" });
         })(),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -574,7 +674,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from(response)),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
     await screen.resize(80, 16);
 
     await waitForText(screen.lastFrame, "Ready");
@@ -607,7 +707,7 @@ describe("Runtime invoke JSON console", () => {
       };
     };
     const initialSession = "cli-selected-session";
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
@@ -653,7 +753,7 @@ describe("Runtime invoke JSON console", () => {
         body: responseBody(Buffer.from('{"ok":true}')),
       };
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
@@ -706,7 +806,7 @@ describe("Runtime invoke JSON console", () => {
         mcpProtocolVersion: "2025-06-18",
         body: responseBody(Buffer.from("old response")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
@@ -782,7 +882,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(RuntimeInvokeLaunchContextKey, {
@@ -826,7 +926,7 @@ describe("Runtime invoke JSON console", () => {
         contentType: "application/json",
         body: responseBody(Buffer.from(raw)),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -853,7 +953,7 @@ describe("Runtime invoke JSON console", () => {
           yield Buffer.from([0, 255]);
         })(),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -872,7 +972,7 @@ describe("Runtime invoke JSON console", () => {
       agentRuntimeArn: RUNTIME_ARN,
       authorizerConfiguration: { customJWTAuthorizer: {} },
     } as GetAgentRuntimeResponse);
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -900,7 +1000,7 @@ describe("Runtime invoke JSON console", () => {
         })(),
       };
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     try {
       await waitForText(screen.lastFrame, "Ready");

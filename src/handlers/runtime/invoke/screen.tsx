@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ServiceException } from "@smithy/core/client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "react-router";
@@ -18,7 +18,11 @@ import { Spinner } from "../../../components/ui/spinner";
 import type { RuntimeInvokeResponse } from "../types";
 import { normalizeRuntimeInvokeRequest } from "./request";
 import { classifyRuntimeResponse } from "./response";
-import { RuntimeInvokeLaunchContextKey, type RuntimeInvokeLaunchContext } from "./launchContext";
+import {
+  RuntimeInvokeLaunchContextKey,
+  RuntimeInvokeLaunchSessionContext,
+  type RuntimeInvokeLaunchContext,
+} from "./launchContext";
 
 const theme = darkTheme;
 
@@ -96,8 +100,15 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
   const { runtimeId, qualifier } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const launchSession = useContext(RuntimeInvokeLaunchSessionContext);
   const launchContext = props.ctx.value(RuntimeInvokeLaunchContextKey);
-  const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;
+  const initialContext =
+    launchContext !== undefined && launchContext.runtimeId === runtimeId
+      ? {
+          ...launchContext,
+          runtimeSessionId: launchSession.consumed ? undefined : launchContext.runtimeSessionId,
+        }
+      : undefined;
   const returnOnEscape = (location.state as RuntimeInvokeLocationState | null)?.returnOnEscape;
 
   if (!runtimeId) {
@@ -124,7 +135,10 @@ export function RuntimeInvokeScreen(props: ScreenProps) {
             state: returnOnEscape ? { returnOnEscape } : undefined,
           })
         }
-        onEscape={() => (returnOnEscape ? navigate(-1) : navigate(invokePath()))}
+        onEscape={() => {
+          if (returnOnEscape) navigate(-1);
+          else navigate(invokePath());
+        }}
       />
     );
   }
@@ -159,6 +173,7 @@ export function RuntimeInvokeConsole({
 }: RuntimeInvokeConsoleProps) {
   const opts = coreOptsFromCtx(ctx);
   const navigate = useNavigate();
+  const launchSession = useContext(RuntimeInvokeLaunchSessionContext);
   const { columns, rows } = useWindowSize();
   const [target, setTarget] = useState({ runtimeId, qualifier });
   const [targetPicker, setTargetPicker] = useState<TargetPickerState | null>(null);
@@ -309,9 +324,12 @@ export function RuntimeInvokeConsole({
       }
       if (key.escape) {
         if (abortRef.current) abortRef.current.abort();
-        else if (onBack) onBack();
-        else if (returnOnEscape) navigate(-1);
-        else setTargetPicker({ stage: "endpoint", runtimeId: target.runtimeId });
+        else {
+          if (initialContext?.runtimeSessionId) launchSession.consume();
+          if (onBack) onBack();
+          else if (returnOnEscape) navigate(-1);
+          else navigate(invokePath(target.runtimeId), { replace: true });
+        }
         return;
       }
       const view = scrollRef.current;

@@ -23,7 +23,6 @@ export { StreamController } from "./StreamController";
 export {
   compiledRootCommand,
   renderScreen,
-  renderImperativeScreen,
   cleanupScreens,
   keys,
   waitForText,
@@ -35,7 +34,7 @@ export {
   type RenderScreenResult,
 } from "./renderScreen";
 export { createSilentLogger, assertLogsMatch, type LogQuery } from "./logging";
-export { IMPERATIVE_GLOBAL_CONFIG, TestGlobalConfigAccessor } from "./globalConfig";
+export { TestGlobalConfigAccessor } from "./globalConfig";
 export { inTempDirectory, type TempDirectory } from "./fs";
 export { initProject, type InitProjectOptions, type InitializedProject } from "./projects";
 export { expectError } from "./errors";

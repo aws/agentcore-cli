@@ -6,7 +6,6 @@ import type {
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createRootHandler } from "../../index";
 import {
-  IMPERATIVE_GLOBAL_CONFIG,
   createSilentLogger,
   expectError,
   TestCoreClient,
@@ -52,12 +51,9 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void, i
   core.harness.setInvokeEvents(...TURN_EVENTS);
   configure?.(core);
   const root = createRootHandler(core, {
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     io: io.io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   await root.route(["node", "agentcore", ...args, "--region", "us-west-2"]);
   return { core, stdout: io.stdout() };

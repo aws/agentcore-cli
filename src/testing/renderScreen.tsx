@@ -10,7 +10,7 @@ import { TestCoreClient } from "./TestCoreClient";
 import { testIO } from "./testIO";
 import { tick, waitFor } from "./timing";
 import { createSilentLogger } from "./logging";
-import { IMPERATIVE_GLOBAL_CONFIG, TestGlobalConfigAccessor } from "./globalConfig";
+import { TestGlobalConfigAccessor } from "./globalConfig";
 import { DEFAULT_GLOBAL_CONFIG, type GlobalConfig } from "../globalConfig";
 
 // TUI test harness.
@@ -36,7 +36,6 @@ export function compiledRootCommand(
       io: testIO().io,
       logger: createSilentLogger(),
       globalConfigAccessor: new TestGlobalConfigAccessor({ initialConfigData: globalConfig }),
-      globalConfig,
     }),
     ValueContext.EmptyContext(),
   );
@@ -130,6 +129,8 @@ export const keys = {
   down: "[B",
   left: "[D",
   right: "[C",
+  // The end-of-transmission control character, which Ink reports as ctrl+d.
+  "ctrl+d": "\u0004",
 } as const;
 
 // cleanupScreens unmounts every screen rendered so far. ink-testing-library
@@ -183,16 +184,6 @@ export function renderScreen(path: string, options: RenderScreenOptions = {}): R
   };
 }
 
-export function renderImperativeScreen(
-  path: string,
-  options: RenderScreenOptions = {},
-): RenderScreenResult {
-  return renderScreen(path, {
-    ...options,
-    globalConfig: options.globalConfig ?? IMPERATIVE_GLOBAL_CONFIG,
-  });
-}
-
 // waitForText resolves once `text` appears in the latest frame.
 export function waitForText(
   lastFrame: () => string | undefined,
@@ -219,7 +210,7 @@ export function waitForFlatText(
 }
 
 // MenuEntries splits a RouterScreen frame into the subcommands listed with a
-// screen of their own and those listed below the "command line only" divider.
+// screen of their own and those listed below the "cli" divider.
 export interface MenuEntries {
   screens: string[];
   cliOnly: string[];
@@ -231,7 +222,7 @@ export function menuEntries(frame: string): MenuEntries {
   const entries: MenuEntries = { screens: [], cliOnly: [] };
   let belowDivider = false;
   for (const line of frame.split("\n")) {
-    if (line.includes("command line only")) {
+    if (line.includes("── cli ")) {
       belowDivider = true;
       continue;
     }

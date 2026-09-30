@@ -1,3 +1,4 @@
+import { createContext } from "react";
 import { contextKey } from "../../../router";
 
 export type RuntimeInvokeLaunchContext = {
@@ -10,3 +11,8 @@ export type RuntimeInvokeLaunchContext = {
 
 export const RuntimeInvokeLaunchContextKey =
   contextKey<RuntimeInvokeLaunchContext>("runtime.invoke.launch");
+
+export const RuntimeInvokeLaunchSessionContext = createContext({
+  consumed: false,
+  consume: () => {},
+});

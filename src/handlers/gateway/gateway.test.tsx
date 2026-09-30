@@ -9,7 +9,6 @@ import type { AwsClients } from "../../core/types";
 import { NetworkingError, UserCancellationError, InputValidationError } from "../../errors";
 import {
   createSilentLogger,
-  IMPERATIVE_GLOBAL_CONFIG,
   expectError,
   TestCoreClient,
   TestGlobalConfigAccessor,
@@ -34,10 +33,7 @@ async function run<C extends Core>(
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
 
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
@@ -49,10 +45,7 @@ function supportsTui(path: readonly string[]): boolean {
     createRootHandler(new TestCoreClient(), {
       io: testIO().io,
       logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor({
-        initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-      }),
-      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     }),
     ValueContext.EmptyContext(),
   );
@@ -70,10 +63,7 @@ describe("gateway command hierarchy", () => {
     const root = createRootHandler(new TestCoreClient(), {
       io: testIO().io,
       logger: createSilentLogger(),
-      globalConfigAccessor: new TestGlobalConfigAccessor({
-        initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-      }),
-      globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const gateway = root.children().find((child) => child.name() === "gateway");
     const target = gateway?.children().find((child) => child.name() === "target");

@@ -12,7 +12,6 @@ export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> };
  * Schema for the global config file. All fields should be optional with defaults defined.
  */
 export const globalConfigFileSchema = z.object({
-  "imperative-commands": z.boolean().optional(),
   telemetry: z
     .object({
       enabled: z.boolean().optional(),

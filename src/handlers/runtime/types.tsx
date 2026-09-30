@@ -6,6 +6,10 @@ import type {
   ListAgentRuntimeVersionsResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CoreOptions } from "../../core/types";
+import type {
+  InvokeAgentRuntimeCommandRequest,
+  InvokeAgentRuntimeCommandResponse,
+} from "@aws-sdk/client-bedrock-agentcore";
 
 export type RuntimeInvokeRequest = {
   runtimeId: string;
@@ -62,6 +66,11 @@ export interface RuntimeShellSession extends AsyncIterable<RuntimeShellFrame> {
 }
 
 export interface CoreRuntimeClient {
+  invokeAgentRuntimeCommand(
+    request: InvokeAgentRuntimeCommandRequest,
+    options: CoreOptions,
+    signal?: AbortSignal,
+  ): Promise<InvokeAgentRuntimeCommandResponse>;
   invokeRuntime(
     request: RuntimeInvokeRequest,
     options: CoreOptions,

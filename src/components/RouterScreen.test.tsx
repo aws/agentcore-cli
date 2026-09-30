@@ -1,12 +1,5 @@
 import { test, expect, describe, afterEach } from "bun:test";
-import {
-  cleanupScreens,
-  menuEntries,
-  renderScreen,
-  renderImperativeScreen,
-  tick,
-  waitForText,
-} from "../testing";
+import { cleanupScreens, menuEntries, renderScreen, tick, waitForText } from "../testing";
 
 afterEach(cleanupScreens);
 
@@ -22,7 +15,6 @@ const PROJECT_WORKFLOW = [
   "log",
   "traces",
   "export",
-  "eval",
 ];
 
 // menuGroups reads a RouterScreen frame's option names in display order,
@@ -55,17 +47,14 @@ describe("menu rendering", () => {
     const frame = r.lastFrame()!;
     const entries = menuEntries(frame);
     expect(entries.screens).toContain("create");
-    expect(frame).toContain("eval");
-    for (const family of ["harness", "identity", "runtime", "memory", "gateway", "payment"]) {
-      expect([...entries.screens, ...entries.cliOnly]).not.toContain(family);
-    }
+    expect(entries.screens).toContain("eval");
     expect(frame).toContain("config");
     expect(frame).toContain("read/write global config values");
     r.unmount();
   });
 
-  test("lists standalone commands in the root menu when enabled", async () => {
-    const r = renderImperativeScreen("/agentcore");
+  test("lists the resource commands in the root menu", async () => {
+    const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "type to choose a command");
 
     const entries = menuEntries(r.lastFrame()!);
@@ -77,29 +66,16 @@ describe("menu rendering", () => {
   });
 
   test("lists the resources alphabetically under a resources divider after the project commands", async () => {
-    const r = renderImperativeScreen("/agentcore");
+    const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "── resources");
 
     expect(menuGroups(r.lastFrame()!)).toEqual([
       { title: undefined, names: PROJECT_WORKFLOW },
       {
         title: "resources",
-        names: ["gateway", "harness", "identity", "memory", "payment", "runtime"],
+        names: ["eval", "gateway", "harness", "identity", "memory", "payment", "runtime"],
       },
-      { title: "command line only", names: ["feedback", "config", "update"] },
-    ]);
-    r.unmount();
-  });
-
-  test("lists the same project workflow with no resources section when standalone commands are disabled", async () => {
-    const r = renderScreen("/agentcore");
-    await waitForText(r.lastFrame, "type to choose a command");
-
-    const frame = r.lastFrame()!;
-    expect(frame).not.toContain("── resources");
-    expect(menuGroups(frame)).toEqual([
-      { title: undefined, names: PROJECT_WORKFLOW },
-      { title: "command line only", names: ["feedback", "config", "update"] },
+      { title: "cli", names: ["feedback", "config", "update"] },
     ]);
     r.unmount();
   });
@@ -116,14 +92,14 @@ describe("menu rendering", () => {
   });
 
   test("keeps the resources divider when filtering leaves a resource", async () => {
-    const r = renderImperativeScreen("/agentcore");
+    const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "type to choose a command");
 
     await r.write("harn");
     await waitForText(r.lastFrame, "❯ harness");
     const frame = r.lastFrame()!;
     expect(frame).toContain("── resources");
-    expect(frame).not.toContain("── command line only");
+    expect(frame).not.toContain("── cli ");
     r.unmount();
   });
 
@@ -144,7 +120,7 @@ describe("menu rendering", () => {
   });
 
   test("renders the harness subcommands when mounted at the harness path", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "list");
 
     const frame = r.lastFrame()!;
@@ -165,7 +141,7 @@ describe("menu rendering", () => {
 
 describe("filtering", () => {
   test("typing narrows the options to matches", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "list");
 
     await r.write("cr"); // matches "create" only
@@ -179,7 +155,7 @@ describe("filtering", () => {
   });
 
   test("filtering is case-insensitive", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "list");
 
     await r.write("LIST");
@@ -188,7 +164,7 @@ describe("filtering", () => {
   });
 
   test("shows a no-matches message when nothing matches", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "list");
 
     await r.write("zzz");
@@ -198,20 +174,6 @@ describe("filtering", () => {
 });
 
 describe("navigation", () => {
-  test.each(["harness", "runtime/endpoint"])(
-    "an unavailable %s menu redirects to a working root menu",
-    async (path) => {
-      const r = renderScreen(`/agentcore/${path}`);
-      await waitForText(r.lastFrame, "the platform for production AI agents");
-
-      await r.write("eval");
-      await r.press("return");
-      await waitForText(r.lastFrame, "agentcore → eval");
-      expect(r.lastFrame()).toContain("evaluator");
-      r.unmount();
-    },
-  );
-
   test("down arrow moves the highlight to the next option", async () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "❯ create");
@@ -245,7 +207,7 @@ describe("navigation", () => {
   });
 
   test("esc from a nested menu returns to the parent menu", async () => {
-    const r = renderImperativeScreen("/agentcore/harness");
+    const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "agentcore → harness");
 
     await r.press("escape");
@@ -271,7 +233,7 @@ describe("navigation", () => {
     expect(root.lastFrame()).not.toContain("[esc]");
     root.unmount();
 
-    const nested = renderImperativeScreen("/agentcore/harness");
+    const nested = renderScreen("/agentcore/harness");
     await waitForText(nested.lastFrame, "agentcore → harness");
     expect(nested.lastFrame()).toContain("[esc] back");
     nested.unmount();

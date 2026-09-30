@@ -1,7 +1,7 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { HarnessEndpoint } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
@@ -50,7 +50,7 @@ function coreWithEndpoints(endpoints: HarnessEndpoint[]): TestCoreClient {
 describe("harness endpoint list screen", () => {
   test("without a harness id, picking a harness lists its endpoints", async () => {
     const core = coreWithEndpoints([endpoint()]);
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/list", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/list", { core });
 
     // Harness picker first.
     await waitForText(r.lastFrame, "MyHarness");
@@ -65,7 +65,7 @@ describe("harness endpoint list screen", () => {
 
   test("makes one exact scoped endpoint list call", async () => {
     const core = coreWithEndpoints([endpoint()]);
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
     await waitFor(() => core.harness.calls.some((call) => call.method === "listHarnessEndpoints"));
     expect(core.harness.calls.filter((call) => call.method === "listHarnessEndpoints")).toEqual([
@@ -95,7 +95,7 @@ describe("harness endpoint list screen", () => {
         updatedAt: new Date("2026-07-18T02:00:00.000Z"),
       }),
     ]);
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "visible-endpoint");
     const frame = r.lastFrame()!;
@@ -111,7 +111,7 @@ describe("harness endpoint list screen", () => {
 
   test("uses harness-specific first-page wording", async () => {
     const core = coreWithEndpoints([]);
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "This harness has no endpoints.");
     expect(r.lastFrame()).not.toContain("No endpoints on this page");
@@ -121,7 +121,7 @@ describe("harness endpoint list screen", () => {
   test("enter on a row opens the endpoint's JSON detail", async () => {
     const core = coreWithEndpoints([endpoint()]);
     core.harness.setGetEndpointResponse({ endpoint: endpoint() });
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/endpoint/list/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "prod");
     await r.press("return");
@@ -136,7 +136,7 @@ describe("harness endpoint list screen", () => {
   test("retries a failed endpoint detail without losing its selectors", async () => {
     const core = new TestCoreClient();
     core.harness.setError(new Error("endpoint unavailable"));
-    const r = renderImperativeScreen("/agentcore/harness/endpoint/get/MyHarness-abc123/prod", {
+    const r = renderScreen("/agentcore/harness/endpoint/get/MyHarness-abc123/prod", {
       core,
     });
     await waitForText(r.lastFrame, "endpoint unavailable");

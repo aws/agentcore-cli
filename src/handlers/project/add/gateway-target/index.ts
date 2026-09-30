@@ -9,9 +9,69 @@ import {
 } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
-import type { Project } from "../../types";
+import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
+
+// HttpsEndpointSchema is what --endpoint and the wizard's endpoint step both
+// check an MCP server URL against, so they refuse the same values in the same
+// words.
+export const HttpsEndpointSchema = z.string().superRefine((value, ctx) => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    ctx.addIssue({ code: "custom", message: "must be a valid HTTPS URL" });
+    return;
+  }
+  if (url.protocol !== "https:") ctx.addIssue({ code: "custom", message: "must use HTTPS" });
+});
+
+export type OutboundAuthInput = {
+  type?: "none" | "oauth" | "api-key";
+  credentialName?: string;
+  scopes?: string[];
+};
+
+// The two shortcut Targets: an MCP server at an HTTPS endpoint, or a Runtime
+// declared in this project. Exactly one of endpoint and runtime is set.
+export type GatewayTargetShortcutInput = {
+  gateway: string;
+  name: string;
+  endpoint?: string;
+  runtime?: string;
+  runtimeEndpoint?: string;
+  outboundAuth: OutboundAuthInput;
+};
+
+// toAddGatewayTargetInput builds the Target both shortcut entry points produce —
+// the flags, or the wizard's answers — including the credential lookup and
+// type check, so a value one path refuses the other refuses with the same
+// message. The full --target-configuration path bypasses it on purpose.
+export function toAddGatewayTargetInput(
+  project: Project,
+  input: GatewayTargetShortcutInput,
+): AddResourceInput {
+  const outboundAuth = projectOutboundAuth(project, input.outboundAuth);
+  const target: AgentCoreGatewayTarget =
+    input.endpoint !== undefined
+      ? {
+          name: input.name,
+          targetType: "mcpServer",
+          endpoint: httpsEndpoint(input.endpoint, "--endpoint"),
+          outboundAuth,
+        }
+      : {
+          name: input.name,
+          targetType: "httpRuntime",
+          httpRuntime: {
+            runtime: input.runtime!,
+            runtimeEndpoint: input.runtimeEndpoint,
+          },
+          outboundAuth,
+        };
+  return { resourceType: "gateway-target", gatewayName: input.gateway, resourceConfig: target };
+}
 
 export const createAddGatewayTargetHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -77,59 +137,44 @@ Use agentcore add gateway-connector for curated Connector shortcuts.`,
       }
 
       const project = ctx.require(ProjectKey);
-      let target: AgentCoreGatewayTarget;
+      let input: AddResourceInput;
       if (usesConfiguration) {
         const source = new SourceResolver({ stdin: config.io.stdin });
-        target = parseJsonFlagWithSchema(
+        const target = parseJsonFlagWithSchema(
           "target-configuration",
           await source.resolveText("target-configuration", flags["target-configuration"]),
           AgentCoreGatewayTargetSchema,
         )!;
         validateTargetCredential(project, target);
+        input = {
+          resourceType: "gateway-target",
+          gatewayName: flags.gateway,
+          resourceConfig: target,
+        };
       } else {
-        const outboundAuth = projectOutboundAuth(project, {
-          type: flags["outbound-auth"],
-          credentialName: flags["credential-name"],
-          scopes: flags.scope,
+        input = toAddGatewayTargetInput(project, {
+          gateway: flags.gateway,
+          name: flags.name!,
+          endpoint: flags.endpoint,
+          runtime: flags.runtime,
+          runtimeEndpoint: flags["runtime-endpoint"],
+          outboundAuth: {
+            type: flags["outbound-auth"],
+            credentialName: flags["credential-name"],
+            scopes: flags.scope,
+          },
         });
-        target =
-          flags.endpoint !== undefined
-            ? {
-                name: flags.name!,
-                targetType: "mcpServer",
-                endpoint: httpsEndpoint(flags.endpoint, "--endpoint"),
-                outboundAuth,
-              }
-            : {
-                name: flags.name!,
-                targetType: "httpRuntime",
-                httpRuntime: {
-                  runtime: flags.runtime!,
-                  runtimeEndpoint: flags["runtime-endpoint"],
-                },
-                outboundAuth,
-              };
       }
 
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "gateway-target",
-          gatewayName: flags.gateway,
-          resourceConfig: target,
-        },
-        `added Target '${target.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
+        input,
+        `added Target '${input.resourceConfig.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
       );
     },
   });
-
-type OutboundAuthInput = {
-  type?: "none" | "oauth" | "api-key";
-  credentialName?: string;
-  scopes?: string[];
-};
 
 function projectOutboundAuth(project: Project, input: OutboundAuthInput): OutboundAuth | undefined {
   if (!input.type) {
@@ -192,13 +237,11 @@ function assertCredentialType(credential: Credential, auth: "oauth" | "api-key")
 }
 
 function httpsEndpoint(value: string, option: string): string {
-  try {
-    if (new URL(value).protocol !== "https:") {
-      throw new InputValidationError(`${option} must use HTTPS`);
-    }
-  } catch (error) {
-    if (error instanceof InputValidationError) throw error;
-    throw new InputValidationError(`${option} must be a valid HTTPS URL`, { cause: error });
+  const parsed = HttpsEndpointSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new InputValidationError(`${option} ${parsed.error.issues[0]!.message}`, {
+      cause: parsed.error,
+    });
   }
   return value;
 }

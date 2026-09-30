@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { GatewaySummary, GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   waitFor,
   waitForText,
@@ -62,7 +62,7 @@ describe("Gateway invoke routing", () => {
   test("selects a Gateway before opening the JSON console", async () => {
     const core = new TestCoreClient();
     core.gateway.setListResponse({ items: [gatewaySummary()] }).setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen("/agentcore/gateway/invoke", { core });
+    const screen = renderScreen("/agentcore/gateway/invoke", { core });
 
     await waitForText(screen.lastFrame, "checkout-gateway");
     await screen.press("return");
@@ -82,7 +82,7 @@ describe("Gateway invoke routing", () => {
         name: "AccessDeniedException",
       });
     };
-    const errorScreen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const errorScreen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(errorScreen.lastFrame, "AccessDeniedException");
     await waitForText(errorScreen.lastFrame, "not authorized for this Gateway");
@@ -94,7 +94,7 @@ describe("Gateway invoke routing", () => {
       signal = nextSignal;
       return new Promise(() => {});
     };
-    const pendingScreen = renderImperativeScreen(CONSOLE_PATH, { core: pendingCore });
+    const pendingScreen = renderScreen(CONSOLE_PATH, { core: pendingCore });
     await waitFor(() => signal !== undefined && !signal.aborted);
     pendingScreen.unmount();
     await waitFor(() => signal!.aborted);
@@ -103,7 +103,7 @@ describe("Gateway invoke routing", () => {
   test("idle Escape returns through the invoke picker to the Gateway menu", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail()).setListResponse({ items: [gatewaySummary()] });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.press("escape");
@@ -124,7 +124,7 @@ describe("Gateway invoke JSON console", () => {
       contentType: "text/plain",
       body: responseBody(Buffer.from("ok")),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Enter JSON payload");
     const sessionId = displayedSessionId(screen.lastFrame());
@@ -155,7 +155,7 @@ describe("Gateway invoke JSON console", () => {
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
       });
-      const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+      const screen = renderScreen(CONSOLE_PATH, { core });
 
       await waitForText(screen.lastFrame, `Auth: ${authorizerType}`);
       await screen.write("{}");
@@ -170,7 +170,7 @@ describe("Gateway invoke JSON console", () => {
   test("rejects invalid JSON without clearing the editor or invoking", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write('{"prompt":');
@@ -184,7 +184,7 @@ describe("Gateway invoke JSON console", () => {
   test("keeps the draft out of history when request normalization fails", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(GatewayInvokeLaunchContextKey, {
@@ -211,7 +211,7 @@ describe("Gateway invoke JSON console", () => {
       contentType: "application/json",
       body: responseBody(Buffer.from('{"ok":true}')),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(GatewayInvokeLaunchContextKey, {
@@ -247,7 +247,7 @@ describe("Gateway invoke JSON console", () => {
   test("proactively blocks CUSTOM_JWT submission without a bearer token", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail({ authorizerType: "CUSTOM_JWT" }));
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "CUSTOM_JWT Gateway requires --bearer-token");
     await screen.write("{}");
@@ -262,7 +262,7 @@ describe("Gateway invoke JSON console", () => {
   test("blocks a non-READY Gateway with its current status", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail({ status: "FAILED" }));
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Gateway is FAILED; invocation requires READY");
     await screen.write("{}");
@@ -278,7 +278,7 @@ describe("Gateway invoke JSON console", () => {
       contentType: "text/plain",
       body: responseBody(Buffer.from("ok")),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     const initialSession = displayedSessionId(screen.lastFrame());
@@ -300,7 +300,7 @@ describe("Gateway invoke JSON console", () => {
     const seededPath = "runtime/invocations";
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(GatewayInvokeLaunchContextKey, {
@@ -333,7 +333,7 @@ describe("Gateway invoke JSON console", () => {
       mcpProtocolVersion: "2025-06-18",
       body: responseBody(Buffer.from("old response")),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(GatewayInvokeLaunchContextKey, {
@@ -383,7 +383,7 @@ describe("Gateway invoke JSON console", () => {
         mcpSessionId: "returned-mcp",
         body: responseBody(Buffer.from("old response")),
       });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(GatewayInvokeLaunchContextKey, {
@@ -427,7 +427,7 @@ describe("Gateway invoke JSON console", () => {
     core.gateway
       .setGetResponse(gatewayDetail({ authorizerType: "CUSTOM_JWT" }))
       .setListResponse({ items: [gatewaySummary()] });
-    const screen = renderImperativeScreen(CONSOLE_PATH, {
+    const screen = renderScreen(CONSOLE_PATH, {
       core,
       withContext: (ctx) =>
         ctx.withValue(GatewayInvokeLaunchContextKey, {
@@ -466,7 +466,7 @@ describe("Gateway invoke JSON console", () => {
         yield Buffer.from("data: second\n");
       })(),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     const initialSession = displayedSessionId(screen.lastFrame());
@@ -509,7 +509,7 @@ describe("Gateway invoke JSON console", () => {
       mcpProtocolVersion: "2025-06-18",
       body: responseBody(Buffer.from('{"message":"invalid"}')),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -543,7 +543,7 @@ describe("Gateway invoke JSON console", () => {
       contentType: "text/plain",
       body: responseBody(Buffer.from("Temporary Redirect")),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -564,7 +564,7 @@ describe("Gateway invoke JSON console", () => {
       contentType: "application/json",
       body: responseBody(Buffer.from(raw)),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -596,7 +596,7 @@ describe("Gateway invoke JSON console", () => {
       contentType,
       body: responseBody(bytes),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -623,7 +623,7 @@ describe("Gateway invoke JSON console", () => {
         });
       })(),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -644,7 +644,7 @@ describe("Gateway invoke JSON console", () => {
         contentType: "",
         body: responseBody(),
       });
-      const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+      const screen = renderScreen(CONSOLE_PATH, { core });
 
       await waitForText(screen.lastFrame, "Ready");
       await screen.write("{}");
@@ -667,7 +667,7 @@ describe("Gateway invoke JSON console", () => {
         yield Buffer.from([0, 255]);
       })(),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.write("{}");
@@ -708,7 +708,7 @@ describe("Gateway invoke JSON console", () => {
         })(),
       };
     };
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     const initialSession = displayedSessionId(screen.lastFrame());
@@ -731,7 +731,7 @@ describe("Gateway invoke JSON console", () => {
   test("keeps status and shortcuts stable at narrow terminal widths", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
 
     await waitForText(screen.lastFrame, "Ready");
     await screen.resize(80, 24);
@@ -746,7 +746,7 @@ describe("Gateway invoke JSON console", () => {
   test("horizontally windows long single-line JSON without corrupting status rows", async () => {
     const core = new TestCoreClient();
     core.gateway.setGetResponse(gatewayDetail());
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
     await screen.resize(100, 24);
 
     await waitForText(screen.lastFrame, "Ready");
@@ -772,7 +772,7 @@ describe("Gateway invoke JSON console", () => {
       contentType: "text/plain",
       body: responseBody(Buffer.from(response)),
     });
-    const screen = renderImperativeScreen(CONSOLE_PATH, { core });
+    const screen = renderScreen(CONSOLE_PATH, { core });
     await screen.resize(80, 16);
 
     await waitForText(screen.lastFrame, "Ready");

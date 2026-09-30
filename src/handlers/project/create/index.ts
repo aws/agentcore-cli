@@ -20,7 +20,7 @@ import {
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
-  DEFAULT_HARNESS_MODEL,
+  HARNESS_DEFAULT_MODEL_IDS,
   HarnessModelProviderSchema,
   HarnessSpecSchema,
   type HarnessModelProvider,
@@ -45,13 +45,6 @@ type CreateProjectHandlerConfig = {
 
 const ModelProviderFlagSchema = z.enum([...HarnessModelProviderSchema.options, "anthropic"]);
 type ModelProviderFlag = z.infer<typeof ModelProviderFlagSchema>;
-
-export const HARNESS_DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
-  bedrock: DEFAULT_HARNESS_MODEL.modelId,
-  open_ai: "gpt-5",
-  gemini: "gemini-2.5-flash",
-  lite_llm: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
-};
 
 export const DEFAULT_CREATE_RUNTIME_NAME = "agent";
 

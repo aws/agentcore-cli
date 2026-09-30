@@ -17,7 +17,7 @@ import { RegionPinContext } from "../handlers/utils";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
-const CLI_ONLY_SECTION = "command line only";
+const CLI_ONLY_SECTION = "cli";
 
 // rootCommand walks up to the top of the Commander tree.
 function rootCommand(c: Command): Command {
