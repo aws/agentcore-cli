@@ -293,9 +293,11 @@ describe("FsProjectManager.create", () => {
   test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {
     const directory = await inTempDirectory();
     const setup = manager();
+    const bmaWithoutTemplateProfile: ScaffoldRuntimeInput = { ...BEDROCK_MANAGED_AGENTS };
+    delete bmaWithoutTemplateProfile.templateProfile;
     await runCreate(setup.manager, {
       name: "example",
-      scaffoldRuntimeInput: BEDROCK_MANAGED_AGENTS,
+      scaffoldRuntimeInput: bmaWithoutTemplateProfile,
     });
 
     const projectRoot = join(directory, "example");

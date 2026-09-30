@@ -93,6 +93,7 @@ import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
+import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
 import {
   BMA_POLICY_FILE,
   BMA_TEMPLATE_NAME,
@@ -357,7 +358,7 @@ export class FsProjectManager implements ProjectManager {
       }
     } else if (
       scaffoldRuntimeInput?.build === "Container" &&
-      templateManagesDependencies(scaffoldRuntimeInput.templateProfile)
+      templateManagesDependencies(resolveRuntimeTemplateProfile(scaffoldRuntimeInput))
     ) {
       // Container builds install from a lockfile, so generate it even with no-install.
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
@@ -1403,7 +1404,7 @@ export class FsProjectManager implements ProjectManager {
       await this.checkTool("npm", NODE_INSTALL_HINT);
       if (
         input.scaffoldRuntimeInput?.language === "Python" &&
-        templateManagesDependencies(input.scaffoldRuntimeInput.templateProfile)
+        templateManagesDependencies(resolveRuntimeTemplateProfile(input.scaffoldRuntimeInput))
       ) {
         await this.checkTool("uv", UV_INSTALL_HINT);
       }
@@ -1416,7 +1417,7 @@ export class FsProjectManager implements ProjectManager {
   private async checkRuntimeDependency(
     input: RuntimeResourceConfig["scaffoldRuntimeInput"],
   ): Promise<void> {
-    if (!templateManagesDependencies(input.templateProfile)) return;
+    if (!templateManagesDependencies(resolveRuntimeTemplateProfile(input))) return;
     if (input.language === "Python") {
       await this.checkTool("uv", UV_INSTALL_HINT);
     } else {
@@ -1432,7 +1433,7 @@ export class FsProjectManager implements ProjectManager {
     appDir: string,
     input?: RuntimeResourceConfig["scaffoldRuntimeInput"],
   ): AsyncGenerator<ProjectEvent, void> {
-    if (input && !templateManagesDependencies(input.templateProfile)) return;
+    if (input && !templateManagesDependencies(resolveRuntimeTemplateProfile(input))) return;
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "Syncing Python dependencies with uv" };

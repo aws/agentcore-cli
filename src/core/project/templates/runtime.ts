@@ -14,6 +14,7 @@ import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/mem
 import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
 import { templateUsesModel } from "../../../handlers/project/templateProfile";
+import { resolveRuntimeTemplateProfile } from "../../../handlers/project/runtimeTemplateProfile";
 
 /** A model provider's render context, spec entries, and .env.local secrets for a scaffolded runtime. */
 type ModelProviderTemplateConfig = {
@@ -53,7 +54,7 @@ function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProvid
 
 function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   const { scaffoldRuntimeInput, name, ...infra } = input;
-  const profile = scaffoldRuntimeInput.templateProfile;
+  const profile = resolveRuntimeTemplateProfile(scaffoldRuntimeInput);
   const runtimeProfile = profile?.runtime;
   const usesModel = templateUsesModel(profile);
   const lifecycleConfiguration = mergeLifecycleConfiguration(
