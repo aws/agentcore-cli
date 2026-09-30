@@ -136,11 +136,8 @@ describe("TUI resize", () => {
 
     const beforeNarrow = streams.stdout().length;
     resize(streams.io.stdout, 110, 38);
-    await tick(25);
     resize(streams.io.stdout, 100, 35);
-    await tick(25);
     resize(streams.io.stdout, 90, 30);
-    await tick(25);
     expect(streams.stdout()).toHaveLength(beforeNarrow);
 
     await waitFor(() => {
@@ -173,9 +170,7 @@ describe("TUI resize", () => {
 
     const beforeResize = streams.stdout().length;
     resize(streams.io.stdout, 100, 15);
-    await tick(25);
     resize(streams.io.stdout, 100, 40);
-    await tick(25);
     expect(streams.stdout()).toHaveLength(beforeResize);
 
     await waitFor(() => {
