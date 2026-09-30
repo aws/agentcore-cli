@@ -12,6 +12,7 @@ import {
 } from "../testing";
 import { glyphs } from "./ui/_core";
 import { createProjectHandlers } from "../handlers/project";
+import type { Project } from "../handlers/project/types";
 
 afterEach(cleanupScreens);
 
@@ -313,8 +314,25 @@ describe("navigation", () => {
 
     await r.press("escape");
     // Back at the root menu (breadcrumb no longer includes harness).
-    await waitForText(r.lastFrame, "the platform for production AI agents");
+    await waitForText(r.lastFrame, "❯ create");
     expect(r.lastFrame()).toContain("❯ create");
+    r.unmount();
+  });
+
+  test("project detection waits until a nested launch navigates to the root menu", async () => {
+    const core = new TestCoreClient();
+    let resolveCalls = 0;
+    core.projectManager.resolve = async () => {
+      resolveCalls++;
+      return {} as Project;
+    };
+    const r = renderScreen("/agentcore/harness", { core });
+    await waitForText(r.lastFrame, "agentcore → harness");
+    expect(resolveCalls).toBe(0);
+
+    await r.press("escape");
+    await waitForText(r.lastFrame, "❯ add");
+    expect(resolveCalls).toBe(1);
     r.unmount();
   });
 

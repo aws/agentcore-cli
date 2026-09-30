@@ -256,7 +256,8 @@ function PinnedRegion({ ctx, core }: ScreenProps) {
 const DEV_PATH = ["agentcore", "dev"];
 
 function RouteTable({ ctx, core }: ScreenProps) {
-  const inProject = ctx.value(ProjectDetectedKey) ?? ctx.value(ProjectKey) !== undefined;
+  const inProject =
+    ctx.value(ProjectDetectedKey) ?? (ctx.value(ProjectKey) !== undefined ? true : undefined);
 
   return (
     <Routes>

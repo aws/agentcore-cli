@@ -2,9 +2,10 @@ import { Text, useApp } from "ink";
 import { useEffect } from "react";
 import { CommandKey } from "../router";
 import { BrandBanner } from "../components/BrandBanner";
-import { RouterScreen } from "../components/RouterScreen";
+import { resolveCommand, RouterScreen } from "../components/RouterScreen";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
+import { LoadingFrame, useProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
@@ -24,18 +25,31 @@ const PROJECT_REQUIRED_OPTIONS = [
 const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS, "eval"];
 
 export interface RootScreenProps extends ScreenProps {
-  inProject: boolean;
+  inProject?: boolean;
 }
 
 export function RootScreen({ inProject, ...props }: RootScreenProps) {
+  const projectDetected = useProjectDetected(props.core, inProject);
+  if (projectDetected.data === undefined) {
+    const command = resolveCommand(props.ctx.require(CommandKey), ["agentcore"]);
+    return (
+      <LoadingFrame
+        breadcrumb={["agentcore"]}
+        description={command.description()}
+        query={projectDetected}
+        loadingLabel="checking for a project…"
+      />
+    );
+  }
+
   return (
     <RouterScreen
       {...props}
       banner={<BrandBanner />}
       path={["agentcore"]}
-      optionHints={inProject ? undefined : NO_PROJECT_HINTS}
-      alert={inProject ? undefined : NO_PROJECT_ALERT}
-      hiddenOptions={inProject ? PROJECT_HIDDEN_OPTIONS : NO_PROJECT_HIDDEN_OPTIONS}
+      optionHints={projectDetected.data ? undefined : NO_PROJECT_HINTS}
+      alert={projectDetected.data ? undefined : NO_PROJECT_ALERT}
+      hiddenOptions={projectDetected.data ? PROJECT_HIDDEN_OPTIONS : NO_PROJECT_HIDDEN_OPTIONS}
     />
   );
 }

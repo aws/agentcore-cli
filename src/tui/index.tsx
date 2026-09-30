@@ -42,6 +42,11 @@ export interface JsonRenderer {
 // the withJsonRenderer middleware at the root; read by any leaf that emits JSON.
 export const JsonRendererKey: ContextKey<JsonRenderer> = contextKey<JsonRenderer>("json.renderer");
 
+function isRootMenuPath(path: string): boolean {
+  const pathname = new URL(path, "http://localhost").pathname.replace(/\/+$/, "");
+  return pathname === "/agentcore";
+}
+
 // renderTuiAt mounts the Ink React tree at an explicit route path and resolves
 // once the app exits. Handlers use it to deep-link into a TUI screen (e.g.
 // `invoke --id X --session-id Y` opens the chat at that harness and session).
@@ -61,13 +66,16 @@ export async function renderTuiAt(
 
   let exitMessage: string | undefined;
   let handoff: string[] | undefined;
-  const projectDetected =
-    ctx.value(ProjectKey) !== undefined ||
-    (await core.projectManager.resolve({
-      filePath: process.cwd(),
-    })) !== undefined;
-  const tuiContext = ctx
-    .withValue(ProjectDetectedKey, projectDetected)
+  let tuiContext = ctx;
+  if (isRootMenuPath(path)) {
+    const projectDetected =
+      ctx.value(ProjectKey) !== undefined ||
+      (await core.projectManager.resolve({
+        filePath: process.cwd(),
+      })) !== undefined;
+    tuiContext = tuiContext.withValue(ProjectDetectedKey, projectDetected);
+  }
+  tuiContext = tuiContext
     .withValue(TuiExitMessageKey, (message) => {
       exitMessage = message;
     })

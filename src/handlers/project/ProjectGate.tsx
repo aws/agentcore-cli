@@ -36,6 +36,19 @@ export function useProject(core: Core, seed?: Project): UseQueryResult<Project> 
   });
 }
 
+export function useProjectDetected(core: Core, seed?: boolean): UseQueryResult<boolean> {
+  const from = process.cwd();
+  return useQuery({
+    queryKey: ["project-detected", from],
+    queryFn: async () =>
+      (await core.projectManager.resolve({
+        filePath: from,
+      })) !== undefined,
+    gcTime: 0,
+    ...(seed !== undefined && { initialData: seed, staleTime: Infinity }),
+  });
+}
+
 export function projectTargetsQueryKey(project: Project) {
   return ["project-targets", project.rootPath] as const;
 }
@@ -56,7 +69,7 @@ export interface LoadingFrameProps {
   // query is whatever the screen is waiting on.
   query: Pick<UseQueryResult, "isError" | "error" | "refetch">;
   loadingLabel: string;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 // LoadingFrame is the spinner-or-error a screen shows before its data arrives:
@@ -69,7 +82,7 @@ export function LoadingFrame({
   onBack,
 }: LoadingFrameProps) {
   useInput((input, key) => {
-    if (key.escape) onBack();
+    if (key.escape) onBack?.();
     if (query.isError && input === "r") void query.refetch();
   });
 
@@ -79,7 +92,7 @@ export function LoadingFrame({
       description={description}
       keyHints={[
         ...(query.isError ? [{ key: "r", label: "retry" }] : []),
-        { key: "esc", label: "back" },
+        ...(onBack ? [{ key: "esc", label: "back" }] : []),
         { key: "ctrl+c", label: "quit" },
       ]}
     >

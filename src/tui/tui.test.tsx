@@ -233,6 +233,28 @@ describe("TUI launch", () => {
   const CREATE_ROW = "create a new AgentCore project";
   const BANNER = "No project detected - create a new project to get started";
 
+  test("an unrelated TUI command does not resolve the current project", async () => {
+    const core = new TestCoreClient();
+    let resolveCalls = 0;
+    core.projectManager.resolve = async () => {
+      resolveCalls++;
+      throw new Error("malformed agentcore.json");
+    };
+    const { streams, stdin } = ttyTestIO();
+    const root = createRootHandler(core, {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+
+    const routePromise = root.route(["node", "agentcore", "runtime"]);
+    await waitFor(() => streams.stdout().includes("inspect AgentCore Runtimes"));
+    expect(resolveCalls).toBe(0);
+
+    stdin.write(String.fromCharCode(3));
+    await expect(routePromise).resolves.toBeUndefined();
+  });
+
   async function launchRootMenu(project: Project | undefined): Promise<string> {
     const core = new TestCoreClient();
     core.projectManager.resolve = async () => project;
