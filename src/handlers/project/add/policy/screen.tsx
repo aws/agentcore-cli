@@ -1,6 +1,5 @@
-import { accessSync, constants, readFileSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { useState } from "react";
+import { accessSync, constants, statSync } from "node:fs";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import z from "zod";
@@ -15,7 +14,7 @@ import {
   Wizard,
   type Choice,
 } from "../../../../components/wizard";
-import { InputValidationError } from "../../../../errors";
+import { SourceResolver } from "../../../../io";
 import { PolicyNameSchema, type PolicyEngine } from "../../../../projectSchemas/policy";
 import { ProjectKey } from "../../../../router";
 import type { ScreenProps } from "../../../types";
@@ -85,18 +84,20 @@ type PolicyFormValues = {
   enforcement: PolicyEnforcementMode;
 };
 
-// statementOf reads the statement the review and the submit both work from:
-// the pasted text, or the file's contents. The file is read synchronously here
-// because the review needs the inferred phase before anything is written; it is
-// small, local, and already checked to be readable on the source step.
-function statementOf(values: PolicyFormValues): string | undefined {
-  if (values.source === "inline") return values.statement;
-  try {
-    return readFileSync(values.statementFile, "utf8");
-  } catch {
-    return undefined;
-  }
+// readStatementFile reads a statement the way `--statement file://…` does:
+// through SourceResolver, so a file that is not valid UTF-8 is refused rather
+// than decoded with replacement characters that would change what the policy
+// matches. Nothing here reads stdin, so the resolver gets none.
+function readStatementFile(path: string): Promise<string> {
+  return new SourceResolver({}).resolveText("statement", `file://${path}`);
 }
+
+// StatementLoad is what the review knows about the statement: a pasted one is
+// ready at once; a file is read when the review mounts.
+type StatementLoad =
+  | { state: "reading" }
+  | { state: "ready"; statement: string }
+  | { state: "failed"; message: string };
 
 // toPolicyInput is the answers as the flag path would state them; the phase is
 // left for the shared builder to infer, exactly as an omitted
@@ -119,8 +120,7 @@ function firstLine(text: string): string {
   return rest > 0 ? `${shown} (+${rest} more ${rest === 1 ? "line" : "lines"})` : shown;
 }
 
-function summaryOf(values: PolicyFormValues): Record<string, string> {
-  const statement = statementOf(values);
+function summaryOf(values: PolicyFormValues, load: StatementLoad): Record<string, string> {
   return {
     "policy engine": values.engine,
     policy: values.name,
@@ -130,10 +130,49 @@ function summaryOf(values: PolicyFormValues): Record<string, string> {
     // The phase is a substring heuristic over the statement, so the guess is
     // shown before it is written; --authorization-phase overrides it.
     "authorization phase":
-      statement === undefined
-        ? "(file unreadable)"
-        : `${inferAuthorizationPhase(statement)} · inferred from the statement`,
+      load.state === "reading"
+        ? `reading ${values.statementFile}…`
+        : load.state === "failed"
+          ? `(statement unreadable: ${load.message})`
+          : `${inferAuthorizationPhase(load.statement)} · inferred from the statement`,
   };
+}
+
+// PolicyReview loads a file-sourced statement when the review step mounts —
+// asynchronously, so the TUI never blocks on a read, and only after the source
+// step has checked that the path is a readable file. A pasted statement needs
+// no loading.
+function PolicyReview({ values }: { values: PolicyFormValues }) {
+  const [load, setLoad] = useState<StatementLoad>(() =>
+    values.source === "inline"
+      ? { state: "ready", statement: values.statement }
+      : { state: "reading" },
+  );
+
+  // A pasted statement is ready from the initializer; only a file has anything
+  // to load, and it resolves through the promise rather than in the effect body.
+  useEffect(() => {
+    if (values.source !== "file") return;
+    let cancelled = false;
+    readStatementFile(values.statementFile).then(
+      (statement) => {
+        if (!cancelled) setLoad({ state: "ready", statement });
+      },
+      (error: unknown) => {
+        if (!cancelled) {
+          setLoad({
+            state: "failed",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [values.source, values.statementFile]);
+
+  return <Summary items={summaryOf(values, load)} />;
 }
 
 function engineChoices(engines: readonly PolicyEngine[]): Choice<string>[] {
@@ -181,18 +220,11 @@ function AddPolicyWizard({ project, core }: { project: Project; core: ScreenProp
       onCancel={() => navigate(ADD_MENU)}
       onSubmit={async function* () {
         // Read the file at submit, the way `--statement file://…` does, so what
-        // is written is what the file holds now.
-        let statement = values.statement;
-        if (values.source === "file") {
-          try {
-            statement = await readFile(values.statementFile, "utf8");
-          } catch (error) {
-            throw new InputValidationError(
-              `could not read the statement from '${values.statementFile}'`,
-              { cause: error },
-            );
-          }
-        }
+        // is written is what the file holds now, decoded strictly.
+        const statement =
+          values.source === "file"
+            ? await readStatementFile(values.statementFile)
+            : values.statement;
         const updated = yield* core.projectManager.addResource(
           project,
           toAddPolicyInput(toPolicyInput(values, statement)),
@@ -273,7 +305,7 @@ function AddPolicyWizard({ project, core }: { project: Project; core: ScreenProp
       </Step>
 
       <Step stepKey="review" prompt="this Policy will be added to agentcore.json">
-        <Summary items={summaryOf(values)} />
+        <PolicyReview values={values} />
       </Step>
     </Wizard>
   );

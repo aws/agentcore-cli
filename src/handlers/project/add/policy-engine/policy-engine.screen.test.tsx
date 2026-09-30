@@ -52,7 +52,9 @@ describe("project add policy-engine wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added Policy Engine 'Guardrails' to 'TestProject'");
-    expect(screen.lastFrame()).toContain("agentcore add policy --engine Guardrails");
+    // Bare, so following it opens the policy wizard; --engine would make it headless.
+    expect(screen.lastFrame()).toContain("agentcore add policy");
+    expect(screen.lastFrame()).not.toContain("--engine");
     expect(screen.lastFrame()).toContain("[enter] go back");
     // The same bare engine `--name Guardrails` writes.
     expect((await projectSpec(projectRoot)).policyEngines).toEqual([

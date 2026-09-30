@@ -151,11 +151,12 @@ describe("project add policy wizard", () => {
     await waitForText(screen.lastFrame, "❯ ● log-only");
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "this Policy will be added to agentcore.json");
+    // The file is read when the review mounts, so the phase row fills in a
+    // moment after the rest of the review.
+    await waitForFlatText(screen.lastFrame, "authorization phase RETURN_OUTPUT");
     const review = flatFrame(screen.lastFrame);
     expect(review).toContain(`statement from ${cedarPath}`);
     expect(review).toContain("enforcement log-only");
-    expect(review).toContain("authorization phase RETURN_OUTPUT");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added Policy 'Suppress'");
@@ -185,6 +186,38 @@ describe("project add policy wizard", () => {
     expect(screen.lastFrame()).toContain("where is the Cedar statement?");
     screen.unmount();
   });
+
+  test("a statement file that is not valid UTF-8 is refused rather than decoded lossily", async () => {
+    const projectRoot = await withEngine();
+    // Latin-1 bytes: a lossy decode would turn "café" into "caf�" and silently
+    // change what the policy matches.
+    await writeFile(
+      join(projectRoot, "latin1.cedar"),
+      Buffer.from('permit (principal, action, resource) when { context.tag == "café" };', "latin1"),
+    );
+    const screen = renderScreen("/agentcore/add/policy");
+    await reachSourceStep(screen, "Latin");
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, FILE_HELP);
+    await screen.write("latin1.cedar");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "should it enforce, or only log?");
+    await screen.press("return");
+
+    // The review says so instead of guessing a phase from mangled text.
+    await waitForFlatText(screen.lastFrame, "must contain valid UTF-8");
+    expect(screen.lastFrame()).toContain("this Policy will be added to agentcore.json");
+    await screen.press("return");
+
+    // And the submit refuses it for the same reason, handing the form back.
+    await waitFor(() => !(screen.lastFrame() ?? "").includes("this Policy will be added"));
+    await waitForFlatText(screen.lastFrame, "must contain valid UTF-8");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "this Policy will be added to agentcore.json");
+    expect(await policiesOf(projectRoot)).toHaveLength(0);
+    screen.unmount();
+  }, 15000);
 
   test("an empty statement is refused", async () => {
     await withEngine();

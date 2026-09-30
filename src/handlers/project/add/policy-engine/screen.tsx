@@ -176,7 +176,9 @@ function AddPolicyEngineWizard({
           ? `attached to ${values.attached.length} ${values.attached.length === 1 ? "Gateway" : "Gateways"} in ${values.mode} mode`
           : undefined
       }
-      successNextSteps={[`agentcore add policy --engine ${values.name}`, "agentcore deploy"]}
+      // Bare, so it opens the policy wizard, which asks for the engine; naming
+      // the engine with --engine would select the headless path instead.
+      successNextSteps={["agentcore add policy", "agentcore deploy"]}
       onDone={() => navigate(ADD_MENU)}
       doneLabel="go back"
     >
