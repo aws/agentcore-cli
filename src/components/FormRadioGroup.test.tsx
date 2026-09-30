@@ -35,4 +35,26 @@ describe("FormRadioGroup", () => {
     expect(frame).toContain("● CUSTOM_JWT");
     expect(frame).not.toContain("❯");
   });
+
+  test("windows a long list around the focused row", () => {
+    const screen = render(
+      <FormRadioGroup
+        helpText=""
+        options={Array.from({ length: 12 }, (_, index) => ({
+          label: `provider-${index}`,
+          description: "",
+        }))}
+        focusedIndex={7}
+        selectedIndex={7}
+        maxVisible={5}
+      />,
+    );
+
+    const frame = screen.lastFrame() ?? "";
+    expect(frame).toContain("↑ 5 more");
+    expect(frame).toContain("❯ ● provider-7");
+    expect(frame).toContain("↓ 2 more");
+    expect(frame).not.toContain("provider-4");
+    expect(frame).not.toContain("provider-10");
+  });
 });

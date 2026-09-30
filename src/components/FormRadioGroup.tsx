@@ -16,6 +16,8 @@ export interface FormRadioGroupProps {
   focusedIndex?: number;
   // Current radio value. It remains marked while focus moves into a revealed input.
   selectedIndex: number;
+  // Limits a long list to a window around the focused/selected row.
+  maxVisible?: number;
 }
 
 // FormRadioGroup renders a column of radio rows. It is fully controlled: the
@@ -26,8 +28,17 @@ export function FormRadioGroup({
   options,
   focusedIndex,
   selectedIndex,
+  maxVisible,
 }: FormRadioGroupProps) {
   const columnWidth = options.reduce((max, option) => Math.max(max, option.label.length), 0) + 2;
+  const anchor = focusedIndex ?? selectedIndex;
+  const visibleCount = Math.max(1, Math.min(maxVisible ?? options.length, options.length));
+  const start = Math.min(
+    Math.max(0, anchor - Math.floor(visibleCount / 2)),
+    Math.max(0, options.length - visibleCount),
+  );
+  const end = start + visibleCount;
+  const visibleOptions = options.slice(start, end);
 
   return (
     <Box flexDirection="column">
@@ -45,7 +56,9 @@ export function FormRadioGroup({
         borderStyle="round"
         borderColor={theme.colors.border}
       >
-        {options.map((option, i) => {
+        {start > 0 && <Text color={theme.colors.muted}>↑ {start} more</Text>}
+        {visibleOptions.map((option, offset) => {
+          const i = start + offset;
           const focused = i === focusedIndex;
           const selected = i === selectedIndex;
           // Focus and selection are separate states: the pointer follows the
@@ -79,6 +92,9 @@ export function FormRadioGroup({
             </Box>
           );
         })}
+        {end < options.length && (
+          <Text color={theme.colors.muted}>↓ {options.length - end} more</Text>
+        )}
       </Box>
     </Box>
   );

@@ -1,5 +1,6 @@
 import z from "zod";
 import type { CredentialProviderVendorType } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { OAuthCredential } from "../../../../../projectSchemas/credential";
 import { createHandler, flag } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
 import { SourceResolver } from "../../../../../io";
@@ -9,7 +10,37 @@ import {
 } from "../../../../identity/oauth2-credential-provider/config";
 import type { AddProjectResourceConfig } from "../../types";
 import type { EnvLocalEntry } from "../../../types";
-import { addCredentialToProject, credentialEnvVarName, parseExclusiveSecretRef } from "../shared";
+import {
+  addCredentialToProject,
+  credentialEnvVarName,
+  parseExclusiveSecretRef,
+  type AddCredentialInput,
+} from "../shared";
+
+export type OauthCredentialInput = Omit<OAuthCredential, "authorizerType" | "managed"> & {
+  clientSecret?: string;
+};
+
+export function toAddOauthCredentialInput(input: OauthCredentialInput): AddCredentialInput {
+  const { clientSecret, ...resource } = input;
+  const envEntries: EnvLocalEntry[] = input.clientSecretRef
+    ? []
+    : [
+        {
+          key: credentialEnvVarName(input.name, "_CLIENT_SECRET"),
+          value: clientSecret,
+          comment: `OAuth client secret for credential provider '${input.name}' (set before deploy)`,
+        },
+      ];
+
+  return {
+    resourceConfig: {
+      authorizerType: "OAuthCredentialProvider",
+      ...resource,
+    },
+    envEntries,
+  };
+}
 
 export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -69,17 +100,15 @@ export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig
       const resolver = new SourceResolver({ stdin: config.io.stdin });
       const clientSecret = await resolver.resolveSecret("client-secret", flags["client-secret"]);
 
-      const resourceConfig =
+      const credential =
         mode.kind === "complete"
           ? {
-              authorizerType: "OAuthCredentialProvider" as const,
               name: flags.name,
               vendor: flags.vendor,
               providerConfig: mode.config,
               clientSecretRef: secretRef,
             }
           : {
-              authorizerType: "OAuthCredentialProvider" as const,
               name: flags.name,
               vendor: flags.vendor,
               clientId: flags["client-id"],
@@ -88,16 +117,10 @@ export const createAddOauthCredentialHandler = (config: AddProjectResourceConfig
               clientSecretRef: secretRef,
             };
 
-      const envEntries: EnvLocalEntry[] = secretRef
-        ? []
-        : [
-            {
-              key: credentialEnvVarName(flags.name, "_CLIENT_SECRET"),
-              value: clientSecret,
-              comment: `OAuth client secret for credential provider '${flags.name}' (set before deploy)`,
-            },
-          ];
-
-      await addCredentialToProject(ctx, config, { resourceConfig, envEntries });
+      await addCredentialToProject(
+        ctx,
+        config,
+        toAddOauthCredentialInput({ ...credential, clientSecret }),
+      );
     },
   });

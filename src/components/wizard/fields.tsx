@@ -234,9 +234,16 @@ export interface ChoiceFieldProps<T> {
   choices: Choice<T>[];
   value: T;
   onChange: (value: T) => void;
+  maxVisible?: number;
 }
 
-export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFieldProps<T>) {
+export function ChoiceField<T>({
+  help = "",
+  choices,
+  value,
+  onChange,
+  maxVisible,
+}: ChoiceFieldProps<T>) {
   const { advance, back, isLast } = useWizard();
 
   useKeyHints([
@@ -273,6 +280,7 @@ export function ChoiceField<T>({ help = "", choices, value, onChange }: ChoiceFi
       }))}
       focusedIndex={index}
       selectedIndex={index}
+      maxVisible={maxVisible}
     />
   );
 }
