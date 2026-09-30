@@ -171,6 +171,32 @@ describe("project add evaluator code-based", () => {
     await expectError(promise, requiredMessage ?? /./, InputValidationError);
   });
 
+  test.each<[string, string[], string]>([
+    ["a path in --name", ["--name", "../outside"], "Must begin with a letter"],
+    [
+      "an invalid --kms-key-arn",
+      ["--name", "custom_eval", "--kms-key-arn", "not-a-key"],
+      "Must be a valid KMS key ARN",
+    ],
+  ])("rejects %s before scaffolding anything", async (_label, flags, message) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+
+    await expectError(
+      run(["add", "evaluator", "code-based", "--level", "SESSION", ...flags]),
+      message,
+      InputValidationError,
+    );
+
+    for (const path of [
+      join(projectRoot, "..", "outside"),
+      join(projectRoot, "outside"),
+      join(projectRoot, "app", "custom_eval"),
+    ]) {
+      expect(await Bun.file(join(path, "lambda_function.py")).exists()).toBe(false);
+    }
+  });
+
   test.each([
     ["--metric", "deepeval.FaithfulnessMetric"],
     ["--model", "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0"],

@@ -2,7 +2,6 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
 import { SourceResolver } from "../../../../../io";
-import type { AwsDeploymentTarget } from "../../../../../projectSchemas/aws-targets";
 import {
   EvaluatorModelProviderSchema,
   EvaluatorSchema,
@@ -12,7 +11,7 @@ import {
   type RatingScale,
 } from "../../../../../projectSchemas/evaluator";
 import { TagsSchema } from "../../../../../projectSchemas/tags";
-import type { AddResourceInput, Project } from "../../../types";
+import type { AddResourceInput } from "../../../types";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
@@ -41,17 +40,7 @@ export type LlmAsAJudgeEvaluatorInput = {
   tags?: Record<string, string>;
 };
 
-export function toAddLlmAsAJudgeEvaluatorInput(
-  project: Project,
-  targets: readonly AwsDeploymentTarget[],
-  input: LlmAsAJudgeEvaluatorInput,
-): AddResourceInput {
-  requireDeployedNameFits("Evaluator", project.name, input.name, "_", 48, targets);
-  if (!isValidEvaluatorModelId(input.modelProvider, input.model))
-    throw new InputValidationError(
-      `invalid --model "${input.model}": expected ${MODEL_ID_FORMATS[input.modelProvider]}`,
-    );
-
+export function toAddLlmAsAJudgeEvaluatorInput(input: LlmAsAJudgeEvaluatorInput): AddResourceInput {
   const parsed = EvaluatorSchema.safeParse({
     name: input.name,
     level: input.level,
@@ -110,7 +99,16 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
+      requireDeployedNameFits(
+        "Evaluator",
+        project.name,
+        flags["name"],
+        "_",
+        48,
+        await config.projectManager.listTargets(project),
+      );
       const modelProvider = resolveModelProvider(flags["model-provider"]);
+      validateModel(modelProvider, flags["model"]);
       const ratingScale = resolveRatingScale(flags["rating-scale"]);
       const resolver = new SourceResolver({ stdin: config.io.stdin });
       const instructions = await resolver.resolveText("instructions", flags["instructions"]);
@@ -119,7 +117,7 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
         ctx,
         config,
         project,
-        toAddLlmAsAJudgeEvaluatorInput(project, await config.projectManager.listTargets(project), {
+        toAddLlmAsAJudgeEvaluatorInput({
           name: flags["name"],
           level: flags["level"],
           modelProvider,
@@ -143,6 +141,13 @@ function resolveModelProvider(value: string | undefined): EvaluatorModelProvider
       `invalid --model-provider "${value}": expected Bedrock or OpenResponses`,
     );
   return parsed.data;
+}
+
+function validateModel(provider: EvaluatorModelProvider, model: string): void {
+  if (!isValidEvaluatorModelId(provider, model))
+    throw new InputValidationError(
+      `invalid --model "${model}": expected ${MODEL_ID_FORMATS[provider]}`,
+    );
 }
 
 // A preset name expands to a fresh copy of the shared table; anything else is

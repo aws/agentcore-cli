@@ -204,6 +204,30 @@ describe("project add evaluator llm-as-a-judge", () => {
     );
   });
 
+  test.each<[string, string, string, string]>([
+    ["an invalid --model", "x", "not a model", 'invalid --model "not a model"'],
+    ["a deployed name over the limit", `e${"x".repeat(28)}`, MODEL, "The maximum is 48."],
+  ])("%s fails before --instructions - reads stdin", async (_label, name, model, message) => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const promise = run([
+      "add",
+      "evaluator",
+      "llm-as-a-judge",
+      "--name",
+      name,
+      "--level",
+      "SESSION",
+      "--model",
+      model,
+      "--instructions",
+      "-",
+      "--rating-scale",
+      "pass-fail",
+    ]);
+    await expectError(promise, message, InputValidationError);
+  });
+
   test("accepts a valid OpenResponses model id", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);

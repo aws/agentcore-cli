@@ -2,9 +2,9 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../../projectSchemas/aws-targets";
-import { EvaluatorSchema, EvaluationLevelSchema } from "../../../../../projectSchemas/evaluator";
+import { EvaluatorSchema } from "../../../../../projectSchemas/evaluator";
 import { TagsSchema } from "../../../../../projectSchemas/tags";
-import type { AddResourceInput, ManagedEvaluatorScaffoldInput, Project } from "../../../types";
+import type { AddResourceInput, Project } from "../../../types";
 import { parseJsonFlagWithSchema } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
@@ -19,37 +19,38 @@ export type CodeBasedEvaluatorInput = {
   tags?: Record<string, string>;
 } & ({ lambdaArn: string } | { lambdaArn?: undefined; timeoutSeconds?: number });
 
+const ManagedEvaluatorScaffoldSchema = EvaluatorSchema.pick({
+  name: true,
+  level: true,
+  description: true,
+  kmsKeyArn: true,
+  tags: true,
+}).extend({ timeoutSeconds: TimeoutSecondsSchema.optional() });
+
 export function toAddCodeBasedEvaluatorInput(
   project: Project,
   targets: readonly AwsDeploymentTarget[],
   input: CodeBasedEvaluatorInput,
 ): AddResourceInput {
   requireDeployedNameFits("Evaluator", project.name, input.name, "_", 48, targets);
-  const levelParsed = EvaluationLevelSchema.safeParse(input.level);
-  if (!levelParsed.success) throw new InputValidationError(z.prettifyError(levelParsed.error));
-
-  const base = {
-    name: input.name,
-    level: levelParsed.data,
-    description: input.description,
-    kmsKeyArn: input.kmsKeyArn,
-    tags: input.tags,
-  };
 
   if (input.lambdaArn !== undefined) {
+    const { lambdaArn, ...evaluator } = input;
     const parsed = EvaluatorSchema.safeParse({
-      ...base,
-      config: { codeBased: { external: { lambdaArn: input.lambdaArn } } },
+      ...evaluator,
+      config: { codeBased: { external: { lambdaArn } } },
     });
     if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
     return { resourceType: "evaluator", resourceConfig: parsed.data };
   }
 
-  const scaffold: ManagedEvaluatorScaffoldInput = {
-    ...base,
-    ...(input.timeoutSeconds !== undefined && { timeoutSeconds: input.timeoutSeconds }),
+  const parsed = ManagedEvaluatorScaffoldSchema.safeParse(input);
+  if (!parsed.success) throw new InputValidationError(z.prettifyError(parsed.error));
+  return {
+    resourceType: "evaluator",
+    resourceConfig: { name: parsed.data.name },
+    scaffold: parsed.data,
   };
-  return { resourceType: "evaluator", resourceConfig: { name: scaffold.name }, scaffold };
 }
 
 export function scaffoldedEvaluatorNote(name: string): string {

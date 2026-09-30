@@ -1157,6 +1157,8 @@ describe("promptPreview", () => {
       "You are a pirate.\n",
       "You are a pirate. · 2 lines",
     ],
+    ["cuts a long first line short", `${"x".repeat(70)}\ny`, `${"x".repeat(59)}… · 2 lines`],
+    ["cuts a long single line short", "x".repeat(70), `${"x".repeat(59)}…`],
   ])("%s", (_label, prompt, preview) => {
     expect(promptPreview(prompt)).toBe(preview);
   });

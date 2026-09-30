@@ -613,7 +613,9 @@ export function MultiChoiceField<T>({
 
 export function promptPreview(prompt: string): string {
   const lines = prompt.split("\n");
-  return lines.length === 1 ? prompt : `${lines[0]} · ${lines.length} lines`;
+  const [first = ""] = lines;
+  const shown = first.length > 60 ? `${first.slice(0, 59)}…` : first;
+  return lines.length === 1 ? shown : `${shown} · ${lines.length} lines`;
 }
 
 export interface SummaryProps {

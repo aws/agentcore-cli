@@ -191,7 +191,7 @@ function AddLlmAsAJudgeEvaluatorWizard({
       onSubmit={async function* () {
         const updated = yield* core.projectManager.addResource(
           project,
-          toAddLlmAsAJudgeEvaluatorInput(project, targets, toLlmAsAJudgeInput(values)),
+          toAddLlmAsAJudgeEvaluatorInput(toLlmAsAJudgeInput(values)),
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;
