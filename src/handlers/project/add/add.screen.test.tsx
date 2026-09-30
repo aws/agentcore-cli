@@ -19,27 +19,6 @@ function addSubcommands(): string[] {
   return add.commands.map((command) => command.name()).filter((name) => name !== "help");
 }
 
-// The resources with a wizard. Everything else is listed below the menu's
-// "cli" divider and opens its help instead.
-const WITH_SCREENS = [
-  "runtime",
-  "runtime-endpoint",
-  "memory",
-  "gateway",
-  "gateway-target",
-  "gateway-connector",
-  "online-eval",
-  "online-insight",
-  "harness",
-  "config-bundle",
-  "policy-engine",
-  "policy",
-  "payment-manager",
-  "payment-connector",
-  "evaluator",
-  "credentials",
-];
-
 describe("project add menu", () => {
   test("lists every add resource", async () => {
     const r = renderScreen("/agentcore/add");
@@ -52,17 +31,16 @@ describe("project add menu", () => {
     r.unmount();
   });
 
-  test("the resources with a wizard are listed above the divider", async () => {
+  // A resource without a screen would be listed below a "cli" divider and open
+  // its help instead; every add resource has a wizard, so there is no divider.
+  test("every resource opens a wizard, so nothing is listed under a cli divider", async () => {
     const r = renderScreen("/agentcore/add");
 
-    await waitForText(r.lastFrame, "── cli ");
+    await waitForText(r.lastFrame, "add project resources");
     const { screens, cliOnly } = menuEntries(r.lastFrame()!);
-    expect(screens.toSorted()).toEqual(WITH_SCREENS.toSorted());
-    expect(cliOnly.toSorted()).toEqual(
-      addSubcommands()
-        .filter((command) => !WITH_SCREENS.includes(command))
-        .toSorted(),
-    );
+    expect(screens.toSorted()).toEqual(addSubcommands().toSorted());
+    expect(cliOnly).toEqual([]);
+    expect(r.lastFrame()).not.toContain("── cli ");
     r.unmount();
   });
 

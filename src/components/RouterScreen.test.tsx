@@ -244,9 +244,9 @@ describe("narrow terminals", () => {
   test("a description too long for the row leaves every command name in the same column", async () => {
     const r = renderScreen("/agentcore/add");
     await waitForText(r.lastFrame, "❯ ");
+    // resize resolves once the frame is laid out at the new width.
     await r.resize(60);
 
-    await waitForText(r.lastFrame, "── cli");
     const lines = r.lastFrame()!.split("\n");
     const nameColumns = lines
       .map((line) => /^\s{1,3}(?:❯ )?\s*[a-z][a-z0-9-]*\s{2,}\S/.exec(line)?.[0])

@@ -109,12 +109,17 @@ describe("project add harness wizard", () => {
     expect(screen.lastFrame()).toContain("[enter] go back");
 
     // The same files `add harness --name assistant --system-prompt …` writes:
-    // the prompt in system-prompt.md, the rest in harness.yaml.
+    // the prompt in system-prompt.md, the rest in harness.yaml — where the
+    // model is API-shaped, keyed by provider rather than carrying a provider
+    // field.
     expect(await systemPromptOf(projectRoot, "assistant")).toBe(
       "You are a pirate.\nAnswer in rhyme.",
     );
     const yaml = await harnessYaml(projectRoot, "assistant");
-    expect(yaml).toMatchObject({ name: "assistant", model: DEFAULT_HARNESS_MODEL });
+    expect(yaml).toMatchObject({
+      name: "assistant",
+      model: { bedrockModelConfig: { modelId: DEFAULT_HARNESS_MODEL.modelId } },
+    });
     expect(yaml.systemPrompt).toBeUndefined();
     expect((await projectSpec(projectRoot)).harnesses).toContainEqual({
       name: "assistant",
@@ -188,9 +193,7 @@ describe("project add harness wizard", () => {
 
     await waitForText(screen.lastFrame, "added harness 'assistant'");
     expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
-      provider: "open_ai",
-      modelId: "gpt-5",
-      apiKeyArn,
+      openAiModelConfig: { modelId: "gpt-5", apiKeyArn },
     });
     screen.unmount();
   }, 15000);
@@ -223,9 +226,10 @@ describe("project add harness wizard", () => {
 
     await waitForText(screen.lastFrame, "added harness 'assistant'");
     expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
-      provider: "lite_llm",
-      modelId: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
-      apiBase: "https://llm.example.com/v1",
+      liteLlmModelConfig: {
+        modelId: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
+        apiBase: "https://llm.example.com/v1",
+      },
     });
     screen.unmount();
   }, 15000);
@@ -247,8 +251,7 @@ describe("project add harness wizard", () => {
 
     await waitForText(screen.lastFrame, "added harness 'custom_model'");
     expect((await harnessYaml(projectRoot, "custom_model")).model).toEqual({
-      provider: "bedrock",
-      modelId: `${DEFAULT_HARNESS_MODEL.modelId}-test`,
+      bedrockModelConfig: { modelId: `${DEFAULT_HARNESS_MODEL.modelId}-test` },
     });
     screen.unmount();
   }, 15000);
