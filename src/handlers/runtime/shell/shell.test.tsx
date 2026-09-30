@@ -3,7 +3,6 @@ import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-
 import { createRootHandler } from "../../index";
 import type { RuntimeShellRequest, RuntimeShellSession } from "../types";
 import {
-  IMPERATIVE_GLOBAL_CONFIG,
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
@@ -62,12 +61,9 @@ function harness(options: { isTTY?: boolean; runtime?: GetAgentRuntimeResponse }
   core.runtime.setShellSession(shell);
   const io = testIO({ isTTY: options.isTTY ?? true });
   const root = createRootHandler(core, {
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     io: io.io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   return {
     core,

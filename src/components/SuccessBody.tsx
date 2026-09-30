@@ -7,6 +7,7 @@ const theme = darkTheme;
 export interface SuccessBodyProps {
   title: string;
   rows?: Record<string, string>;
+  notes?: string[];
   nextSteps?: string[];
   hint?: string;
   onDone: () => void;
@@ -16,6 +17,7 @@ export interface SuccessBodyProps {
 export function SuccessBody({
   title,
   rows = {},
+  notes,
   nextSteps,
   hint,
   onDone,
@@ -33,6 +35,15 @@ export function SuccessBody({
       {Object.keys(rows).length > 0 && (
         <Box flexDirection="column" marginTop={1} marginLeft={2}>
           <KeyValueTable items={rows} />
+        </Box>
+      )}
+      {notes !== undefined && notes.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {notes.map((note) => (
+            <Text key={note} color={theme.colors.warning}>
+              {note}
+            </Text>
+          ))}
         </Box>
       )}
       {nextSteps !== undefined && nextSteps.length > 0 && (

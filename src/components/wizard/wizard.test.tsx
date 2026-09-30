@@ -29,6 +29,7 @@ interface HarnessOptions {
   onSubmit?: () => WizardSubmitResult;
   onCancel?: () => void;
   onDone?: () => void;
+  successNotes?: string[];
 }
 
 // A schema with a shape a stray space breaks, the way a resource-name schema
@@ -42,7 +43,7 @@ const YES_NO = [
 
 // TestWizard has one conditional step, so the branch behaviour under test is
 // expressed the way a screen expresses it: `{condition && <Step/>}`.
-function TestWizard({ onSubmit, onCancel, onDone }: HarnessOptions) {
+function TestWizard({ onSubmit, onCancel, onDone, successNotes }: HarnessOptions) {
   const [name, setName] = useState("");
   const [wantsExtra, setWantsExtra] = useState(false);
   const [extra, setExtra] = useState("");
@@ -57,6 +58,7 @@ function TestWizard({ onSubmit, onCancel, onDone }: HarnessOptions) {
       runningLabel="working…"
       successLabel="all done"
       successHint="enter exits"
+      successNotes={successNotes}
     >
       <Step stepKey="name" prompt="what is your name?">
         <TextField label="name" value={name} onChange={setName} required schema={NAME_SCHEMA} />
@@ -222,16 +224,40 @@ describe("Wizard shell", () => {
     d.unmount();
   });
 
+  test("renders notes on the success screen", async () => {
+    const d = drive({
+      successNotes: ["Warning: the completed action needs follow-up."],
+    });
+
+    await waitForFrame(d, "what is your name?");
+    await d.write("Ada");
+    await d.press("return");
+    await waitForFrame(d, "want the extra question?");
+    await d.press("return");
+    await waitForFrame(d, "review");
+    await d.press("return");
+
+    await waitForFrame(d, "Warning: the completed action needs follow-up.");
+    expect(d.lastFrame()).toContain("✔ all done");
+    d.unmount();
+  });
+
   test("a streamed submit renders its steps through the shared TaskList", async () => {
-    // The pauses let Ink paint between events: a generator that runs to
+    // The pause lets Ink paint between events: a generator that runs to
     // completion in one batch would only ever produce the final frame, and the
     // tail under a running step is exactly what that frame no longer shows.
+    // The tail is then held on screen until the test has seen it; a timed
+    // pause shows it for a few milliseconds, which a loaded runner can miss.
     const pause = () => new Promise((resolve) => setTimeout(resolve, 5));
+    let releaseTail!: () => void;
+    const tailSeen = new Promise<void>((resolve) => {
+      releaseTail = resolve;
+    });
     async function* progress() {
       yield { type: "step", message: "wrote agentcore.json" } as const;
       await pause();
       yield { type: "output", line: "a line tailing the running step" } as const;
-      await pause();
+      await tailSeen;
       yield { type: "step", message: "updated the deploy target" } as const;
     }
     const d = drive({ onSubmit: () => progress() });
@@ -247,6 +273,7 @@ describe("Wizard shell", () => {
     // An output line tails the step it belongs to while that step runs, and
     // collapses with it — TaskList's behaviour everywhere else in the CLI.
     await waitForFrame(d, "│ a line tailing the running step");
+    releaseTail();
 
     await waitForFrame(d, "✔ all done");
     const frame = d.lastFrame()!;

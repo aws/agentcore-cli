@@ -3,8 +3,7 @@ import {
   cleanupScreens,
   compiledRootCommand,
   menuEntries,
-  renderImperativeScreen,
-  IMPERATIVE_GLOBAL_CONFIG,
+  renderScreen,
   waitForText,
 } from "../testing";
 import type { ProjectCreateResource } from "./ProjectResourceCreateScreen";
@@ -41,7 +40,7 @@ describe("project resource creation guidance", () => {
   test.each(RESOURCES)(
     "$resource lists create in its TUI menu and opens project instructions",
     async ({ resource, label, parentDescription, addCommand }) => {
-      const r = renderImperativeScreen(`/agentcore/${resource}`);
+      const r = renderScreen(`/agentcore/${resource}`);
 
       await waitForText(r.lastFrame, "❯ create");
       expect(menuEntries(r.lastFrame()!).screens[0]).toBe("create");
@@ -64,7 +63,7 @@ describe("project resource creation guidance", () => {
   );
 
   test("the guidance does not add unsupported imperative CLI commands", () => {
-    const root = compiledRootCommand(undefined, IMPERATIVE_GLOBAL_CONFIG);
+    const root = compiledRootCommand();
     for (const resource of RESOURCES) {
       const command = root.commands.find((candidate) => candidate.name() === resource.resource);
       expect(command?.commands.some((candidate) => candidate.name() === "create")).toBe(false);

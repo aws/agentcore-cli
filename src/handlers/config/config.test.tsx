@@ -56,70 +56,60 @@ describe("config", () => {
     expect(JSON.parse(output)).toBe(true);
   });
 
-  test("imperative command families default off for existing and missing config", async () => {
-    expect(JSON.parse(await run(["imperative-commands"]))).toBe(false);
-    await rm(configPath);
-    expect(JSON.parse(await run(["imperative-commands"]))).toBe(false);
-  });
-
-  test("persists the imperative flag across config accessor instances", async () => {
-    for (const enabled of [true, false]) {
-      expect(JSON.parse(await run(["imperative-commands", String(enabled)]))).toBe(enabled);
-      expect(JSON.parse(await run(["imperative-commands"]))).toBe(enabled);
+  test("persists a boolean setting across config accessor instances", async () => {
+    for (const enabled of [false, true]) {
+      expect(JSON.parse(await run(["telemetry.enabled", String(enabled)]))).toBe(enabled);
+      expect(JSON.parse(await run(["telemetry.enabled"]))).toBe(enabled);
     }
   });
 
-  test("rejects invalid root gate values without changing config", async () => {
-    await run(["imperative-commands", "true"]);
-    await expect(run(["imperative-commands", "invalid"])).rejects.toThrow(InputValidationError);
-    expect(JSON.parse(await run(["imperative-commands"]))).toBe(true);
+  test("rejects invalid boolean values without changing config", async () => {
+    await run(["telemetry.enabled", "false"]);
+    await expect(run(["telemetry.enabled", "invalid"])).rejects.toThrow(InputValidationError);
+    expect(JSON.parse(await run(["telemetry.enabled"]))).toBe(false);
   });
 
-  test("validates the root gate when reading config from disk", async () => {
+  test("validates boolean settings when reading config from disk", async () => {
     await writeFile(
       configPath,
-      JSON.stringify({ ...validConfigOverrides, "imperative-commands": "true" }),
+      JSON.stringify({ ...validConfigOverrides, transactionSearch: "true" }),
     );
     await expect(run([])).rejects.toThrow("Failed to deserialize");
   });
 
-  test.each([false, true, "true"])(
-    "ignores a retired mutation flag value of %s in an existing config",
-    async (legacyValue) => {
-      for (const enabled of [false, true]) {
-        await writeFile(
-          configPath,
-          JSON.stringify({
-            ...validConfigOverrides,
-            "imperative-mutation-commands": legacyValue,
-            "imperative-commands": enabled,
-          }),
-        );
-        const config = JSON.parse(await run([]));
-        expect(config["imperative-commands"]).toBe(enabled);
-        expect(config).not.toHaveProperty("imperative-mutation-commands");
-        expect(config).toMatchObject(validConfigOverrides);
-      }
+  const RETIRED_FLAGS = ["imperative-commands", "imperative-mutation-commands"];
+
+  test.each(RETIRED_FLAGS.flatMap((flag) => [false, true, "true"].map((value) => [flag, value])))(
+    "ignores a retired %s value of %s in an existing config",
+    async (flag, legacyValue) => {
+      await writeFile(
+        configPath,
+        JSON.stringify({ ...validConfigOverrides, [flag as string]: legacyValue }),
+      );
+      const config = JSON.parse(await run([]));
+      expect(config).not.toHaveProperty(flag as string);
+      expect(config).toMatchObject(validConfigOverrides);
     },
   );
 
-  test("rejects reading or setting the retired mutation flag", async () => {
-    await expect(run(["imperative-mutation-commands"])).rejects.toThrow(InputValidationError);
-    await expect(run(["imperative-mutation-commands", "true"])).rejects.toThrow(
-      InputValidationError,
-    );
-    expect(JSON.parse(await run(["imperative-commands"]))).toBe(false);
+  test.each(RETIRED_FLAGS)("rejects reading or setting the retired %s flag", async (flag) => {
+    await expect(run([flag])).rejects.toThrow(InputValidationError);
+    await expect(run([flag, "true"])).rejects.toThrow(InputValidationError);
   });
 
-  test("drops the retired flag when saving another setting", async () => {
+  test("drops retired flags when saving another setting", async () => {
     await writeFile(
       configPath,
-      JSON.stringify({ ...validConfigOverrides, "imperative-mutation-commands": true }),
+      JSON.stringify({
+        ...validConfigOverrides,
+        "imperative-commands": true,
+        "imperative-mutation-commands": true,
+      }),
     );
-    await run(["imperative-commands", "true"]);
+    await run(["transactionSearch", "false"]);
     const saved = JSON.parse(await readFile(configPath, "utf8"));
-    expect(saved).not.toHaveProperty("imperative-mutation-commands");
-    expect(saved["imperative-commands"]).toBe(true);
+    for (const flag of RETIRED_FLAGS) expect(saved).not.toHaveProperty(flag);
+    expect(saved.transactionSearch).toBe(false);
     expect(JSON.parse(await run(["telemetry.endpoint"]))).toBe("https://example.com");
   });
 

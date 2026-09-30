@@ -45,16 +45,16 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - **Test preload.** `src/testing/setup.ts` sets `FORCE_COLOR=0`, `WT_SESSION`, and
   `AGENTCORE_TELEMETRY_DISABLED=1` so Ink frames are plain text and glyphs are Unicode. Frame
   assertions depend on this.
-- **Standalone resource commands are gated.** `harness`, `identity`, `runtime`, `memory`, `gateway`,
-  and `payment` are only mounted when global config `"imperative-commands"` is true (default false;
-  see `src/handlers/index.tsx`, `src/globalConfig/config.tsx`). Tests for those commands must pass
-  `IMPERATIVE_GLOBAL_CONFIG` (from `src/testing`) as `globalConfig` and as the
-  `TestGlobalConfigAccessor` initial data, or to `renderScreen(..., { globalConfig })`. Adding a
-  global config key means updating `types.tsx`, `DEFAULT_GLOBAL_CONFIG`, and `applyOverrides`.
+- **Global config keys.** Adding a global config key means updating `types.tsx`,
+  `DEFAULT_GLOBAL_CONFIG`, and `applyOverrides` in `src/globalConfig/`. Retired keys in an existing
+  `~/.agentcore/config.json` are dropped on read (the zod schema strips unknown keys).
 - **TUI support is opt-in per top-level command** via the root's `.supportedTuiCommands(...)`.
   Handler registration order is `--help` and menu order, but the menu moves commands without a
-  screen under a "command line only" divider unless the router names them in `.listInMenu(...)`.
+  screen under a "cli" divider unless the router names them in `.listInMenu(...)`.
   `.menuSection(title)` draws a menu divider above the next registered handler (menu only).
+- **Terminal size: use `useWindowSize` from `src/components/ui/useWindowSize.tsx`, not Ink's.**
+  Ink's hook adds a stdout `resize` listener per call (every `Divider` calls it), so busy screens
+  trip Node's `MaxListenersExceededWarning`; the local hook shares one listener per stream.
 - **Fixture keys hash the SDK request input.** Fixtures are `__fixtures__/<CommandName>.<hash>.json`,
   hashed over the command `input` (top-level `clientToken` excluded). Any change to the request a
   handler sends (new field, different default, different region) makes replay fail with

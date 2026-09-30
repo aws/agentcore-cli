@@ -8,7 +8,7 @@ import { QueryClient } from "@tanstack/react-query";
 import stringWidth from "string-width";
 import {
   cleanupScreens,
-  renderImperativeScreen,
+  renderScreen,
   TestCoreClient,
   tick,
   waitFor,
@@ -67,7 +67,7 @@ function coreWithMemories(memories: MemorySummary[]): TestCoreClient {
 
 describe("Memory picker", () => {
   test("shows event, record, actor, and session commands in the Memory TUI menu", async () => {
-    const screen = renderImperativeScreen("/agentcore/memory");
+    const screen = renderScreen("/agentcore/memory");
 
     await waitForText(screen.lastFrame, "inspect AgentCore Memories");
     const frame = screen.lastFrame()!;
@@ -87,7 +87,7 @@ describe("Memory picker", () => {
         updatedAt: new Date("2026-07-21T02:03:04.000Z"),
       }),
     ]);
-    const screen = renderImperativeScreen("/agentcore/memory/list", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
     await waitForText(screen.lastFrame, "memory-visible-id");
     const frame = screen.lastFrame()!;
@@ -101,7 +101,7 @@ describe("Memory picker", () => {
   test("keeps long Memory IDs separate from adjacent columns", async () => {
     const memoryId = `memory-${"x".repeat(70)}`;
     const core = coreWithMemories([memorySummary({ id: memoryId })]);
-    const screen = renderImperativeScreen("/agentcore/memory/list", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
     await waitForText(screen.lastFrame, "memory-");
     await screen.resize(80, 24);
@@ -117,7 +117,7 @@ describe("Memory picker", () => {
 
   test("calls listMemories with exact Core options", async () => {
     const core = coreWithMemories([memorySummary()]);
-    renderImperativeScreen("/agentcore/memory/list", { core, endpointUrl: memoryEndpointUrl });
+    renderScreen("/agentcore/memory/list", { core, endpointUrl: memoryEndpointUrl });
 
     await waitFor(() => core.memory.calls.some((call) => call.method === "listMemories"));
     expect(core.memory.calls.filter((call) => call.method === "listMemories")).toEqual([
@@ -136,7 +136,7 @@ describe("Memory picker", () => {
   });
 
   test("shows first-page and later-page empty states", async () => {
-    const empty = renderImperativeScreen("/agentcore/memory/list");
+    const empty = renderScreen("/agentcore/memory/list");
     await waitForText(empty.lastFrame, "No Memories found in this Region.");
     empty.unmount();
 
@@ -146,7 +146,7 @@ describe("Memory picker", () => {
       nextToken: "page-2",
     });
     core.memory.setListResponse({ memories: [] }, "page-2");
-    const paged = renderImperativeScreen("/agentcore/memory/list", { core });
+    const paged = renderScreen("/agentcore/memory/list", { core });
 
     await waitForText(paged.lastFrame, "page 1 · more →");
     await paged.write("l");
@@ -156,7 +156,7 @@ describe("Memory picker", () => {
 
   test("bare Memory get redirects to the picker", async () => {
     const core = coreWithMemories([memorySummary({ id: "redirected-memory" })]);
-    const screen = renderImperativeScreen("/agentcore/memory/get", { core });
+    const screen = renderScreen("/agentcore/memory/get", { core });
 
     await waitForText(screen.lastFrame, "redirected-memory");
     expect(core.memory.calls[0]?.method).toBe("listMemories");
@@ -166,7 +166,7 @@ describe("Memory picker", () => {
     const memoryId = "memory blue";
     const core = coreWithMemories([memorySummary({ id: memoryId })]);
     core.memory.setGetResponse(getMemoryOutput({ id: memoryId }));
-    const screen = renderImperativeScreen("/agentcore/memory/list", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
     await waitForText(screen.lastFrame, memoryId);
     await screen.press("return");
@@ -181,7 +181,7 @@ describe("Memory detail", () => {
   test("loads the full view and renders a resource summary", async () => {
     const core = new TestCoreClient();
     core.memory.setGetResponse(getMemoryOutput());
-    const screen = renderImperativeScreen("/agentcore/memory/get/memory-1", {
+    const screen = renderScreen("/agentcore/memory/get/memory-1", {
       core,
       endpointUrl: memoryEndpointUrl,
     });
@@ -210,7 +210,7 @@ describe("Memory detail", () => {
   test("shows a failure reason only when the service provides one", async () => {
     const healthyCore = new TestCoreClient();
     healthyCore.memory.setGetResponse(getMemoryOutput());
-    const healthy = renderImperativeScreen("/agentcore/memory/get/memory-1", { core: healthyCore });
+    const healthy = renderScreen("/agentcore/memory/get/memory-1", { core: healthyCore });
 
     await waitForText(healthy.lastFrame, "show the full JSON definition");
     expect(healthy.lastFrame()).not.toContain("failureReason");
@@ -220,7 +220,7 @@ describe("Memory detail", () => {
     failedCore.memory.setGetResponse(
       getMemoryOutput({ status: "FAILED", failureReason: "Strategy setup failed" }),
     );
-    const failed = renderImperativeScreen("/agentcore/memory/get/memory-1", { core: failedCore });
+    const failed = renderScreen("/agentcore/memory/get/memory-1", { core: failedCore });
 
     await waitForText(failed.lastFrame, "Strategy setup failed");
     expect(failed.lastFrame()).toContain("failureReason");
@@ -229,7 +229,7 @@ describe("Memory detail", () => {
   test("opens the complete Memory JSON", async () => {
     const core = new TestCoreClient();
     core.memory.setGetResponse(getMemoryOutput());
-    const screen = renderImperativeScreen("/agentcore/memory/get/memory-1", { core });
+    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     await screen.press("return");
@@ -244,7 +244,7 @@ describe("Memory detail", () => {
     core.memory.setListResponse({ memories: [memorySummary()] });
     core.memory.setGetResponse(getMemoryOutput());
     core.memory.setListActorsResponse({ actorSummaries: [] });
-    const screen = renderImperativeScreen("/agentcore/memory/list", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
     await waitForText(screen.lastFrame, "memory-1");
     await screen.press("return");
@@ -269,7 +269,7 @@ describe("Memory detail", () => {
     const core = new TestCoreClient();
     core.memory.setListResponse({ memories: [memorySummary()] });
     core.memory.setGetResponse(getMemoryOutput());
-    const screen = renderImperativeScreen("/agentcore/memory/list", { core });
+    const screen = renderScreen("/agentcore/memory/list", { core });
 
     await waitForText(screen.lastFrame, "memory-1");
     await screen.press("return");
@@ -289,7 +289,7 @@ describe("Memory detail", () => {
   test("retries a failed detail query", async () => {
     const core = new TestCoreClient();
     core.memory.setError(new Error("memory unavailable"));
-    const screen = renderImperativeScreen("/agentcore/memory/get/memory-1", { core });
+    const screen = renderScreen("/agentcore/memory/get/memory-1", { core });
 
     await waitForText(screen.lastFrame, "memory unavailable");
     expect(screen.lastFrame()).toContain("[r] retry");
@@ -308,7 +308,7 @@ describe("Memory detail", () => {
         queries: { retry: false, gcTime: Infinity, staleTime: 0 },
       },
     });
-    const screen = renderImperativeScreen("/agentcore/memory/get/memory-1", { core, queryClient });
+    const screen = renderScreen("/agentcore/memory/get/memory-1", { core, queryClient });
 
     await waitForText(screen.lastFrame, "show the full JSON definition");
     core.memory.setError(new Error("background refresh failed"));

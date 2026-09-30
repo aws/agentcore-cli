@@ -81,11 +81,10 @@ Run `agentcore --version` to check the installed CLI version.
 
 ### Runtime Exec
 
-Select a deployed Runtime in `agentcore status` and choose **exec**, or enable
-standalone commands for direct access:
+Select a deployed Runtime in `agentcore status` and choose **exec**, or run it
+directly:
 
 ```bash
-agentcore config imperative-commands true
 agentcore runtime exec --id MyAgent-AbCdEf1234 --command "pwd"
 agentcore runtime exec --id MyAgent-AbCdEf1234 --qualifier DEFAULT
 ```

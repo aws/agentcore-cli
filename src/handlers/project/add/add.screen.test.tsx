@@ -19,7 +19,7 @@ function addSubcommands(): string[] {
 }
 
 // The resources with a wizard. Everything else is listed below the menu's
-// "command line only" divider and opens its help instead.
+// "cli" divider and opens its help instead.
 const WITH_SCREENS = [
   "runtime",
   "memory",
@@ -32,6 +32,8 @@ const WITH_SCREENS = [
   "config-bundle",
   "policy-engine",
   "policy",
+  "payment-manager",
+  "payment-connector",
 ];
 
 describe("project add menu", () => {
@@ -49,7 +51,7 @@ describe("project add menu", () => {
   test("the resources with a wizard are listed above the divider", async () => {
     const r = renderScreen("/agentcore/add");
 
-    await waitForText(r.lastFrame, "command line only");
+    await waitForText(r.lastFrame, "── cli ");
     const { screens, cliOnly } = menuEntries(r.lastFrame()!);
     expect(screens.toSorted()).toEqual(WITH_SCREENS.toSorted());
     expect(cliOnly.toSorted()).toEqual(

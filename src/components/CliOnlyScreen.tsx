@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useWindowSize } from "./ui/useWindowSize";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useLocation, useNavigate } from "react-router";
 import { CommandKey, commandParameterDetails } from "../router";

@@ -2,7 +2,6 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createRootHandler } from "../../index";
 import {
-  IMPERATIVE_GLOBAL_CONFIG,
   createSilentLogger,
   TestCoreClient,
   TestGlobalConfigAccessor,
@@ -24,11 +23,8 @@ function setup() {
   const io = testIO();
   const root = createRootHandler(core, {
     io: io.io,
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   return {
     core,

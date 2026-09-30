@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useWindowSize } from "./ui/useWindowSize";
 import type {
   Harness,
   HarnessMemoryConfiguration,

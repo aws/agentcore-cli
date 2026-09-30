@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Command } from "commander";
 import { isTuiCommandSupported } from "../router";
-import {
-  cleanupScreens,
-  compiledRootCommand,
-  IMPERATIVE_GLOBAL_CONFIG,
-  renderImperativeScreen,
-  waitFor,
-} from "../testing";
+import { cleanupScreens, compiledRootCommand, renderScreen, waitFor } from "../testing";
 
 afterEach(cleanupScreens);
 
@@ -24,7 +18,7 @@ function screenCommands(command: Command, path: string[]): [string[], Command][]
     ]);
 }
 
-// menuHeader is the first line RouterScreen renders for a group at `path`.
+// menuHeader is the breadcrumb rendered by Header for a group at `path`.
 function menuHeader(path: string[], command: Command): string {
   return [...path, command.description()].join(" → ");
 }
@@ -43,11 +37,16 @@ function ancestorMenuHeaders(path: string[], command: Command): string[] {
   return headers;
 }
 
-function firstLine(frame: string | undefined): string {
-  return (frame ?? "").split("\n")[0]?.trim() ?? "";
+function renderedHeader(frame: string | undefined): string {
+  return (
+    (frame ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.includes(" → ")) ?? ""
+  );
 }
 
-const SCREENS = screenCommands(compiledRootCommand(undefined, IMPERATIVE_GLOBAL_CONFIG), []);
+const SCREENS = screenCommands(compiledRootCommand(), []);
 
 describe("every command with a screen", () => {
   test("there are screens to cover", () => {
@@ -62,15 +61,15 @@ describe("every command with a screen", () => {
   test.each(SCREENS.map(([path, command]) => [path.join(" "), path, command] as const))(
     "%s opens, and esc returns to a menu above it",
     async (_label, path, command) => {
-      const r = renderImperativeScreen("/" + path.join("/"));
+      const r = renderScreen("/" + path.join("/"));
       // Wide and tall enough that the header never wraps.
       await r.resize(220, 200);
       const menus = ancestorMenuHeaders(path, command);
-      expect(menus).not.toContain(firstLine(r.lastFrame()));
+      expect(menus).not.toContain(renderedHeader(r.lastFrame()));
 
       await r.press("escape");
-      await waitFor(() => menus.includes(firstLine(r.lastFrame()))).catch(() => {});
-      expect(menus).toContain(firstLine(r.lastFrame()));
+      await waitFor(() => menus.includes(renderedHeader(r.lastFrame()))).catch(() => {});
+      expect(menus).toContain(renderedHeader(r.lastFrame()));
       r.unmount();
     },
   );

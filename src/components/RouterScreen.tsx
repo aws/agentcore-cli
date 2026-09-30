@@ -8,16 +8,24 @@ import {
   isListedInMenu,
   isTuiCommandSupported,
 } from "../router";
+import {
+  BRAND_BANNER_ROWS,
+  MIN_BANNER_COLUMNS,
+  MIN_BANNER_ROWS,
+  shouldHideBrandBanner,
+} from "./BrandBanner";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
+import { scrollWindow } from "./scrollWindow";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
-const CLI_ONLY_SECTION = "command line only";
+const CLI_ONLY_SECTION = "cli";
+const FILTER_ROWS = 2;
 
 // rootCommand walks up to the top of the Commander tree.
 function rootCommand(c: Command): Command {
@@ -63,6 +71,8 @@ export interface TuiOnlyCommand {
 }
 
 export interface RouterScreenProps extends ScreenProps {
+  // banner is content shown above the standard screen header.
+  banner?: React.ReactNode;
   // path is the screen's command path, e.g. ["agentcore", "harness"]. The first
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
@@ -88,6 +98,7 @@ export function RouterScreen(props: RouterScreenProps) {
 }
 
 function CommandMenu({
+  banner,
   path,
   tuiOnlyCommands = [],
   command,
@@ -192,6 +203,11 @@ function CommandMenu({
 
   return (
     <Layout
+      banner={banner}
+      bannerHeight={BRAND_BANNER_ROWS}
+      hideBanner={Boolean(banner) && shouldHideBrandBanner(process.env.TERM_PROGRAM)}
+      bannerMinColumns={MIN_BANNER_COLUMNS}
+      bannerMinRows={MIN_BANNER_ROWS}
       breadcrumb={path}
       description={command.description()}
       keyHints={[
@@ -203,61 +219,122 @@ function CommandMenu({
         { key: "ctrl+c", label: "quit" },
       ]}
     >
-      <Box flexDirection="column">
-        {/* Filter input. TextInput owns text editing; the highlight resets to
-            the best match whenever the query changes. */}
-        <Box paddingX={1}>
-          <TextInput
-            value={query}
-            onChange={(v) => {
-              setQuery(v);
-              setIndex(0);
-            }}
-            placeholder={PLACEHOLDER}
-            prompt="/ "
-            focus={Boolean(isRawModeSupported)}
-          />
-        </Box>
-
-        <Divider />
-
-        {/* Options */}
-        <Box flexDirection="column">
-          {filtered.length === 0 ? (
-            <Box paddingX={1}>
-              <Text color={theme.colors.text}>No matches</Text>
-            </Box>
-          ) : (
-            filtered.map((o, i) => {
-              const isHl = i === highlight;
-              // A section's divider sits above its first option.
-              const startsSection =
-                o.section !== undefined && o.section !== filtered[i - 1]?.section;
-              return (
-                <React.Fragment key={o.name}>
-                  {startsSection && <Divider title={o.section} />}
-                  <Box paddingX={1}>
-                    <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
-                    <Text
-                      bold={isHl}
-                      color={
-                        isHl
-                          ? theme.colors.focus
-                          : o.cliOnly
-                            ? theme.colors.muted
-                            : theme.colors.text
-                      }
-                    >
-                      {o.name.padEnd(nameWidth)}
-                    </Text>
-                    <Text color={theme.colors.muted}>{o.description}</Text>
-                  </Box>
-                </React.Fragment>
-              );
-            })
-          )}
-        </Box>
-      </Box>
+      {({ columns, contentRows }) => (
+        <CommandMenuBody
+          columns={columns}
+          contentRows={contentRows}
+          filtered={filtered}
+          highlight={highlight}
+          isRawModeSupported={Boolean(isRawModeSupported)}
+          nameWidth={nameWidth}
+          query={query}
+          onQueryChange={(value) => {
+            setQuery(value);
+            setIndex(0);
+          }}
+        />
+      )}
     </Layout>
+  );
+}
+
+interface CommandMenuBodyProps {
+  columns: number;
+  contentRows: number;
+  filtered: Option[];
+  highlight: number;
+  isRawModeSupported: boolean;
+  nameWidth: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+}
+
+function CommandMenuBody({
+  columns,
+  contentRows,
+  filtered,
+  highlight,
+  isRawModeSupported,
+  nameWidth,
+  query,
+  onQueryChange,
+}: CommandMenuBodyProps) {
+  const sections = useMemo(() => filtered.map((option) => option.section), [filtered]);
+  const menuHeight = Math.max(0, contentRows - FILTER_ROWS);
+  const windowStart = Math.max(0, highlight - Math.floor(menuHeight / 2));
+  const view = scrollWindow({
+    sections,
+    highlight,
+    start: windowStart,
+    budget: menuHeight,
+  });
+
+  return (
+    <Box flexDirection="column" height={contentRows} overflow="hidden">
+      <Box paddingX={1} height={1} overflow="hidden" flexShrink={0}>
+        <TextInput
+          value={query}
+          onChange={onQueryChange}
+          placeholder={PLACEHOLDER}
+          prompt="/ "
+          focus={isRawModeSupported}
+        />
+      </Box>
+
+      <Divider />
+
+      <Box flexDirection="column" height={menuHeight} overflow="hidden">
+        {filtered.length === 0 ? (
+          <Box paddingX={1} height={1} overflow="hidden">
+            <Text color={theme.colors.text}>No matches</Text>
+          </Box>
+        ) : (
+          view.rows.map((row) => {
+            if (row.kind === "section") {
+              return <Divider key={`section:${row.title}`} title={row.title} />;
+            }
+            if (row.kind !== "item") {
+              return (
+                <Box key={row.kind} paddingX={1} height={1} overflow="hidden" flexShrink={0}>
+                  <Text color={theme.colors.muted}>
+                    {`  ${row.kind === "more-above" ? "↑" : "↓"} ${row.count} more`}
+                  </Text>
+                </Box>
+              );
+            }
+
+            const option = filtered[row.index]!;
+            const isHighlighted = row.index === highlight;
+            return (
+              <Box
+                key={option.name}
+                paddingX={1}
+                width={columns}
+                height={1}
+                overflow="hidden"
+                flexShrink={0}
+              >
+                <Text color={theme.colors.focus}>
+                  {isHighlighted ? `${glyphs.pointer} ` : "  "}
+                </Text>
+                <Text
+                  bold={isHighlighted}
+                  color={
+                    isHighlighted
+                      ? theme.colors.focus
+                      : option.cliOnly
+                        ? theme.colors.muted
+                        : theme.colors.text
+                  }
+                >
+                  {option.name.padEnd(nameWidth)}
+                </Text>
+                <Text color={theme.colors.muted}>{option.description}</Text>
+              </Box>
+            );
+          })
+        )}
+      </Box>
+    </Box>
   );
 }

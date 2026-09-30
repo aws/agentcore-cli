@@ -123,6 +123,7 @@ import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { GatewayPolicyGenerateScreen } from "../handlers/gateway/policy/screen.tsx";
 import { RouterScreen } from "./RouterScreen.tsx";
 import { CommandFallbackScreen } from "./CliOnlyScreen.tsx";
+import { CommandHandoffScreen } from "./CommandHandoffScreen.tsx";
 import { ProjectResourceCreateScreen } from "./ProjectResourceCreateScreen.tsx";
 import { BuildProjectScreen } from "../handlers/project/build/screen.tsx";
 import { DeployProjectScreen } from "../handlers/project/deploy/screen.tsx";
@@ -139,6 +140,8 @@ import { AddHarnessScreen } from "../handlers/project/add/harness/screen.tsx";
 import { AddConfigBundleScreen } from "../handlers/project/add/config-bundle/screen.tsx";
 import { AddPolicyEngineScreen } from "../handlers/project/add/policy-engine/screen.tsx";
 import { AddPolicyScreen } from "../handlers/project/add/policy/screen.tsx";
+import { AddPaymentManagerScreen } from "../handlers/project/add/payment-manager/screen.tsx";
+import { AddPaymentConnectorScreen } from "../handlers/project/add/payment-connector/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
@@ -255,10 +258,17 @@ function PinnedRegion({ ctx, core }: ScreenProps) {
   );
 }
 
+const DEV_PATH = ["agentcore", "dev"];
+
 function RouteTable({ ctx, core }: ScreenProps) {
   return (
     <Routes>
       <Route path="agentcore" element={<RootScreen ctx={ctx} core={core} />} />
+      {/* `dev` owns the terminal, so selecting it closes the TUI and runs it. */}
+      <Route
+        path="agentcore/dev"
+        element={<CommandHandoffScreen ctx={ctx} core={core} path={DEV_PATH} />}
+      />
       <Route
         path="agentcore/invoke"
         element={<ProjectInvokePickerScreen ctx={ctx} core={core} />}
@@ -932,6 +942,14 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<AddPolicyEngineScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/add/policy" element={<AddPolicyScreen ctx={ctx} core={core} />} />
+      <Route
+        path="agentcore/add/payment-manager"
+        element={<AddPaymentManagerScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/add/payment-connector"
+        element={<AddPaymentConnectorScreen ctx={ctx} core={core} />}
+      />
       <Route path="agentcore/remove" element={<ProjectRemoveScreen ctx={ctx} core={core} />} />
       <Route
         path="agentcore/remove/:resourceType"

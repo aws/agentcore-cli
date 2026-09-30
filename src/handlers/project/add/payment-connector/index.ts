@@ -1,9 +1,64 @@
 import z from "zod";
 import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 import { createHandler, flag, ProjectKey } from "../../../../router";
+import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource } from "../shared";
 import { assertMutuallyExclusiveFlags } from "../../../utils";
+
+export type PaymentConnectorInput =
+  | {
+      managerName: string;
+      name: string;
+      quickCreate: true;
+    }
+  | {
+      managerName: string;
+      name: string;
+      quickCreate?: false;
+      credentialName: string;
+    };
+
+export function toAddPaymentConnectorInput(
+  project: Project,
+  input: PaymentConnectorInput,
+): AddResourceInput {
+  if (input.quickCreate) {
+    return {
+      resourceType: "payment-connector",
+      managerName: input.managerName,
+      resourceConfig: {
+        name: input.name,
+        provider: "CoinbaseCDP",
+        provisionMode: "QUICK_CREATE",
+      },
+    };
+  }
+
+  const credential = project.spec.credentials.find(
+    (candidate) => candidate.name === input.credentialName,
+  );
+  if (!credential) {
+    throw new ResourceNotFoundError(
+      `no credential named '${input.credentialName}' exists in this project`,
+    );
+  }
+  if (credential.authorizerType !== "PaymentCredentialProvider") {
+    throw new InputValidationError(
+      `credential '${input.credentialName}' is a ${credential.authorizerType}, not a PaymentCredentialProvider`,
+    );
+  }
+
+  return {
+    resourceType: "payment-connector",
+    managerName: input.managerName,
+    resourceConfig: {
+      name: input.name,
+      provider: credential.provider,
+      credentialName: input.credentialName,
+    },
+  };
+}
 
 export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -19,48 +74,26 @@ export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfi
       assertMutuallyExclusiveFlags(flags, ["credential", "quick-create"], { exactlyOne: true });
 
       const project = ctx.require(ProjectKey);
-      let provider: "CoinbaseCDP" | "StripePrivy";
-      let credentialName: string | undefined;
-
-      if (flags["quick-create"]) {
-        provider = "CoinbaseCDP";
-      } else {
-        credentialName = flags.credential!;
-        const credential = project.spec.credentials.find(
-          (candidate) => candidate.name === credentialName,
-        );
-        if (!credential) {
-          throw new ResourceNotFoundError(
-            `no credential named '${credentialName}' exists in this project`,
-          );
-        }
-        if (credential.authorizerType !== "PaymentCredentialProvider") {
-          throw new InputValidationError(
-            `credential '${credentialName}' is a ${credential.authorizerType}, not a PaymentCredentialProvider`,
-          );
-        }
-        provider = credential.provider;
-      }
+      const input = toAddPaymentConnectorInput(
+        project,
+        flags["quick-create"]
+          ? {
+              managerName: flags.manager,
+              name: flags.name,
+              quickCreate: true,
+            }
+          : {
+              managerName: flags.manager,
+              name: flags.name,
+              credentialName: flags.credential!,
+            },
+      );
 
       await addProjectResource(
         ctx,
         config,
         project,
-        {
-          resourceType: "payment-connector",
-          managerName: flags.manager,
-          resourceConfig: flags["quick-create"]
-            ? {
-                name: flags.name,
-                provider: "CoinbaseCDP",
-                provisionMode: "QUICK_CREATE",
-              }
-            : {
-                name: flags.name,
-                provider,
-                credentialName: credentialName!,
-              },
-        },
+        input,
         `added payment connector '${flags.name}' to manager '${flags.manager}' in '${project.name}'`,
       );
     },

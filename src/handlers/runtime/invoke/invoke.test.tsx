@@ -6,7 +6,6 @@ import type { GetAgentRuntimeResponse } from "@aws-sdk/client-bedrock-agentcore-
 import type { AppIO } from "../../../io";
 import type { RuntimeInvokeRequest } from "../types";
 import {
-  IMPERATIVE_GLOBAL_CONFIG,
   createSilentLogger,
   expectError,
   TestCoreClient,
@@ -64,12 +63,9 @@ function failingStdoutIO(): AppIO {
 
 async function runCommand(core: TestCoreClient, io: AppIO, args: string[]): Promise<void> {
   const root = createRootHandler(core, {
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   await root.route(["node", "agentcore", ...args, "--region", REGION]);
 }

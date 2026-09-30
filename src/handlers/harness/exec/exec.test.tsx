@@ -5,13 +5,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createRootHandler } from "../../index";
-import {
-  IMPERATIVE_GLOBAL_CONFIG,
-  createSilentLogger,
-  expectError,
-  TestCoreClient,
-  testIO,
-} from "../../../testing";
+import { createSilentLogger, expectError, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/";
 import { InputValidationError } from "../../../errors";
 
@@ -40,12 +34,9 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
   configure?.(core);
   const io = testIO();
   const root = createRootHandler(core, {
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
     io: io.io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   await root.route(["node", "agentcore", ...args, "--region", "us-west-2"]);
   return { core, stdout: io.stdout() };

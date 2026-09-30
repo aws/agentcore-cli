@@ -1,5 +1,6 @@
 import React from "react";
-import { Text, Box, useWindowSize } from "ink";
+import { Text, Box } from "ink";
+import { useWindowSize } from "../useWindowSize";
 import { darkTheme } from "../_core.js";
 import type { InkUITheme } from "../_core.js";
 

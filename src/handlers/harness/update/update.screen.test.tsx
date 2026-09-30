@@ -1,7 +1,7 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
-  renderImperativeScreen,
+  renderScreen,
   waitForText,
   waitFor,
   cleanupScreens,
@@ -66,7 +66,7 @@ function coreForUpdate(): TestCoreClient {
 describe("harness update wizard", () => {
   test("without a harness id, picking a harness opens its wizard", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/update", { core });
+    const r = renderScreen("/agentcore/harness/update", { core });
 
     await waitForText(r.lastFrame, "MyHarness");
     expect(r.lastFrame()).toContain("choose a harness to update");
@@ -77,7 +77,7 @@ describe("harness update wizard", () => {
 
   test("starts on model (no rename) with values prefilled from the harness", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     // The harness has no bedrock model configured, so keep-current is
     // preselected; enter leaves the model untouched.
@@ -103,7 +103,7 @@ describe("harness update wizard", () => {
       bedrockModelConfig: { modelId: "us.anthropic.claude-opus-4-8" },
     };
     core.harness.setGetResponse(current);
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     // The harness's bedrock provider is preselected. Its persisted model id is
     // revealed after confirming the provider.
@@ -139,7 +139,7 @@ describe("harness update wizard", () => {
       agentCoreMemoryConfiguration: { arn: memoryArn },
     };
     core.harness.setGetResponse(current);
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "● keep current");
     await r.press("return");
@@ -163,7 +163,7 @@ describe("harness update wizard", () => {
 
   test("changing the model submits a request with just that field", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "● keep current");
     await r.press("down"); // bedrock
@@ -191,7 +191,7 @@ describe("harness update wizard", () => {
 
   test("changing only the prompt submits a request with just that field", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "● keep current");
     await r.press("return"); // model unchanged
@@ -223,7 +223,7 @@ describe("harness update wizard", () => {
 
   test("disabling memory sends the wrapped disabled configuration", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "● keep current");
     await r.press("return"); // model unchanged
@@ -250,7 +250,7 @@ describe("harness update wizard", () => {
 
   test("toggling a tool off keeps unmodeled tools in the replacement list", async () => {
     const core = coreForUpdate();
-    const r = renderImperativeScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
     await waitForText(r.lastFrame, "● keep current");
     await r.press("return"); // model unchanged

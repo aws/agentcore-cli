@@ -84,7 +84,6 @@ process.exit(
         io,
         logger: rootLogger,
         globalConfigAccessor,
-        globalConfig,
       });
 
       const context = ValueContext.EmptyContext().withValue(

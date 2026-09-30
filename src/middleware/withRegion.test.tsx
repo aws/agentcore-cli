@@ -3,12 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRootHandler } from "../handlers";
-import {
-  IMPERATIVE_GLOBAL_CONFIG,
-  TestCoreClient,
-  TestGlobalConfigAccessor,
-  testIO,
-} from "../testing";
+import { TestCoreClient, TestGlobalConfigAccessor, testIO } from "../testing";
 import { createSilentLogger } from "../testing/";
 
 // writeConfigFile writes an AWS shared-config file with the given contents to a
@@ -32,10 +27,7 @@ async function resolvedRegion(args: string[]): Promise<string> {
   const root = createRootHandler(core, {
     io: testIO().io,
     logger: createSilentLogger(),
-    globalConfigAccessor: new TestGlobalConfigAccessor({
-      initialConfigData: IMPERATIVE_GLOBAL_CONFIG,
-    }),
-    globalConfig: IMPERATIVE_GLOBAL_CONFIG,
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
   await root.route(["node", "agentcore", "harness", "list", "--json", ...args]);
   const call = core.harness.calls.at(-1);
