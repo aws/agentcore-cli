@@ -183,11 +183,19 @@ describe('BmaRenderer', () => {
     expect(main).toContain('if not OBSERVABILITY_ENABLED or not self.runtime_session_id:\n            return False\n');
   });
 
-  it('installs the latest Python and writes no Python version', () => {
+  it('installs the latest Python in the image and sets only a minimum for client.py', () => {
     const agentDir = join(outputDir, 'app', 'BmaEnv');
     const dockerfile = readFileSync(join(agentDir, 'Dockerfile'), 'utf-8');
     expect(dockerfile).toContain('RUN uv python install --default\n');
-    for (const file of ['Dockerfile', 'pyproject.toml', 'client.py']) {
+    // The image installs Python before it copies pyproject.toml, so the minimum does not pin the image.
+    expect(dockerfile.indexOf('RUN uv python install --default')).toBeLessThan(
+      dockerfile.indexOf('COPY pyproject.toml')
+    );
+    // Without a minimum, `uv run client.py` can pick the macOS system Python 3.9, which openai does not support.
+    const pyproject = readFileSync(join(agentDir, 'pyproject.toml'), 'utf-8');
+    expect(pyproject).toContain('requires-python = ">=3.12"\n');
+    expect(pyproject.replace('requires-python = ">=3.12"\n', '')).not.toMatch(/requires-python|python[\s-]*3\.\d+/i);
+    for (const file of ['Dockerfile', 'client.py']) {
       const content = readFileSync(join(agentDir, file), 'utf-8');
       expect(content).not.toMatch(/requires-python|python[\s-]*3\.\d+|install 3\.\d+/i);
     }

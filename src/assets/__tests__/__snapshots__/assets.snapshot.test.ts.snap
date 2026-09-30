@@ -3917,7 +3917,7 @@ environment where BMA runs commands. The ACR has no model code.
 | \`otel/collector.yaml\` | The configuration of the CloudWatch agent. The agent gets the spans and logs of \`codex exec-server\`, puts the session ID on them, and sends them to X-Ray and CloudWatch Logs with the ACR role. To turn off observability, add \`DISABLE_ADOT_OBSERVABILITY\` with the value \`true\` to \`envVars\`. |
 | \`plugins/acr-report\` | A Codex plugin with the \`acr-report\` skill. The skill saves the Python version, the user ID, and the working directory in \`acr-report.txt\`. |
 | \`bma-acr-policy.json\` | Lets the ACR role call \`bedrock-mantle:RegisterEnvironment\` and \`bedrock-mantle:ConnectEnvironment\` on every Mantle project. To limit the role to your projects, change \`Resource\` to \`arn:aws:bedrock-mantle:<region>:<account-id>:project/<project-id>\`. |
-| \`pyproject.toml\` | The Python dependencies. \`aws-opentelemetry-distro\` sends a span for each call from BMA and a child span for each step of the call, for example the state load or the exec-server start. \`bedrock-agentcore\` is the AgentCore SDK. The \`dev\` group has the dependencies of \`client.py\`, and the image does not install it. Each image build installs the latest Python and the latest releases. To pin them, run \`uv lock\` and keep \`uv.lock\` next to this file. |
+| \`pyproject.toml\` | The Python dependencies. \`aws-opentelemetry-distro\` sends a span for each call from BMA and a child span for each step of the call, for example the state load or the exec-server start. \`bedrock-agentcore\` is the AgentCore SDK. The \`dev\` group has the dependencies of \`client.py\`, and the image does not install it. Each image build installs the latest Python and the latest releases. To pin them, run \`uv lock\` and keep \`uv.lock\` next to this file. \`requires-python\` sets only a minimum, 3.12, so that \`uv run client.py\` does not use an older system Python. |
 | \`client.py\` | A sample OpenAI SDK client. It creates a session in BMA, and BMA sends the session's commands to this ACR. |
 
 Do not change \`lifecycle/server.py\`. It must match the lifecycle calls that BMA makes.
@@ -4933,6 +4933,7 @@ name = "{{ name }}"
 version = "0.1.0"
 description = "AgentCore Runtime environment for Bedrock Managed Agents"
 readme = "README.md"
+requires-python = ">=3.12"
 dependencies = [
     "aws-opentelemetry-distro",
     "bedrock-agentcore",
