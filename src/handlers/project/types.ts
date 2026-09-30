@@ -48,7 +48,7 @@ export const ScaffoldRuntimeInputSchema = z
     runtimeName: AgentNameSchema,
     build: BuildTypeSchema,
     language: z.enum(["Python", "TypeScript"]),
-    framework: z.enum(["strands", "langchain", "vercelai", "none"]),
+    framework: z.enum(["strands", "langchain", "vercelai", "bedrock-managed-agents", "none"]),
     protocol: ProtocolModeSchema.optional(),
     modelProvider: ModelProviderSchema.optional(),
     modelId: z.string().min(1).optional(),

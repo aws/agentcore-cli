@@ -133,6 +133,35 @@ describe("project add runtime wizard", () => {
     r.unmount();
   });
 
+  test("scaffolds the Bedrock Managed Agents environment", async () => {
+    const projectRoot = await inProject();
+    const r = renderScreen("/agentcore/add/runtime");
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("bma_environment");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a template");
+    await selectTemplate(r, "bedrock-managed-agents");
+    await r.press("return");
+
+    await waitForFlatText(r.lastFrame, "build Container");
+    await r.press("return");
+    await waitForText(r.lastFrame, "added runtime 'bma_environment' to 'TestProject'");
+
+    expect(await runtimeInSpec(projectRoot, "bma_environment")).toMatchObject({
+      build: "Container",
+      entrypoint: "lifecycle/server.py",
+      additionalPolicies: ["bma-acr-policy.json"],
+    });
+    expect(
+      await Bun.file(
+        join(projectRoot, "app", "bma_environment", "lifecycle", "server.py"),
+      ).exists(),
+    ).toBe(true);
+    r.unmount();
+  });
+
   test("a blank name is refused", async () => {
     await inProject();
     const r = renderScreen("/agentcore/add/runtime");

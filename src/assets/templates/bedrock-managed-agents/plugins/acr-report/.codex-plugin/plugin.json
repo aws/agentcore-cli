@@ -1,0 +1,6 @@
+{
+  "name": "acr-report",
+  "version": "0.1.0",
+  "description": "Report the Python version, user, and working directory of the ACR.",
+  "skills": "./skills/"
+}

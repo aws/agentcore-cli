@@ -8,6 +8,7 @@ import {
 import { InputValidationError } from "../../errors";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
+import { BMA_TEMPLATE_PROFILE } from "./bmaProfile";
 
 /** The default memory that templates ship with. */
 export function getDefaultMemorySpec(runtimeName: string): Memory {
@@ -45,9 +46,9 @@ type RuntimeTemplateShortcut = {
 };
 
 /**
- * The runtime templates. Only agent-python-strands offers a container build (its
- * `-container` shortcut renders the same source with a Dockerfile); every other
- * template is CodeZip-only.
+ * The runtime templates. agent-python-strands offers both CodeZip and container
+ * builds; Bedrock Managed Agents is a specialized container-only environment.
+ * Every other template is CodeZip-only.
  */
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "agent-python-minimal": {
@@ -116,6 +117,17 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "NODE_22",
   },
+  "bedrock-managed-agents": {
+    runtimeName: "bedrock_managed_agents",
+    description: "Codex execution environment for Bedrock Managed Agents",
+    build: "Container",
+    language: "Python",
+    framework: "bedrock-managed-agents",
+    protocol: "HTTP",
+    includesMemory: false,
+    supportsModelProviderOverride: false,
+    profile: BMA_TEMPLATE_PROFILE,
+  },
   "mcp-python-fastmcp": {
     runtimeName: "mcp_python_fastmcp",
     description: "MCP server exposing tools with FastMCP",
@@ -169,7 +181,8 @@ const FRAMEWORK_ORDER: Record<ScaffoldRuntimeInput["framework"], number> = {
   strands: 0,
   langchain: 1,
   vercelai: 2,
-  none: 3,
+  "bedrock-managed-agents": 3,
+  none: 4,
 };
 const BUILD_ORDER: Record<ScaffoldRuntimeInput["build"], number> = { CodeZip: 0, Container: 1 };
 

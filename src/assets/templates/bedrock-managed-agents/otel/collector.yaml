@@ -1,0 +1,69 @@
+# The CloudWatch agent runs this OpenTelemetry Collector configuration. It receives OTLP from
+# the exec-server, puts the runtime session ID on each span and log, and signs each request
+# with the ACR role. The exec-server sends the log group headers that the Runtime sets in
+# OTEL_EXPORTER_OTLP_TRACES_HEADERS and OTEL_EXPORTER_OTLP_LOGS_HEADERS, and the collector
+# sends them on to X-Ray and CloudWatch Logs.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+        include_metadata: true
+processors:
+  attributes:
+    actions:
+      - key: session.id
+        value: ${env:AGENTCORE_RUNTIME_SID}
+        action: upsert
+exporters:
+  otlphttp/traces:
+    traces_endpoint: https://xray.${env:AWS_REGION}.amazonaws.com/v1/traces
+    auth:
+      authenticator: headers_setter/traces
+  otlphttp/logs:
+    logs_endpoint: https://logs.${env:AWS_REGION}.amazonaws.com/v1/logs
+    auth:
+      authenticator: headers_setter/logs
+extensions:
+  sigv4auth/xray:
+    region: ${env:AWS_REGION}
+    service: xray
+  sigv4auth/logs:
+    region: ${env:AWS_REGION}
+    service: logs
+  headers_setter/traces:
+    additional_auth: sigv4auth/xray
+    headers:
+      - key: x-aws-log-group
+        from_context: x-aws-log-group
+        action: upsert
+      - key: x-aws-log-stream
+        from_context: x-aws-log-stream
+        action: upsert
+  headers_setter/logs:
+    additional_auth: sigv4auth/logs
+    headers:
+      - key: x-aws-log-group
+        from_context: x-aws-log-group
+        action: upsert
+      - key: x-aws-log-stream
+        from_context: x-aws-log-stream
+        action: upsert
+      - key: x-aws-metric-namespace
+        from_context: x-aws-metric-namespace
+        action: upsert
+service:
+  extensions:
+    - sigv4auth/xray
+    - sigv4auth/logs
+    - headers_setter/traces
+    - headers_setter/logs
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes]
+      exporters: [otlphttp/traces]
+    logs:
+      receivers: [otlp]
+      processors: [attributes]
+      exporters: [otlphttp/logs]

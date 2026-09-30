@@ -330,6 +330,23 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       spec: { runtimes: [{ ...buildRuntimeSpec(input), protocol: "HTTP" as const }] },
     };
   },
+  [buildResolverKey("bedrock-managed-agents", "Python", "HTTP")]: async (
+    input: RuntimeResourceConfig,
+  ) => {
+    const tree = await FsTreeNode.fromAssetSource(
+      { assetSource },
+      { assetDir: "templates/bedrock-managed-agents" },
+      {
+        rootDirName: input.name,
+        transformContent: (raw) =>
+          templateRenderer.render(raw, { name: toPythonPackageName(input.name) }),
+      },
+    );
+    return {
+      tree,
+      spec: { runtimes: [{ ...buildRuntimeSpec(input), protocol: "HTTP" as const }] },
+    };
+  },
   [buildResolverKey("none", "Python", "MCP")]: async (input: RuntimeResourceConfig) => {
     if (input.scaffoldRuntimeInput.modelProvider !== undefined)
       throw new InputValidationError("an MCP runtime does not use a model provider");

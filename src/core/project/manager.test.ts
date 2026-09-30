@@ -46,6 +46,7 @@ const AGENT_PYTHON_STRANDS_CONTAINER = resolveRuntimeTemplateShortcut(
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
 const AGENT_PYTHON_LANGCHAIN = resolveRuntimeTemplateShortcut("agent-python-langchain");
+const BEDROCK_MANAGED_AGENTS = resolveRuntimeTemplateShortcut("bedrock-managed-agents");
 
 function withTemplateProfile(
   input: ScaffoldRuntimeInput,
@@ -286,6 +287,54 @@ describe("FsProjectManager.create", () => {
 
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+  });
+
+  test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {
+    const directory = await inTempDirectory();
+    const setup = manager();
+    await runCreate(setup.manager, {
+      name: "example",
+      scaffoldRuntimeInput: BEDROCK_MANAGED_AGENTS,
+    });
+
+    const projectRoot = join(directory, "example");
+    const appDir = join(projectRoot, "app", "bedrock_managed_agents");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes).toEqual([
+      {
+        name: "bedrock_managed_agents",
+        build: "Container",
+        entrypoint: "lifecycle/server.py",
+        codeLocation: "app/bedrock_managed_agents",
+        dockerfile: "Dockerfile",
+        additionalPolicies: ["bma-acr-policy.json"],
+        protocol: "HTTP",
+        lifecycleConfiguration: {
+          idleRuntimeSessionTimeout: 1800,
+          maxLifetime: 28800,
+        },
+        tags: { "agentcore:template": "BedrockManagedAgents" },
+      },
+    ]);
+    expect(spec.memories ?? []).toEqual([]);
+    expect(await Bun.file(join(appDir, "lifecycle", "server.py")).exists()).toBe(true);
+    expect(await Bun.file(join(appDir, "otel", "collector.yaml")).exists()).toBe(true);
+    expect(
+      await Bun.file(
+        join(appDir, "plugins", "acr-report", "skills", "acr-report", "SKILL.md"),
+      ).exists(),
+    ).toBe(true);
+    expect(await Bun.file(join(appDir, "pyproject.toml")).text()).toContain(
+      'name = "bedrock_managed_agents"',
+    );
+    expect(setup.commands).toEqual([
+      {
+        command: ["npm", "install", "--loglevel=http"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
+      { command: ["git", "init"], cwd: projectRoot },
+    ]);
+    expect(setup.checkedTools).toEqual(["npm", "git"]);
   });
 
   test("refuses to overwrite an existing project", async () => {

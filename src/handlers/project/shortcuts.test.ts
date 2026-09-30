@@ -14,6 +14,7 @@ describe("template order", () => {
       "agent-python-strands",
       "agent-python-strands-container",
       "agent-python-langchain",
+      "bedrock-managed-agents",
       "agent-python-minimal",
       "agent-typescript-strands",
       "agent-typescript-vercel",
@@ -22,6 +23,31 @@ describe("template order", () => {
       "mcp-python-fastmcp",
       "empty",
     ]);
+  });
+});
+
+test("the Bedrock Managed Agents shortcut selects its environment profile", () => {
+  expect(RUNTIME_TEMPLATE_SHORTCUTS["bedrock-managed-agents"]).toMatchObject({
+    build: "Container",
+    language: "Python",
+    framework: "bedrock-managed-agents",
+    protocol: "HTTP",
+    includesMemory: false,
+    supportsModelProviderOverride: false,
+    profile: {
+      usesModel: false,
+      dependencySetup: "deferred",
+      runtime: {
+        entrypoint: "lifecycle/server.py",
+        dockerfile: "Dockerfile",
+        lifecycleConfiguration: {
+          idleRuntimeSessionTimeout: 1800,
+          maxLifetime: 28800,
+        },
+        additionalPolicies: ["bma-acr-policy.json"],
+        tags: { "agentcore:template": "BedrockManagedAgents" },
+      },
+    },
   });
 });
 

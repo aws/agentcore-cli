@@ -351,6 +351,51 @@ describe("project create", () => {
     expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(true);
   });
 
+  test("scaffolds a Bedrock Managed Agents execution environment", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const { core } = await run([
+      "create",
+      "--name",
+      "BmaProject",
+      "--template",
+      "bedrock-managed-agents",
+    ]);
+
+    const projectRoot = join(directory, "BmaProject");
+    const runtimeRoot = join(projectRoot, "app", "agent");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes).toEqual([
+      {
+        name: "agent",
+        build: "Container",
+        entrypoint: "lifecycle/server.py",
+        codeLocation: "app/agent",
+        dockerfile: "Dockerfile",
+        additionalPolicies: ["bma-acr-policy.json"],
+        protocol: "HTTP",
+        lifecycleConfiguration: {
+          idleRuntimeSessionTimeout: 1800,
+          maxLifetime: 28800,
+        },
+        tags: { "agentcore:template": "BedrockManagedAgents" },
+      },
+    ]);
+    expect(spec.memories ?? []).toEqual([]);
+    expect(await Bun.file(join(runtimeRoot, "lifecycle", "server.py")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, "client.py")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, "Dockerfile")).text()).toContain(
+      "RUN uv sync --no-dev",
+    );
+    expect(core.projectCommands).toEqual([
+      {
+        command: ["npm", "install", "--loglevel=http"],
+        cwd: join(projectRoot, "agentcore", "cdk"),
+      },
+      { command: ["git", "init"], cwd: projectRoot },
+    ]);
+  });
+
   test("omits the Dockerfile from a CodeZip strands template", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
