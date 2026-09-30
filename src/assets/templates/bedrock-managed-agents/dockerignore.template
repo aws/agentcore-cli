@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets and environment files
+.env
+.env.*
+
+# Version control
+.git/
+
+# AgentCore build artifacts
+.agentcore/artifacts/
+*.zip

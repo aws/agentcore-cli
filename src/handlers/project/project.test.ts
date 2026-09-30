@@ -384,6 +384,7 @@ describe("project create", () => {
     expect(spec.memories ?? []).toEqual([]);
     expect(await Bun.file(join(runtimeRoot, "lifecycle", "server.py")).exists()).toBe(true);
     expect(await Bun.file(join(runtimeRoot, "client.py")).exists()).toBe(true);
+    expect(await Bun.file(join(runtimeRoot, ".dockerignore")).exists()).toBe(true);
     expect(await Bun.file(join(runtimeRoot, "Dockerfile")).text()).toContain(
       "RUN uv sync --no-dev",
     );

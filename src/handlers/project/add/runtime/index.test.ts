@@ -298,7 +298,7 @@ describe("project add runtime", () => {
     expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "PYTHON_3_14");
     expect(await Bun.file(join(projectRoot, "app", name, "Dockerfile")).exists()).toBe(isContainer);
     expect(await Bun.file(join(projectRoot, "app", name, ".dockerignore")).exists()).toBe(
-      isContainer && !isBma,
+      isContainer,
     );
   });
 
