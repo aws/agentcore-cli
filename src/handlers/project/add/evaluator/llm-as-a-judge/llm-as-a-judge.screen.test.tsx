@@ -99,7 +99,7 @@ describe("project add evaluator llm-as-a-judge wizard", () => {
     expect(review).toContain("level TRACE");
     expect(review).toContain("provider Bedrock");
     expect(review).toContain(`model ${DEFAULT_JUDGE_MODEL}`);
-    expect(review).toContain("instructions Rate the response: {assistant_turn} (+1 more line)");
+    expect(review).toContain("instructions Rate the response: {assistant_turn} · 2 lines");
     expect(review).toContain("rating scale pass-fail");
     await screen.press("return");
 

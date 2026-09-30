@@ -101,7 +101,7 @@ describe("project add harness wizard", () => {
     expect(review).toContain("harness assistant");
     expect(review).toContain("provider bedrock");
     expect(review).toContain(`model ${DEFAULT_HARNESS_MODEL.modelId}`);
-    expect(review).toContain("system prompt You are a pirate. (+1 more line)");
+    expect(review).toContain("system prompt You are a pirate. · 2 lines");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added harness 'assistant' to 'TestProject'");

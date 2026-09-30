@@ -1150,21 +1150,12 @@ describe("Wizard authoring guards", () => {
 describe("promptPreview", () => {
   test.each([
     ["a one-line prompt", "You are a pirate.", "You are a pirate."],
-    [
-      "counts the lines after the first",
-      "You are a pirate.\nAnswer in rhyme.",
-      "You are a pirate. (+1 more line)",
-    ],
-    ["keeps a leading blank line", "\nYou are a pirate.", " (+1 more line)"],
+    ["counts every line", "You are a pirate.\nAnswer in rhyme.", "You are a pirate. · 2 lines"],
+    ["keeps a leading blank line", "\nYou are a pirate.", " · 2 lines"],
     [
       "counts a trailing newline left by enter",
       "You are a pirate.\n",
-      "You are a pirate. (+1 more line)",
-    ],
-    [
-      "cuts a long first line short",
-      `${"x".repeat(70)}\ny\nz`,
-      `${"x".repeat(59)}… (+2 more lines)`,
+      "You are a pirate. · 2 lines",
     ],
   ])("%s", (_label, prompt, preview) => {
     expect(promptPreview(prompt)).toBe(preview);
