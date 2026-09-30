@@ -166,7 +166,7 @@ describe("menu rendering", () => {
   });
 
   test("shows the brand banner only on the root menu", async () => {
-    const version = `v${PACKAGE_VERSION}`;
+    const version = `CLI v${PACKAGE_VERSION}`;
     const root = renderScreen("/agentcore");
     await waitForText(root.lastFrame, version);
 
@@ -181,7 +181,7 @@ describe("menu rendering", () => {
   });
 
   test("hides the brand banner when the terminal is short and restores it when enlarged", async () => {
-    const version = `v${PACKAGE_VERSION}`;
+    const version = `CLI v${PACKAGE_VERSION}`;
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, version);
 
