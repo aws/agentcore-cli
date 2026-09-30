@@ -5,6 +5,7 @@ import { darkTheme, type InkUITheme } from "../_core";
 export interface BadgeProps {
   children: ReactNode;
   theme?: InkUITheme;
+  color?: string;
 }
 
 const borderStyle = {
@@ -18,9 +19,8 @@ const borderStyle = {
   left: "│",
 } as const;
 
-export function Badge({ children, theme = darkTheme }: BadgeProps) {
+export function Badge({ children, theme = darkTheme, color = theme.colors.text }: BadgeProps) {
   const label = typeof children === "string" ? children.toUpperCase() : children;
-  const color = theme.colors.text;
 
   return (
     <Box borderStyle={borderStyle} borderColor={color} paddingX={1}>

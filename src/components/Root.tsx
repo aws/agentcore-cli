@@ -152,9 +152,11 @@ import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
 import { ProjectDetectedKey } from "../handlers/project/context.ts";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
-import { RegionKey } from "../handlers/keys.tsx";
+import { CliVersionManagerKey, RegionKey } from "../handlers/keys.tsx";
 import { RegionPinContext } from "../handlers/utils.tsx";
 import { ProjectKey, type Context } from "../router";
+import { TuiUpdateProvider } from "./TuiUpdateContext";
+import { CliUpdateScreen } from "../handlers/update/screen";
 
 export interface RootProps {
   // path is the command path to the executing node (e.g. "/agentcore").
@@ -172,6 +174,8 @@ export interface RootProps {
 // the app's routes plus the react-query client every screen fetches through.
 export function Root({ path, ctx, core, queryClient }: RootProps) {
   const [launchSessionConsumed, setLaunchSessionConsumed] = useState(false);
+  const versionManager = ctx.value(CliVersionManagerKey);
+  const content = <PinnedRegion ctx={ctx} core={core} />;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -184,7 +188,11 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
         {/* initialEntries seeds the in-memory history with the CLI command path,
             then leaves navigation to the router so screens can useNavigate. */}
         <MemoryRouter initialEntries={[path]}>
-          <PinnedRegion ctx={ctx} core={core} />
+          {versionManager ? (
+            <TuiUpdateProvider versionManager={versionManager}>{content}</TuiUpdateProvider>
+          ) : (
+            content
+          )}
         </MemoryRouter>
       </RuntimeInvokeLaunchSessionContext.Provider>
     </QueryClientProvider>
@@ -269,6 +277,7 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore"
         element={<RootScreen ctx={ctx} core={core} inProject={inProject} />}
       />
+      <Route path="agentcore/update" element={<CliUpdateScreen ctx={ctx} core={core} />} />
       {/* `dev` owns the terminal, so selecting it closes the TUI and runs it. */}
       <Route
         path="agentcore/dev"

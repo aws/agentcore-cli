@@ -1,102 +1,153 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { distTag, fetchLatestVersion, handleUpdate } from "./index";
+import { afterEach, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createNpmRegistryVersionFetcher,
+  NpmCliVersionManager,
+} from "../../cliVersionManager/manager";
+import type { HttpFetcher } from "../../cliVersionManager/types";
 import { NetworkingError } from "../../errors";
-import type { ProcessRunner } from "../../io";
-import { PACKAGE_VERSION } from "../../constants";
+import type { ProcessStreamer } from "../../io";
+import { ValueContext } from "../../router";
+import {
+  createSilentLogger,
+  TestCoreClient,
+  TestGlobalConfigAccessor,
+  testIO,
+  ttyTestIO,
+  type TestIO,
+} from "../../testing";
+import { createRootHandler } from "../index";
+import { CliVersionManagerKey } from "../keys";
 
-// No golden/fixture tests here: the repo's *.fixture.test.tsx harness records and
-// replays AWS SDK responses through CoreClient, but `update` makes no AWS calls —
-// it queries the npm registry (fetch) and shells out to `npm install -g`
-// (runProcess). There is nothing for that harness to record, so a fetch spy plus
-// an injected fake runner is the right, hermetic way to cover this command.
+const tempDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirectories.splice(0).map((path) => rm(path, { recursive: true })));
+});
+
+async function runUpdateCommand(
+  args: string[],
+  options: {
+    currentVersion?: string;
+    latestVersion?: string;
+    fetcher?: HttpFetcher;
+    processStreamer?: ProcessStreamer;
+    io?: TestIO;
+  } = {},
+) {
+  const cacheDirectory = await mkdtemp(join(tmpdir(), "agentcore-update-handler-"));
+  tempDirectories.push(cacheDirectory);
+  const io = options.io ?? testIO();
+  const registryRequests: string[] = [];
+  const processCalls: string[][] = [];
+  const versionManager = new NpmCliVersionManager({
+    currentVersion: options.currentVersion ?? "1.0.0",
+    cacheDirectory,
+    logger: createSilentLogger(),
+    registryVersionFetcher: createNpmRegistryVersionFetcher(async (input, init) => {
+      registryRequests.push(String(input));
+      return options.fetcher
+        ? options.fetcher(input, init)
+        : new Response(JSON.stringify({ version: options.latestVersion ?? "1.1.0" }));
+    }),
+    processStreamer: async function* (command, processOptions) {
+      processCalls.push(command);
+      if (options.processStreamer) {
+        yield* options.processStreamer(command, processOptions);
+      }
+    },
+  });
+  const root = createRootHandler(new TestCoreClient(), {
+    io: io.io,
+    logger: createSilentLogger(),
+    globalConfigAccessor: new TestGlobalConfigAccessor(),
+  });
+
+  await root.route(
+    ["node", "agentcore", "update", ...args],
+    ValueContext.EmptyContext().withValue(CliVersionManagerKey, versionManager),
+  );
+
+  return { output: JSON.parse(io.stdout()), stderr: io.stderr(), registryRequests, processCalls };
+}
 
 test.each([
-  ["0.28.1", "latest"],
+  ["check reports an available update", ["--check"], "1.1.0", "update-available", false],
+  ["check reports the current version", ["--check"], "1.0.0", "up-to-date", false],
+  ["check reports a newer local version", ["--check"], "0.9.0", "newer-local", false],
+  ["update installs an available version", [], "1.1.0", "updated", true],
+  ["update does nothing when current", [], "1.0.0", "up-to-date", false],
+  ["update does not downgrade", [], "0.9.0", "newer-local", false],
+] as const)("%s", async (_label, args, latestVersion, status, shouldInstall) => {
+  const commandResult = await runUpdateCommand([...args], { latestVersion });
+
+  expect(commandResult.output).toEqual({
+    status,
+    currentVersion: "1.0.0",
+    latestVersion,
+  });
+  expect(commandResult.processCalls).toEqual(
+    shouldInstall
+      ? [["npm", "install", "-g", `@aws/agentcore@${latestVersion}`, "--loglevel=http"]]
+      : [],
+  );
+});
+
+test("updates between versions on the same prerelease channel", async () => {
+  const commandResult = await runUpdateCommand([], {
+    currentVersion: "1.0.0-rc.3",
+    latestVersion: "1.0.0-rc.4",
+  });
+
+  expect(commandResult.output).toEqual({
+    status: "updated",
+    currentVersion: "1.0.0-rc.3",
+    latestVersion: "1.0.0-rc.4",
+  });
+  expect(commandResult.processCalls).toEqual([
+    ["npm", "install", "-g", "@aws/agentcore@1.0.0-rc.4", "--loglevel=http"],
+  ]);
+});
+
+test.each([
+  ["1.0.0", "latest"],
   ["1.0.0-rc.1", "rc"],
-  ["1.0.0-preview.29", "preview"],
-])("distTag(%s) tracks the %s dist-tag", (version, tag) => {
-  expect(distTag(version)).toBe(tag);
+  ["1.0.0-preview.1", "preview"],
+])("checks the %s version's %s channel", async (currentVersion, distTag) => {
+  const commandResult = await runUpdateCommand(["--check"], {
+    currentVersion,
+    latestVersion: currentVersion,
+  });
+  expect(commandResult.registryRequests).toEqual([
+    `https://registry.npmjs.org/@aws/agentcore/${distTag}`,
+  ]);
 });
 
-describe("fetchLatestVersion", () => {
-  afterEach(() => {
-    spyOn(globalThis, "fetch").mockRestore();
-  });
-
-  test("returns the version from the npm registry", async () => {
-    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ version: "9.9.9" }), { status: 200 }),
-    );
-    expect(await fetchLatestVersion()).toBe("9.9.9");
-    expect(fetchSpy).toHaveBeenCalledWith(`https://registry.npmjs.org/@aws/agentcore/${distTag()}`);
-  });
-
-  test("throws a NetworkingError when the registry responds non-OK", async () => {
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("", { status: 404, statusText: "Not Found" }),
-    );
-    await expect(fetchLatestVersion()).rejects.toBeInstanceOf(NetworkingError);
-  });
-
-  test("wraps a fetch failure (offline) as a NetworkingError", async () => {
-    spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
-    await expect(fetchLatestVersion()).rejects.toBeInstanceOf(NetworkingError);
-  });
+test.each([
+  ["a network failure", async () => Promise.reject(new TypeError("offline"))],
+  ["an invalid response", async () => new Response("{}")],
+])("reports %s as a networking error", async (_label, fetcher) => {
+  await expect(
+    runUpdateCommand(["--check"], {
+      fetcher,
+    }),
+  ).rejects.toBeInstanceOf(NetworkingError);
 });
 
-describe("handleUpdate", () => {
-  afterEach(() => {
-    spyOn(globalThis, "fetch").mockRestore();
-  });
+test("reports install failures", async () => {
+  const io = ttyTestIO().streams;
 
-  const mockLatest = (version: string) =>
-    spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ version }), { status: 200 }),
-    );
-  const okRunner: ProcessRunner = mock(async () => {});
-  const failRunner: ProcessRunner = mock(async () => {
-    throw new Error("npm exploded");
-  });
+  await expect(
+    runUpdateCommand([], {
+      io,
+      processStreamer: async function* () {
+        yield { type: "stderr", line: "npm failed" };
+        throw new Error("npm failed");
+      },
+    }),
+  ).rejects.toThrow("npm failed");
 
-  test("up-to-date when versions match, without invoking the runner", async () => {
-    mockLatest(PACKAGE_VERSION);
-    const runner: ProcessRunner = mock(async () => {});
-    expect(await handleUpdate(false, { runner })).toEqual({
-      status: "up-to-date",
-      currentVersion: PACKAGE_VERSION,
-      latestVersion: PACKAGE_VERSION,
-    });
-    expect(runner).not.toHaveBeenCalled();
-  });
-
-  test("newer-local when local is ahead of the registry", async () => {
-    mockLatest("0.9.0");
-    expect((await handleUpdate(false)).status).toBe("newer-local");
-  });
-
-  test("update-available when newer exists and checkOnly is set (no install)", async () => {
-    mockLatest("2.0.0");
-    const runner: ProcessRunner = mock(async () => {});
-    expect(await handleUpdate(true, { runner })).toEqual({
-      status: "update-available",
-      currentVersion: PACKAGE_VERSION,
-      latestVersion: "2.0.0",
-    });
-    expect(runner).not.toHaveBeenCalled();
-  });
-
-  test("updated when the install runner succeeds", async () => {
-    mockLatest("2.0.0");
-    const result = await handleUpdate(false, { runner: okRunner });
-    expect(result.status).toBe("updated");
-    expect(okRunner).toHaveBeenCalledWith(
-      ["npm", "install", "-g", `@aws/agentcore@${distTag()}`],
-      expect.objectContaining({ cwd: expect.any(String) }),
-    );
-  });
-
-  test("propagates the install failure instead of swallowing it", async () => {
-    mockLatest("2.0.0");
-    await expect(handleUpdate(false, { runner: failRunner })).rejects.toThrow("npm exploded");
-  });
+  expect(io.stderr()).toContain("npm failed");
 });

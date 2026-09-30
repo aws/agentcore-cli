@@ -1,5 +1,6 @@
 import z from "zod";
 import type { AwsCredentialProvider } from "../core/types";
+import type { CliVersionManager } from "../cliVersionManager";
 import { contextKey, globalFlag } from "../router";
 
 // These keys are group-level flags declared on the root router. Because a
@@ -22,3 +23,5 @@ export const EndpointKey = globalFlag(
 
 /** Explicit credential provider pinned by project target resolution. */
 export const AwsCredentialProviderKey = contextKey<AwsCredentialProvider>("aws.credentialProvider");
+
+export const CliVersionManagerKey = contextKey<CliVersionManager>("cli.versionManager");

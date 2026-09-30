@@ -3,11 +3,13 @@ import { useEffect } from "react";
 import { CommandKey } from "../router";
 import { BrandBanner } from "../components/BrandBanner";
 import { resolveCommand, RouterScreen } from "../components/RouterScreen";
+import { useTuiUpdate } from "../components/TuiUpdateContext";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
 import { LoadingFrame, useProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
+const ROOT_CLI_SECTION_COMMANDS = ["update"];
 const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
 const PROJECT_HIDDEN_OPTIONS = ["create"];
 const PROJECT_REQUIRED_OPTIONS = [
@@ -30,6 +32,7 @@ export interface RootScreenProps extends ScreenProps {
 
 export function RootScreen({ inProject, ...props }: RootScreenProps) {
   const projectDetected = useProjectDetected(props.core, inProject);
+  const updateState = useTuiUpdate();
   if (projectDetected.data === undefined) {
     const command = resolveCommand(props.ctx.require(CommandKey), ["agentcore"]);
     return (
@@ -48,6 +51,12 @@ export function RootScreen({ inProject, ...props }: RootScreenProps) {
       banner={<BrandBanner />}
       path={["agentcore"]}
       optionHints={projectDetected.data ? undefined : NO_PROJECT_HINTS}
+      cliSectionCommands={ROOT_CLI_SECTION_COMMANDS}
+      optionNotices={
+        updateState.updateAvailable
+          ? { update: `· update to install ${updateState.latestVersion}` }
+          : undefined
+      }
       alert={projectDetected.data ? undefined : NO_PROJECT_ALERT}
       hiddenOptions={projectDetected.data ? PROJECT_HIDDEN_OPTIONS : NO_PROJECT_HIDDEN_OPTIONS}
     />

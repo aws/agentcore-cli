@@ -22,15 +22,18 @@ async function cdkDirectoryWith(version: unknown): Promise<string> {
 }
 
 describe("cdkCompatibilityWarning", () => {
-  test.each(["0.0.0-0", "1.0.0-rc.1"])("warns for incompatible version %s", async (version) => {
-    const directory = await cdkDirectoryWith(version);
+  test.each(["0.0.0-0", "1.0.0-rc.1", "1.0.0-rc.2"])(
+    "warns for incompatible version %s",
+    async (version) => {
+      const directory = await cdkDirectoryWith(version);
 
-    const warning = await cdkCompatibilityWarning(directory);
+      const warning = await cdkCompatibilityWarning(directory);
 
-    expect(warning).toContain(`@aws/agentcore-cdk ${version}`);
-    expect(warning).toContain(`${MINIMUM_COMPATIBLE_CDK_VERSION} or newer`);
-    expect(warning).toContain("Update the CDK dependency, then rebuild or redeploy");
-  });
+      expect(warning).toContain(`@aws/agentcore-cdk ${version}`);
+      expect(warning).toContain(`${MINIMUM_COMPATIBLE_CDK_VERSION} or newer`);
+      expect(warning).toContain("Update the CDK dependency, then rebuild or redeploy");
+    },
+  );
 
   test.each([MINIMUM_COMPATIBLE_CDK_VERSION, "999.0.0"])(
     "does not warn for compatible version %s",

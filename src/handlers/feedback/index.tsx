@@ -7,6 +7,7 @@ import { InputValidationError, UserCancellationError } from "../../errors";
 import { CONSENT_TEXT, submitFeedback } from "./submit";
 import type { AppIO } from "../../io";
 import type { Core } from "../types.tsx";
+import { CliVersionManagerKey } from "../keys";
 
 export const createFeedbackHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -39,6 +40,7 @@ export const createFeedbackHandler = (core: Core, io: AppIO) =>
           screenshot: screenshotPath ? { path: screenshotPath } : undefined,
         },
         core.fetch,
+        ctx.require(CliVersionManagerKey).getCurrentVersion(),
       );
 
       ctx.require(JsonRendererKey).renderJson({ success: true, ...result });

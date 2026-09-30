@@ -126,14 +126,14 @@ describe("menu rendering", () => {
     r.unmount();
   });
 
-  test("selecting a command without a screen opens its help", async () => {
+  test("selecting update opens its screen", async () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "type to choose a command");
 
     await r.write("update");
     await waitForText(r.lastFrame, "❯ update");
     await r.press("return");
-    await waitForText(r.lastFrame, "agentcore update [options]");
+    await waitForText(r.lastFrame, `AgentCore ${PACKAGE_VERSION} is up to date.`);
     r.unmount();
   });
 

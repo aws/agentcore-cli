@@ -21,17 +21,20 @@ import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
+import { NpmCliVersionManager, printUpdateNotice } from "./cliVersionManager";
+import { CliVersionManagerKey } from "./handlers/keys";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
     const startTime = Date.now();
     // generate a unique identifier corresponding to this process of this CLI. (ex. one command invoke, one TUI session)
     const cliSessionId = crypto.randomUUID();
+    const currentVersion = PACKAGE_VERSION;
 
     const rootLogger = createFileLogger({
       filePath: join(homedir(), ".agentcore", "logs", "output"),
       logLevel: LOG_LEVEL.DEBUG,
-      bindings: { cliSessionId, version: PACKAGE_VERSION },
+      bindings: { cliSessionId, version: currentVersion },
     });
 
     const io = {
@@ -53,14 +56,20 @@ process.exit(
       sessionId: cliSessionId,
       globalConfigAccessor,
       argv,
+      currentVersion,
     });
 
     const commandRunMetricEvent = telemetryClient.createMetricEvent("cli.command_run", {
       exit_reason: "success",
     });
 
-    const globalConfig = await globalConfigAccessor.get();
+    const cliVersionManager = new NpmCliVersionManager({
+      currentVersion,
+      cacheDirectory: join(homedir(), ".agentcore", "update"),
+      logger: rootLogger.child({ module: "cliVersionManager" }),
+    });
 
+    const globalConfig = await globalConfigAccessor.get();
     try {
       rootLogger.info(`running CLI`);
 
@@ -87,10 +96,9 @@ process.exit(
         globalConfigAccessor,
       });
 
-      const context = ValueContext.EmptyContext().withValue(
-        CommandRunMetricEventKey,
-        commandRunMetricEvent,
-      );
+      const context = ValueContext.EmptyContext()
+        .withValue(CommandRunMetricEventKey, commandRunMetricEvent)
+        .withValue(CliVersionManagerKey, cliVersionManager);
 
       // Handle the request
       await rootHandler.route(argv, context);
@@ -113,6 +121,7 @@ process.exit(
         rootLogger.child({ error: error.json() }).warn("failed to emit telemetry");
         // telemetry is best-effort
       }
+      await printUpdateNotice(cliVersionManager, io.stderr);
       await telemetryClient.shutdown();
       await rootLogger.end();
 

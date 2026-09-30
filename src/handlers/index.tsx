@@ -35,8 +35,8 @@ export interface RootHandlerConfig {
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
   const { io, logger } = config;
-  // The subcommands with screens of their own; the rest (feedback, config,
-  // update) are listed in the menu as command line only and open their help.
+  // The subcommands with screens of their own; the rest (feedback and config)
+  // are listed in the menu as command line only and open their help.
   const root = new Router(
     "agentcore",
     "the platform for production AI agents",
@@ -54,6 +54,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
     "memory",
     "gateway",
     "eval",
+    "update",
   );
 
   // `agentcore --version` prints the build-time package version.

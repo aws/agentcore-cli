@@ -875,6 +875,7 @@ test.each([
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
     sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    currentVersion: "1.0.0",
     metricSinks: [inMemorySink],
   });
 

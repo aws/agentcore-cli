@@ -3,7 +3,6 @@ import { stat, readFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AgentCoreCLIError, ERROR_SOURCE, InputValidationError } from "../../errors";
-import { PACKAGE_VERSION } from "../../constants";
 import type { CoreFetch } from "../../core/types";
 import type { FeedbackSubmissionResult, SubmitFeedbackInput } from "./types";
 
@@ -67,6 +66,7 @@ type ApertureFormPayload = {
 export async function submitFeedback(
   input: SubmitFeedbackInput,
   fetch: CoreFetch,
+  currentVersion: string,
 ): Promise<FeedbackSubmissionResult> {
   const message = input.message.trim();
   if (!message) {
@@ -78,7 +78,7 @@ export async function submitFeedback(
     );
   }
 
-  const userAgent = `AgentCoreCLI/${PACKAGE_VERSION} (${process.platform} ${os.release()}; node/${process.version})`;
+  const userAgent = `AgentCoreCLI/${currentVersion} (${process.platform} ${os.release()}; node/${process.version})`;
 
   let screenshotReference: string | undefined;
   if (input.screenshot) {
@@ -106,7 +106,7 @@ export async function submitFeedback(
     );
   }
 
-  const payload = buildFeedbackPayload({ message, screenshotReference });
+  const payload = buildFeedbackPayload({ message, screenshotReference, currentVersion });
   return submitForm(fetch, payload, userAgent);
 }
 
@@ -258,6 +258,7 @@ function objectKeyFromPresignedUrl(presignedUrl: string): string {
 function buildFeedbackPayload(input: {
   message: string;
   screenshotReference?: string;
+  currentVersion: string;
 }): ApertureFormPayload {
   const customerResponses: ApertureCustomerResponse[] = [
     {
@@ -280,10 +281,10 @@ function buildFeedbackPayload(input: {
     version: FORM_VERSION,
     locale: LOCALE,
     reference: REFERENCE,
-    location: `agentcore-cli@${PACKAGE_VERSION} (${process.platform}; node ${process.version}; cli)`,
+    location: `agentcore-cli@${input.currentVersion} (${process.platform}; node ${process.version}; cli)`,
     customerResponses,
     metadataList: [
-      { key: "cli-version", value: PACKAGE_VERSION },
+      { key: "cli-version", value: input.currentVersion },
       { key: "os", value: `${process.platform} ${os.release()}` },
     ],
   };

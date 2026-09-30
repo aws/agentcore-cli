@@ -14,6 +14,10 @@ import {
 import { UserCancellationError } from "../../errors";
 import { ApertureError } from "./submit";
 import type { CoreFetch } from "../../core/types";
+import { CliVersionManagerKey } from "../keys";
+import { ValueContext } from "../../router";
+import { PACKAGE_VERSION } from "../../constants";
+import { NpmCliVersionManager } from "../../cliVersionManager";
 
 const REGION = "us-east-1";
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -33,12 +37,20 @@ async function run(
     logger: createSilentLogger(),
     fetch: opts.fetch ?? neverFetch,
   });
+  const cliVersionManager = new NpmCliVersionManager({
+    currentVersion: PACKAGE_VERSION,
+    cacheDirectory: join(FIXTURES, "update"),
+    logger: createSilentLogger(),
+  });
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
-  await root.route(["node", "agentcore", "feedback", ...args, "--region", REGION]);
+  await root.route(
+    ["node", "agentcore", "feedback", ...args, "--region", REGION],
+    ValueContext.EmptyContext().withValue(CliVersionManagerKey, cliVersionManager),
+  );
   return { stdout: io.stdout(), stderr: io.stderr() };
 }
 

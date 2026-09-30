@@ -14,7 +14,6 @@ import type { GlobalConfigAccessor } from "../globalConfig";
 import { FileSystemSink } from "./fileSystemSink";
 import path from "path";
 import { OtelHistogramSink } from "./otelSink";
-import { PACKAGE_VERSION } from "../constants";
 import { isChinaContext } from "../core/partition";
 import { regionFlagFromArgv, resolveRegion } from "../core/region";
 
@@ -26,6 +25,7 @@ export type DefaultTelemetryClientConfig = {
   auditFilePath?: string;
   /** Raw process argv, used to honor an explicit --region for the China telemetry gate. */
   argv?: readonly string[];
+  currentVersion: string;
 };
 
 /**
@@ -38,6 +38,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
   private globalConfigAccessor: GlobalConfigAccessor;
   private readonly metricSinksOverride: MetricSink[] | undefined;
   private readonly argv: readonly string[];
+  private readonly currentVersion: string;
 
   constructor(config: DefaultTelemetryClientConfig) {
     this.logger = config.logger;
@@ -45,6 +46,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
     this.globalConfigAccessor = config.globalConfigAccessor;
     this.metricSinksOverride = config.metricSinks;
     this.argv = config.argv ?? [];
+    this.currentVersion = config.currentVersion;
     this.auditFilePath =
       config.auditFilePath ??
       path.join(os.homedir(), ".agentcore", "telemetry", `${this.sessionId}.jsonl`);
@@ -120,7 +122,7 @@ export class DefaultTelemetryClient implements TelemetryClient {
     const globalConfig = await this.globalConfigAccessor.get();
     return resourceAttributesSchema.parse({
       "service.name": "agentcore-cli",
-      "service.version": PACKAGE_VERSION,
+      "service.version": this.currentVersion,
       "agentcore-cli.installation_id": globalConfig.installationId,
       "agentcore-cli.session_id": this.sessionId,
       "os.type": os.type(),

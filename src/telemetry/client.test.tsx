@@ -51,6 +51,7 @@ describe("DefaultTelemetryClient", () => {
       logger,
       sessionId,
       globalConfigAccessor,
+      currentVersion: PACKAGE_VERSION,
       metricSinks: [fileSystemSink],
     });
 
@@ -126,12 +127,14 @@ describe("DefaultTelemetryClient", () => {
       logger,
       sessionId: enabledSessionId,
       globalConfigAccessor: enabledConfigAccessor,
+      currentVersion: PACKAGE_VERSION,
       auditFilePath,
     });
     const disabledClient = new DefaultTelemetryClient({
       logger,
       sessionId: disabledSessionId,
       globalConfigAccessor: disabledConfigAccessor,
+      currentVersion: PACKAGE_VERSION,
       auditFilePath,
     });
 
@@ -177,6 +180,7 @@ describe("DefaultTelemetryClient", () => {
       logger,
       sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       globalConfigAccessor: new TestGlobalConfigAccessor(),
+      currentVersion: PACKAGE_VERSION,
       metricSinks: [],
     });
 
@@ -207,6 +211,7 @@ describe("DefaultTelemetryClient", () => {
       logger,
       sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       globalConfigAccessor: new TestGlobalConfigAccessor(),
+      currentVersion: PACKAGE_VERSION,
       metricSinks: [sink],
     });
     const metricEvent = client.createMetricEvent("cli.command_run", {
@@ -250,6 +255,7 @@ describe("DefaultTelemetryClient", () => {
       logger,
       sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       globalConfigAccessor: new TestGlobalConfigAccessor(),
+      currentVersion: PACKAGE_VERSION,
       metricSinks: [badSink, goodSink],
     });
 
@@ -342,6 +348,7 @@ describe("OtelHistogramSink", () => {
         logger,
         sessionId,
         globalConfigAccessor,
+        currentVersion: PACKAGE_VERSION,
       });
 
       const event = client.createMetricEvent(metricName, {
@@ -417,6 +424,7 @@ describe("OtelHistogramSink", () => {
         logger,
         sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         globalConfigAccessor,
+        currentVersion: PACKAGE_VERSION,
         auditFilePath,
       });
       const event = client.createMetricEvent("cli.command_run", {
@@ -453,6 +461,7 @@ describe("OtelHistogramSink", () => {
       globalConfigAccessor,
       auditFilePath,
       argv: ["node", "agentcore", "status", "--region", "cn-northwest-1"],
+      currentVersion: PACKAGE_VERSION,
     });
     const event = client.createMetricEvent("cli.command_run", {
       exit_reason: "success",
@@ -487,6 +496,7 @@ describe("OtelHistogramSink", () => {
         sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         globalConfigAccessor,
         auditFilePath,
+        currentVersion: PACKAGE_VERSION,
       });
       const event = client.createMetricEvent("cli.command_run", {
         exit_reason: "success",

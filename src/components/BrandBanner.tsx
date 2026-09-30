@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { PACKAGE_VERSION } from "../constants";
+import { useTuiUpdate } from "./TuiUpdateContext";
 import { Badge } from "./ui/badge/Badge";
 import { Divider } from "./ui/divider";
 import { darkTheme, type InkUITheme } from "./ui/_core";
@@ -27,9 +27,13 @@ export function BrandBanner({
   terminalProgram = process.env.TERM_PROGRAM,
   theme = darkTheme,
 }: BrandBannerProps = {}) {
+  const updateState = useTuiUpdate();
   if (shouldHideBrandBanner(terminalProgram)) return null;
 
   const color = theme.colors.text;
+  const versionLabel = `v${updateState.currentVersion}${
+    updateState.updateAvailable ? " • update available" : ""
+  }`;
 
   return (
     <Box flexDirection="column" flexShrink={0}>
@@ -42,7 +46,12 @@ export function BrandBanner({
           ))}
         </Box>
         <Box marginLeft={1}>
-          <Badge theme={theme}>CLI v{PACKAGE_VERSION}</Badge>
+          <Badge
+            theme={theme}
+            color={updateState.updateAvailable ? theme.colors.warning : theme.colors.secondary}
+          >
+            <>CLI {versionLabel}</>
+          </Badge>
         </Box>
       </Box>
       <Divider />

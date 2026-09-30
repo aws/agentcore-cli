@@ -63,6 +63,7 @@ interface Option {
   name: string;
   description: string;
   hint?: string;
+  notice?: string;
   // cliOnly marks a subcommand without a screen; it is listed under a divider
   // and opens its help instead.
   cliOnly: boolean;
@@ -87,6 +88,11 @@ export interface RouterScreenProps extends ScreenProps {
   tuiOnlyCommands?: TuiOnlyCommand[];
   // optionHints adds short contextual guidance alongside selected menu options.
   optionHints?: Readonly<Record<string, string>>;
+  // optionNotices adds warning-colored guidance alongside selected menu options.
+  optionNotices?: Readonly<Record<string, string>>;
+  // cliSectionCommands lists commands with screens that should appear in the
+  // command-line-only section.
+  cliSectionCommands?: readonly string[];
   // alert is optional guidance rendered between the filter and menu options.
   alert?: string;
   hiddenOptions?: readonly string[];
@@ -112,6 +118,8 @@ function CommandMenu({
   path,
   tuiOnlyCommands = [],
   optionHints,
+  optionNotices,
+  cliSectionCommands = [],
   alert,
   hiddenOptions,
   command,
@@ -141,12 +149,14 @@ function CommandMenu({
         .findLast((title) => title !== undefined);
     const actual: Option[] = command.commands.map((c, index) => {
       const cliOnly = !isTuiCommandSupported(c) && !isListedInMenu(c);
+      const belongsToCliSection = cliOnly || cliSectionCommands.includes(c.name());
       return {
         name: c.name(),
         description: c.description(),
         hint: optionHints?.[c.name()],
+        notice: optionNotices?.[c.name()],
         cliOnly,
-        section: cliOnly ? CLI_ONLY_SECTION : sectionOf(index),
+        section: belongsToCliSection ? CLI_ONLY_SECTION : sectionOf(index),
       };
     });
     const actualNames = new Set(actual.map((option) => option.name));
@@ -155,10 +165,10 @@ function CommandMenu({
       .map((option): Option => ({ ...option, hint: optionHints?.[option.name], cliOnly: false }));
     return [
       ...tuiOnly,
-      ...actual.filter((option) => !option.cliOnly),
-      ...actual.filter((option) => option.cliOnly),
+      ...actual.filter((option) => option.section !== CLI_ONLY_SECTION),
+      ...actual.filter((option) => option.section === CLI_ONLY_SECTION),
     ].filter((option) => !hiddenOptions?.includes(option.name));
-  }, [command, optionHints, hiddenOptions, tuiOnlyCommands]);
+  }, [cliSectionCommands, command, hiddenOptions, optionHints, optionNotices, tuiOnlyCommands]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -365,6 +375,7 @@ function CommandMenuBody({
                 </Box>
                 <Text color={theme.colors.muted}>{option.description}</Text>
                 {option.hint && <Text color={theme.colors.secondary}> {option.hint}</Text>}
+                {option.notice && <Text color={theme.colors.warning}> {option.notice}</Text>}
               </Box>
             );
           })
