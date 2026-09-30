@@ -176,7 +176,7 @@ function AddRuntimeEndpointWizard({
             {
               key: "version",
               label: "Version",
-              help: `a whole number, 1 or higher · prefilled with the flag's default, ${DEFAULT_ENDPOINT_VERSION}`,
+              help: `a whole number, 1 or higher · defaults to ${DEFAULT_ENDPOINT_VERSION}`,
               placeholder: String(DEFAULT_ENDPOINT_VERSION),
               value: values.version,
               onChange: (version) => set({ version }),

@@ -437,7 +437,8 @@ export type TextInputSpec = {
   onChange: (value: string) => void;
   required?: boolean;
   schema?: z.ZodType;
-  // number rejects anything but digits before the schema sees the value.
+  // number makes validation fail unless the value is all digits, and hands the
+  // schema a Number rather than the string; typing itself is not restricted.
   number?: boolean;
 };
 

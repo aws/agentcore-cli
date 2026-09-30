@@ -16,10 +16,12 @@ export type RuntimeEndpointInput = {
   description?: string;
 };
 
+type AddRuntimeEndpoint = Extract<AddResourceInput, { resourceType: "runtime-endpoint" }>;
+
 // toAddRuntimeEndpointInput is the one place a runtime endpoint is built from
 // user input — the flags, or the wizard's answers — so both default the version
 // and drop an empty description the same way.
-export function toAddRuntimeEndpointInput(input: RuntimeEndpointInput): AddResourceInput {
+export function toAddRuntimeEndpointInput(input: RuntimeEndpointInput): AddRuntimeEndpoint {
   return {
     resourceType: "runtime-endpoint",
     runtimeName: input.runtime,
@@ -47,19 +49,19 @@ export const createAddRuntimeEndpointHandler = (config: AddProjectResourceConfig
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
-      const version = flags.version ?? DEFAULT_ENDPOINT_VERSION;
+      const input = toAddRuntimeEndpointInput({
+        runtime: flags.runtime,
+        name: flags.name,
+        version: flags.version,
+        description: flags.description,
+      });
 
       await addProjectResource(
         ctx,
         config,
         project,
-        toAddRuntimeEndpointInput({
-          runtime: flags.runtime,
-          name: flags.name,
-          version,
-          description: flags.description,
-        }),
-        `added runtime endpoint '${flags.name}' (version ${version}) to runtime '${flags.runtime}' in '${project.name}'`,
+        input,
+        `added runtime endpoint '${flags.name}' (version ${input.resourceConfig.version}) to runtime '${flags.runtime}' in '${project.name}'`,
       );
     },
   });
