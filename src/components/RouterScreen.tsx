@@ -26,6 +26,8 @@ import { scrollWindow } from "./scrollWindow";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
+// The section command-line-only commands are grouped under. It is drawn as a
+// bare rule, not a titled divider like the sections a router declares.
 const CLI_ONLY_SECTION = "cli";
 const FILTER_ROWS = 2;
 
@@ -315,7 +317,12 @@ function CommandMenuBody({
         ) : (
           view.rows.map((row) => {
             if (row.kind === "section") {
-              return <Divider key={`section:${row.title}`} title={row.title} />;
+              return (
+                <Divider
+                  key={`section:${row.title}`}
+                  title={row.title === CLI_ONLY_SECTION ? undefined : row.title}
+                />
+              );
             }
             if (row.kind !== "item") {
               return (

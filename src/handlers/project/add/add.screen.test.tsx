@@ -4,6 +4,7 @@ import {
   waitForText,
   cleanupScreens,
   compiledRootCommand,
+  hasCliDivider,
   menuEntries,
   inProjectContext,
 } from "../../../testing";
@@ -31,16 +32,16 @@ describe("project add menu", () => {
     r.unmount();
   });
 
-  // A resource without a screen would be listed below a "cli" divider and open
-  // its help instead; every add resource has a wizard, so there is no divider.
-  test("every resource opens a wizard, so nothing is listed under a cli divider", async () => {
+  // A resource without a screen would be listed below a divider and open its
+  // help instead; every add resource has a wizard, so there is no divider.
+  test("every resource opens a wizard, so nothing is listed below a divider", async () => {
     const r = renderScreen("/agentcore/add");
 
     await waitForText(r.lastFrame, "add project resources");
     const { screens, cliOnly } = menuEntries(r.lastFrame()!);
     expect(screens.toSorted()).toEqual(addSubcommands().toSorted());
     expect(cliOnly).toEqual([]);
-    expect(r.lastFrame()).not.toContain("── cli ");
+    expect(hasCliDivider(r.lastFrame()!)).toBe(false);
     r.unmount();
   });
 

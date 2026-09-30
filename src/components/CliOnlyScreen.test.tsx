@@ -4,8 +4,10 @@ import stringWidth from "string-width";
 import {
   cleanupScreens,
   compiledRootCommand,
+  hasCliDivider,
   menuEntries,
   renderScreen,
+  waitFor,
   waitForText,
   inProjectContext,
 } from "../testing";
@@ -70,7 +72,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("the eval menu", async () => {
     const r = renderScreen("/agentcore/eval");
 
-    await waitForText(r.lastFrame, "── cli ");
+    await waitFor(() => hasCliDivider(r.lastFrame()!));
     expect(menuEntries(r.lastFrame()!).cliOnly).toEqual(["ondemand"]);
     r.unmount();
   });
@@ -78,7 +80,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("a menu whose every subcommand is command line only", async () => {
     const r = renderScreen("/agentcore/eval/ondemand");
 
-    await waitForText(r.lastFrame, "── cli ");
+    await waitFor(() => hasCliDivider(r.lastFrame()!));
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [],
       cliOnly: ["evaluate", "simulate"],
@@ -89,7 +91,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
   test("the harness menu", async () => {
     const r = renderScreen("/agentcore/harness");
 
-    await waitForText(r.lastFrame, "── cli ");
+    await waitFor(() => hasCliDivider(r.lastFrame()!));
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [
         "create",
@@ -111,7 +113,7 @@ describe("menus list command-line-only subcommands below a divider", () => {
     const r = renderScreen("/agentcore/harness/endpoint");
 
     await waitForText(r.lastFrame, "manage harness endpoints");
-    expect(r.lastFrame()).not.toContain("── cli ");
+    expect(hasCliDivider(r.lastFrame()!)).toBe(false);
     r.unmount();
   });
 });
@@ -133,7 +135,7 @@ describe("every command-line-only command opens on screen", () => {
       if (command.commands.length > 0) {
         // A group opens its own menu, with every child under the divider.
         await waitForText(r.lastFrame, path.join(" → "));
-        await waitForText(r.lastFrame, "── cli ");
+        await waitFor(() => hasCliDivider(r.lastFrame()!));
         expect(menuEntries(r.lastFrame()!).screens).toEqual([]);
       } else {
         await waitForText(r.lastFrame, "this command runs from the command line");
@@ -164,14 +166,14 @@ describe("paths without a screen of their own", () => {
     await waitForText(() => r.frames.join("\n"), "Usage:");
     const output = r.frames.join("\n");
     expect(output).toMatch(/^\s+create\s+/m);
-    expect(output).not.toContain("── cli ");
+    expect(output).not.toContain("type to choose a command");
     r.unmount();
   });
 
   test("a group drills down to a leaf's help and back", async () => {
     const r = renderScreen("/agentcore/eval/evaluator");
 
-    await waitForText(r.lastFrame, "── cli ");
+    await waitFor(() => hasCliDivider(r.lastFrame()!));
     await r.write("delete");
     await waitForText(r.lastFrame, "❯ delete");
     await r.press("return");

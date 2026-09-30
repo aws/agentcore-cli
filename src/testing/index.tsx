@@ -28,6 +28,7 @@ export {
   waitForText,
   flatFrame,
   waitForFlatText,
+  hasCliDivider,
   menuEntries,
   type MenuEntries,
   type RenderScreenOptions,

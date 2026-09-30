@@ -218,25 +218,45 @@ export function waitForFlatText(
 }
 
 // MenuEntries splits a RouterScreen frame into the subcommands listed with a
-// screen of their own and those listed below the "cli" divider.
+// screen of their own and those listed below the command-line-only divider.
 export interface MenuEntries {
   screens: string[];
   cliOnly: string[];
 }
 
+// bareRuleRows finds the full-width bare rules in a frame. A titled section
+// divider ("── resources ───") is not one of them.
+function bareRuleRows(lines: string[]): number[] {
+  return lines.flatMap((line, index) => (/^─+$/.test(line.trim()) ? [index] : []));
+}
+
+// cliDividerRow is the row of the command-line-only divider, or undefined when
+// none is drawn. Below the menu's filter row come its own rule, the options,
+// and the footer's rule; the divider is a bare rule in between. Anything above
+// the filter row — a banner's rule, say — does not count.
+function cliDividerRow(lines: string[]): number | undefined {
+  const filterRow = lines.findIndex((line) => /^\s*\/ /.test(line));
+  if (filterRow === -1) return undefined;
+  const rules = bareRuleRows(lines).filter((row) => row > filterRow);
+  return rules.length > 2 ? rules[1] : undefined;
+}
+
+// hasCliDivider reports whether a RouterScreen frame draws the divider that
+// separates command-line-only commands from those with a screen.
+export function hasCliDivider(frame: string): boolean {
+  return cliDividerRow(frame.split("\n")) !== undefined;
+}
+
 // menuEntries reads the option names off a rendered RouterScreen frame, in
-// display order, partitioned by the divider.
+// display order, partitioned by the command-line-only divider.
 export function menuEntries(frame: string): MenuEntries {
   const entries: MenuEntries = { screens: [], cliOnly: [] };
-  let belowDivider = false;
-  for (const line of frame.split("\n")) {
-    if (line.includes("── cli ")) {
-      belowDivider = true;
-      continue;
-    }
+  const lines = frame.split("\n");
+  const divider = cliDividerRow(lines) ?? Infinity;
+  lines.forEach((line, index) => {
     // "   name   description" or " ❯ name   description".
     const match = /^\s{1,3}(?:❯ )?\s*([a-z][a-z0-9-]*)\s{2,}\S/.exec(line);
-    if (match) (belowDivider ? entries.cliOnly : entries.screens).push(match[1]!);
-  }
+    if (match) (index > divider ? entries.cliOnly : entries.screens).push(match[1]!);
+  });
   return entries;
 }
