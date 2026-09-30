@@ -142,10 +142,11 @@ import { AddPaymentManagerScreen } from "../handlers/project/add/payment-manager
 import { AddPaymentConnectorScreen } from "../handlers/project/add/payment-connector/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
+import { ProjectDetectedKey } from "../handlers/project/context.ts";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
 import { RegionKey } from "../handlers/keys.tsx";
 import { RegionPinContext } from "../handlers/utils.tsx";
-import type { Context } from "../router";
+import { ProjectKey, type Context } from "../router";
 
 export interface RootProps {
   // path is the command path to the executing node (e.g. "/agentcore").
@@ -251,9 +252,14 @@ function PinnedRegion({ ctx, core }: ScreenProps) {
 const DEV_PATH = ["agentcore", "dev"];
 
 function RouteTable({ ctx, core }: ScreenProps) {
+  const inProject = ctx.value(ProjectDetectedKey) ?? ctx.value(ProjectKey) !== undefined;
+
   return (
     <Routes>
-      <Route path="agentcore" element={<RootScreen ctx={ctx} core={core} />} />
+      <Route
+        path="agentcore"
+        element={<RootScreen ctx={ctx} core={core} inProject={inProject} />}
+      />
       {/* `dev` owns the terminal, so selecting it closes the TUI and runs it. */}
       <Route
         path="agentcore/dev"

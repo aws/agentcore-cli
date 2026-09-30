@@ -5,31 +5,37 @@ import { BrandBanner } from "../components/BrandBanner";
 import { RouterScreen } from "../components/RouterScreen";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
-import { useProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
 const PROJECT_HIDDEN_OPTIONS = ["create"];
-const NO_PROJECT_HIDDEN_OPTIONS = ["eval"];
+const PROJECT_REQUIRED_OPTIONS = [
+  "add",
+  "remove",
+  "dev",
+  "build",
+  "deploy",
+  "status",
+  "invoke",
+  "log",
+  "traces",
+  "export",
+];
+const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS, "eval"];
 
-export function RootScreen(props: ScreenProps) {
-  const projectDetected = useProjectDetected(props.core);
-  const noProjectDetected = projectDetected === false;
+export interface RootScreenProps extends ScreenProps {
+  inProject: boolean;
+}
 
+export function RootScreen({ inProject, ...props }: RootScreenProps) {
   return (
     <RouterScreen
       {...props}
       banner={<BrandBanner />}
       path={["agentcore"]}
-      optionHints={noProjectDetected ? NO_PROJECT_HINTS : undefined}
-      alert={noProjectDetected ? NO_PROJECT_ALERT : undefined}
-      hiddenOptions={
-        projectDetected
-          ? PROJECT_HIDDEN_OPTIONS
-          : noProjectDetected
-            ? NO_PROJECT_HIDDEN_OPTIONS
-            : undefined
-      }
+      optionHints={inProject ? undefined : NO_PROJECT_HINTS}
+      alert={inProject ? undefined : NO_PROJECT_ALERT}
+      hiddenOptions={inProject ? PROJECT_HIDDEN_OPTIONS : NO_PROJECT_HIDDEN_OPTIONS}
     />
   );
 }

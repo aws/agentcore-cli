@@ -5,7 +5,7 @@ import {
   cleanupScreens,
   compiledRootCommand,
   menuEntries,
-  inProjectCore,
+  inProjectContext,
 } from "../../../testing";
 
 afterEach(cleanupScreens);
@@ -62,7 +62,7 @@ describe("project add menu", () => {
   });
 
   test("is reachable from the root menu", async () => {
-    const r = renderScreen("/agentcore", { core: inProjectCore() });
+    const r = renderScreen("/agentcore", { withContext: inProjectContext });
 
     await waitForText(r.lastFrame, "the platform for production AI agents");
     await r.write("add");

@@ -1,5 +1,5 @@
 import React from "react";
-import { queryOptions, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { Box, Text, useInput } from "ink";
 import { Layout } from "../../components/Layout";
 import { Spinner } from "../../components/ui/spinner";
@@ -48,17 +48,6 @@ export function useProjectTargets(
     queryKey: projectTargetsQueryKey(project),
     queryFn: () => core.projectManager.listTargets(project),
   });
-}
-
-export function projectDetectedQuery(core: Core, from = process.cwd()) {
-  return queryOptions({
-    queryKey: ["project-detected", from],
-    queryFn: async () => (await core.projectManager.resolve({ filePath: from })) !== undefined,
-  });
-}
-
-export function useProjectDetected(core: Core): boolean | undefined {
-  return useQuery(projectDetectedQuery(core)).data;
 }
 
 export interface LoadingFrameProps {

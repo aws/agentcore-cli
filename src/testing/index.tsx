@@ -38,6 +38,7 @@ export { TestGlobalConfigAccessor } from "./globalConfig";
 export { inTempDirectory, type TempDirectory } from "./fs";
 export {
   initProject,
+  inProjectContext,
   inProjectCore,
   type InitProjectOptions,
   type InitializedProject,

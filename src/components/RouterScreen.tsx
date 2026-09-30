@@ -7,7 +7,6 @@ import {
   CommandKey,
   commandMenuSectionStart,
   isListedInMenu,
-  isProjectRequired,
   isTuiCommandSupported,
 } from "../router";
 import {
@@ -24,7 +23,6 @@ import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
 import { scrollWindow } from "./scrollWindow";
-import { useProjectDetected } from "../handlers/project/ProjectGate";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
@@ -68,7 +66,6 @@ interface Option {
   cliOnly: boolean;
   // section is the divider title this option is listed under, if any.
   section?: string;
-  projectRequired?: boolean;
 }
 
 export interface TuiOnlyCommand {
@@ -109,7 +106,6 @@ export function RouterScreen(props: RouterScreenProps) {
 }
 
 function CommandMenu({
-  core,
   banner,
   path,
   tuiOnlyCommands = [],
@@ -119,7 +115,6 @@ function CommandMenu({
   command,
 }: RouterScreenProps & { command: Command }) {
   const navigate = useNavigate();
-  const noProject = useProjectDetected(core) === false;
   const { isRawModeSupported } = useStdin();
   const { exit } = useApp();
 
@@ -150,7 +145,6 @@ function CommandMenu({
         hint: optionHints?.[c.name()],
         cliOnly,
         section: cliOnly ? CLI_ONLY_SECTION : sectionOf(index),
-        projectRequired: isProjectRequired(c),
       };
     });
     const actualNames = new Set(actual.map((option) => option.name));
@@ -161,10 +155,8 @@ function CommandMenu({
       ...tuiOnly,
       ...actual.filter((option) => !option.cliOnly),
       ...actual.filter((option) => option.cliOnly),
-    ].filter(
-      (option) => !hiddenOptions?.includes(option.name) && !(option.projectRequired && noProject),
-    );
-  }, [command, optionHints, hiddenOptions, noProject, tuiOnlyCommands]);
+    ].filter((option) => !hiddenOptions?.includes(option.name));
+  }, [command, optionHints, hiddenOptions, tuiOnlyCommands]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);

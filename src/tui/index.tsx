@@ -9,11 +9,12 @@ import {
   contextKey,
   type ContextKey,
   CommandRunMetricEventKey,
+  ProjectKey,
 } from "../router";
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
-import { projectDetectedQuery } from "../handlers/project/ProjectGate";
+import { ProjectDetectedKey } from "../handlers/project/context";
 import { ExitCode, InvalidEnvironmentError } from "../errors";
 import { TuiExitMessageKey } from "./exitMessage";
 import { createResizeGate } from "./resize";
@@ -60,7 +61,13 @@ export async function renderTuiAt(
 
   let exitMessage: string | undefined;
   let handoff: string[] | undefined;
+  const projectDetected =
+    ctx.value(ProjectKey) !== undefined ||
+    (await core.projectManager.resolve({
+      filePath: process.cwd(),
+    })) !== undefined;
   const tuiContext = ctx
+    .withValue(ProjectDetectedKey, projectDetected)
     .withValue(TuiExitMessageKey, (message) => {
       exitMessage = message;
     })
@@ -71,7 +78,6 @@ export async function renderTuiAt(
   // alternateScreen switches the terminal to its alternate buffer so the TUI
   // takes over the screen and the prior scrollback is restored on exit (like Vim).
   const queryClient = new QueryClient();
-  await queryClient.prefetchQuery(projectDetectedQuery(core));
 
   const resizeGate = createResizeGate(io.stdout);
   const { waitUntilExit } = render(

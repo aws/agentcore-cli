@@ -14,7 +14,6 @@ export {
   isTuiCommandSupported,
   commandMenuSectionStart,
   isListedInMenu,
-  isProjectRequired,
   commandParameterDetails,
 } from "./router";
 export {

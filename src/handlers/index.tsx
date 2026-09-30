@@ -84,8 +84,9 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
 
   // Install sub handlers. Registration order is menu/help order; project is
   // the primary workflow, so it goes first.
-  const { createHandler, projectBoundHandlers } = createProjectHandlers(core, io);
-  root.handler(createHandler).projectHandlers(...projectBoundHandlers);
+  createProjectHandlers(core, io).forEach((handler) => {
+    root.handler(handler);
+  });
 
   root.menuSection("resources");
   root.handler(createEvalHandler(core, io));

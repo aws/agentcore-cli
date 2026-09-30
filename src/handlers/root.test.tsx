@@ -1,6 +1,5 @@
 import { test, expect, describe } from "bun:test";
 import { createRootHandler } from "./index";
-import { isProjectRequired } from "../router";
 import {
   compiledRootCommand,
   createSilentLogger,
@@ -58,22 +57,6 @@ describe("createRootHandler", () => {
     expect(add.commands.map((child) => child.name())).toEqual(
       expect.arrayContaining(["harness", "runtime", "memory", "gateway"]),
     );
-  });
-
-  test("marks the commands that need an enclosing project", () => {
-    const required = compiledRootCommand().commands.filter(isProjectRequired);
-    expect(required.map((child) => child.name())).toEqual([
-      "add",
-      "remove",
-      "dev",
-      "build",
-      "deploy",
-      "status",
-      "invoke",
-      "log",
-      "traces",
-      "export",
-    ]);
   });
 
   test("--help lists commands in the root menu order", () => {

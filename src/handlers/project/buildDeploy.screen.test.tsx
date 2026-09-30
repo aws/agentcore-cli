@@ -7,6 +7,7 @@ import {
   cleanupScreens,
   flatFrame,
   initProject,
+  inProjectContext,
   inTempDirectory,
   renderScreen,
   TestCoreClient,
@@ -245,7 +246,11 @@ describe("project deploy screen", () => {
         queries: { retry: false, gcTime: Infinity, staleTime: 0 },
       },
     });
-    const r = renderScreen("/agentcore/deploy", { core, queryClient });
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      queryClient,
+      withContext: inProjectContext,
+    });
 
     await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
     expect(deploys).toHaveLength(1);
@@ -273,7 +278,11 @@ describe("project deploy screen", () => {
         queries: { retry: false, gcTime: Infinity, staleTime: 0 },
       },
     });
-    const r = renderScreen("/agentcore/deploy", { core, queryClient });
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      queryClient,
+      withContext: inProjectContext,
+    });
 
     await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
     expect(deploys).toHaveLength(1);
