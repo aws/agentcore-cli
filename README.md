@@ -142,19 +142,6 @@ yourself.
 Note that `agentcore status` reports only the resources `agentcore.json`
 declares, not the ones you add in the stack.
 
-## China (aws-cn) regions
-
-`cn-north-1` and `cn-northwest-1` are supported with a narrower feature set:
-
-- Only Runtimes, Gateways, and credentials are available; Harness projects and other resources are
-  rejected with an explicit message.
-- Amazon Bedrock, Anthropic, OpenAI, and Gemini are not reachable from China regions, so templates
-  wired to them are rejected. Bring your own model connectivity, or use
-  `--model-provider litellm --model-id <model>` with a model reachable from China.
-- Telemetry is always disabled.
-
-See [China regions](docs/china-regions.md) for the details.
-
 ## Documentation
 
 - [Command reference](command.md): every command and flag.
