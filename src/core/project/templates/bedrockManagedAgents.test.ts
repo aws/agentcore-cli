@@ -49,6 +49,8 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(dockerfile).toContain("https://chatgpt.com/codex/install.sh");
   expect(dockerfile).toContain("amazon-cloudwatch-agent.rpm");
   expect(dockerfile).toContain("COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/");
+  // Python is installed before pyproject.toml is copied, so requires-python sets a minimum and does not pin the image.
+  expect(dockerfile).toMatch(/RUN uv python install --default\n[\s\S]*COPY pyproject\.toml/);
   expect(dockerfile).toContain("RUN uv sync --no-dev");
   expect(dockerfile).toContain("COPY lifecycle/ lifecycle/");
   expect(dockerfile).toContain("COPY otel/ otel/");
@@ -82,6 +84,7 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(pyproject).toContain('"aws-bedrock-token-generator>=1.1.0",');
   expect(pyproject).toContain('"openai>=3.16.2",');
   expect(pyproject).toContain("[tool.uv]\npackage = false");
+  expect(pyproject).toContain('requires-python = ">=3.12"');
 
   // BMA calls this protocol, and the server translates its failures into HTTP 200 bodies.
   expect(server).toContain(`BMA_VERSION = "${version}"`);

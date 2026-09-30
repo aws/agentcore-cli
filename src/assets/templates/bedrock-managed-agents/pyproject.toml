@@ -3,6 +3,7 @@ name = "{{ name }}"
 version = "0.1.0"
 description = "AgentCore Runtime environment for Bedrock Managed Agents"
 readme = "README.md"
+requires-python = ">=3.12"
 dependencies = [
     "aws-opentelemetry-distro",
     "bedrock-agentcore",
