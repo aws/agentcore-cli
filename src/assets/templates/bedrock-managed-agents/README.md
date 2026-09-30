@@ -36,7 +36,9 @@ image build downloads Codex and Python from the internet, so a build in VPC mode
 - No session storage. Session storage is only for a microVM Runtime, so without it the same settings work on a
   capacity provider.
 
-A value that you give to `agentcore create` replaces the value above.
+To customize these settings after creation, edit the Runtime entry in `agentcore/agentcore.json`.
+When adding this environment to an existing project, `agentcore add runtime` also accepts
+`--lifecycle-configuration` and `--filesystem-configurations`.
 
 The server keeps the connection state in `state.json` in `BMA_STATE_DIR`. The default is `/home/app/.bma`. The client
 sets the workspace in `workspace_directory` when it creates the session. `client.py` uses `/home/app/workspace`. The
@@ -47,7 +49,14 @@ server returns status 400. If the server cannot create the directory, it returns
 Files in the home directory do not stay after an idle stop. On a microVM Runtime, to keep the files and the connection
 state after an idle stop, put the home directory on session storage:
 
-1. Add session storage with `--session-storage-mount-path /mnt/home`.
+1. Add session storage to the Runtime in `agentcore/agentcore.json`:
+
+   ```json
+   "filesystemConfigurations": [
+     { "sessionStorage": { "mountPath": "/mnt/home" } }
+   ]
+   ```
+
 2. Set `BMA_HOME_DIR` to `/mnt/home` in `envVars`. Then `state.json` is in `/mnt/home/.bma`, and `CODEX_HOME` is
    `/mnt/home/.codex`.
 3. Set `WORKSPACE_DIRECTORY` in `client.py` to `/mnt/home/workspace`.
