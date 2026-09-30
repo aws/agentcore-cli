@@ -159,4 +159,32 @@ describe("TUI resize", () => {
     await expect(routePromise).resolves.toBeUndefined();
     expect(streams.io.stdout.listenerCount("resize")).toBe(0);
   });
+
+  test("repaints when a shrink gesture returns to the cached size", async () => {
+    const { streams, stdin } = ttyTestIO(100, 40);
+    const root = createRootHandler(new TestCoreClient(), {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const routePromise = root.route(["node", "agentcore"]);
+    await waitFor(() => streams.stdout().includes("deploy"));
+    await tick();
+
+    const beforeResize = streams.stdout().length;
+    resize(streams.io.stdout, 100, 15);
+    await tick(25);
+    resize(streams.io.stdout, 100, 40);
+    await tick(25);
+    expect(streams.stdout()).toHaveLength(beforeResize);
+
+    await waitFor(() => {
+      const resized = streams.stdout().slice(beforeResize);
+      const clearAt = resized.indexOf(ERASE_SCREEN);
+      return clearAt >= 0 && resized.indexOf("deploy", clearAt) > clearAt;
+    });
+
+    stdin.write(String.fromCharCode(3));
+    await expect(routePromise).resolves.toBeUndefined();
+  });
 });

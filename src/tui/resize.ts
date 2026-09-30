@@ -84,9 +84,21 @@ export function createResizeGate(stdout: NodeJS.WriteStream): ResizeGate {
 
   const settle = () => {
     settleTimer = undefined;
-    const narrowed =
-      pendingColumns !== undefined && columns !== undefined && pendingColumns < columns;
-    publish(narrowed);
+    const changed = columns !== pendingColumns || rows !== pendingRows;
+    if (changed) {
+      publish(true);
+    } else if (columns !== undefined && columns > 1) {
+      // Ink caches the last rendered frame. If a shrink gesture returns to its
+      // starting size, a same-size resize event is skipped after we clear the
+      // terminal. Briefly publish a safe, narrower width to invalidate that
+      // cache, then publish the real dimensions. Both renders happen only after
+      // the gesture settles, and the synthetic width never exceeds the terminal.
+      stdout.write(ERASE_SCREEN_AND_HOME);
+      columns--;
+      resizeEvents.emit("resize");
+      columns = pendingColumns;
+      resizeEvents.emit("resize");
+    }
     shrinking = false;
   };
 
