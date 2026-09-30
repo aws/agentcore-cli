@@ -1,6 +1,5 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, measureElement, useApp, useInput, useStdin, type DOMElement } from "ink";
-import { useWindowSize } from "./ui/useWindowSize";
+import React, { useContext, useEffect, useMemo, useState } from "react";
+import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Command } from "commander";
 import { Navigate, useNavigate } from "react-router";
 import {
@@ -9,17 +8,20 @@ import {
   isListedInMenu,
   isTuiCommandSupported,
 } from "../router";
+import { MIN_BANNER_COLUMNS, MIN_BANNER_ROWS, shouldHideBrandBanner } from "./BrandBanner";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import type { ScreenProps } from "../handlers/types";
 import { RegionPinContext } from "../handlers/utils";
-import { useScrollWindow } from "./scrollWindow";
+import { scrollWindow } from "./scrollWindow";
 
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
 const CLI_ONLY_SECTION = "cli";
+const BANNER_ROWS = 4;
+const FILTER_ROWS = 2;
 
 // rootCommand walks up to the top of the Commander tree.
 function rootCommand(c: Command): Command {
@@ -152,21 +154,6 @@ function CommandMenu({
   // match is index 0, which is what a fresh query resets to.
   const highlight = Math.min(index, Math.max(0, filtered.length - 1));
 
-  // The list gets whatever height the screen leaves it (the root menu adds a
-  // banner, a long header can wrap), so measure it whenever the terminal
-  // changes size rather than subtracting a fixed count of chrome rows. The
-  // list fills that space whatever it holds, so its contents don't matter.
-  // Until the first measurement the list is clipped to the terminal height.
-  const { columns, rows } = useWindowSize();
-  const listRef = useRef<DOMElement>(null);
-  const [listRows, setListRows] = useState<number>();
-  useEffect(() => {
-    if (!listRef.current) return;
-    setListRows(measureElement(listRef.current).height);
-  }, [columns, rows]);
-  const sections = useMemo(() => filtered.map((o) => o.section), [filtered]);
-  const view = useScrollWindow(sections, highlight, listRows ?? rows);
-
   const base = "/" + path.join("/");
 
   // Width of the name column so descriptions line up (longest name + a gap).
@@ -213,6 +200,10 @@ function CommandMenu({
   return (
     <Layout
       banner={banner}
+      bannerHeight={BANNER_ROWS}
+      hideBanner={Boolean(banner) && shouldHideBrandBanner(process.env.TERM_PROGRAM)}
+      bannerMinColumns={MIN_BANNER_COLUMNS}
+      bannerMinRows={MIN_BANNER_ROWS}
       breadcrumb={path}
       description={command.description()}
       keyHints={[
@@ -224,71 +215,122 @@ function CommandMenu({
         { key: "ctrl+c", label: "quit" },
       ]}
     >
-      <Box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
-        {/* Filter input. TextInput owns text editing; the highlight resets to
-            the best match whenever the query changes. */}
-        <Box paddingX={1} flexShrink={0}>
-          <TextInput
-            value={query}
-            onChange={(v) => {
-              setQuery(v);
-              setIndex(0);
-            }}
-            placeholder={PLACEHOLDER}
-            prompt="/ "
-            focus={Boolean(isRawModeSupported)}
-          />
-        </Box>
+      {({ columns, contentRows }) => (
+        <CommandMenuBody
+          columns={columns}
+          contentRows={contentRows}
+          filtered={filtered}
+          highlight={highlight}
+          isRawModeSupported={Boolean(isRawModeSupported)}
+          nameWidth={nameWidth}
+          query={query}
+          onQueryChange={(value) => {
+            setQuery(value);
+            setIndex(0);
+          }}
+        />
+      )}
+    </Layout>
+  );
+}
 
-        <Divider />
+interface CommandMenuBodyProps {
+  columns: number;
+  contentRows: number;
+  filtered: Option[];
+  highlight: number;
+  isRawModeSupported: boolean;
+  nameWidth: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+}
 
-        {/* Options */}
-        <Box
-          ref={listRef}
-          flexDirection="column"
-          flexGrow={1}
-          flexShrink={1}
-          minHeight={0}
-          overflow="hidden"
-        >
-          {filtered.length === 0 ? (
-            <Box paddingX={1} flexShrink={0}>
-              <Text color={theme.colors.text}>No matches</Text>
-            </Box>
-          ) : (
-            view.rows.map((row) => {
-              if (row.kind === "section") {
-                return <Divider key={`section:${row.title}`} title={row.title} />;
-              }
-              if (row.kind !== "item") {
-                return (
-                  <Box key={row.kind} paddingX={1} flexShrink={0}>
-                    <Text color={theme.colors.muted}>
-                      {`  ${row.kind === "more-above" ? "↑" : "↓"} ${row.count} more`}
-                    </Text>
-                  </Box>
-                );
-              }
-              const o = filtered[row.index]!;
-              const isHl = row.index === highlight;
+function CommandMenuBody({
+  columns,
+  contentRows,
+  filtered,
+  highlight,
+  isRawModeSupported,
+  nameWidth,
+  query,
+  onQueryChange,
+}: CommandMenuBodyProps) {
+  const sections = useMemo(() => filtered.map((option) => option.section), [filtered]);
+  const menuHeight = Math.max(0, contentRows - FILTER_ROWS);
+  const windowStart = Math.max(0, highlight - Math.floor(menuHeight / 2));
+  const view = scrollWindow({
+    sections,
+    highlight,
+    start: windowStart,
+    budget: menuHeight,
+  });
+
+  return (
+    <Box flexDirection="column" height={contentRows} overflow="hidden">
+      <Box paddingX={1} height={1} overflow="hidden" flexShrink={0}>
+        <TextInput
+          value={query}
+          onChange={onQueryChange}
+          placeholder={PLACEHOLDER}
+          prompt="/ "
+          focus={isRawModeSupported}
+        />
+      </Box>
+
+      <Divider />
+
+      <Box flexDirection="column" height={menuHeight} overflow="hidden">
+        {filtered.length === 0 ? (
+          <Box paddingX={1} height={1} overflow="hidden">
+            <Text color={theme.colors.text}>No matches</Text>
+          </Box>
+        ) : (
+          view.rows.map((row) => {
+            if (row.kind === "section") {
+              return <Divider key={`section:${row.title}`} title={row.title} />;
+            }
+            if (row.kind !== "item") {
               return (
-                <Box key={o.name} paddingX={1} flexShrink={0}>
-                  <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
-                  <Text
-                    bold={isHl}
-                    color={
-                      isHl ? theme.colors.focus : o.cliOnly ? theme.colors.muted : theme.colors.text
-                    }
-                  >
-                    {o.name.padEnd(nameWidth)}
+                <Box key={row.kind} paddingX={1} height={1} overflow="hidden" flexShrink={0}>
+                  <Text color={theme.colors.muted}>
+                    {`  ${row.kind === "more-above" ? "↑" : "↓"} ${row.count} more`}
                   </Text>
-                  <Text color={theme.colors.muted}>{o.description}</Text>
                 </Box>
               );
-            })
-          )}
-        </Box>
+            }
+
+            const option = filtered[row.index]!;
+            const isHighlighted = row.index === highlight;
+            return (
+              <Box
+                key={option.name}
+                paddingX={1}
+                width={columns}
+                height={1}
+                overflow="hidden"
+                flexShrink={0}
+              >
+                <Text color={theme.colors.focus}>
+                  {isHighlighted ? `${glyphs.pointer} ` : "  "}
+                </Text>
+                <Text
+                  bold={isHighlighted}
+                  color={
+                    isHighlighted
+                      ? theme.colors.focus
+                      : option.cliOnly
+                        ? theme.colors.muted
+                        : theme.colors.text
+                  }
+                >
+                  {option.name.padEnd(nameWidth)}
+                </Text>
+                <Text color={theme.colors.muted}>{option.description}</Text>
+              </Box>
+            );
+          })
+        )}
       </Box>
-    </Layout>
+    </Box>
   );
 }

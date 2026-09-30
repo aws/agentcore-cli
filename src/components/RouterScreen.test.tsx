@@ -49,6 +49,10 @@ describe("menu rendering", () => {
     const entries = menuEntries(frame);
     expect(entries.screens).toContain("create");
     expect(entries.screens).toContain("eval");
+    expect(frame.split("\n").filter((line) => line.includes("❯ "))).toHaveLength(1);
+    expect(new Set([...entries.screens, ...entries.cliOnly]).size).toBe(
+      entries.screens.length + entries.cliOnly.length,
+    );
     expect(frame).toContain("config");
     expect(frame).toContain("read/write global config values");
     r.unmount();
@@ -133,6 +137,20 @@ describe("menu rendering", () => {
 
     expect(nested.lastFrame()).not.toContain(version);
     nested.unmount();
+  });
+
+  test("hides the brand banner when the terminal is short and restores it when enlarged", async () => {
+    const version = `v${PACKAGE_VERSION}`;
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, version);
+
+    await r.resize(80, 24);
+    expect(r.lastFrame()).not.toContain(version);
+    expect(r.lastFrame()).toContain("[enter] select");
+
+    await r.resize(100, 40);
+    await waitForText(r.lastFrame, version);
+    r.unmount();
   });
 
   test("renders the harness subcommands when mounted at the harness path", async () => {
