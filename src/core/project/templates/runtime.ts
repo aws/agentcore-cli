@@ -63,6 +63,12 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...((scaffoldRuntimeInput.framework !== "none" || input.importBedrockAgent !== undefined) && {
       modelProvider: scaffoldRuntimeInput.modelProvider ?? "Bedrock",
     }),
+    // For LiteLLM the model id determines the actual routing (its 'bedrock/'
+    // prefix routes to Amazon Bedrock), so persist the id the code renders —
+    // explicit --model-id or the template default — for the China deploy gate.
+    ...(scaffoldRuntimeInput.modelProvider === "LiteLLM" && {
+      modelId: scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS.LiteLLM,
+    }),
     // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.
     entrypoint: scaffoldRuntimeInput.language === "TypeScript" ? "main.js" : "main.py",
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],

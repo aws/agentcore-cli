@@ -159,7 +159,9 @@ declares, not the ones you add in the stack.
   implementation instead: scaffold with `agent-python-minimal` or `mcp-python-fastmcp` and add
   your own model connectivity, or use `--template agent-python-strands --model-provider litellm
 --model-id <model>` with a [LiteLLM model](https://docs.litellm.ai/docs/providers) reachable
-  from China — no default model id is applied there.
+  from China — no default model id is applied there, and the `bedrock/` LiteLLM prefix (which
+  routes to Amazon Bedrock) is rejected. The scaffolded runtime records `modelProvider` and,
+  for LiteLLM, `modelId` in `agentcore.json` so deploys can re-check this.
 - The restrictions are enforced wherever the region is known: at `agentcore create` when the
   resolved region (`--region`, environment, or profile) is a China region, at
   `agentcore add runtime` once deployment targets exist, and at `agentcore deploy` — deploying

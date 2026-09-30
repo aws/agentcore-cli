@@ -1197,10 +1197,32 @@ describe("create in China regions", () => {
       await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
     );
     expect(spec.runtimes[0].modelProvider).toBe("LiteLLM");
+    expect(spec.runtimes[0].modelId).toBe("openai/qwen-max");
     // The template's default memory is dropped in China (AgentCore Memory has
     // no CloudFormation type there), while the memory module stays in the code.
     expect(spec.memories ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app", "agent", "memory"))).toBe(true);
+  });
+
+  test("rejects a bedrock/ LiteLLM model id in a China region", async () => {
+    const { cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "create",
+        "--name",
+        "CnBedrockRoute",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        "lite_llm",
+        "--model-id",
+        "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+        ...skips,
+        "--region",
+        "cn-north-1",
+      ]),
+    ).rejects.toThrow(/'bedrock\/' LiteLLM model id prefix routes to Amazon Bedrock/);
   });
 
   test("escapes quotes in --model-id in the scaffolded model code", async () => {

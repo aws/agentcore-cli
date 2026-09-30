@@ -29,6 +29,7 @@ import { InputValidationError, RegionUnsupportedFeatureError } from "../../../er
 import { isChinaRegion } from "../../../core/partition";
 import {
   HARNESS_CN_MESSAGE,
+  LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE,
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
@@ -148,6 +149,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
             }
             if (scaffoldRuntimeInput.modelId === undefined) {
               throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
+            }
+            if (scaffoldRuntimeInput.modelId.startsWith("bedrock/")) {
+              throw new RegionUnsupportedFeatureError(LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE);
             }
           }
           // AgentCore Memory is not available in China regions; scaffold

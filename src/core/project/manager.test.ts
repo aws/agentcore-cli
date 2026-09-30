@@ -17,6 +17,7 @@ import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import {
   cnUnsupportedResourceMessage,
   FsProjectManager,
+  LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE,
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
@@ -651,6 +652,28 @@ describe("FsProjectManager.addResource", () => {
       expect(existsSync(runtimePath)).toBe(false);
     });
 
+    test("rejects a LiteLLM model id routing to Bedrock on a China target", async () => {
+      await inTempDirectory();
+      const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "cn_litellm",
+            scaffoldRuntimeInput: {
+              ...AGENT_PYTHON_STRANDS,
+              runtimeName: "cn_litellm",
+              modelProvider: "LiteLLM",
+              modelId: "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+            },
+          },
+        }),
+      ).rejects.toThrow(new RegionUnsupportedFeatureError(LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE));
+
+      expect(checkedTools).toEqual([]);
+    });
+
     test("lets LiteLLM with an explicit model id past the partition gate", async () => {
       await inTempDirectory();
       const { subject, project } = await projectWithTarget("cn-north-1", "uv");
@@ -674,7 +697,7 @@ describe("FsProjectManager.addResource", () => {
     async function editSpec(
       project: Project,
       edit: (spec: {
-        runtimes: { name: string; modelProvider?: string }[];
+        runtimes: { name: string; modelProvider?: string; modelId?: string }[];
         harnesses: unknown[];
         memories?: unknown[];
       }) => void,
@@ -726,6 +749,44 @@ describe("FsProjectManager.addResource", () => {
 
       const { error } = await deployOutcome(subject, project);
       expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+    });
+
+    test("deploy to a China target hard-fails a LiteLLM runtime routing to Bedrock", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.modelProvider = "LiteLLM";
+        spec.runtimes[0]!.modelId = "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0";
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain("LiteLLM → bedrock/");
+    });
+
+    test("deploy to a China target passes a LiteLLM runtime with a non-Bedrock model id", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.modelProvider = "LiteLLM";
+        spec.runtimes[0]!.modelId = "deepseek/deepseek-chat";
+      });
+
+      const { steps, error } = await deployOutcome(subject, project);
+      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(steps.join("\n")).not.toContain("cannot verify the model provider");
+    });
+
+    test("deploy to a China target notes a LiteLLM runtime without a persisted model id", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.modelProvider = "LiteLLM";
+      });
+
+      const { steps, error } = await deployOutcome(subject, project);
+      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(steps.join("\n")).toContain("cannot verify the model provider");
     });
 
     test("deploy to a China target notes unclassifiable runtimes and proceeds", async () => {

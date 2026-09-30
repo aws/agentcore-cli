@@ -176,6 +176,15 @@ export const LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE =
   "cn-northwest-1): the default model id " +
   "routes to Amazon Bedrock, which is not available there. Pass a LiteLLM model id for a " +
   "provider reachable from China (see https://docs.litellm.ai/docs/providers).";
+
+/**
+ * Shown when a LiteLLM runtime explicitly targets LiteLLM's Bedrock route
+ * (the 'bedrock/' model id prefix) in a China (aws-cn) region.
+ */
+export const LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE =
+  "the 'bedrock/' LiteLLM model id prefix routes to Amazon Bedrock, which is not available " +
+  "in China regions (cn-north-1, cn-northwest-1). Pass a LiteLLM model id for a provider " +
+  "reachable from China (see https://docs.litellm.ai/docs/providers).";
 const GIT_INSTALL_HINT = "Install git: https://git-scm.com/downloads";
 
 // npm prints nothing until it exits when stderr is piped, and its HTTP log is the only per-package
@@ -450,6 +459,9 @@ export class FsProjectManager implements ProjectManager {
           }
           if (modelId === undefined) {
             throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
+          }
+          if (modelId.startsWith("bedrock/")) {
+            throw new RegionUnsupportedFeatureError(LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE);
           }
         }
         if (memory !== undefined) {
@@ -1133,13 +1145,23 @@ export class FsProjectManager implements ProjectManager {
     // older CLI) cannot be classified and only get an informational note.
     if (isChinaRegion(target.region)) {
       const blocked = project.spec.runtimes.filter(
-        (runtime) => runtime.modelProvider !== undefined && runtime.modelProvider !== "LiteLLM",
+        (runtime) =>
+          runtime.modelProvider !== undefined &&
+          (runtime.modelProvider !== "LiteLLM" ||
+            // LiteLLM's 'bedrock/' model id prefix routes to Amazon Bedrock —
+            // the default when a runtime was scaffolded without --model-id.
+            runtime.modelId?.startsWith("bedrock/")),
       );
       if (blocked.length > 0) {
         throw new RegionUnsupportedFeatureError(
           `Cannot deploy to China region ${target.region}: ` +
             blocked
-              .map((runtime) => `runtime '${runtime.name}' (${runtime.modelProvider})`)
+              .map(
+                (runtime) =>
+                  `runtime '${runtime.name}' (${runtime.modelProvider}${
+                    runtime.modelProvider === "LiteLLM" ? ` → ${runtime.modelId}` : ""
+                  })`,
+              )
               .join(", ") +
             ` scaffolded with a model provider that is not accessible from China regions. ` +
             `Re-scaffold with '--model-provider litellm --model-id <model reachable from China>' ` +
@@ -1169,7 +1191,11 @@ export class FsProjectManager implements ProjectManager {
         );
       }
       const unclassified = project.spec.runtimes.filter(
-        (runtime) => runtime.modelProvider === undefined,
+        (runtime) =>
+          runtime.modelProvider === undefined ||
+          // A LiteLLM runtime without a persisted model id (older CLI or
+          // hand-edited spec) cannot be classified by routing.
+          (runtime.modelProvider === "LiteLLM" && runtime.modelId === undefined),
       );
       if (unclassified.length > 0) {
         yield {
