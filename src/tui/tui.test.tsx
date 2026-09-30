@@ -1,9 +1,12 @@
 import { test, expect, describe } from "bun:test";
+import { Command } from "commander";
 import { createRootHandler } from "../handlers";
-import { ExitCode, InvalidEnvironmentError } from "../errors";
+import { ExitCode, InvalidEnvironmentError, ProjectStateError } from "../errors";
 import { renderJson } from "./index";
+import { handoffArgs } from "./handoff";
 import {
   createSilentLogger,
+  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -111,6 +114,45 @@ describe("TUI stream boundary", () => {
     await tick();
     expect(listCalls()).toHaveLength(callsBeforeExit);
     expect(listCalls().some((call) => call.args[0] === "page-2")).toBe(false);
+  });
+});
+
+describe("TUI handoff", () => {
+  test("selecting dev closes the TUI and runs the dev command", async () => {
+    const { cleanup } = await inTempDirectory();
+    try {
+      const { streams, stdin } = ttyTestIO();
+      const root = createRootHandler(new TestCoreClient(), {
+        io: streams.io,
+        logger: createSilentLogger(),
+        globalConfigAccessor: new TestGlobalConfigAccessor(),
+      });
+      const routePromise = root.route(["node", "agentcore", "--region", "us-west-2"]);
+      await waitFor(() => streams.stdout().includes("type to choose a command"));
+
+      stdin.write("dev");
+      await waitFor(() => streams.stdout().includes("❯ dev"));
+      stdin.write("\r");
+
+      // Outside a project, dev's own project check is what fails: proof the
+      // TUI handed off to the dev command rather than showing its help.
+      const error = await routePromise.catch((error) => error);
+      expect(error).toBeInstanceOf(ProjectStateError);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("carries over global flags given on the command line", async () => {
+    const root = new Command("agentcore")
+      .option("--region <region>")
+      .option("--debug")
+      .option("--json")
+      .option("--profile <profile>", "", "default");
+    root.action(() => {});
+    await root.parseAsync(["--region", "eu-west-1", "--debug"], { from: "user" });
+
+    expect(handoffArgs(root, ["dev"])).toEqual(["dev", "--region", "eu-west-1", "--debug"]);
   });
 });
 

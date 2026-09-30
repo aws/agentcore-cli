@@ -12,6 +12,10 @@ import { CommandKey, isTuiCommandSupported } from "../router";
 
 afterEach(cleanupScreens);
 
+// Commands that close the TUI and run instead of showing their help (see
+// CommandHandoffScreen); tui.test covers them.
+const HANDED_OFF = new Set(["agentcore dev"]);
+
 // cliOnlyCommands walks the compiled Commander tree for every command without
 // a screen, so a command added later is covered without a new test. `help` is
 // Commander's own, not one of ours.
@@ -20,7 +24,8 @@ function cliOnlyCommands(
   path: string[] = [],
 ): [string[], Command][] {
   const here = [...path, command.name()];
-  const own: [string[], Command][] = isTuiCommandSupported(command) ? [] : [[here, command]];
+  const own: [string[], Command][] =
+    isTuiCommandSupported(command) || HANDED_OFF.has(here.join(" ")) ? [] : [[here, command]];
   return [
     ...own,
     ...command.commands

@@ -85,14 +85,14 @@ describe("menu rendering", () => {
     r.unmount();
   });
 
-  test("selecting a listed command without a screen opens its help", async () => {
+  test("selecting a command without a screen opens its help", async () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "type to choose a command");
 
-    await r.write("dev");
-    await waitForText(r.lastFrame, "❯ dev");
+    await r.write("update");
+    await waitForText(r.lastFrame, "❯ update");
     await r.press("return");
-    await waitForText(r.lastFrame, "agentcore dev [options]");
+    await waitForText(r.lastFrame, "agentcore update [options]");
     r.unmount();
   });
 
