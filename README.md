@@ -42,18 +42,6 @@ Run this alternative from outside an existing project:
 agentcore create --name MyAgent --template agent-python-strands
 ```
 
-To create an execution environment for Bedrock Managed Agents:
-
-```bash
-agentcore create --name MyManagedAgent --template bedrock-managed-agents
-```
-
-Bedrock Managed Agents runs the agent loop and sends lifecycle and command requests to the
-generated AgentCore Runtime. The Runtime is a container environment for Codex rather than an agent
-that invokes a model itself, so it has no model-provider or memory configuration. Its dependencies
-are installed when the container image is built. The generated Runtime README covers deployment,
-the sample client, persistence, observability, and adding skills.
-
 ## Command Surface
 
 Project commands manage local project specifications and their deployments.

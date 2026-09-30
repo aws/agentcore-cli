@@ -119,7 +119,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "bedrock-managed-agents": {
     runtimeName: "bedrock_managed_agents",
-    description: "Codex execution environment for Bedrock Managed Agents",
+    description: "Execution environment for Bedrock Managed Agents",
     build: "Container",
     language: "Python",
     framework: "bedrock-managed-agents",
