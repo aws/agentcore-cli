@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { darkTheme } from "./ui/_core.js";
 
@@ -16,11 +17,19 @@ export interface FormTextAreaProps {
   focused?: boolean;
 }
 
-// FormTextArea is a minimal multiline editor: append-only typing/pasting plus
-// backspace. Pasted chunks arrive as one input string whose \r become
-// newlines, so multi-line paste just works. Enter inserts a newline only once
-// there is content — on an empty value it is left to the parent (e.g. to
-// continue a wizard step).
+function Cursor({ character }: { character: string }) {
+  return (
+    <Text color={theme.colors.focus} inverse>
+      {character}
+    </Text>
+  );
+}
+
+// FormTextArea is a minimal multiline editor with cursor-aware typing,
+// pasting and backspace. Pasted chunks arrive as one input string whose \r
+// become newlines, so multi-line paste just works. Enter inserts a newline
+// only once there is content — on an empty value it is left to the parent
+// (e.g. to continue a wizard step).
 export function FormTextArea({
   name,
   helpText,
@@ -30,27 +39,52 @@ export function FormTextArea({
   previewLines = 10,
   focused = true,
 }: FormTextAreaProps) {
+  const [rawCursor, setRawCursor] = useState(value.length);
+  const cursor = Math.min(rawCursor, value.length);
+
   useInput(
     (input, key) => {
+      if (key.leftArrow) {
+        setRawCursor(Math.max(0, cursor - 1));
+        return;
+      }
+      if (key.rightArrow) {
+        setRawCursor(Math.min(value.length, cursor + 1));
+        return;
+      }
+      if (key.upArrow || key.downArrow) return;
+
       if (key.return) {
-        if (value !== "") onChange(value + "\n");
+        if (value !== "") {
+          onChange(value.slice(0, cursor) + "\n" + value.slice(cursor));
+          setRawCursor(cursor + 1);
+        }
         return;
       }
       if (key.backspace || key.delete) {
-        onChange(value.slice(0, -1));
+        if (cursor === 0) return;
+        onChange(value.slice(0, cursor - 1) + value.slice(cursor));
+        setRawCursor(cursor - 1);
         return;
       }
       if (key.ctrl || key.meta || key.escape) return;
       if (input !== "") {
-        onChange(value + input.replace(/\r/g, "\n"));
+        const next = input.replace(/\r/g, "\n");
+        onChange(value.slice(0, cursor) + next + value.slice(cursor));
+        setRawCursor(cursor + next.length);
       }
     },
     { isActive: focused },
   );
 
   const lines = value === "" ? [] : value.split("\n");
-  const hidden = Math.max(0, lines.length - previewLines);
-  const visible = lines.slice(hidden);
+  const beforeCursor = value.slice(0, cursor);
+  const cursorLine = beforeCursor.split("\n").length - 1;
+  const lastNewline = beforeCursor.lastIndexOf("\n");
+  const cursorColumn = cursor - lastNewline - 1;
+  const hidden = Math.max(0, cursorLine - previewLines + 1);
+  const visible = lines.slice(hidden, hidden + previewLines);
+  const hiddenAfter = Math.max(0, lines.length - hidden - visible.length);
 
   return (
     <Box flexDirection="column">
@@ -71,16 +105,26 @@ export function FormTextArea({
         {visible.length === 0 ? (
           <Text color={theme.colors.muted}>
             {placeholder}
-            <Text inverse> </Text>
+            <Cursor character=" " />
           </Text>
         ) : (
-          visible.map((line, i) => (
-            <Text key={i}>
-              {line}
-              {i === visible.length - 1 ? <Text inverse> </Text> : null}
-            </Text>
-          ))
+          visible.map((line, i) => {
+            const lineIndex = hidden + i;
+            if (lineIndex !== cursorLine) return <Text key={lineIndex}>{line || " "}</Text>;
+
+            const before = line.slice(0, cursorColumn);
+            const at = line[cursorColumn] ?? " ";
+            const after = line.slice(cursorColumn + 1);
+            return (
+              <Text key={lineIndex}>
+                {before}
+                <Cursor character={at} />
+                {after}
+              </Text>
+            );
+          })
         )}
+        {hiddenAfter > 0 && <Text color={theme.colors.muted}>… (+{hiddenAfter} later lines)</Text>}
       </Box>
     </Box>
   );

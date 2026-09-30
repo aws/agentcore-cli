@@ -157,6 +157,33 @@ describe("project add harness wizard", () => {
     screen.unmount();
   });
 
+  test("left and right arrows edit within the system prompt", async () => {
+    const projectRoot = await inProject();
+    const screen = renderScreen("/agentcore/add/harness");
+
+    await waitForText(screen.lastFrame, "what should this harness be called?");
+    await screen.write("assistant");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "what is the agent's system prompt?");
+
+    await screen.write("abde");
+    await screen.press("left");
+    await screen.press("left");
+    await screen.write("c");
+    await screen.press("right");
+    await screen.write("!");
+    await screen.press("ctrl+d");
+
+    await waitForText(screen.lastFrame, "choose a model provider");
+    await acceptDefaultModel(screen);
+    await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "added harness 'assistant'");
+
+    expect(await systemPromptOf(projectRoot, "assistant")).toBe("abcd!e");
+    screen.unmount();
+  }, 15000);
+
   test("a provider other than Bedrock asks for its model ID and API key ARN", async () => {
     const projectRoot = await inProject();
     const screen = renderScreen("/agentcore/add/harness");
