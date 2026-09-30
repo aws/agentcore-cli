@@ -55,9 +55,12 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   return {
     name,
     build: scaffoldRuntimeInput.build,
-    // Persist the provider the template wired into the code (framework
-    // scaffolds only) so the China deploy gate can classify this runtime later.
-    ...(scaffoldRuntimeInput.framework !== "none" && {
+    // Persist the provider actually wired into the scaffolded code so the
+    // China deploy gate can classify this runtime later: framework scaffolds
+    // and Bedrock Agent imports (whose translated code calls Bedrock despite
+    // framework "none"). Provider-free scaffolds (minimal, MCP) stay
+    // unclassified.
+    ...((scaffoldRuntimeInput.framework !== "none" || input.importBedrockAgent !== undefined) && {
       modelProvider: scaffoldRuntimeInput.modelProvider ?? "Bedrock",
     }),
     // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.

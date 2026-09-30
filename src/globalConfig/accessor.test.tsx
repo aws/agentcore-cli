@@ -11,15 +11,22 @@ describe("DefaultGlobalConfigAccessor telemetry partition default", () => {
   let configPath: string;
   const savedEnv = { ...process.env };
 
+  const savedArgv = [...process.argv];
+
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "agentcore-accessor-test-"));
     configPath = join(tempDir, "config.json");
     delete process.env.AWS_REGION;
     delete process.env.AWS_DEFAULT_REGION;
+    delete process.env.AWS_PROFILE;
+    // Point the shared-config fallback of the region resolution at a
+    // nonexistent file so the host's real ~/.aws/config cannot leak in.
+    process.env.AWS_CONFIG_FILE = join(tempDir, "no-aws-config");
   });
 
   afterEach(async () => {
     process.env = { ...savedEnv };
+    process.argv = [...savedArgv];
     await rm(tempDir, { recursive: true, force: true });
   });
 
@@ -75,6 +82,26 @@ describe("DefaultGlobalConfigAccessor telemetry partition default", () => {
     const persisted = JSON.parse(await readFile(configPath, "utf8"));
     expect(persisted.telemetry).toBeUndefined();
     expect(persisted.installationId).toBeDefined();
+  });
+
+  test("a first run with China only from --region persists telemetry disabled", async () => {
+    process.argv = ["node", "agentcore", "runtime", "list", "--region", "cn-north-1"];
+    await accessor().get();
+
+    const persisted = JSON.parse(await readFile(configPath, "utf8"));
+    expect(persisted.telemetry).toEqual({ enabled: false });
+  });
+
+  test("a first run with China only from the active profile persists telemetry disabled", async () => {
+    const awsConfigPath = join(tempDir, "aws-config");
+    await writeFile(awsConfigPath, "[default]\nregion = cn-northwest-1\n");
+    process.env.AWS_CONFIG_FILE = awsConfigPath;
+
+    const config = await accessor().get();
+    expect(config.telemetry.enabled).toBe(false);
+
+    const persisted = JSON.parse(await readFile(configPath, "utf8"));
+    expect(persisted.telemetry).toEqual({ enabled: false });
   });
 
   test("a first China run does not clobber a pre-seeded explicit opt-in", async () => {

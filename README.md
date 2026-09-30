@@ -150,9 +150,11 @@ declares, not the ones you add in the stack.
   to a China target fails when a runtime was scaffolded with an inaccessible model provider
   (recorded as the runtime's `modelProvider` in `agentcore.json`; delete that field if you have
   replaced the model wiring in code). Harness projects are not available in China regions.
-- **Memory:** AgentCore Memory is not available in China regions, so the strands template's
-  default memory is dropped from China scaffolds — the memory module stays in the code and
-  activates once a memory exists.
+- **Resource families:** only Runtimes, Gateways, and credentials are available in China
+  regions. The strands template's default memory is dropped from China scaffolds (the memory
+  module stays in the code and activates once a memory exists); adding unsupported resources
+  (memory, evaluators, harnesses, payments, …) or deploying a spec that contains them to a
+  China target fails with an explicit message.
 - **Telemetry** is always disabled when the ambient AWS region or any deployment target is a
   China region.
 

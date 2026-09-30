@@ -15,12 +15,16 @@ import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import {
+  cnUnsupportedResourceMessage,
   FsProjectManager,
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
 } from "./manager";
-import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
+import {
+  getDefaultMemorySpec,
+  resolveRuntimeTemplateShortcut,
+} from "../../handlers/project/shortcuts";
 import {
   type AddResourceInput,
   type CreateProjectInput,
@@ -792,6 +796,31 @@ describe("FsProjectManager.addResource", () => {
       // dependency checks (which fail in this environment).
       expect(steps.join("\n")).toContain(MEMORY_STRIPPED_CN_MESSAGE);
       expect(String(error)).toContain("uv is missing");
+    });
+
+    test("rejects adding a memory on a China target", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1");
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "memory",
+          resourceConfig: getDefaultMemorySpec("cn_mem"),
+        }),
+      ).rejects.toThrow(new RegionUnsupportedFeatureError(cnUnsupportedResourceMessage("memory")));
+    });
+
+    test("deploy to a China target rejects unsupported spec collections", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.memories = [getDefaultMemorySpec("cn_mem")];
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain("'memories'");
+      expect(String(error)).toContain("not available in China regions");
     });
 
     test("lets a model-provider template through for commercial-only targets", async () => {

@@ -488,6 +488,9 @@ describe("project add runtime --type import", () => {
       codeLocation: "app/support_proxy",
       runtimeVersion: "PYTHON_3_14",
       protocol: "HTTP",
+      // Imports wire Bedrock model code; persisting the provider lets the
+      // China deploy gate hard-fail if a China target is added later.
+      modelProvider: "Bedrock",
     });
     expect(spec.runtimes[0].additionalPolicies).toBeUndefined();
 

@@ -8,7 +8,8 @@ import type { ReadWriteJson } from "../io";
 import type { Logger } from "../logging";
 import { globalConfigFileSchema } from "./types";
 import { DEFAULT_GLOBAL_CONFIG, applyOverrides } from "./config";
-import { isChinaRegion } from "../core/partition";
+import { isChinaContext } from "../core/partition";
+import { regionFlagFromArgv, resolveRegion } from "../core/region";
 import z from "zod";
 import { InputValidationError } from "../errors";
 
@@ -46,6 +47,13 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
 
     const configFileData = await this.readConfigFile();
 
+    // Resolve China the same way the telemetry client does (--region from
+    // argv, env vars, shared config profile, project targets) so the persist
+    // decision below can never disagree with the client's suppression.
+    const chinaContext = await isChinaContext({
+      region: await resolveRegion(regionFlagFromArgv(process.argv)),
+    });
+
     // a run with no persisted installationId is the first run on this machine
     const isFirstRun = !configFileData.installationId;
 
@@ -57,7 +65,7 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
       // the first-run notice is not shown there (telemetry is disabled), so
       // without persisting, a later run in a commercial region would flip
       // telemetry back on without the notice ever having been displayed.
-      if (inChinaRegionEnv() && configFileData.telemetry?.enabled === undefined) {
+      if (chinaContext && configFileData.telemetry?.enabled === undefined) {
         configFileData.telemetry = { ...configFileData.telemetry, enabled: false };
         this.logger.info(`first run in a China region, persisting telemetry disabled`);
       }
@@ -76,7 +84,7 @@ export class DefaultGlobalConfigAccessor implements GlobalConfigAccessor {
     // No telemetry collector exists in the aws-cn partition, so telemetry
     // defaults to disabled there; an explicit telemetry.enabled in the config
     // file still wins through applyOverrides.
-    const defaults = inChinaRegionEnv()
+    const defaults = chinaContext
       ? {
           ...DEFAULT_GLOBAL_CONFIG,
           telemetry: { ...DEFAULT_GLOBAL_CONFIG.telemetry, enabled: false },
@@ -150,9 +158,4 @@ function diff<T extends Record<string, unknown>>(a: T, b: T): DeepPartial<T> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** True when the ambient AWS region env vars point at the aws-cn partition. */
-function inChinaRegionEnv(): boolean {
-  return isChinaRegion(process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "");
 }

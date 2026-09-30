@@ -122,6 +122,42 @@ export const HARNESS_CN_MESSAGE =
   "instead (e.g. --template agent-python-minimal) or start from --template empty.";
 
 /**
+ * The resource families whose CloudFormation types ARE registered in the
+ * China regions (verified against cn-north-1's public registry): Runtime,
+ * RuntimeEndpoint, Gateway (+Target/+RateLimit), and Identity credentials.
+ * Declared as an allowlist so any family added later defaults to blocked in
+ * China until its availability there is confirmed.
+ */
+const CN_SUPPORTED_RESOURCE_TYPES = new Set<AddResourceInput["resourceType"]>([
+  "runtime",
+  "runtime-endpoint",
+  "credential",
+  "gateway",
+  "gateway-target",
+]);
+
+/**
+ * The project spec collections deployable to a China region — the spec-file
+ * counterpart of {@link CN_SUPPORTED_RESOURCE_TYPES} (toolRuntimes render as
+ * Runtime resources). Any other non-empty array collection in the spec,
+ * including ones added in the future, blocks a China deploy.
+ */
+const CN_SUPPORTED_SPEC_COLLECTIONS = new Set([
+  "runtimes",
+  "credentials",
+  "agentCoreGateways",
+  "toolRuntimes",
+]);
+
+/** Shown when an `add` targets a resource family that is unavailable in China regions. */
+export function cnUnsupportedResourceMessage(resourceType: string): string {
+  return (
+    `'${resourceType}' resources are not available in China regions (cn-north-1, ` +
+    `cn-northwest-1), and this project has a China deployment target.`
+  );
+}
+
+/**
  * Shown when the default memory is dropped from a China scaffold. The rendered
  * code keeps the memory module (it degrades to no memory while its env var is
  * absent), so a memory can be added without code changes once available.
@@ -401,6 +437,9 @@ export class FsProjectManager implements ProjectManager {
     if ((await this.listTargets(project)).some((target) => isChinaRegion(target.region))) {
       if (input.resourceType === "harness") {
         throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
+      }
+      if (!CN_SUPPORTED_RESOURCE_TYPES.has(input.resourceType)) {
+        throw new RegionUnsupportedFeatureError(cnUnsupportedResourceMessage(input.resourceType));
       }
       if (input.resourceType === "runtime") {
         const { framework, modelProvider, modelId, memory } =
@@ -1110,6 +1149,24 @@ export class FsProjectManager implements ProjectManager {
       }
       if (project.spec.harnesses.length > 0) {
         throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
+      }
+      // Any non-empty spec collection outside the China allowlist fails here
+      // with a clear message instead of CloudFormation's opaque "Unrecognized
+      // resource types" — including collections added to the spec in the
+      // future, which default to blocked until confirmed available there.
+      const present = Object.entries(project.spec).filter(
+        ([key, value]) =>
+          Array.isArray(value) && value.length > 0 && !CN_SUPPORTED_SPEC_COLLECTIONS.has(key),
+      );
+      if (present.length > 0) {
+        throw new RegionUnsupportedFeatureError(
+          `Cannot deploy to China region ${target.region}: ` +
+            present.map(([name]) => `'${name}'`).join(", ") +
+            ` in agentcore.json ${present.length === 1 ? "is" : "are"} not available in China ` +
+            `regions (cn-north-1, cn-northwest-1). Remove ${
+              present.length === 1 ? "this entry" : "these entries"
+            } before deploying to a China target.`,
+        );
       }
       const unclassified = project.spec.runtimes.filter(
         (runtime) => runtime.modelProvider === undefined,
