@@ -437,6 +437,8 @@ export type TextInputSpec = {
   onChange: (value: string) => void;
   required?: boolean;
   schema?: z.ZodType;
+  // number rejects anything but digits before the schema sees the value.
+  number?: boolean;
 };
 
 export type MultiTextFieldProps = {
@@ -465,6 +467,7 @@ export function MultiTextField({ inputs }: MultiTextFieldProps) {
       label: input.label,
       required: input.required ?? false,
       schema: input.schema,
+      number: input.number ?? false,
     });
 
   useInput((_input, key) => {

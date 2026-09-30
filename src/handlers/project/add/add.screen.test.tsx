@@ -23,6 +23,7 @@ function addSubcommands(): string[] {
 // "cli" divider and opens its help instead.
 const WITH_SCREENS = [
   "runtime",
+  "runtime-endpoint",
   "memory",
   "gateway",
   "gateway-target",

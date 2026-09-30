@@ -29,6 +29,7 @@ export function createAddProjectResourceHandler(
   // CliOnlyScreen).
   const projectAdd = new Router("add", "add project resources").supportedTuiCommands(
     "runtime",
+    "runtime-endpoint",
     "memory",
     "gateway",
     "gateway-target",
