@@ -112,6 +112,7 @@ describe("Runtime invoke routing", () => {
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);
     const screen = renderScreen("/agentcore", { core });
 
+    await waitForText(screen.lastFrame, "type to choose a command");
     await screen.write("runtime");
     await screen.press("return");
     await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
