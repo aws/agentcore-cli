@@ -8,7 +8,12 @@ import {
   isListedInMenu,
   isTuiCommandSupported,
 } from "../router";
-import { MIN_BANNER_COLUMNS, MIN_BANNER_ROWS, shouldHideBrandBanner } from "./BrandBanner";
+import {
+  BRAND_BANNER_ROWS,
+  MIN_BANNER_COLUMNS,
+  MIN_BANNER_ROWS,
+  shouldHideBrandBanner,
+} from "./BrandBanner";
 import { Layout } from "./Layout";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
@@ -20,7 +25,6 @@ import { scrollWindow } from "./scrollWindow";
 const theme = darkTheme;
 const PLACEHOLDER = "type to choose a command";
 const CLI_ONLY_SECTION = "cli";
-const BANNER_ROWS = 4;
 const FILTER_ROWS = 2;
 
 // rootCommand walks up to the top of the Commander tree.
@@ -200,7 +204,7 @@ function CommandMenu({
   return (
     <Layout
       banner={banner}
-      bannerHeight={BANNER_ROWS}
+      bannerHeight={BRAND_BANNER_ROWS}
       hideBanner={Boolean(banner) && shouldHideBrandBanner(process.env.TERM_PROGRAM)}
       bannerMinColumns={MIN_BANNER_COLUMNS}
       bannerMinRows={MIN_BANNER_ROWS}
