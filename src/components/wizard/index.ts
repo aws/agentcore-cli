@@ -12,6 +12,7 @@ export {
   MultiTextField,
   Summary,
   firstIssue,
+  promptPreview,
   type Choice,
   type TextFieldProps,
   type TextAreaFieldProps,

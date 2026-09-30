@@ -611,6 +611,18 @@ export function MultiChoiceField<T>({
   );
 }
 
+// promptPreview keeps a multi-line answer to one review line: its first line,
+// cut short, with a count of what follows it. It reads the text exactly as it
+// will be saved — no trimming — so a leading blank line or a trailing newline
+// left by an extra enter shows up in the review rather than only in the spec.
+export function promptPreview(prompt: string): string {
+  const lines = prompt.split("\n");
+  const first = lines[0] ?? "";
+  const shown = first.length > 60 ? `${first.slice(0, 59)}…` : first;
+  const rest = lines.length - 1;
+  return rest > 0 ? `${shown} (+${rest} more ${rest === 1 ? "line" : "lines"})` : shown;
+}
+
 export interface SummaryProps {
   items: Record<string, string>;
 }

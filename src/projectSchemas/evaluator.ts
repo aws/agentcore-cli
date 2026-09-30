@@ -71,10 +71,11 @@ export const LlmAsAJudgeConfigSchema = z.object({
   ratingScale: RatingScaleSchema,
 });
 export type LlmAsAJudgeConfig = z.infer<typeof LlmAsAJudgeConfigSchema>;
+export const DEFAULT_CODE_BASED_TIMEOUT_SECONDS = 60;
 export const ManagedCodeBasedConfigSchema = z.object({
   codeLocation: z.string().min(1),
   entrypoint: z.string().min(1).default("lambda_function.handler"),
-  timeoutSeconds: z.number().int().min(1).max(300).default(60),
+  timeoutSeconds: z.number().int().min(1).max(300).default(DEFAULT_CODE_BASED_TIMEOUT_SECONDS),
   additionalPolicies: z.array(z.string().min(1)).optional(),
 });
 export type ManagedCodeBasedConfig = z.infer<typeof ManagedCodeBasedConfigSchema>;

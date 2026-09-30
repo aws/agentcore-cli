@@ -83,3 +83,7 @@ export const RATING_SCALE_PRESET_NAMES = Object.keys(RATING_SCALE_PRESETS) as Ra
 export function isRatingScalePreset(value: string): value is RatingScalePreset {
   return value in RATING_SCALE_PRESETS;
 }
+
+export function expandRatingScalePreset(preset: RatingScalePreset): RatingScale {
+  return structuredClone(RATING_SCALE_PRESETS[preset]) as RatingScale;
+}

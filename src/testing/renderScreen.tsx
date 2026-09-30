@@ -129,6 +129,7 @@ export const keys = {
   down: "[B",
   left: "[D",
   right: "[C",
+  backspace: "\u007F",
   // The end-of-transmission control character, which Ink reports as ctrl+d.
   "ctrl+d": "\u0004",
 } as const;

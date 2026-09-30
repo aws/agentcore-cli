@@ -2,7 +2,14 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type z from "zod";
-import { Step, Summary, TextAreaField, TextField, Wizard } from "../../../../components/wizard";
+import {
+  promptPreview,
+  Step,
+  Summary,
+  TextAreaField,
+  TextField,
+  Wizard,
+} from "../../../../components/wizard";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import { HarnessNameSchema, type HarnessSpecSchema } from "../../../../projectSchemas/harness";
 import { ProjectKey } from "../../../../router";
@@ -44,18 +51,6 @@ export function toHarnessInput(values: HarnessFormValues): HarnessSpecInput {
     model: toHarnessModelInput(values.model),
     systemPrompt: values.systemPrompt,
   };
-}
-
-// promptPreview keeps the review to one line: the prompt's first line, cut
-// short, with a count of what follows it. It reads the prompt exactly as it
-// will be saved — no trimming — so a leading blank line or a trailing newline
-// left by an extra enter shows up here rather than only in system-prompt.md.
-export function promptPreview(prompt: string): string {
-  const lines = prompt.split("\n");
-  const first = lines[0] ?? "";
-  const shown = first.length > 60 ? `${first.slice(0, 59)}…` : first;
-  const rest = lines.length - 1;
-  return rest > 0 ? `${shown} (+${rest} more ${rest === 1 ? "line" : "lines"})` : shown;
 }
 
 function summaryOf(values: HarnessFormValues): Record<string, string> {

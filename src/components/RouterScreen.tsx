@@ -273,16 +273,25 @@ function CommandMenu({
               const isHl = row.index === highlight;
               return (
                 <Box key={o.name} paddingX={1} flexShrink={0}>
-                  <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
-                  <Text
-                    bold={isHl}
-                    color={
-                      isHl ? theme.colors.focus : o.cliOnly ? theme.colors.muted : theme.colors.text
-                    }
-                  >
-                    {o.name.padEnd(nameWidth)}
-                  </Text>
-                  <Text color={theme.colors.muted}>{o.description}</Text>
+                  {/** A wrapped description continues under itself and leaves the name in line. **/}
+                  <Box flexShrink={0}>
+                    <Text color={theme.colors.focus}>{isHl ? `${glyphs.pointer} ` : "  "}</Text>
+                    <Text
+                      bold={isHl}
+                      color={
+                        isHl
+                          ? theme.colors.focus
+                          : o.cliOnly
+                            ? theme.colors.muted
+                            : theme.colors.text
+                      }
+                    >
+                      {o.name.padEnd(nameWidth)}
+                    </Text>
+                  </Box>
+                  <Box flexShrink={1}>
+                    <Text color={theme.colors.muted}>{o.description}</Text>
+                  </Box>
                 </Box>
               );
             })

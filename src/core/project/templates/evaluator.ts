@@ -1,11 +1,13 @@
 import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "../source";
-import type { Evaluator } from "../../../projectSchemas/evaluator";
+import {
+  DEFAULT_CODE_BASED_TIMEOUT_SECONDS,
+  type Evaluator,
+} from "../../../projectSchemas/evaluator";
 import type { TemplateRenderer, TemplateResolver } from "./types";
 import { toPythonPackageName } from "../fsUtils";
 import type { ManagedEvaluatorScaffoldInput } from "../../../handlers/project/types";
 
-const DEFAULT_TIMEOUT = 60;
 const ASSET_DIR = "evaluators/python-lambda";
 
 function buildManagedEvaluatorSpec(input: ManagedEvaluatorScaffoldInput): Evaluator {
@@ -18,7 +20,7 @@ function buildManagedEvaluatorSpec(input: ManagedEvaluatorScaffoldInput): Evalua
         managed: {
           codeLocation: `app/${input.name}`,
           entrypoint: "lambda_function.handler",
-          timeoutSeconds: input.timeoutSeconds ?? DEFAULT_TIMEOUT,
+          timeoutSeconds: input.timeoutSeconds ?? DEFAULT_CODE_BASED_TIMEOUT_SECONDS,
           additionalPolicies: ["execution-role-policy.json"],
         },
       },

@@ -11,6 +11,7 @@ import {
   ChoiceField,
   MultiChoiceField,
   MultiTextField,
+  promptPreview,
   ResourceChoiceField,
   RevealChoiceField,
   Summary,
@@ -1143,5 +1144,29 @@ describe("Wizard authoring guards", () => {
     expect(error).toBeInstanceOf(AgentCoreCLIError);
     expect((error as AgentCoreCLIError).source).toBe("internal");
     expect((error as Error).message).toBe('duplicate <Step stepKey="name">');
+  });
+});
+
+describe("promptPreview", () => {
+  test.each([
+    ["a one-line prompt", "You are a pirate.", "You are a pirate."],
+    [
+      "counts the lines after the first",
+      "You are a pirate.\nAnswer in rhyme.",
+      "You are a pirate. (+1 more line)",
+    ],
+    ["keeps a leading blank line", "\nYou are a pirate.", " (+1 more line)"],
+    [
+      "counts a trailing newline left by enter",
+      "You are a pirate.\n",
+      "You are a pirate. (+1 more line)",
+    ],
+    [
+      "cuts a long first line short",
+      `${"x".repeat(70)}\ny\nz`,
+      `${"x".repeat(59)}… (+2 more lines)`,
+    ],
+  ])("%s", (_label, prompt, preview) => {
+    expect(promptPreview(prompt)).toBe(preview);
   });
 });

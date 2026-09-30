@@ -32,6 +32,7 @@ const WITH_SCREENS = [
   "config-bundle",
   "payment-manager",
   "payment-connector",
+  "evaluator",
 ];
 
 describe("project add menu", () => {

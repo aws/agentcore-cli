@@ -427,7 +427,7 @@ add a custom evaluator to the current project
 agentcore add evaluator llm-as-a-judge [options]
 ```
 
-add an LLM-as-a-Judge evaluator: another LLM prompted with instructions on how to score a session
+add an LLM-as-a-Judge evaluator to the current project
 
 **Options**
 
@@ -447,7 +447,7 @@ add an LLM-as-a-Judge evaluator: another LLM prompted with instructions on how t
 agentcore add evaluator code-based [options]
 ```
 
-add a code-based evaluator: scaffold a Python Lambda with custom evaluation logic, or reference an existing Lambda with --lambda-arn
+add a code-based evaluator to the current project
 
 **Options**
 
