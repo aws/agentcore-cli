@@ -25,18 +25,13 @@ import {
   HarnessSpecSchema,
   type HarnessModelProvider,
 } from "../../../projectSchemas/harness";
-import { InputValidationError, RegionUnsupportedFeatureError } from "../../../errors";
+import { InputValidationError } from "../../../errors";
 import { isChinaRegion } from "../../../core/partition";
-import {
-  HARNESS_CN_MESSAGE,
-  LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE,
-  LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
-  MEMORY_STRIPPED_CN_MESSAGE,
-  MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
-} from "../../../core/project/manager";
+import { MEMORY_STRIPPED_CN_MESSAGE } from "../../../core/project/manager";
 import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
+import { validateCreateRegionSupport } from "./region";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -122,11 +117,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       let createInput: CreateProjectInput;
       if (template === undefined) {
-        // The default (no --template) creates a harness project, which is not
-        // part of the China launch.
-        if (isChinaRegion(ctx.require(RegionKey))) {
-          throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
-        }
         createInput = { ...base, scaffoldHarnessInput: resolveScaffoldHarnessInput({ name }) };
       } else if (template === EMPTY_TEMPLATE_NAME) {
         createInput = { ...base };
@@ -139,30 +129,16 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
           modelId: flags["model-id"],
           apiKey,
         });
-        // Apply the China gate at creation when the command's resolved region
-        // (--region flag, env, or profile) already says aws-cn, so the most
-        // common workflow fails before scaffolding instead of at deploy.
-        if (isChinaRegion(ctx.require(RegionKey))) {
-          if (scaffoldRuntimeInput.framework !== "none") {
-            if ((scaffoldRuntimeInput.modelProvider ?? "Bedrock") !== "LiteLLM") {
-              throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
-            }
-            if (scaffoldRuntimeInput.modelId === undefined) {
-              throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
-            }
-            if (scaffoldRuntimeInput.modelId.startsWith("bedrock/")) {
-              throw new RegionUnsupportedFeatureError(LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE);
-            }
-          }
-          // AgentCore Memory is not available in China regions; scaffold
-          // without the template's default memory (the rendered code degrades
-          // to no memory until its env var appears).
-          if (scaffoldRuntimeInput.memory !== undefined) {
-            scaffoldRuntimeInput.memory = undefined;
-            config.io.stderr.write(`${MEMORY_STRIPPED_CN_MESSAGE}\n`);
-          }
-        }
         createInput = { ...base, scaffoldRuntimeInput };
+      }
+
+      const region = ctx.require(RegionKey);
+      validateCreateRegionSupport(createInput, region);
+      // AgentCore Memory is not available in China regions; scaffold without
+      // the template's default memory after all hard restrictions have passed.
+      if (isChinaRegion(region) && createInput.scaffoldRuntimeInput?.memory !== undefined) {
+        createInput.scaffoldRuntimeInput.memory = undefined;
+        config.io.stderr.write(`${MEMORY_STRIPPED_CN_MESSAGE}\n`);
       }
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain

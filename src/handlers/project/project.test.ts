@@ -1197,6 +1197,22 @@ describe("create in China regions", () => {
     ).rejects.toThrow(/not accessible from China regions/);
   });
 
+  test("rejects the Bedrock Managed Agents template", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    await expect(
+      run([
+        "create",
+        "--name",
+        "CnBma",
+        "--template",
+        "bedrock-managed-agents",
+        ...skips,
+        "--region",
+        "cn-north-1",
+      ]),
+    ).rejects.toThrow(/Bedrock Managed Agents is not available in China regions/);
+  });
+
   test("requires --model-id with litellm", async () => {
     cleanups.push((await inTempDirectory()).cleanup);
     await expect(

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { ScreenProps } from "../../types";
 import { PlatformKey } from "../../../router";
+import { RegionKey } from "../../keys";
 import { assertProjectPathFits } from "./pathLimit";
 import type { CreateProjectInput } from "../types";
 import {
@@ -31,6 +32,7 @@ import {
 } from "../../../components/wizard";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { TuiExitMessageKey } from "../../../tui/exitMessage";
+import { validateCreateRegionSupport } from "./region";
 
 const theme = darkTheme;
 
@@ -155,7 +157,9 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         // them the way it reports a failed create — with the retry still on
         // offer, because nothing has to be cleaned up first.
         assertProjectPathFits(values.name, ctx.require(PlatformKey));
-        return core.projectManager.create(buildCreateInput(values));
+        const input = buildCreateInput(values);
+        validateCreateRegionSupport(input, ctx.require(RegionKey));
+        return core.projectManager.create(input);
       }}
       runningLabel={`creating ${values.name}…`}
       successLabel={`project created in ./${values.name}`}

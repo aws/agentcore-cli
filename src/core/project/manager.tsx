@@ -93,6 +93,12 @@ import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
+import {
+  BMA_POLICY_FILE,
+  BMA_TEMPLATE_NAME,
+  BMA_TEMPLATE_TAG_KEY,
+  BMA_TEMPLATE_TAG_VALUE,
+} from "../../handlers/project/bmaProfile";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -111,6 +117,11 @@ export const MODEL_PROVIDER_RUNTIMES_CN_MESSAGE =
   "(--template agent-python-minimal or mcp-python-fastmcp) and bring your own model connectivity, " +
   "or use --template agent-python-strands --model-provider litellm --model-id <model reachable " +
   "from China>.";
+
+/** Shown when a Bedrock Managed Agents environment targets the aws-cn partition. */
+export const BMA_CN_MESSAGE =
+  "Bedrock Managed Agents is not available in China regions (cn-north-1, cn-northwest-1). " +
+  "Choose a supported commercial or GovCloud region.";
 
 /**
  * Shown when a harness is created in or deployed to a China (aws-cn) region.
@@ -457,6 +468,9 @@ export class FsProjectManager implements ProjectManager {
       if (input.resourceType === "runtime") {
         const { framework, modelProvider, modelId, memory } =
           input.resourceConfig.scaffoldRuntimeInput;
+        if (framework === BMA_TEMPLATE_NAME) {
+          throw new RegionUnsupportedFeatureError(BMA_CN_MESSAGE);
+        }
         if (framework !== "none") {
           if ((modelProvider ?? "Bedrock") !== "LiteLLM") {
             throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
@@ -1152,6 +1166,18 @@ export class FsProjectManager implements ProjectManager {
     // modelProvider (BYO, provider-free, hand-edited, or scaffolded by an
     // older CLI) cannot be classified and only get an informational note.
     if (isChinaRegion(target.region)) {
+      const bmaRuntimes = project.spec.runtimes.filter(
+        (runtime) =>
+          runtime.tags?.[BMA_TEMPLATE_TAG_KEY] === BMA_TEMPLATE_TAG_VALUE ||
+          runtime.additionalPolicies?.includes(BMA_POLICY_FILE),
+      );
+      if (bmaRuntimes.length > 0) {
+        throw new RegionUnsupportedFeatureError(
+          `Cannot deploy to China region ${target.region}: ` +
+            `${bmaRuntimes.map((runtime) => `runtime '${runtime.name}'`).join(", ")} uses ` +
+            `Bedrock Managed Agents. ${BMA_CN_MESSAGE}`,
+        );
+      }
       const blocked = project.spec.runtimes.filter(
         (runtime) =>
           runtime.modelProvider !== undefined &&

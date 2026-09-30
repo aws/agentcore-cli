@@ -15,6 +15,7 @@ import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import {
+  BMA_CN_MESSAGE,
   cnUnsupportedResourceMessage,
   FsProjectManager,
   LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE,
@@ -703,7 +704,11 @@ describe("FsProjectManager.addResource", () => {
   describe("China (aws-cn) deployment targets", () => {
     const MCP_PYTHON_FASTMCP = resolveRuntimeTemplateShortcut("mcp-python-fastmcp");
 
-    async function projectWithTarget(region: string, missingToolAfterCreate?: string) {
+    async function projectWithTarget(
+      region: string,
+      missingToolAfterCreate?: string,
+      scaffoldRuntimeInput: ScaffoldRuntimeInput = AGENT_PYTHON,
+    ) {
       const checkedTools: string[] = [];
       const deployCalls: { project: Project; input: DeployBackendInput }[] = [];
       let missingTool: string | undefined;
@@ -734,7 +739,7 @@ describe("FsProjectManager.addResource", () => {
       });
       const { project } = await runCreate(subject, {
         name: "example",
-        scaffoldRuntimeInput: AGENT_PYTHON,
+        scaffoldRuntimeInput,
         skipInstall: true,
         skipGit: true,
       });
@@ -761,6 +766,28 @@ describe("FsProjectManager.addResource", () => {
           },
         }),
       ).rejects.toThrow(new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE));
+
+      expect(checkedTools).toEqual([]);
+      expect(existsSync(runtimePath)).toBe(false);
+    });
+
+    test("rejects a Bedrock Managed Agents template before scaffolding", async () => {
+      await inTempDirectory();
+      const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
+      const runtimePath = join(project.rootPath, "app", "cn_bma");
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "cn_bma",
+            scaffoldRuntimeInput: {
+              ...BEDROCK_MANAGED_AGENTS,
+              runtimeName: "cn_bma",
+            },
+          },
+        }),
+      ).rejects.toThrow(new RegionUnsupportedFeatureError(BMA_CN_MESSAGE));
 
       expect(checkedTools).toEqual([]);
       expect(existsSync(runtimePath)).toBe(false);
@@ -908,6 +935,21 @@ describe("FsProjectManager.addResource", () => {
       expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(String(error)).toContain("Cannot deploy to China region cn-north-1");
       expect(String(error)).toContain("'agent_python_minimal'");
+      expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy to a China target hard-fails a Bedrock Managed Agents runtime", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget(
+        "cn-north-1",
+        undefined,
+        BEDROCK_MANAGED_AGENTS,
+      );
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain("runtime 'bedrock_managed_agents'");
+      expect(String(error)).toContain(BMA_CN_MESSAGE);
       expect(deployCalls).toEqual([]);
     });
 
