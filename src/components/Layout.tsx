@@ -1,5 +1,5 @@
 import React from "react";
-import { Box } from "ink";
+import { Box, useBoxMetrics, type DOMElement } from "ink";
 import { useWindowSize } from "./ui/useWindowSize";
 import { Header, type HeaderProps } from "./Header";
 import { Footer } from "./Footer";
@@ -32,7 +32,8 @@ export interface LayoutProps {
       }) => React.ReactNode);
 }
 
-const FRAME_ROWS = 4;
+const DEFAULT_HEADER_ROWS = 2;
+const FOOTER_ROWS = 2;
 
 // Layout is the standard full-screen frame: a breadcrumb Header at the top, a
 // KeyHint Footer at the bottom, and a flexible content area in between that grows
@@ -49,9 +50,15 @@ export const Layout: React.FC<LayoutProps> = ({
   children,
 }) => {
   const { columns, rows } = useWindowSize();
+  const headerRef = React.useRef<DOMElement>(null);
+  const { height: measuredHeaderRows, hasMeasured: hasMeasuredHeader } = useBoxMetrics(headerRef);
   const bannerVisible =
     Boolean(banner) && !hideBanner && columns >= bannerMinColumns && rows >= bannerMinRows;
-  const contentRows = Math.max(0, rows - FRAME_ROWS - (bannerVisible ? bannerHeight : 0));
+  const headerRows = hasMeasuredHeader ? measuredHeaderRows : DEFAULT_HEADER_ROWS;
+  const contentRows = Math.max(
+    0,
+    rows - headerRows - FOOTER_ROWS - (bannerVisible ? bannerHeight : 0),
+  );
   const content =
     typeof children === "function"
       ? children({ columns, rows, contentRows, bannerVisible })
@@ -60,7 +67,9 @@ export const Layout: React.FC<LayoutProps> = ({
   return (
     <Box width={columns} height={rows} flexDirection="column">
       {bannerVisible ? banner : null}
-      <Header breadcrumb={breadcrumb} description={description} />
+      <Box ref={headerRef} flexShrink={0}>
+        <Header breadcrumb={breadcrumb} description={description} />
+      </Box>
       <Box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="column">
         {content}
       </Box>

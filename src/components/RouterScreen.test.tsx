@@ -433,6 +433,20 @@ describe("short terminals", () => {
     r.unmount();
   });
 
+  test("accounts for a wrapped header when scrolling a narrow terminal", async () => {
+    const full = await fullMenu();
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "❯ create");
+    await r.resize(40, ROWS);
+
+    for (let i = 0; i < full.names.length; i++) {
+      if (i > 0) await r.press("down");
+      expect(r.lastFrame()).toMatch(new RegExp(`❯\\s*${full.names[i]}`));
+    }
+
+    r.unmount();
+  });
+
   test("a nested menu, without the banner, uses the rows the banner would take", async () => {
     const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "❯ ");
