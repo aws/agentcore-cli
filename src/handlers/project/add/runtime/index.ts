@@ -23,6 +23,7 @@ import {
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
 import { addProjectResource, requireDeployedNameFits } from "../shared";
+import { BMA_CUSTOM_EXECUTION_ROLE_WARNING, BMA_TEMPLATE_NAME } from "../../bmaProfile";
 
 const CONFIGURATION = "Configuration:";
 const ENVIRONMENT = "Environment:";
@@ -273,6 +274,10 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
               apiKey,
             })
           : resolveRuntimeTemplateShortcut("agent-python-minimal", { runtimeName: flags.name });
+
+      if (scaffoldRuntimeInput.framework === BMA_TEMPLATE_NAME && flags["role-arn"] !== undefined) {
+        notes.push(BMA_CUSTOM_EXECUTION_ROLE_WARNING);
+      }
 
       const inputEnvironmentVariables = parseJsonFlag<Record<string, string>>(
         "environment-variables",

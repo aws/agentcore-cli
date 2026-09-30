@@ -352,6 +352,37 @@ describe("project add runtime", () => {
     );
   });
 
+  test("Bedrock Managed Agents warns when an existing execution role needs its permissions", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const roleArn = "arn:aws:iam::111122223333:role/ExistingBmaRole";
+
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "my_bma",
+      "--template",
+      "bedrock-managed-agents",
+      "--role-arn",
+      roleArn,
+      "--json",
+    ]);
+
+    expect(JSON.parse(io.stdout()).notes).toEqual([
+      expect.stringContaining("AgentCore CDK cannot attach bma-acr-policy.json"),
+    ]);
+    expect(io.stderr()).not.toContain("bma-acr-policy.json");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes).toContainEqual(
+      expect.objectContaining({
+        name: "my_bma",
+        executionRoleArn: roleArn,
+        additionalPolicies: ["bma-acr-policy.json"],
+      }),
+    );
+  });
+
   test.each<[string, string[]]>([
     ["agent-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
     ["a2a-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],

@@ -40,6 +40,9 @@ To customize these settings after creation, edit the Runtime entry in `agentcore
 When adding this environment to an existing project, `agentcore add runtime` also accepts
 `--lifecycle-configuration` and `--filesystem-configurations`.
 
+If the Runtime has an `executionRoleArn`, AgentCore CDK cannot attach `bma-acr-policy.json` to that imported role.
+Grant the role `bedrock-mantle:RegisterEnvironment` and `bedrock-mantle:ConnectEnvironment` before deploying.
+
 The server keeps the connection state in `state.json` in `BMA_STATE_DIR`. The default is `/home/app/.bma`. The client
 sets the workspace in `workspace_directory` when it creates the session. `client.py` uses `/home/app/workspace`. The
 server creates that directory and runs the agent commands in it. If the activate call has no workspace directory, the
