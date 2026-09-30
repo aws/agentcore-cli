@@ -551,11 +551,27 @@ describe("FsProjectManager.addResource", () => {
 
     async function projectWithTarget(region: string, missingToolAfterCreate?: string) {
       const checkedTools: string[] = [];
+      const deployCalls: { project: Project; input: DeployBackendInput }[] = [];
       let missingTool: string | undefined;
+      const backend: ProjectBackend = {
+        async *build() {},
+        async *deploy(project, input) {
+          deployCalls.push({ project, input });
+          yield { type: "step", message: "Deployment started" };
+          return { outputs: {} };
+        },
+        async resolveDeployedResources() {
+          return [];
+        },
+        async resolveProjectResources() {
+          return [];
+        },
+      };
       const subject = new FsProjectManager({
         logger: createSilentLogger(),
         identity: new TestIdentityClient(),
         enableTransactionSearch: async () => {},
+        backends: { CDK: backend },
         runner: async () => {},
         checkTool: async (candidate: string) => {
           checkedTools.push(candidate);
@@ -574,7 +590,7 @@ describe("FsProjectManager.addResource", () => {
       );
       missingTool = missingToolAfterCreate;
       checkedTools.length = 0;
-      return { subject, project, checkedTools };
+      return { subject, project, checkedTools, deployCalls };
     }
 
     test("rejects a model-provider template before scaffolding", async () => {
@@ -729,7 +745,7 @@ describe("FsProjectManager.addResource", () => {
 
     test("deploy to a China target hard-fails on a persisted commercial model provider", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.runtimes[0]!.modelProvider = "Bedrock";
       });
@@ -738,22 +754,24 @@ describe("FsProjectManager.addResource", () => {
       expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(String(error)).toContain("Cannot deploy to China region cn-north-1");
       expect(String(error)).toContain("'agent_python_minimal'");
+      expect(deployCalls).toEqual([]);
     });
 
     test("deploy to a China target proceeds past the gate for LiteLLM", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.runtimes[0]!.modelProvider = "LiteLLM";
       });
 
       const { error } = await deployOutcome(subject, project);
-      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target hard-fails a LiteLLM runtime routing to Bedrock", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.runtimes[0]!.modelProvider = "LiteLLM";
         spec.runtimes[0]!.modelId = "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0";
@@ -762,47 +780,51 @@ describe("FsProjectManager.addResource", () => {
       const { error } = await deployOutcome(subject, project);
       expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(String(error)).toContain("LiteLLM → bedrock/");
+      expect(deployCalls).toEqual([]);
     });
 
     test("deploy to a China target passes a LiteLLM runtime with a non-Bedrock model id", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.runtimes[0]!.modelProvider = "LiteLLM";
         spec.runtimes[0]!.modelId = "deepseek/deepseek-chat";
       });
 
       const { steps, error } = await deployOutcome(subject, project);
-      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(error).toBeUndefined();
       expect(steps.join("\n")).not.toContain("cannot verify the model provider");
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target notes a LiteLLM runtime without a persisted model id", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.runtimes[0]!.modelProvider = "LiteLLM";
       });
 
       const { steps, error } = await deployOutcome(subject, project);
-      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(error).toBeUndefined();
       expect(steps.join("\n")).toContain("cannot verify the model provider");
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target notes unclassifiable runtimes and proceeds", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
 
       const { steps, error } = await deployOutcome(subject, project);
       expect(steps.join("\n")).toContain(
         "cannot verify the model provider of 'agent_python_minimal'",
       );
-      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target rejects harness projects", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.harnesses = [{ name: "example_harness", path: "harness/example" }];
       });
@@ -810,18 +832,20 @@ describe("FsProjectManager.addResource", () => {
       const { error } = await deployOutcome(subject, project);
       expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(String(error)).toContain("Harness projects are not available in China regions");
+      expect(deployCalls).toEqual([]);
     });
 
     test("deploy to a commercial target skips the China gate entirely", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("us-west-2");
+      const { subject, project, deployCalls } = await projectWithTarget("us-west-2");
       await editSpec(project, (spec) => {
         spec.runtimes[0]!.modelProvider = "Bedrock";
       });
 
       const { steps, error } = await deployOutcome(subject, project);
-      expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(error).toBeUndefined();
       expect(steps.join("\n")).not.toContain("cannot verify");
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("strips the default memory from a China runtime scaffold", async () => {
@@ -873,7 +897,7 @@ describe("FsProjectManager.addResource", () => {
 
     test("deploy to a China target rejects unsupported spec collections", async () => {
       await inTempDirectory();
-      const { subject, project } = await projectWithTarget("cn-north-1");
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.memories = [getDefaultMemorySpec("cn_mem")];
       });
@@ -882,6 +906,7 @@ describe("FsProjectManager.addResource", () => {
       expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(String(error)).toContain("'memories'");
       expect(String(error)).toContain("not available in China regions");
+      expect(deployCalls).toEqual([]);
     });
 
     test("lets a model-provider template through for commercial-only targets", async () => {
@@ -1010,7 +1035,7 @@ describe("FsProjectManager.deploy", () => {
       async *build() {},
       async *deploy(project, input) {
         calls.push({ project, input });
-        yield { type: "step" as const, message: "Backend deployment started" };
+        yield { type: "step" as const, message: "Deployment started" };
         return { outputs: { RuntimeArn: "arn:runtime" } };
       },
       async resolveDeployedResources() {
@@ -1097,7 +1122,7 @@ describe("FsProjectManager.deploy", () => {
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.project).toBe(project);
     expect(subject.calls[0]?.input.target).toEqual(targets[1]);
-    expect(deployed.events).toEqual([{ type: "step", message: "Backend deployment started" }]);
+    expect(deployed.events).toEqual([{ type: "step", message: "Deployment started" }]);
     expect(deployed.result).toEqual({
       outputs: { RuntimeArn: "arn:runtime" },
     });
@@ -1186,7 +1211,7 @@ describe("FsProjectManager.deploy", () => {
     expect(subject.calls[0]?.input.target).toEqual(SYNTHESIZED);
     expect(deployed.events).toEqual([
       { type: "step", message: CREATED_MESSAGE },
-      { type: "step", message: "Backend deployment started" },
+      { type: "step", message: "Deployment started" },
     ]);
     expect(await Bun.file(targetsFile(root)).json()).toEqual([SYNTHESIZED]);
   });
@@ -1286,7 +1311,7 @@ describe("FsProjectManager.deploy", () => {
 
     expect(subject.accountCalls).toEqual([]);
     expect(subject.calls[0]?.input.target).toEqual(configured[0]!);
-    expect(deployed.events).toEqual([{ type: "step", message: "Backend deployment started" }]);
+    expect(deployed.events).toEqual([{ type: "step", message: "Deployment started" }]);
     expect(await Bun.file(targetsFile(root)).text()).toBe(contents);
   });
 });
