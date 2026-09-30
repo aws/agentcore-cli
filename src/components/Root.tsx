@@ -123,6 +123,7 @@ import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { GatewayPolicyGenerateScreen } from "../handlers/gateway/policy/screen.tsx";
 import { RouterScreen } from "./RouterScreen.tsx";
 import { CommandFallbackScreen } from "./CliOnlyScreen.tsx";
+import { CommandHandoffScreen } from "./CommandHandoffScreen.tsx";
 import { ProjectResourceCreateScreen } from "./ProjectResourceCreateScreen.tsx";
 import { BuildProjectScreen } from "../handlers/project/build/screen.tsx";
 import { DeployProjectScreen } from "../handlers/project/deploy/screen.tsx";
@@ -257,10 +258,17 @@ function PinnedRegion({ ctx, core }: ScreenProps) {
   );
 }
 
+const DEV_PATH = ["agentcore", "dev"];
+
 function RouteTable({ ctx, core }: ScreenProps) {
   return (
     <Routes>
       <Route path="agentcore" element={<RootScreen ctx={ctx} core={core} />} />
+      {/* `dev` owns the terminal, so selecting it closes the TUI and runs it. */}
+      <Route
+        path="agentcore/dev"
+        element={<CommandHandoffScreen ctx={ctx} core={core} path={DEV_PATH} />}
+      />
       <Route
         path="agentcore/invoke"
         element={<ProjectInvokePickerScreen ctx={ctx} core={core} />}

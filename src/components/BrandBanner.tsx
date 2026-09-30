@@ -10,6 +10,10 @@ const LOGO: string[] = [
   "▀ ▀ ▀▀▀ ▀▀▀ ▀ ▀  ▀  ▀▀▀ ▀▀▀ ▀ ▀ ▀▀▀   ▀▀▀ ▀▀▀ ▀▀▀",
 ];
 
+export const MIN_BANNER_COLUMNS = 80;
+export const MIN_BANNER_ROWS = 30;
+export const BRAND_BANNER_ROWS = LOGO.length + 1;
+
 export interface BrandBannerProps {
   terminalProgram?: string;
   theme?: InkUITheme;

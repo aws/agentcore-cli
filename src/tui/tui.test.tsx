@@ -1,9 +1,12 @@
 import { test, expect, describe } from "bun:test";
+import { Command } from "commander";
 import { createRootHandler } from "../handlers";
-import { ExitCode, InvalidEnvironmentError } from "../errors";
+import { ExitCode, InvalidEnvironmentError, ProjectStateError } from "../errors";
 import { renderJson } from "./index";
+import { handoffArgs } from "./handoff";
 import {
   createSilentLogger,
+  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -114,15 +117,55 @@ describe("TUI stream boundary", () => {
   });
 });
 
+describe("TUI handoff", () => {
+  test("selecting dev closes the TUI and runs the dev command", async () => {
+    const { cleanup } = await inTempDirectory();
+    try {
+      const { streams, stdin } = ttyTestIO();
+      const root = createRootHandler(new TestCoreClient(), {
+        io: streams.io,
+        logger: createSilentLogger(),
+        globalConfigAccessor: new TestGlobalConfigAccessor(),
+      });
+      const routePromise = root.route(["node", "agentcore", "--region", "us-west-2"]);
+      await waitFor(() => streams.stdout().includes("type to choose a command"));
+
+      stdin.write("dev");
+      await waitFor(() => streams.stdout().includes("❯ dev"));
+      stdin.write("\r");
+
+      // Outside a project, dev's own project check is what fails: proof the
+      // TUI handed off to the dev command rather than showing its help.
+      const error = await routePromise.catch((error) => error);
+      expect(error).toBeInstanceOf(ProjectStateError);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("carries over global flags given on the command line", async () => {
+    const root = new Command("agentcore")
+      .option("--region <region>")
+      .option("--debug")
+      .option("--json")
+      .option("--profile <profile>", "", "default");
+    root.action(() => {});
+    await root.parseAsync(["--region", "eu-west-1", "--debug"], { from: "user" });
+
+    expect(handoffArgs(root, ["dev"])).toEqual(["dev", "--region", "eu-west-1", "--debug"]);
+  });
+});
+
 describe("TUI resize", () => {
   const ERASE_SCREEN = "\u001B[2J\u001B[H";
 
-  function resize(stdout: NodeJS.WriteStream, columns: number) {
+  function resize(stdout: NodeJS.WriteStream, columns: number, rows = stdout.rows) {
     Object.defineProperty(stdout, "columns", { configurable: true, value: columns });
+    Object.defineProperty(stdout, "rows", { configurable: true, value: rows });
     stdout.emit("resize");
   }
 
-  test("narrowing wipes the screen before the frame is repainted", async () => {
+  test("shrinking redraws once after resizing settles", async () => {
     const { streams, stdin } = ttyTestIO(120, 40);
     const root = createRootHandler(new TestCoreClient(), {
       io: streams.io,
@@ -131,21 +174,54 @@ describe("TUI resize", () => {
     });
     const routePromise = root.route(["node", "agentcore"]);
     await waitFor(() => streams.stdout().includes("deploy"));
+    await tick();
 
     const beforeNarrow = streams.stdout().length;
-    resize(streams.io.stdout, 60);
-    await waitFor(() => streams.stdout().slice(beforeNarrow).includes("deploy"));
-    const narrowed = streams.stdout().slice(beforeNarrow);
-    expect(narrowed.startsWith(ERASE_SCREEN)).toBe(true);
-    expect(narrowed.indexOf("deploy")).toBeGreaterThan(0);
+    resize(streams.io.stdout, 110, 38);
+    resize(streams.io.stdout, 100, 35);
+    resize(streams.io.stdout, 90, 30);
+    expect(streams.stdout()).toHaveLength(beforeNarrow);
+
+    await waitFor(() => {
+      const resized = streams.stdout().slice(beforeNarrow);
+      const clearAt = resized.indexOf(ERASE_SCREEN);
+      return clearAt >= 0 && resized.indexOf("deploy", clearAt) > clearAt;
+    });
+    expect(streams.stdout().slice(beforeNarrow).split(ERASE_SCREEN)).toHaveLength(2);
 
     const beforeWiden = streams.stdout().length;
-    resize(streams.io.stdout, 100);
-    await tick();
+    resize(streams.io.stdout, 100, 35);
+    await waitFor(() => streams.stdout().length > beforeWiden);
     expect(streams.stdout().slice(beforeWiden)).not.toContain(ERASE_SCREEN);
 
     stdin.write(String.fromCharCode(3));
     await expect(routePromise).resolves.toBeUndefined();
     expect(streams.io.stdout.listenerCount("resize")).toBe(0);
+  });
+
+  test("repaints when a shrink gesture returns to the cached size", async () => {
+    const { streams, stdin } = ttyTestIO(100, 40);
+    const root = createRootHandler(new TestCoreClient(), {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const routePromise = root.route(["node", "agentcore"]);
+    await waitFor(() => streams.stdout().includes("deploy"));
+    await tick();
+
+    const beforeResize = streams.stdout().length;
+    resize(streams.io.stdout, 100, 15);
+    resize(streams.io.stdout, 100, 40);
+    expect(streams.stdout()).toHaveLength(beforeResize);
+
+    await waitFor(() => {
+      const resized = streams.stdout().slice(beforeResize);
+      const clearAt = resized.indexOf(ERASE_SCREEN);
+      return clearAt >= 0 && resized.indexOf("deploy", clearAt) > clearAt;
+    });
+
+    stdin.write(String.fromCharCode(3));
+    await expect(routePromise).resolves.toBeUndefined();
   });
 });

@@ -49,6 +49,10 @@ describe("menu rendering", () => {
     const entries = menuEntries(frame);
     expect(entries.screens).toContain("create");
     expect(entries.screens).toContain("eval");
+    expect(frame.split("\n").filter((line) => line.includes("❯ "))).toHaveLength(1);
+    expect(new Set([...entries.screens, ...entries.cliOnly]).size).toBe(
+      entries.screens.length + entries.cliOnly.length,
+    );
     expect(frame).toContain("config");
     expect(frame).toContain("read/write global config values");
     r.unmount();
@@ -81,14 +85,14 @@ describe("menu rendering", () => {
     r.unmount();
   });
 
-  test("selecting a listed command without a screen opens its help", async () => {
+  test("selecting a command without a screen opens its help", async () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "type to choose a command");
 
-    await r.write("dev");
-    await waitForText(r.lastFrame, "❯ dev");
+    await r.write("update");
+    await waitForText(r.lastFrame, "❯ update");
     await r.press("return");
-    await waitForText(r.lastFrame, "agentcore dev [options]");
+    await waitForText(r.lastFrame, "agentcore update [options]");
     r.unmount();
   });
 
@@ -135,6 +139,20 @@ describe("menu rendering", () => {
     nested.unmount();
   });
 
+  test("hides the brand banner when the terminal is short and restores it when enlarged", async () => {
+    const version = `v${PACKAGE_VERSION}`;
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, version);
+
+    await r.resize(80, 24);
+    expect(r.lastFrame()).not.toContain(version);
+    expect(r.lastFrame()).toContain("[enter] select");
+
+    await r.resize(100, 40);
+    await waitForText(r.lastFrame, version);
+    r.unmount();
+  });
+
   test("renders the harness subcommands when mounted at the harness path", async () => {
     const r = renderScreen("/agentcore/harness");
     await waitForText(r.lastFrame, "list");
@@ -156,7 +174,7 @@ describe("menu rendering", () => {
 });
 
 describe("narrow terminals", () => {
-  test("a description that wraps leaves every command name in the same column", async () => {
+  test("a description too long for the row leaves every command name in the same column", async () => {
     const r = renderScreen("/agentcore/add");
     await waitForText(r.lastFrame, "❯ ");
     await r.resize(60);
@@ -169,7 +187,6 @@ describe("narrow terminals", () => {
       .map((row) => row.replace("❯", " ").search(/[a-z]/));
     expect(nameColumns.length).toBeGreaterThan(1);
     expect(new Set(nameColumns).size).toBe(1);
-    expect(lines.some((line) => /^\s{20,}\S/.test(line))).toBe(true);
     r.unmount();
   });
 });
@@ -431,6 +448,20 @@ describe("short terminals", () => {
     // The banner, header, filter, and footer leave the list a single row.
     await r.resize(100, 11);
     expect(r.lastFrame()).toContain("❯ harness");
+    r.unmount();
+  });
+
+  test("accounts for a wrapped header when scrolling a narrow terminal", async () => {
+    const full = await fullMenu();
+    const r = renderScreen("/agentcore");
+    await waitForText(r.lastFrame, "❯ create");
+    await r.resize(40, ROWS);
+
+    for (let i = 0; i < full.names.length; i++) {
+      if (i > 0) await r.press("down");
+      expect(r.lastFrame()).toMatch(new RegExp(`❯\\s*${full.names[i]}`));
+    }
+
     r.unmount();
   });
 

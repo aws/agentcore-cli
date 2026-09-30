@@ -102,7 +102,8 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createUpdateHandler(io));
 
   // These have no screen of their own but belong with the commands around
-  // them, so the menu keeps them in place; selecting one opens its help.
+  // them, so the menu keeps them in place; selecting one opens its help, except
+  // dev, which closes the TUI and runs (see CommandHandoffScreen).
   root.listInMenu("dev", "log", "traces", "export", "payment");
 
   // Invoking with no subcommand launches the interactive TUI.

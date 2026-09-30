@@ -244,15 +244,21 @@ describe("Wizard shell", () => {
   });
 
   test("a streamed submit renders its steps through the shared TaskList", async () => {
-    // The pauses let Ink paint between events: a generator that runs to
+    // The pause lets Ink paint between events: a generator that runs to
     // completion in one batch would only ever produce the final frame, and the
     // tail under a running step is exactly what that frame no longer shows.
+    // The tail is then held on screen until the test has seen it; a timed
+    // pause shows it for a few milliseconds, which a loaded runner can miss.
     const pause = () => new Promise((resolve) => setTimeout(resolve, 5));
+    let releaseTail!: () => void;
+    const tailSeen = new Promise<void>((resolve) => {
+      releaseTail = resolve;
+    });
     async function* progress() {
       yield { type: "step", message: "wrote agentcore.json" } as const;
       await pause();
       yield { type: "output", line: "a line tailing the running step" } as const;
-      await pause();
+      await tailSeen;
       yield { type: "step", message: "updated the deploy target" } as const;
     }
     const d = drive({ onSubmit: () => progress() });
@@ -268,6 +274,7 @@ describe("Wizard shell", () => {
     // An output line tails the step it belongs to while that step runs, and
     // collapses with it — TaskList's behaviour everywhere else in the CLI.
     await waitForFrame(d, "│ a line tailing the running step");
+    releaseTail();
 
     await waitForFrame(d, "✔ all done");
     const frame = d.lastFrame()!;
