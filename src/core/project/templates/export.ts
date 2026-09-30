@@ -24,7 +24,6 @@ import { resourceNameFromArn } from "../../arn";
 type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
 
 export const EXPORT_NOTES_FILENAME = "EXPORT_NOTES.md";
-export const DEFAULT_EXPORT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
 /** A manual follow-up item recorded while mapping, written to EXPORT_NOTES.md. */
 export interface ExportNote {
@@ -44,8 +43,11 @@ export interface HarnessExportInput {
   targetAgentName: string;
   /** The parsed harness spec (from app/<name>/harness.yaml or the service). */
   spec: HarnessSpec;
-  /** The resolved system prompt text (explicit prompt > conventional file > default). */
-  systemPrompt: string;
+  /**
+   * The resolved system prompt text (explicit prompt > conventional file). Undefined when the
+   * harness sets none, so the agent keeps the Strands Harness contract prompt default.
+   */
+  systemPrompt?: string;
   /** The current project spec, for memory lookups and credential dedup. */
   projectSpec: ProjectSpec;
   /** Notes collected while converting a service response into a local harness spec. */
@@ -96,6 +98,9 @@ export const MCP_HEADER_CREDS_NOTE_CATEGORY = "MCP tool header credentials";
 export const LITELLM_NO_API_KEY_NOTE_CATEGORY = "LiteLLM model may require an API key";
 export const MODEL_API_KEY_NOTE_CATEGORY = "Model API key credential referenced";
 export const CONTAINER_IMAGE_NOTE_CATEGORY = "Container image not carried over";
+
+/** Truncation used when a harness sets none: summarize, keeping recent turns. */
+const DEFAULT_TRUNCATION_CONFIG = { summary_ratio: 0.3, preserve_recent_messages: 10 };
 
 // ============================================================================
 // Public entry point
@@ -151,6 +156,10 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     envEntries,
     notes,
   );
+  const builtins = resolveBuiltins(allowedToolPatterns);
+  const isEnabled = (name: Builtin["name"]) => builtins.some((builtin) => builtin.name === name);
+  const namesOf = (kind: Builtin["kind"]) =>
+    builtins.filter((builtin) => builtin.kind === kind).map(({ name }) => name);
   const skills = resolveSkills(spec, credentials, notes);
   for (const [file, doc] of Object.entries(skills.policyFiles)) policyFiles[file] = doc;
   if (model.policyFile) policyFiles[model.policyFile.name] = model.policyFile.doc;
@@ -176,6 +185,10 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     protocol: "HTTP",
     // Model
     ...model.context,
+    // web_fetch needs the SDK's web-fetch extra next to any provider extra.
+    strandsExtras: isEnabled("web_fetch")
+      ? [model.context.strandsExtras, "web-fetch"].filter(Boolean).join(",")
+      : model.context.strandsExtras,
     // System prompt (written verbatim into main.py)
     systemPromptText: input.systemPrompt,
     // Memory
@@ -195,8 +208,17 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     // `some` helpers use JS truthiness, where [] is truthy, unlike `{{#if}}`.
     inlineFunctionTools: undefinedIfEmpty(tools.inlineFunctionTools),
     remoteMcpTools: undefinedIfEmpty(tools.remoteMcpTools),
-    hasShell: tools.hasShell,
-    hasFileOperations: tools.hasFileOperations,
+    // Built-in tools and plugins. Plain arrays: {{#if}} treats an empty one as false, and
+    // safeJson renders it as [].
+    builtinTools: namesOf("tool"),
+    harnessFileTools: builtins
+      .filter((builtin) => "alias" in builtin && builtin.alias === "file_operations")
+      .map(({ name }) => name),
+    pluginToolNames: namesOf("plugin"),
+    hasShell: isEnabled("shell"),
+    hasWebFetch: isEnabled("web_fetch"),
+    hasContextOffloader: isEnabled("retrieve_offloaded_content"),
+    hasSubagent: isEnabled("subagent"),
     // Skills
     hasSkillsFetcher: skills.hasSkillsFetcher,
     hasFetchedSkills: skills.hasFetchedSkills,
@@ -208,9 +230,7 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     maxTokens: spec.maxTokens,
     timeoutSeconds: spec.timeoutSeconds,
     // Conversation truncation
-    truncationStrategy:
-      spec.truncation?.strategy === "none" ? undefined : spec.truncation?.strategy,
-    truncationConfig: resolveTruncationConfig(spec.truncation),
+    ...resolveTruncationContext(spec.truncation),
     // Filesystem mounts (informational for the template; tools are harness builtins)
     sessionStorageMountPath: spec.sessionStoragePath,
     efsMounts: (spec.efsAccessPoints ?? []).map(({ mountPath }) => ({ mountPath })),
@@ -308,6 +328,10 @@ function resolveModel(
   switch (model.provider) {
     case "bedrock": {
       context.modelProvider = "Bedrock";
+      // Bedrock Converse models cache the system prompt and tools unless the parameters already
+      // place a cache point.
+      context.bedrockPromptCaching =
+        !isBedrockMantleModel(spec) && !hasBedrockCachePoint(additionalParams);
       if (isBedrockMantleModel(spec)) {
         context.bedrockMantle = true;
         context.strandsExtras = "openai";
@@ -404,6 +428,25 @@ function resolveModel(
       return { context };
     }
   }
+}
+
+/**
+ * Whether Bedrock request parameters already place a cache point where Bedrock honors one: the
+ * system blocks, message content, or tool list. Other values may legitimately contain a
+ * "cachePoint" key (a tool schema property), so they are not searched.
+ */
+function hasBedrockCachePoint(params: Record<string, unknown> | undefined): boolean {
+  if (!params) return false;
+  const hasCachePoint = (blocks: unknown) =>
+    Array.isArray(blocks) &&
+    blocks.some((block) => typeof block === "object" && block !== null && "cachePoint" in block);
+  const messages = Array.isArray(params.messages) ? params.messages : [];
+  const toolConfig = params.toolConfig as { tools?: unknown } | undefined;
+  return (
+    hasCachePoint(params.system) ||
+    messages.some((message) => hasCachePoint((message as { content?: unknown })?.content)) ||
+    hasCachePoint(toolConfig?.tools)
+  );
 }
 
 /**
@@ -542,8 +585,6 @@ interface ToolsResolution {
       pythonName: string;
     }[];
   }[];
-  hasShell: boolean;
-  hasFileOperations: boolean;
 }
 
 function resolveTools(
@@ -557,10 +598,6 @@ function resolveTools(
   const result: ToolsResolution = {
     inlineFunctionTools: [],
     remoteMcpTools: [],
-    // Builtin tools are always available in the harness runtime; include them
-    // unless the allowedTools filter excludes them.
-    hasShell: isBuiltinIncluded("shell", allowedPatterns),
-    hasFileOperations: isBuiltinIncluded("file_operations", allowedPatterns),
   };
 
   for (const tool of spec.tools) {
@@ -678,6 +715,33 @@ function resolveTools(
   }
 
   return result;
+}
+
+/**
+ * The harness's built-in tools, the tools its built-in plugins vend, and the subagent tool. Each
+ * is enabled by an allowedTools selector naming it; `file_operations` still grants the
+ * read/write/edit tools that replaced it.
+ */
+const BUILTINS = [
+  { name: "shell", kind: "tool" },
+  { name: "read", kind: "tool", alias: "file_operations" },
+  { name: "write", kind: "tool", alias: "file_operations" },
+  { name: "edit", kind: "tool", alias: "file_operations" },
+  { name: "web_fetch", kind: "tool" },
+  { name: "todo_write", kind: "plugin" },
+  { name: "retrieve_offloaded_content", kind: "plugin" },
+  { name: "subagent", kind: "subagent" },
+] as const;
+
+type Builtin = (typeof BUILTINS)[number];
+
+/** The builtins the allowedTools filter leaves enabled. */
+function resolveBuiltins(allowedPatterns: string[]): Builtin[] {
+  return BUILTINS.filter(
+    (builtin) =>
+      isBuiltinIncluded(builtin.name, allowedPatterns) ||
+      ("alias" in builtin && isBuiltinIncluded(builtin.alias, allowedPatterns)),
+  );
 }
 
 function undefinedIfEmpty<T>(values: T[]): T[] | undefined {
@@ -881,6 +945,19 @@ function buildFilesystemConfigurations(
 // ============================================================================
 // Truncation
 // ============================================================================
+
+function resolveTruncationContext(truncation: HarnessTruncationConfig | undefined): {
+  truncationStrategy?: string;
+  truncationConfig?: Record<string, unknown>;
+} {
+  if (!truncation) {
+    return { truncationStrategy: "summarization", truncationConfig: DEFAULT_TRUNCATION_CONFIG };
+  }
+  return {
+    truncationStrategy: truncation.strategy === "none" ? undefined : truncation.strategy,
+    truncationConfig: resolveTruncationConfig(truncation),
+  };
+}
 
 function resolveTruncationConfig(
   truncation: HarnessTruncationConfig | undefined,

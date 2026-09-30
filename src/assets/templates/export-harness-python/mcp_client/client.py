@@ -42,9 +42,9 @@ def get_{{pythonName}}_mcp_client() -> MCPClient | None:
             headers = { {{#each headerCredentials}}{{safeJson headerKey}}: _get_{{pythonName}}_key(){{#unless @last}}, {{/unless}}{{/each}} }
         return streamablehttp_client(url, headers=headers)
 
-    return MCPClient(transport{{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
+    return MCPClient(transport, prefix={{safeJson name}}{{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
     {{else}}
-    return MCPClient(lambda: streamablehttp_client(url){{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
+    return MCPClient(lambda: streamablehttp_client(url), prefix={{safeJson name}}{{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
     {{/if}}
 
 {{/each}}
