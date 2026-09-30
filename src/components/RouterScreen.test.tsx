@@ -87,6 +87,20 @@ describe("menu rendering", () => {
     r.unmount();
   });
 
+  test("a direct root screen render does not resolve a project from the test cwd", async () => {
+    const core = new TestCoreClient();
+    let resolveCalls = 0;
+    core.projectManager.resolve = async () => {
+      resolveCalls++;
+      throw new Error("unexpected filesystem project lookup");
+    };
+
+    const r = renderScreen("/agentcore", { core });
+    await waitForText(r.lastFrame, "❯ create");
+    expect(resolveCalls).toBe(0);
+    r.unmount();
+  });
+
   test("lists the resources alphabetically under a resources divider after the project commands", async () => {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
     await waitForText(r.lastFrame, "❯ add");

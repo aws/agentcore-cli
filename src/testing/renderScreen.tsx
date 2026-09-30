@@ -12,6 +12,7 @@ import { tick, waitFor } from "./timing";
 import { createSilentLogger } from "./logging";
 import { TestGlobalConfigAccessor } from "./globalConfig";
 import { DEFAULT_GLOBAL_CONFIG, type GlobalConfig } from "../globalConfig";
+import { ProjectDetectedKey } from "../handlers/project/context";
 
 // TUI test harness.
 //
@@ -146,8 +147,14 @@ export function cleanupScreens(): void {
 // and returns handles to read frames and send input.
 export function renderScreen(path: string, options: RenderScreenOptions = {}): RenderScreenResult {
   const core = options.core ?? new TestCoreClient();
-  const base =
+  let base =
     options.ctx ?? baseContext(core, options.endpointUrl, options.platform, options.globalConfig);
+  const pathname = new URL(path, "http://localhost").pathname.replace(/\/+$/, "");
+  if (options.ctx === undefined && pathname === "/agentcore") {
+    // Production resolves project presence before mounting an initial root menu.
+    // Seed the same default here so screen tests do not inspect the test process cwd.
+    base = base.withValue(ProjectDetectedKey, false);
+  }
   const ctx = options.withContext?.(base) ?? base;
   const queryClient = options.queryClient ?? testQueryClient();
 
