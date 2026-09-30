@@ -30,6 +30,12 @@ describe("KeyHint", () => {
       60,
     );
 
-    expect(frame).toBe("[enter] send  [⇧↵] newline  [↑↓] scroll  [esc] back");
+    expect(frame).toBe("[enter] send  [⇧↵] newline  [esc] back" + " ".repeat(9) + "[ctrl+c] quit");
+  });
+
+  test("pins ctrl+c quit to the right edge even when the screen doesn't list it", () => {
+    const frame = renderAtWidth([{ key: "enter", label: "go back" }], 40);
+
+    expect(frame).toBe("[enter] go back" + " ".repeat(12) + "[ctrl+c] quit");
   });
 });
