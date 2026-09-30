@@ -1,32 +1,46 @@
 # AgentCore CLI
 
-`agentcore` is a command-line tool and interactive terminal UI (TUI) for managing
-**[AWS Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)**. AgentCore is Amazon's
-platform for building and running production AI agents.
-
-**[Amazon Bedrock AgentCore documentation](https://docs.aws.amazon.com/bedrock-agentcore/)**
+`agentcore` is a command-line tool and interactive terminal UI (TUI) for
+**[Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)**, the platform for building
+and running production AI agents ([documentation](https://docs.aws.amazon.com/bedrock-agentcore/)).
 
 It gives you two ways to work, from the same package:
 
-- **A scriptable CLI** — composed of flag-driven commands with JSON output (`--json`) for
-  coding agents, scripts, CI, and automation.
-- **An interactive TUI** — guided workflows for creating projects, browsing
-  resources, and chatting with agents.
+- **A scriptable CLI** — flag-driven commands with JSON output (`--json`) for coding agents,
+  scripts, and CI.
+- **An interactive TUI** — guided flows for creating projects, browsing resources, and chatting
+  with agents.
 
 ```bash
-agentcore                      # launch the interactive TUI
-agentcore status --json         # scriptable, machine-readable output
+agentcore               # launch the interactive TUI
+agentcore status --json # scriptable, machine-readable output
 ```
 
-## What problem does it solve?
+Using the AgentCore APIs directly means calling several services, setting up execution roles, and
+handling streamed responses. `agentcore` takes care of those details so you can create, deploy, and
+invoke agents from your terminal.
 
-Using the AgentCore APIs directly means making calls across several services,
-setting up execution roles, and handling streamed responses. `agentcore` handles
-those details so you can create, deploy, and invoke agents from your terminal.
+## Installation
+
+You need Node.js 20.12 or later and AWS credentials configured as for the AWS CLI. Python templates
+also need [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
+
+```bash
+npm install -g @aws/agentcore
+```
+
+If the Python-based Bedrock AgentCore Starter Toolkit is installed, uninstall it: both provide an
+`agentcore` command.
 
 ## Quick Start
 
-Create a managed Harness project, deploy it, and send a prompt:
+A project holds either kind of agent, or both:
+
+- A **Harness** is a managed agent you configure in YAML — model, system prompt, tools, skills — and
+  AgentCore runs for you.
+- A **Runtime** is agent code you own, scaffolded from a template and deployed for you.
+
+Create a Harness project, deploy it, and send a prompt:
 
 ```bash
 agentcore create --name MyAssistant
@@ -35,65 +49,44 @@ agentcore deploy
 agentcore invoke --harness MyAssistant --prompt "Hey, what can you do for me?"
 ```
 
-To start with code you own instead, create a Runtime project from a template.
-Run this alternative from outside an existing project:
+To start from code you own instead, pick a template (`agentcore create --help` lists them):
 
 ```bash
 agentcore create --name MyAgent --template agent-python-strands
 ```
 
-## Command Surface
+Run `agentcore create` with no flags for a guided setup. Either way, run it outside any existing
+project.
 
-Project commands manage local project specifications and their deployments.
-`eval` commands evaluate deployed resources without requiring a local project.
+## Projects
 
-| Command                                                                                            | Purpose                                                                  |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `create`, `add`, `export`, `remove`, `dev`, `deploy`, `invoke`, `log`, `traces`, `status`, `build` | Create, develop, build, deploy, invoke, and inspect a project            |
-| `eval`                                                                                             | Evaluate agents, manage datasets and configurations, and run experiments |
-| `feedback`                                                                                         | Submit feedback                                                          |
-| `config`                                                                                           | Read and write global CLI settings                                       |
-| `update`                                                                                           | Check for and install CLI updates                                        |
+`create` makes a directory holding `agentcore/agentcore.json`, the spec that declares the project's
+resources, and `agentcore/cdk/`, the AWS CDK app that deploys them. Deployment targets — an account
+and region each — live in `agentcore/aws-targets.json`. Project commands find the project by walking
+up from the current directory.
 
-Use `--help` for subcommands and flags, or browse the [command reference](command.md):
+## Commands
 
-```bash
-agentcore --help
-agentcore add --help
-agentcore invoke --help
-```
+| Command                                                          | Purpose                                                                  |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `create`, `add`, `remove`, `export`                              | Create a project, add or remove its resources, export a resource to code |
+| `dev`, `build`, `deploy`, `status`                               | Run locally, build, deploy, and check what is deployed                   |
+| `invoke`, `log`, `traces`                                        | Talk to deployed agents and inspect their logs and traces                |
+| `runtime`, `harness`, `gateway`, `memory`, `identity`, `payment` | Inspect and manage deployed resources, with or without a project         |
+| `eval`                                                           | Evaluate agents, manage datasets and configurations, and run experiments |
+| `feedback`, `config`, `update`                                   | Send feedback, read and write CLI settings, update the CLI               |
 
-Supported bare commands open their interactive flows in a terminal. Operation
-flags select headless behavior for most commands. `invoke` can use `--runtime`,
-`--harness`, `--gateway`, and `--target` to select a resource for an interactive session.
-Run `agentcore create` for guided setup. To create a default project without
-the wizard, run `agentcore create --name MyAssistant`.
+In a terminal, a command run without flags opens its interactive flow; pass flags and it runs
+non-interactively. `--help` on any command lists its subcommands and flags, and the
+[command reference](command.md) has them all.
 
-Global flags (declared at the root, available on every command):
+Global flags, available on every command:
 
-| Flag       | Purpose                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------- |
-| `--region` | AWS region: flag, `AWS_REGION`, `AWS_DEFAULT_REGION`, active AWS profile, then `us-east-1`. |
-| `--json`   | Emit machine-readable JSON instead of launching the TUI.                                    |
-| `--debug`  | Debug logging.                                                                              |
-
-Run `agentcore --version` to check the installed CLI version.
-
-### Runtime Exec
-
-Select a deployed Runtime in `agentcore status` and choose **exec**, or run it
-directly:
-
-```bash
-agentcore runtime exec --id MyAgent-AbCdEf1234 --command "pwd"
-agentcore runtime exec --id MyAgent-AbCdEf1234 --qualifier DEFAULT
-```
-
-Without `--command`, exec opens a command-by-command TUI. Use `--session-id` to
-resume a session and `--timeout` for a command timeout of 1-3600 seconds.
-One-shot commands return JSON output, status, exit code, and session ID.
-Escape interrupts the local stream, not necessarily the remote process.
-Use `runtime shell` for a native interactive terminal.
+| Flag       | Purpose                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| `--region` | AWS region. Resolved from this flag, then `AWS_REGION`, `AWS_DEFAULT_REGION`, the active profile, then `us-east-1`. |
+| `--json`   | Emit JSON instead of opening the TUI.                                                                               |
+| `--debug`  | Debug logging.                                                                                                      |
 
 ## Extending the CDK app
 
@@ -151,33 +144,22 @@ declares, not the ones you add in the stack.
 
 ## China (aws-cn) regions
 
-`cn-north-1` and `cn-northwest-1` are supported, with three differences:
+`cn-north-1` and `cn-northwest-1` are supported with a narrower feature set:
 
-- **Templates:** Amazon Bedrock, Anthropic, OpenAI, and Gemini are not accessible from China
-  regions, so templates wired to those providers (and `--type import`, which reads from Amazon
-  Bedrock) are rejected when a deployment target is in a China region. Bring your own agent
-  implementation instead: scaffold with `agent-python-minimal` or `mcp-python-fastmcp` and add
-  your own model connectivity, or use `--template agent-python-strands --model-provider litellm
---model-id <model>` with a [LiteLLM model](https://docs.litellm.ai/docs/providers) reachable
-  from China — no default model id is applied there, and the `bedrock/` LiteLLM prefix (which
-  routes to Amazon Bedrock) is rejected. The scaffolded runtime records `modelProvider` and,
-  for LiteLLM, `modelId` in `agentcore.json` so deploys can re-check this.
-- The restrictions are enforced wherever the region is known: at `agentcore create` when the
-  resolved region (`--region`, environment, or profile) is a China region, at
-  `agentcore add runtime` once deployment targets exist, and at `agentcore deploy` — deploying
-  to a China target fails when a runtime was scaffolded with an inaccessible model provider
-  (recorded as the runtime's `modelProvider` in `agentcore.json`; delete that field if you have
-  replaced the model wiring in code). Harness projects are not available in China regions.
-- **Resource families:** only Runtimes, Gateways, and credentials are available in China
-  regions. The strands template's default memory is dropped from China scaffolds (the memory
-  module stays in the code and activates once a memory exists); adding unsupported resources
-  (memory, evaluators, harnesses, payments, …) or deploying a spec that contains them to a
-  China target fails with an explicit message.
-- **Telemetry** is always disabled when the ambient AWS region or any deployment target is a
-  China region.
+- Only Runtimes, Gateways, and credentials are available; Harness projects and other resources are
+  rejected with an explicit message.
+- Amazon Bedrock, Anthropic, OpenAI, and Gemini are not reachable from China regions, so templates
+  wired to them are rejected. Bring your own model connectivity, or use
+  `--model-provider litellm --model-id <model>` with a model reachable from China.
+- Telemetry is always disabled.
+
+See [China regions](docs/china-regions.md) for the details.
 
 ## Documentation
 
-- [Amazon Bedrock AgentCore documentation](https://docs.aws.amazon.com/bedrock-agentcore/): service guides and API references.
+- [Command reference](command.md): every command and flag.
 - [Harness project configuration](docs/harness-project-configuration.md): Harness YAML, prompts, tools, skills, and environment settings.
+- [China regions](docs/china-regions.md): what is available there and how the restrictions are enforced.
+- [Amazon Bedrock AgentCore documentation](https://docs.aws.amazon.com/bedrock-agentcore/): service guides and API references.
 - [Contributing](CONTRIBUTING.md): development, builds, architecture, and testing.
+- [Security](SECURITY.md) · [License](LICENSE): Apache-2.0.
