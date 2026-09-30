@@ -21,7 +21,7 @@ const PROJECT_REQUIRED_OPTIONS = [
   "traces",
   "export",
 ];
-const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS, "eval"];
+const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS];
 
 export interface RootScreenProps extends ScreenProps {
   inProject: boolean;

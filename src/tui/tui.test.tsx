@@ -249,17 +249,14 @@ describe("TUI launch", () => {
     return streams.stdout();
   }
 
-  test("outside a project the first frame shows create under the banner and hides project commands and eval", async () => {
+  test("outside a project the first frame shows create under the banner and hides project commands but shows eval", async () => {
     const out = await launchRootMenu(undefined);
     expect(out.indexOf(BANNER)).toBeGreaterThan(-1);
     expect(out.indexOf(BANNER)).toBeLessThan(out.indexOf(CREATE_ROW));
-    for (const hidden of [
-      "add project resources",
-      "deploy the project to AWS",
-      "evaluate and optimize",
-    ]) {
+    for (const hidden of ["add project resources", "deploy the project to AWS"]) {
       expect(out).not.toContain(hidden);
     }
+    expect(out).toContain("evaluate and optimize");
   });
 
   test("inside a project create is never drawn and the rest of the menu is", async () => {

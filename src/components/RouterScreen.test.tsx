@@ -59,7 +59,7 @@ describe("menu rendering", () => {
     const frame = r.lastFrame()!;
     const entries = menuEntries(frame);
     expect(entries.screens).toContain("create");
-    expect(entries.screens).not.toContain("eval");
+    expect(entries.screens).toContain("eval");
     const visible = [...entries.screens, ...entries.cliOnly];
     const projectCommands = createProjectHandlers(r.core, testIO().io)
       .slice(1)
