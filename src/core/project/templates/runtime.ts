@@ -13,6 +13,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/memory";
 import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
+import { templateUsesModel } from "../../../handlers/project/templateProfile";
 
 /** A model provider's render context, spec entries, and .env.local secrets for a scaffolded runtime. */
 type ModelProviderTemplateConfig = {
@@ -52,6 +53,19 @@ function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProvid
 
 function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   const { scaffoldRuntimeInput, name, ...infra } = input;
+  const profile = scaffoldRuntimeInput.templateProfile;
+  const runtimeProfile = profile?.runtime;
+  const usesModel = templateUsesModel(profile);
+  const lifecycleConfiguration = mergeLifecycleConfiguration(
+    runtimeProfile?.lifecycleConfiguration,
+    infra.lifecycleConfiguration,
+  );
+  const additionalPolicies = unique([
+    ...(runtimeProfile?.additionalPolicies ?? []),
+    ...(infra.additionalPolicies ?? []),
+  ]);
+  const tags =
+    runtimeProfile?.tags || infra.tags ? { ...runtimeProfile?.tags, ...infra.tags } : undefined;
   return {
     name,
     build: scaffoldRuntimeInput.build,
@@ -60,25 +74,31 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     // and Bedrock Agent imports (whose translated code calls Bedrock despite
     // framework "none"). Provider-free scaffolds (minimal, MCP) stay
     // unclassified.
-    ...((scaffoldRuntimeInput.framework !== "none" || input.importBedrockAgent !== undefined) && {
-      modelProvider: scaffoldRuntimeInput.modelProvider ?? "Bedrock",
-    }),
+    ...(usesModel &&
+      (scaffoldRuntimeInput.framework !== "none" || input.importBedrockAgent !== undefined) && {
+        modelProvider: scaffoldRuntimeInput.modelProvider ?? "Bedrock",
+      }),
     // For LiteLLM the model id determines the actual routing (its 'bedrock/'
     // prefix routes to Amazon Bedrock), so persist the id the code renders —
     // explicit --model-id or the template default — for the China deploy gate.
-    ...(scaffoldRuntimeInput.modelProvider === "LiteLLM" && {
-      modelId: scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS.LiteLLM,
-    }),
+    ...(usesModel &&
+      scaffoldRuntimeInput.modelProvider === "LiteLLM" && {
+        modelId: scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS.LiteLLM,
+      }),
     // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.
-    entrypoint: scaffoldRuntimeInput.language === "TypeScript" ? "main.js" : "main.py",
+    entrypoint:
+      runtimeProfile?.entrypoint ??
+      (scaffoldRuntimeInput.language === "TypeScript" ? "main.js" : "main.py"),
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
     ...(scaffoldRuntimeInput.runtimeVersion && {
       runtimeVersion: scaffoldRuntimeInput.runtimeVersion,
     }),
-    ...(scaffoldRuntimeInput.build === "Container" && { dockerfile: "Dockerfile" }),
+    ...(scaffoldRuntimeInput.build === "Container" && {
+      dockerfile: runtimeProfile?.dockerfile ?? "Dockerfile",
+    }),
     ...(infra.description && { description: infra.description }),
     ...(infra.executionRoleArn && { executionRoleArn: infra.executionRoleArn }),
-    ...(infra.additionalPolicies && { additionalPolicies: infra.additionalPolicies }),
+    ...(additionalPolicies.length > 0 && { additionalPolicies }),
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
@@ -88,11 +108,52 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     }),
     ...(infra.protocol && { protocol: infra.protocol }),
     ...(infra.requestHeaderAllowlist && { requestHeaderAllowlist: infra.requestHeaderAllowlist }),
-    ...(infra.lifecycleConfiguration && { lifecycleConfiguration: infra.lifecycleConfiguration }),
+    ...(lifecycleConfiguration && { lifecycleConfiguration }),
     ...(infra.filesystemConfigurations && {
       filesystemConfigurations: infra.filesystemConfigurations,
     }),
-    ...(infra.tags && { tags: infra.tags }),
+    ...(tags && { tags }),
+  };
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+/**
+ * Merge lifecycle defaults without allowing an inherited value to invalidate an
+ * explicit value. If both explicit values conflict, ProjectRuntimeSchema still
+ * reports the error.
+ */
+function mergeLifecycleConfiguration(
+  defaults: ProjectRuntime["lifecycleConfiguration"],
+  overrides: ProjectRuntime["lifecycleConfiguration"],
+): ProjectRuntime["lifecycleConfiguration"] {
+  if (!defaults) return overrides;
+  if (!overrides) return defaults;
+
+  let idleRuntimeSessionTimeout =
+    overrides.idleRuntimeSessionTimeout ?? defaults.idleRuntimeSessionTimeout;
+  let maxLifetime = overrides.maxLifetime ?? defaults.maxLifetime;
+
+  if (
+    idleRuntimeSessionTimeout !== undefined &&
+    maxLifetime !== undefined &&
+    idleRuntimeSessionTimeout > maxLifetime
+  ) {
+    if (overrides.idleRuntimeSessionTimeout !== undefined && overrides.maxLifetime === undefined) {
+      maxLifetime = idleRuntimeSessionTimeout;
+    } else if (
+      overrides.maxLifetime !== undefined &&
+      overrides.idleRuntimeSessionTimeout === undefined
+    ) {
+      idleRuntimeSessionTimeout = maxLifetime;
+    }
+  }
+
+  return {
+    ...(idleRuntimeSessionTimeout !== undefined && { idleRuntimeSessionTimeout }),
+    ...(maxLifetime !== undefined && { maxLifetime }),
   };
 }
 

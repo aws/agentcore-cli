@@ -57,7 +57,7 @@ export function isValidDockerfilePath(p: string): boolean {
   if (p.startsWith("/")) return false;
   return !p.split("/").some((segment) => segment === "" || segment === "..");
 }
-const DockerfilePathSchema = z
+export const DockerfilePathSchema = z
   .string()
   .min(1)
   .max(255)

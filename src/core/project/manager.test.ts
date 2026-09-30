@@ -32,6 +32,7 @@ import {
   type DeployResult,
   type Project,
   type ProjectEvent,
+  type ScaffoldRuntimeInput,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
@@ -45,6 +46,13 @@ const AGENT_PYTHON_STRANDS_CONTAINER = resolveRuntimeTemplateShortcut(
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
 const AGENT_PYTHON_LANGCHAIN = resolveRuntimeTemplateShortcut("agent-python-langchain");
+
+function withTemplateProfile(
+  input: ScaffoldRuntimeInput,
+  profile: NonNullable<ScaffoldRuntimeInput["templateProfile"]>,
+): ScaffoldRuntimeInput {
+  return { ...input, templateProfile: profile };
+}
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -384,6 +392,26 @@ describe("FsProjectManager.create", () => {
     expect(harness.checkedTools).toEqual(["npm", "git"]);
   });
 
+  test("defers template-managed local dependency setup", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands, checkedTools } = manager();
+    await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: withTemplateProfile(AGENT_PYTHON, {
+        dependencySetup: "deferred",
+      }),
+    });
+
+    expect(commands).toEqual([
+      {
+        command: ["npm", "install", "--loglevel=http"],
+        cwd: join(directory, "example", "agentcore", "cdk"),
+      },
+      { command: ["git", "init"], cwd: join(directory, "example") },
+    ]);
+    expect(checkedTools).toEqual(["npm", "git"]);
+  });
+
   test("skipInstall skips npm install and uv sync", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands, checkedTools } = manager();
@@ -422,6 +450,22 @@ describe("FsProjectManager.create", () => {
       expect(checkedTools).toEqual([]);
     },
   );
+
+  test("does not generate a container lockfile when dependency setup is deferred", async () => {
+    await inTempDirectory();
+    const { manager: subject, commands, checkedTools } = manager();
+    await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: withTemplateProfile(AGENT_PYTHON_STRANDS_CONTAINER, {
+        dependencySetup: "deferred",
+      }),
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(commands).toEqual([]);
+    expect(checkedTools).toEqual([]);
+  });
 
   test("skipGit skips git init", async () => {
     await inTempDirectory();
@@ -492,6 +536,67 @@ describe("FsProjectManager.create", () => {
 });
 
 describe("FsProjectManager.addResource", () => {
+  test("applies a runtime template profile and defers its dependency setup", async () => {
+    await inTempDirectory();
+    const setup = manager();
+    const { project } = await runCreate(setup.manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    setup.commands.length = 0;
+    setup.checkedTools.length = 0;
+
+    const runtimeName = "profiled_runtime";
+    const updated = await runAdd(setup.manager, project, {
+      resourceType: "runtime",
+      resourceConfig: {
+        name: runtimeName,
+        additionalPolicies: ["custom-policy.json", "template-policy.json"],
+        lifecycleConfiguration: { maxLifetime: 600 },
+        tags: { team: "runtime", "agentcore:template": "Override" },
+        scaffoldRuntimeInput: {
+          ...withTemplateProfile(AGENT_PYTHON_STRANDS_CONTAINER, {
+            usesModel: false,
+            dependencySetup: "deferred",
+            runtime: {
+              entrypoint: "lifecycle/server.py",
+              dockerfile: "Dockerfile",
+              lifecycleConfiguration: {
+                idleRuntimeSessionTimeout: 1800,
+                maxLifetime: 28800,
+              },
+              additionalPolicies: ["template-policy.json"],
+              tags: { "agentcore:template": "Example" },
+            },
+          }),
+          runtimeName,
+        },
+      },
+    });
+
+    expect(updated.spec.runtimes).toContainEqual(
+      expect.objectContaining({
+        name: runtimeName,
+        build: "Container",
+        entrypoint: "lifecycle/server.py",
+        dockerfile: "Dockerfile",
+        lifecycleConfiguration: {
+          idleRuntimeSessionTimeout: 600,
+          maxLifetime: 600,
+        },
+        additionalPolicies: ["template-policy.json", "custom-policy.json"],
+        tags: { "agentcore:template": "Override", team: "runtime" },
+      }),
+    );
+    expect(updated.spec.runtimes.find(({ name }) => name === runtimeName)?.modelProvider).toBe(
+      undefined,
+    );
+    expect(setup.commands).toEqual([]);
+    expect(setup.checkedTools).toEqual([]);
+  });
+
   test.each([
     ["Python", AGENT_PYTHON, "uv"],
     ["TypeScript", AGENT_TYPESCRIPT_STRANDS, "npm"],

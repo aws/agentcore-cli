@@ -92,6 +92,7 @@ import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
+import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -341,9 +342,12 @@ export class FsProjectManager implements ProjectManager {
 
       if (scaffoldRuntimeInput) {
         const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
-        yield* this.installRuntimeDependencies(appDir);
+        yield* this.installRuntimeDependencies(appDir, scaffoldRuntimeInput);
       }
-    } else if (scaffoldRuntimeInput?.build === "Container") {
+    } else if (
+      scaffoldRuntimeInput?.build === "Container" &&
+      templateManagesDependencies(scaffoldRuntimeInput.templateProfile)
+    ) {
       // Container builds install from a lockfile, so generate it even with no-install.
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
@@ -511,7 +515,10 @@ export class FsProjectManager implements ProjectManager {
           }
         }
 
-        yield* this.installRuntimeDependencies(outputPath);
+        yield* this.installRuntimeDependencies(
+          outputPath,
+          input.resourceConfig.scaffoldRuntimeInput,
+        );
         break;
       }
       case "credential": {
@@ -1368,7 +1375,10 @@ export class FsProjectManager implements ProjectManager {
   private async checkCreateDependencies(input: CreateProjectInput): Promise<void> {
     if (!input.skipInstall) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
-      if (input.scaffoldRuntimeInput?.language === "Python") {
+      if (
+        input.scaffoldRuntimeInput?.language === "Python" &&
+        templateManagesDependencies(input.scaffoldRuntimeInput.templateProfile)
+      ) {
         await this.checkTool("uv", UV_INSTALL_HINT);
       }
     }
@@ -1380,6 +1390,7 @@ export class FsProjectManager implements ProjectManager {
   private async checkRuntimeDependency(
     input: RuntimeResourceConfig["scaffoldRuntimeInput"],
   ): Promise<void> {
+    if (!templateManagesDependencies(input.templateProfile)) return;
     if (input.language === "Python") {
       await this.checkTool("uv", UV_INSTALL_HINT);
     } else {
@@ -1391,7 +1402,11 @@ export class FsProjectManager implements ProjectManager {
    * Installs dependencies for a scaffolded runtime directory (e.g. `uv sync`
    * for Python). No-ops if the runtime has no recognized dependency manifest.
    */
-  private async *installRuntimeDependencies(appDir: string): AsyncGenerator<ProjectEvent, void> {
+  private async *installRuntimeDependencies(
+    appDir: string,
+    input?: RuntimeResourceConfig["scaffoldRuntimeInput"],
+  ): AsyncGenerator<ProjectEvent, void> {
+    if (input && !templateManagesDependencies(input.templateProfile)) return;
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "Syncing Python dependencies with uv" };

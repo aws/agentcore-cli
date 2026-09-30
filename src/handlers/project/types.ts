@@ -16,6 +16,7 @@ import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/poli
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
 import type { AwsCredentialProvider } from "../../core/types";
+import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
@@ -54,6 +55,8 @@ export const ScaffoldRuntimeInputSchema = z
     apiKey: z.string().min(1).optional(),
     memory: MemorySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
+    /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
+    templateProfile: RuntimeTemplateProfileSchema.optional(),
   })
   .superRefine(({ modelProvider, apiKey }, ctx) => {
     // LiteLLM routes to any provider (Bedrock by default), so its key is optional;

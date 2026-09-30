@@ -7,6 +7,7 @@ import {
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
+import type { RuntimeTemplateProfile } from "./templateProfile";
 
 /** The default memory that templates ship with. */
 export function getDefaultMemorySpec(runtimeName: string): Memory {
@@ -39,6 +40,8 @@ type RuntimeTemplateShortcut = {
   /** Accepts --model-provider / --api-key overrides; Bedrock-only otherwise. */
   supportsModelProviderOverride: boolean;
   runtimeVersion?: NonNullable<ScaffoldRuntimeInput["runtimeVersion"]>;
+  /** Exceptional runtime and dependency behavior for this template. */
+  profile?: RuntimeTemplateProfile;
 };
 
 /**
@@ -252,6 +255,7 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
     runtimeVersion: template.runtimeVersion,
+    templateProfile: template.profile,
   };
 
   const result = ScaffoldRuntimeInputSchema.safeParse(input);
