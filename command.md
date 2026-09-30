@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.0.0-rc.4`.
+This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
 
 ## Table of contents
 
