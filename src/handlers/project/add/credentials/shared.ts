@@ -2,7 +2,7 @@ import { ProjectKey, type Context } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { parseSecretReference } from "../../../identity/parser";
 import type { AddProjectResourceConfig } from "../types";
-import type { AddResourceInput } from "../../types";
+import type { AddResourceInput, Project } from "../../types";
 import {
   credentialEnvironmentVariableNames,
   credentialEnvVarName,
@@ -11,6 +11,11 @@ import {
 import { addProjectResource } from "../shared";
 
 export { credentialEnvVarName };
+
+export type AddCredentialInput = Omit<
+  Extract<AddResourceInput, { resourceType: "credential" }>,
+  "resourceType"
+>;
 
 /** Parses a secret-reference flag, rejecting a directly supplied secret alongside it. */
 export function parseExclusiveSecretRef(
@@ -26,14 +31,11 @@ export function parseExclusiveSecretRef(
   return parseSecretReference(refFlag, refValue);
 }
 
-/** Runs the shared add flow: spec update, env entries, progress, and fill-before-deploy notice. */
-export async function addCredentialToProject(
-  ctx: Context,
-  config: AddProjectResourceConfig,
-  input: Omit<Extract<AddResourceInput, { resourceType: "credential" }>, "resourceType">,
-): Promise<void> {
-  const project = ctx.require(ProjectKey);
-
+/** Applies credential-specific name and environment-variable collision checks. */
+export function toAddCredentialInput(
+  project: Project,
+  input: AddCredentialInput,
+): Extract<AddResourceInput, { resourceType: "credential" }> {
   const newName = input.resourceConfig.name;
   const existingEnvironmentNames = new Map<string, string>();
   for (const credential of project.spec.credentials) {
@@ -69,19 +71,32 @@ export async function addCredentialToProject(
     );
   }
 
+  return {
+    resourceType: "credential",
+    ...input,
+  };
+}
+
+export function credentialSetupNotes(input: AddCredentialInput): string[] {
+  return (input.envEntries ?? [])
+    .filter((entry) => entry.value === undefined)
+    .map((entry) => `Set ${entry.key} in agentcore/.env.local before you deploy.`);
+}
+
+/** Runs the shared add flow: spec update, env entries, progress, and fill-before-deploy notice. */
+export async function addCredentialToProject(
+  ctx: Context,
+  config: AddProjectResourceConfig,
+  input: AddCredentialInput,
+): Promise<void> {
+  const project = ctx.require(ProjectKey);
+
   await addProjectResource(
     ctx,
     config,
     project,
-    {
-      resourceType: "credential",
-      ...input,
-    },
+    toAddCredentialInput(project, input),
     `added credential '${input.resourceConfig.name}' to '${project.name}'`,
-    {
-      notes: (input.envEntries ?? [])
-        .filter((entry) => entry.value === undefined)
-        .map((entry) => `Set ${entry.key} in agentcore/.env.local before you deploy.`),
-    },
+    { notes: credentialSetupNotes(input) },
   );
 }

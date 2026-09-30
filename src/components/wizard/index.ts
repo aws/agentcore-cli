@@ -3,6 +3,7 @@ export { Step, type StepProps } from "./Step";
 export { useWizard, useKeyHints, type KeyHint, type WizardControls } from "./context";
 export {
   TextField,
+  PathField,
   TextAreaField,
   ChoiceField,
   ResourceChoiceField,
@@ -13,8 +14,10 @@ export {
   Summary,
   firstIssue,
   promptPreview,
+  ReadableFilePathSchema,
   type Choice,
   type TextFieldProps,
+  type PathFieldProps,
   type TextAreaFieldProps,
   type ChoiceFieldProps,
   type ResourceChoiceFieldProps,

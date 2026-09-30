@@ -37,6 +37,7 @@ const WITH_SCREENS = [
   "payment-manager",
   "payment-connector",
   "evaluator",
+  "credentials",
 ];
 
 describe("project add menu", () => {

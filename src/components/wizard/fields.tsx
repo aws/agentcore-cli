@@ -1,6 +1,7 @@
+import { accessSync, constants, statSync } from "node:fs";
 import { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type z from "zod";
+import z from "zod";
 import { FormTextInput } from "../FormTextInput";
 import { FormTextArea } from "../FormTextArea";
 import { FormRadioGroup } from "../FormRadioGroup";
@@ -123,6 +124,23 @@ export function TextField({
       {error !== undefined && <Text color={theme.colors.error}>{error}</Text>}
     </Box>
   );
+}
+
+// A path entered in a wizard must identify a readable regular file before the
+// step advances. Checking the path does not read or render the file contents.
+export const ReadableFilePathSchema = z.string().superRefine((path, ctx) => {
+  try {
+    if (!statSync(path).isFile()) throw new Error("not a file");
+    accessSync(path, constants.R_OK);
+  } catch {
+    ctx.addIssue({ code: "custom", message: `no readable file at '${path}'` });
+  }
+});
+
+export type PathFieldProps = Omit<TextFieldProps, "schema" | "number" | "decimal">;
+
+export function PathField(props: PathFieldProps) {
+  return <TextField {...props} schema={ReadableFilePathSchema} />;
 }
 
 export interface TextAreaFieldProps {

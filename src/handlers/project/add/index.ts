@@ -43,6 +43,7 @@ export function createAddProjectResourceHandler(
     "payment-manager",
     "payment-connector",
     "evaluator",
+    "credentials",
   );
   projectAdd.default(renderTui(core, config.io));
   // withProject first, so it is the outermost wrapper: a resource added outside
@@ -61,7 +62,7 @@ export function createAddProjectResourceHandler(
   projectAdd.handler(createAddOnlineEvalHandler(config));
   projectAdd.handler(createAddOnlineInsightHandler(config));
   projectAdd.handler(createAddEvaluatorHandler(config, core));
-  projectAdd.handler(createAddCredentialsHandler(config));
+  projectAdd.handler(createAddCredentialsHandler(config, core));
   projectAdd.handler(createAddGatewayHandler(config));
   projectAdd.handler(createAddGatewayTargetHandler(config));
   projectAdd.handler(createAddGatewayConnectorHandler(config));

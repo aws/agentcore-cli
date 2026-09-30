@@ -1,9 +1,42 @@
 import z from "zod";
+import type { SecretReference } from "../../../../../projectSchemas/credential";
 import { createHandler, flag } from "../../../../../router";
 import { SourceResolver } from "../../../../../io";
 import type { AddProjectResourceConfig } from "../../types";
 import type { EnvLocalEntry } from "../../../types";
-import { addCredentialToProject, credentialEnvVarName, parseExclusiveSecretRef } from "../shared";
+import {
+  addCredentialToProject,
+  credentialEnvVarName,
+  parseExclusiveSecretRef,
+  type AddCredentialInput,
+} from "../shared";
+
+export type ApiKeyCredentialInput = {
+  name: string;
+  apiKey?: string;
+  secretRef?: SecretReference;
+};
+
+export function toAddApiKeyCredentialInput(input: ApiKeyCredentialInput): AddCredentialInput {
+  const envEntries: EnvLocalEntry[] = input.secretRef
+    ? []
+    : [
+        {
+          key: credentialEnvVarName(input.name),
+          value: input.apiKey,
+          comment: `API key for credential provider '${input.name}' (set before deploy)`,
+        },
+      ];
+
+  return {
+    resourceConfig: {
+      authorizerType: "ApiKeyCredentialProvider",
+      name: input.name,
+      secretRef: input.secretRef,
+    },
+    envEntries,
+  };
+}
 
 export const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfig) =>
   createHandler({
@@ -34,19 +67,10 @@ export const createAddApiKeyCredentialHandler = (config: AddProjectResourceConfi
       const resolver = new SourceResolver({ stdin: config.io.stdin });
       const apiKey = await resolver.resolveSecret("api-key", flags["api-key"]);
 
-      const envEntries: EnvLocalEntry[] = secretRef
-        ? []
-        : [
-            {
-              key: credentialEnvVarName(flags.name),
-              value: apiKey,
-              comment: `API key for credential provider '${flags.name}' (set before deploy)`,
-            },
-          ];
-
-      await addCredentialToProject(ctx, config, {
-        resourceConfig: { authorizerType: "ApiKeyCredentialProvider", name: flags.name, secretRef },
-        envEntries,
-      });
+      await addCredentialToProject(
+        ctx,
+        config,
+        toAddApiKeyCredentialInput({ name: flags.name, apiKey, secretRef }),
+      );
     },
   });
