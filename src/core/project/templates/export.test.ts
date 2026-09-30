@@ -130,7 +130,7 @@ describe("mapHarnessToExportPlan model mapping", () => {
     });
 
     expect(result.context.modelProvider).toBe("OpenAI");
-    expect(result.context.strandsExtras).toBe("openai");
+    expect(result.context.strandsExtras).toBe("openai,web-fetch");
     expect(result.context.modelApiFormat).toBe("responses");
     expect(result.context.modelMaxTokens).toBe("768");
     expect(result.context.modelTemperature).toBe("0.2");
@@ -161,7 +161,7 @@ describe("mapHarnessToExportPlan model mapping", () => {
     });
 
     expect(result.context.modelProvider).toBe("Gemini");
-    expect(result.context.strandsExtras).toBe("gemini");
+    expect(result.context.strandsExtras).toBe("gemini,web-fetch");
     expect(result.credentials).toEqual([]);
   });
 
@@ -181,7 +181,7 @@ describe("mapHarnessToExportPlan model mapping", () => {
     });
 
     expect(result.context.modelProvider).toBe("LiteLLM");
-    expect(result.context.strandsExtras).toBe("litellm");
+    expect(result.context.strandsExtras).toBe("litellm,web-fetch");
     expect(result.context.litellmApiBase).toBe("https://litellm.example");
     expect(result.context.modelAdditionalParams).toEqual({ max_retries: 2 });
     expect(result.context.modelMaxTokens).toBe("300");
@@ -217,6 +217,34 @@ describe("mapHarnessToExportPlan model mapping", () => {
     expect(result.context.modelAdditionalParams).toEqual({
       performanceConfig: { latency: "optimized" },
     });
+  });
+
+  test("caches Bedrock Converse prompts unless the parameters already place a cache point", () => {
+    expect(plan({}).context.bedrockPromptCaching).toBe(true);
+    const mantle = plan({
+      spec: harness({
+        model: { provider: "bedrock", modelId: "openai.gpt-5.5", apiFormat: "responses" },
+      }),
+    });
+    expect(mantle.context.bedrockPromptCaching).toBe(false);
+    for (const params of [
+      { system: [{ cachePoint: { type: "default" } }] },
+      { messages: [{ role: "user", content: [{ cachePoint: { type: "default" } }] }] },
+      { toolConfig: { tools: [{ cachePoint: { type: "default" } }] } },
+    ]) {
+      expect(plan({ modelAdditionalParams: params }).context.bedrockPromptCaching).toBe(false);
+    }
+    // A cachePoint key elsewhere (e.g. a tool schema property) does not count.
+    expect(plan({ modelAdditionalParams: { cachePoint: true } }).context.bedrockPromptCaching).toBe(
+      true,
+    );
+  });
+
+  test("adds the web-fetch extra only when web_fetch is allowed", () => {
+    expect(plan({}).context.strandsExtras).toBe("web-fetch");
+    expect(
+      plan({ spec: harness({ allowedTools: ["shell"] }) }).context.strandsExtras,
+    ).toBeUndefined();
   });
 
   test("warns when a keyless LiteLLM model is not Bedrock-backed", () => {
@@ -377,8 +405,11 @@ describe("mapHarnessToExportPlan tools", () => {
 
   test("includes the harness builtins unless allowedTools filters them out", () => {
     const unrestricted = plan({});
-    expect(unrestricted.context.hasShell).toBe(true);
-    expect(unrestricted.context.hasFileOperations).toBe(true);
+    expect(unrestricted.context).toMatchObject({
+      builtinTools: ["shell", "read", "write", "edit", "web_fetch"],
+      pluginToolNames: ["todo_write", "retrieve_offloaded_content"],
+      hasSubagent: true,
+    });
 
     const restricted = plan({
       spec: harness({
@@ -397,8 +428,7 @@ describe("mapHarnessToExportPlan tools", () => {
         ],
       }),
     });
-    expect(restricted.context.hasShell).toBe(true);
-    expect(restricted.context.hasFileOperations).toBe(false);
+    expect(restricted.context.builtinTools).toEqual(["shell"]);
     expect(restricted.context.remoteMcpTools).toEqual([
       {
         name: "exa",
@@ -413,13 +443,23 @@ describe("mapHarnessToExportPlan tools", () => {
 
 describe("mapHarnessToExportPlan allowedTools selection", () => {
   test("a bare name or glob selects builtins only", () => {
-    const shellOnly = plan({ spec: harness({ allowedTools: ["shell"] }) });
-    expect(shellOnly.context.hasShell).toBe(true);
-    expect(shellOnly.context.hasFileOperations).toBe(false);
+    const tools = (allowedTools: string[]) =>
+      plan({ spec: harness({ allowedTools }) }).context.builtinTools;
+    expect(tools(["shell"])).toEqual(["shell"]);
+    // file_operations, and globs matching it, still grant read, write, and edit.
+    expect(tools(["file_*"])).toEqual(["read", "write", "edit"]);
+    expect(tools(["web_*"])).toEqual(["web_fetch"]);
+  });
 
-    const fileGlob = plan({ spec: harness({ allowedTools: ["file_*"] }) });
-    expect(fileGlob.context.hasShell).toBe(false);
-    expect(fileGlob.context.hasFileOperations).toBe(true);
+  test("selects plugins and the subagent by the tool names they vend", () => {
+    const { context } = plan({
+      spec: harness({
+        allowedTools: ["todo_write", "retrieve_offloaded_content", "@builtin/subagent"],
+      }),
+    });
+    expect(context.builtinTools).toEqual([]);
+    expect(context.pluginToolNames).toEqual(["todo_write", "retrieve_offloaded_content"]);
+    expect(context.hasSubagent).toBe(true);
   });
 
   test("keeps an MCP server that @server or * allows and drops it otherwise", () => {
@@ -658,6 +698,15 @@ describe("mapHarnessToExportPlan truncation", () => {
     expect(result.context.truncationConfig).toEqual({
       summary_ratio: 0.4,
       preserve_recent_messages: 6,
+    });
+  });
+
+  test("summarizes the conversation when the harness sets no truncation", () => {
+    const result = plan({});
+    expect(result.context.truncationStrategy).toBe("summarization");
+    expect(result.context.truncationConfig).toEqual({
+      summary_ratio: 0.3,
+      preserve_recent_messages: 10,
     });
   });
 

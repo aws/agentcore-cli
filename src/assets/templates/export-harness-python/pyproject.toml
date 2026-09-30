@@ -14,7 +14,8 @@ dependencies = [
     "botocore[crt] ~= 1.43.0",
     "mcp >= 1.23.0, < 2.0.0",
     {{#if bedrockMantle}}"aws-bedrock-token-generator >= 1.1.0, < 2.0.0",
-    {{/if}}"strands-agents{{#if strandsExtras}}[{{strandsExtras}}]{{/if}} ~= 1.54.0",
+    {{/if}}"strands-agents{{#if strandsExtras}}[{{strandsExtras}}]{{/if}} ~= 1.57.1",
+    "strands-harness == 0.1.2",
     
 ]
 
