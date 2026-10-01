@@ -6,6 +6,7 @@ import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { FsReadWriteJson, ProcessFailedError } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
+import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
 import { CdkBackend } from "./cdk";
@@ -511,6 +512,76 @@ describe("CdkBackend.deploy", () => {
         },
       },
     });
+  });
+
+  test("records the CDK-managed BMA role with its runtime ARN for the sample client", async () => {
+    const input = await project();
+    input.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "bma",
+        build: "Container",
+        codeLocation: "app/bma",
+        entrypoint: "lifecycle/server.py",
+        bedrockManagedAgents: true,
+      }),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    const roleArn = "arn:aws:iam::111122223333:role/ProjectBmaSessionRole";
+    const runtimeArn = "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/bma123";
+    const subject = harness({
+      describedStack: {
+        StackName: "AgentCore-example-default",
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          { ExportName: "AgentCore-example-default-BmaSessionRoleArn", OutputValue: roleArn },
+          { ExportName: "AgentCore-example-default-bma-RuntimeArn", OutputValue: runtimeArn },
+        ],
+      },
+    });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    const state = JSON.parse(await Bun.file(statePath).text());
+    expect(state.targets.default.resources.bmaSession).toEqual({
+      roleArn,
+      runtimeArns: [runtimeArn],
+    });
+
+    input.spec.runtimes[0]!.bedrockManagedAgents = false;
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+    const afterRemoval = JSON.parse(await Bun.file(statePath).text());
+    expect(afterRemoval.targets.default.resources.bmaSession).toBeUndefined();
+
+    input.spec.runtimes[0]!.bedrockManagedAgents = undefined;
+    input.spec.runtimes[0]!.tags = { "agentcore:template": "BedrockManagedAgents" };
+    input.spec.runtimes[0]!.additionalPolicies = ["bma-acr-policy.json"];
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+    const afterMarkersOnly = JSON.parse(await Bun.file(statePath).text());
+    expect(afterMarkersOnly.targets.default.resources.bmaSession).toBeUndefined();
+  });
+
+  test("reports a missing BMA role output from an older CDK dependency", async () => {
+    const input = await project();
+    input.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "bma",
+        build: "Container",
+        codeLocation: "app/bma",
+        entrypoint: "lifecycle/server.py",
+        bedrockManagedAgents: true,
+      }),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness();
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      /Update @aws\/agentcore-cdk/,
+    );
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    const state = JSON.parse(await Bun.file(statePath).text());
+    expect(state.targets.default.resources.bmaSession).toBeUndefined();
   });
 
   test("provisions credentials for the target before synth and records them under it", async () => {

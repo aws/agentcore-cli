@@ -100,6 +100,9 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(infra.description && { description: infra.description }),
     ...(infra.executionRoleArn && { executionRoleArn: infra.executionRoleArn }),
     ...(additionalPolicies.length > 0 && { additionalPolicies }),
+    ...(scaffoldRuntimeInput.framework === "bma" && {
+      bedrockManagedAgents: true,
+    }),
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),

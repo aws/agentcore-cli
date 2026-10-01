@@ -94,7 +94,6 @@ import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
-import { isBmaRuntime } from "../../handlers/project/bma";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -1162,7 +1161,9 @@ export class FsProjectManager implements ProjectManager {
     // modelProvider (BYO, provider-free, hand-edited, or scaffolded by an
     // older CLI) cannot be classified and only get an informational note.
     if (isChinaRegion(target.region)) {
-      const bmaRuntimes = project.spec.runtimes.filter(isBmaRuntime);
+      const bmaRuntimes = project.spec.runtimes.filter(
+        (runtime) => runtime.bedrockManagedAgents === true,
+      );
       if (bmaRuntimes.length > 0) {
         throw new RegionUnsupportedFeatureError(
           `Cannot deploy to China region ${target.region}: ` +

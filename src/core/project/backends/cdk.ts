@@ -102,6 +102,12 @@ function cdkId(name: string): string {
   return name.replace(/_/g, "");
 }
 
+function stackExportName(stackName: string, ...parts: string[]): string {
+  return [stackName, ...parts]
+    .map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, ""))
+    .join("-");
+}
+
 function findDeployedResourceId(
   stack: Stack,
   input: Pick<ResolvedDeployedResource, "resourceType" | "name">,
@@ -365,7 +371,36 @@ export class CdkBackend implements ProjectBackend {
     // Persist the deployed stack's ARN so later commands read live resource state
     // from CloudFormation. Merged per target, so deploying one target never drops
     // another's recorded state.
-    await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
+    await updateTargetState(this.json, project.rootPath, target.name, {
+      stackArn,
+      resources: { bmaSession: undefined },
+    });
+
+    const bmaRuntimes = project.spec.runtimes.filter(
+      (runtime) => runtime.bedrockManagedAgents === true,
+    );
+    if (bmaRuntimes.length > 0) {
+      const stack = await this.describeStack(target.region, credentials, stackArn);
+      const output = (...parts: string[]) =>
+        stack?.Outputs?.find(
+          (entry) => entry.ExportName === stackExportName(stack.StackName ?? "", ...parts),
+        )?.OutputValue;
+      const roleArn = output("BmaSessionRoleArn");
+      const runtimeArns: string[] = [];
+      for (const runtime of bmaRuntimes) {
+        const arn = output(runtime.name, "RuntimeArn");
+        if (arn) runtimeArns.push(arn);
+      }
+      if (!roleArn || runtimeArns.length !== bmaRuntimes.length) {
+        throw new MalformedServiceResponseError(
+          `The deployed stack '${stack?.StackName ?? artifact.stackName}' is missing BMA session role or runtime ARN outputs. ` +
+            "Update @aws/agentcore-cdk in agentcore/cdk/package.json to a version with BMA session role support and deploy again.",
+        );
+      }
+      await updateTargetState(this.json, project.rootPath, target.name, {
+        resources: { bmaSession: { roleArn, runtimeArns } },
+      });
+    }
 
     // After the stack update, since a resource in it may have been using the provider
     // until this deploy removed the reference.
@@ -542,9 +577,7 @@ export class CdkBackend implements ProjectBackend {
       if (!stack?.StackName) return undefined;
       // The CDK library builds every ExportName through this shared helper
       // https://github.com/aws/agentcore-l3-cdk-constructs/blob/main/src/cdk/logical-ids.ts#L84
-      const want = [stack.StackName, ...parts]
-        .map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, ""))
-        .join("-");
+      const want = stackExportName(stack.StackName, ...parts);
       return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
     };
 
