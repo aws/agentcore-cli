@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.31.1] - 2026-10-01
+
+### Fixed
+- fix(import/export): harden generated Python container recipes (#2500) (66d1762a)
+- fix(templates): refresh Python dependencies and container hygiene (#2496) (b0ef3722)
+- fix(bma): create the BMA session role in client.py and pass it as role_arn (f1f14dd6)
+- fix(bma): set requires-python >=3.12 so uv run client.py does not use an older system Python (#2491) (be16c4f9)
+- fix(runtime): update shell session wire protocol (#1968) (26109d4f)
+
+### Other Changes
+- test(e2e): wait for batch evaluation before archiving (#2499) (f672f927)
+- Merge pull request #2494 from aws/feat/bma-session-role (49c71c66)
+
 ## [0.31.0] - 2026-09-29
 
 ### Added
