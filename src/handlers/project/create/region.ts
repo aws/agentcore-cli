@@ -7,7 +7,6 @@ import {
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
 } from "../../../core/project/manager";
 import { RegionUnsupportedFeatureError } from "../../../errors";
-import { BMA_TEMPLATE_NAME } from "../bmaProfile";
 import type { CreateProjectInput } from "../types";
 
 /** Applies the hard create-time restrictions shared by the CLI and interactive wizard. */
@@ -20,7 +19,7 @@ export function validateCreateRegionSupport(input: CreateProjectInput, region: s
 
   const runtime = input.scaffoldRuntimeInput;
   if (runtime === undefined || runtime.framework === "none") return;
-  if (runtime.framework === BMA_TEMPLATE_NAME) {
+  if (runtime.framework === "bma") {
     throw new RegionUnsupportedFeatureError(BMA_CN_MESSAGE);
   }
   if ((runtime.modelProvider ?? "Bedrock") !== "LiteLLM") {

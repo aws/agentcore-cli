@@ -94,12 +94,7 @@ import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
-import {
-  BMA_POLICY_FILE,
-  BMA_TEMPLATE_NAME,
-  BMA_TEMPLATE_TAG_KEY,
-  BMA_TEMPLATE_TAG_VALUE,
-} from "../../handlers/project/bmaProfile";
+import { isBmaRuntime } from "../../handlers/project/bma";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -469,7 +464,7 @@ export class FsProjectManager implements ProjectManager {
       if (input.resourceType === "runtime") {
         const { framework, modelProvider, modelId, memory } =
           input.resourceConfig.scaffoldRuntimeInput;
-        if (framework === BMA_TEMPLATE_NAME) {
+        if (framework === "bma") {
           throw new RegionUnsupportedFeatureError(BMA_CN_MESSAGE);
         }
         if (framework !== "none") {
@@ -1167,11 +1162,7 @@ export class FsProjectManager implements ProjectManager {
     // modelProvider (BYO, provider-free, hand-edited, or scaffolded by an
     // older CLI) cannot be classified and only get an informational note.
     if (isChinaRegion(target.region)) {
-      const bmaRuntimes = project.spec.runtimes.filter(
-        (runtime) =>
-          runtime.tags?.[BMA_TEMPLATE_TAG_KEY] === BMA_TEMPLATE_TAG_VALUE ||
-          runtime.additionalPolicies?.includes(BMA_POLICY_FILE),
-      );
+      const bmaRuntimes = project.spec.runtimes.filter(isBmaRuntime);
       if (bmaRuntimes.length > 0) {
         throw new RegionUnsupportedFeatureError(
           `Cannot deploy to China region ${target.region}: ` +

@@ -30,7 +30,7 @@ test("the Bedrock Managed Agents shortcut selects its environment profile", () =
   expect(RUNTIME_TEMPLATE_SHORTCUTS["environment-python-bma"]).toMatchObject({
     build: "Container",
     language: "Python",
-    framework: "environment-python-bma",
+    framework: "bma",
     protocol: "HTTP",
     includesMemory: false,
     supportsModelProviderOverride: false,

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
+  NotImplementedError,
   ResourceNotFoundError,
   SilentCLIError,
   UserCancellationError,
@@ -13,6 +14,12 @@ import { testIO } from "../../../testing";
 import { JsonRendererKey } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import type { Project } from "../types";
+import {
+  BMA_POLICY_FILE,
+  BMA_TEMPLATE_NAME,
+  BMA_TEMPLATE_TAG_KEY,
+  BMA_TEMPLATE_TAG_VALUE,
+} from "../bma";
 import { createDevProjectHandler, type DevProjectHandlerConfig } from ".";
 import type { DevEnvironmentInput } from "./environment";
 import type { DevEvent, DevRunner, DevServerInput, DevTraceCollector } from "./types";
@@ -32,6 +39,15 @@ function project(...runtimes: ProjectRuntime[]): Project {
     name: "test-project",
     rootPath: "/workspace/project",
     spec: { runtimes } as Project["spec"],
+  };
+}
+
+function bmaRuntime(overrides: Partial<ProjectRuntime> = {}): ProjectRuntime {
+  return {
+    ...runtime("environment", "Container"),
+    tags: { [BMA_TEMPLATE_TAG_KEY]: BMA_TEMPLATE_TAG_VALUE },
+    additionalPolicies: [BMA_POLICY_FILE],
+    ...overrides,
   };
 }
 
@@ -188,6 +204,32 @@ async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ n
 
 describe("project dev selection and dispatch", () => {
   test.each([
+    ["headless", undefined, project(bmaRuntime({ additionalPolicies: undefined }))],
+    ["browser", undefined, project(bmaRuntime({ tags: undefined }))],
+    [
+      "headless",
+      "environment",
+      project(bmaRuntime({ tags: { [BMA_TEMPLATE_TAG_KEY]: "Custom" } }), runtime()),
+    ],
+    ["browser", "environment", project(bmaRuntime(), runtime())],
+  ] as const)(
+    "rejects unsupported BMA selection (%s, %s)",
+    async (mode, agent, configuredProject) => {
+      const subject = harness({ project: configuredProject });
+      const pending = subject.run({ mode, agent });
+      await expect(pending).rejects.toBeInstanceOf(NotImplementedError);
+      await expect(pending).rejects.toMatchObject({ source: "user", exitCode: 1 });
+      await expect(pending).rejects.toThrow(
+        `Local dev is not supported for runtime 'environment' (${BMA_TEMPLATE_NAME})`,
+      );
+      expect(subject.codeZip.inputs).toHaveLength(0);
+      expect(subject.container.inputs).toHaveLength(0);
+      expect(subject.collector.starts).toHaveLength(0);
+      expect(subject.ui.starts).toHaveLength(0);
+    },
+  );
+
+  test.each([
     [project(), {}, "This project has no runtimes", InputValidationError],
     [
       project(runtime("orders"), runtime("support", "Container")),
@@ -212,7 +254,7 @@ describe("project dev selection and dispatch", () => {
 
   test("loads the environment and dispatches the selected runtime", async () => {
     const subject = harness({
-      project: project(runtime("orders"), runtime("support", "Container")),
+      project: project(bmaRuntime(), runtime("orders"), runtime("support", "Container")),
     });
     await subject.run({ agent: "support", port: 4567 });
 
@@ -235,6 +277,7 @@ describe("project dev selection and dispatch", () => {
       },
       runtime: { name: "support", build: "Container" },
     });
+    expect(subject.io.stderr()).not.toContain("Skipping runtime");
   });
 
   test("announces an automatically selected port", async () => {
@@ -264,12 +307,21 @@ describe("project dev headless multi-agent", () => {
     return { pending };
   }
 
-  test("supervises every runtime with attributed output and per-runtime env", async () => {
+  test("supervises supported runtimes with attributed output and per-runtime env", async () => {
     const codeZip = stayingRunner([{ type: "stdout", line: "orders says hi" }]);
     const container = stayingRunner();
-    const subject = harness({ project: twoRuntimes(), codeZip, container });
+    const subject = harness({
+      project: project(
+        bmaRuntime({ tags: { [BMA_TEMPLATE_TAG_KEY]: "Custom" } }),
+        runtime("orders"),
+        runtime("support", "Container"),
+      ),
+      codeZip,
+      container,
+    });
     const { pending } = await supervised(subject);
 
+    expect(subject.io.stderr()).toContain("Skipping runtime 'environment'");
     expect(codeZip.inputs).toHaveLength(1);
     expect(container.inputs).toHaveLength(1);
     expect(codeZip.inputs[0]!.env).toMatchObject({
@@ -429,9 +481,9 @@ describe("project dev Inspector UI mode", () => {
     },
   );
 
-  test("serves the Inspector API: status lists every runtime, none started", async () => {
+  test("serves the Inspector API: status lists supported runtimes, none started", async () => {
     const subject = harness({
-      project: project(runtime("orders"), runtime("support", "Container")),
+      project: project(bmaRuntime(), runtime("orders"), runtime("support", "Container")),
     });
     const { pending } = await runUi(subject);
 
@@ -446,7 +498,9 @@ describe("project dev Inspector UI mode", () => {
   });
 
   test("agentcore.json edits reload the supervised agents", async () => {
-    const subject = harness({ reloadedRuntimes: [runtime("orders"), runtime("payments")] });
+    const subject = harness({
+      reloadedRuntimes: [bmaRuntime({ tags: undefined }), runtime("orders"), runtime("payments")],
+    });
     const { pending } = await runUi(subject);
 
     expect(subject.watchers[0]?.path).toBe(
@@ -467,11 +521,12 @@ describe("project dev Inspector UI mode", () => {
 
   test("--agent narrows the supervised set", async () => {
     const subject = harness({
-      project: project(runtime("orders"), runtime("support", "Container")),
+      project: project(bmaRuntime(), runtime("orders"), runtime("support", "Container")),
     });
     const { pending } = await runUi(subject, { agent: "support" });
 
     expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(["support"]);
+    expect(subject.io.stderr()).not.toContain("Skipping runtime");
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
@@ -493,7 +548,11 @@ test("project dev renders attributed human and NDJSON output", async () => {
   ];
 
   for (const json of [false, true]) {
-    const subject = harness({ codeZip: captureRunner(events), json });
+    const subject = harness({
+      project: project(bmaRuntime(), runtime()),
+      codeZip: captureRunner(events),
+      json,
+    });
     await subject.run({ agent: "orders", traces: false });
     expect(subject.io.stdout()).toBe(
       json

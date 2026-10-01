@@ -1,4 +1,4 @@
-import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bmaProfile";
+import { BMA_TEMPLATE_PROFILE } from "./bma";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import type { ScaffoldRuntimeInput } from "./types";
 
@@ -11,7 +11,7 @@ import type { ScaffoldRuntimeInput } from "./types";
 export function resolveRuntimeTemplateProfile(
   input: Pick<ScaffoldRuntimeInput, "framework" | "templateProfile">,
 ): RuntimeTemplateProfile | undefined {
-  if (input.framework === BMA_TEMPLATE_NAME) {
+  if (input.framework === "bma") {
     return BMA_TEMPLATE_PROFILE;
   }
   return input.templateProfile;

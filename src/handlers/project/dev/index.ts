@@ -9,7 +9,9 @@ import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervis
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   AgentCoreCLIError,
+  ERROR_SOURCE,
   InputValidationError,
+  NotImplementedError,
   ResourceNotFoundError,
   SilentCLIError,
   UserCancellationError,
@@ -19,6 +21,7 @@ import { createHandler, flag, ProjectKey, type Middleware } from "../../../route
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import type { Project, ProjectManager } from "../types";
+import { BMA_TEMPLATE_NAME, isBmaRuntime } from "../bma";
 import type { DevEnvironmentLoader } from "./environment";
 import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
 
@@ -54,20 +57,34 @@ function otelEnvForRuntime(
   return runtime.build === "Container" ? rewriteOtelEndpointForContainer(env) : env;
 }
 
+function supportsLocalDev(runtime: ProjectRuntime): boolean {
+  return !isBmaRuntime(runtime);
+}
+
 function selectRuntimes(project: Project, name?: string): ProjectRuntime[] {
   if (project.spec.runtimes.length === 0) {
     throw new InputValidationError(
       "This project has no runtimes. Add a runtime to agentcore/agentcore.json and retry.",
     );
   }
-  if (!name) return project.spec.runtimes;
-
-  const runtime = project.spec.runtimes.find((candidate) => candidate.name === name);
-  if (runtime) return [runtime];
-  const available = project.spec.runtimes.map((candidate) => candidate.name).join(", ");
-  throw new ResourceNotFoundError(
-    `Runtime '${name}' was not found. Available runtimes: ${available}.`,
-  );
+  const selectedRuntimes = name
+    ? project.spec.runtimes.filter((runtime) => runtime.name === name)
+    : project.spec.runtimes;
+  if (selectedRuntimes.length === 0) {
+    const available = project.spec.runtimes.map((candidate) => candidate.name).join(", ");
+    throw new ResourceNotFoundError(
+      `Runtime '${name}' was not found. Available runtimes: ${available}.`,
+    );
+  }
+  const supportedRuntimes = selectedRuntimes.filter(supportsLocalDev);
+  if (supportedRuntimes.length === 0) {
+    throw new NotImplementedError(
+      `Local dev is not supported for runtime '${selectedRuntimes[0]!.name}' (${BMA_TEMPLATE_NAME}). ` +
+        "Run agentcore deploy, then use client.py to connect through Bedrock Managed Agents.",
+      { source: ERROR_SOURCE.USER },
+    );
+  }
+  return supportedRuntimes;
 }
 
 /** An agent's own output, always tagged with the agent that produced it. */
@@ -135,6 +152,17 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
           );
+        }
+        if (!flags.agent) {
+          for (const runtime of project.spec.runtimes.filter(
+            (runtime) => !supportsLocalDev(runtime),
+          )) {
+            renderStatus(
+              config.io,
+              `Skipping runtime '${runtime.name}': local dev is not supported for ${BMA_TEMPLATE_NAME}.`,
+              json,
+            );
+          }
         }
 
         if (
@@ -264,7 +292,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           try {
             const reloaded = await config.projectManager.resolve({ filePath: project.rootPath });
             if (!reloaded) return;
-            const runtimes = reloaded.spec.runtimes;
+            const runtimes = reloaded.spec.runtimes.filter(supportsLocalDev);
             supervisor.setRuntimes(
               flags.agent ? runtimes.filter((runtime) => runtime.name === flags.agent) : runtimes,
             );

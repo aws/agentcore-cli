@@ -108,8 +108,8 @@ export class ResourceNotFoundError extends AgentCoreCLIError {
 
 /** Error raised when a command or operation has not been implemented yet. */
 export class NotImplementedError extends AgentCoreCLIError {
-  constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {
-    super(message ?? "not implemented yet", { ...options, source: ERROR_SOURCE.INTERNAL });
+  constructor(message?: string, options?: AgentCoreCLIErrorOptions) {
+    super(message ?? "not implemented yet", { source: ERROR_SOURCE.INTERNAL, ...options });
   }
 }
 
