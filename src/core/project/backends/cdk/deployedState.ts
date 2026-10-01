@@ -39,6 +39,13 @@ const CredentialStateSchema = z
 const ResourceStateSchema = z
   .object({
     credentials: z.record(z.string(), CredentialStateSchema).optional(),
+    /** CDK-managed BMA session role and the runtimes this stack deployed it for. */
+    bmaSession: z
+      .object({
+        roleArn: z.string(),
+        runtimeArns: z.array(z.string()),
+      })
+      .optional(),
     // The legacy deployer recorded the CloudFormation stack name
     // here. New deploys record the stack ARN instead. Keep this
     // field so projects can be correctly inspected after upgrading.

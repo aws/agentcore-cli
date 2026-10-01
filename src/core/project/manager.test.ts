@@ -369,6 +369,7 @@ describe("FsProjectManager.create", () => {
       {
         name: "environment_python_bma",
         build: "Container",
+        bedrockManagedAgents: true,
         entrypoint: "lifecycle/server.py",
         codeLocation: "app/environment_python_bma",
         dockerfile: "Dockerfile",
@@ -1198,6 +1199,9 @@ describe("FsProjectManager.addResource", () => {
           name: string;
           modelProvider?: string;
           modelId?: string;
+          bedrockManagedAgents?: boolean;
+          tags?: Record<string, string>;
+          additionalPolicies?: string[];
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1256,6 +1260,32 @@ describe("FsProjectManager.addResource", () => {
       expect(String(error)).toContain("runtime 'environment_python_bma'");
       expect(String(error)).toContain(BMA_CN_MESSAGE);
       expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy to a China target recognizes the explicit BMA field", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.bedrockManagedAgents = true;
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain(BMA_CN_MESSAGE);
+      expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy to a China target ignores BMA template markers without the explicit field", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.tags = { "agentcore:template": "BedrockManagedAgents" };
+        spec.runtimes[0]!.additionalPolicies = ["bma-acr-policy.json"];
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target proceeds past the gate for LiteLLM", async () => {

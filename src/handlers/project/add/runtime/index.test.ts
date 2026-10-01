@@ -107,6 +107,7 @@ describe("project add runtime", () => {
     },
     "environment-python-bma template preset": {
       build: "Container",
+      bedrockManagedAgents: true,
       entrypoint: "lifecycle/server.py",
       dockerfile: "Dockerfile",
       protocol: "HTTP",
@@ -343,6 +344,7 @@ describe("project add runtime", () => {
     expect(spec.runtimes).toContainEqual(
       expect.objectContaining({
         name: "my_bma",
+        bedrockManagedAgents: true,
         lifecycleConfiguration: {
           idleRuntimeSessionTimeout: 300,
           maxLifetime: 3600,
@@ -378,6 +380,7 @@ describe("project add runtime", () => {
     expect(spec.runtimes).toContainEqual(
       expect.objectContaining({
         name: "my_bma",
+        bedrockManagedAgents: true,
         executionRoleArn: roleArn,
         additionalPolicies: ["bma-acr-policy.json"],
       }),

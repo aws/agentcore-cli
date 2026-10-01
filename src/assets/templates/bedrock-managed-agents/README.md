@@ -31,6 +31,7 @@ image build downloads Codex and Python from the internet, so a build in VPC mode
 
 `agentcore create` writes these settings to `agentcore/agentcore.json`:
 
+- `bedrockManagedAgents: true` on the Runtime, which tells CDK to create a BMA session role for this project stack.
 - An idle timeout of 1800 seconds (30 minutes) and a maximum lifetime of 28800
   seconds (8 hours).
 - No session storage. Session storage is only for a microVM Runtime, so without it the same settings work on a
@@ -109,6 +110,23 @@ agentcore deploy
 ```
 
 Give the ACR ARN to BMA when you create the BMA environment.
+
+# Session role
+
+CDK creates two roles for this environment. The ACR execution role gets `bma-acr-policy.json` so it can connect to BMA.
+BMA assumes the separate session role to invoke the model, this project's BMA Runtimes, and Gateways in the account
+and Region. The session role is created once per project stack, shared by its BMA Runtimes, and deleted with that
+stack. The CLI records its ARN and the BMA Runtime ARNs in `agentcore/.cli/deployed-state.json` after a successful
+deploy.
+
+The generated `client.py` looks up the session role for the `--runtime` ARN in that file and sends it when creating a
+session. If the Runtime is not in the deployed state, run `agentcore deploy` again. You can instead give
+`--role-arn <ARN>` to use a role you manage yourself. That role must trust `bedrock-mantle.amazonaws.com` and have the
+session role permissions shown by the CDK stack.
+
+The identity running the client needs `iam:PassRole` on the session role, with `iam:PassedToService` set to
+`bedrock-mantle.amazonaws.com`. It does not need IAM role creation or policy update permissions. Existing sessions
+continue to use the role selected when they were created.
 
 # Run the client
 

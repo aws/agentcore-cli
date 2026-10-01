@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from aws_bedrock_token_generator import provide_token
@@ -12,6 +13,28 @@ WORKSPACE_DIRECTORY = "/home/app/workspace"
 CAPABILITY_DIRECTORIES = ["/opt/bma/plugins"]
 TURN_END = ("completed", "failed", "cancelled")
 TOOL_CALLS = ("mcp_call", "function_call", "web_search_call")
+
+
+def deployed_session_role(runtime_arn: str) -> str:
+    """Find the CDK-managed session role deployed alongside this Runtime."""
+    project_root = Path(__file__).resolve().parents[2]
+    state_path = project_root / "agentcore" / ".cli" / "deployed-state.json"
+    try:
+        state = json.loads(state_path.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Cannot read {state_path}: {error}") from error
+
+    matches = []
+    for target in state.get("targets", {}).values():
+        session = target.get("resources", {}).get("bmaSession") or {}
+        if runtime_arn in session.get("runtimeArns", []):
+            matches.append(session["roleArn"])
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected one deployed BMA session role for {runtime_arn}, found {len(matches)}. "
+            "Run agentcore deploy, or give --role-arn."
+        )
+    return matches[0]
 
 
 def show(data: dict[str, Any]) -> None:
@@ -46,6 +69,10 @@ def main() -> None:
         "--gateway",
         help="The Gateway URL from the output of `agentcore deploy`.",
     )
+    parser.add_argument(
+        "--role-arn",
+        help="Use this BMA session role instead of the CDK-managed role for the Runtime.",
+    )
     parser.add_argument("--delete", action="store_true", help="Delete the session.")
     parser.add_argument("--raw", action="store_true", help="Print events as JSON.")
     args = parser.parse_args()
@@ -67,6 +94,12 @@ def main() -> None:
             else:
                 if session["environment"].get("runtime_arn") != args.runtime:
                     raise ValueError(f"Session {session_id} uses another ACR.")
+
+        if not session_id and not args.role_arn:
+            try:
+                args.role_arn = deployed_session_role(args.runtime)
+            except ValueError as error:
+                parser.error(str(error))
 
         if session_id:
             # BMA opens the stream only with stream=true, and the SDK does not send it.
@@ -110,6 +143,7 @@ def main() -> None:
                 },
                 input=args.input,
                 stream=True,
+                extra_body={"role_arn": args.role_arn},
             )
 
         with events:
