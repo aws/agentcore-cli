@@ -327,7 +327,7 @@ export async function mapGenerateConfigToRenderConfig(
   const config = applyTemplateRuntimeDefaults(generateConfig);
   const isMcp = config.protocol === 'MCP';
   const gatewayProviders = isMcp ? [] : await mapGatewaysToGatewayProviders();
-  const enableOtel = !isMcp && config.language !== 'TypeScript';
+  const enableOtel = !isMcp;
 
   return {
     name: config.projectName,
