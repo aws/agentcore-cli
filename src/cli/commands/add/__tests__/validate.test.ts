@@ -93,7 +93,6 @@ describe('validate', () => {
     it('returns error for missing required fields', () => {
       const requiredFields: { field: keyof AddAgentOptions; error: string }[] = [
         { field: 'name', error: '--name is required' },
-        { field: 'framework', error: '--framework is required' },
         { field: 'modelProvider', error: '--model-provider is required' },
         { field: 'language', error: '--language is required' },
       ];
@@ -106,6 +105,16 @@ describe('validate', () => {
       }
     });
 
+    it('allows BYO agents without a framework', () => {
+      const result = validateAddAgentOptions({ ...validAgentOptionsByo, framework: undefined });
+      expect(result).toEqual({ valid: true });
+    });
+
+    it('still requires a framework for create agents', () => {
+      const result = validateAddAgentOptions({ ...validAgentOptionsCreate, framework: undefined });
+      expect(result).toEqual({ valid: false, error: '--framework is required' });
+    });
+
     // AC2: Invalid schema values rejected
     it('returns error for invalid schema values', () => {
       // Invalid name
@@ -114,7 +123,7 @@ describe('validate', () => {
       expect(result.error?.includes('begin with') || result.error?.includes('letter')).toBeTruthy();
 
       // Invalid framework
-      result = validateAddAgentOptions({ ...validAgentOptionsByo, framework: 'InvalidFW' as any });
+      result = validateAddAgentOptions({ ...validAgentOptionsCreate, framework: 'InvalidFW' as any });
       expect(result.valid).toBe(false);
       expect(result.error?.includes('Invalid framework')).toBeTruthy();
 
@@ -153,7 +162,7 @@ describe('validate', () => {
     // AC3: Framework/model provider compatibility
     it('returns error for incompatible framework and model provider', () => {
       const result = validateAddAgentOptions({
-        ...validAgentOptionsByo,
+        ...validAgentOptionsCreate,
         framework: 'GoogleADK',
         modelProvider: 'Bedrock',
       });
