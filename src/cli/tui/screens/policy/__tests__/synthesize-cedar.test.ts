@@ -95,6 +95,12 @@ describe('synthesizeCedar', () => {
     expect(result).toContain('resource == AgentCore::Gateway::"arn:aws:agentcore:us-east-1:123456:gateway/gw-abc"');
   });
 
+  it('uses the target tool name when provided', () => {
+    const result = synthesizeCedar(baseForm, { targetName: 'websearch', toolName: 'WebSearch' });
+    expect(result).toContain('action == AgentCore::Action::"websearch___WebSearch"');
+    expect(result).not.toContain('POST:/invocations');
+  });
+
   it('uses custom dataPath', () => {
     const form: GuardrailFormConfig = { ...baseForm, dataPath: 'context.output.response' };
     const result = synthesizeCedar(form);

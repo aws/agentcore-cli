@@ -1,5 +1,5 @@
 import type { AgentCoreProjectSpec, Policy, PolicyEngine } from '../../../schema';
-import { PolicyPrimitive } from '../PolicyPrimitive';
+import { PolicyPrimitive, resolvePolicyTarget } from '../PolicyPrimitive';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const engine: PolicyEngine = { name: 'eng', policies: [] };
@@ -125,6 +125,59 @@ describe('PolicyPrimitive — enforcementMode', () => {
     });
     expect(result.success).toBe(true);
     expect(getWrittenPolicy().enforcementMode).toBe('ACTIVE');
+  });
+});
+
+describe('resolvePolicyTarget', () => {
+  it('resolves a unique connector target and its tool name', () => {
+    const project = {
+      ...defaultProject,
+      agentCoreGateways: [
+        {
+          name: 'toolgw',
+          protocolType: 'MCP' as const,
+          authorizerType: 'NONE' as const,
+          enableSemanticSearch: true,
+          exceptionLevel: 'NONE' as const,
+          targets: [
+            {
+              name: 'websearch',
+              targetType: 'connector' as const,
+              connectorId: 'web-search' as const,
+              configurations: [{ name: 'WebSearch' }],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(resolvePolicyTarget(project, 'websearch')).toEqual({ gatewayName: 'toolgw', toolName: 'WebSearch' });
+  });
+
+  it('requires an explicit gateway when a target name is ambiguous', () => {
+    const project = {
+      ...defaultProject,
+      agentCoreGateways: [
+        {
+          name: 'first',
+          protocolType: 'MCP' as const,
+          authorizerType: 'NONE' as const,
+          enableSemanticSearch: true,
+          exceptionLevel: 'NONE' as const,
+          targets: [{ name: 'shared', targetType: 'connector' as const }],
+        },
+        {
+          name: 'second',
+          protocolType: 'MCP' as const,
+          authorizerType: 'NONE' as const,
+          enableSemanticSearch: true,
+          exceptionLevel: 'NONE' as const,
+          targets: [{ name: 'shared', targetType: 'connector' as const }],
+        },
+      ],
+    };
+
+    expect(() => resolvePolicyTarget(project, 'shared')).toThrow('Use --gateway <name> to specify one.');
   });
 });
 
