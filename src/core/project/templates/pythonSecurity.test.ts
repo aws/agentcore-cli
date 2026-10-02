@@ -8,7 +8,16 @@ const renderer = new HandlebarsTemplateRenderer();
 test.each([
   ["agent-python-minimal", ["bedrock-agentcore >= 1.18.1, < 2.0.0"]],
   ["agent-python-strands", ["bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0"]],
-  ["a2a-python-strands", ["bedrock-agentcore[a2a,strands-agents] >= 1.18.1, < 2.0.0"]],
+  [
+    "a2a-python-strands",
+    [
+      "a2a-sdk[all] ~= 0.3.26",
+      "aws-opentelemetry-distro ~= 0.18.0",
+      "bedrock-agentcore[a2a,strands-agents] ~= 1.24.0",
+      "botocore[crt] ~= 1.43.107",
+      "strands-agents ~= 1.57.2",
+    ],
+  ],
   ["agui-python-strands", ["bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0"]],
   [
     "export-harness-python",
