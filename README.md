@@ -55,8 +55,8 @@ To start from code you own instead, pick a template (`agentcore create --help` l
 agentcore create --name MyAgent --template agent-python-strands
 ```
 
-Templates that take a model provider (`agent-python-strands` and its `-container` variant) also
-accept `--model-provider` (`bedrock`, `anthropic`, `open_ai`, `gemini`, `lite_llm`), `--model-id`,
+Templates that take a model provider (`agent-python-strands` and its `-container` variant,
+`a2a-python-strands`, `agui-python-strands`) also accept `--model-provider` (`bedrock`, `anthropic`, `open_ai`, `gemini`, `lite_llm`), `--model-id`,
 and `--api-key file://<path>`; the API key is kept in `agentcore/.env.local` and provisioned as an
 AgentCore Identity credential on deploy.
 

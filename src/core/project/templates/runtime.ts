@@ -394,9 +394,15 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     );
     const memory = input.scaffoldRuntimeInput.memory;
     const modelScaffold = resolveModelProviderScaffold(input);
+    const modelProvider = input.scaffoldRuntimeInput.modelProvider ?? "Bedrock";
     const context = {
       name: toPythonPackageName(input.name),
-      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
+      modelProvider,
+      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      // Even without a memory resource (China scaffolds omit it — AgentCore
+      // Memory is not available there), the rendered module reads the default
+      // memory's env var so adding a memory later needs no code edit.
+      memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
       sessionStorageMountPath,
       efsMounts,
@@ -414,10 +420,9 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name, isDir) => {
-          if (isDir && name === "memory") return memory !== undefined;
-          return true;
-        },
+        // No filter: the memory module is always included — the entrypoint
+        // imports it unconditionally and it degrades to no memory when its env
+        // var is absent (the China scaffold omits the memory resource).
       },
     );
     return {
@@ -434,9 +439,17 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
   },
   [buildResolverKey("strands", "Python", "AGUI")]: async (input: RuntimeResourceConfig) => {
     const memory = input.scaffoldRuntimeInput.memory;
+    const modelScaffold = resolveModelProviderScaffold(input);
+    const modelProvider = input.scaffoldRuntimeInput.modelProvider ?? "Bedrock";
     const context = {
       name: toPythonPackageName(input.name),
-      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
+      modelProvider,
+      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      // Even without a memory resource (China scaffolds omit it — AgentCore
+      // Memory is not available there), the rendered module reads the default
+      // memory's env var so adding a memory later needs no code edit.
+      memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
+      ...modelScaffold.templateRenderContext,
       // The AgentCore Runtime requires OTEL dependencies to be present; the AG-UI
       // app binds uvicorn on port 8080 under opentelemetry-instrument.
       enableOtel: true,
@@ -448,18 +461,21 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name, isDir) => {
-          if (isDir && name === "memory") return memory !== undefined;
-          return true;
-        },
+        // No filter: the memory module is always included — the entrypoint
+        // imports it unconditionally and it degrades to no memory when its env
+        // var is absent (the China scaffold omits the memory resource).
       },
     );
     return {
       tree,
-      spec: {
-        runtimes: [{ ...buildRuntimeSpec(input), protocol: "AGUI" as const }],
-        ...(memory && { memories: [memory] }),
-      },
+      spec: mergeSpecEntries([
+        {
+          runtimes: [{ ...buildRuntimeSpec(input), protocol: "AGUI" as const }],
+          ...(memory && { memories: [memory] }),
+        },
+        modelScaffold.spec,
+      ]),
+      ...(modelScaffold.envEntries.length > 0 && { envEntries: modelScaffold.envEntries }),
     };
   },
 });

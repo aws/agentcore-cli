@@ -7,7 +7,7 @@
   Bedrock) are rejected when a deployment target is in a China region. Bring your own agent
   implementation instead: scaffold with `agent-python-minimal` or `mcp-python-fastmcp` and add
   your own model connectivity, or use `--template agent-python-strands --model-provider litellm
---model-id <model>` with a [LiteLLM model](https://docs.litellm.ai/docs/providers) reachable
+--model-id <model>` (likewise `a2a-python-strands` and `agui-python-strands`) with a [LiteLLM model](https://docs.litellm.ai/docs/providers) reachable
   from China — no default model id is applied there, and the `bedrock/` LiteLLM prefix (which
   routes to Amazon Bedrock) is rejected. The scaffolded runtime records `modelProvider` and,
   for LiteLLM, `modelId` in `agentcore.json` so deploys can re-check this. The `agentcore create`

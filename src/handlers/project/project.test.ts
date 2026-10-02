@@ -14,6 +14,7 @@ import {
   testIO,
 } from "../../testing";
 import { InputValidationError, SourceResolutionError } from "../../errors";
+import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 
 async function run(
@@ -188,13 +189,13 @@ describe("project create", () => {
         "--name",
         "MyProject",
         "--template",
-        "a2a-python-strands",
+        "agent-python-langchain",
         "--model-provider",
         "anthropic",
         "--skip-install",
         "--skip-git",
       ]),
-    ).rejects.toThrow(/--model-provider is not valid with the a2a-python-strands template/);
+    ).rejects.toThrow(/--model-provider is not valid with the agent-python-langchain template/);
   });
 
   test("runs the post-scaffold steps and reports progress on stderr", async () => {
@@ -323,6 +324,92 @@ describe("project create", () => {
       `os.environ.get("${credentialEnvVarName(credentialName, "_NAME")}", "${credentialName}")`,
     );
   });
+
+  // The A2A and AG-UI strands templates take the same model-provider overrides
+  // as agent-python-strands: same model module, same per-provider extras, same
+  // credential wiring — only the protocol differs.
+  const PROTOCOL_STRANDS_TEMPLATES: [string, string][] = [
+    ["a2a-python-strands", "A2A"],
+    ["agui-python-strands", "AGUI"],
+  ];
+
+  test.each(PROTOCOL_STRANDS_TEMPLATES)(
+    "%s scaffolds an API-key provider like agent-python-strands",
+    async (template, protocol) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const apiKeyPath = join(directory, "api-key.txt");
+      await Bun.write(apiKeyPath, "test-api-key");
+
+      await run([
+        "create",
+        "--name",
+        "MyProject",
+        "--template",
+        template,
+        "--model-provider",
+        "anthropic",
+        "--api-key",
+        `file://${apiKeyPath}`,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      const projectRoot = join(directory, "MyProject");
+      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+      expect(spec.runtimes[0]).toMatchObject({
+        name: "agent",
+        protocol,
+        modelProvider: "Anthropic",
+      });
+      expect(spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: "agentAnthropicApiKey" },
+      ]);
+      expect(await Bun.file(join(projectRoot, "agentcore", ".env.local")).text()).toContain(
+        "test-api-key",
+      );
+      const loadModel = await Bun.file(
+        join(projectRoot, "app", "agent", "model", "load.py"),
+      ).text();
+      expect(loadModel).toContain("from strands.models.anthropic import AnthropicModel");
+      expect(loadModel).toContain(`model_id="${DEFAULT_MODEL_IDS.Anthropic}"`);
+      expect(loadModel).not.toContain("BedrockModel");
+      const pyproject = await Bun.file(join(projectRoot, "app", "agent", "pyproject.toml")).text();
+      expect(pyproject).toContain('"strands-agents[anthropic] >= 1.15.0, < 2.0.0"');
+      expect(pyproject).not.toContain('"strands-agents >= 1.15.0, < 2.0.0"');
+    },
+  );
+
+  test.each(PROTOCOL_STRANDS_TEMPLATES)(
+    "%s still scaffolds its Bedrock default without overrides",
+    async (template, protocol) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await run([
+        "create",
+        "--name",
+        "MyProject",
+        "--template",
+        template,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      const projectRoot = join(directory, "MyProject");
+      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+      expect(spec.runtimes[0]).toMatchObject({ protocol, modelProvider: "Bedrock" });
+      expect(spec.runtimes[0].modelId).toBeUndefined();
+      expect(spec.credentials ?? []).toEqual([]);
+      const loadModel = await Bun.file(
+        join(projectRoot, "app", "agent", "model", "load.py"),
+      ).text();
+      expect(loadModel).toContain("from strands.models.bedrock import BedrockModel");
+      expect(loadModel).toContain(`model_id="${DEFAULT_MODEL_IDS.Bedrock}"`);
+      const pyproject = await Bun.file(join(projectRoot, "app", "agent", "pyproject.toml")).text();
+      expect(pyproject).toContain('"strands-agents >= 1.15.0, < 2.0.0"');
+      expect(pyproject).not.toContain("strands-agents[");
+    },
+  );
 
   test("scaffolds a Container agent from the strands -container template", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -1264,6 +1351,66 @@ describe("create in China regions", () => {
     expect(spec.memories ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app", "agent", "memory"))).toBe(true);
   });
+
+  test.each([
+    ["a2a-python-strands", "A2A"],
+    ["agui-python-strands", "AGUI"],
+  ])(
+    "scaffolds %s with litellm and --model-id, dropping the memory resource but keeping the module",
+    async (template, protocol) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await run([
+        "create",
+        "--name",
+        "CnProto",
+        "--template",
+        template,
+        "--model-provider",
+        "lite_llm",
+        "--model-id",
+        "deepseek/deepseek-chat",
+        ...skips,
+        "--region",
+        "cn-north-1",
+      ]);
+
+      const projectRoot = join(directory, "CnProto");
+      const loadPy = await readFile(join(projectRoot, "app", "agent", "model", "load.py"), "utf8");
+      expect(loadPy).toContain("from strands.models.litellm import LiteLLMModel");
+      expect(loadPy).toContain('model_id="deepseek/deepseek-chat"');
+      const spec = JSON.parse(
+        await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
+      );
+      expect(spec.runtimes[0]).toMatchObject({
+        protocol,
+        modelProvider: "LiteLLM",
+        modelId: "deepseek/deepseek-chat",
+      });
+      expect(spec.memories ?? []).toEqual([]);
+      // main.py imports memory/session.py unconditionally; it must survive the strip.
+      expect(existsSync(join(projectRoot, "app", "agent", "memory", "session.py"))).toBe(true);
+    },
+  );
+
+  test.each(["a2a-python-strands", "agui-python-strands"])(
+    "rejects %s on its Bedrock default",
+    async (template) => {
+      cleanups.push((await inTempDirectory()).cleanup);
+      await expect(
+        run([
+          "create",
+          "--name",
+          "CnProto",
+          "--template",
+          template,
+          ...skips,
+          "--region",
+          "cn-north-1",
+        ]),
+      ).rejects.toThrow(/not accessible from China regions/);
+    },
+  );
 
   test("rejects a bedrock/ LiteLLM model id in a China region", async () => {
     const { cleanup } = await inTempDirectory();

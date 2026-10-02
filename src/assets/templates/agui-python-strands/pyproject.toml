@@ -14,7 +14,12 @@ dependencies = [
     "aws-opentelemetry-distro ~= 0.18.0",
     "bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0",
     "botocore[crt] ~= 1.43.0",
-    "strands-agents >= 1.15.0, < 2.0.0",
+    {{#if (eq modelProvider "Anthropic")}}"strands-agents[anthropic] >= 1.15.0, < 2.0.0",
+    {{else}}{{#if (eq modelProvider "OpenAI")}}"strands-agents[openai] >= 1.15.0, < 2.0.0",
+    {{else}}{{#if (eq modelProvider "Gemini")}}"strands-agents[gemini] >= 1.15.0, < 2.0.0",
+    {{else}}{{#if (eq modelProvider "LiteLLM")}}"strands-agents[litellm] >= 1.15.0, < 2.0.0",
+    {{else}}"strands-agents >= 1.15.0, < 2.0.0",
+    {{/if}}{{/if}}{{/if}}{{/if}}
     "uvicorn >= 0.34.3, < 1.0.0",
 ]
 
