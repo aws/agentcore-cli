@@ -182,7 +182,9 @@ describe("project add runtime wizard", () => {
     await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
     const review = flatFrame(r.lastFrame);
     expect(review).toContain("model provider gemini");
-    expect(review).toContain(`API key file://${keyFile}`);
+    // The row may wrap mid-path at the frame width (CI temp paths are long), so
+    // compare with all whitespace removed.
+    expect(review.replace(/\s/g, "")).toContain(`APIkeyfile://${keyFile}`);
     expect(review).not.toContain("AIza-test-key");
     await r.press("return");
     await waitForText(r.lastFrame, "added runtime 'keyed_agent' to 'TestProject'");

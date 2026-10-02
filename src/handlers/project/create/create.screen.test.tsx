@@ -463,6 +463,30 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a model provider");
   }
 
+  test("a key path wider than the terminal wraps without looping the model step", async () => {
+    // A wrapped input line grows the field; the scroll-into-view callback and
+    // the viewport re-measure then fed each other until React gave up
+    // ("Maximum update depth exceeded") and the frame went blank. CI hit it
+    // through long macOS/Windows temp paths; a long path pins it here.
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create"); // 100 columns
+    await walkToStrandsModelStep(r, "WideKey");
+    await r.press("down"); // anthropic
+    await waitForText(r.lastFrame, "● anthropic");
+    await r.press("return");
+    await r.press("return"); // default model id → API key file
+    await waitForText(r.lastFrame, "API key file");
+    const widePath = `file:///tmp/${"x".repeat(150)}/anthropic.key`; // wraps onto a second row
+    await r.write(widePath);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const frame = r.lastFrame() ?? "";
+    expect(frame).not.toContain("Maximum update depth");
+    expect(frame).toContain("API key file");
+    expect(frame.replace(/\s/g, "")).toContain("anthropic.key");
+    r.unmount();
+  });
+
   test("an API-key provider reads the key from its file:// source, exactly like the flags", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
@@ -486,7 +510,9 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     const review = flatFrame(r.lastFrame);
     expect(review).toContain("model provider anthropic");
-    expect(review).toContain(`API key file://${keyFile}`);
+    // The row may wrap mid-path at the frame width (CI temp paths are long), so
+    // compare with all whitespace removed.
+    expect(review.replace(/\s/g, "")).toContain(`APIkeyfile://${keyFile}`);
     // The review shows the key's source, never the key.
     expect(review).not.toContain("sk-ant-test-key");
     await r.press("return");

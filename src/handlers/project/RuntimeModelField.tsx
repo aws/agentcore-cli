@@ -333,12 +333,23 @@ export function RuntimeModelField({
     if (!position) return;
     const viewportHeight = scroll.getViewportHeight();
     const bottom = position.top + position.height;
-    let target = anchorOffsetRef.current;
-    if (position.top < target) target = position.top;
-    else if (bottom > target + viewportHeight) {
-      target = Math.min(position.top, bottom - viewportHeight);
-    }
-    if (target !== scroll.getScrollOffset()) scroll.scrollTo(target);
+    const offset = scroll.getScrollOffset();
+    const fitsAt = (at: number, rows: number) => position.top >= at && bottom <= at + rows;
+    // Rows the field can count on after moving back up to `at`. When an input
+    // line wraps and the content overflows by a row or two, the measured
+    // viewport grows by exactly the offset scrolled; scrolling back would lose
+    // those rows again, clip the field, scroll down, grow the viewport — and
+    // so on until React gave up. Discounting the offset settles that after one
+    // scroll, while a viewport that really grew (fields revealed before it was
+    // measured) still re-anchors.
+    const rowsAt = (at: number) => viewportHeight - Math.max(0, offset - at);
+    const anchor = anchorOffsetRef.current;
+    let target: number;
+    if (position.top < anchor) target = position.top;
+    else if (fitsAt(anchor, rowsAt(anchor))) target = anchor;
+    else if (fitsAt(offset, viewportHeight)) target = offset;
+    else target = Math.min(position.top, bottom - viewportHeight);
+    if (target !== offset) scroll.scrollTo(target);
   }, [focusedField]);
 
   useLayoutEffect(() => {
