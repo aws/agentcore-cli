@@ -40,6 +40,7 @@ export function useCreateMemory() {
           strategy_episodic: strategyList.includes('EPISODIC'),
           indexed_key_count: indexedKeyCount,
           has_indexed_keys: indexedKeyCount > 0,
+          has_kms_key: false,
         },
         () =>
           memoryPrimitive.add({

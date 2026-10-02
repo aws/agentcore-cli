@@ -1372,6 +1372,23 @@ describe('validate', () => {
         valid: true,
       });
     });
+
+    it.each([
+      ['arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'],
+      ['arn:aws-us-gov:kms:us-gov-west-1:123456789012:key/12345678-1234-1234-1234-123456789012'],
+      ['arn:aws-cn:kms:cn-north-1:123456789012:key/12345678-1234-1234-1234-123456789012'],
+    ])('accepts valid kmsKeyArn %s', kmsKeyArn => {
+      expect(validateAddMemoryOptions({ ...validMemoryOptions, kmsKeyArn })).toEqual({ valid: true });
+    });
+
+    it.each([['not-an-arn'], ['arn:aws:kms:us-east-1:123456789012:alias/my-key'], ['arn:aws:s3:::my-bucket']])(
+      'rejects invalid kmsKeyArn %s',
+      kmsKeyArn => {
+        const result = validateAddMemoryOptions({ ...validMemoryOptions, kmsKeyArn });
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('--kms-key-arn must be a valid KMS key ARN');
+      }
+    );
   });
 
   describe('validateAddCredentialOptions', () => {
