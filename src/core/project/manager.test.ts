@@ -47,6 +47,7 @@ const AGENT_PYTHON_STRANDS_CONTAINER = resolveRuntimeTemplateShortcut(
 );
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
+const AGUI_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("agui-python-strands");
 const AGENT_PYTHON_LANGCHAIN = resolveRuntimeTemplateShortcut("agent-python-langchain");
 const BEDROCK_MANAGED_AGENTS = resolveRuntimeTemplateShortcut("environment-python-bma");
 
@@ -235,6 +236,27 @@ describe("FsProjectManager.create", () => {
       entrypoint: "main.py",
     });
     expect(spec.memories).toMatchObject([{ name: "a2a_python_strandsMemory" }]);
+  });
+
+  test("builds the AG-UI app with FastAPI's environment-driven OTLP export turned off", async () => {
+    // FastAPI >= 0.142 adds its own unsigned OTLP exporters from the OTEL_* env at
+    // startup, next to the runtime's SigV4-signing distro: every batch is sent twice
+    // and the unsigned copy is rejected with 403.
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGUI_PYTHON_STRANDS,
+    });
+
+    const agentDir = join(directory, "example", "app", "agui_python_strands");
+    const main = await Bun.file(join(agentDir, "main.py")).text();
+    expect(main).toContain('telemetry={"auto_configure": False}');
+    expect(main).not.toContain("create_strands_app(");
+    expect(main).toContain('add_strands_fastapi_endpoint(app, agui_agent, "/invocations")');
+    expect(main).toContain('add_ping(app, "/ping")');
+    // The telemetry= argument only exists from FastAPI 0.142.
+    const pyproject = await Bun.file(join(agentDir, "pyproject.toml")).text();
+    expect(pyproject).toContain('"fastapi >= 0.142.0, < 1.0.0"');
   });
 
   test("renders the Strands memory session reading the deploy-injected memory id", async () => {
