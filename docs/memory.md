@@ -36,6 +36,20 @@ Memory is a **top-level resource** in the flat resource model. Memories are defi
 
 Each memory gets an environment variable: `MEMORY_<NAME>_ID` (uppercase, underscores).
 
+### Encryption with a Customer-Managed KMS Key
+
+To encrypt memory data with your own KMS key, pass `--kms-key-arn` when adding the memory:
+
+```bash
+agentcore add memory \
+  --name SecureMemory \
+  --strategies SEMANTIC \
+  --kms-key-arn arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012
+```
+
+This sets `encryptionKeyArn` on the memory in `agentcore.json`. The key policy must allow AgentCore Memory to use the
+key.
+
 ## Using Memory with Strands Agents
 
 For Strands agents created with memory, the CLI generates a `memory/session.py` file that references the memory via
