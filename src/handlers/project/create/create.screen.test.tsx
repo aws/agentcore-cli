@@ -463,6 +463,38 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "choose a model provider");
   }
 
+  test("the model step's keys: esc leaves the list, arrows move between fields, enter returns to a missing one", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create");
+    await walkToStrandsModelStep(r, "KeysApp");
+
+    // esc on the provider list steps back to the template.
+    await r.press("escape");
+    await waitForText(r.lastFrame, "choose a template");
+    expect(r.lastFrame()).not.toContain("choose a model provider");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+
+    await r.press("down"); // anthropic
+    await waitForText(r.lastFrame, "● anthropic");
+    await r.press("return"); // focus the model id
+    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Anthropic);
+    // Clear the prefilled id, then move on with the arrow — arrows do not validate.
+    for (let i = 0; i < DEFAULT_MODEL_IDS.Anthropic.length; i++) await r.press("backspace");
+    await r.press("down"); // API key file
+    await waitForText(r.lastFrame, "API key file");
+    await r.press("up"); // back to the model id, no error raised by moving
+    await r.press("down");
+    expect(r.lastFrame()).not.toContain("enter a model ID for anthropic");
+    await r.write("file:///tmp/anthropic.key");
+    // enter on the last field is valid here, but the earlier field is empty:
+    // focus returns to it with its own message instead of continuing.
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter a model ID for anthropic");
+    expect(r.lastFrame()).not.toContain("this project will be created");
+    r.unmount();
+  });
+
   test("a key path wider than the terminal wraps without looping the model step", async () => {
     // A wrapped input line grows the field; the scroll-into-view callback and
     // the viewport re-measure then fed each other until React gave up
