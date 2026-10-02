@@ -9,7 +9,7 @@ description = "Minimal AgentCore Runtime HTTP agent"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "aws-opentelemetry-distro ~= 0.18.0",
+    "aws-opentelemetry-distro ~= 0.21.0",
     "bedrock-agentcore >= 1.18.1, < 2.0.0",
     "botocore[crt] ~= 1.43.0",
 ]
