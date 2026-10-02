@@ -152,6 +152,7 @@ describe("project add runtime wizard", () => {
 
     expect(await runtimeInSpec(projectRoot, "bma_environment")).toMatchObject({
       build: "Container",
+      bedrockManagedAgents: true,
       entrypoint: "lifecycle/server.py",
       additionalPolicies: ["bma-acr-policy.json"],
       tags: { "agentcore:template": "BedrockManagedAgents" },
