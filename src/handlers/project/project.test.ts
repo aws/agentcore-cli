@@ -411,6 +411,243 @@ describe("project create", () => {
     },
   );
 
+  test("open_ai with --api-base renders the base URL and persists it for the deploy gate", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(directory, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-compatible");
+
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "open_ai",
+      "--model-id",
+      "deepseek-chat",
+      "--api-key",
+      `file://${apiKeyPath}`,
+      "--api-base",
+      "https://api.deepseek.com/v1",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "MyProject");
+    const loadModel = await Bun.file(join(projectRoot, "app", "agent", "model", "load.py")).text();
+    expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
+    expect(loadModel).toContain('model_id="deepseek-chat"');
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      modelProvider: "OpenAI",
+      modelApiBase: "https://api.deepseek.com/v1",
+    });
+  });
+
+  test("open_ai without --api-base keeps calling api.openai.com and persists no base", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(directory, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-openai");
+    await run([
+      "create",
+      "--name",
+      "MyProject",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "open_ai",
+      "--api-key",
+      `file://${apiKeyPath}`,
+      "--skip-install",
+      "--skip-git",
+    ]);
+    const projectRoot = join(directory, "MyProject");
+    const loadModel = await Bun.file(join(projectRoot, "app", "agent", "model", "load.py")).text();
+    expect(loadModel).not.toContain("base_url");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].modelApiBase).toBeUndefined();
+  });
+
+  test("rejects --api-base with a provider other than open_ai", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(directory, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-ant");
+    await expect(
+      run([
+        "create",
+        "--name",
+        "MyProject",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        "anthropic",
+        "--api-key",
+        `file://${apiKeyPath}`,
+        "--api-base",
+        "https://example.com/v1",
+        "--skip-install",
+        "--skip-git",
+      ]),
+    ).rejects.toThrow(/only supported with the OpenAI model provider/);
+    expect(existsSync(join(directory, "MyProject"))).toBe(false);
+  });
+
+  test("rejects an --api-base that is not a URL", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    await expect(
+      run([
+        "create",
+        "--name",
+        "MyProject",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        "open_ai",
+        "--api-base",
+        "api.deepseek.com",
+        "--skip-install",
+        "--skip-git",
+      ]),
+    ).rejects.toThrow(/url/i);
+  });
+
+  test("agent-typescript-strands scaffolds an API-key provider through AgentCore Identity", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(directory, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-ant-ts");
+
+    await run([
+      "create",
+      "--name",
+      "TsAgent",
+      "--template",
+      "agent-typescript-strands",
+      "--model-provider",
+      "anthropic",
+      "--api-key",
+      `file://${apiKeyPath}`,
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const appRoot = join(directory, "TsAgent", "app", "agent");
+    const spec = await Bun.file(join(directory, "TsAgent", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      modelProvider: "Anthropic",
+      runtimeVersion: "NODE_22",
+    });
+    expect(spec.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "agentAnthropicApiKey" },
+    ]);
+    const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
+    expect(loadModel).toContain("from '@strands-agents/sdk/models/anthropic'");
+    expect(loadModel).toContain(`modelId: "${DEFAULT_MODEL_IDS.Anthropic}"`);
+    expect(loadModel).not.toContain("BedrockModel");
+    const apiKey = await Bun.file(join(appRoot, "model", "apiKey.ts")).text();
+    expect(apiKey).toContain("from 'bedrock-agentcore/identity'");
+    expect(apiKey).toContain(
+      `process.env.${credentialEnvVarName("agentAnthropicApiKey")}_NAME ?? "agentAnthropicApiKey"`,
+    );
+    const pkg = await Bun.file(join(appRoot, "package.json")).json();
+    expect(pkg.dependencies["@anthropic-ai/sdk"]).toBeDefined();
+    expect(pkg.dependencies["openai"]).toBeUndefined();
+    expect(await Bun.file(join(directory, "TsAgent", "agentcore", ".env.local")).text()).toContain(
+      "sk-ant-ts",
+    );
+  });
+
+  test("agent-typescript-strands with open_ai --api-base points the OpenAI client at the endpoint", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(directory, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-ds");
+
+    await run([
+      "create",
+      "--name",
+      "TsAgent",
+      "--template",
+      "agent-typescript-strands",
+      "--model-provider",
+      "open_ai",
+      "--model-id",
+      "deepseek-chat",
+      "--api-key",
+      `file://${apiKeyPath}`,
+      "--api-base",
+      "https://api.deepseek.com/v1",
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const appRoot = join(directory, "TsAgent", "app", "agent");
+    const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
+    expect(loadModel).toContain("from '@strands-agents/sdk/models/openai'");
+    expect(loadModel).toContain('clientConfig: { baseURL: "https://api.deepseek.com/v1" }');
+    expect(loadModel).toContain('modelId: "deepseek-chat"');
+    const pkg = await Bun.file(join(appRoot, "package.json")).json();
+    expect(pkg.dependencies["openai"]).toBeDefined();
+    const spec = await Bun.file(join(directory, "TsAgent", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0]).toMatchObject({
+      modelProvider: "OpenAI",
+      modelApiBase: "https://api.deepseek.com/v1",
+    });
+  });
+
+  test("agent-typescript-strands keeps its Bedrock default without the identity module", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "TsAgent",
+      "--template",
+      "agent-typescript-strands",
+      "--skip-install",
+      "--skip-git",
+    ]);
+    const appRoot = join(directory, "TsAgent", "app", "agent");
+    const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
+    expect(loadModel).toContain("from '@strands-agents/sdk/models/bedrock'");
+    expect(loadModel).toContain(`modelId: "${DEFAULT_MODEL_IDS.Bedrock}"`);
+    expect(loadModel).not.toContain("getApiKey");
+    expect(existsSync(join(appRoot, "model", "apiKey.ts"))).toBe(false);
+    const pkg = await Bun.file(join(appRoot, "package.json")).json();
+    expect(Object.keys(pkg.dependencies)).toEqual([
+      "@opentelemetry/api",
+      "@strands-agents/sdk",
+      "bedrock-agentcore",
+      "tsx",
+      "zod",
+    ]);
+  });
+
+  test("rejects lite_llm for a TypeScript template", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "create",
+        "--name",
+        "TsAgent",
+        "--template",
+        "agent-typescript-strands",
+        "--model-provider",
+        "lite_llm",
+        "--model-id",
+        "deepseek/deepseek-chat",
+        "--skip-install",
+        "--skip-git",
+      ]),
+    ).rejects.toThrow(/only available for Python templates/);
+    expect(existsSync(join(directory, "TsAgent"))).toBe(false);
+  });
+
   test("scaffolds a Container agent from the strands -container template", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
@@ -1409,6 +1646,73 @@ describe("create in China regions", () => {
           "cn-north-1",
         ]),
       ).rejects.toThrow(/not accessible from China regions/);
+    },
+  );
+
+  test("requires --api-base with open_ai", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(directory, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-openai");
+    await expect(
+      run([
+        "create",
+        "--name",
+        "CnOpenAI",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        "open_ai",
+        "--api-key",
+        `file://${apiKeyPath}`,
+        ...skips,
+        "--region",
+        "cn-north-1",
+      ]),
+    ).rejects.toThrow(/requires --api-base in China regions/);
+  });
+
+  test.each([
+    ["agent-python-strands", "model/load.py", '"base_url": "https://api.deepseek.com/v1"'],
+    ["agent-typescript-strands", "model/load.ts", 'baseURL: "https://api.deepseek.com/v1"'],
+  ])(
+    "scaffolds %s with open_ai and --api-base, persisting the base",
+    async (template, file, needle) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const apiKeyPath = join(directory, "api-key.txt");
+      await Bun.write(apiKeyPath, "sk-ds");
+      await run([
+        "create",
+        "--name",
+        "CnOpenAI",
+        "--template",
+        template,
+        "--model-provider",
+        "open_ai",
+        "--model-id",
+        "deepseek-chat",
+        "--api-key",
+        `file://${apiKeyPath}`,
+        "--api-base",
+        "https://api.deepseek.com/v1",
+        ...skips,
+        "--region",
+        "cn-north-1",
+      ]);
+
+      const projectRoot = join(directory, "CnOpenAI");
+      expect(await readFile(join(projectRoot, "app", "agent", file), "utf8")).toContain(needle);
+      const spec = JSON.parse(
+        await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
+      );
+      expect(spec.runtimes[0]).toMatchObject({
+        modelProvider: "OpenAI",
+        modelApiBase: "https://api.deepseek.com/v1",
+      });
+      expect(spec.memories ?? []).toEqual([]);
+      // The entrypoint imports the memory module unconditionally; it must survive the strip.
+      expect(existsSync(join(projectRoot, "app", "agent", "memory"))).toBe(true);
     },
   );
 

@@ -411,6 +411,66 @@ describe("project add runtime", () => {
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
   });
 
+  test("--api-base with open_ai renders the base URL and persists it", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(projectRoot, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-ds");
+
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "ds_agent",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "open_ai",
+      "--model-id",
+      "deepseek-chat",
+      "--api-key",
+      `file://${apiKeyPath}`,
+      "--api-base",
+      "https://api.deepseek.com/v1",
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const runtime = spec.runtimes.find(
+      (candidate: { name: string }) => candidate.name === "ds_agent",
+    );
+    expect(runtime).toMatchObject({
+      modelProvider: "OpenAI",
+      modelApiBase: "https://api.deepseek.com/v1",
+    });
+    const loadModel = await Bun.file(
+      join(projectRoot, "app", "ds_agent", "model", "load.py"),
+    ).text();
+    expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
+  });
+
+  test("--api-base is refused with a provider other than open_ai", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(projectRoot, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-g");
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "g_agent",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        "gemini",
+        "--api-key",
+        `file://${apiKeyPath}`,
+        "--api-base",
+        "https://example.com/v1",
+      ]),
+    ).rejects.toThrow(/only supported with the OpenAI model provider/);
+  });
+
   test("agent-typescript-strands scaffolds a TypeScript agent", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -528,7 +588,7 @@ describe("project add runtime", () => {
     [
       "--model-provider is not valid with the environment-python-bma template",
       ["--name", "my_bma", "--template", "environment-python-bma", "--model-provider", "Anthropic"],
-      "--model-provider, --model-id, and --api-key are not valid with the environment-python-bma template",
+      "--model-provider, --model-id, --api-key, and --api-base are not valid with the environment-python-bma template",
     ],
     [
       "--model-provider without a template requires agent-python-strands",

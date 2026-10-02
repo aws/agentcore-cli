@@ -287,6 +287,14 @@ export const ProjectRuntimeSchema = z
      * replace the model wiring by hand.
      */
     modelId: z.string().min(1).optional(),
+    /**
+     * The OpenAI-compatible base URL the scaffold rendered into an OpenAI
+     * runtime's code (--api-base). Read by the China deploy gate: an OpenAI
+     * runtime pointed at a reachable endpoint is allowed there, one calling
+     * api.openai.com is not. Ignored by the CDK app; delete it together with
+     * modelProvider if you replace the model wiring by hand.
+     */
+    modelApiBase: z.string().url().optional(),
     description: z.string().max(200).optional(),
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,

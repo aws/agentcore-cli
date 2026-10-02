@@ -73,6 +73,12 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         { sensitive: true },
       ),
       flag(
+        "api-base",
+        "base URL of an OpenAI-compatible endpoint for --model-provider open_ai " +
+          "(required in China regions, where api.openai.com is not reachable)",
+        z.string().url().optional(),
+      ),
+      flag(
         "skip-install",
         "skip installing dependencies (npm install, uv sync)",
         z.boolean().default(false),
@@ -91,9 +97,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       const modelProviderFlag = flags["model-provider"];
       const apiKeyFlag = flags["api-key"];
 
-      const runtimeCodeFlags = (["model-provider", "model-id", "api-key"] as const).filter(
-        (flagName) => flags[flagName] !== undefined,
-      );
+      const runtimeCodeFlags = (
+        ["model-provider", "model-id", "api-key", "api-base"] as const
+      ).filter((flagName) => flags[flagName] !== undefined);
       if (runtimeCodeFlags.length > 0) {
         if (template === undefined || template === EMPTY_TEMPLATE_NAME) {
           throw new InputValidationError(
@@ -126,6 +132,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
           modelProvider: resolveRuntimeModelProvider(modelProviderFlag),
           modelId: flags["model-id"],
           apiKey,
+          apiBase: flags["api-base"],
         });
         createInput = { ...base, scaffoldRuntimeInput };
       }

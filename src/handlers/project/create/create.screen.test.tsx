@@ -646,6 +646,132 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("openai reveals an optional API base URL that flows as --api-base", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const keyFile = join(directory, "openai.key");
+    await writeFile(keyFile, "sk-compatible");
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await walkToStrandsModelStep(r, "BaseApp");
+    await r.press("down"); // anthropic
+    await r.press("down"); // openai
+    await waitForText(r.lastFrame, "● openai");
+    await r.press("return"); // model id
+    await r.press("return"); // API key file
+    await waitForText(r.lastFrame, "API key file");
+    await r.write(`file://${keyFile}`);
+    await r.press("return"); // → API base URL (optional outside China)
+    await waitForText(r.lastFrame, "API base URL");
+    expect(r.lastFrame()).toContain("optional");
+    await r.write("https://api.deepseek.com/v1");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(flatFrame(r.lastFrame)).toContain("API base https://api.deepseek.com/v1");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./BaseApp", 5000);
+
+    expect(inputs).toEqual([
+      {
+        name: "BaseApp",
+        skipInstall: false,
+        skipGit: false,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
+          runtimeName: "agent",
+          modelProvider: "OpenAI",
+          apiKey: "sk-compatible",
+          apiBase: "https://api.deepseek.com/v1",
+        }),
+      },
+    ]);
+    const spec = await Bun.file(join(directory, "BaseApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].modelApiBase).toBe("https://api.deepseek.com/v1");
+    r.unmount();
+  }, 10000);
+
+  // walkToTypeScriptModelStep drives the wizard to the model step of the
+  // TypeScript strands template.
+  async function walkToTypeScriptModelStep(
+    r: ReturnType<typeof renderScreen>,
+    name: string,
+  ): Promise<void> {
+    await waitForText(r.lastFrame, "name your project");
+    await r.write(name);
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    for (let i = 0; i < 10 && !r.lastFrame()!.includes("● agent-typescript-strands"); i++) {
+      await r.press("down");
+    }
+    await waitForText(r.lastFrame, "● agent-typescript-strands");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+  }
+
+  test("a TypeScript template is not offered LiteLLM", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create", { core: new TestCoreClient() });
+
+    await walkToTypeScriptModelStep(r, "TsApp");
+    expect(r.lastFrame()).toContain("● bedrock");
+    expect(r.lastFrame()).toContain("○ gemini");
+    expect(r.lastFrame()).not.toContain("litellm");
+    r.unmount();
+  });
+
+  test("in a China region a TypeScript template starts on openai and requires the API base", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const keyFile = join(directory, "ds.key");
+    await writeFile(keyFile, "sk-ds");
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "cn-north-1"),
+    });
+
+    await walkToTypeScriptModelStep(r, "CnTs");
+    expect(r.lastFrame()).toContain("● openai");
+    expect(r.lastFrame()).not.toContain("litellm");
+    expect(r.lastFrame()).toContain("set an API base URL");
+    await r.press("return"); // model id, empty in China
+    await r.write("deepseek-chat");
+    await r.press("return"); // API key file
+    await r.write(`file://${keyFile}`);
+    await r.press("return"); // API base URL, required in China
+    await waitForText(r.lastFrame, "API base URL");
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter the API base URL of an endpoint reachable from China");
+    await r.write("https://api.deepseek.com/v1");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./CnTs", 5000);
+
+    const expected = resolveRuntimeTemplateShortcut("agent-typescript-strands", {
+      runtimeName: "agent",
+      modelProvider: "OpenAI",
+      modelId: "deepseek-chat",
+      apiKey: "sk-ds",
+      apiBase: "https://api.deepseek.com/v1",
+    });
+    expected.memory = undefined;
+    expect(inputs).toEqual([
+      { name: "CnTs", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+    ]);
+    const loadModel = await Bun.file(
+      join(directory, "CnTs", "app", "agent", "model", "load.ts"),
+    ).text();
+    expect(loadModel).toContain('baseURL: "https://api.deepseek.com/v1"');
+    r.unmount();
+  }, 10000);
+
   test("the wizard rejects Bedrock Managed Agents in a China region before create", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);

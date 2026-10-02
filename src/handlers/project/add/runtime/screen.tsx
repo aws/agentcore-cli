@@ -73,7 +73,12 @@ export function toRuntimeInput(values: RuntimeFormValues, apiKey?: string): Runt
     envVars: [],
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
       runtimeName: values.name,
-      ...(model && { modelProvider: model.modelProvider, modelId: model.modelId, apiKey }),
+      ...(model && {
+        modelProvider: model.modelProvider,
+        modelId: model.modelId,
+        apiKey,
+        apiBase: model.apiBase,
+      }),
     }),
   };
 }
@@ -177,6 +182,7 @@ function AddRuntimeWizard({
             value={values.model}
             onChange={(model) => set({ model })}
             region={region}
+            language={RUNTIME_TEMPLATE_SHORTCUTS[values.template].language}
           />
         </Step>
       )}

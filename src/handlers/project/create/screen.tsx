@@ -139,7 +139,12 @@ export function buildCreateInput(
     skipGit: false,
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
       runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
-      ...(model && { modelProvider: model.modelProvider, modelId: model.modelId, apiKey }),
+      ...(model && {
+        modelProvider: model.modelProvider,
+        modelId: model.modelId,
+        apiKey,
+        apiBase: model.apiBase,
+      }),
     }),
   };
 }
@@ -263,6 +268,11 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
             value={values.runtimeModel}
             onChange={(runtimeModel) => patch({ runtimeModel })}
             region={region}
+            language={
+              values.template === EMPTY_TEMPLATE_NAME
+                ? undefined
+                : RUNTIME_TEMPLATE_SHORTCUTS[values.template].language
+            }
           />
         </Step>
       )}

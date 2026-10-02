@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { FormRadioGroup, type FormRadioOption } from "../../components/FormRadioGroup";
@@ -8,21 +8,26 @@ import { useKeyHints, useWizard } from "../../components/wizard";
 import { isChinaRegion } from "../../core/partition";
 import { SourceResolver } from "../../io";
 import { DEFAULT_MODEL_IDS, type ModelProvider } from "../../projectSchemas/runtime";
+import type { ScaffoldRuntimeInput } from "./types";
 
 const theme = darkTheme;
 
 // The model step of the code-based runtime wizards: `agentcore create` with a
 // runtime template and `agentcore add runtime`. Both hand the answer to
 // resolveRuntimeTemplateShortcut as the same overrides the --model-provider,
-// --model-id and --api-key flags supply, so the wizard scaffolds exactly what
-// the flag command would. It is only shown for templates whose shortcut has
-// supportsModelProviderOverride; the others stay Bedrock-only as before.
+// --model-id, --api-key and --api-base flags supply, so the wizard scaffolds
+// exactly what the flag command would. It is only shown for templates whose
+// shortcut has supportsModelProviderOverride; the others stay Bedrock-only.
+
+type TemplateLanguage = ScaffoldRuntimeInput["language"];
 
 export interface RuntimeModelConfig {
   modelId: string;
   // The API key as the --api-key flag takes it: a 'file://<path>' source. The
   // secret itself is read at submit, never held in the form.
   apiKeySource: string;
+  // --api-base: an OpenAI-compatible endpoint; only the OpenAI provider reads it.
+  apiBase: string;
 }
 
 // RuntimeModelValues keeps one config per provider, so switching providers and
@@ -37,6 +42,7 @@ export interface RuntimeModelOverrides {
   modelProvider: ModelProvider;
   modelId?: string;
   apiKeySource?: string;
+  apiBase?: string;
 }
 
 const PROVIDER_OPTIONS: { provider: ModelProvider; label: string; description: string }[] = [
@@ -53,7 +59,7 @@ const PROVIDER_OPTIONS: { provider: ModelProvider; label: string; description: s
   {
     provider: "OpenAI",
     label: "openai",
-    description: "an OpenAI model using an API key",
+    description: "an OpenAI model, or any OpenAI-compatible endpoint, using an API key",
   },
   {
     provider: "Gemini",
@@ -67,41 +73,74 @@ const PROVIDER_OPTIONS: { provider: ModelProvider; label: string; description: s
   },
 ];
 
-// Amazon Bedrock, Anthropic, OpenAI, and Gemini cannot be called from China
-// regions; LiteLLM can route to a provider that can. The create and add gates
-// enforce this — the wizard only says so up front and starts on the one
+// Amazon Bedrock, Anthropic, OpenAI and Gemini cannot be called from China
+// regions. LiteLLM can route to a provider that can, and the OpenAI client can
+// be pointed at an OpenAI-compatible endpoint that can. The create and add
+// gates enforce this — the wizard only says so up front and starts on a
 // provider that can pass them.
 const CHINA_BLOCKED_PROVIDERS: ReadonlySet<ModelProvider> = new Set([
   "Bedrock",
   "Anthropic",
-  "OpenAI",
   "Gemini",
 ]);
 const CHINA_BLOCKED_NOTE = "not accessible from China regions";
-const CHINA_LITELLM_PLACEHOLDER = "deepseek/deepseek-chat";
+const CHINA_OPENAI_NOTE =
+  "api.openai.com is not accessible from China regions · set an API base URL";
+// Format hints only — no vendor is suggested; the user picks the provider.
+const CHINA_LITELLM_PLACEHOLDER = "<provider>/<model>";
+const CHINA_OPENAI_MODEL_PLACEHOLDER = "<model name at your endpoint>";
+const CHINA_API_BASE_PLACEHOLDER = "https://<host>/v1";
 
 const API_KEY_SOURCE_PATTERN = /^file:\/\/.+/;
 const API_KEY_SOURCE_ERROR =
   "enter a file:// path to the key; inline secrets are not accepted here";
+const API_BASE_PATTERN = /^https?:\/\/.+/;
+const API_BASE_ERROR = "enter the endpoint as an http(s) URL";
 
 function inChina(region: string | undefined): boolean {
   return region !== undefined && isChinaRegion(region);
 }
 
-// emptyRuntimeModel starts on Bedrock with every provider's model id prefilled
-// from the table the flag path defaults from. In a China region it starts on
-// LiteLLM with no model id: the LiteLLM default routes to Amazon Bedrock, which
-// the gate would refuse, so the user must name a reachable model.
-export function emptyRuntimeModel(region?: string): RuntimeModelValues {
+// LiteLLM is a Python library; the TypeScript Strands SDK has no equivalent,
+// so TypeScript templates are not offered it (the schema refuses it too).
+function providerOptions(language: TemplateLanguage | undefined) {
+  return language === "TypeScript"
+    ? PROVIDER_OPTIONS.filter((option) => option.provider !== "LiteLLM")
+    : PROVIDER_OPTIONS;
+}
+
+// defaultProvider is where the step starts: Bedrock, except in a China region,
+// where it is the provider that can pass the gate for the template's language.
+export function defaultRuntimeModelProvider(
+  region: string | undefined,
+  language?: TemplateLanguage,
+): ModelProvider {
+  if (!inChina(region)) return "Bedrock";
+  return language === "TypeScript" ? "OpenAI" : "LiteLLM";
+}
+
+// emptyRuntimeModel starts on the default provider with every provider's model
+// id prefilled from the table the flag path defaults from. In a China region
+// the two providers that can pass the gate start with no model id: LiteLLM's
+// default routes to Amazon Bedrock and OpenAI's names an api.openai.com model,
+// neither of which is reachable there, so the user must name a model.
+export function emptyRuntimeModel(
+  region?: string,
+  language?: TemplateLanguage,
+): RuntimeModelValues {
   const china = inChina(region);
   return {
-    provider: china ? "LiteLLM" : "Bedrock",
+    provider: defaultRuntimeModelProvider(region, language),
     configs: Object.fromEntries(
       PROVIDER_OPTIONS.map(({ provider }) => [
         provider,
         {
-          modelId: china && provider === "LiteLLM" ? "" : DEFAULT_MODEL_IDS[provider],
+          modelId:
+            china && (provider === "LiteLLM" || provider === "OpenAI")
+              ? ""
+              : DEFAULT_MODEL_IDS[provider],
           apiKeySource: "",
+          apiBase: "",
         },
       ]),
     ) as Record<ModelProvider, RuntimeModelConfig>,
@@ -119,15 +158,17 @@ function selectedConfig(values: RuntimeModelValues): RuntimeModelConfig {
 // toRuntimeModelOverrides is the answer as the flag path would state it: the
 // model id only when it differs from the provider's default (so the wizard and
 // a bare `--model-provider` produce the same ScaffoldRuntimeInput), the key
-// source only when given.
+// source only when given, the base URL only for OpenAI and only when given.
 export function toRuntimeModelOverrides(values: RuntimeModelValues): RuntimeModelOverrides {
   const config = selectedConfig(values);
   const modelId = config.modelId.trim();
   const apiKeySource = config.apiKeySource.trim();
+  const apiBase = config.apiBase.trim();
   return {
     modelProvider: values.provider,
     ...(modelId !== "" && modelId !== DEFAULT_MODEL_IDS[values.provider] && { modelId }),
     ...(apiKeySource !== "" && { apiKeySource }),
+    ...(values.provider === "OpenAI" && apiBase !== "" && { apiBase }),
   };
 }
 
@@ -141,7 +182,7 @@ export function resolveRuntimeModelApiKey(
 }
 
 // runtimeModelSummary is the review's account of the model: provider and id
-// always, the key source only when one was given.
+// always, the key source and base URL only when given.
 export function runtimeModelSummary(values: RuntimeModelValues): Record<string, string> {
   const config = selectedConfig(values);
   const overrides = toRuntimeModelOverrides(values);
@@ -149,6 +190,7 @@ export function runtimeModelSummary(values: RuntimeModelValues): Record<string, 
     "model provider": providerLabel(values.provider),
     "model id": config.modelId.trim() || DEFAULT_MODEL_IDS[values.provider],
     ...(overrides.apiKeySource !== undefined && { "API key": overrides.apiKeySource }),
+    ...(overrides.apiBase !== undefined && { "API base": overrides.apiBase }),
   };
 }
 
@@ -180,9 +222,15 @@ function modelFields(provider: ModelProvider, china: boolean): ModelField[] {
             ? china
               ? "a LiteLLM model id (<provider>/<model>) reachable from China regions"
               : "a LiteLLM model id: <provider>/<model>"
-            : `the ${label} model to use`,
+            : provider === "OpenAI" && china
+              ? "the model name at your OpenAI-compatible endpoint"
+              : `the ${label} model to use`,
       placeholder:
-        provider === "LiteLLM" && china ? CHINA_LITELLM_PLACEHOLDER : DEFAULT_MODEL_IDS[provider],
+        provider === "LiteLLM" && china
+          ? CHINA_LITELLM_PLACEHOLDER
+          : provider === "OpenAI" && china
+            ? CHINA_OPENAI_MODEL_PLACEHOLDER
+            : DEFAULT_MODEL_IDS[provider],
       required: true,
       requiredError: `enter a model ID for ${label}`,
     },
@@ -205,6 +253,21 @@ function modelFields(provider: ModelProvider, china: boolean): ModelField[] {
     });
   }
 
+  if (provider === "OpenAI") {
+    fields.push({
+      key: "apiBase",
+      name: "API base URL",
+      helpText: china
+        ? "an OpenAI-compatible endpoint reachable from China regions (api.openai.com is not)"
+        : "optional · an OpenAI-compatible endpoint instead of api.openai.com",
+      placeholder: china ? CHINA_API_BASE_PLACEHOLDER : "optional",
+      required: china,
+      requiredError: "enter the API base URL of an endpoint reachable from China regions",
+      pattern: API_BASE_PATTERN,
+      patternError: API_BASE_ERROR,
+    });
+  }
+
   return fields;
 }
 
@@ -224,15 +287,29 @@ export function RuntimeModelField({
   value,
   onChange,
   region,
+  language,
 }: {
   value: RuntimeModelValues;
   onChange: (value: RuntimeModelValues) => void;
   /** The command's resolved region; a China region annotates the blocked providers. */
   region?: string;
+  /** The chosen template's language; TypeScript templates are not offered LiteLLM. */
+  language?: TemplateLanguage;
 }) {
   const { advance, back } = useWizard();
   const china = inChina(region);
-  const providerIndex = PROVIDER_OPTIONS.findIndex((option) => option.provider === value.provider);
+  const options = providerOptions(language);
+  const providerIndex = options.findIndex((option) => option.provider === value.provider);
+
+  // The template can change after this step was first shown (the wizard keeps
+  // one form), so a provider the new template does not offer falls back to
+  // the default for it.
+  useEffect(() => {
+    if (providerIndex === -1) {
+      onChange({ ...value, provider: defaultRuntimeModelProvider(region, language) });
+    }
+  }, [providerIndex, language, region, value, onChange]);
+
   const fields = modelFields(value.provider, china);
   const config = value.configs[value.provider];
   const [focusedField, setFocusedFieldState] = useState<number | null>(null);
@@ -280,10 +357,11 @@ export function RuntimeModelField({
         return;
       }
       if (key.upArrow || key.downArrow) {
+        const current = Math.max(0, providerIndex);
         const nextIndex = key.upArrow
-          ? Math.max(0, providerIndex - 1)
-          : Math.min(PROVIDER_OPTIONS.length - 1, providerIndex + 1);
-        onChange({ ...value, provider: PROVIDER_OPTIONS[nextIndex]!.provider });
+          ? Math.max(0, current - 1)
+          : Math.min(options.length - 1, current + 1);
+        onChange({ ...value, provider: options[nextIndex]!.provider });
         setError(null);
         return;
       }
@@ -329,12 +407,15 @@ export function RuntimeModelField({
     }
   });
 
-  const options: FormRadioOption[] = PROVIDER_OPTIONS.map(({ provider, label, description }) => ({
+  const radioOptions: FormRadioOption[] = options.map(({ provider, label, description }) => ({
     label,
-    description:
-      china && CHINA_BLOCKED_PROVIDERS.has(provider)
-        ? `${description} · ${CHINA_BLOCKED_NOTE}`
-        : description,
+    description: !china
+      ? description
+      : provider === "OpenAI"
+        ? `${description} · ${CHINA_OPENAI_NOTE}`
+        : CHINA_BLOCKED_PROVIDERS.has(provider)
+          ? `${description} · ${CHINA_BLOCKED_NOTE}`
+          : description,
   }));
 
   return (
@@ -349,9 +430,9 @@ export function RuntimeModelField({
         <FormRadioGroup
           key="provider"
           helpText="choose a model provider"
-          options={options}
-          focusedIndex={focusedField === null ? providerIndex : undefined}
-          selectedIndex={providerIndex}
+          options={radioOptions}
+          focusedIndex={focusedField === null ? Math.max(0, providerIndex) : undefined}
+          selectedIndex={Math.max(0, providerIndex)}
         />
         {focusedField !== null &&
           fields.map((field, fieldIndex) => (

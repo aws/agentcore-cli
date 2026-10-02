@@ -73,6 +73,12 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
       scaffoldRuntimeInput.modelProvider === "LiteLLM" && {
         modelId: scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS.LiteLLM,
       }),
+    // For OpenAI the base URL determines which server the client calls, so
+    // persist it for the China deploy gate (an OpenAI-compatible endpoint
+    // reachable from China passes; api.openai.com does not).
+    ...(usesModel &&
+      scaffoldRuntimeInput.modelProvider === "OpenAI" &&
+      scaffoldRuntimeInput.apiBase !== undefined && { modelApiBase: scaffoldRuntimeInput.apiBase }),
     // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.
     entrypoint:
       runtimeProfile?.entrypoint ??
@@ -229,6 +235,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       name: toPythonPackageName(input.name),
       modelProvider,
       modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default
       // memory's env var so adding a memory later needs no code edit.
@@ -271,10 +278,17 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       throw new InputValidationError("the agent-typescript-strands template only supports HTTP");
     const memory = input.scaffoldRuntimeInput.memory;
     const modelScaffold = resolveModelProviderScaffold(input);
+    const modelProvider = input.scaffoldRuntimeInput.modelProvider ?? "Bedrock";
     const context = {
       name: toNpmPackageName(input.name),
       runtimeName: input.name,
-      memoryEnvVarName: memory ? memoryEnvVarName(memory.name) : undefined,
+      modelProvider,
+      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      apiBase: input.scaffoldRuntimeInput.apiBase,
+      // Even without a memory resource (China scaffolds omit it — AgentCore
+      // Memory is not available there), the rendered module reads the default
+      // memory's env var so adding a memory later needs no code edit.
+      memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
     };
     const tree = await FsTreeNode.fromAssetSource(
@@ -283,8 +297,13 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name, isDir) => {
-          if (isDir && name === "memory") return memory !== undefined;
+        filter: (name) => {
+          // The memory module is always included: the entrypoint imports it
+          // unconditionally and it degrades to no memory when its env var is
+          // absent (the China scaffold omits the memory resource).
+          // The identity-backed key module only exists for API-key providers.
+          if (name === "apiKey.ts")
+            return modelScaffold.templateRenderContext.identityProviders.length > 0;
           return true;
         },
       },
@@ -399,6 +418,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       name: toPythonPackageName(input.name),
       modelProvider,
       modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default
       // memory's env var so adding a memory later needs no code edit.
@@ -445,6 +465,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       name: toPythonPackageName(input.name),
       modelProvider,
       modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default
       // memory's env var so adding a memory later needs no code edit.
