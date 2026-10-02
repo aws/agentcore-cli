@@ -23,6 +23,14 @@ import {
   type HarnessModelValues,
 } from "../HarnessModelField";
 import {
+  RuntimeModelField,
+  emptyRuntimeModel,
+  resolveRuntimeModelApiKey,
+  runtimeModelSummary,
+  toRuntimeModelOverrides,
+  type RuntimeModelValues,
+} from "../RuntimeModelField";
+import {
   ChoiceField,
   Step,
   Summary,
@@ -32,7 +40,7 @@ import {
 } from "../../../components/wizard";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { TuiExitMessageKey } from "../../../tui/exitMessage";
-import { validateCreateRegionSupport } from "./region";
+import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
 
 const theme = darkTheme;
 
@@ -47,15 +55,29 @@ interface CreateProjectFormValues {
   kind: ProjectKind;
   model: HarnessModelValues;
   template: TemplateName;
+  // The code-based model step's answer; only read for templates that take a
+  // model-provider override (see templateTakesModelProvider).
+  runtimeModel: RuntimeModelValues;
 }
 
-function emptyCreateProjectForm(): CreateProjectFormValues {
+function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
   return {
     name: "",
     kind: "agent",
     model: emptyHarnessModel(),
     template: DEFAULT_TEMPLATE,
+    runtimeModel: emptyRuntimeModel(region),
   };
+}
+
+// templateTakesModelProvider says whether the chosen template accepts the
+// --model-provider/--model-id/--api-key overrides; the wizard asks the model
+// step exactly when the flag path would accept those flags.
+function templateTakesModelProvider(template: TemplateName): boolean {
+  return (
+    template !== EMPTY_TEMPLATE_NAME &&
+    RUNTIME_TEMPLATE_SHORTCUTS[template].supportsModelProviderOverride
+  );
 }
 
 const PROJECT_KIND_CHOICES: Choice<ProjectKind>[] = [
@@ -84,8 +106,12 @@ const TEMPLATE_CHOICES: Choice<TemplateName>[] = PROJECT_TEMPLATE_NAMES.map((tem
 }));
 
 // buildCreateInput translates the form through the same resolver as the
-// flag-driven path, including its existing API-key ARN support.
-export function buildCreateInput(values: CreateProjectFormValues): CreateProjectInput {
+// flag-driven path, including its existing API-key ARN support. apiKey is the
+// code-based model step's key, already read from its file:// source.
+export function buildCreateInput(
+  values: CreateProjectFormValues,
+  apiKey?: string,
+): CreateProjectInput {
   if (values.kind === "harness") {
     const model = toHarnessModelInput(values.model);
     return {
@@ -104,12 +130,16 @@ export function buildCreateInput(values: CreateProjectFormValues): CreateProject
   if (values.template === EMPTY_TEMPLATE_NAME) {
     return { name: values.name, skipInstall: false, skipGit: false };
   }
+  const model = templateTakesModelProvider(values.template)
+    ? toRuntimeModelOverrides(values.runtimeModel)
+    : undefined;
   return {
     name: values.name,
     skipInstall: false,
     skipGit: false,
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
       runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
+      ...(model && { modelProvider: model.modelProvider, modelId: model.modelId, apiKey }),
     }),
   };
 }
@@ -126,7 +156,13 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     };
   }
   const type = values.template === EMPTY_TEMPLATE_NAME ? "empty project" : "agent code";
-  return { ...base, type, template: values.template, directory: `./${values.name}` };
+  return {
+    ...base,
+    type,
+    template: values.template,
+    ...(templateTakesModelProvider(values.template) && runtimeModelSummary(values.runtimeModel)),
+    directory: `./${values.name}`,
+  };
 }
 
 // ─── wizard ───────────────────────────────────────────────────────────────────
@@ -140,7 +176,10 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
 export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
   const navigate = useNavigate();
   const { exit } = useApp();
-  const [values, setValues] = useState<CreateProjectFormValues>(emptyCreateProjectForm);
+  const region = ctx.value(RegionKey);
+  const [values, setValues] = useState<CreateProjectFormValues>(() =>
+    emptyCreateProjectForm(region),
+  );
 
   const patch = (update: Partial<CreateProjectFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
@@ -152,14 +191,22 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       // Esc from the first step leaves the wizard for the root menu, the
       // same place RouterScreen's esc goes.
       onCancel={() => navigate("/agentcore")}
-      onSubmit={() => {
-        // Both of these throw before anything is written, so the wizard reports
+      onSubmit={async function* () {
+        // All of these throw before anything is written, so the wizard reports
         // them the way it reports a failed create — with the retry still on
-        // offer, because nothing has to be cleaned up first.
+        // offer, because nothing has to be cleaned up first. The API key is
+        // read here, at submit, the way the flag path reads --api-key.
         assertProjectPathFits(values.name, ctx.require(PlatformKey));
-        const input = buildCreateInput(values);
-        validateCreateRegionSupport(input, ctx.require(RegionKey));
-        return core.projectManager.create(input);
+        const apiKey =
+          values.kind === "agent" && templateTakesModelProvider(values.template)
+            ? await resolveRuntimeModelApiKey(toRuntimeModelOverrides(values.runtimeModel))
+            : undefined;
+        const input = buildCreateInput(values, apiKey);
+        const resolvedRegion = ctx.require(RegionKey);
+        validateCreateRegionSupport(input, resolvedRegion);
+        const stripped = stripCreateRegionUnavailableDefaults(input, resolvedRegion);
+        if (stripped !== undefined) yield { type: "step" as const, message: stripped };
+        return yield* core.projectManager.create(input);
       }}
       runningLabel={`creating ${values.name}…`}
       successLabel={`project created in ./${values.name}`}
@@ -206,6 +253,16 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
             choices={TEMPLATE_CHOICES}
             value={values.template}
             onChange={(template) => patch({ template })}
+          />
+        </Step>
+      )}
+
+      {values.kind === "agent" && templateTakesModelProvider(values.template) && (
+        <Step stepKey="runtimeModel" title="model provider">
+          <RuntimeModelField
+            value={values.runtimeModel}
+            onChange={(runtimeModel) => patch({ runtimeModel })}
+            region={region}
           />
         </Step>
       )}

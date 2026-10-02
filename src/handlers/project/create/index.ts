@@ -26,12 +26,10 @@ import {
   type HarnessModelProvider,
 } from "../../../projectSchemas/harness";
 import { InputValidationError } from "../../../errors";
-import { isChinaRegion } from "../../../core/partition";
-import { MEMORY_STRIPPED_CN_MESSAGE } from "../../../core/project/manager";
 import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
-import { validateCreateRegionSupport } from "./region";
+import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -134,12 +132,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       const region = ctx.require(RegionKey);
       validateCreateRegionSupport(createInput, region);
-      // AgentCore Memory is not available in China regions; scaffold without
-      // the template's default memory after all hard restrictions have passed.
-      if (isChinaRegion(region) && createInput.scaffoldRuntimeInput?.memory !== undefined) {
-        createInput.scaffoldRuntimeInput.memory = undefined;
-        config.io.stderr.write(`${MEMORY_STRIPPED_CN_MESSAGE}\n`);
-      }
+      const stripped = stripCreateRegionUnavailableDefaults(createInput, region);
+      if (stripped !== undefined) config.io.stderr.write(`${stripped}\n`);
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.

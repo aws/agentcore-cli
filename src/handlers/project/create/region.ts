@@ -4,6 +4,7 @@ import {
   HARNESS_CN_MESSAGE,
   LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE,
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
+  MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
 } from "../../../core/project/manager";
 import { RegionUnsupportedFeatureError } from "../../../errors";
@@ -31,4 +32,20 @@ export function validateCreateRegionSupport(input: CreateProjectInput, region: s
   if (runtime.modelId.startsWith("bedrock/")) {
     throw new RegionUnsupportedFeatureError(LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE);
   }
+}
+
+/**
+ * Drops the defaults a China (aws-cn) region cannot provision — today the
+ * template's default memory, since AgentCore Memory is not available there.
+ * Shared by the CLI and the interactive wizard, and run only after
+ * validateCreateRegionSupport has passed the hard restrictions. Returns the
+ * notice to show the user, or undefined when nothing was dropped.
+ */
+export function stripCreateRegionUnavailableDefaults(
+  input: CreateProjectInput,
+  region: string,
+): string | undefined {
+  if (!isChinaRegion(region) || input.scaffoldRuntimeInput?.memory === undefined) return undefined;
+  input.scaffoldRuntimeInput.memory = undefined;
+  return MEMORY_STRIPPED_CN_MESSAGE;
 }

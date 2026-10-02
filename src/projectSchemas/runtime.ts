@@ -239,6 +239,17 @@ export type RuntimeEndpoint = z.infer<typeof RuntimeEndpointSchema>;
 export const MODEL_PROVIDERS = ["Bedrock", "Anthropic", "OpenAI", "Gemini", "LiteLLM"] as const;
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
 
+/** The model id each provider's scaffolded code renders when none is given:
+ * the flag path's default and the wizards' prefilled answer, so the entry
+ * points cannot drift. */
+export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
+  Bedrock: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  Anthropic: "claude-sonnet-4-5-20250929",
+  OpenAI: "gpt-4.1",
+  Gemini: "gemini-2.5-flash",
+  LiteLLM: "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+};
+
 const MODEL_PROVIDER_ALIASES: Record<string, ModelProvider> = {
   bedrock: "Bedrock",
   anthropic: "Anthropic",

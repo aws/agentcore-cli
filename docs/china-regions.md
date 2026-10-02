@@ -10,7 +10,10 @@
 --model-id <model>` with a [LiteLLM model](https://docs.litellm.ai/docs/providers) reachable
   from China — no default model id is applied there, and the `bedrock/` LiteLLM prefix (which
   routes to Amazon Bedrock) is rejected. The scaffolded runtime records `modelProvider` and,
-  for LiteLLM, `modelId` in `agentcore.json` so deploys can re-check this.
+  for LiteLLM, `modelId` in `agentcore.json` so deploys can re-check this. The `agentcore create`
+  and `agentcore add runtime` wizards ask the same question for these templates: in a China
+  region the model step starts on LiteLLM with no model id prefilled and marks the other
+  providers as not accessible, and the same restrictions apply when the form is submitted.
 - The restrictions are enforced wherever the region is known: at `agentcore create` when the
   resolved region (`--region`, environment, or profile) is a China region, at
   `agentcore add runtime` once deployment targets exist, and at `agentcore deploy` — deploying

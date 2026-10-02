@@ -64,7 +64,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-strands": {
     runtimeName: "agent_python_strands",
-    description: "Strands agent with AgentCore Memory, Bedrock for inference",
+    description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -76,7 +76,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "agent-python-strands-container": {
     runtimeName: "agent_python_strands_container",
     description:
-      "Strands agent with AgentCore Memory, Bedrock for inference, container-based deployment",
+      "Strands agent with AgentCore Memory, Bedrock or another model provider, container-based deployment",
     build: "Container",
     language: "Python",
     framework: "strands",

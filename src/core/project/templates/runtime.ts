@@ -1,14 +1,10 @@
 import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "../source";
 import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtime/types";
-import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
-import type {
-  EnvLocalEntry,
-  ModelProvider,
-  ScaffoldRuntimeInput,
-} from "../../../handlers/project/types";
+import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/memory";
 import { InputValidationError } from "../../../errors";
@@ -21,15 +17,6 @@ type ModelProviderTemplateConfig = {
   templateRenderContext: { identityProviders: { name: string; envVarName: string }[] };
   spec: SpecEntries;
   envEntries: EnvLocalEntry[];
-};
-
-/** The model id each provider block renders when the user does not pass one. */
-const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
-  Bedrock: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-  Anthropic: "claude-sonnet-4-5-20250929",
-  OpenAI: "gpt-4.1",
-  Gemini: "gemini-2.5-flash",
-  LiteLLM: "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
 };
 
 function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProviderTemplateConfig {
