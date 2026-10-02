@@ -7,6 +7,7 @@ import {
   readEnvFile,
   toError,
 } from '../../../lib';
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import type { AgentCoreProjectSpec, Credential } from '../../../schema';
 import { getCredentialProvider } from '../../aws';
 import {
@@ -83,7 +84,7 @@ export async function setupApiKeyProviders(options: SetupApiKeyProvidersOptions)
   const envCredentials = SecureCredentials.fromEnvVars(envVars);
   const allCredentials = runtimeCredentials ? envCredentials.merge(runtimeCredentials) : envCredentials;
 
-  const client = new BedrockAgentCoreControlClient({ region, credentials });
+  const client = new BedrockAgentCoreControlClient({ region, credentials, requestHandler: getProxyRequestHandler() });
 
   // Configure KMS encryption for token vault if enabled
   let kmsKeyArn: string | undefined;
@@ -128,7 +129,11 @@ async function setupTokenVaultKms(
   projectSpec: AgentCoreProjectSpec
 ): Promise<Result<{ keyArn?: string }>> {
   try {
-    const controlClient = new BedrockAgentCoreControlClient({ region, credentials });
+    const controlClient = new BedrockAgentCoreControlClient({
+      region,
+      credentials,
+      requestHandler: getProxyRequestHandler(),
+    });
 
     // Check if the token vault already has a customer-managed key
     try {
@@ -144,7 +149,7 @@ async function setupTokenVaultKms(
     }
 
     // No CMK configured — create a new KMS key and set it on the vault
-    const kmsClient = new KMSClient({ region, credentials });
+    const kmsClient = new KMSClient({ region, credentials, requestHandler: getProxyRequestHandler() });
     const response = await kmsClient.send(
       new CreateKeyCommand({
         Description: `AgentCore Identity encryption key for ${projectSpec.name}`,
@@ -365,7 +370,7 @@ export async function setupOAuth2Providers(options: SetupOAuth2ProvidersOptions)
   const envCredentials = SecureCredentials.fromEnvVars(envVars);
   const allCredentials = runtimeCredentials ? envCredentials.merge(runtimeCredentials) : envCredentials;
 
-  const client = new BedrockAgentCoreControlClient({ region, credentials });
+  const client = new BedrockAgentCoreControlClient({ region, credentials, requestHandler: getProxyRequestHandler() });
 
   for (const credential of projectSpec.credentials) {
     if (credential.authorizerType === 'OAuthCredentialProvider') {

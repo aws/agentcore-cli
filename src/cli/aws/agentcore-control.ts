@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import type { NetworkConfig } from '../../schema';
 import type { EvaluationLevel, EvaluatorModelProvider } from '../../schema/schemas/primitives/evaluator';
 import { resolveVpcIdFromSubnets } from '../commands/shared/vpc-utils';
@@ -34,6 +35,7 @@ export function createControlClient(region: string): BedrockAgentCoreControlClie
     region,
     credentials: getCredentialProvider(),
     ...(endpointOverride ? { endpoint: endpointOverride } : {}),
+    requestHandler: getProxyRequestHandler(),
   });
 }
 

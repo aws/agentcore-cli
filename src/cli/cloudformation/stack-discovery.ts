@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../aws';
 import { GetResourcesCommand, ResourceGroupsTaggingAPIClient } from '@aws-sdk/client-resource-groups-tagging-api';
 
@@ -42,7 +43,11 @@ function parseStackNameFromArn(arn: string): string | null {
  * Handles pagination to retrieve all matching stacks.
  */
 export async function discoverStacksByProject(region: string, projectName: string): Promise<DiscoveredStack[]> {
-  const tagging = new ResourceGroupsTaggingAPIClient({ region, credentials: getCredentialProvider() });
+  const tagging = new ResourceGroupsTaggingAPIClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
   const stacks: DiscoveredStack[] = [];
   let paginationToken: string | undefined;
 

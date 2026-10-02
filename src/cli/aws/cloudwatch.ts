@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { DEFAULT_ENDPOINT_NAME } from '../constants';
 import { getCredentialProvider } from './account';
 import { arnPrefix } from './partition';
@@ -53,6 +54,7 @@ export async function* streamLogs(options: StreamLogsOptions): AsyncGenerator<Lo
     const client = new CloudWatchLogsClient({
       region,
       credentials: getCredentialProvider(),
+      requestHandler: getProxyRequestHandler(),
     });
 
     const command = new StartLiveTailCommand({
@@ -114,6 +116,7 @@ export async function* searchLogs(options: SearchLogsOptions): AsyncGenerator<Lo
   const client = new CloudWatchLogsClient({
     region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   let nextToken: string | undefined;

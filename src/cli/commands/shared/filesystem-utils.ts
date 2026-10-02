@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { EFS_ACCESS_POINT_ARN_PATTERN, S3_FILES_ACCESS_POINT_ARN_PATTERN } from '../../../schema';
 import { getCredentialProvider } from '../../aws/account';
 import { DescribeSecurityGroupsCommand, DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
@@ -217,7 +218,11 @@ function accessPointIdFromS3FilesArn(arn: string): string {
  * Level 1: Verify an EFS access point exists (DescribeAccessPoints).
  */
 export async function validateEfsAccessPointExists(arn: string, region: string): Promise<SyncResult> {
-  const client = new EFSClient({ region, credentials: getCredentialProvider() });
+  const client = new EFSClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
   const accessPointId = accessPointIdFromEfsArn(arn);
   try {
     const resp = await client.send(new DescribeAccessPointsCommand({ AccessPointId: accessPointId }));
@@ -236,7 +241,11 @@ export async function validateEfsAccessPointExists(arn: string, region: string):
  * Uses ListMountTargets filtered by access point ARN.
  */
 export async function validateS3FilesAccessPointExists(arn: string, region: string): Promise<SyncResult> {
-  const client = new S3FilesClient({ region, credentials: getCredentialProvider() });
+  const client = new S3FilesClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
   const accessPointId = accessPointIdFromS3FilesArn(arn);
   try {
     const resp = await client.send(new ListMountTargetsCommand({ accessPointId }));
@@ -258,7 +267,7 @@ export async function validateSecurityGroupEgressPort2049(
   securityGroupIds: string[],
   region: string
 ): Promise<SyncResult> {
-  const ec2 = new EC2Client({ region, credentials: getCredentialProvider() });
+  const ec2 = new EC2Client({ region, credentials: getCredentialProvider(), requestHandler: getProxyRequestHandler() });
   try {
     const resp = await ec2.send(new DescribeSecurityGroupsCommand({ GroupIds: securityGroupIds }));
     for (const sg of resp.SecurityGroups ?? []) {
@@ -291,7 +300,11 @@ export async function validateSecurityGroupEgressPort2049(
  * Resolve EFS mount target data (subnetId, vpcId, AZ, securityGroupIds) for a given access point.
  */
 async function resolveEfsData(arn: string, region: string): Promise<EfsResolvedData | string> {
-  const client = new EFSClient({ region, credentials: getCredentialProvider() });
+  const client = new EFSClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
   const accessPointId = accessPointIdFromEfsArn(arn);
   try {
     const mtResp = await client.send(new DescribeMountTargetsCommand({ AccessPointId: accessPointId }));
@@ -317,7 +330,11 @@ async function resolveEfsData(arn: string, region: string): Promise<EfsResolvedD
  * GetMountTarget returns vpcId, subnetId, securityGroups, and availabilityZoneId in one call.
  */
 async function resolveS3FilesData(arn: string, region: string): Promise<S3FilesResolvedData | string> {
-  const client = new S3FilesClient({ region, credentials: getCredentialProvider() });
+  const client = new S3FilesClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
   const accessPointId = accessPointIdFromS3FilesArn(arn);
   try {
     const listResp = await client.send(new ListMountTargetsCommand({ accessPointId }));
@@ -361,7 +378,7 @@ async function validateMountTargetInVpcAndAz(
 
   if (!mountData.availabilityZoneId) return { success: true };
 
-  const ec2 = new EC2Client({ region, credentials: getCredentialProvider() });
+  const ec2 = new EC2Client({ region, credentials: getCredentialProvider(), requestHandler: getProxyRequestHandler() });
   try {
     const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: agentSubnetIds }));
     const agentAzIds = new Set((subnetResp.Subnets ?? []).map(s => s.AvailabilityZoneId).filter(Boolean));
@@ -392,7 +409,7 @@ async function validateMountTargetInboundFromAgentSg(
 ): Promise<SyncResult> {
   if (mountSgIds.length === 0) return { success: true };
 
-  const ec2 = new EC2Client({ region, credentials: getCredentialProvider() });
+  const ec2 = new EC2Client({ region, credentials: getCredentialProvider(), requestHandler: getProxyRequestHandler() });
   try {
     const resp = await ec2.send(new DescribeSecurityGroupsCommand({ GroupIds: mountSgIds }));
     const agentSgSet = new Set(agentSgIds);
@@ -462,7 +479,11 @@ export async function resolveAndValidateFilesystemMounts(
     let agentVpcId: string | undefined;
     if (subnets && subnets.length > 0) {
       try {
-        const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+        const ec2 = new EC2Client({
+          region: awsRegion,
+          credentials: getCredentialProvider(),
+          requestHandler: getProxyRequestHandler(),
+        });
         const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnets }));
         agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
       } catch {

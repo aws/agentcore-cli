@@ -1,5 +1,6 @@
 import { AccessDeniedError } from '../../lib';
 import type { Result } from '../../lib/result';
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getErrorMessage, isAccessDeniedError } from '../errors';
 import { getCredentialProvider } from './account';
 import { arnPrefix } from './partition';
@@ -36,7 +37,11 @@ export async function enableTransactionSearch(
 
   // Step 1: Enable Application Signals (creates service-linked role, idempotent)
   try {
-    const appSignalsClient = new ApplicationSignalsClient({ region, credentials });
+    const appSignalsClient = new ApplicationSignalsClient({
+      region,
+      credentials,
+      requestHandler: getProxyRequestHandler(),
+    });
     await appSignalsClient.send(new StartDiscoveryCommand({}));
   } catch (err: unknown) {
     const message = getErrorMessage(err);
@@ -53,7 +58,7 @@ export async function enableTransactionSearch(
 
   // Step 2: Create CloudWatch Logs resource policy for X-Ray (if needed)
   try {
-    const logsClient = new CloudWatchLogsClient({ region, credentials });
+    const logsClient = new CloudWatchLogsClient({ region, credentials, requestHandler: getProxyRequestHandler() });
     const policiesResult = await logsClient.send(new DescribeResourcePoliciesCommand({}));
     const hasPolicy = policiesResult.resourcePolicies?.some(p => p.policyName === RESOURCE_POLICY_NAME);
 
@@ -95,7 +100,7 @@ export async function enableTransactionSearch(
     };
   }
 
-  const xrayClient = new XRayClient({ region, credentials });
+  const xrayClient = new XRayClient({ region, credentials, requestHandler: getProxyRequestHandler() });
 
   // Step 3: Set trace segment destination to CloudWatchLogs
   try {
