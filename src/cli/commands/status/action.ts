@@ -396,7 +396,7 @@ export function computeResourceStatuses(
 
 export async function handleProjectStatus(
   context: StatusContext,
-  options: { targetName?: string; knowledgeBaseName?: string } = {}
+  options: { targetName?: string; knowledgeBaseName?: string; includeAwsIdentity?: boolean } = {}
 ): Promise<ProjectStatusResult> {
   const logger = new ExecLogger({ command: 'status' });
   const { project, deployedState, awsTargets } = context;
@@ -430,7 +430,7 @@ export async function handleProjectStatus(
 
   logger.startStep('Compute resource statuses');
   const targetConfig = selectedTargetName ? awsTargets.find(t => t.name === selectedTargetName) : undefined;
-  const awsIdentityPromise = resolveAwsIdentity(targetConfig?.region);
+  const awsIdentityPromise = options.includeAwsIdentity ? resolveAwsIdentity(targetConfig?.region) : undefined;
   const targetResources = selectedTargetName ? deployedState.targets[selectedTargetName]?.resources : undefined;
 
   const resources = computeResourceStatuses(project, targetResources);
@@ -799,11 +799,14 @@ export async function handleProjectStatus(
     }
   }
 
-  logger.startStep('Resolve AWS identity');
-  const awsIdentity = await awsIdentityPromise;
-  logger.log(`Profile: ${awsIdentity.profile ?? '(default)'}`);
-  logger.log(`Account: ${awsIdentity.account ?? `(unavailable: ${awsIdentity.error})`}`);
-  logger.endStep(awsIdentity.success ? 'success' : 'warn');
+  let awsIdentity: AwsIdentityStatus | undefined;
+  if (awsIdentityPromise) {
+    logger.startStep('Resolve AWS identity');
+    awsIdentity = await awsIdentityPromise;
+    logger.log(`Credentials: ${awsIdentity.fromEnvironment ? 'environment' : (awsIdentity.profile ?? '(default)')}`);
+    logger.log(`Account: ${awsIdentity.account ?? `(unavailable: ${awsIdentity.error})`}`);
+    logger.endStep(awsIdentity.success ? 'success' : 'warn');
+  }
 
   logger.finalize(true);
   return {

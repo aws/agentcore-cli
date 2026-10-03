@@ -17,6 +17,7 @@ const mockGetPaymentConnector = vi.fn();
 vi.mock('../../../aws', () => ({
   getAgentRuntimeStatus: (...args: unknown[]) => mockGetAgentRuntimeStatus(...args),
   detectAccount: (...args: unknown[]) => mockDetectAccount(...args),
+  hasEnvCredentials: () => false,
 }));
 
 vi.mock('../../../aws/agentcore-control', () => ({
@@ -1522,11 +1523,16 @@ describe('handleProjectStatus — AWS identity', () => {
       deployedState: { targets: {} },
     } as unknown as StatusContext;
 
-    const result = await handleProjectStatus(ctx);
+    const result = await handleProjectStatus(ctx, { includeAwsIdentity: true });
 
     assert(result.success);
-    expect(mockDetectAccount).toHaveBeenCalledWith('us-gov-west-1');
-    expect(result.awsIdentity).toEqual({ success: true, account: '111111111111', profile: undefined });
+    expect(mockDetectAccount).toHaveBeenCalledWith(expect.objectContaining({ region: 'us-gov-west-1' }));
+    expect(result.awsIdentity).toEqual({
+      success: true,
+      account: '111111111111',
+      profile: undefined,
+      fromEnvironment: false,
+    });
     expect(result.targetAccount).toBe('222222222222');
   });
 
@@ -1538,11 +1544,24 @@ describe('handleProjectStatus — AWS identity', () => {
       deployedState: { targets: {} },
     } as unknown as StatusContext;
 
+    const result = await handleProjectStatus(ctx, { includeAwsIdentity: true });
+
+    assert(result.success);
+    expect(result.awsIdentity).toMatchObject({ success: false, error: 'No AWS credentials found.' });
+    expect(result.targetAccount).toBeUndefined();
+  });
+
+  it('does not call AWS for the identity unless asked to', async () => {
+    const ctx = {
+      project: baseProject,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '222222222222' }],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
     const result = await handleProjectStatus(ctx);
 
     assert(result.success);
-    expect(mockDetectAccount).toHaveBeenCalledWith(undefined);
-    expect(result.awsIdentity).toEqual({ success: false, profile: undefined, error: 'No AWS credentials found.' });
-    expect(result.targetAccount).toBeUndefined();
+    expect(mockDetectAccount).not.toHaveBeenCalled();
+    expect(result.awsIdentity).toBeUndefined();
   });
 });

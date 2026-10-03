@@ -160,10 +160,11 @@ export const registerStatus = (program: Command) => {
           const statusResult = await handleProjectStatus(context, {
             targetName: cliOptions.target,
             knowledgeBaseName,
+            includeAwsIdentity: true,
           });
           if (statusResult.success && statusResult.awsIdentity) {
             recorder.set({
-              has_aws_credentials: statusResult.awsIdentity.success,
+              aws_identity_resolved: statusResult.awsIdentity.success,
               aws_account_mismatch: isAccountMismatch(statusResult.awsIdentity, statusResult.targetAccount),
             });
           }

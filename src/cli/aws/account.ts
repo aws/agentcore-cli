@@ -1,4 +1,4 @@
-import { AwsCredentialsError, ValidationError } from '../../lib/errors/types.js';
+import { AwsCredentialsError, TimeoutError, ValidationError } from '../../lib/errors/types.js';
 import type { AwsDeploymentTarget } from '../../schema';
 import { getAwsLoginGuidance } from '../external-requirements/checks';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
@@ -11,28 +11,42 @@ import type { AwsCredentialIdentityProvider } from '@smithy/types';
  * This ensures proper credential resolution without requiring ~/.aws directory.
  */
 export function getCredentialProvider(): AwsCredentialIdentityProvider {
-  const hasEnvCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
-  return hasEnvCreds ? fromEnv() : fromNodeProviderChain();
+  return hasEnvCredentials() ? fromEnv() : fromNodeProviderChain();
+}
+
+/** True when static access keys in the environment take precedence over AWS_PROFILE. */
+export function hasEnvCredentials(): boolean {
+  return !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
 }
 
 /**
  * Get AWS account ID using STS GetCallerIdentity with detailed error handling.
  * Throws AwsCredentialsError with helpful messages for common credential issues.
  * Returns null only for unexpected errors (triggers generic "no credentials" message).
- * Pass the deployment target's region so STS is called in the right partition (e.g. GovCloud).
+ * Pass the deployment target's region so STS is called in the right partition (e.g. GovCloud), and
+ * `timeoutMs` to make a single bounded attempt that throws TimeoutError instead of waiting on the network.
  */
-export async function detectAccount(regionOverride?: string): Promise<string | null> {
-  const region = regionOverride ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+export async function detectAccount(options: { region?: string; timeoutMs?: number } = {}): Promise<string | null> {
+  const { timeoutMs } = options;
+  const region = options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
 
   try {
     const client = new STSClient({
       credentials: getCredentialProvider(),
       region,
+      ...(timeoutMs !== undefined && {
+        maxAttempts: 1,
+        requestHandler: { connectionTimeout: timeoutMs, requestTimeout: timeoutMs, throwOnRequestTimeout: true },
+      }),
     });
     const response = await client.send(new GetCallerIdentityCommand({}));
     return response.Account ?? null;
   } catch (err) {
     const code = (err as { name?: string })?.name ?? (err as { Code?: string })?.Code;
+
+    if (code === 'TimeoutError' && timeoutMs !== undefined) {
+      throw new TimeoutError(`Timed out resolving the AWS account after ${timeoutMs / 1000}s.`, { cause: err });
+    }
 
     if (code === 'ExpiredTokenException' || code === 'ExpiredToken') {
       const guidance = await getAwsLoginGuidance();

@@ -12,7 +12,7 @@ describe('AwsIdentityInfo', () => {
   it('shows the account and profile', () => {
     const { lastFrame } = render(
       <AwsIdentityInfo
-        identity={{ success: true, account: '111111111111', profile: 'dev' }}
+        identity={{ success: true, account: '111111111111', profile: 'dev', fromEnvironment: false }}
         targetName="default"
         targetAccount="111111111111"
       />
@@ -22,15 +22,24 @@ describe('AwsIdentityInfo', () => {
   });
 
   it('omits the profile when none is set', () => {
-    const { lastFrame } = render(<AwsIdentityInfo identity={{ success: true, account: '111111111111' }} />);
+    const { lastFrame } = render(
+      <AwsIdentityInfo identity={{ success: true, account: '111111111111', fromEnvironment: false }} />
+    );
     expect(lastFrame()).toContain('AWS account: 111111111111');
     expect(lastFrame()).not.toContain('profile');
+  });
+
+  it('says when credentials come from environment variables', () => {
+    const { lastFrame } = render(
+      <AwsIdentityInfo identity={{ success: true, account: '111111111111', fromEnvironment: true }} />
+    );
+    expect(lastFrame()).toContain('AWS account: 111111111111 (credentials from environment variables)');
   });
 
   it('warns when the credentials belong to a different account than the target', () => {
     const { lastFrame } = render(
       <AwsIdentityInfo
-        identity={{ success: true, account: '111111111111' }}
+        identity={{ success: true, account: '111111111111', fromEnvironment: false }}
         targetName="prod"
         targetAccount="222222222222"
       />
@@ -44,7 +53,7 @@ describe('AwsIdentityInfo', () => {
   it('explains why the account is unavailable', () => {
     const { lastFrame } = render(
       <AwsIdentityInfo
-        identity={{ success: false, profile: 'expired', error: 'AWS credentials expired.' }}
+        identity={{ success: false, profile: 'expired', fromEnvironment: false, error: 'AWS credentials expired.' }}
         targetAccount="222222222222"
       />
     );

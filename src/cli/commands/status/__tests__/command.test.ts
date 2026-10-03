@@ -84,12 +84,16 @@ describe('status command validation', () => {
       success: true,
       resources: [],
       targetAccount: '222222222222',
-      awsIdentity: { success: true, account: '111111111111' },
+      awsIdentity: { success: true, account: '111111111111', fromEnvironment: false },
     } as never);
 
     await program.parseAsync(['status'], { from: 'user' });
 
-    expect(recorder.set).toHaveBeenCalledWith({ has_aws_credentials: true, aws_account_mismatch: true });
+    expect(handleProjectStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ includeAwsIdentity: true })
+    );
+    expect(recorder.set).toHaveBeenCalledWith({ aws_identity_resolved: true, aws_account_mismatch: true });
   });
 
   it('records missing AWS credentials in telemetry', async () => {
@@ -99,11 +103,11 @@ describe('status command validation', () => {
     vi.mocked(handleProjectStatus).mockResolvedValue({
       success: true,
       resources: [],
-      awsIdentity: { success: false, error: 'No AWS credentials found.' },
+      awsIdentity: { success: false, fromEnvironment: false, error: 'No AWS credentials found.' },
     } as never);
 
     await program.parseAsync(['status'], { from: 'user' });
 
-    expect(recorder.set).toHaveBeenCalledWith({ has_aws_credentials: false, aws_account_mismatch: false });
+    expect(recorder.set).toHaveBeenCalledWith({ aws_identity_resolved: false, aws_account_mismatch: false });
   });
 });

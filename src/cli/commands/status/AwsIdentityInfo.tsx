@@ -1,6 +1,11 @@
 import { type AwsIdentityStatus, isAccountMismatch } from './aws-identity';
 import { Box, Text } from 'ink';
 
+function describeCredentialSource(identity: AwsIdentityStatus): string {
+  if (identity.fromEnvironment) return ' (credentials from environment variables)';
+  return identity.profile ? ` (profile: ${identity.profile})` : '';
+}
+
 export function AwsIdentityInfo({
   identity,
   targetName,
@@ -11,12 +16,12 @@ export function AwsIdentityInfo({
   targetAccount?: string;
 }) {
   if (!identity) return null;
-  const profile = identity.profile ? ` (profile: ${identity.profile})` : '';
+  const source = describeCredentialSource(identity);
 
   if (!identity.success) {
     return (
       <Text color="yellow">
-        AWS account: unavailable{profile} - {identity.error}
+        AWS account: unavailable{source} - {identity.error}
       </Text>
     );
   }
@@ -25,7 +30,7 @@ export function AwsIdentityInfo({
     <Box flexDirection="column">
       <Text dimColor>
         AWS account: {identity.account}
-        {profile}
+        {source}
       </Text>
       {isAccountMismatch(identity, targetAccount) && (
         <Text color="yellow">

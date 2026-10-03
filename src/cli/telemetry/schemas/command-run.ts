@@ -191,7 +191,7 @@ const ExecAttrs = safeSchema({
 const StatusAttrs = safeSchema({
   filter_type: FilterType,
   filter_state: FilterState,
-  has_aws_credentials: z.boolean().optional(),
+  aws_identity_resolved: z.boolean().optional(),
   aws_account_mismatch: z.boolean().optional(),
 });
 
