@@ -1,5 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
 import { QueryClient } from "@tanstack/react-query";
 import {
   renderScreen,
@@ -21,6 +22,8 @@ import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
+import { DEFAULT_MODEL_IDS } from "../../../../projectSchemas/runtime";
+import { RegionKey } from "../../../keys";
 
 const { cleanup, inProject, projectSpec, run } =
   createGatewayProjectTestHarness("add-runtime-wizard");
@@ -77,7 +80,9 @@ describe("project add runtime wizard", () => {
     expect(templateRows(r.lastFrame()!)[0]).toStartWith("❯ ● agent-python-minimal ");
     await r.press("return");
 
+    // The minimal template takes no model-provider override, so no model step.
     await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
+    expect(r.lastFrame()).not.toContain("choose a model provider");
     const review = flatFrame(r.lastFrame);
     expect(review).toContain("runtime orders_agent");
     expect(review).toContain("template agent-python-minimal");
@@ -118,18 +123,144 @@ describe("project add runtime wizard", () => {
     await selectTemplate(r, "agent-python-strands-container");
     await r.press("return");
 
+    // strands takes a model-provider override, so the model step follows;
+    // Bedrock with the template's default id is preselected.
+    await waitForText(r.lastFrame, "choose a model provider");
+    expect(r.lastFrame()).toContain("● bedrock");
+    await r.press("return"); // focus model id
+    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Bedrock);
+    await r.press("return"); // accept it
+
     await waitForFlatText(r.lastFrame, "build Container");
+    expect(flatFrame(r.lastFrame)).toContain("model provider bedrock");
     await r.press("return");
 
     await waitForText(r.lastFrame, "added runtime 'packing_agent' to 'TestProject'");
 
     const runtime = await runtimeInSpec(projectRoot, "packing_agent");
-    expect(runtime).toMatchObject({ build: "Container", codeLocation: "app/packing_agent" });
+    expect(runtime).toMatchObject({
+      build: "Container",
+      codeLocation: "app/packing_agent",
+      modelProvider: "Bedrock",
+    });
+    // The default model id is not an override, so it is not persisted (only
+    // LiteLLM ids are, for the China deploy gate).
+    expect(runtime.modelId).toBeUndefined();
     // The wizard does not ask for a description; --description still sets one.
     expect(runtime.description).toBeUndefined();
     expect(await Bun.file(join(projectRoot, "app", "packing_agent", "Dockerfile")).exists()).toBe(
       true,
     );
+    r.unmount();
+  });
+
+  test("an API-key provider reads the key from its file:// source, exactly like the flags", async () => {
+    const projectRoot = await inProject();
+    const keyFile = join(projectRoot, "gemini.key");
+    await writeFile(keyFile, "AIza-test-key\n");
+    const r = renderScreen("/agentcore/add/runtime");
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("keyed_agent");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await selectTemplate(r, "agent-python-strands");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("down"); // anthropic
+    await r.press("down"); // openai
+    await r.press("down"); // gemini
+    await waitForText(r.lastFrame, "● gemini");
+    await r.press("return"); // model id (Gemini default)
+    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Gemini);
+    await r.press("return"); // → API key file
+    await waitForText(r.lastFrame, "API key file");
+    await r.write(`file://${keyFile}`);
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
+    const review = flatFrame(r.lastFrame);
+    expect(review).toContain("model provider gemini");
+    // The row may wrap mid-path at the frame width (CI temp paths are long), so
+    // compare with all whitespace removed.
+    expect(review.replace(/\s/g, "")).toContain(`APIkeyfile://${keyFile}`);
+    expect(review).not.toContain("AIza-test-key");
+    await r.press("return");
+    await waitForText(r.lastFrame, "added runtime 'keyed_agent' to 'TestProject'");
+
+    // Same result as `agentcore add runtime --name keyed_agent --template
+    // agent-python-strands --model-provider gemini --api-key file://…`.
+    expect(await runtimeInSpec(projectRoot, "keyed_agent")).toMatchObject({
+      modelProvider: "Gemini",
+    });
+    const spec = await projectSpec(projectRoot);
+    expect(spec.credentials).toEqual(
+      expect.arrayContaining([
+        { authorizerType: "ApiKeyCredentialProvider", name: "keyed_agentGeminiApiKey" },
+      ]),
+    );
+    expect(await Bun.file(join(projectRoot, "agentcore", ".env.local")).text()).toContain(
+      "AIza-test-key",
+    );
+    r.unmount();
+  });
+
+  test("the model step refuses a missing API key for a provider that needs one", async () => {
+    const projectRoot = await inProject();
+    const r = renderScreen("/agentcore/add/runtime");
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("nokey_agent");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await selectTemplate(r, "agent-python-strands");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("down"); // anthropic
+    await r.press("return"); // model id
+    await r.press("return"); // → API key file
+    await waitForText(r.lastFrame, "API key file");
+    await r.press("return"); // empty
+    await waitForText(r.lastFrame, "enter the API key file for anthropic");
+    expect(r.lastFrame()).not.toContain("this runtime will be added");
+    expect(await runtimeInSpec(projectRoot, "nokey_agent")).toBeUndefined();
+    r.unmount();
+  });
+
+  test("in a China region the model step starts on LiteLLM with no default model id", async () => {
+    const projectRoot = await inProject();
+    const r = renderScreen("/agentcore/add/runtime", {
+      withContext: (ctx) => ctx.withValue(RegionKey, "cn-north-1"),
+    });
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("cn_agent");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await selectTemplate(r, "agent-python-strands");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a model provider");
+    expect(r.lastFrame()).toContain("● litellm");
+    expect(flatFrame(r.lastFrame).match(/not accessible from China regions/g)).toHaveLength(4);
+    await r.press("return"); // model id, empty
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter a model ID for litellm");
+    await r.write("deepseek/deepseek-chat");
+    await r.press("return"); // → optional API key file
+    await r.press("return"); // skip
+    await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
+    expect(flatFrame(r.lastFrame)).toContain("model provider litellm");
+    await r.press("return");
+    await waitForText(r.lastFrame, "added runtime 'cn_agent' to 'TestProject'");
+
+    // No China deployment target exists in this project, so the manager's
+    // gate does not run; the LiteLLM id is persisted for the deploy gate.
+    expect(await runtimeInSpec(projectRoot, "cn_agent")).toMatchObject({
+      modelProvider: "LiteLLM",
+      modelId: "deepseek/deepseek-chat",
+    });
     r.unmount();
   });
 

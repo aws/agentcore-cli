@@ -38,7 +38,7 @@ type RuntimeTemplateShortcut = {
   modelProvider?: ModelProvider;
   /** Ships with memory. */
   includesMemory: boolean;
-  /** Accepts --model-provider / --api-key overrides; Bedrock-only otherwise. */
+  /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
   supportsModelProviderOverride: boolean;
   runtimeVersion?: NonNullable<ScaffoldRuntimeInput["runtimeVersion"]>;
   /** Exceptional runtime and dependency behavior for this template. */
@@ -64,7 +64,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-python-strands": {
     runtimeName: "agent_python_strands",
-    description: "Strands agent with AgentCore Memory, Bedrock for inference",
+    description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
@@ -76,7 +76,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   "agent-python-strands-container": {
     runtimeName: "agent_python_strands_container",
     description:
-      "Strands agent with AgentCore Memory, Bedrock for inference, container-based deployment",
+      "Strands agent with AgentCore Memory, Bedrock or another model provider, container-based deployment",
     build: "Container",
     language: "Python",
     framework: "strands",
@@ -86,13 +86,14 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "agent-typescript-strands": {
     runtimeName: "agent_typescript_strands",
-    description: "Strands agent in TypeScript with AgentCore Memory, Bedrock for inference",
+    description:
+      "Strands agent in TypeScript with AgentCore Memory, Bedrock or another model provider",
     build: "CodeZip",
     language: "TypeScript",
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
-    supportsModelProviderOverride: false,
+    supportsModelProviderOverride: true,
     runtimeVersion: "NODE_22",
   },
   "agent-python-langchain": {
@@ -141,26 +142,26 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
   },
   "a2a-python-strands": {
     runtimeName: "a2a_python_strands",
-    description: "Strands agent speaking the A2A protocol, Bedrock for inference",
+    description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
     protocol: "A2A",
     modelProvider: "Bedrock",
     includesMemory: true,
-    supportsModelProviderOverride: false,
+    supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
   "agui-python-strands": {
     runtimeName: "agui_python_strands",
-    description: "Strands agent speaking AG-UI, Bedrock for inference",
+    description: "Strands agent speaking AG-UI, Bedrock or another model provider",
     build: "CodeZip",
     language: "Python",
     framework: "strands",
     protocol: "AGUI",
     modelProvider: "Bedrock",
     includesMemory: true,
-    supportsModelProviderOverride: false,
+    supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
 } as const satisfies Record<string, RuntimeTemplateShortcut>;
@@ -246,6 +247,7 @@ type RuntimeTemplateOverrides = {
   modelProvider?: ModelProvider;
   modelId?: string;
   apiKey?: string;
+  apiBase?: string;
 };
 
 export function resolveRuntimeTemplateShortcut(
@@ -266,6 +268,7 @@ export function resolveRuntimeTemplateShortcut(
       : template.modelProvider,
     ...(overrides?.modelId !== undefined && { modelId: overrides.modelId }),
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
+    ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.profile,

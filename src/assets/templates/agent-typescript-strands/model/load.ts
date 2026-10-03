@@ -1,5 +1,38 @@
+{{#if (eq modelProvider "Bedrock")}}
 import { BedrockModel } from '@strands-agents/sdk/models/bedrock';
 
-export function loadModel(): BedrockModel {
-  return new BedrockModel({ modelId: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0' });
+export async function loadModel(): Promise<BedrockModel> {
+  return new BedrockModel({ modelId: {{jsStr modelId}} });
 }
+{{/if}}
+{{#if (eq modelProvider "Anthropic")}}
+import { AnthropicModel } from '@strands-agents/sdk/models/anthropic';
+import { getApiKey } from './apiKey.js';
+
+export async function loadModel(): Promise<AnthropicModel> {
+  return new AnthropicModel({ apiKey: await getApiKey(), modelId: {{jsStr modelId}} });
+}
+{{/if}}
+{{#if (eq modelProvider "OpenAI")}}
+import { OpenAIModel } from '@strands-agents/sdk/models/openai';
+import { getApiKey } from './apiKey.js';
+
+export async function loadModel(): Promise<OpenAIModel> {
+  return new OpenAIModel({
+    apiKey: await getApiKey(),
+    modelId: {{jsStr modelId}},
+{{#if apiBase}}
+    // An OpenAI-compatible endpoint instead of api.openai.com.
+    clientConfig: { baseURL: {{jsStr apiBase}} },
+{{/if}}
+  });
+}
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+import { GoogleModel } from '@strands-agents/sdk/models/google';
+import { getApiKey } from './apiKey.js';
+
+export async function loadModel(): Promise<GoogleModel> {
+  return new GoogleModel({ apiKey: await getApiKey(), modelId: {{jsStr modelId}} });
+}
+{{/if}}

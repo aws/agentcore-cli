@@ -10,9 +10,18 @@
     "dev": "tsx watch main.ts"
   },
   "dependencies": {
+{{#if (eq modelProvider "Anthropic")}}
+    "@anthropic-ai/sdk": "~0.92.0",
+{{/if}}
+{{#if (eq modelProvider "Gemini")}}
+    "@google/genai": "~1.40.0",
+{{/if}}
     "@opentelemetry/api": "~1.9.0",
     "@strands-agents/sdk": "~1.5.0",
     "bedrock-agentcore": "~0.3.0",
+{{#if (eq modelProvider "OpenAI")}}
+    "openai": "~6.7.0",
+{{/if}}
     "tsx": "~4.19.0",
     "zod": "~4.4.3"
   },

@@ -42,6 +42,16 @@ import { ModelProviderSchema } from "../../projectSchemas/runtime";
 export { MODEL_PROVIDERS, ModelProviderSchema } from "../../projectSchemas/runtime";
 export type { ModelProvider } from "../../projectSchemas/runtime";
 
+/** Shown when --api-base is combined with a provider other than OpenAI. */
+export const API_BASE_OPENAI_ONLY_MESSAGE =
+  "an API base URL is only supported with the OpenAI model provider (open_ai); it points the " +
+  "OpenAI client at an OpenAI-compatible endpoint";
+
+/** Shown when LiteLLM is requested for a TypeScript template. */
+export const LITELLM_PYTHON_ONLY_MESSAGE =
+  "the LiteLLM model provider is only available for Python templates; for TypeScript use " +
+  "--model-provider open_ai with --api-base <OpenAI-compatible endpoint>";
+
 /** Set of arguments needed to scaffold a new Runtime-based agent. */
 export const ScaffoldRuntimeInputSchema = z
   .object({
@@ -53,6 +63,8 @@ export const ScaffoldRuntimeInputSchema = z
     modelProvider: ModelProviderSchema.optional(),
     modelId: z.string().min(1).optional(),
     apiKey: z.string().min(1).optional(),
+    /** Base URL of an OpenAI-compatible endpoint; only with the OpenAI provider. */
+    apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
@@ -76,6 +88,22 @@ export const ScaffoldRuntimeInputSchema = z
         code: "custom",
         message: `an API key is required for the ${modelProvider} model provider`,
         path: ["apiKey"],
+      });
+    }
+  })
+  .superRefine(({ modelProvider, apiBase, language }, ctx) => {
+    // The base URL swaps the server the OpenAI client talks to (any
+    // OpenAI-compatible endpoint); the other providers keep their own API.
+    if (apiBase !== undefined && modelProvider !== "OpenAI") {
+      ctx.addIssue({ code: "custom", message: API_BASE_OPENAI_ONLY_MESSAGE, path: ["apiBase"] });
+    }
+    // LiteLLM is a Python library; the TypeScript Strands SDK has no
+    // equivalent, so the honest route there is the OpenAI client plus a base URL.
+    if (modelProvider === "LiteLLM" && language === "TypeScript") {
+      ctx.addIssue({
+        code: "custom",
+        message: LITELLM_PYTHON_ONLY_MESSAGE,
+        path: ["modelProvider"],
       });
     }
   })

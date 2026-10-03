@@ -239,6 +239,17 @@ export type RuntimeEndpoint = z.infer<typeof RuntimeEndpointSchema>;
 export const MODEL_PROVIDERS = ["Bedrock", "Anthropic", "OpenAI", "Gemini", "LiteLLM"] as const;
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
 
+/** The model id each provider's scaffolded code renders when none is given:
+ * the flag path's default and the wizards' prefilled answer, so the entry
+ * points cannot drift. */
+export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
+  Bedrock: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  Anthropic: "claude-sonnet-4-5-20250929",
+  OpenAI: "gpt-4.1",
+  Gemini: "gemini-2.5-flash",
+  LiteLLM: "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+};
+
 const MODEL_PROVIDER_ALIASES: Record<string, ModelProvider> = {
   bedrock: "Bedrock",
   anthropic: "Anthropic",
@@ -276,6 +287,14 @@ export const ProjectRuntimeSchema = z
      * replace the model wiring by hand.
      */
     modelId: z.string().min(1).optional(),
+    /**
+     * The OpenAI-compatible base URL the scaffold rendered into an OpenAI
+     * runtime's code (--api-base). Read by the China deploy gate: an OpenAI
+     * runtime pointed at a reachable endpoint is allowed there, one calling
+     * api.openai.com is not. Ignored by the CDK app; delete it together with
+     * modelProvider if you replace the model wiring by hand.
+     */
+    modelApiBase: z.string().url().optional(),
     description: z.string().max(200).optional(),
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,

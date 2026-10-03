@@ -111,8 +111,8 @@ export const MODEL_PROVIDER_RUNTIMES_CN_MESSAGE =
   "cn-northwest-1): Amazon Bedrock, " +
   "Anthropic, OpenAI, and Gemini cannot be used there. Either scaffold a provider-free runtime " +
   "(--template agent-python-minimal or mcp-python-fastmcp) and bring your own model connectivity, " +
-  "or use --template agent-python-strands --model-provider litellm --model-id <model reachable " +
-  "from China>.";
+  "use --model-provider litellm --model-id <model reachable from China> (Python templates), or " +
+  "use --model-provider open_ai --api-base <OpenAI-compatible endpoint reachable from China>.";
 
 /** Shown when a Bedrock Managed Agents environment targets the aws-cn partition. */
 export const BMA_CN_MESSAGE =
@@ -184,6 +184,41 @@ export const LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE =
   "cn-northwest-1): the default model id " +
   "routes to Amazon Bedrock, which is not available there. Pass a LiteLLM model id for a " +
   "provider reachable from China (see https://docs.litellm.ai/docs/providers).";
+
+/**
+ * Shown when an OpenAI runtime template targets a China (aws-cn) region without
+ * a base URL: the OpenAI client would call api.openai.com, which is not
+ * reachable there.
+ */
+export const OPENAI_API_BASE_REQUIRED_CN_MESSAGE =
+  "--model-provider open_ai requires --api-base in China regions (cn-north-1, cn-northwest-1): " +
+  "api.openai.com is not reachable there. Pass the base URL of an OpenAI-compatible endpoint " +
+  "reachable from China, or use --model-provider lite_llm with a model id for a provider " +
+  "reachable from China.";
+
+/**
+ * The China (aws-cn) rule for a runtime scaffold's model wiring, shared by the
+ * create-time gate and the add-time gate so both give the same verdict:
+ * provider-free scaffolds pass; LiteLLM passes with an explicit, non-Bedrock
+ * model id; OpenAI passes when pointed at a base URL; everything else is
+ * unreachable from China. Returns the message to refuse with, or undefined.
+ */
+export function chinaModelProviderRestriction(scaffold: {
+  framework: string;
+  modelProvider?: string;
+  modelId?: string;
+  apiBase?: string;
+}): string | undefined {
+  if (scaffold.framework === "none") return undefined;
+  const provider = scaffold.modelProvider ?? "Bedrock";
+  if (provider === "OpenAI") {
+    return scaffold.apiBase === undefined ? OPENAI_API_BASE_REQUIRED_CN_MESSAGE : undefined;
+  }
+  if (provider !== "LiteLLM") return MODEL_PROVIDER_RUNTIMES_CN_MESSAGE;
+  if (scaffold.modelId === undefined) return LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE;
+  if (scaffold.modelId.startsWith("bedrock/")) return LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE;
+  return undefined;
+}
 
 /**
  * Shown when a LiteLLM runtime explicitly targets LiteLLM's Bedrock route
@@ -462,23 +497,15 @@ export class FsProjectManager implements ProjectManager {
         throw new RegionUnsupportedFeatureError(cnUnsupportedResourceMessage(input.resourceType));
       }
       if (input.resourceType === "runtime") {
-        const { framework, modelProvider, modelId, memory } =
-          input.resourceConfig.scaffoldRuntimeInput;
-        if (framework === "bma") {
+        const scaffold = input.resourceConfig.scaffoldRuntimeInput;
+        if (scaffold.framework === "bma") {
           throw new RegionUnsupportedFeatureError(BMA_CN_MESSAGE);
         }
-        if (framework !== "none") {
-          if ((modelProvider ?? "Bedrock") !== "LiteLLM") {
-            throw new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
-          }
-          if (modelId === undefined) {
-            throw new RegionUnsupportedFeatureError(LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE);
-          }
-          if (modelId.startsWith("bedrock/")) {
-            throw new RegionUnsupportedFeatureError(LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE);
-          }
+        const restriction = chinaModelProviderRestriction(scaffold);
+        if (restriction !== undefined) {
+          throw new RegionUnsupportedFeatureError(restriction);
         }
-        if (memory !== undefined) {
+        if (scaffold.memory !== undefined) {
           input.resourceConfig.scaffoldRuntimeInput.memory = undefined;
           yield { type: "step", message: MEMORY_STRIPPED_CN_MESSAGE };
         }
@@ -1170,14 +1197,16 @@ export class FsProjectManager implements ProjectManager {
             `Bedrock Managed Agents. ${BMA_CN_MESSAGE}`,
         );
       }
-      const blocked = project.spec.runtimes.filter(
-        (runtime) =>
-          runtime.modelProvider !== undefined &&
-          (runtime.modelProvider !== "LiteLLM" ||
-            // LiteLLM's 'bedrock/' model id prefix routes to Amazon Bedrock —
-            // the default when a runtime was scaffolded without --model-id.
-            runtime.modelId?.startsWith("bedrock/")),
-      );
+      const blocked = project.spec.runtimes.filter((runtime) => {
+        if (runtime.modelProvider === undefined) return false;
+        // LiteLLM's 'bedrock/' model id prefix routes to Amazon Bedrock —
+        // the default when a runtime was scaffolded without --model-id.
+        if (runtime.modelProvider === "LiteLLM") return runtime.modelId?.startsWith("bedrock/");
+        // An OpenAI runtime pointed at an OpenAI-compatible endpoint (--api-base)
+        // does not call api.openai.com; without one it does.
+        if (runtime.modelProvider === "OpenAI") return runtime.modelApiBase === undefined;
+        return true;
+      });
       if (blocked.length > 0) {
         throw new RegionUnsupportedFeatureError(
           `Cannot deploy to China region ${target.region}: ` +
@@ -1191,6 +1220,7 @@ export class FsProjectManager implements ProjectManager {
               .join(", ") +
             ` scaffolded with a model provider that is not accessible from China regions. ` +
             `Re-scaffold with '--model-provider litellm --model-id <model reachable from China>' ` +
+            `or '--model-provider open_ai --api-base <OpenAI-compatible endpoint>', ` +
             `or bring your own model connectivity. If you have already replaced a runtime's ` +
             `model wiring in code, delete its 'modelProvider' field from agentcore.json.`,
         );

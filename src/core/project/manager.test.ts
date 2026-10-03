@@ -22,6 +22,7 @@ import {
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
+  OPENAI_API_BASE_REQUIRED_CN_MESSAGE,
 } from "./manager";
 import {
   getDefaultMemorySpec,
@@ -46,6 +47,7 @@ const AGENT_PYTHON_STRANDS_CONTAINER = resolveRuntimeTemplateShortcut(
 );
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
+const AGUI_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("agui-python-strands");
 const AGENT_PYTHON_LANGCHAIN = resolveRuntimeTemplateShortcut("agent-python-langchain");
 const BEDROCK_MANAGED_AGENTS = resolveRuntimeTemplateShortcut("environment-python-bma");
 
@@ -234,6 +236,27 @@ describe("FsProjectManager.create", () => {
       entrypoint: "main.py",
     });
     expect(spec.memories).toMatchObject([{ name: "a2a_python_strandsMemory" }]);
+  });
+
+  test("builds the AG-UI app with FastAPI's environment-driven OTLP export turned off", async () => {
+    // FastAPI >= 0.142 adds its own unsigned OTLP exporters from the OTEL_* env at
+    // startup, next to the runtime's SigV4-signing distro: every batch is sent twice
+    // and the unsigned copy is rejected with 403.
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGUI_PYTHON_STRANDS,
+    });
+
+    const agentDir = join(directory, "example", "app", "agui_python_strands");
+    const main = await Bun.file(join(agentDir, "main.py")).text();
+    expect(main).toContain('telemetry={"auto_configure": False}');
+    expect(main).not.toContain("create_strands_app(");
+    expect(main).toContain('add_strands_fastapi_endpoint(app, agui_agent, "/invocations")');
+    expect(main).toContain('add_ping(app, "/ping")');
+    // The telemetry= argument only exists from FastAPI 0.142.
+    const pyproject = await Bun.file(join(agentDir, "pyproject.toml")).text();
+    expect(pyproject).toContain('"fastapi >= 0.142.0, < 1.0.0"');
   });
 
   test("renders the Strands memory session reading the deploy-injected memory id", async () => {
@@ -893,10 +916,59 @@ describe("FsProjectManager.addResource", () => {
       ).rejects.toThrow("uv is missing");
     });
 
+    test("requires a base URL for OpenAI", async () => {
+      await inTempDirectory();
+      const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "cn_openai",
+            scaffoldRuntimeInput: {
+              ...AGENT_PYTHON_STRANDS,
+              runtimeName: "cn_openai",
+              modelProvider: "OpenAI",
+              apiKey: "sk-test",
+            },
+          },
+        }),
+      ).rejects.toThrow(new RegionUnsupportedFeatureError(OPENAI_API_BASE_REQUIRED_CN_MESSAGE));
+
+      expect(checkedTools).toEqual([]);
+    });
+
+    test("lets OpenAI with a base URL past the partition gate", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1", "uv");
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "cn_openai_ok",
+            scaffoldRuntimeInput: {
+              ...AGENT_PYTHON_STRANDS,
+              runtimeName: "cn_openai_ok",
+              modelProvider: "OpenAI",
+              modelId: "deepseek-chat",
+              apiKey: "sk-test",
+              apiBase: "https://api.deepseek.com/v1",
+            },
+          },
+        }),
+      ).rejects.toThrow("uv is missing");
+    });
+
     async function editSpec(
       project: Project,
       edit: (spec: {
-        runtimes: { name: string; modelProvider?: string; modelId?: string }[];
+        runtimes: {
+          name: string;
+          modelProvider?: string;
+          modelId?: string;
+          modelApiBase?: string;
+        }[];
         harnesses: unknown[];
         memories?: unknown[];
       }) => void,
@@ -992,6 +1064,33 @@ describe("FsProjectManager.addResource", () => {
       const { steps, error } = await deployOutcome(subject, project);
       expect(error).toBeUndefined();
       expect(steps.join("\n")).not.toContain("cannot verify the model provider");
+      expect(deployCalls).toHaveLength(1);
+    });
+
+    test("deploy to a China target hard-fails an OpenAI runtime without a persisted api base", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.modelProvider = "OpenAI";
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain("(OpenAI)");
+      expect(String(error)).toContain("--api-base");
+      expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy to a China target passes an OpenAI runtime with a persisted api base", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.modelProvider = "OpenAI";
+        spec.runtimes[0]!.modelApiBase = "https://api.deepseek.com/v1";
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
       expect(deployCalls).toHaveLength(1);
     });
 

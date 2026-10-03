@@ -9,7 +9,7 @@ description = "AgentCore MCP Server"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "aws-opentelemetry-distro ~= 0.18.0",
+    "aws-opentelemetry-distro ~= 0.21.0",
     "mcp >= 1.28.1, < 2.0.0",
 ]
 

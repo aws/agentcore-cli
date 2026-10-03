@@ -92,6 +92,13 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         z.string().optional(),
         { group: CONFIGURATION, sensitive: true },
       ),
+      flag(
+        "api-base",
+        "base URL of an OpenAI-compatible endpoint for --model-provider open_ai " +
+          "(required in China regions, where api.openai.com is not reachable)",
+        z.string().url().optional(),
+        { group: CONFIGURATION },
+      ),
       flag("description", "an optional description of the Runtime", z.string().optional(), {
         group: CONFIGURATION,
       }),
@@ -190,16 +197,17 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       const modelFlagsPresent =
         flags["model-provider"] !== undefined ||
         flags["model-id"] !== undefined ||
-        flags["api-key"] !== undefined;
+        flags["api-key"] !== undefined ||
+        flags["api-base"] !== undefined;
 
       if (flags.framework !== undefined && !isImport) {
         throw new InputValidationError("--framework requires --type import");
       }
 
       if (isImport) {
-        const importIncompatibleFlags = (["model-provider", "model-id", "api-key"] as const).filter(
-          (flagName) => flags[flagName] !== undefined,
-        );
+        const importIncompatibleFlags = (
+          ["model-provider", "model-id", "api-key", "api-base"] as const
+        ).filter((flagName) => flags[flagName] !== undefined);
         if (isTemplate || importIncompatibleFlags.length > 0) {
           const offending = isTemplate ? "template" : importIncompatibleFlags[0];
           throw new InputValidationError(
@@ -215,12 +223,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       if (!isImport && modelFlagsPresent) {
         if (!isTemplate) {
           throw new InputValidationError(
-            "--model-provider, --model-id, and --api-key only apply to templates that support them",
+            "--model-provider, --model-id, --api-key, and --api-base only apply to templates that support them",
           );
         }
         if (!RUNTIME_TEMPLATE_SHORTCUTS[flags.template!].supportsModelProviderOverride) {
           throw new InputValidationError(
-            `--model-provider, --model-id, and --api-key are not valid with the ${flags.template} template`,
+            `--model-provider, --model-id, --api-key, and --api-base are not valid with the ${flags.template} template`,
           );
         }
       }
@@ -272,6 +280,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
               modelProvider: flags["model-provider"],
               modelId: flags["model-id"],
               apiKey,
+              apiBase: flags["api-base"],
             })
           : resolveRuntimeTemplateShortcut("agent-python-minimal", { runtimeName: flags.name });
 

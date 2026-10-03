@@ -1,11 +1,12 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import {
   renderScreen,
   waitForText,
+  flatFrame,
   cleanupScreens,
   createSilentLogger,
   inTempDirectory,
@@ -22,6 +23,8 @@ import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
+import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
+import { MODEL_PROVIDER_RUNTIMES_CN_MESSAGE } from "../../../core/project/manager";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -46,6 +49,7 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
 }
 
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5";
+const STRANDS_BEDROCK_MODEL_ID = DEFAULT_MODEL_IDS.Bedrock;
 
 describe("project create wizard", () => {
   test("harness flow: name → type → model provider → review → created", async () => {
@@ -368,7 +372,7 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
-  test("template flow: strands goes straight to review (no memory question)", async () => {
+  test("template flow: strands asks the model provider, then review (no memory question)", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const core = new TestCoreClient();
@@ -392,14 +396,36 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("environment-python-bma");
     await r.press("return");
 
+    // Model step: strands takes a model-provider override, so the wizard asks
+    // the same question the --model-provider/--model-id/--api-key flags
+    // answer. Bedrock is preselected with the template's default model id;
+    // fields stay hidden until the provider is confirmed.
+    await waitForText(r.lastFrame, "choose a model provider");
+    expect(r.lastFrame()).toContain("● model provider ──");
+    expect(r.lastFrame()).toContain("● bedrock");
+    expect(r.lastFrame()).toContain("○ anthropic");
+    expect(r.lastFrame()).toContain("○ openai");
+    expect(r.lastFrame()).toContain("○ gemini");
+    expect(r.lastFrame()).toContain("○ litellm");
+    expect(r.lastFrame()).not.toContain("not accessible from China regions");
+    expect(r.lastFrame()).not.toContain(STRANDS_BEDROCK_MODEL_ID);
+    await r.press("return"); // focus model id
+    await waitForText(r.lastFrame, STRANDS_BEDROCK_MODEL_ID);
+    // Bedrock uses the runtime's IAM role, so no API key is asked for.
+    expect(r.lastFrame()).not.toContain("API key file");
+    await r.press("return"); // accept model id
+
     // No memory step: memory is no longer a choice, so review follows directly.
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).not.toContain("choose a memory configuration");
     expect(r.lastFrame()).toContain("agent-python-strands");
+    expect(flatFrame(r.lastFrame)).toContain("model provider bedrock");
+    expect(r.lastFrame()).toContain(STRANDS_BEDROCK_MODEL_ID);
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./StrandsApp", 5000);
 
-    // Identical to the flag-driven `--template agent-python-strands` input.
+    // Identical to the flag-driven `--template agent-python-strands` input:
+    // the default model id is not sent as an override.
     expect(inputs).toEqual([
       {
         name: "StrandsApp",
@@ -410,6 +436,7 @@ describe("project create wizard", () => {
         }),
       },
     ]);
+    expect(inputs[0]!.scaffoldRuntimeInput!.modelId).toBeUndefined();
 
     const spec = await Bun.file(
       join(directory, "StrandsApp", "agentcore", "agentcore.json"),
@@ -417,6 +444,389 @@ describe("project create wizard", () => {
     expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual(["agent"]);
     // The strands template ships with longAndShortTerm memory pre-configured.
     expect(spec.memories).toHaveLength(1);
+    r.unmount();
+  }, 10000);
+
+  // walkToStrandsModelStep drives the wizard to the model step of the strands
+  // template: name → code-based → agent-python-strands → "choose a model provider".
+  async function walkToStrandsModelStep(
+    r: ReturnType<typeof renderScreen>,
+    name: string,
+  ): Promise<void> {
+    await waitForText(r.lastFrame, "name your project");
+    await r.write(name);
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "● agent-python-strands ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+  }
+
+  test("the model step's keys: esc leaves the list, arrows move between fields, enter returns to a missing one", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create");
+    await walkToStrandsModelStep(r, "KeysApp");
+
+    // esc on the provider list steps back to the template.
+    await r.press("escape");
+    await waitForText(r.lastFrame, "choose a template");
+    expect(r.lastFrame()).not.toContain("choose a model provider");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+
+    await r.press("down"); // anthropic
+    await waitForText(r.lastFrame, "● anthropic");
+    await r.press("return"); // focus the model id
+    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Anthropic);
+    // Clear the prefilled id, then move on with the arrow — arrows do not validate.
+    for (let i = 0; i < DEFAULT_MODEL_IDS.Anthropic.length; i++) await r.press("backspace");
+    await r.press("down"); // API key file
+    await waitForText(r.lastFrame, "API key file");
+    await r.press("up"); // back to the model id, no error raised by moving
+    await r.press("down");
+    expect(r.lastFrame()).not.toContain("enter a model ID for anthropic");
+    await r.write("file:///tmp/anthropic.key");
+    // enter on the last field is valid here, but the earlier field is empty:
+    // focus returns to it with its own message instead of continuing.
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter a model ID for anthropic");
+    expect(r.lastFrame()).not.toContain("this project will be created");
+    r.unmount();
+  });
+
+  test("a key path wider than the terminal wraps without looping the model step", async () => {
+    // A wrapped input line grows the field; the scroll-into-view callback and
+    // the viewport re-measure then fed each other until React gave up
+    // ("Maximum update depth exceeded") and the frame went blank. CI hit it
+    // through long macOS/Windows temp paths; a long path pins it here.
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create"); // 100 columns
+    await walkToStrandsModelStep(r, "WideKey");
+    await r.press("down"); // anthropic
+    await waitForText(r.lastFrame, "● anthropic");
+    await r.press("return");
+    await r.press("return"); // default model id → API key file
+    await waitForText(r.lastFrame, "API key file");
+    const widePath = `file:///tmp/${"x".repeat(150)}/anthropic.key`; // wraps onto a second row
+    await r.write(widePath);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const frame = r.lastFrame() ?? "";
+    expect(frame).not.toContain("Maximum update depth");
+    expect(frame).toContain("API key file");
+    expect(frame.replace(/\s/g, "")).toContain("anthropic.key");
+    r.unmount();
+  });
+
+  test("an API-key provider reads the key from its file:// source, exactly like the flags", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const keyFile = join(directory, "anthropic.key");
+    await writeFile(keyFile, "sk-ant-test-key\n");
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await walkToStrandsModelStep(r, "KeyedApp");
+    await r.press("down"); // anthropic
+    await waitForText(r.lastFrame, "● anthropic");
+    await r.press("return"); // focus model id (prefilled with Anthropic's default)
+    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Anthropic);
+    await r.press("return"); // accept it → API key file
+    await waitForText(r.lastFrame, "API key file");
+    expect(r.lastFrame()).not.toContain("optional");
+    await r.write(`file://${keyFile}`);
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    const review = flatFrame(r.lastFrame);
+    expect(review).toContain("model provider anthropic");
+    // The row may wrap mid-path at the frame width (CI temp paths are long), so
+    // compare with all whitespace removed.
+    expect(review.replace(/\s/g, "")).toContain(`APIkeyfile://${keyFile}`);
+    // The review shows the key's source, never the key.
+    expect(review).not.toContain("sk-ant-test-key");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./KeyedApp", 5000);
+
+    // Identical to `--template agent-python-strands --model-provider anthropic
+    // --api-key file://…`: the resolver read the file, the default id stays implicit.
+    expect(inputs).toEqual([
+      {
+        name: "KeyedApp",
+        skipInstall: false,
+        skipGit: false,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
+          runtimeName: "agent",
+          modelProvider: "Anthropic",
+          apiKey: "sk-ant-test-key",
+        }),
+      },
+    ]);
+    const spec = await Bun.file(join(directory, "KeyedApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].modelProvider).toBe("Anthropic");
+    expect(spec.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "agentAnthropicApiKey" },
+    ]);
+    const envLocal = await Bun.file(join(directory, "KeyedApp", "agentcore", ".env.local")).text();
+    expect(envLocal).toContain("sk-ant-test-key");
+    r.unmount();
+  }, 10000);
+
+  test("the model step refuses a missing or inline API key before anything is written", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await walkToStrandsModelStep(r, "NoKeyApp");
+    await r.press("down"); // anthropic
+    await r.press("down"); // openai
+    await waitForText(r.lastFrame, "● openai");
+    await r.press("return"); // model id
+    await r.press("return"); // → API key file (required for OpenAI)
+    await waitForText(r.lastFrame, "API key file");
+    await r.press("return"); // empty
+    await waitForText(r.lastFrame, "enter the API key file for openai");
+
+    // An inline secret is refused the way the --api-key flag refuses it.
+    await r.write("sk-inline-secret");
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter a file:// path to the key");
+    expect(r.lastFrame()).not.toContain("this project will be created");
+
+    expect(inputs).toEqual([]);
+    expect(existsSync(join(directory, "NoKeyApp"))).toBe(false);
+    r.unmount();
+  });
+
+  test("switching providers keeps each provider's model id and key source", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create", { core: new TestCoreClient() });
+
+    await walkToStrandsModelStep(r, "SwitchApp");
+    await r.press("down"); // anthropic
+    await r.press("return"); // model id
+    await r.write("-edited");
+    await r.press("escape"); // back to the provider list, edit kept
+    await r.press("down"); // openai
+    await r.press("return");
+    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.OpenAI);
+    expect(r.lastFrame()).not.toContain("-edited");
+    await r.press("escape");
+    await r.press("up"); // anthropic again
+    await r.press("return");
+    await waitForText(r.lastFrame, `${DEFAULT_MODEL_IDS.Anthropic}-edited`);
+    r.unmount();
+  });
+
+  test("in a China region the model step starts on LiteLLM and flags the blocked providers", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "cn-north-1"),
+    });
+
+    await walkToStrandsModelStep(r, "CnApp");
+    // LiteLLM is the one provider that can pass the China gate, so it is
+    // preselected; the others say why they are not.
+    expect(r.lastFrame()).toContain("● litellm");
+    expect(r.lastFrame()).toContain("○ bedrock");
+    expect(flatFrame(r.lastFrame).match(/not accessible from China regions/g)).toHaveLength(4);
+    await r.press("return"); // focus model id
+    // No Bedrock-routed default is prefilled there; a model id must be given.
+    await waitForText(r.lastFrame, "reachable from China regions");
+    expect(r.lastFrame()).not.toContain(DEFAULT_MODEL_IDS.LiteLLM);
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter a model ID for litellm");
+    await r.write("deepseek/deepseek-chat");
+    await r.press("return"); // → API key file (optional for LiteLLM)
+    await waitForText(r.lastFrame, "optional");
+    await r.press("return"); // skip it
+
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(flatFrame(r.lastFrame)).toContain("model provider litellm");
+    expect(r.lastFrame()).toContain("deepseek/deepseek-chat");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./CnApp", 5000);
+
+    // The same input `--template agent-python-strands --model-provider litellm
+    // --model-id deepseek/deepseek-chat` produces in a China region, with the
+    // default memory dropped and the notice shown as a step.
+    const expected = resolveRuntimeTemplateShortcut("agent-python-strands", {
+      runtimeName: "agent",
+      modelProvider: "LiteLLM",
+      modelId: "deepseek/deepseek-chat",
+    });
+    expected.memory = undefined;
+    expect(inputs).toEqual([
+      { name: "CnApp", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+    ]);
+    expect(r.lastFrame()).toContain("AgentCore Memory is not available in China regions");
+    const spec = await Bun.file(join(directory, "CnApp", "agentcore", "agentcore.json")).json();
+    expect(spec.memories ?? []).toEqual([]);
+    expect(spec.runtimes[0]).toMatchObject({
+      modelProvider: "LiteLLM",
+      modelId: "deepseek/deepseek-chat",
+    });
+    r.unmount();
+  }, 10000);
+
+  test("in a China region picking Bedrock is refused at submit with retry on offer", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "cn-north-1"),
+    });
+
+    await walkToStrandsModelStep(r, "CnBedrock");
+    for (let i = 0; i < 4; i++) await r.press("up"); // bedrock
+    await waitForText(r.lastFrame, "● bedrock");
+    await r.press("return");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+
+    // The gate the flag path runs rejects it before anything is written; the
+    // wizard keeps the form so the provider can be changed.
+    await waitForText(r.lastFrame, MODEL_PROVIDER_RUNTIMES_CN_MESSAGE.slice(0, 60));
+    expect(r.lastFrame()).toContain("[r] retry");
+    expect(inputs).toEqual([]);
+    expect(existsSync(join(directory, "CnBedrock"))).toBe(false);
+    r.unmount();
+  });
+
+  test("openai reveals an optional API base URL that flows as --api-base", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const keyFile = join(directory, "openai.key");
+    await writeFile(keyFile, "sk-compatible");
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await walkToStrandsModelStep(r, "BaseApp");
+    await r.press("down"); // anthropic
+    await r.press("down"); // openai
+    await waitForText(r.lastFrame, "● openai");
+    await r.press("return"); // model id
+    await r.press("return"); // API key file
+    await waitForText(r.lastFrame, "API key file");
+    await r.write(`file://${keyFile}`);
+    await r.press("return"); // → API base URL (optional outside China)
+    await waitForText(r.lastFrame, "API base URL");
+    expect(r.lastFrame()).toContain("optional");
+    await r.write("https://api.deepseek.com/v1");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(flatFrame(r.lastFrame)).toContain("API base https://api.deepseek.com/v1");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./BaseApp", 5000);
+
+    expect(inputs).toEqual([
+      {
+        name: "BaseApp",
+        skipInstall: false,
+        skipGit: false,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
+          runtimeName: "agent",
+          modelProvider: "OpenAI",
+          apiKey: "sk-compatible",
+          apiBase: "https://api.deepseek.com/v1",
+        }),
+      },
+    ]);
+    const spec = await Bun.file(join(directory, "BaseApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].modelApiBase).toBe("https://api.deepseek.com/v1");
+    r.unmount();
+  }, 10000);
+
+  // walkToTypeScriptModelStep drives the wizard to the model step of the
+  // TypeScript strands template.
+  async function walkToTypeScriptModelStep(
+    r: ReturnType<typeof renderScreen>,
+    name: string,
+  ): Promise<void> {
+    await waitForText(r.lastFrame, "name your project");
+    await r.write(name);
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    for (let i = 0; i < 10 && !r.lastFrame()!.includes("● agent-typescript-strands"); i++) {
+      await r.press("down");
+    }
+    await waitForText(r.lastFrame, "● agent-typescript-strands");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+  }
+
+  test("a TypeScript template is not offered LiteLLM", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    const r = renderScreen("/agentcore/create", { core: new TestCoreClient() });
+
+    await walkToTypeScriptModelStep(r, "TsApp");
+    expect(r.lastFrame()).toContain("● bedrock");
+    expect(r.lastFrame()).toContain("○ gemini");
+    expect(r.lastFrame()).not.toContain("litellm");
+    r.unmount();
+  });
+
+  test("in a China region a TypeScript template starts on openai and requires the API base", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const keyFile = join(directory, "ds.key");
+    await writeFile(keyFile, "sk-ds");
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "cn-north-1"),
+    });
+
+    await walkToTypeScriptModelStep(r, "CnTs");
+    expect(r.lastFrame()).toContain("● openai");
+    expect(r.lastFrame()).not.toContain("litellm");
+    expect(r.lastFrame()).toContain("set an API base URL");
+    await r.press("return"); // model id, empty in China
+    await r.write("deepseek-chat");
+    await r.press("return"); // API key file
+    await r.write(`file://${keyFile}`);
+    await r.press("return"); // API base URL, required in China
+    await waitForText(r.lastFrame, "API base URL");
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter the API base URL of an endpoint reachable from China");
+    await r.write("https://api.deepseek.com/v1");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./CnTs", 5000);
+
+    const expected = resolveRuntimeTemplateShortcut("agent-typescript-strands", {
+      runtimeName: "agent",
+      modelProvider: "OpenAI",
+      modelId: "deepseek-chat",
+      apiKey: "sk-ds",
+      apiBase: "https://api.deepseek.com/v1",
+    });
+    expected.memory = undefined;
+    expect(inputs).toEqual([
+      { name: "CnTs", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+    ]);
+    const loadModel = await Bun.file(
+      join(directory, "CnTs", "app", "agent", "model", "load.ts"),
+    ).text();
+    expect(loadModel).toContain("baseURL: 'https://api.deepseek.com/v1'");
     r.unmount();
   }, 10000);
 
@@ -470,8 +880,9 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
 
-    // Straight to review.
+    // Straight to review: the minimal template takes no model-provider override.
     await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()).not.toContain("choose a model provider");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./HelloApp", 5000);
 
@@ -509,7 +920,9 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
+    // No model step: langchain is Bedrock-only today (no override support).
     await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()).not.toContain("choose a model provider");
     expect(r.lastFrame()).toContain("agent-python-langchain");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./LangChainApp", 5000);
@@ -820,6 +1233,10 @@ describe("project create dispatch", () => {
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("choose a template"));
     stdin.write("\r");
+    await waitFor(() => streams.stdout().includes("choose a model provider"));
+    stdin.write("\r"); // focus the (Bedrock) model id
+    await waitFor(() => streams.stdout().includes("model ID"));
+    stdin.write("\r"); // accept it
     await waitFor(() => streams.stdout().includes("this project will be created"));
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("project created in ./DemoApp"));
