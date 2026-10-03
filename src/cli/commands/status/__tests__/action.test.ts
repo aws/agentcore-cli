@@ -6,6 +6,7 @@ import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetAgentRuntimeStatus = vi.fn();
+const mockDetectAccount = vi.fn();
 const mockGetEvaluator = vi.fn();
 const mockGetOnlineEvaluationConfig = vi.fn();
 const mockGetKnowledgeBase = vi.fn();
@@ -15,6 +16,8 @@ const mockGetPaymentConnector = vi.fn();
 
 vi.mock('../../../aws', () => ({
   getAgentRuntimeStatus: (...args: unknown[]) => mockGetAgentRuntimeStatus(...args),
+  detectAccount: (...args: unknown[]) => mockDetectAccount(...args),
+  hasEnvCredentials: () => false,
 }));
 
 vi.mock('../../../aws/agentcore-control', () => ({
@@ -1494,5 +1497,71 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
     });
     const pendingEntry = pending.find(r => r.resourceType === 'capacity-provider' && r.name === 'gone-cp');
     expect(pendingEntry!.deploymentState).toBe('pending-removal');
+  });
+});
+
+describe('handleProjectStatus — AWS identity', () => {
+  let originalProfile: string | undefined;
+
+  beforeEach(() => {
+    originalProfile = process.env.AWS_PROFILE;
+    delete process.env.AWS_PROFILE;
+    mockDetectAccount.mockReset();
+  });
+
+  afterEach(() => {
+    if (originalProfile === undefined) delete process.env.AWS_PROFILE;
+    else process.env.AWS_PROFILE = originalProfile;
+    vi.clearAllMocks();
+  });
+
+  it('returns the active AWS identity and the target account, resolved in the target region', async () => {
+    mockDetectAccount.mockResolvedValue('111111111111');
+    const ctx = {
+      project: baseProject,
+      awsTargets: [{ name: 'gov', region: 'us-gov-west-1', account: '222222222222' }],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx, { includeAwsIdentity: true });
+
+    assert(result.success);
+    expect(mockDetectAccount).toHaveBeenCalledWith(expect.objectContaining({ region: 'us-gov-west-1' }));
+    expect(result.awsIdentity).toEqual({
+      success: true,
+      account: '111111111111',
+      profile: undefined,
+      fromEnvironment: false,
+    });
+    expect(result.targetAccount).toBe('222222222222');
+  });
+
+  it('still succeeds when AWS credentials are unavailable', async () => {
+    mockDetectAccount.mockResolvedValue(null);
+    const ctx = {
+      project: baseProject,
+      awsTargets: [],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx, { includeAwsIdentity: true });
+
+    assert(result.success);
+    expect(result.awsIdentity).toMatchObject({ success: false, error: 'No AWS credentials found.' });
+    expect(result.targetAccount).toBeUndefined();
+  });
+
+  it('does not call AWS for the identity unless asked to', async () => {
+    const ctx = {
+      project: baseProject,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '222222222222' }],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    assert(result.success);
+    expect(mockDetectAccount).not.toHaveBeenCalled();
+    expect(result.awsIdentity).toBeUndefined();
   });
 });

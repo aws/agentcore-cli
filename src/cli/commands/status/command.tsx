@@ -6,8 +6,10 @@ import type { DatasetStatusResult } from '../../operations/dataset';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { FilterState, FilterType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { requireProject } from '../../tui/guards';
+import { AwsIdentityInfo } from './AwsIdentityInfo';
 import type { ResourceStatusEntry } from './action';
 import { handleProjectStatus, handleRuntimeLookup, loadStatusConfig } from './action';
+import { isAccountMismatch } from './aws-identity';
 import { DEPLOYMENT_STATE_COLORS, DEPLOYMENT_STATE_LABELS } from './constants';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
@@ -148,14 +150,25 @@ export const registerStatus = (program: Command) => {
         }
 
         // Default path: show all resource types with deployment state
-        const result = await withCommandRunTelemetry('status', telemetryAttrs, async () => {
+        const result = await withCommandRunTelemetry('status', telemetryAttrs, async recorder => {
           const context = await loadStatusConfig();
           // --name drives the KB drill-down (full block) vs the default summary
           // line. Scope it to KB filtering: only thread it when the user hasn't
           // narrowed to a different resource type.
           const knowledgeBaseName =
             cliOptions.name && (!cliOptions.type || cliOptions.type === 'knowledge-base') ? cliOptions.name : undefined;
-          return handleProjectStatus(context, { targetName: cliOptions.target, knowledgeBaseName });
+          const statusResult = await handleProjectStatus(context, {
+            targetName: cliOptions.target,
+            knowledgeBaseName,
+            includeAwsIdentity: true,
+          });
+          if (statusResult.success && statusResult.awsIdentity) {
+            recorder.set({
+              aws_identity_resolved: statusResult.awsIdentity.success,
+              aws_account_mismatch: isAccountMismatch(statusResult.awsIdentity, statusResult.targetAccount),
+            });
+          }
+          return statusResult;
         });
 
         if (!result.success) {
@@ -215,6 +228,11 @@ export const registerStatus = (program: Command) => {
               AgentCore Status (target: {result.targetName ?? 'No target configured'}
               {result.targetRegion ? `, ${result.targetRegion}` : ''})
             </Text>
+            <AwsIdentityInfo
+              identity={result.awsIdentity}
+              targetName={result.targetName}
+              targetAccount={result.targetAccount}
+            />
 
             {agents.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
