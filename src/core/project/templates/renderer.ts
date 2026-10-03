@@ -36,6 +36,14 @@ export class HandlebarsTemplateRenderer implements TemplateRenderer {
       "safeJson",
       (value: unknown) => new Handlebars.SafeString(JSON.stringify(value)),
     );
+    // A single-quoted JavaScript string literal, matching the TypeScript templates'
+    // quote style (safeJson would emit double quotes).
+    this.hbs.registerHelper("jsStr", (value: unknown) => {
+      const str = typeof value === "string" ? value : String(value ?? "");
+      return new Handlebars.SafeString(
+        "'" + str.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n") + "'",
+      );
+    });
     this.hbs.registerHelper(
       "pyJsonStr",
       (value: unknown) => new Handlebars.SafeString(JSON.stringify(JSON.stringify(value))),

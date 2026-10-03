@@ -546,7 +546,7 @@ describe("project create", () => {
     ]);
     const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
     expect(loadModel).toContain("from '@strands-agents/sdk/models/anthropic'");
-    expect(loadModel).toContain(`modelId: "${DEFAULT_MODEL_IDS.Anthropic}"`);
+    expect(loadModel).toContain(`modelId: '${DEFAULT_MODEL_IDS.Anthropic}'`);
     expect(loadModel).not.toContain("BedrockModel");
     const apiKey = await Bun.file(join(appRoot, "model", "apiKey.ts")).text();
     expect(apiKey).toContain("from 'bedrock-agentcore/identity'");
@@ -588,8 +588,8 @@ describe("project create", () => {
     const appRoot = join(directory, "TsAgent", "app", "agent");
     const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
     expect(loadModel).toContain("from '@strands-agents/sdk/models/openai'");
-    expect(loadModel).toContain('clientConfig: { baseURL: "https://api.deepseek.com/v1" }');
-    expect(loadModel).toContain('modelId: "deepseek-chat"');
+    expect(loadModel).toContain("clientConfig: { baseURL: 'https://api.deepseek.com/v1' }");
+    expect(loadModel).toContain("modelId: 'deepseek-chat'");
     const pkg = await Bun.file(join(appRoot, "package.json")).json();
     expect(pkg.dependencies["openai"]).toBeDefined();
     const spec = await Bun.file(join(directory, "TsAgent", "agentcore", "agentcore.json")).json();
@@ -614,7 +614,7 @@ describe("project create", () => {
     const appRoot = join(directory, "TsAgent", "app", "agent");
     const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
     expect(loadModel).toContain("from '@strands-agents/sdk/models/bedrock'");
-    expect(loadModel).toContain(`modelId: "${DEFAULT_MODEL_IDS.Bedrock}"`);
+    expect(loadModel).toContain(`modelId: '${DEFAULT_MODEL_IDS.Bedrock}'`);
     expect(loadModel).not.toContain("getApiKey");
     expect(existsSync(join(appRoot, "model", "apiKey.ts"))).toBe(false);
     const pkg = await Bun.file(join(appRoot, "package.json")).json();
@@ -1674,7 +1674,7 @@ describe("create in China regions", () => {
 
   test.each([
     ["agent-python-strands", "model/load.py", '"base_url": "https://api.deepseek.com/v1"'],
-    ["agent-typescript-strands", "model/load.ts", 'baseURL: "https://api.deepseek.com/v1"'],
+    ["agent-typescript-strands", "model/load.ts", "baseURL: 'https://api.deepseek.com/v1'"],
   ])(
     "scaffolds %s with open_ai and --api-base, persisting the base",
     async (template, file, needle) => {

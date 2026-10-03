@@ -13,12 +13,7 @@ dependencies = [
     "aws-opentelemetry-distro ~= 0.21.0",
     "bedrock-agentcore[a2a,strands-agents] >= 1.18.1, < 2.0.0",
     "botocore[crt] ~= 1.43.0",
-    {{#if (eq modelProvider "Anthropic")}}"strands-agents[anthropic] >= 1.15.0, < 2.0.0",
-    {{else}}{{#if (eq modelProvider "OpenAI")}}"strands-agents[openai] >= 1.15.0, < 2.0.0",
-    {{else}}{{#if (eq modelProvider "Gemini")}}"strands-agents[gemini] >= 1.15.0, < 2.0.0",
-    {{else}}{{#if (eq modelProvider "LiteLLM")}}"strands-agents[litellm] >= 1.15.0, < 2.0.0",
-    {{else}}"strands-agents >= 1.15.0, < 2.0.0",
-    {{/if}}{{/if}}{{/if}}{{/if}}
+    "strands-agents{{#if (eq modelProvider "Anthropic")}}[anthropic]{{else}}{{#if (eq modelProvider "OpenAI")}}[openai]{{else}}{{#if (eq modelProvider "Gemini")}}[gemini]{{else}}{{#if (eq modelProvider "LiteLLM")}}[litellm]{{/if}}{{/if}}{{/if}}{{/if}} >= 1.15.0, < 2.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -826,7 +826,7 @@ describe("project create wizard", () => {
     const loadModel = await Bun.file(
       join(directory, "CnTs", "app", "agent", "model", "load.ts"),
     ).text();
-    expect(loadModel).toContain('baseURL: "https://api.deepseek.com/v1"');
+    expect(loadModel).toContain("baseURL: 'https://api.deepseek.com/v1'");
     r.unmount();
   }, 10000);
 
