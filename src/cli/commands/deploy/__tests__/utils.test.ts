@@ -1,8 +1,34 @@
 import type { AgentCoreProjectSpec } from '../../../../schema';
+import { PERMISSIONS_BOUNDARY_ENV_VAR } from '../../../constants';
 import { computeDeployAttrs } from '../utils.js';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Keep the boundary attribute independent of whatever ~/.agentcore/config.json holds locally.
+const { readGlobalConfigSyncMock } = vi.hoisted(() => ({
+  readGlobalConfigSyncMock: vi.fn(() => ({})),
+}));
+
+vi.mock('../../../../lib/schemas/io/global-config', () => ({
+  readGlobalConfigSync: readGlobalConfigSyncMock,
+}));
 
 describe('computeDeployAttrs', () => {
+  const savedBoundaryEnv = process.env[PERMISSIONS_BOUNDARY_ENV_VAR];
+
+  beforeEach(() => {
+    // The boundary attribute reads the environment; keep it out of the assertions below.
+    delete process.env[PERMISSIONS_BOUNDARY_ENV_VAR];
+    readGlobalConfigSyncMock.mockReturnValue({});
+  });
+
+  afterEach(() => {
+    if (savedBoundaryEnv === undefined) {
+      delete process.env[PERMISSIONS_BOUNDARY_ENV_VAR];
+    } else {
+      process.env[PERMISSIONS_BOUNDARY_ENV_VAR] = savedBoundaryEnv;
+    }
+  });
+
   it('computes counts from a populated spec', () => {
     const projectSpec = {
       runtimes: [{}, {}],
@@ -26,7 +52,22 @@ describe('computeDeployAttrs', () => {
       policy_engine_count: 2,
       policy_count: 3,
       deploy_mode: 'diff',
+      permissions_boundary: false,
     });
+  });
+
+  it('flags an explicitly configured permissions boundary', () => {
+    const projectSpec = {
+      iam: { permissionsBoundary: 'AgentCoreExecutionRoleBoundary' },
+    } as unknown as Partial<AgentCoreProjectSpec>;
+
+    expect(computeDeployAttrs(projectSpec, 'deploy').permissions_boundary).toBe(true);
+  });
+
+  it('flags a boundary that comes from the machine global config', () => {
+    readGlobalConfigSyncMock.mockReturnValue({ permissionsBoundary: 'AgentCoreExecutionRoleBoundary' });
+
+    expect(computeDeployAttrs({}, 'deploy').permissions_boundary).toBe(true);
   });
 
   it('returns zeros for empty spec', () => {
@@ -42,6 +83,7 @@ describe('computeDeployAttrs', () => {
       policy_engine_count: 0,
       policy_count: 0,
       deploy_mode: 'deploy',
+      permissions_boundary: false,
     });
   });
 

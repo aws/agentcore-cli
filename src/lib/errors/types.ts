@@ -62,6 +62,51 @@ export class AccessDeniedError extends BaseError {
 }
 
 /**
+ * Error thrown when CloudFormation is denied `iam:CreateRole` because the account requires
+ * every new role to carry a permissions boundary and none was declared.
+ *
+ * Raw CloudFormation reports this as `UnauthorizedTaggingOperation` with the IAM denial buried
+ * in a nested message, which gives no hint that the fix is a one-line config change. The denial
+ * does name the boundary the account expects, so the remedy can be stated exactly.
+ */
+export class PermissionsBoundaryRequiredError extends BaseError {
+  /** Boundary ARN the account demands, when it could be read out of the denial. */
+  readonly requiredBoundaryArn?: string;
+
+  constructor(requiredBoundaryArn?: string, appliedBoundary?: string, options?: BaseErrorOptions) {
+    const target = requiredBoundaryArn ?? '<the boundary your account requires>';
+    // The opening sentence has to follow the branch: saying the role "had none" would be plainly
+    // wrong when a boundary was applied and merely rejected as the wrong one.
+    const lines = appliedBoundary
+      ? [
+          'This account requires every new IAM role to carry a specific permissions boundary, ' +
+            'and CloudFormation was denied iam:CreateRole because the boundary this deploy ' +
+            'applied is not the one it requires.',
+          '',
+          `  Applied:  ${appliedBoundary}`,
+          `  Required: ${target}`,
+          '',
+          'Update the configured value and re-run `agentcore deploy`.',
+        ]
+      : [
+          'This account requires every new IAM role to carry a permissions boundary, and ' +
+            'CloudFormation was denied iam:CreateRole because the role it tried to create had none.',
+          '',
+          'Set it for every project on this machine:',
+          `  agentcore config permissionsBoundary ${target}`,
+          '',
+          'Or commit it with the project, in agentcore/agentcore.json:',
+          `  "iam": { "permissionsBoundary": "${target}" }`,
+          '',
+          'Then re-run `agentcore deploy`.',
+        ];
+    lines.push('', 'See docs/PERMISSIONS.md ("Hardening with permission boundaries") for details.');
+    super(lines.join('\n'), { defaultSource: 'user', ...options });
+    this.requiredBoundaryArn = requiredBoundaryArn;
+  }
+}
+
+/**
  * Error thrown when a secret value cannot be encrypted before writing to disk
  * (e.g. the machine encryption key could not be created/read).
  */
