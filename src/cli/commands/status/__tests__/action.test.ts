@@ -1,11 +1,13 @@
+import { AwsCredentialsError } from '../../../../lib/errors/types.js';
 import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema/index.js';
-import { computeResourceStatuses, handleProjectStatus } from '../action.js';
+import { computeResourceStatuses, handleProjectStatus, resolveAwsIdentity } from '../action.js';
 import type { ResourceStatusEntry, StatusContext } from '../action.js';
 import { buildRuntimeInvocationUrl } from '../constants.js';
 import assert from 'node:assert';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetAgentRuntimeStatus = vi.fn();
+const mockDetectAccount = vi.fn();
 const mockGetEvaluator = vi.fn();
 const mockGetOnlineEvaluationConfig = vi.fn();
 const mockGetKnowledgeBase = vi.fn();
@@ -15,6 +17,7 @@ const mockGetPaymentConnector = vi.fn();
 
 vi.mock('../../../aws', () => ({
   getAgentRuntimeStatus: (...args: unknown[]) => mockGetAgentRuntimeStatus(...args),
+  detectAccount: (...args: unknown[]) => mockDetectAccount(...args),
 }));
 
 vi.mock('../../../aws/agentcore-control', () => ({
@@ -1494,5 +1497,99 @@ describe('handleProjectStatus — invocation URL enrichment', () => {
     });
     const pendingEntry = pending.find(r => r.resourceType === 'capacity-provider' && r.name === 'gone-cp');
     expect(pendingEntry!.deploymentState).toBe('pending-removal');
+  });
+});
+
+describe('resolveAwsIdentity', () => {
+  let originalProfile: string | undefined;
+
+  beforeEach(() => {
+    originalProfile = process.env.AWS_PROFILE;
+    delete process.env.AWS_PROFILE;
+    mockDetectAccount.mockReset();
+  });
+
+  afterEach(() => {
+    if (originalProfile === undefined) delete process.env.AWS_PROFILE;
+    else process.env.AWS_PROFILE = originalProfile;
+  });
+
+  it('returns the account and the AWS_PROFILE in use', async () => {
+    process.env.AWS_PROFILE = 'dev';
+    mockDetectAccount.mockResolvedValue('123456789012');
+
+    expect(await resolveAwsIdentity()).toEqual({ account: '123456789012', profile: 'dev' });
+  });
+
+  it('leaves profile undefined when AWS_PROFILE is not set', async () => {
+    mockDetectAccount.mockResolvedValue('123456789012');
+
+    expect(await resolveAwsIdentity()).toEqual({ account: '123456789012', profile: undefined });
+  });
+
+  it('treats an empty AWS_PROFILE as unset', async () => {
+    process.env.AWS_PROFILE = '';
+    mockDetectAccount.mockResolvedValue('123456789012');
+
+    expect((await resolveAwsIdentity()).profile).toBeUndefined();
+  });
+
+  it('reports missing credentials without throwing', async () => {
+    mockDetectAccount.mockResolvedValue(null);
+
+    expect(await resolveAwsIdentity()).toEqual({ profile: undefined, error: 'No AWS credentials found.' });
+  });
+
+  it('uses the short message of an AwsCredentialsError', async () => {
+    process.env.AWS_PROFILE = 'expired';
+    mockDetectAccount.mockRejectedValue(
+      new AwsCredentialsError('AWS credentials expired.', 'AWS credentials expired.\n\nTo fix this: ...')
+    );
+
+    expect(await resolveAwsIdentity()).toEqual({ profile: 'expired', error: 'AWS credentials expired.' });
+  });
+
+  it('reports unexpected errors without throwing', async () => {
+    mockDetectAccount.mockRejectedValue(new Error('network down'));
+
+    expect(await resolveAwsIdentity()).toEqual({ profile: undefined, error: 'network down' });
+  });
+});
+
+describe('handleProjectStatus — AWS identity', () => {
+  beforeEach(() => mockDetectAccount.mockReset());
+  afterEach(() => vi.clearAllMocks());
+
+  it('returns the active AWS identity and the target account', async () => {
+    mockDetectAccount.mockResolvedValue('111111111111');
+    const ctx = {
+      project: baseProject,
+      awsTargets: [{ name: 'dev', region: 'us-east-1', account: '222222222222' }],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    assert(result.success);
+    expect(result.awsIdentity?.account).toBe('111111111111');
+    expect(result.targetAccount).toBe('222222222222');
+  });
+
+  it('still succeeds when AWS credentials are unavailable', async () => {
+    mockDetectAccount.mockResolvedValue(null);
+    const ctx = {
+      project: baseProject,
+      awsTargets: [],
+      deployedState: { targets: {} },
+    } as unknown as StatusContext;
+
+    const result = await handleProjectStatus(ctx);
+
+    assert(result.success);
+    expect(result.awsIdentity).toEqual({
+      profile: process.env.AWS_PROFILE || undefined,
+      error: 'No AWS credentials found.',
+    });
+    expect(result.targetAccount).toBeUndefined();
   });
 });

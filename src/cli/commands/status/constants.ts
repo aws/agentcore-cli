@@ -1,5 +1,6 @@
 import { serviceEndpoint } from '../../aws/partition';
 import { STATUS_COLORS } from '../../tui/theme';
+import type { AwsIdentityStatus } from './action';
 
 export type ResourceDeploymentState = 'deployed' | 'local-only' | 'pending-removal';
 
@@ -18,4 +19,12 @@ export const DEPLOYMENT_STATE_LABELS: Record<ResourceDeploymentState, string> = 
 export function buildRuntimeInvocationUrl(region: string, runtimeArn: string): string {
   const encodedArn = encodeURIComponent(runtimeArn);
   return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${encodedArn}/invocations`;
+}
+
+/**
+ * True when the active credentials resolve to a different account than the one the
+ * deployment target is configured for.
+ */
+export function isAccountMismatch(identity: AwsIdentityStatus, targetAccount?: string): boolean {
+  return !!identity.account && !!targetAccount && identity.account !== targetAccount;
 }

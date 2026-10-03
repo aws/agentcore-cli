@@ -144,6 +144,11 @@ agentcore status --runtime-id abc123
 agentcore status --json
 ```
 
+The output starts with the AWS account of your active credentials and the `AWS_PROFILE` in use, so you can see which
+account `dev`, `invoke`, and `deploy` will call. If those credentials belong to a different account than the selected
+deployment target, `status` shows a warning. If no credentials can be resolved, it says so instead of failing. With
+`--json`, this information is returned as `awsIdentity` (`account`, `profile`, `error`) and `targetAccount`.
+
 | Flag                | Description                                                                                                                           |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `--runtime-id <id>` | Look up a specific runtime by ID                                                                                                      |
