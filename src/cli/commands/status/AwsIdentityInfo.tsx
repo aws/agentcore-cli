@@ -1,11 +1,6 @@
-import type { AwsIdentityStatus } from './action';
-import { isAccountMismatch } from './constants';
+import { type AwsIdentityStatus, isAccountMismatch } from './aws-identity';
 import { Box, Text } from 'ink';
 
-/**
- * Shows which AWS account (and profile) the active credentials resolve to, and warns
- * when it differs from the selected deployment target's account.
- */
 export function AwsIdentityInfo({
   identity,
   targetName,
@@ -18,7 +13,7 @@ export function AwsIdentityInfo({
   if (!identity) return null;
   const profile = identity.profile ? ` (profile: ${identity.profile})` : '';
 
-  if (!identity.account) {
+  if (!identity.success) {
     return (
       <Text color="yellow">
         AWS account: unavailable{profile} - {identity.error}

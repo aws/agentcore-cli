@@ -2,13 +2,17 @@ import { AwsCredentialsError, ValidationError } from '../../../lib/errors/types.
 import { detectAccount, getCredentialProvider, validateAwsCredentials } from '../account.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockSend } = vi.hoisted(() => ({
+const { mockSend, mockStsConfig } = vi.hoisted(() => ({
   mockSend: vi.fn(),
+  mockStsConfig: vi.fn(),
 }));
 
 vi.mock('@aws-sdk/client-sts', () => ({
   STSClient: class {
     send = mockSend;
+    constructor(config: unknown) {
+      mockStsConfig(config);
+    }
   },
   GetCallerIdentityCommand: class {
     constructor(public input: unknown) {}
@@ -49,6 +53,13 @@ describe('detectAccount', () => {
 
     const account = await detectAccount();
     expect(account).toBe('123456789012');
+  });
+
+  it('calls STS in the given region instead of the environment region', async () => {
+    mockSend.mockResolvedValue({ Account: '123456789012' });
+
+    await detectAccount('us-gov-west-1');
+    expect(mockStsConfig).toHaveBeenCalledWith(expect.objectContaining({ region: 'us-gov-west-1' }));
   });
 
   it('returns null when Account is undefined', async () => {

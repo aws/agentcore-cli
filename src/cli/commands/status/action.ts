@@ -1,12 +1,13 @@
-import { AwsCredentialsError, ConfigIO, ResourceNotFoundError, toError } from '../../../lib';
+import { ConfigIO, ResourceNotFoundError, toError } from '../../../lib';
 import type { Result } from '../../../lib/result';
 import type { AgentCoreProjectSpec, AwsDeploymentTargets, DeployedResourceState, DeployedState } from '../../../schema';
-import { detectAccount, getAgentRuntimeStatus } from '../../aws';
+import { getAgentRuntimeStatus } from '../../aws';
 import { getEvaluator, getOnlineEvaluationConfig } from '../../aws/agentcore-control';
 import { getPaymentConnector, getPaymentManager } from '../../aws/agentcore-payments';
 import { getKnowledgeBase, getLatestIngestionJob } from '../../aws/bedrock-agent';
 import { getErrorMessage } from '../../errors';
 import { ExecLogger } from '../../logging';
+import { type AwsIdentityStatus, resolveAwsIdentity } from './aws-identity';
 import type { ResourceDeploymentState } from './constants';
 import { buildRuntimeInvocationUrl } from './constants';
 import {
@@ -54,15 +55,6 @@ export interface ResourceStatusEntry {
   paymentConnectors?: PaymentConnectorStatusEntry[];
 }
 
-export interface AwsIdentityStatus {
-  /** Account the active AWS credentials belong to, when they resolve. */
-  account?: string;
-  /** Named profile from AWS_PROFILE, when set. */
-  profile?: string;
-  /** Why the active credentials could not be resolved. */
-  error?: string;
-}
-
 export type ProjectStatusResult = Result<{
   targetRegion?: string;
   targetAccount?: string;
@@ -97,21 +89,6 @@ export async function loadStatusConfig(configIO: ConfigIO = new ConfigIO()): Pro
   ]);
 
   return { project, deployedState, awsTargets };
-}
-
-/**
- * Resolves the account behind the active AWS credentials, so status can show which
- * account `dev`, `invoke` and `deploy` will call. Never throws: a credential problem is
- * reported in `error` instead of failing the status command.
- */
-export async function resolveAwsIdentity(): Promise<AwsIdentityStatus> {
-  const profile = process.env.AWS_PROFILE?.length ? process.env.AWS_PROFILE : undefined;
-  try {
-    const account = await detectAccount();
-    return account ? { account, profile } : { profile, error: 'No AWS credentials found.' };
-  } catch (error) {
-    return { profile, error: error instanceof AwsCredentialsError ? error.shortMessage : getErrorMessage(error) };
-  }
 }
 
 /**
@@ -424,9 +401,6 @@ export async function handleProjectStatus(
   const logger = new ExecLogger({ command: 'status' });
   const { project, deployedState, awsTargets } = context;
 
-  // Resolve the active AWS identity in parallel with the local diff; it never rejects.
-  const awsIdentityPromise = resolveAwsIdentity();
-
   logger.startStep('Resolve target');
   const deployedTargetNames = Object.keys(deployedState.targets);
   const targetNames = deployedTargetNames.length > 0 ? deployedTargetNames : awsTargets.map(t => t.name);
@@ -456,6 +430,7 @@ export async function handleProjectStatus(
 
   logger.startStep('Compute resource statuses');
   const targetConfig = selectedTargetName ? awsTargets.find(t => t.name === selectedTargetName) : undefined;
+  const awsIdentityPromise = resolveAwsIdentity(targetConfig?.region);
   const targetResources = selectedTargetName ? deployedState.targets[selectedTargetName]?.resources : undefined;
 
   const resources = computeResourceStatuses(project, targetResources);
@@ -828,7 +803,7 @@ export async function handleProjectStatus(
   const awsIdentity = await awsIdentityPromise;
   logger.log(`Profile: ${awsIdentity.profile ?? '(default)'}`);
   logger.log(`Account: ${awsIdentity.account ?? `(unavailable: ${awsIdentity.error})`}`);
-  logger.endStep(awsIdentity.account ? 'success' : 'warn');
+  logger.endStep(awsIdentity.success ? 'success' : 'warn');
 
   logger.finalize(true);
   return {

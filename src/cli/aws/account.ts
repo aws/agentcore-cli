@@ -19,9 +19,10 @@ export function getCredentialProvider(): AwsCredentialIdentityProvider {
  * Get AWS account ID using STS GetCallerIdentity with detailed error handling.
  * Throws AwsCredentialsError with helpful messages for common credential issues.
  * Returns null only for unexpected errors (triggers generic "no credentials" message).
+ * Pass the deployment target's region so STS is called in the right partition (e.g. GovCloud).
  */
-export async function detectAccount(): Promise<string | null> {
-  const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
+export async function detectAccount(regionOverride?: string): Promise<string | null> {
+  const region = regionOverride ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1';
 
   try {
     const client = new STSClient({

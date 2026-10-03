@@ -6,10 +6,11 @@ import type { DatasetStatusResult } from '../../operations/dataset';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { FilterState, FilterType, standardize } from '../../telemetry/schemas/common-shapes.js';
 import { requireProject } from '../../tui/guards';
+import { AwsIdentityInfo } from './AwsIdentityInfo';
 import type { ResourceStatusEntry } from './action';
 import { handleProjectStatus, handleRuntimeLookup, loadStatusConfig } from './action';
-import { AwsIdentityInfo } from './aws-identity';
-import { DEPLOYMENT_STATE_COLORS, DEPLOYMENT_STATE_LABELS, isAccountMismatch } from './constants';
+import { isAccountMismatch } from './aws-identity';
+import { DEPLOYMENT_STATE_COLORS, DEPLOYMENT_STATE_LABELS } from './constants';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
 
@@ -162,7 +163,7 @@ export const registerStatus = (program: Command) => {
           });
           if (statusResult.success && statusResult.awsIdentity) {
             recorder.set({
-              has_aws_credentials: !!statusResult.awsIdentity.account,
+              has_aws_credentials: statusResult.awsIdentity.success,
               aws_account_mismatch: isAccountMismatch(statusResult.awsIdentity, statusResult.targetAccount),
             });
           }

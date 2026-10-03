@@ -84,7 +84,7 @@ describe('status command validation', () => {
       success: true,
       resources: [],
       targetAccount: '222222222222',
-      awsIdentity: { account: '111111111111' },
+      awsIdentity: { success: true, account: '111111111111' },
     } as never);
 
     await program.parseAsync(['status'], { from: 'user' });
@@ -99,7 +99,7 @@ describe('status command validation', () => {
     vi.mocked(handleProjectStatus).mockResolvedValue({
       success: true,
       resources: [],
-      awsIdentity: { error: 'No AWS credentials found.' },
+      awsIdentity: { success: false, error: 'No AWS credentials found.' },
     } as never);
 
     await program.parseAsync(['status'], { from: 'user' });
