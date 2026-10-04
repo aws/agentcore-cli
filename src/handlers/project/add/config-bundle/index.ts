@@ -15,7 +15,7 @@ import { formatZodError } from "../../../../router/schema";
 import { parseJsonFlag } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, requireDeployedNameFits } from "../shared";
+import { addProjectResource, requireDeployedNameFits, cnUnavailable } from "../shared";
 
 // ComponentsSchema is the shape --components accepts. The wizard's components
 // step validates against it too, rather than a copy of it.
@@ -72,7 +72,7 @@ export function toAddConfigBundleInput(
 export const createAddConfigBundleHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "config-bundle",
-    description: "add a configuration bundle to the current project",
+    description: cnUnavailable("add a configuration bundle to the current project"),
     flags: [
       flag("name", "the name of the configuration bundle", ConfigBundleNameSchema),
       flag(

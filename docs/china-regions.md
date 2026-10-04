@@ -32,6 +32,8 @@
   regions. The strands template's default memory is dropped from China scaffolds (the memory
   module stays in the code and activates once a memory exists); adding unsupported resources
   (memory, evaluators, harnesses, payments, …) or deploying a spec that contains them to a
-  China target fails with an explicit message.
+  China target fails with an explicit message. Those `add` subcommands say "not available in
+  China regions" in their help, and the `agentcore add` menu warns when the project has a China
+  deployment target.
 - **Telemetry** is always disabled when the ambient AWS region or any deployment target is a
   China region.

@@ -1,7 +1,7 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, requireDeployedNameFits } from "../shared";
+import { addProjectResource, requireDeployedNameFits, cnUnavailable } from "../shared";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
@@ -35,7 +35,7 @@ export function toAddHarnessInput(
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "harness",
-    description: "add a harness to the current project",
+    description: cnUnavailable("add a harness to the current project"),
     flags: [
       flag("name", "the name of the harness", z.string().optional(), { group: CONFIGURATION }),
       flag("model", "model configuration (JSON)", z.string().optional(), {

@@ -3,7 +3,7 @@ import { InputValidationError, ResourceNotFoundError } from "../../../../errors"
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, cnUnavailable } from "../shared";
 import { assertMutuallyExclusiveFlags } from "../../../utils";
 
 export type PaymentConnectorInput =
@@ -63,7 +63,7 @@ export function toAddPaymentConnectorInput(
 export const createAddPaymentConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "payment-connector",
-    description: "add a connector to a project payment manager",
+    description: cnUnavailable("add a connector to a project payment manager"),
     flags: [
       flag("manager", "the parent payment manager", z.string().min(1)),
       flag("name", "the payment connector name", z.string().min(1)),

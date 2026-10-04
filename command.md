@@ -276,7 +276,7 @@ add project resources
 agentcore add config-bundle [options]
 ```
 
-add a configuration bundle to the current project
+add a configuration bundle to the current project (not available in China regions)
 
 **Options**
 
@@ -293,7 +293,7 @@ add a configuration bundle to the current project
 agentcore add harness [options]
 ```
 
-add a harness to the current project
+add a harness to the current project (not available in China regions)
 
 **Options**
 
@@ -328,7 +328,7 @@ add a harness to the current project
 agentcore add memory [options]
 ```
 
-add a Memory to the current project
+add a Memory to the current project (not available in China regions)
 
 **Options**
 
@@ -381,7 +381,7 @@ add a Runtime to the current project
 agentcore add online-eval [options]
 ```
 
-add an online evaluation config to the current project
+add an online evaluation config to the current project (not available in China regions)
 
 **Options**
 
@@ -402,7 +402,7 @@ add an online evaluation config to the current project
 agentcore add online-insight [options]
 ```
 
-add an online insight config to the current project
+add an online insight config to the current project (not available in China regions)
 
 **Options**
 
@@ -424,7 +424,7 @@ add an online insight config to the current project
 agentcore add evaluator [options] [command]
 ```
 
-add a custom evaluator to the current project
+add a custom evaluator to the current project (not available in China regions)
 
 ##### `agentcore add evaluator llm-as-a-judge`
 
@@ -573,7 +573,7 @@ add a Target to a project Gateway
 agentcore add gateway-connector [options]
 ```
 
-add a connector-backed Target to a project Gateway
+add a connector-backed Target to a project Gateway (not available in China regions)
 
 **Options**
 
@@ -589,7 +589,7 @@ add a connector-backed Target to a project Gateway
 agentcore add policy-engine [options]
 ```
 
-add a Policy Engine to the current project
+add a Policy Engine to the current project (not available in China regions)
 
 **Options**
 
@@ -606,7 +606,7 @@ add a Policy Engine to the current project
 agentcore add policy [options]
 ```
 
-add a Cedar Policy to a project Policy Engine
+add a Cedar Policy to a project Policy Engine (not available in China regions)
 
 **Options**
 
@@ -624,7 +624,7 @@ add a Cedar Policy to a project Policy Engine
 agentcore add payment-manager [options]
 ```
 
-add a payment manager to the current project
+add a payment manager to the current project (not available in China regions)
 
 **Options**
 
@@ -646,7 +646,7 @@ add a payment manager to the current project
 agentcore add payment-connector [options]
 ```
 
-add a connector to a project payment manager
+add a connector to a project payment manager (not available in China regions)
 
 **Options**
 

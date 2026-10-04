@@ -10,7 +10,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
 import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, cnUnavailable } from "../shared";
 
 // The curated-connector shortcut as the flags state it: which connector, and
 // for bedrock-knowledge-bases, which Knowledge Base.
@@ -36,7 +36,7 @@ export function toAddGatewayConnectorInput(input: GatewayConnectorShortcutInput)
 export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway-connector",
-    description: "add a connector-backed Target to a project Gateway",
+    description: cnUnavailable("add a connector-backed Target to a project Gateway"),
     flags: [
       flag("gateway", "name of the parent Gateway in this project", z.string().min(1)),
       flag("name", "the Target name for a connector shortcut", z.string().optional()),

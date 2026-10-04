@@ -121,7 +121,6 @@ import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx"
 import { GatewayRuleGetScreen } from "../handlers/gateway/rule/get/screen.tsx";
 import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { GatewayPolicyGenerateScreen } from "../handlers/gateway/policy/screen.tsx";
-import { RouterScreen } from "./RouterScreen.tsx";
 import { CommandFallbackScreen } from "./CliOnlyScreen.tsx";
 import { CommandHandoffScreen } from "./CommandHandoffScreen.tsx";
 import { ProjectResourceCreateScreen } from "./ProjectResourceCreateScreen.tsx";
@@ -129,6 +128,7 @@ import { BuildProjectScreen } from "../handlers/project/build/screen.tsx";
 import { DeployProjectScreen } from "../handlers/project/deploy/screen.tsx";
 import { ProjectCreateScreen } from "../handlers/project/create/screen.tsx";
 import { ProjectInvokePickerScreen } from "../handlers/project/invoke/screen.tsx";
+import { AddMenuScreen } from "../handlers/project/add/screen.tsx";
 import { AddRuntimeScreen } from "../handlers/project/add/runtime/screen.tsx";
 import { AddRuntimeEndpointScreen } from "../handlers/project/add/runtime-endpoint/screen.tsx";
 import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
@@ -919,10 +919,7 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/identity/oauth2-credential-provider/get/:name/json"
         element={<Oauth2CredentialProviderGetJsonScreen ctx={ctx} core={core} />}
       />
-      <Route
-        path="agentcore/add"
-        element={<RouterScreen ctx={ctx} core={core} path={["agentcore", "add"]} />}
-      />
+      <Route path="agentcore/add" element={<AddMenuScreen ctx={ctx} core={core} />} />
       <Route path="agentcore/build" element={<BuildProjectScreen ctx={ctx} core={core} />} />
       <Route path="agentcore/deploy" element={<DeployProjectScreen ctx={ctx} core={core} />} />
       <Route path="agentcore/create" element={<ProjectCreateScreen ctx={ctx} core={core} />} />

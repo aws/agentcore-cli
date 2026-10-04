@@ -13,6 +13,18 @@ import {
 import type { AddResourceInput, Project } from "../types";
 import type { AddProjectResourceConfig } from "./types";
 
+/**
+ * The note appended to the help of every `add` subcommand whose resource family
+ * is not available in China regions — the complement of the project manager's
+ * CN_SUPPORTED_RESOURCE_TYPES allowlist (connector-backed Gateway Targets are
+ * blocked there too). The add menu's China alert refers to this exact wording.
+ */
+export const CN_UNAVAILABLE_NOTE = "not available in China regions";
+
+export function cnUnavailable(description: string): string {
+  return `${description} (${CN_UNAVAILABLE_NOTE})`;
+}
+
 type AddProjectResourceResultOptions = {
   resourceType?: ProjectMutationResourceType;
   notes?: string[];
