@@ -11,13 +11,13 @@
   (`agent-python-strands`, `a2a-python-strands`, `agui-python-strands`) with a
   [LiteLLM model](https://docs.litellm.ai/docs/providers) — no default model id is applied
   there, and the `bedrock/` LiteLLM prefix (which routes to Amazon Bedrock) is rejected — or
-  `--model-provider open_ai --api-base <url>` on any strands template including
-  `agent-typescript-strands`, pointing the OpenAI client at an OpenAI-compatible endpoint such as
-  `https://api.deepseek.com/v1` (`open_ai` without `--api-base` is rejected there, since
-  api.openai.com is not reachable). The scaffolded runtime records `modelProvider` and, for
-  LiteLLM `modelId` / for OpenAI `modelApiBase`, in `agentcore.json` so deploys can re-check this. The `agentcore create`
-  and `agentcore add runtime` wizards ask the same question for these templates: in a China
-  region the model step starts on LiteLLM (Python) or openai with a required API base URL
+  `--model-provider openai_compatible --api-base <url> --model-id <model>` on any strands template
+  including `agent-typescript-strands`, pointing the OpenAI client at an OpenAI-compatible
+  endpoint such as `https://api.deepseek.com/v1` (`open_ai` itself is rejected there like the
+  other providers, since it calls api.openai.com). The scaffolded runtime records `modelProvider`
+  and, for LiteLLM, `modelId` in `agentcore.json` so deploys can re-check this. The
+  `agentcore create` and `agentcore add runtime` wizards ask the same question for these
+  templates: in a China region the model step starts on LiteLLM (Python) or openai-compatible
   (TypeScript), with no model id prefilled, marks the other providers as not accessible, and
   applies the same restrictions when the form is submitted.
 - The restrictions are enforced wherever the region is known: at `agentcore create` when the

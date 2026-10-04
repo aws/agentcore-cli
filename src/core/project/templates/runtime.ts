@@ -39,6 +39,20 @@ function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProvid
   };
 }
 
+/**
+ * The model id the template renders: the explicit --model-id, else the
+ * provider's default. OpenAICompatible has no default (the schema requires its
+ * model id), so reaching this without one is a programming error, not input.
+ */
+function renderedModelId(input: ScaffoldRuntimeInput): string {
+  if (input.modelId !== undefined) return input.modelId;
+  const provider = input.modelProvider ?? "Bedrock";
+  if (provider === "OpenAICompatible") {
+    throw new Error("the OpenAICompatible model provider has no default model id");
+  }
+  return DEFAULT_MODEL_IDS[provider];
+}
+
 function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
   const { scaffoldRuntimeInput, name, ...infra } = input;
   const profile = resolveRuntimeTemplateProfile(scaffoldRuntimeInput);
@@ -73,12 +87,6 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
       scaffoldRuntimeInput.modelProvider === "LiteLLM" && {
         modelId: scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS.LiteLLM,
       }),
-    // For OpenAI the base URL determines which server the client calls, so
-    // persist it for the China deploy gate (an OpenAI-compatible endpoint
-    // reachable from China passes; api.openai.com does not).
-    ...(usesModel &&
-      scaffoldRuntimeInput.modelProvider === "OpenAI" &&
-      scaffoldRuntimeInput.apiBase !== undefined && { modelApiBase: scaffoldRuntimeInput.apiBase }),
     // TypeScript deploys a compiled main.js (esbuild runs at synth); Python runs main.py directly.
     entrypoint:
       runtimeProfile?.entrypoint ??
@@ -234,7 +242,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toPythonPackageName(input.name),
       modelProvider,
-      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      modelId: renderedModelId(input.scaffoldRuntimeInput),
       apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default
@@ -283,7 +291,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       name: toNpmPackageName(input.name),
       runtimeName: input.name,
       modelProvider,
-      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      modelId: renderedModelId(input.scaffoldRuntimeInput),
       apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default
@@ -417,7 +425,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toPythonPackageName(input.name),
       modelProvider,
-      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      modelId: renderedModelId(input.scaffoldRuntimeInput),
       apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default
@@ -464,7 +472,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const context = {
       name: toPythonPackageName(input.name),
       modelProvider,
-      modelId: input.scaffoldRuntimeInput.modelId ?? DEFAULT_MODEL_IDS[modelProvider],
+      modelId: renderedModelId(input.scaffoldRuntimeInput),
       apiBase: input.scaffoldRuntimeInput.apiBase,
       // Even without a memory resource (China scaffolds omit it — AgentCore
       // Memory is not available there), the rendered module reads the default

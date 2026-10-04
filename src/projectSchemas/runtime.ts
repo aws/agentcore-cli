@@ -236,13 +236,27 @@ export const RuntimeEndpointSchema = z.object({
   description: z.string().max(200).optional(),
 });
 export type RuntimeEndpoint = z.infer<typeof RuntimeEndpointSchema>;
-export const MODEL_PROVIDERS = ["Bedrock", "Anthropic", "OpenAI", "Gemini", "LiteLLM"] as const;
+export const MODEL_PROVIDERS = [
+  "Bedrock",
+  "Anthropic",
+  "OpenAI",
+  "OpenAICompatible",
+  "Gemini",
+  "LiteLLM",
+] as const;
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
+
+/**
+ * OpenAICompatible is the OpenAI client pointed at a user-supplied base URL
+ * (DeepSeek, Qwen, a self-hosted vLLM, ...). Nothing can be assumed about the
+ * endpoint, so it has no default model id: the user names the model.
+ */
+export type ModelProviderWithDefaultModelId = Exclude<ModelProvider, "OpenAICompatible">;
 
 /** The model id each provider's scaffolded code renders when none is given:
  * the flag path's default and the wizards' prefilled answer, so the entry
  * points cannot drift. */
-export const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
+export const DEFAULT_MODEL_IDS: Record<ModelProviderWithDefaultModelId, string> = {
   Bedrock: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
   Anthropic: "claude-sonnet-4-5-20250929",
   OpenAI: "gpt-4.1",
@@ -255,6 +269,9 @@ const MODEL_PROVIDER_ALIASES: Record<string, ModelProvider> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   open_ai: "OpenAI",
+  openai_compatible: "OpenAICompatible",
+  "openai-compatible": "OpenAICompatible",
+  openaicompatible: "OpenAICompatible",
   gemini: "Gemini",
   litellm: "LiteLLM",
   lite_llm: "LiteLLM",
@@ -287,14 +304,6 @@ export const ProjectRuntimeSchema = z
      * replace the model wiring by hand.
      */
     modelId: z.string().min(1).optional(),
-    /**
-     * The OpenAI-compatible base URL the scaffold rendered into an OpenAI
-     * runtime's code (--api-base). Read by the China deploy gate: an OpenAI
-     * runtime pointed at a reachable endpoint is allowed there, one calling
-     * api.openai.com is not. Ignored by the CDK app; delete it together with
-     * modelProvider if you replace the model wiring by hand.
-     */
-    modelApiBase: z.string().url().optional(),
     description: z.string().max(200).optional(),
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,

@@ -15,7 +15,7 @@ dependencies = [
     "bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0",
     "botocore[crt] ~= 1.43.0",
     "fastapi >= 0.142.0, < 1.0.0",
-    "strands-agents{{#if (eq modelProvider "Anthropic")}}[anthropic]{{else}}{{#if (eq modelProvider "OpenAI")}}[openai]{{else}}{{#if (eq modelProvider "Gemini")}}[gemini]{{else}}{{#if (eq modelProvider "LiteLLM")}}[litellm]{{/if}}{{/if}}{{/if}}{{/if}} >= 1.15.0, < 2.0.0",
+    "strands-agents{{#if (eq modelProvider "Anthropic")}}[anthropic]{{else}}{{#if (or (eq modelProvider "OpenAI") (eq modelProvider "OpenAICompatible"))}}[openai]{{else}}{{#if (eq modelProvider "Gemini")}}[gemini]{{else}}{{#if (eq modelProvider "LiteLLM")}}[litellm]{{/if}}{{/if}}{{/if}}{{/if}} >= 1.15.0, < 2.0.0",
     "uvicorn >= 0.34.3, < 1.0.0",
 ]
 

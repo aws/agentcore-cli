@@ -22,7 +22,6 @@ import {
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
-  OPENAI_API_BASE_REQUIRED_CN_MESSAGE,
   chinaModelProviderRestriction,
   modelProviderOverridableCnMessage,
 } from "./manager";
@@ -939,7 +938,7 @@ describe("FsProjectManager.addResource", () => {
       ).rejects.toThrow("uv is missing");
     });
 
-    test("requires a base URL for OpenAI", async () => {
+    test("refuses OpenAI like the other unreachable providers", async () => {
       await inTempDirectory();
       const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
 
@@ -956,12 +955,14 @@ describe("FsProjectManager.addResource", () => {
             },
           },
         }),
-      ).rejects.toThrow(new RegionUnsupportedFeatureError(OPENAI_API_BASE_REQUIRED_CN_MESSAGE));
+      ).rejects.toThrow(
+        new RegionUnsupportedFeatureError(modelProviderOverridableCnMessage("OpenAI", "Python")),
+      );
 
       expect(checkedTools).toEqual([]);
     });
 
-    test("lets OpenAI with a base URL past the partition gate", async () => {
+    test("lets OpenAICompatible past the partition gate", async () => {
       await inTempDirectory();
       const { subject, project } = await projectWithTarget("cn-north-1", "uv");
 
@@ -973,7 +974,7 @@ describe("FsProjectManager.addResource", () => {
             scaffoldRuntimeInput: {
               ...AGENT_PYTHON_STRANDS,
               runtimeName: "cn_openai_ok",
-              modelProvider: "OpenAI",
+              modelProvider: "OpenAICompatible",
               modelId: "deepseek-chat",
               apiKey: "sk-test",
               apiBase: "https://api.deepseek.com/v1",
@@ -990,7 +991,6 @@ describe("FsProjectManager.addResource", () => {
           name: string;
           modelProvider?: string;
           modelId?: string;
-          modelApiBase?: string;
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1090,7 +1090,7 @@ describe("FsProjectManager.addResource", () => {
       expect(deployCalls).toHaveLength(1);
     });
 
-    test("deploy to a China target hard-fails an OpenAI runtime without a persisted api base", async () => {
+    test("deploy to a China target hard-fails an OpenAI runtime", async () => {
       await inTempDirectory();
       const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
@@ -1100,16 +1100,15 @@ describe("FsProjectManager.addResource", () => {
       const { error } = await deployOutcome(subject, project);
       expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
       expect(String(error)).toContain("(OpenAI)");
-      expect(String(error)).toContain("--api-base");
+      expect(String(error)).toContain("--model-provider openai_compatible --api-base");
       expect(deployCalls).toEqual([]);
     });
 
-    test("deploy to a China target passes an OpenAI runtime with a persisted api base", async () => {
+    test("deploy to a China target passes an OpenAICompatible runtime", async () => {
       await inTempDirectory();
       const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
-        spec.runtimes[0]!.modelProvider = "OpenAI";
-        spec.runtimes[0]!.modelApiBase = "https://api.deepseek.com/v1";
+        spec.runtimes[0]!.modelProvider = "OpenAICompatible";
       });
 
       const { error } = await deployOutcome(subject, project);
@@ -1251,24 +1250,33 @@ describe("chinaModelProviderRestriction", () => {
     const message = chinaModelProviderRestriction(AGENT_PYTHON_STRANDS);
     expect(message).toBe(modelProviderOverridableCnMessage("Bedrock", "Python"));
     expect(message).toStartWith("Amazon Bedrock is not accessible from China regions");
-    expect(message).toContain("neither are Anthropic or Gemini");
-    expect(message).toContain("Keep this template");
+    expect(message).toContain("neither are Anthropic, OpenAI, Gemini");
+    expect(message).toContain("To use this template, point it at a model reachable from China");
     expect(message).toContain("--model-provider litellm --model-id");
-    expect(message).toContain("--model-provider open_ai --api-base");
+    expect(message).toContain("--model-provider openai_compatible --api-base");
+    expect(message).not.toContain("open_ai --api-base");
 
     const anthropic = chinaModelProviderRestriction({
       ...AGENT_PYTHON_STRANDS,
       modelProvider: "Anthropic",
     });
     expect(anthropic).toStartWith("Anthropic is not accessible from China regions");
-    expect(anthropic).toContain("neither are Amazon Bedrock or Gemini");
+    expect(anthropic).toContain("neither are Amazon Bedrock, OpenAI, Gemini");
+
+    // OpenAI is blocked outright: the client calls api.openai.com, which is unreachable there.
+    const openai = chinaModelProviderRestriction({
+      ...AGENT_PYTHON_STRANDS,
+      modelProvider: "OpenAI",
+    });
+    expect(openai).toStartWith("OpenAI is not accessible from China regions");
+    expect(openai).toContain("neither are Amazon Bedrock, Anthropic, Gemini");
   });
 
-  test("offers only the OpenAI route for TypeScript templates", () => {
+  test("offers only the OpenAI-compatible route for TypeScript templates", () => {
     const message = chinaModelProviderRestriction(AGENT_TYPESCRIPT_STRANDS);
     expect(message).toBe(modelProviderOverridableCnMessage("Bedrock", "TypeScript"));
     expect(message).not.toContain("litellm");
-    expect(message).toContain("--model-provider open_ai --api-base");
+    expect(message).toContain("--model-provider openai_compatible --api-base");
   });
 
   test("tells Bedrock-only templates to pick another template", () => {
@@ -1282,7 +1290,7 @@ describe("chinaModelProviderRestriction", () => {
     ).toBe(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
   });
 
-  test("lets provider-free, LiteLLM-with-id and OpenAI-with-base scaffolds through", () => {
+  test("lets provider-free, LiteLLM-with-id and OpenAICompatible scaffolds through", () => {
     expect(chinaModelProviderRestriction(AGENT_PYTHON)).toBeUndefined();
     expect(
       chinaModelProviderRestriction({
@@ -1294,8 +1302,8 @@ describe("chinaModelProviderRestriction", () => {
     expect(
       chinaModelProviderRestriction({
         ...AGENT_TYPESCRIPT_STRANDS,
-        modelProvider: "OpenAI",
-        apiBase: "https://api.deepseek.com/v1",
+        modelProvider: "OpenAICompatible",
+        modelId: "deepseek-chat",
       }),
     ).toBeUndefined();
   });

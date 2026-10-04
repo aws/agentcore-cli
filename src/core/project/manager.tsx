@@ -106,7 +106,7 @@ const UV_INSTALL_HINT = "Install uv: https://docs.astral.sh/uv/getting-started/i
  * targets a China (aws-cn) region and takes no --model-provider override
  * (langchain, vercel, `--type import`). Amazon Bedrock, Anthropic, OpenAI, and
  * Gemini cannot be called from China regions; LiteLLM can route to a reachable
- * provider and the OpenAI client can point at an OpenAI-compatible endpoint.
+ * provider and OpenAICompatible points the OpenAI client at a reachable endpoint.
  */
 export const MODEL_PROVIDER_RUNTIMES_CN_MESSAGE =
   "This template's model provider is not accessible from China regions (cn-north-1, " +
@@ -114,32 +114,36 @@ export const MODEL_PROVIDER_RUNTIMES_CN_MESSAGE =
   "this template takes no --model-provider override. Pick a strands template " +
   "(agent-python-strands, agent-python-strands-container, a2a-python-strands, " +
   "agui-python-strands, or agent-typescript-strands) with --model-provider litellm " +
-  "--model-id <model reachable from China> (Python) or --model-provider open_ai " +
-  "--api-base <OpenAI-compatible endpoint reachable from China>, or scaffold a provider-free " +
+  "--model-id <model reachable from China> (Python) or --model-provider openai_compatible " +
+  "--api-base <OpenAI-compatible endpoint reachable from China> --model-id <model>, or " +
+  "scaffold a provider-free " +
   "runtime (--template agent-python-minimal or mcp-python-fastmcp) and bring your own model " +
   "connectivity.";
 
 /**
  * Shown when a template that DOES take --model-provider is left on (or set to)
  * a provider unreachable from China: the template is fine, only the provider
- * needs to change. TypeScript templates have no LiteLLM, so only the OpenAI
- * route is offered there.
+ * needs to change. TypeScript templates have no LiteLLM, so only the
+ * OpenAICompatible route is offered there.
  */
 export function modelProviderOverridableCnMessage(
   provider: string,
   language: "Python" | "TypeScript" | undefined,
 ): string {
   const name = provider === "Bedrock" ? "Amazon Bedrock" : provider;
-  const others = ["Amazon Bedrock", "Anthropic", "Gemini"].filter((p) => p !== name).join(" or ");
+  const others = ["Amazon Bedrock", "Anthropic", "OpenAI", "Gemini"]
+    .filter((p) => p !== name)
+    .join(", ");
+  const compatible =
+    "--model-provider openai_compatible --api-base <OpenAI-compatible endpoint reachable from " +
+    "China> --model-id <model>";
   const routes =
     language === "TypeScript"
-      ? "--model-provider open_ai --api-base <OpenAI-compatible endpoint reachable from China>"
-      : "--model-provider litellm --model-id <model reachable from China>, or " +
-        "--model-provider open_ai --api-base <OpenAI-compatible endpoint reachable from China>";
+      ? compatible
+      : `--model-provider litellm --model-id <model reachable from China>, or ${compatible}`;
   return (
     `${name} is not accessible from China regions (cn-north-1, cn-northwest-1), and neither ` +
-    `${others.includes(" or ") ? "are" : "is"} ${others}. Keep this template and point it at a ` +
-    `model reachable from China: ${routes}.`
+    `are ${others}. To use this template, point it at a model reachable from China: ${routes}.`
   );
 }
 
@@ -215,36 +219,23 @@ export const LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE =
   "provider reachable from China (see https://docs.litellm.ai/docs/providers).";
 
 /**
- * Shown when an OpenAI runtime template targets a China (aws-cn) region without
- * a base URL: the OpenAI client would call api.openai.com, which is not
- * reachable there.
- */
-export const OPENAI_API_BASE_REQUIRED_CN_MESSAGE =
-  "--model-provider open_ai requires --api-base in China regions (cn-north-1, cn-northwest-1): " +
-  "api.openai.com is not reachable there. Pass the base URL of an OpenAI-compatible endpoint " +
-  "reachable from China, or use --model-provider litellm with a model id for a provider " +
-  "reachable from China.";
-
-/**
  * The China (aws-cn) rule for a runtime scaffold's model wiring, shared by the
  * create-time gate and the add-time gate so both give the same verdict:
  * provider-free scaffolds pass; LiteLLM passes with an explicit, non-Bedrock
- * model id; OpenAI passes when pointed at a base URL; everything else is
- * unreachable from China. Returns the message to refuse with, or undefined.
+ * model id; OpenAICompatible passes (the user chose the endpoint); everything
+ * else, OpenAI included, is unreachable from China. Returns the message to
+ * refuse with, or undefined.
  */
 export function chinaModelProviderRestriction(scaffold: {
   framework: string;
   language?: "Python" | "TypeScript";
   modelProvider?: string;
   modelId?: string;
-  apiBase?: string;
   templateProfile?: { modelProviderOverride?: boolean };
 }): string | undefined {
   if (scaffold.framework === "none") return undefined;
   const provider = scaffold.modelProvider ?? "Bedrock";
-  if (provider === "OpenAI") {
-    return scaffold.apiBase === undefined ? OPENAI_API_BASE_REQUIRED_CN_MESSAGE : undefined;
-  }
+  if (provider === "OpenAICompatible") return undefined;
   if (provider !== "LiteLLM") {
     return scaffold.templateProfile?.modelProviderOverride === true
       ? modelProviderOverridableCnMessage(provider, scaffold.language)
@@ -1237,9 +1228,8 @@ export class FsProjectManager implements ProjectManager {
         // LiteLLM's 'bedrock/' model id prefix routes to Amazon Bedrock —
         // the default when a runtime was scaffolded without --model-id.
         if (runtime.modelProvider === "LiteLLM") return runtime.modelId?.startsWith("bedrock/");
-        // An OpenAI runtime pointed at an OpenAI-compatible endpoint (--api-base)
-        // does not call api.openai.com; without one it does.
-        if (runtime.modelProvider === "OpenAI") return runtime.modelApiBase === undefined;
+        // OpenAICompatible calls the endpoint the user chose, not api.openai.com.
+        if (runtime.modelProvider === "OpenAICompatible") return false;
         return true;
       });
       if (blocked.length > 0) {
@@ -1255,7 +1245,8 @@ export class FsProjectManager implements ProjectManager {
               .join(", ") +
             ` scaffolded with a model provider that is not accessible from China regions. ` +
             `Re-scaffold with '--model-provider litellm --model-id <model reachable from China>' ` +
-            `or '--model-provider open_ai --api-base <OpenAI-compatible endpoint>', ` +
+            `or '--model-provider openai_compatible --api-base <OpenAI-compatible endpoint> ` +
+            `--model-id <model>', ` +
             `or bring your own model connectivity. If you have already replaced a runtime's ` +
             `model wiring in code, delete its 'modelProvider' field from agentcore.json.`,
         );

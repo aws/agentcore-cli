@@ -637,7 +637,7 @@ describe("project create wizard", () => {
     // preselected; the others say why they are not.
     expect(r.lastFrame()).toContain("● litellm");
     expect(r.lastFrame()).toContain("○ bedrock");
-    expect(flatFrame(r.lastFrame).match(/not accessible from China regions/g)).toHaveLength(4);
+    expect(flatFrame(r.lastFrame).match(/not accessible from China[\s│]*regions/g)).toHaveLength(4);
     await r.press("return"); // focus model id
     // No Bedrock-routed default is prefilled there; a model id must be given.
     await waitForText(r.lastFrame, "reachable from China regions");
@@ -688,7 +688,7 @@ describe("project create wizard", () => {
     });
 
     await walkToStrandsModelStep(r, "CnBedrock");
-    for (let i = 0; i < 4; i++) await r.press("up"); // bedrock
+    for (let i = 0; i < 5; i++) await r.press("up"); // bedrock
     await waitForText(r.lastFrame, "● bedrock");
     await r.press("return");
     await r.press("return");
@@ -707,7 +707,7 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
-  test("openai reveals an optional API base URL that flows as --api-base", async () => {
+  test("openai has no API base field; openai-compatible requires model id and base URL", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const keyFile = join(directory, "openai.key");
@@ -720,18 +720,34 @@ describe("project create wizard", () => {
     await r.press("down"); // anthropic
     await r.press("down"); // openai
     await waitForText(r.lastFrame, "● openai");
-    await r.press("return"); // model id
+    await r.press("return"); // model id (prefilled)
+    await r.press("return"); // API key file: the last field for openai
+    await waitForText(r.lastFrame, "API key file");
+    expect(r.lastFrame()).not.toContain("API base URL");
+    await r.press("escape"); // back to the provider list
+
+    await r.press("down"); // openai-compatible
+    await waitForText(r.lastFrame, "● openai-compatible");
+    await r.press("return"); // model id: empty, no default
+    await waitForText(r.lastFrame, "no default");
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter a model ID for openai-compatible");
+    await r.write("deepseek-chat");
     await r.press("return"); // API key file
     await waitForText(r.lastFrame, "API key file");
     await r.write(`file://${keyFile}`);
-    await r.press("return"); // → API base URL (optional outside China)
+    await r.press("return"); // API base URL, required everywhere
     await waitForText(r.lastFrame, "API base URL");
-    expect(r.lastFrame()).toContain("optional");
+    expect(r.lastFrame()).not.toContain("optional");
+    await r.press("return");
+    await waitForText(r.lastFrame, "enter the API base URL of the endpoint");
     await r.write("https://api.deepseek.com/v1");
     await r.press("return");
 
     await waitForText(r.lastFrame, "this project will be created");
-    expect(flatFrame(r.lastFrame)).toContain("API base https://api.deepseek.com/v1");
+    const review = flatFrame(r.lastFrame);
+    expect(review).toContain("model provider openai-compatible");
+    expect(review).toContain("API base https://api.deepseek.com/v1");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./BaseApp", 5000);
 
@@ -742,14 +758,16 @@ describe("project create wizard", () => {
         skipGit: false,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
-          modelProvider: "OpenAI",
+          modelProvider: "OpenAICompatible",
+          modelId: "deepseek-chat",
           apiKey: "sk-compatible",
           apiBase: "https://api.deepseek.com/v1",
         }),
       },
     ]);
     const spec = await Bun.file(join(directory, "BaseApp", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0].modelApiBase).toBe("https://api.deepseek.com/v1");
+    expect(spec.runtimes[0].modelProvider).toBe("OpenAICompatible");
+    expect(spec.runtimes[0].modelApiBase).toBeUndefined();
     r.unmount();
   }, 10000);
 
@@ -784,7 +802,7 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
-  test("in a China region a TypeScript template starts on openai and requires the API base", async () => {
+  test("in a China region a TypeScript template starts on openai-compatible", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const keyFile = join(directory, "ds.key");
@@ -797,17 +815,19 @@ describe("project create wizard", () => {
     });
 
     await walkToTypeScriptModelStep(r, "CnTs");
-    expect(r.lastFrame()).toContain("● openai");
+    expect(r.lastFrame()).toContain("● openai-compatible");
     expect(r.lastFrame()).not.toContain("litellm");
-    expect(r.lastFrame()).toContain("set an API base URL");
-    await r.press("return"); // model id, empty in China
+    // openai is blocked outright, like bedrock, anthropic and gemini.
+    expect(flatFrame(r.lastFrame).match(/not accessible from China[\s│]*regions/g)).toHaveLength(4);
+    await r.press("return"); // model id, never prefilled for openai-compatible
     await r.write("deepseek-chat");
     await r.press("return"); // API key file
     await r.write(`file://${keyFile}`);
-    await r.press("return"); // API base URL, required in China
+    await r.press("return"); // API base URL, required
     await waitForText(r.lastFrame, "API base URL");
+    expect(r.lastFrame()).toContain("reachable from China regions");
     await r.press("return");
-    await waitForText(r.lastFrame, "enter the API base URL of an endpoint reachable from China");
+    await waitForText(r.lastFrame, "enter the API base URL of the endpoint");
     await r.write("https://api.deepseek.com/v1");
     await r.press("return");
 
@@ -817,7 +837,7 @@ describe("project create wizard", () => {
 
     const expected = resolveRuntimeTemplateShortcut("agent-typescript-strands", {
       runtimeName: "agent",
-      modelProvider: "OpenAI",
+      modelProvider: "OpenAICompatible",
       modelId: "deepseek-chat",
       apiKey: "sk-ds",
       apiBase: "https://api.deepseek.com/v1",

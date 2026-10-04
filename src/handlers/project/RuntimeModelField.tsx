@@ -26,7 +26,7 @@ export interface RuntimeModelConfig {
   // The API key as the --api-key flag takes it: a 'file://<path>' source. The
   // secret itself is read at submit, never held in the form.
   apiKeySource: string;
-  // --api-base: an OpenAI-compatible endpoint; only the OpenAI provider reads it.
+  // --api-base: the OpenAI-compatible endpoint; only the OpenAICompatible provider reads it.
   apiBase: string;
 }
 
@@ -59,7 +59,12 @@ const PROVIDER_OPTIONS: { provider: ModelProvider; label: string; description: s
   {
     provider: "OpenAI",
     label: "openai",
-    description: "an OpenAI model, or any OpenAI-compatible endpoint, using an API key",
+    description: "an OpenAI model using an API key",
+  },
+  {
+    provider: "OpenAICompatible",
+    label: "openai-compatible",
+    description: "any OpenAI-compatible endpoint (its base URL and model name) using an API key",
   },
   {
     provider: "Gemini",
@@ -74,22 +79,27 @@ const PROVIDER_OPTIONS: { provider: ModelProvider; label: string; description: s
 ];
 
 // Amazon Bedrock, Anthropic, OpenAI and Gemini cannot be called from China
-// regions. LiteLLM can route to a provider that can, and the OpenAI client can
-// be pointed at an OpenAI-compatible endpoint that can. The create and add
-// gates enforce this — the wizard only says so up front and starts on a
-// provider that can pass them.
+// regions. LiteLLM can route to a provider that can, and OpenAICompatible
+// calls whatever endpoint the user names. The create and add gates enforce
+// this — the wizard only says so up front and starts on a provider that can
+// pass them.
 const CHINA_BLOCKED_PROVIDERS: ReadonlySet<ModelProvider> = new Set([
   "Bedrock",
   "Anthropic",
+  "OpenAI",
   "Gemini",
 ]);
 const CHINA_BLOCKED_NOTE = "not accessible from China regions";
-const CHINA_OPENAI_NOTE =
-  "api.openai.com is not accessible from China regions · set an API base URL";
 // Format hints only — no vendor is suggested; the user picks the provider.
 const CHINA_LITELLM_PLACEHOLDER = "<provider>/<model>";
-const CHINA_OPENAI_MODEL_PLACEHOLDER = "<model name at your endpoint>";
-const CHINA_API_BASE_PLACEHOLDER = "https://<host>/v1";
+const OPENAI_COMPATIBLE_MODEL_PLACEHOLDER = "<model name at your endpoint>";
+const API_BASE_PLACEHOLDER = "https://<host>/v1";
+
+// OpenAICompatible has no default model id: nothing is known about the
+// endpoint until the user names it, so its field starts empty everywhere.
+function defaultModelId(provider: ModelProvider): string {
+  return provider === "OpenAICompatible" ? "" : DEFAULT_MODEL_IDS[provider];
+}
 
 const API_KEY_SOURCE_PATTERN = /^file:\/\/.+/;
 const API_KEY_SOURCE_ERROR =
@@ -116,14 +126,13 @@ export function defaultRuntimeModelProvider(
   language?: TemplateLanguage,
 ): ModelProvider {
   if (!inChina(region)) return "Bedrock";
-  return language === "TypeScript" ? "OpenAI" : "LiteLLM";
+  return language === "TypeScript" ? "OpenAICompatible" : "LiteLLM";
 }
 
 // emptyRuntimeModel starts on the default provider with every provider's model
 // id prefilled from the table the flag path defaults from. In a China region
-// the two providers that can pass the gate start with no model id: LiteLLM's
-// default routes to Amazon Bedrock and OpenAI's names an api.openai.com model,
-// neither of which is reachable there, so the user must name a model.
+// LiteLLM starts with no model id: its default routes to Amazon Bedrock, which
+// is not reachable there, so the user must name a model.
 export function emptyRuntimeModel(
   region?: string,
   language?: TemplateLanguage,
@@ -135,10 +144,7 @@ export function emptyRuntimeModel(
       PROVIDER_OPTIONS.map(({ provider }) => [
         provider,
         {
-          modelId:
-            china && (provider === "LiteLLM" || provider === "OpenAI")
-              ? ""
-              : DEFAULT_MODEL_IDS[provider],
+          modelId: china && provider === "LiteLLM" ? "" : defaultModelId(provider),
           apiKeySource: "",
           apiBase: "",
         },
@@ -158,7 +164,8 @@ function selectedConfig(values: RuntimeModelValues): RuntimeModelConfig {
 // toRuntimeModelOverrides is the answer as the flag path would state it: the
 // model id only when it differs from the provider's default (so the wizard and
 // a bare `--model-provider` produce the same ScaffoldRuntimeInput), the key
-// source only when given, the base URL only for OpenAI and only when given.
+// source only when given, the base URL only for OpenAICompatible (which
+// requires it, so an empty one is left for the schema to refuse).
 export function toRuntimeModelOverrides(values: RuntimeModelValues): RuntimeModelOverrides {
   const config = selectedConfig(values);
   const modelId = config.modelId.trim();
@@ -166,9 +173,9 @@ export function toRuntimeModelOverrides(values: RuntimeModelValues): RuntimeMode
   const apiBase = config.apiBase.trim();
   return {
     modelProvider: values.provider,
-    ...(modelId !== "" && modelId !== DEFAULT_MODEL_IDS[values.provider] && { modelId }),
+    ...(modelId !== "" && modelId !== defaultModelId(values.provider) && { modelId }),
     ...(apiKeySource !== "" && { apiKeySource }),
-    ...(values.provider === "OpenAI" && apiBase !== "" && { apiBase }),
+    ...(values.provider === "OpenAICompatible" && apiBase !== "" && { apiBase }),
   };
 }
 
@@ -188,7 +195,7 @@ export function runtimeModelSummary(values: RuntimeModelValues): Record<string, 
   const overrides = toRuntimeModelOverrides(values);
   return {
     "model provider": providerLabel(values.provider),
-    "model id": config.modelId.trim() || DEFAULT_MODEL_IDS[values.provider],
+    "model id": config.modelId.trim() || defaultModelId(values.provider),
     ...(overrides.apiKeySource !== undefined && { "API key": overrides.apiKeySource }),
     ...(overrides.apiBase !== undefined && { "API base": overrides.apiBase }),
   };
@@ -222,14 +229,14 @@ function modelFields(provider: ModelProvider, china: boolean): ModelField[] {
             ? china
               ? "a LiteLLM model id (<provider>/<model>) reachable from China regions"
               : "a LiteLLM model id: <provider>/<model>"
-            : provider === "OpenAI" && china
-              ? "the model name at your OpenAI-compatible endpoint"
+            : provider === "OpenAICompatible"
+              ? "the model name at your OpenAI-compatible endpoint (no default)"
               : `the ${label} model to use`,
       placeholder:
         provider === "LiteLLM" && china
           ? CHINA_LITELLM_PLACEHOLDER
-          : provider === "OpenAI" && china
-            ? CHINA_OPENAI_MODEL_PLACEHOLDER
+          : provider === "OpenAICompatible"
+            ? OPENAI_COMPATIBLE_MODEL_PLACEHOLDER
             : DEFAULT_MODEL_IDS[provider],
       required: true,
       requiredError: `enter a model ID for ${label}`,
@@ -253,16 +260,16 @@ function modelFields(provider: ModelProvider, china: boolean): ModelField[] {
     });
   }
 
-  if (provider === "OpenAI") {
+  if (provider === "OpenAICompatible") {
     fields.push({
       key: "apiBase",
       name: "API base URL",
       helpText: china
-        ? "an OpenAI-compatible endpoint reachable from China regions (api.openai.com is not)"
-        : "optional · an OpenAI-compatible endpoint instead of api.openai.com",
-      placeholder: china ? CHINA_API_BASE_PLACEHOLDER : "optional",
-      required: china,
-      requiredError: "enter the API base URL of an endpoint reachable from China regions",
+        ? "base URL of the OpenAI-compatible endpoint to call · must be reachable from China regions"
+        : "base URL of the OpenAI-compatible endpoint to call",
+      placeholder: API_BASE_PLACEHOLDER,
+      required: true,
+      requiredError: "enter the API base URL of the endpoint",
       pattern: API_BASE_PATTERN,
       patternError: API_BASE_ERROR,
     });
@@ -420,13 +427,10 @@ export function RuntimeModelField({
 
   const radioOptions: FormRadioOption[] = options.map(({ provider, label, description }) => ({
     label,
-    description: !china
-      ? description
-      : provider === "OpenAI"
-        ? `${description} · ${CHINA_OPENAI_NOTE}`
-        : CHINA_BLOCKED_PROVIDERS.has(provider)
-          ? `${description} · ${CHINA_BLOCKED_NOTE}`
-          : description,
+    description:
+      china && CHINA_BLOCKED_PROVIDERS.has(provider)
+        ? `${description} · ${CHINA_BLOCKED_NOTE}`
+        : description,
   }));
 
   return (

@@ -75,14 +75,15 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "model-provider",
-        "model provider for supported templates: bedrock, anthropic, open_ai (or openai), gemini, or lite_llm (or litellm)",
+        "model provider for supported templates: bedrock, anthropic, open_ai (or openai), " +
+          "openai_compatible, gemini, or lite_llm (or litellm)",
         ModelProviderSchema.optional(),
         { group: CONFIGURATION },
       ),
       flag(
         "model-id",
         "model id for the scaffolded Runtime code, overriding the provider's default " +
-          "(required with litellm in China regions)",
+          "(required with openai_compatible, and with litellm in China regions)",
         z.string().min(1).optional(),
         { group: CONFIGURATION },
       ),
@@ -94,8 +95,8 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "api-base",
-        "base URL of an OpenAI-compatible endpoint for --model-provider open_ai " +
-          "(required in China regions, where api.openai.com is not reachable)",
+        "base URL of the endpoint for --model-provider openai_compatible (required with it, " +
+          "not accepted with other providers)",
         z.string().url().optional(),
         { group: CONFIGURATION },
       ),

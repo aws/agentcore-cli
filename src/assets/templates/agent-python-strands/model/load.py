@@ -45,7 +45,7 @@ def load_model() -> AnthropicModel:
         max_tokens=5000,
     )
 {{/if}}
-{{#if (eq modelProvider "OpenAI")}}
+{{#if (or (eq modelProvider "OpenAI") (eq modelProvider "OpenAICompatible"))}}
 import os
 
 from strands.models.openai import OpenAIModel

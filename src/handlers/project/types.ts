@@ -42,15 +42,25 @@ import { ModelProviderSchema } from "../../projectSchemas/runtime";
 export { MODEL_PROVIDERS, ModelProviderSchema } from "../../projectSchemas/runtime";
 export type { ModelProvider } from "../../projectSchemas/runtime";
 
-/** Shown when --api-base is combined with a provider other than OpenAI. */
-export const API_BASE_OPENAI_ONLY_MESSAGE =
-  "an API base URL is only supported with the OpenAI model provider (open_ai); it points the " +
-  "OpenAI client at an OpenAI-compatible endpoint";
+/** Shown when --api-base is combined with a provider other than OpenAICompatible. */
+export const API_BASE_OPENAI_COMPATIBLE_ONLY_MESSAGE =
+  "an API base URL is only supported with the openai_compatible model provider, which points " +
+  "the OpenAI client at that endpoint; open_ai always calls api.openai.com";
+
+/** Shown when the OpenAICompatible provider is chosen without a base URL. */
+export const API_BASE_REQUIRED_MESSAGE =
+  "--model-provider openai_compatible requires --api-base <url>, the base URL of the " +
+  "OpenAI-compatible endpoint to call";
+
+/** Shown when the OpenAICompatible provider is chosen without a model id. */
+export const MODEL_ID_REQUIRED_MESSAGE =
+  "--model-provider openai_compatible requires --model-id <model>: the model name at your " +
+  "endpoint (there is no default)";
 
 /** Shown when LiteLLM is requested for a TypeScript template. */
 export const LITELLM_PYTHON_ONLY_MESSAGE =
   "the LiteLLM model provider is only available for Python templates; for TypeScript use " +
-  "--model-provider open_ai with --api-base <OpenAI-compatible endpoint>";
+  "--model-provider openai_compatible with --api-base <url> and --model-id <model>";
 
 /** Set of arguments needed to scaffold a new Runtime-based agent. */
 export const ScaffoldRuntimeInputSchema = z
@@ -63,7 +73,7 @@ export const ScaffoldRuntimeInputSchema = z
     modelProvider: ModelProviderSchema.optional(),
     modelId: z.string().min(1).optional(),
     apiKey: z.string().min(1).optional(),
-    /** Base URL of an OpenAI-compatible endpoint; only with the OpenAI provider. */
+    /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
@@ -91,14 +101,26 @@ export const ScaffoldRuntimeInputSchema = z
       });
     }
   })
-  .superRefine(({ modelProvider, apiBase, language }, ctx) => {
-    // The base URL swaps the server the OpenAI client talks to (any
-    // OpenAI-compatible endpoint); the other providers keep their own API.
-    if (apiBase !== undefined && modelProvider !== "OpenAI") {
-      ctx.addIssue({ code: "custom", message: API_BASE_OPENAI_ONLY_MESSAGE, path: ["apiBase"] });
+  .superRefine(({ modelProvider, modelId, apiBase, language }, ctx) => {
+    // OpenAICompatible is the OpenAI client pointed at a user-named endpoint,
+    // so the base URL is its defining input and the model name cannot be
+    // defaulted; every other provider calls its own API and takes no base URL.
+    if (modelProvider === "OpenAICompatible") {
+      if (apiBase === undefined) {
+        ctx.addIssue({ code: "custom", message: API_BASE_REQUIRED_MESSAGE, path: ["apiBase"] });
+      }
+      if (modelId === undefined) {
+        ctx.addIssue({ code: "custom", message: MODEL_ID_REQUIRED_MESSAGE, path: ["modelId"] });
+      }
+    } else if (apiBase !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: API_BASE_OPENAI_COMPATIBLE_ONLY_MESSAGE,
+        path: ["apiBase"],
+      });
     }
     // LiteLLM is a Python library; the TypeScript Strands SDK has no
-    // equivalent, so the honest route there is the OpenAI client plus a base URL.
+    // equivalent, so the route there is the OpenAI client plus a base URL.
     if (modelProvider === "LiteLLM" && language === "TypeScript") {
       ctx.addIssue({
         code: "custom",

@@ -37,12 +37,18 @@ type CreateProjectHandlerConfig = {
   middlewares?: Middleware[];
 };
 
-const MODEL_PROVIDER_FLAG_VALUES = [...HarnessModelProviderSchema.options, "anthropic"] as const;
+const MODEL_PROVIDER_FLAG_VALUES = [
+  ...HarnessModelProviderSchema.options,
+  "anthropic",
+  "openai_compatible",
+] as const;
 // `add runtime` parses its provider through ModelProviderSchema, which takes `litellm`/`openai` in
 // any case; create accepts the same spellings so a command copied from one works in the other.
 const MODEL_PROVIDER_FLAG_ALIASES: Record<string, (typeof MODEL_PROVIDER_FLAG_VALUES)[number]> = {
   litellm: "lite_llm",
   openai: "open_ai",
+  "openai-compatible": "openai_compatible",
+  openaicompatible: "openai_compatible",
 };
 const ModelProviderFlagSchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
@@ -68,13 +74,14 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       ),
       flag(
         "model-provider",
-        "model provider for templates that support it: bedrock, anthropic, open_ai (or openai), gemini, or lite_llm (or litellm)",
+        "model provider for templates that support it: bedrock, anthropic, open_ai (or openai), " +
+          "openai_compatible, gemini, or lite_llm (or litellm)",
         ModelProviderFlagSchema.optional(),
       ),
       flag(
         "model-id",
         "model id for the scaffolded Runtime code, overriding the provider's default " +
-          "(required with litellm in China regions)",
+          "(required with openai_compatible, and with litellm in China regions)",
         z.string().min(1).optional(),
       ),
       flag(
@@ -85,8 +92,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       ),
       flag(
         "api-base",
-        "base URL of an OpenAI-compatible endpoint for --model-provider open_ai " +
-          "(required in China regions, where api.openai.com is not reachable)",
+        "base URL of the endpoint for --model-provider openai_compatible (required with it, " +
+          "not accepted with other providers)",
         z.string().url().optional(),
       ),
       flag(
@@ -227,6 +234,7 @@ const MODEL_PROVIDERS: Record<
   gemini: { harness: "gemini", runtime: "Gemini" },
   lite_llm: { harness: "lite_llm", runtime: "LiteLLM" },
   anthropic: { runtime: "Anthropic" },
+  openai_compatible: { runtime: "OpenAICompatible" },
 };
 
 function resolveHarnessModelProvider(

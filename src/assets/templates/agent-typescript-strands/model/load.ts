@@ -13,7 +13,7 @@ export async function loadModel(): Promise<AnthropicModel> {
   return new AnthropicModel({ apiKey: await getApiKey(), modelId: {{jsStr modelId}} });
 }
 {{/if}}
-{{#if (eq modelProvider "OpenAI")}}
+{{#if (or (eq modelProvider "OpenAI") (eq modelProvider "OpenAICompatible"))}}
 import { OpenAIModel } from '@strands-agents/sdk/models/openai';
 import { getApiKey } from './apiKey.js';
 

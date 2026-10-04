@@ -12,9 +12,9 @@ The main entrypoint to your app is defined in `main.ts`. Using the AgentCore SDK
 defines an HTTP server that streams tokens from your chosen Agent framework SDK.
 
 `model/load.ts` instantiates your chosen model provider. For API-key providers (Anthropic, OpenAI,
-Gemini) `model/apiKey.ts` fetches the key from AgentCore Identity at runtime, or from `.env.local`
-under `agentcore dev`; with the OpenAI provider, `--api-base` points the client at an
-OpenAI-compatible endpoint.
+OpenAI-compatible, Gemini) `model/apiKey.ts` fetches the key from AgentCore Identity at runtime, or
+from `.env.local` under `agentcore dev`; the `openai_compatible` provider is the OpenAI client
+pointed at the `--api-base` endpoint.
 
 ## Input Validation
 

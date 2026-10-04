@@ -411,7 +411,7 @@ describe("project add runtime", () => {
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
   });
 
-  test("--api-base with open_ai renders the base URL and persists it", async () => {
+  test("openai_compatible renders the OpenAI client against --api-base", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
     const apiKeyPath = join(projectRoot, "api-key.txt");
@@ -425,7 +425,7 @@ describe("project add runtime", () => {
       "--template",
       "agent-python-strands",
       "--model-provider",
-      "open_ai",
+      "openai_compatible",
       "--model-id",
       "deepseek-chat",
       "--api-key",
@@ -438,9 +438,11 @@ describe("project add runtime", () => {
     const runtime = spec.runtimes.find(
       (candidate: { name: string }) => candidate.name === "ds_agent",
     );
-    expect(runtime).toMatchObject({
-      modelProvider: "OpenAI",
-      modelApiBase: "https://api.deepseek.com/v1",
+    expect(runtime.modelProvider).toBe("OpenAICompatible");
+    expect(runtime.modelApiBase).toBeUndefined();
+    expect(spec.credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "ds_agentOpenAICompatibleApiKey",
     });
     const loadModel = await Bun.file(
       join(projectRoot, "app", "ds_agent", "model", "load.py"),
@@ -448,7 +450,7 @@ describe("project add runtime", () => {
     expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
   });
 
-  test("--api-base is refused with a provider other than open_ai", async () => {
+  test("--api-base is refused with a provider other than openai_compatible", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
     const apiKeyPath = join(projectRoot, "api-key.txt");
@@ -468,7 +470,32 @@ describe("project add runtime", () => {
         "--api-base",
         "https://example.com/v1",
       ]),
-    ).rejects.toThrow(/only supported with the OpenAI model provider/);
+    ).rejects.toThrow(/only supported with the openai_compatible model provider/);
+  });
+
+  test("openai_compatible without --api-base or --model-id is refused", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const apiKeyPath = join(projectRoot, "api-key.txt");
+    await Bun.write(apiKeyPath, "sk-ds");
+    const base = [
+      "add",
+      "runtime",
+      "--name",
+      "ds_agent",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "openai_compatible",
+      "--api-key",
+      `file://${apiKeyPath}`,
+    ];
+    await expect(run([...base, "--model-id", "deepseek-chat"])).rejects.toThrow(
+      /openai_compatible requires --api-base/,
+    );
+    await expect(run([...base, "--api-base", "https://api.deepseek.com/v1"])).rejects.toThrow(
+      /openai_compatible requires --model-id/,
+    );
   });
 
   test("agent-typescript-strands scaffolds a TypeScript agent", async () => {

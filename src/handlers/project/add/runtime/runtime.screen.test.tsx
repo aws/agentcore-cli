@@ -170,6 +170,7 @@ describe("project add runtime wizard", () => {
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down"); // anthropic
     await r.press("down"); // openai
+    await r.press("down"); // openai-compatible
     await r.press("down"); // gemini
     await waitForText(r.lastFrame, "● gemini");
     await r.press("return"); // model id (Gemini default)
@@ -243,7 +244,7 @@ describe("project add runtime wizard", () => {
 
     await waitForText(r.lastFrame, "choose a model provider");
     expect(r.lastFrame()).toContain("● litellm");
-    expect(flatFrame(r.lastFrame).match(/not accessible from China regions/g)).toHaveLength(4);
+    expect(flatFrame(r.lastFrame).match(/not accessible from China[\s│]*regions/g)).toHaveLength(4);
     await r.press("return"); // model id, empty
     await r.press("return");
     await waitForText(r.lastFrame, "enter a model ID for litellm");

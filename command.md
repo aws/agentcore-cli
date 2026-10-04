@@ -255,10 +255,10 @@ create a new AgentCore project
 
 - `--name <name>`: name of the project to create (required)
 - `--template <template>`: the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key
-- `--model-provider <model-provider>`: model provider for templates that support it: bedrock, anthropic, open\_ai (or openai), gemini, or lite\_llm (or litellm)
-- `--model-id <model-id>`: model id for the scaffolded Runtime code, overriding the provider's default (required with litellm in China regions)
+- `--model-provider <model-provider>`: model provider for templates that support it: bedrock, anthropic, open\_ai (or openai), openai\_compatible, gemini, or lite\_llm (or litellm)
+- `--model-id <model-id>`: model id for the scaffolded Runtime code, overriding the provider's default (required with openai\_compatible, and with litellm in China regions)
 - `--api-key <api-key>`: API key for non-Bedrock providers: '-' for stdin, 'file://path' for file
-- `--api-base <api-base>`: base URL of an OpenAI-compatible endpoint for --model-provider open\_ai (required in China regions, where api.openai.com is not reachable)
+- `--api-base <api-base>`: base URL of the endpoint for --model-provider openai\_compatible (required with it, not accepted with other providers)
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)
 
@@ -355,10 +355,10 @@ add a Runtime to the current project
 - `--name <name>`: the name of the Runtime (required)
 - `--type <type>`: create generates new agent code (the default); import translates a Bedrock Agent version
 - `--template <template>`: template for the Runtime code (default: agent-python-minimal); available templates listed below
-- `--model-provider <model-provider>`: model provider for supported templates: bedrock, anthropic, open\_ai (or openai), gemini, or lite\_llm (or litellm)
-- `--model-id <model-id>`: model id for the scaffolded Runtime code, overriding the provider's default (required with litellm in China regions)
+- `--model-provider <model-provider>`: model provider for supported templates: bedrock, anthropic, open\_ai (or openai), openai\_compatible, gemini, or lite\_llm (or litellm)
+- `--model-id <model-id>`: model id for the scaffolded Runtime code, overriding the provider's default (required with openai\_compatible, and with litellm in China regions)
 - `--api-key <api-key>`: API key for non-Bedrock providers on supported templates; '-' for stdin, 'file://path' for file
-- `--api-base <api-base>`: base URL of an OpenAI-compatible endpoint for --model-provider open\_ai (required in China regions, where api.openai.com is not reachable)
+- `--api-base <api-base>`: base URL of the endpoint for --model-provider openai\_compatible (required with it, not accepted with other providers)
 - `--description <description>`: an optional description of the Runtime
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
 - `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
