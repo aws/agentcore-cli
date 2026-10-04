@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   cleanupScreens,
   createSilentLogger,
@@ -257,6 +259,30 @@ describe("project add gateway-connector wizard", () => {
     expect(flatFrame(screen.lastFrame)).toContain("target web-search");
 
     expect(await targetsOf(projectRoot)).toHaveLength(1);
+    screen.unmount();
+  }, 15000);
+
+  test("in a project with a China target the connector is refused at the review step", async () => {
+    const projectRoot = await inProject();
+    await addGateway();
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "cn-north-1" }]),
+    );
+    const screen = renderScreen("/agentcore/add/gateway-connector");
+    await reachConnectorStep(screen);
+    await screen.press("return"); // web-search
+    await waitForText(screen.lastFrame, "what should this Target be called?");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "this connector will be added to agentcore.json");
+    await screen.press("return");
+
+    await waitForFlatText(
+      screen.lastFrame,
+      "Gateway connector targets are not available in China regions",
+    );
+    await waitForFlatText(screen.lastFrame, "'web-search' connector cannot be used there");
+    expect(await targetsOf(projectRoot)).toHaveLength(0);
     screen.unmount();
   }, 15000);
 

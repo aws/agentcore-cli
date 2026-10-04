@@ -3,7 +3,8 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
-import { InputValidationError } from "../../../../errors";
+import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
+import { cnConnectorTargetMessage } from "../../../../core/project/manager";
 
 const COMPLETE_CONNECTOR = JSON.stringify({
   name: "configured",
@@ -17,6 +18,60 @@ const { addGateway, cleanup, inProject, projectSpec, run } =
 afterEach(cleanup);
 
 describe("project add gateway-connector", () => {
+  test("both curated connectors are refused in a project with a China target", async () => {
+    const projectRoot = await inProject();
+    await addGateway();
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "cn-north-1" }]),
+    );
+
+    await expectError(
+      run([
+        "add",
+        "gateway-connector",
+        "--gateway",
+        "tools",
+        "--name",
+        "web",
+        "--connector",
+        "web-search",
+      ]),
+      cnConnectorTargetMessage("web-search"),
+      RegionUnsupportedFeatureError,
+    );
+    await expectError(
+      run([
+        "add",
+        "gateway-connector",
+        "--gateway",
+        "tools",
+        "--name",
+        "kb",
+        "--connector",
+        "bedrock-knowledge-bases",
+        "--knowledge-base",
+        "ABCDEFGHIJ",
+      ]),
+      "Amazon Bedrock Knowledge Bases are not available in China",
+      RegionUnsupportedFeatureError,
+    );
+    // The full-JSON path builds the same connector Target and is refused the same way.
+    await expectError(
+      run([
+        "add",
+        "gateway-connector",
+        "--gateway",
+        "tools",
+        "--connector-configuration",
+        COMPLETE_CONNECTOR,
+      ]),
+      cnConnectorTargetMessage("web-search"),
+      RegionUnsupportedFeatureError,
+    );
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual([]);
+  });
+
   test("--json preserves the command resource type and parent Gateway", async () => {
     const projectRoot = await inProject();
     await addGateway();

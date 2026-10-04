@@ -16,6 +16,7 @@ import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import {
   BMA_CN_MESSAGE,
+  cnConnectorTargetMessage,
   cnUnsupportedResourceMessage,
   FsProjectManager,
   LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE,
@@ -994,6 +995,7 @@ describe("FsProjectManager.addResource", () => {
         }[];
         harnesses: unknown[];
         memories?: unknown[];
+        agentCoreGateways?: unknown[];
       }) => void,
     ) {
       const specPath = join(project.rootPath, "agentcore", "agentcore.json");
@@ -1212,6 +1214,89 @@ describe("FsProjectManager.addResource", () => {
           resourceConfig: getDefaultMemorySpec("cn_mem"),
         }),
       ).rejects.toThrow(new RegionUnsupportedFeatureError(cnUnsupportedResourceMessage("memory")));
+    });
+
+    test("rejects a connector Gateway Target on a China target; a Runtime-backed one is fine", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("cn-north-1");
+      await runAdd(subject, project, {
+        resourceType: "gateway",
+        resourceConfig: {
+          name: "gw",
+          targets: [],
+          authorizerType: "AWS_IAM",
+          protocolType: "None",
+          enableSemanticSearch: false,
+          exceptionLevel: "NONE",
+        },
+      });
+
+      const connectors: [
+        "web-search" | "bedrock-knowledge-bases",
+        { name: string; parameterValues: Record<string, unknown> }[],
+      ][] = [
+        ["web-search", [{ name: "WebSearch", parameterValues: { maxResults: 10 } }]],
+        [
+          "bedrock-knowledge-bases",
+          [{ name: "Retrieve", parameterValues: { knowledgeBaseId: "ABCDEFGHIJ" } }],
+        ],
+      ];
+      for (const [connectorId, configurations] of connectors) {
+        await expect(
+          runAdd(subject, project, {
+            resourceType: "gateway-target",
+            gatewayName: "gw",
+            resourceConfig: {
+              name: connectorId,
+              targetType: "connector",
+              connectorId,
+              configurations,
+            },
+          }),
+        ).rejects.toThrow(new RegionUnsupportedFeatureError(cnConnectorTargetMessage(connectorId)));
+      }
+      expect(cnConnectorTargetMessage("bedrock-knowledge-bases")).toContain(
+        "Amazon Bedrock Knowledge Bases are not available in China",
+      );
+      expect(cnConnectorTargetMessage("web-search")).not.toContain("Knowledge Bases");
+
+      const added = await runAdd(subject, project, {
+        resourceType: "gateway-target",
+        gatewayName: "gw",
+        resourceConfig: {
+          name: "rt",
+          targetType: "httpRuntime",
+          httpRuntime: { runtime: "agent_python_minimal" },
+        },
+      });
+      expect(added.spec.agentCoreGateways[0]!.targets.map((target) => target.name)).toEqual(["rt"]);
+    });
+
+    test("deploy to a China target hard-fails a Gateway with a connector Target", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.agentCoreGateways = [
+          {
+            name: "gw",
+            authorizerType: "AWS_IAM",
+            targets: [
+              {
+                name: "web",
+                targetType: "connector",
+                connectorId: "web-search",
+                configurations: [{ name: "WebSearch", parameterValues: { maxResults: 10 } }],
+              },
+            ],
+          },
+        ];
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain("gateway 'gw' target 'web' is a connector");
+      expect(String(error)).toContain(cnConnectorTargetMessage("web-search"));
+      expect(deployCalls).toEqual([]);
     });
 
     test("deploy to a China target rejects unsupported spec collections", async () => {

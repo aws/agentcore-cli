@@ -190,6 +190,25 @@ const CN_SUPPORTED_SPEC_COLLECTIONS = new Set([
   "toolRuntimes",
 ]);
 
+/**
+ * Shown when a Gateway Target of type `connector` is added to, or deployed from, a
+ * project with a China (aws-cn) target. The curated connectors are a static CLI
+ * list, not a regional catalog: `bedrock-knowledge-bases` needs Amazon Bedrock,
+ * which is not available there, and `web-search` has never been confirmed in
+ * China, so both stay blocked until the Gateway service confirms them.
+ */
+export function cnConnectorTargetMessage(connectorId: string | undefined): string {
+  const connector = connectorId ?? "unknown";
+  return (
+    `Gateway connector targets are not available in China regions (cn-north-1, cn-northwest-1): ` +
+    `the '${connector}' connector cannot be used there` +
+    (connector === "bedrock-knowledge-bases"
+      ? ", and Amazon Bedrock Knowledge Bases are not available in China"
+      : "") +
+    `. Add a Runtime-backed or MCP-server Target instead.`
+  );
+}
+
 /** Shown when an `add` targets a resource family that is unavailable in China regions. */
 export function cnUnsupportedResourceMessage(resourceType: string): string {
   return (
@@ -521,6 +540,16 @@ export class FsProjectManager implements ProjectManager {
       }
       if (!CN_SUPPORTED_RESOURCE_TYPES.has(input.resourceType)) {
         throw new RegionUnsupportedFeatureError(cnUnsupportedResourceMessage(input.resourceType));
+      }
+      // Gateways are available, but a connector-backed Target is not: the
+      // allowlist above is by resource type, so the Target's own type is checked here.
+      if (
+        input.resourceType === "gateway-target" &&
+        input.resourceConfig.targetType === "connector"
+      ) {
+        throw new RegionUnsupportedFeatureError(
+          cnConnectorTargetMessage(input.resourceConfig.connectorId),
+        );
       }
       if (input.resourceType === "runtime") {
         const scaffold = input.resourceConfig.scaffoldRuntimeInput;
@@ -1271,6 +1300,18 @@ export class FsProjectManager implements ProjectManager {
               present.length === 1 ? "this entry" : "these entries"
             } before deploying to a China target.`,
         );
+      }
+      // The collection check lets Gateways through as a whole; connector-backed
+      // Targets inside them (hand-edited, or added before the China target) are
+      // refused here with the same message the add gate gives.
+      for (const gateway of project.spec.agentCoreGateways) {
+        const connector = gateway.targets.find((candidate) => candidate.targetType === "connector");
+        if (connector !== undefined) {
+          throw new RegionUnsupportedFeatureError(
+            `Cannot deploy to China region ${target.region}: gateway '${gateway.name}' target ` +
+              `'${connector.name}' is a connector. ${cnConnectorTargetMessage(connector.connectorId)}`,
+          );
+        }
       }
       const unclassified = project.spec.runtimes.filter(
         (runtime) =>

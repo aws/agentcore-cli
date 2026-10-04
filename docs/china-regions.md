@@ -26,7 +26,9 @@
   to a China target fails when a runtime was scaffolded with an inaccessible model provider
   (recorded as the runtime's `modelProvider` in `agentcore.json`; delete that field if you have
   replaced the model wiring in code). Harness projects are not available in China regions.
-- **Resource families:** only Runtimes, Gateways, and credentials are available in China
+- **Resource families:** only Runtimes, Gateways (without connector-backed Targets: the curated
+  `web-search` and `bedrock-knowledge-bases` connectors are refused there), and credentials are
+  available in China
   regions. The strands template's default memory is dropped from China scaffolds (the memory
   module stays in the code and activates once a memory exists); adding unsupported resources
   (memory, evaluators, harnesses, payments, …) or deploying a spec that contains them to a
