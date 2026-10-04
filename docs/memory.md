@@ -48,7 +48,8 @@ agentcore add memory \
 ```
 
 This sets `encryptionKeyArn` on the memory in `agentcore.json`. The key policy must allow AgentCore Memory to use the
-key.
+key. Set the key when you create the memory. AgentCore Memory can't update the key in place, so changing
+`encryptionKeyArn` later makes CloudFormation replace the memory on the next deploy.
 
 ## Using Memory with Strands Agents
 
