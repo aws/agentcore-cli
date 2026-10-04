@@ -57,8 +57,8 @@ agentcore create --name MyAgent --template agent-python-strands
 
 Templates that take a model provider (`agent-python-strands` and its `-container` variant,
 `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) also accept
-`--model-provider` (`bedrock`, `anthropic`, `open_ai`, `gemini`, `lite_llm`; LiteLLM is
-Python-only), `--model-id`, and `--api-key file://<path>`; the API key is kept in
+`--model-provider` (`bedrock`, `anthropic`, `open_ai`, `gemini`, `lite_llm`; `openai` and `litellm`
+are accepted too; LiteLLM is Python-only), `--model-id`, and `--api-key file://<path>`; the API key is kept in
 `agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy. With
 `open_ai`, `--api-base <url>` points the OpenAI client at any OpenAI-compatible endpoint instead of
 api.openai.com.

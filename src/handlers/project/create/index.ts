@@ -37,7 +37,18 @@ type CreateProjectHandlerConfig = {
   middlewares?: Middleware[];
 };
 
-const ModelProviderFlagSchema = z.enum([...HarnessModelProviderSchema.options, "anthropic"]);
+const MODEL_PROVIDER_FLAG_VALUES = [...HarnessModelProviderSchema.options, "anthropic"] as const;
+// `add runtime` parses its provider through ModelProviderSchema, which takes `litellm`/`openai` in
+// any case; create accepts the same spellings so a command copied from one works in the other.
+const MODEL_PROVIDER_FLAG_ALIASES: Record<string, (typeof MODEL_PROVIDER_FLAG_VALUES)[number]> = {
+  litellm: "lite_llm",
+  openai: "open_ai",
+};
+const ModelProviderFlagSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const lower = value.toLowerCase();
+  return MODEL_PROVIDER_FLAG_ALIASES[lower] ?? lower;
+}, z.enum(MODEL_PROVIDER_FLAG_VALUES));
 type ModelProviderFlag = z.infer<typeof ModelProviderFlagSchema>;
 
 export const DEFAULT_CREATE_RUNTIME_NAME = "agent";
@@ -57,13 +68,13 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       ),
       flag(
         "model-provider",
-        "model provider for templates that support it: bedrock, anthropic, open_ai, gemini, or lite_llm",
+        "model provider for templates that support it: bedrock, anthropic, open_ai (or openai), gemini, or lite_llm (or litellm)",
         ModelProviderFlagSchema.optional(),
       ),
       flag(
         "model-id",
         "model id for the scaffolded Runtime code, overriding the provider's default " +
-          "(required with lite_llm in China regions)",
+          "(required with litellm in China regions)",
         z.string().min(1).optional(),
       ),
       flag(

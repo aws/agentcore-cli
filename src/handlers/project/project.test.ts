@@ -1519,8 +1519,40 @@ describe("create in China regions", () => {
         "--region",
         "cn-north-1",
       ]),
-    ).rejects.toThrow(/not accessible from China regions/);
+    ).rejects.toThrow(/not accessible from China regions.*Keep this template/);
   });
+
+  test.each(["litellm", "LiteLLM", "openai"])(
+    "accepts the add-runtime provider spelling %s on create",
+    async (spelling) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const apiKeyPath = join(directory, "api-key.txt");
+      await Bun.write(apiKeyPath, "sk-test\n");
+      const openai = spelling.toLowerCase() === "openai";
+      await run([
+        "create",
+        "--name",
+        "CnAlias",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        spelling,
+        "--model-id",
+        openai ? "deepseek-chat" : "deepseek/deepseek-chat",
+        "--api-key",
+        `file://${apiKeyPath}`,
+        ...(openai ? ["--api-base", "https://api.deepseek.com/v1"] : []),
+        ...skips,
+        "--region",
+        "cn-north-1",
+      ]);
+      const spec = JSON.parse(
+        await readFile(join(directory, "CnAlias", "agentcore", "agentcore.json"), "utf8"),
+      );
+      expect(spec.runtimes[0].modelProvider).toBe(openai ? "OpenAI" : "LiteLLM");
+    },
+  );
 
   test("rejects the Bedrock Managed Agents template", async () => {
     cleanups.push((await inTempDirectory()).cleanup);

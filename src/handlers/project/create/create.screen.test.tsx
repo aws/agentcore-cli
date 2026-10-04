@@ -24,7 +24,7 @@ import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
-import { MODEL_PROVIDER_RUNTIMES_CN_MESSAGE } from "../../../core/project/manager";
+import { modelProviderOverridableCnMessage } from "../../../core/project/manager";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -697,7 +697,10 @@ describe("project create wizard", () => {
 
     // The gate the flag path runs rejects it before anything is written; the
     // wizard keeps the form so the provider can be changed.
-    await waitForText(r.lastFrame, MODEL_PROVIDER_RUNTIMES_CN_MESSAGE.slice(0, 60));
+    await waitForText(
+      r.lastFrame,
+      modelProviderOverridableCnMessage("Bedrock", "Python").slice(0, 60),
+    );
     expect(r.lastFrame()).toContain("[r] retry");
     expect(inputs).toEqual([]);
     expect(existsSync(join(directory, "CnBedrock"))).toBe(false);

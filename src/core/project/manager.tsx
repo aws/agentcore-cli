@@ -103,16 +103,45 @@ const UV_INSTALL_HINT = "Install uv: https://docs.astral.sh/uv/getting-started/i
 
 /**
  * Shown when a runtime template hardwired to an unreachable model provider
- * targets a China (aws-cn) region. Amazon Bedrock, Anthropic, OpenAI, and
- * Gemini cannot be called from China regions; LiteLLM can route to a reachable provider.
+ * targets a China (aws-cn) region and takes no --model-provider override
+ * (langchain, vercel, `--type import`). Amazon Bedrock, Anthropic, OpenAI, and
+ * Gemini cannot be called from China regions; LiteLLM can route to a reachable
+ * provider and the OpenAI client can point at an OpenAI-compatible endpoint.
  */
 export const MODEL_PROVIDER_RUNTIMES_CN_MESSAGE =
   "This template's model provider is not accessible from China regions (cn-north-1, " +
-  "cn-northwest-1): Amazon Bedrock, " +
-  "Anthropic, OpenAI, and Gemini cannot be used there. Either scaffold a provider-free runtime " +
-  "(--template agent-python-minimal or mcp-python-fastmcp) and bring your own model connectivity, " +
-  "use --model-provider litellm --model-id <model reachable from China> (Python templates), or " +
-  "use --model-provider open_ai --api-base <OpenAI-compatible endpoint reachable from China>.";
+  "cn-northwest-1): Amazon Bedrock, Anthropic, OpenAI, and Gemini cannot be used there, and " +
+  "this template takes no --model-provider override. Pick a strands template " +
+  "(agent-python-strands, agent-python-strands-container, a2a-python-strands, " +
+  "agui-python-strands, or agent-typescript-strands) with --model-provider litellm " +
+  "--model-id <model reachable from China> (Python) or --model-provider open_ai " +
+  "--api-base <OpenAI-compatible endpoint reachable from China>, or scaffold a provider-free " +
+  "runtime (--template agent-python-minimal or mcp-python-fastmcp) and bring your own model " +
+  "connectivity.";
+
+/**
+ * Shown when a template that DOES take --model-provider is left on (or set to)
+ * a provider unreachable from China: the template is fine, only the provider
+ * needs to change. TypeScript templates have no LiteLLM, so only the OpenAI
+ * route is offered there.
+ */
+export function modelProviderOverridableCnMessage(
+  provider: string,
+  language: "Python" | "TypeScript" | undefined,
+): string {
+  const name = provider === "Bedrock" ? "Amazon Bedrock" : provider;
+  const others = ["Amazon Bedrock", "Anthropic", "Gemini"].filter((p) => p !== name).join(" or ");
+  const routes =
+    language === "TypeScript"
+      ? "--model-provider open_ai --api-base <OpenAI-compatible endpoint reachable from China>"
+      : "--model-provider litellm --model-id <model reachable from China>, or " +
+        "--model-provider open_ai --api-base <OpenAI-compatible endpoint reachable from China>";
+  return (
+    `${name} is not accessible from China regions (cn-north-1, cn-northwest-1), and neither ` +
+    `${others.includes(" or ") ? "are" : "is"} ${others}. Keep this template and point it at a ` +
+    `model reachable from China: ${routes}.`
+  );
+}
 
 /** Shown when a Bedrock Managed Agents environment targets the aws-cn partition. */
 export const BMA_CN_MESSAGE =
@@ -193,7 +222,7 @@ export const LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE =
 export const OPENAI_API_BASE_REQUIRED_CN_MESSAGE =
   "--model-provider open_ai requires --api-base in China regions (cn-north-1, cn-northwest-1): " +
   "api.openai.com is not reachable there. Pass the base URL of an OpenAI-compatible endpoint " +
-  "reachable from China, or use --model-provider lite_llm with a model id for a provider " +
+  "reachable from China, or use --model-provider litellm with a model id for a provider " +
   "reachable from China.";
 
 /**
@@ -205,16 +234,22 @@ export const OPENAI_API_BASE_REQUIRED_CN_MESSAGE =
  */
 export function chinaModelProviderRestriction(scaffold: {
   framework: string;
+  language?: "Python" | "TypeScript";
   modelProvider?: string;
   modelId?: string;
   apiBase?: string;
+  templateProfile?: { modelProviderOverride?: boolean };
 }): string | undefined {
   if (scaffold.framework === "none") return undefined;
   const provider = scaffold.modelProvider ?? "Bedrock";
   if (provider === "OpenAI") {
     return scaffold.apiBase === undefined ? OPENAI_API_BASE_REQUIRED_CN_MESSAGE : undefined;
   }
-  if (provider !== "LiteLLM") return MODEL_PROVIDER_RUNTIMES_CN_MESSAGE;
+  if (provider !== "LiteLLM") {
+    return scaffold.templateProfile?.modelProviderOverride === true
+      ? modelProviderOverridableCnMessage(provider, scaffold.language)
+      : MODEL_PROVIDER_RUNTIMES_CN_MESSAGE;
+  }
   if (scaffold.modelId === undefined) return LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE;
   if (scaffold.modelId.startsWith("bedrock/")) return LITELLM_BEDROCK_MODEL_ID_CN_MESSAGE;
   return undefined;

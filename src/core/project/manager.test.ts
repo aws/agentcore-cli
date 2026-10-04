@@ -23,6 +23,8 @@ import {
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
   OPENAI_API_BASE_REQUIRED_CN_MESSAGE,
+  chinaModelProviderRestriction,
+  modelProviderOverridableCnMessage,
 } from "./manager";
 import {
   getDefaultMemorySpec,
@@ -782,6 +784,7 @@ describe("FsProjectManager.addResource", () => {
       const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
       const runtimePath = join(project.rootPath, "app", "cn_blocked");
 
+      // strands takes --model-provider, so the message says to keep the template.
       await expect(
         runAdd(subject, project, {
           resourceType: "runtime",
@@ -790,10 +793,30 @@ describe("FsProjectManager.addResource", () => {
             scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS, runtimeName: "cn_blocked" },
           },
         }),
-      ).rejects.toThrow(new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE));
+      ).rejects.toThrow(
+        new RegionUnsupportedFeatureError(modelProviderOverridableCnMessage("Bedrock", "Python")),
+      );
 
       expect(checkedTools).toEqual([]);
       expect(existsSync(runtimePath)).toBe(false);
+    });
+
+    test("rejects a Bedrock-only template with the pick-another-template message", async () => {
+      await inTempDirectory();
+      const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "cn_langchain",
+            scaffoldRuntimeInput: { ...AGENT_PYTHON_LANGCHAIN, runtimeName: "cn_langchain" },
+          },
+        }),
+      ).rejects.toThrow(new RegionUnsupportedFeatureError(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE));
+
+      expect(checkedTools).toEqual([]);
+      expect(existsSync(join(project.rootPath, "app", "cn_langchain"))).toBe(false);
     });
 
     test("rejects a Bedrock Managed Agents template before scaffolding", async () => {
@@ -1220,6 +1243,61 @@ describe("FsProjectManager.addResource", () => {
         }),
       ).rejects.toThrow("uv is missing");
     });
+  });
+});
+
+describe("chinaModelProviderRestriction", () => {
+  test("names the blocked provider and keeps the template when it takes an override", () => {
+    const message = chinaModelProviderRestriction(AGENT_PYTHON_STRANDS);
+    expect(message).toBe(modelProviderOverridableCnMessage("Bedrock", "Python"));
+    expect(message).toStartWith("Amazon Bedrock is not accessible from China regions");
+    expect(message).toContain("neither are Anthropic or Gemini");
+    expect(message).toContain("Keep this template");
+    expect(message).toContain("--model-provider litellm --model-id");
+    expect(message).toContain("--model-provider open_ai --api-base");
+
+    const anthropic = chinaModelProviderRestriction({
+      ...AGENT_PYTHON_STRANDS,
+      modelProvider: "Anthropic",
+    });
+    expect(anthropic).toStartWith("Anthropic is not accessible from China regions");
+    expect(anthropic).toContain("neither are Amazon Bedrock or Gemini");
+  });
+
+  test("offers only the OpenAI route for TypeScript templates", () => {
+    const message = chinaModelProviderRestriction(AGENT_TYPESCRIPT_STRANDS);
+    expect(message).toBe(modelProviderOverridableCnMessage("Bedrock", "TypeScript"));
+    expect(message).not.toContain("litellm");
+    expect(message).toContain("--model-provider open_ai --api-base");
+  });
+
+  test("tells Bedrock-only templates to pick another template", () => {
+    expect(chinaModelProviderRestriction(AGENT_PYTHON_LANGCHAIN)).toBe(
+      MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
+    );
+    expect(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE).toContain("takes no --model-provider override");
+    // A scaffold without template metadata (e.g. --type import) gets the same generic text.
+    expect(
+      chinaModelProviderRestriction({ ...AGENT_PYTHON_STRANDS, templateProfile: undefined }),
+    ).toBe(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
+  });
+
+  test("lets provider-free, LiteLLM-with-id and OpenAI-with-base scaffolds through", () => {
+    expect(chinaModelProviderRestriction(AGENT_PYTHON)).toBeUndefined();
+    expect(
+      chinaModelProviderRestriction({
+        ...AGENT_PYTHON_STRANDS,
+        modelProvider: "LiteLLM",
+        modelId: "deepseek/deepseek-chat",
+      }),
+    ).toBeUndefined();
+    expect(
+      chinaModelProviderRestriction({
+        ...AGENT_TYPESCRIPT_STRANDS,
+        modelProvider: "OpenAI",
+        apiBase: "https://api.deepseek.com/v1",
+      }),
+    ).toBeUndefined();
   });
 });
 

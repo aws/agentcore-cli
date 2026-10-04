@@ -17,6 +17,8 @@ export const RuntimeTemplateProfileSchema = z
   .object({
     /** False when the Runtime hosts an environment but runs no model itself. */
     usesModel: z.boolean().optional(),
+    /** True when the template accepts --model-provider / --model-id / --api-key / --api-base. */
+    modelProviderOverride: z.boolean().optional(),
     /**
      * "managed" uses the template's dependency manifest to install local
      * dependencies and generate container lockfiles. "deferred" leaves both to

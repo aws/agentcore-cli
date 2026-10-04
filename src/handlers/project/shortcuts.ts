@@ -271,7 +271,9 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
     runtimeVersion: template.runtimeVersion,
-    templateProfile: template.profile,
+    templateProfile: template.supportsModelProviderOverride
+      ? { ...template.profile, modelProviderOverride: true }
+      : template.profile,
   };
 
   const result = ScaffoldRuntimeInputSchema.safeParse(input);

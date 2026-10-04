@@ -75,7 +75,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "model-provider",
-        "model provider for supported templates (Bedrock, Anthropic, OpenAI, Gemini, or LiteLLM)",
+        "model provider for supported templates: bedrock, anthropic, open_ai (or openai), gemini, or lite_llm (or litellm)",
         ModelProviderSchema.optional(),
         { group: CONFIGURATION },
       ),
