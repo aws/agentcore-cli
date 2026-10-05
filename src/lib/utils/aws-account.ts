@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from './aws-proxy';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 
@@ -11,6 +12,7 @@ export async function detectAwsAccount(): Promise<string | null> {
     const client = new STSClient({
       credentials: fromNodeProviderChain(),
       region: process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'us-east-1',
+      requestHandler: getProxyRequestHandler(),
     });
     const response = await client.send(new GetCallerIdentityCommand({}));
     return response.Account ?? null;

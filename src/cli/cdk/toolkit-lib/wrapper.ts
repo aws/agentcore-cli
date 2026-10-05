@@ -1,4 +1,5 @@
 import { CONFIG_DIR } from '../../../lib';
+import { getProxyHttpsAgent } from '../../../lib/utils/aws-proxy';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
 import { isChangesetInProgressError } from '../../errors';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
@@ -97,9 +98,13 @@ export class CdkToolkitWrapper {
       // Use explicit profile and region, fall back to env vars per AWS SDK precedence
       const profile = this.options.profile ?? process.env.AWS_PROFILE;
       const region = this.options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+      const baseCredentials =
+        profile || region ? BaseCredentials.awsCliCompatible({ profile, defaultRegion: region }) : undefined;
+      // Route the toolkit's own SDK calls (CloudFormation, S3/ECR asset publishing, ...) through HTTPS_PROXY.
+      const proxyAgent = getProxyHttpsAgent();
       const sdkConfig =
-        profile || region
-          ? { baseCredentials: BaseCredentials.awsCliCompatible({ profile, defaultRegion: region }) }
+        baseCredentials || proxyAgent
+          ? { baseCredentials, httpOptions: proxyAgent ? { agent: proxyAgent } : undefined }
           : undefined;
 
       this.toolkit = new Toolkit({

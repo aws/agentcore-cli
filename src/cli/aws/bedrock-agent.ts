@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from './account';
 import {
   BedrockAgentClient,
@@ -19,7 +20,11 @@ import {
  * the CLI is a one-shot process and connection reuse provides marginal benefit.
  */
 function makeClient(region: string): BedrockAgentClient {
-  return new BedrockAgentClient({ region, credentials: getCredentialProvider() });
+  return new BedrockAgentClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
 }
 
 function isNotFound(err: unknown): boolean {

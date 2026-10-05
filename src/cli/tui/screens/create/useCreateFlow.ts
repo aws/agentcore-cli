@@ -7,6 +7,7 @@ import {
   setEnvVar,
   setSessionProjectRoot,
 } from '../../../../lib';
+import { getProxyRequestHandler } from '../../../../lib/utils/aws-proxy';
 import type { DeployedState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import { validateFilesystemMountsConfiguration } from '../../../commands/shared/filesystem-utils';
@@ -366,7 +367,11 @@ export function useCreateFlow(cwd: string): CreateFlowState {
                 let agentVpcId: string | undefined;
                 if (subnetIds.length > 0) {
                   try {
-                    const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+                    const ec2 = new EC2Client({
+                      region: awsRegion,
+                      credentials: getCredentialProvider(),
+                      requestHandler: getProxyRequestHandler(),
+                    });
                     const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
                     agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
                   } catch {

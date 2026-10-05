@@ -7,6 +7,7 @@ import {
   findConfigRoot,
   setEnvVar,
 } from '../../../../lib';
+import { getProxyRequestHandler } from '../../../../lib/utils/aws-proxy';
 import type { AgentEnvSpec, DirectoryPath, FilePath } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import {
@@ -249,7 +250,11 @@ async function addAgentInner(config: AddAgentConfig): Promise<AddAgentInnerResul
     const subnetIds = config.subnets ?? [];
     if (subnetIds.length > 0) {
       try {
-        const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+        const ec2 = new EC2Client({
+          region: awsRegion,
+          credentials: getCredentialProvider(),
+          requestHandler: getProxyRequestHandler(),
+        });
         const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));
         agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
       } catch {
