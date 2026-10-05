@@ -48,7 +48,7 @@ const PROVIDER_CHOICES: Choice<EvaluatorModelProvider>[] = [
   {
     value: "Bedrock",
     label: "Bedrock",
-    description: "an Amazon Bedrock model or inference profile",
+    description: "Anthropic Claude and other models on Amazon Bedrock",
   },
   {
     value: "OpenResponses",

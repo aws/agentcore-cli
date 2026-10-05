@@ -590,7 +590,7 @@ const MODEL_PROVIDERS: {
   {
     kind: "bedrock",
     label: "bedrock",
-    description: "an Amazon Bedrock model or inference profile",
+    description: "Anthropic Claude and other models on Amazon Bedrock",
     fields: [
       {
         key: "modelId",

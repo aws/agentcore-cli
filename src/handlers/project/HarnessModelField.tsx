@@ -43,7 +43,7 @@ const MODEL_PROVIDERS: {
   {
     provider: "bedrock",
     label: "bedrock",
-    description: "an Amazon Bedrock model or inference profile",
+    description: "Anthropic Claude and other models on Amazon Bedrock",
   },
   {
     provider: "open_ai",
