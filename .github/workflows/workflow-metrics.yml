@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   metrics:
-    uses: aws/agentcore-devx-devtools/.github/workflows/workflow-metrics.yml@d145deb62f1adc8be63fa4879a488499e1128a46
+    uses: aws/agentcore-devx-devtools/.github/workflows/workflow-metrics.yml@d69d92d498acb6d06739a72515ecdc71c69f2777
     with:
       namespace: AgentCoreCLI/Workflows
       os: Linux
