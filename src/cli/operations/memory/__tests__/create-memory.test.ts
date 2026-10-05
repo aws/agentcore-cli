@@ -85,6 +85,30 @@ describe('add', () => {
     expect(addedMemory.strategies[0]!.namespaceTemplates).toEqual(['/users/{actorId}/facts']);
   });
 
+  it('sets encryptionKeyArn when kmsKeyArn is provided', async () => {
+    const kmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012';
+    mockReadProjectSpec.mockResolvedValue(makeProject([]));
+    mockWriteProjectSpec.mockResolvedValue(undefined);
+
+    const result = await primitive.add({ name: 'EncMem', strategies: 'SEMANTIC', kmsKeyArn });
+
+    expect(result).toEqual(expect.objectContaining({ success: true, memoryName: 'EncMem' }));
+    const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
+    const addedMemory = writtenSpec.memories.find((m: { name: string }) => m.name === 'EncMem');
+    expect(addedMemory.encryptionKeyArn).toBe(kmsKeyArn);
+  });
+
+  it('omits encryptionKeyArn when kmsKeyArn is not provided', async () => {
+    mockReadProjectSpec.mockResolvedValue(makeProject([]));
+    mockWriteProjectSpec.mockResolvedValue(undefined);
+
+    await primitive.add({ name: 'PlainMem', strategies: 'SEMANTIC' });
+
+    const writtenSpec = mockWriteProjectSpec.mock.calls[0]![0];
+    const addedMemory = writtenSpec.memories.find((m: { name: string }) => m.name === 'PlainMem');
+    expect(addedMemory).not.toHaveProperty('encryptionKeyArn');
+  });
+
   it('rejects invalid strategy type', async () => {
     const project = makeProject([]);
     mockReadProjectSpec.mockResolvedValue(project);

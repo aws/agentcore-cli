@@ -116,6 +116,33 @@ describe('add memory command', () => {
       expect(memory?.eventExpiryDuration).toBe(90);
     });
 
+    it('creates memory with a customer-managed KMS key', async () => {
+      const memoryName = `kms${Date.now()}`;
+      const kmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012';
+      const result = await runCLI(
+        ['add', 'memory', '--name', memoryName, '--strategies', 'SEMANTIC', '--kms-key-arn', kmsKeyArn, '--json'],
+        projectDir
+      );
+
+      expect(result.exitCode, `stdout: ${result.stdout}, stderr: ${result.stderr}`).toBe(0);
+
+      const projectSpec = JSON.parse(await readFile(join(projectDir, 'agentcore/agentcore.json'), 'utf-8'));
+      const memory = projectSpec.memories.find((m: { name: string }) => m.name === memoryName);
+      expect(memory?.encryptionKeyArn).toBe(kmsKeyArn);
+    });
+
+    it('rejects an invalid KMS key ARN', async () => {
+      const result = await runCLI(
+        ['add', 'memory', '--name', `badKms${Date.now()}`, '--kms-key-arn', 'not-an-arn', '--json'],
+        projectDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('--kms-key-arn');
+    });
+
     it('sets default namespaces for each strategy type', async () => {
       const memoryName = `ns${Date.now()}`;
       const result = await runCLI(

@@ -55,6 +55,8 @@ const VALID_STRATEGIES = ['SEMANTIC', 'SUMMARIZATION', 'USER_PREFERENCE', 'EPISO
 const VALID_STREAM_CONTENT_LEVELS = ['FULL_CONTENT', 'METADATA_ONLY'];
 const VALID_DELIVERY_TYPES = ['kinesis'] as const;
 export const DEFAULT_DELIVERY_TYPE = 'kinesis';
+const KMS_KEY_ARN_VALIDATION_MESSAGE =
+  '--kms-key-arn must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)';
 
 /**
  * Validate that a credential name exists in the project spec.
@@ -1016,6 +1018,10 @@ export function validateAddMemoryOptions(options: AddMemoryOptions): ValidationR
     }
   }
 
+  if (options.kmsKeyArn && !isValidKmsKeyArn(options.kmsKeyArn)) {
+    return { valid: false, error: KMS_KEY_ARN_VALIDATION_MESSAGE };
+  }
+
   return { valid: true };
 }
 
@@ -1041,11 +1047,7 @@ export function validateAddDatasetOptions(options: AddDatasetOptions): Validatio
   }
 
   if (options.kmsKeyArn && !isValidKmsKeyArn(options.kmsKeyArn)) {
-    return {
-      valid: false,
-      error:
-        '--kms-key-arn must be a valid KMS key ARN (e.g. arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)',
-    };
+    return { valid: false, error: KMS_KEY_ARN_VALIDATION_MESSAGE };
   }
 
   return { valid: true };
