@@ -22,7 +22,7 @@ import {
   resolveImportBedrockAgentInput,
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
-import { addProjectResource, requireDeployedNameFits } from "../shared";
+import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 import { BMA_CUSTOM_EXECUTION_ROLE_WARNING } from "../../bma";
 
 const CONFIGURATION = "Configuration:";
@@ -58,7 +58,7 @@ export function toAddRuntimeInput(input: RuntimeInput): AddResourceInput {
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "runtime",
-    description: "add a Runtime to the current project",
+    description: addDescription("runtime", "add a Runtime to the current project"),
     flags: [
       flag("name", "the name of the Runtime", AgentNameSchema, { group: CONFIGURATION }),
       flag(

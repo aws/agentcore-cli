@@ -14,6 +14,7 @@ import {
   inProjectContext,
   tick,
 } from "../../../testing";
+import { type ChinaAddKind, isAddableInChina } from "../../../core/project/manager";
 import { CHINA_ADD_MENU_ALERT } from "./screen";
 import { CN_UNAVAILABLE_NOTE } from "./shared";
 
@@ -28,10 +29,29 @@ function addSubcommands(): string[] {
   return add.commands.map((command) => command.name()).filter((name) => name !== "help");
 }
 
-// The add resources available in China regions — the menu names of the project
-// manager's CN_SUPPORTED_RESOURCE_TYPES (connector-backed Targets are refused
-// there, so gateway-connector is not among them).
-const CHINA_AVAILABLE = ["runtime", "runtime-endpoint", "gateway", "gateway-target", "credentials"];
+// The China kind each `add` menu command adds — the same kind its handler
+// passes to addDescription. Availability itself has one source, the project
+// manager's allowlist (isAddableInChina); this map only names the kinds. A
+// command missing here fails the test, so a new resource is classified on
+// purpose rather than slipping in unmarked.
+const ADD_COMMAND_KINDS: Record<string, ChinaAddKind> = {
+  runtime: "runtime",
+  "runtime-endpoint": "runtime-endpoint",
+  memory: "memory",
+  gateway: "gateway",
+  "gateway-target": "gateway-target",
+  "gateway-connector": "gateway-connector",
+  "online-eval": "online-eval",
+  "online-insight": "online-insight",
+  harness: "harness",
+  "config-bundle": "config-bundle",
+  "policy-engine": "policy-engine",
+  policy: "policy",
+  "payment-manager": "payment-manager",
+  "payment-connector": "payment-connector",
+  evaluator: "evaluator",
+  credentials: "credential",
+};
 
 // chinaProject scaffolds a project whose only deployment target is cn-north-1.
 async function chinaProject(region = "cn-north-1") {
@@ -83,15 +103,17 @@ describe("project add menu", () => {
     r.unmount();
   });
 
-  test("every resource unavailable in China regions says so in its description", () => {
+  test("a resource says it is unavailable in China iff its kind is outside the allowlist", () => {
     const root = compiledRootCommand();
     const add = root.commands.find((command) => command.name() === "add")!;
     for (const command of add.commands) {
       if (command.name() === "help") continue;
+      const kind = ADD_COMMAND_KINDS[command.name()];
+      expect(kind, `add ${command.name()} has no China kind in ADD_COMMAND_KINDS`).toBeDefined();
       const says = command.description().endsWith(`(${CN_UNAVAILABLE_NOTE})`);
       expect({ command: command.name(), says }).toEqual({
         command: command.name(),
-        says: !CHINA_AVAILABLE.includes(command.name()),
+        says: !isAddableInChina(kind!),
       });
     }
   });

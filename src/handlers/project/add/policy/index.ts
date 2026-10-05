@@ -4,7 +4,7 @@ import type { PolicySchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, cnUnavailable } from "../shared";
+import { addProjectResource, addDescription } from "../shared";
 
 /**
  A substring heuristic, not a Cedar parser; --authorization-phase overrides it.
@@ -56,7 +56,7 @@ export function toAddPolicyInput(input: PolicyInput): AddResourceInput {
 export const createAddPolicyHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "policy",
-    description: cnUnavailable("add a Cedar Policy to a project Policy Engine"),
+    description: addDescription("policy", "add a Cedar Policy to a project Policy Engine"),
     flags: [
       flag("engine", "name of the parent Policy Engine in this project", z.string().min(1)),
       flag("name", "the Policy name", z.string().min(1)),

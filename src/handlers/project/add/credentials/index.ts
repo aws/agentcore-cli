@@ -5,11 +5,15 @@ import type { AddProjectResourceConfig } from "../types";
 import { createAddApiKeyCredentialHandler } from "./api-key";
 import { createAddOauthCredentialHandler } from "./oauth";
 import { createAddPaymentCredentialHandler } from "./payment";
+import { addDescription } from "../shared";
 
 export function createAddCredentialsHandler(config: AddProjectResourceConfig, core: Core): Router {
   const credentials = new Router(
     "credentials",
-    "add AgentCore Identity credential providers to the current project",
+    addDescription(
+      "credential",
+      "add AgentCore Identity credential providers to the current project",
+    ),
   )
     .default(renderTui(core, config.io))
     .supportedTuiCommands("api-key", "oauth", "payment");

@@ -15,7 +15,7 @@ import {
 } from "../../../../projectSchemas/memory";
 import { TagsSchema } from "../../../../projectSchemas/tags";
 import type { AddResourceInput } from "../../types";
-import { addProjectResource, requireDeployedNameFits, cnUnavailable } from "../shared";
+import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 
 // The service default for raw event retention
 export const DEFAULT_EVENT_EXPIRY_DURATION = 30;
@@ -128,7 +128,7 @@ JSON example:
 export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "memory",
-    description: cnUnavailable("add a Memory to the current project"),
+    description: addDescription("memory", "add a Memory to the current project"),
     flags: [
       flag("name", "the name of the Memory", z.string().min(1)),
       flag("description", "a description of what the Memory stores", z.string().optional()),

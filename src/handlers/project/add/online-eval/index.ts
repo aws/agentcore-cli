@@ -6,7 +6,7 @@ import { parseJsonFlag } from "../../../utils";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, requireDeployedNameFits, cnUnavailable } from "../shared";
+import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 
 export const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
 const ARN_PREFIX = "arn:";
@@ -78,7 +78,10 @@ export function toAddOnlineEvalInput(
 export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "online-eval",
-    description: cnUnavailable("add an online evaluation config to the current project"),
+    description: addDescription(
+      "online-eval",
+      "add an online evaluation config to the current project",
+    ),
     flags: [
       flag("name", "the name of the online evaluation config", z.string().min(1)),
       flag(

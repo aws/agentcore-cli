@@ -6,7 +6,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { parseTags } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, requireDeployedNameFits, cnUnavailable } from "../shared";
+import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 
 // The deployed name is <project>_<target>_<name>, and the service caps it here.
 export const POLICY_ENGINE_DEPLOYED_NAME_MAX = 48;
@@ -64,7 +64,7 @@ export function toAddPolicyEngineInput(
 export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "policy-engine",
-    description: cnUnavailable("add a Policy Engine to the current project"),
+    description: addDescription("policy-engine", "add a Policy Engine to the current project"),
     flags: [
       flag("name", "the Policy Engine name", z.string().min(1)),
       flag("description", "Policy Engine description", z.string().optional()),

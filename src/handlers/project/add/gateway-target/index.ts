@@ -11,7 +11,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, addDescription } from "../shared";
 
 // HttpsEndpointSchema is what --endpoint and the wizard's endpoint step both
 // check an MCP server URL against, so they refuse the same values in the same
@@ -76,7 +76,7 @@ export function toAddGatewayTargetInput(
 export const createAddGatewayTargetHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway-target",
-    description: "add a Target to a project Gateway",
+    description: addDescription("gateway-target", "add a Target to a project Gateway"),
     flags: [
       flag("gateway", "name of the parent Gateway in this project", z.string().min(1)),
       flag("name", "the Target name for endpoint or Runtime shortcuts", z.string().optional()),

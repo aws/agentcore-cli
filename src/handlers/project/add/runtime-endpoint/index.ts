@@ -2,7 +2,7 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource } from "../shared";
+import { addProjectResource, addDescription } from "../shared";
 
 // The version an endpoint points to when none is given — what --version
 // documents as its default, and what the wizard prefills.
@@ -36,7 +36,10 @@ export function toAddRuntimeEndpointInput(input: RuntimeEndpointInput): AddRunti
 export const createAddRuntimeEndpointHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "runtime-endpoint",
-    description: "add a named endpoint (version alias) to a runtime",
+    description: addDescription(
+      "runtime-endpoint",
+      "add a named endpoint (version alias) to a runtime",
+    ),
     flags: [
       flag("runtime", "the parent runtime name", z.string().min(1)),
       flag("name", "the endpoint name (e.g., prod, staging)", z.string().min(1)),

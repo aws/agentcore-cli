@@ -6,7 +6,7 @@ import { parseJsonFlag } from "../../../utils";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, requireDeployedNameFits, cnUnavailable } from "../shared";
+import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 
 export const BUILTIN_INSIGHT_PREFIX = "Builtin.Insight.";
 const ARN_PREFIX = "arn:";
@@ -77,7 +77,10 @@ export function toAddOnlineInsightInput(
 export const createAddOnlineInsightHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "online-insight",
-    description: cnUnavailable("add an online insight config to the current project"),
+    description: addDescription(
+      "online-insight",
+      "add an online insight config to the current project",
+    ),
     flags: [
       flag("name", "the name of the online insight config", z.string().min(1)),
       flag(

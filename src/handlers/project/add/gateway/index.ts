@@ -17,7 +17,7 @@ import { formatZodError } from "../../../../router/schema";
 import { parseJsonFlag, parseTags } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, requireDeployedNameFits } from "../shared";
+import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 
 export const GatewayAuthorizerConfigurationInputSchema = GatewayAuthorizerConfigSchema.strict();
 
@@ -102,7 +102,7 @@ export function toAddGatewayInput(
 export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "gateway",
-    description: "add a Gateway to the current project",
+    description: addDescription("gateway", "add a Gateway to the current project"),
     flags: [
       flag("name", "the Gateway name", z.string().min(1)),
       flag(

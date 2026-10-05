@@ -163,19 +163,41 @@ export const HARNESS_CN_MESSAGE =
   "instead (e.g. --template agent-python-minimal) or start from --template empty.";
 
 /**
- * The resource families whose CloudFormation types ARE registered in the
- * China regions (verified against cn-north-1's public registry): Runtime,
- * RuntimeEndpoint, Gateway (+Target/+RateLimit), and Identity credentials.
- * Declared as an allowlist so any family added later defaults to blocked in
- * China until its availability there is confirmed.
+ * What an `add` adds, as the China gate classifies it: the resource type,
+ * except that a connector-backed Gateway Target is its own kind, since it is
+ * refused where other Gateway Targets are allowed.
  */
-const CN_SUPPORTED_RESOURCE_TYPES = new Set<AddResourceInput["resourceType"]>([
+export type ChinaAddKind = AddResourceInput["resourceType"] | "gateway-connector";
+
+/**
+ * The `add` kinds available in China regions — the families whose
+ * CloudFormation types ARE registered there (verified against cn-north-1's
+ * public registry): Runtime, RuntimeEndpoint, Gateway (+Target/+RateLimit), and
+ * Identity credentials. The single source for the add gate below, for the
+ * "(not available in China regions)" note on each `add` subcommand's help, and
+ * for the add menu's China alert. Declared as an allowlist so any kind added
+ * later is blocked in China, and says so in its help, until its availability
+ * there is confirmed and it is added here.
+ */
+const CN_SUPPORTED_ADD_KINDS: ReadonlySet<ChinaAddKind> = new Set<ChinaAddKind>([
   "runtime",
   "runtime-endpoint",
   "credential",
   "gateway",
   "gateway-target",
 ]);
+
+/** The China kind of an `add` input (see {@link ChinaAddKind}). */
+export function chinaAddKind(input: AddResourceInput): ChinaAddKind {
+  return input.resourceType === "gateway-target" && input.resourceConfig.targetType === "connector"
+    ? "gateway-connector"
+    : input.resourceType;
+}
+
+/** Whether an `add` kind can be added to, and deployed from, a project with a China target. */
+export function isAddableInChina(kind: ChinaAddKind): boolean {
+  return CN_SUPPORTED_ADD_KINDS.has(kind);
+}
 
 /**
  * The project spec collections deployable to a China region — the spec-file
@@ -527,8 +549,7 @@ export class FsProjectManager implements ProjectManager {
     let envFile: EnvLocalFile | undefined;
 
     // A project with a China (aws-cn) deployment target can only add the
-    // resource families whose CloudFormation types exist there (Runtime,
-    // Gateway, credential). Runtimes additionally gate on the model provider
+    // kinds in CN_SUPPORTED_ADD_KINDS (Runtime, Gateway, credential). Runtimes additionally gate on the model provider
     // — Bedrock/Anthropic/OpenAI/Gemini are unreachable, LiteLLM needs an
     // explicit model id (its default routes to Bedrock) — and the default
     // memory is dropped from the scaffold (see MEMORY_STRIPPED_CN_MESSAGE);
@@ -538,17 +559,14 @@ export class FsProjectManager implements ProjectManager {
       if (input.resourceType === "harness") {
         throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
       }
-      if (!CN_SUPPORTED_RESOURCE_TYPES.has(input.resourceType)) {
-        throw new RegionUnsupportedFeatureError(cnUnsupportedResourceMessage(input.resourceType));
-      }
-      // Gateways are available, but a connector-backed Target is not: the
-      // allowlist above is by resource type, so the Target's own type is checked here.
-      if (
-        input.resourceType === "gateway-target" &&
-        input.resourceConfig.targetType === "connector"
-      ) {
+      // One allowlist decides what is refused (CN_SUPPORTED_ADD_KINDS); the
+      // input decides which message: a connector-backed Gateway Target gets
+      // its own, every other blocked kind the generic one.
+      if (!isAddableInChina(chinaAddKind(input))) {
         throw new RegionUnsupportedFeatureError(
-          cnConnectorTargetMessage(input.resourceConfig.connectorId),
+          input.resourceType === "gateway-target" && input.resourceConfig.targetType === "connector"
+            ? cnConnectorTargetMessage(input.resourceConfig.connectorId)
+            : cnUnsupportedResourceMessage(input.resourceType),
         );
       }
       if (input.resourceType === "runtime") {

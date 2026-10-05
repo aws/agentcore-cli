@@ -11,7 +11,7 @@ import {
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, cnUnavailable } from "../shared";
+import { addProjectResource, addDescription } from "../shared";
 
 export type PaymentManagerInput = {
   name: string;
@@ -102,7 +102,7 @@ export function toAddPaymentManagerInput(input: PaymentManagerInput): AddResourc
 export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig) =>
   createHandler({
     name: "payment-manager",
-    description: cnUnavailable("add a payment manager to the current project"),
+    description: addDescription("payment-manager", "add a payment manager to the current project"),
     flags: [
       flag("name", "the payment manager name", z.string().min(1)),
       flag(

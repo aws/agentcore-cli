@@ -11,9 +11,9 @@ const PATH = ["agentcore", "add"];
 
 /**
  * Shown above the add menu when the project has a China (aws-cn) deployment
- * target. The families it refers to carry {@link CN_UNAVAILABLE_NOTE} in their
- * description, so the menu rows themselves say which ones; the manager refuses
- * them when their wizard submits.
+ * target. The rows it refers to carry {@link CN_UNAVAILABLE_NOTE}, derived from
+ * the project manager's China allowlist, so the menu says which ones; the same
+ * allowlist refuses them when their wizard submits.
  */
 export const CHINA_ADD_MENU_ALERT =
   `This project deploys to a China (aws-cn) region: the resources marked ` +
