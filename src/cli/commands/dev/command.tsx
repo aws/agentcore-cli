@@ -96,6 +96,10 @@ function isConnectionRefused(err: unknown): boolean {
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed');
 }
 
+export function harnessOnlyDevLogsMessage(): string {
+  return 'Harness projects do not support local dev. Use `agentcore invoke --harness <name> "your prompt"` instead.';
+}
+
 async function handleMcpInvoke(
   port: number,
   invokeValue: string,
@@ -369,19 +373,7 @@ export const registerDev = (program: Command) => {
             if (opts.logs) {
               // Harness-only projects need deploy then print invoke instructions
               if (supportedAgents.length === 0 && hasHarnesses) {
-                recorder.set({ agent_environment: 'harness' as const });
-                if (!opts.skipDeploy) {
-                  await runCliDeploy();
-                }
-                const harnessNames = (project.harnesses ?? []).map(h => h.name);
-                console.log('Harness dev runs against the deployed service (no local server).');
-                console.log(`If you changed the harness config, redeploy to pick up changes: agentcore deploy`);
-                console.log(`\nInvoke your harness:`);
-                for (const name of harnessNames) {
-                  console.log(`  agentcore invoke --harness ${name} "your prompt"`);
-                }
-                console.log(`\nOr use the interactive TUI: agentcore dev`);
-                return { success: true as const, blockingPromise: Promise.resolve() };
+                throw new ValidationError(harnessOnlyDevLogsMessage());
               }
 
               if (project.runtimes.length > 1 && !opts.runtime) {
