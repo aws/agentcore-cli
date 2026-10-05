@@ -181,6 +181,7 @@ export type CreateOnlineInsightInput = {
   clusteringConfig?: { frequencies: ("DAILY" | "WEEKLY" | "MONTHLY")[] };
   evaluationExecutionRoleArn: string;
   enableOnCreate?: boolean;
+  outputConfig?: OnlineEvalOutputConfig;
 } & (
   | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
@@ -197,6 +198,7 @@ export type UpdateOnlineInsightInput = {
   clearEndpoint?: boolean;
   dataSourceConfig?: DataSourceConfig;
   evaluationExecutionRoleArn?: string;
+  outputConfig?: OnlineEvalOutputConfig;
 };
 
 // Online insight configs are the same OnlineEvaluationConfig resource with insights
@@ -302,6 +304,7 @@ export type StartBatchInsightsInput = {
   evaluatorIds?: string[];
   source: SessionSourceValue;
   kmsKeyArn?: string;
+  outputConfig?: OutputConfig;
 };
 
 // InvokeDatasetInput is the runtime-level shape for replaying a dataset: invoke each
