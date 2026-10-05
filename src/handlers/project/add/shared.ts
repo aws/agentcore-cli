@@ -3,7 +3,7 @@ import { type AwsDeploymentTarget, DEFAULT_TARGET_NAME } from "../../../projectS
 import { type ChinaAddKind, isAddableInChina } from "../../../core/project/manager";
 import type { Context } from "../../../router";
 import { runWithProgress } from "../../../tui/progress";
-import { JsonKey } from "../../keys";
+import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import {
   projectMutationResource,
@@ -68,10 +68,13 @@ export async function addProjectResource(
   // Same driver as create, build, and deploy: a live step list in a TTY, and
   // plain line-per-step output when stderr is not a TTY or --json wants no ANSI
   // on it.
-  const updatedProject = await runWithProgress(config.projectManager.addResource(project, input), {
-    io: config.io,
-    interactive: ctx.require(JsonKey) ? false : undefined,
-  });
+  const updatedProject = await runWithProgress(
+    config.projectManager.addResource(project, input, { region: ctx.value(RegionKey) }),
+    {
+      io: config.io,
+      interactive: ctx.require(JsonKey) ? false : undefined,
+    },
+  );
 
   renderResult<ProjectMutationResult>(
     ctx,

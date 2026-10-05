@@ -26,6 +26,7 @@ import {
   toAddConfigBundleInput,
   type ConfigBundleInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "config-bundle"];
 const DESCRIPTION = "add a configuration bundle to the current project";
@@ -95,17 +96,29 @@ export function AddConfigBundleScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddConfigBundleLoader project={project} core={core} />}
+      {(project) => (
+        <AddConfigBundleLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
 
-function AddConfigBundleLoader({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function AddConfigBundleLoader({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  region: string | undefined;
+}) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddConfigBundleWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddConfigBundleWizard project={project} targets={targets.data} core={core} region={region} />
+    );
   }
 
   return (
@@ -123,10 +136,13 @@ function AddConfigBundleWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -165,6 +181,7 @@ function AddConfigBundleWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddConfigBundleInput(project, targets, toConfigBundleInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

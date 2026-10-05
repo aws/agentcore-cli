@@ -24,6 +24,7 @@ import { credentialSetupNotes, toAddCredentialInput } from "../shared";
 import { toAddPaymentCredentialInput, type PaymentCredentialInput } from "./index";
 import type { PaymentCredentialInputFlags } from "./input";
 import { validatePaymentIdentifier } from "./validation";
+import { RegionKey } from "../../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "credentials", "payment"];
 const DESCRIPTION = "add a payment credential provider to the current project";
@@ -125,7 +126,9 @@ export function AddPaymentCredentialScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(CREDENTIALS_MENU)}
     >
-      {(project) => <AddPaymentCredentialWizard project={project} core={core} />}
+      {(project) => (
+        <AddPaymentCredentialWizard project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -133,9 +136,12 @@ export function AddPaymentCredentialScreen({ ctx, core }: ScreenProps) {
 function AddPaymentCredentialWizard({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -165,6 +171,7 @@ function AddPaymentCredentialWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddCredentialInput(project, credential),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

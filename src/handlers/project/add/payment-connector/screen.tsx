@@ -20,6 +20,7 @@ import type { ScreenProps } from "../../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
 import { toAddPaymentConnectorInput, type PaymentConnectorInput } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "payment-connector"];
 const DESCRIPTION = "add a connector to a project payment manager";
@@ -105,7 +106,9 @@ export function AddPaymentConnectorScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddPaymentConnectorWizard project={project} core={core} />}
+      {(project) => (
+        <AddPaymentConnectorWizard project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -113,9 +116,12 @@ export function AddPaymentConnectorScreen({ ctx, core }: ScreenProps) {
 function AddPaymentConnectorWizard({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -143,6 +149,7 @@ function AddPaymentConnectorWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddPaymentConnectorInput(project, toPaymentConnectorInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

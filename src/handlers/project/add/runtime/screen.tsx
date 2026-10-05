@@ -145,6 +145,7 @@ function AddRuntimeWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddRuntimeInput(toRuntimeInput(values, apiKey)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

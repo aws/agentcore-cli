@@ -32,6 +32,7 @@ import {
   toAddCodeBasedEvaluatorInput,
   type CodeBasedEvaluatorInput,
 } from "./index";
+import { RegionKey } from "../../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "evaluator", "code-based"];
 const DESCRIPTION = "add a code-based evaluator to the current project";
@@ -88,7 +89,9 @@ export function AddCodeBasedEvaluatorScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(EVALUATOR_MENU)}
     >
-      {(project) => <AddCodeBasedEvaluatorLoader project={project} core={core} />}
+      {(project) => (
+        <AddCodeBasedEvaluatorLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -96,15 +99,24 @@ export function AddCodeBasedEvaluatorScreen({ ctx, core }: ScreenProps) {
 function AddCodeBasedEvaluatorLoader({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddCodeBasedEvaluatorWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddCodeBasedEvaluatorWizard
+        project={project}
+        targets={targets.data}
+        core={core}
+        region={region}
+      />
+    );
   }
 
   return (
@@ -122,10 +134,13 @@ function AddCodeBasedEvaluatorWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -153,6 +168,7 @@ function AddCodeBasedEvaluatorWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddCodeBasedEvaluatorInput(project, targets, toCodeBasedInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

@@ -40,6 +40,7 @@ import {
   validateEvaluatorReferences,
   type OnlineEvalInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "online-eval"];
@@ -186,17 +187,29 @@ export function AddOnlineEvalScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddOnlineEvalLoader project={project} core={core} />}
+      {(project) => (
+        <AddOnlineEvalLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
 
-function AddOnlineEvalLoader({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function AddOnlineEvalLoader({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  region: string | undefined;
+}) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddOnlineEvalWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddOnlineEvalWizard project={project} targets={targets.data} core={core} region={region} />
+    );
   }
 
   return (
@@ -214,10 +227,13 @@ function AddOnlineEvalWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -271,6 +287,7 @@ function AddOnlineEvalWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddOnlineEvalInput(project, targets, toOnlineEvalInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

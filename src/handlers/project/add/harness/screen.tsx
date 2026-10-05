@@ -25,6 +25,7 @@ import {
 import { LoadingFrame, ProjectGate, projectQueryKey, useProjectTargets } from "../../ProjectGate";
 import { requireDeployedNameFits } from "../shared";
 import { toAddHarnessInput } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "harness"];
 const DESCRIPTION = "add a harness to the current project";
@@ -71,17 +72,29 @@ export function AddHarnessScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddHarnessLoader project={project} core={core} />}
+      {(project) => (
+        <AddHarnessLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
 
-function AddHarnessLoader({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function AddHarnessLoader({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  region: string | undefined;
+}) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddHarnessWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddHarnessWizard project={project} targets={targets.data} core={core} region={region} />
+    );
   }
 
   return (
@@ -99,10 +112,13 @@ function AddHarnessWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -140,6 +156,7 @@ function AddHarnessWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddHarnessInput(project, targets, toHarnessInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

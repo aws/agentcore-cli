@@ -21,8 +21,9 @@
   (TypeScript), with no model id prefilled, marks the other providers as not accessible, and
   applies the same restrictions when the form is submitted.
 - The restrictions are enforced wherever the region is known: at `agentcore create` when the
-  resolved region (`--region`, environment, or profile) is a China region, at
-  `agentcore add runtime` once deployment targets exist, and at `agentcore deploy` — deploying
+  resolved region (`--region`, environment, or profile) is a China region, at `agentcore add`
+  when the project has a China deployment target — or, before the first deploy, when it has no
+  target yet and the resolved region is a China region — and at `agentcore deploy` — deploying
   to a China target fails when a runtime was scaffolded with an inaccessible model provider
   (recorded as the runtime's `modelProvider` in `agentcore.json`; delete that field if you have
   replaced the model wiring in code). Harness projects are not available in China regions.

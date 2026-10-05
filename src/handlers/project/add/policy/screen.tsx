@@ -26,6 +26,7 @@ import {
   type PolicyEnforcementMode,
   type PolicyInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "policy"];
 const DESCRIPTION = "add a Cedar Policy to a project Policy Engine";
@@ -193,12 +194,21 @@ export function AddPolicyScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddPolicyWizard project={project} core={core} />}
+      {(project) => <AddPolicyWizard project={project} core={core} region={ctx.value(RegionKey)} />}
     </ProjectGate>
   );
 }
 
-function AddPolicyWizard({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function AddPolicyWizard({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  /** The command's resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const engines = project.spec.policyEngines ?? [];
@@ -228,6 +238,7 @@ function AddPolicyWizard({ project, core }: { project: Project; core: ScreenProp
         const updated = yield* core.projectManager.addResource(
           project,
           toAddPolicyInput(toPolicyInput(values, statement)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

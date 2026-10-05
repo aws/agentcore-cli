@@ -29,6 +29,7 @@ import type { Project } from "../../types";
 import { LoadingFrame, ProjectGate, projectQueryKey, useProjectTargets } from "../../ProjectGate";
 import { requireDeployedNameFits } from "../shared";
 import { toAddGatewayInput, type GatewayInput } from "./index";
+import { RegionKey } from "../../../keys";
 
 const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "gateway"];
@@ -127,17 +128,29 @@ export function AddGatewayScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddGatewayLoader project={project} core={core} />}
+      {(project) => (
+        <AddGatewayLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
 
-function AddGatewayLoader({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function AddGatewayLoader({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  region: string | undefined;
+}) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddGatewayWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddGatewayWizard project={project} targets={targets.data} core={core} region={region} />
+    );
   }
 
   return (
@@ -155,10 +168,13 @@ function AddGatewayWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -196,6 +212,7 @@ function AddGatewayWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddGatewayInput(project, targets, toGatewayInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

@@ -35,6 +35,7 @@ import {
   toAddOnlineInsightInput,
   type OnlineInsightInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const theme = darkTheme;
 const BREADCRUMB = ["agentcore", "add", "online-insight"];
@@ -130,7 +131,9 @@ export function AddOnlineInsightScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddOnlineInsightLoader project={project} core={core} />}
+      {(project) => (
+        <AddOnlineInsightLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -138,15 +141,24 @@ export function AddOnlineInsightScreen({ ctx, core }: ScreenProps) {
 function AddOnlineInsightLoader({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddOnlineInsightWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddOnlineInsightWizard
+        project={project}
+        targets={targets.data}
+        core={core}
+        region={region}
+      />
+    );
   }
 
   return (
@@ -164,10 +176,13 @@ function AddOnlineInsightWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -217,6 +232,7 @@ function AddOnlineInsightWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddOnlineInsightInput(project, targets, toOnlineInsightInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

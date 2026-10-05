@@ -37,6 +37,7 @@ import {
   type Project,
   type ProjectEvent,
   type ScaffoldRuntimeInput,
+  type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
@@ -125,8 +126,9 @@ async function runAdd(
   subject: FsProjectManager,
   project: Project,
   input: AddResourceInput,
+  options?: AddResourceOptions,
 ): Promise<Project> {
-  const iterator = subject.addResource(project, input);
+  const iterator = subject.addResource(project, input, options);
   while (true) {
     const next = await iterator.next();
     if (next.done) return next.value;
@@ -1201,6 +1203,100 @@ describe("FsProjectManager.addResource", () => {
       // The memory is stripped with a note before the scaffold proceeds to
       // dependency checks (which fail in this environment).
       expect(steps.join("\n")).toContain(MEMORY_STRIPPED_CN_MESSAGE);
+      expect(String(error)).toContain("uv is missing");
+    });
+
+    // Before the first deploy a project has no target; the CLI's resolved
+    // region stands in, so `add` behaves the same as it will once deployed.
+    async function projectWithoutTarget(scaffoldRuntimeInput: ScaffoldRuntimeInput = AGENT_PYTHON) {
+      const created = await projectWithTarget("us-east-1", "uv", scaffoldRuntimeInput);
+      await rm(join(created.project.rootPath, "agentcore", "aws-targets.json"));
+      return created;
+    }
+
+    async function collectSteps(iterator: AsyncGenerator<ProjectEvent, Project>) {
+      const steps: string[] = [];
+      try {
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) return { steps, error: undefined };
+          if (next.value.type === "step") steps.push(next.value.message);
+        }
+      } catch (error) {
+        return { steps, error };
+      }
+    }
+
+    const LITELLM_RUNTIME = {
+      resourceType: "runtime" as const,
+      resourceConfig: {
+        name: "cn_mem",
+        scaffoldRuntimeInput: {
+          ...AGENT_PYTHON_STRANDS,
+          runtimeName: "cn_mem",
+          modelProvider: "LiteLLM" as const,
+          modelId: "deepseek/deepseek-chat",
+        },
+      },
+    };
+
+    test("with no target yet, a China resolved region drops the default memory", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithoutTarget();
+
+      const { steps, error } = await collectSteps(
+        subject.addResource(project, LITELLM_RUNTIME, { region: "cn-north-1" }),
+      );
+
+      expect(steps.join("\n")).toContain(MEMORY_STRIPPED_CN_MESSAGE);
+      expect(String(error)).toContain("uv is missing");
+    });
+
+    test("with no target yet, a China resolved region refuses a blocked model provider", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithoutTarget();
+
+      await expect(
+        runAdd(
+          subject,
+          project,
+          {
+            resourceType: "runtime",
+            resourceConfig: {
+              name: "cn_claude",
+              scaffoldRuntimeInput: {
+                ...AGENT_PYTHON_STRANDS,
+                runtimeName: "cn_claude",
+                modelProvider: "Anthropic",
+              },
+            },
+          },
+          { region: "cn-north-1" },
+        ),
+      ).rejects.toThrow(RegionUnsupportedFeatureError);
+    });
+
+    test("with no target yet, a commercial resolved region keeps the default memory", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithoutTarget();
+
+      const { steps, error } = await collectSteps(
+        subject.addResource(project, LITELLM_RUNTIME, { region: "us-west-2" }),
+      );
+
+      expect(steps.join("\n")).not.toContain(MEMORY_STRIPPED_CN_MESSAGE);
+      expect(String(error)).toContain("uv is missing");
+    });
+
+    test("a defined commercial target wins over a China resolved region", async () => {
+      await inTempDirectory();
+      const { subject, project } = await projectWithTarget("us-east-1", "uv");
+
+      const { steps, error } = await collectSteps(
+        subject.addResource(project, LITELLM_RUNTIME, { region: "cn-north-1" }),
+      );
+
+      expect(steps.join("\n")).not.toContain(MEMORY_STRIPPED_CN_MESSAGE);
       expect(String(error)).toContain("uv is missing");
     });
 

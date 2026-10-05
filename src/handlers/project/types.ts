@@ -331,6 +331,19 @@ export type EnvLocalEntry = {
   comment: string;
 };
 
+/**
+ * Options for {@link ProjectManager.addResource}.
+ */
+export type AddResourceOptions = {
+  /**
+   * The effective AWS region the CLI already resolved (--region flag, env,
+   * shared config file). Consulted by the China (aws-cn) gate only when the
+   * project has no deployment target yet — the region deploy would synthesize
+   * the default target from — never to override a defined target.
+   */
+  region?: string;
+};
+
 /** Discriminated union input for {@link ProjectManager.addResource}. */
 export type AddResourceInput =
   | {
@@ -548,7 +561,11 @@ export interface ProjectManager {
   ): Promise<ResolvedProjectResources>;
 
   /** Add a resource to an existing AgentCore project. */
-  addResource(project: Project, input: AddResourceInput): AsyncGenerator<ProjectEvent, Project>;
+  addResource(
+    project: Project,
+    input: AddResourceInput,
+    options?: AddResourceOptions,
+  ): AsyncGenerator<ProjectEvent, Project>;
 
   /**
    * Remove a resource from an existing AgentCore project. Throws

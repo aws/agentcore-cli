@@ -21,6 +21,7 @@ import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import { toAddGatewayConnectorInput, type GatewayConnectorShortcutInput } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-connector"];
 const DESCRIPTION = "add a connector-backed Target to a project Gateway";
@@ -121,7 +122,9 @@ export function AddGatewayConnectorScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddGatewayConnectorWizard project={project} core={core} />}
+      {(project) => (
+        <AddGatewayConnectorWizard project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -129,9 +132,12 @@ export function AddGatewayConnectorScreen({ ctx, core }: ScreenProps) {
 function AddGatewayConnectorWizard({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -160,6 +166,7 @@ function AddGatewayConnectorWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddGatewayConnectorInput(toGatewayConnectorInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

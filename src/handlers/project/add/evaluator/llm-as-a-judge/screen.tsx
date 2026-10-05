@@ -40,6 +40,7 @@ import {
   RATING_SCALE_PRESETS,
   type RatingScalePreset,
 } from "./ratingScales";
+import { RegionKey } from "../../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "evaluator", "llm-as-a-judge"];
 const DESCRIPTION = "add an LLM-as-a-Judge evaluator to the current project";
@@ -126,7 +127,13 @@ export function AddLlmAsAJudgeEvaluatorScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(EVALUATOR_MENU)}
     >
-      {(project) => <AddLlmAsAJudgeEvaluatorLoader project={project} core={core} />}
+      {(project) => (
+        <AddLlmAsAJudgeEvaluatorLoader
+          project={project}
+          core={core}
+          region={ctx.value(RegionKey)}
+        />
+      )}
     </ProjectGate>
   );
 }
@@ -134,15 +141,24 @@ export function AddLlmAsAJudgeEvaluatorScreen({ ctx, core }: ScreenProps) {
 function AddLlmAsAJudgeEvaluatorLoader({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddLlmAsAJudgeEvaluatorWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddLlmAsAJudgeEvaluatorWizard
+        project={project}
+        targets={targets.data}
+        core={core}
+        region={region}
+      />
+    );
   }
 
   return (
@@ -160,10 +176,13 @@ function AddLlmAsAJudgeEvaluatorWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -192,6 +211,7 @@ function AddLlmAsAJudgeEvaluatorWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddLlmAsAJudgeEvaluatorInput(toLlmAsAJudgeInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

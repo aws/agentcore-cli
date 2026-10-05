@@ -27,6 +27,7 @@ import {
   toAddGatewayTargetInput,
   type GatewayTargetShortcutInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-target"];
 const DESCRIPTION = "add a Target to a project Gateway";
@@ -200,7 +201,9 @@ export function AddGatewayTargetScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddGatewayTargetWizard project={project} core={core} />}
+      {(project) => (
+        <AddGatewayTargetWizard project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -208,9 +211,12 @@ export function AddGatewayTargetScreen({ ctx, core }: ScreenProps) {
 function AddGatewayTargetWizard({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -253,6 +259,7 @@ function AddGatewayTargetWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddGatewayTargetInput(project, toGatewayTargetInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

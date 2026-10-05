@@ -27,6 +27,7 @@ import {
   type AttachMode,
   type PolicyEngineInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "policy-engine"];
 const DESCRIPTION = "add a Policy Engine to the current project";
@@ -86,17 +87,29 @@ export function AddPolicyEngineScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddPolicyEngineLoader project={project} core={core} />}
+      {(project) => (
+        <AddPolicyEngineLoader project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
 
-function AddPolicyEngineLoader({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function AddPolicyEngineLoader({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  region: string | undefined;
+}) {
   const navigate = useNavigate();
   const targets = useProjectTargets(core, project);
 
   if (targets.data !== undefined) {
-    return <AddPolicyEngineWizard project={project} targets={targets.data} core={core} />;
+    return (
+      <AddPolicyEngineWizard project={project} targets={targets.data} core={core} region={region} />
+    );
   }
 
   return (
@@ -114,10 +127,13 @@ function AddPolicyEngineWizard({
   project,
   targets,
   core,
+  region,
 }: {
   project: Project;
   targets: readonly AwsDeploymentTarget[];
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -165,6 +181,7 @@ function AddPolicyEngineWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddPolicyEngineInput(project, targets, toPolicyEngineInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

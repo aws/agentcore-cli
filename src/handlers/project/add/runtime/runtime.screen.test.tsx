@@ -256,12 +256,15 @@ describe("project add runtime wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "added runtime 'cn_agent' to 'TestProject'");
 
-    // No China deployment target exists in this project, so the manager's
-    // gate does not run; the LiteLLM id is persisted for the deploy gate.
+    // No deployment target exists yet, so the wizard's resolved region stands
+    // in for the China gate: the LiteLLM id is persisted and the template's
+    // default memory is dropped, exactly as after a first deploy to cn-north-1.
     expect(await runtimeInSpec(projectRoot, "cn_agent")).toMatchObject({
       modelProvider: "LiteLLM",
       modelId: "deepseek/deepseek-chat",
     });
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.memories).toEqual([]);
     r.unmount();
   });
 

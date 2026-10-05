@@ -25,6 +25,7 @@ import {
   toAddRuntimeEndpointInput,
   type RuntimeEndpointInput,
 } from "./index";
+import { RegionKey } from "../../../keys";
 
 const BREADCRUMB = ["agentcore", "add", "runtime-endpoint"];
 const DESCRIPTION = "add a named endpoint (version alias) to a runtime";
@@ -103,7 +104,9 @@ export function AddRuntimeEndpointScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(ADD_MENU)}
     >
-      {(project) => <AddRuntimeEndpointWizard project={project} core={core} />}
+      {(project) => (
+        <AddRuntimeEndpointWizard project={project} core={core} region={ctx.value(RegionKey)} />
+      )}
     </ProjectGate>
   );
 }
@@ -111,9 +114,12 @@ export function AddRuntimeEndpointScreen({ ctx, core }: ScreenProps) {
 function AddRuntimeEndpointWizard({
   project,
   core,
+  region,
 }: {
   project: Project;
   core: ScreenProps["core"];
+  /** The command\'s resolved region, for the China gate of a project without targets. */
+  region: string | undefined;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -137,6 +143,7 @@ function AddRuntimeEndpointWizard({
         const updated = yield* core.projectManager.addResource(
           project,
           toAddRuntimeEndpointInput(toRuntimeEndpointInput(values)),
+          { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);
         return updated;

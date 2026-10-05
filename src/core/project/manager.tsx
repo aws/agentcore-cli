@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
+  AddResourceOptions,
   AddResourceInput,
   CreateProjectInput,
   DeployProjectInput,
@@ -479,9 +480,21 @@ export class FsProjectManager implements ProjectManager {
     return project;
   }
 
+  /**
+   * Whether `add`-time China (aws-cn) restrictions apply: a deployment target
+   * is in a China region, or no target exists yet and the CLI's resolved region
+   * (what deploy would make the default target) is one. See {@link AddResourceOptions}.
+   */
+  private async isChinaProject(project: Project, region: string | undefined): Promise<boolean> {
+    const targets = await this.listTargets(project);
+    if (targets.length > 0) return targets.some((target) => isChinaRegion(target.region));
+    return region !== undefined && isChinaRegion(region);
+  }
+
   public async *addResource(
     project: Project,
     input: AddResourceInput,
+    options: AddResourceOptions = {},
   ): AsyncGenerator<ProjectEvent, Project> {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const projectSpecKey = toProjectSpecKey(input.resourceType);
@@ -555,7 +568,11 @@ export class FsProjectManager implements ProjectManager {
     // memory is dropped from the scaffold (see MEMORY_STRIPPED_CN_MESSAGE);
     // provider-free scaffolds (framework "none": minimal, MCP) stay available
     // as the bring-your-own-implementation path.
-    if ((await this.listTargets(project)).some((target) => isChinaRegion(target.region))) {
+    //
+    // Before the first deploy a project has no target, so the resolved region
+    // stands in — the same region deploy synthesizes the default target from.
+    // A defined target always wins over the ambient region.
+    if (await this.isChinaProject(project, options.region)) {
       if (input.resourceType === "harness") {
         throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
       }

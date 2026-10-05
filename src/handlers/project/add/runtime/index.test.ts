@@ -800,6 +800,58 @@ describe("project add runtime --type import", () => {
     expect(core.importedBedrockAgents).toEqual([]);
   });
 
+  test("with no target yet, --region cn-north-1 drops the default memory and refuses blocked providers", async () => {
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+    const keyFile = join(projectRoot, "key.txt");
+    await writeFile(keyFile, "sk-test");
+
+    // Blocked provider: refused before anything is written, as it is once a China target exists.
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "claude",
+        "--template",
+        "agent-python-strands",
+        "--model-provider",
+        "anthropic",
+        "--api-key",
+        `file://${keyFile}`,
+        "--region",
+        "cn-north-1",
+      ]),
+    ).rejects.toThrow(/not accessible from China regions/);
+
+    // Allowed provider: added, with the template's default memory dropped and the notice shown.
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "cn_mem",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "litellm",
+      "--model-id",
+      "deepseek/deepseek-chat",
+      "--api-key",
+      `file://${keyFile}`,
+      "--region",
+      "cn-north-1",
+    ]);
+    expect(io.stderr()).toContain("AgentCore Memory is not available in China regions");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.memories).toEqual([]);
+    expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual([
+      "agent",
+      "cn_mem",
+    ]);
+  });
+
   test("rejects the import when --region is a China region even without a China target", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
