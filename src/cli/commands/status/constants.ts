@@ -19,3 +19,6 @@ export function buildRuntimeInvocationUrl(region: string, runtimeArn: string): s
   const encodedArn = encodeURIComponent(runtimeArn);
   return `https://${serviceEndpoint('bedrock-agentcore', region)}/runtimes/${encodedArn}/invocations`;
 }
+
+/** Upper bound for the STS identity lookup, so `status` never waits on an unreachable network. */
+export const AWS_IDENTITY_TIMEOUT_MS = 3000;

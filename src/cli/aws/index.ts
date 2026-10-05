@@ -1,5 +1,5 @@
 export { detectAwsContext, type AwsContext } from './aws-context';
-export { detectAccount, getCredentialProvider } from './account';
+export { detectAccount, getCredentialProvider, hasEnvCredentials } from './account';
 export { getPartition, arnPrefix, dnsSuffix, serviceEndpoint, consoleDomain } from './partition';
 export { detectRegion, type RegionDetectionResult } from './region';
 export { applyTargetRegionToEnv, withTargetRegion } from './target-region';

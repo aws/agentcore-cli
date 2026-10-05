@@ -188,7 +188,12 @@ const ExecAttrs = safeSchema({
   was_kicked: z.boolean(),
 });
 
-const StatusAttrs = safeSchema({ filter_type: FilterType, filter_state: FilterState });
+const StatusAttrs = safeSchema({
+  filter_type: FilterType,
+  filter_state: FilterState,
+  aws_identity_resolved: z.boolean().optional(),
+  aws_account_mismatch: z.boolean().optional(),
+});
 
 const LogsAttrs = safeSchema({ has_query: z.boolean(), has_level_filter: z.boolean() });
 
