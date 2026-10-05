@@ -11,7 +11,7 @@ import { createMemoryRecordHandler } from "./record";
 import { createMemorySessionHandler } from "./session";
 
 export function createMemoryHandler(core: Core, io: AppIO): Router {
-  return new Router("memory", "inspect AgentCore Memories")
+  return new Router("memory", "inspect agent memory: sessions, events, and records")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .handler(createGetMemoryHandler(core))

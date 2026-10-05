@@ -5,8 +5,8 @@ import type { Core } from "../../types";
 import { createProjectHarnessLogHandler } from "./harness";
 import { createProjectRuntimeLogHandler } from "./runtime";
 
-export function createProjectLogHandler(core: Core, io: AppIO): Router {
-  return new Router("log", "inspect logs for resources in the current project")
+export function createProjectLogsHandler(core: Core, io: AppIO): Router {
+  return new Router("logs", "stream or search logs for resources in the current project")
     .use(withProject({ projectManager: core.projectManager }))
     .handler(createProjectRuntimeLogHandler(core, io))
     .handler(createProjectHarnessLogHandler(core, io));

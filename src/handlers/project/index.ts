@@ -17,7 +17,7 @@ import type { ProjectManager } from "./types";
 import { createAddProjectResourceHandler } from "./add";
 import { createExportProjectResourceHandler } from "./export";
 import { createProjectInvokeHandler } from "./invoke";
-import { createProjectLogHandler } from "./log";
+import { createProjectLogsHandler } from "./logs";
 import { createProjectTracesHandler } from "./traces";
 
 export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
@@ -31,14 +31,10 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
 
   const withProjectMiddleware = withProject({ projectManager });
   const config = { projectManager, io, bedrockAgentImporter: core.bedrockAgentImporter };
-  // Returned in workflow order, which is the order `--help` and the TUI menu list them in.
+  // Returned in workflow order, which is the order `--help` and the TUI menu list them in:
+  // the inner loop (dev, deploy, invoke), then observing it, then changing the project.
+  // build is a step deploy already runs, so it goes last and the TUI menu hides it.
   const projectBoundHandlers = [
-    createAddProjectResourceHandler(config, core),
-    createRemoveProjectHandler({
-      projectManager,
-      io,
-      middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
-    }),
     createDevProjectHandler({
       projectManager,
       io,
@@ -56,24 +52,30 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
       isInteractive: () => process.stdout.isTTY === true,
       watchFile,
     }),
-    createBuildProjectHandler({
-      projectManager,
-      io,
-      middlewares: [withProjectMiddleware],
-    }),
     createDeployProjectHandler({
       projectManager,
       io,
       middlewares: [withProjectMiddleware],
     }),
+    createProjectInvokeHandler(core, io),
     createStatusProjectHandler({
       projectManager,
       middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
     }),
-    createProjectInvokeHandler(core, io),
-    createProjectLogHandler(core, io),
+    createProjectLogsHandler(core, io),
     createProjectTracesHandler(core, io),
+    createAddProjectResourceHandler(config, core),
+    createRemoveProjectHandler({
+      projectManager,
+      io,
+      middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
+    }),
     createExportProjectResourceHandler({ projectManager, core, io }),
+    createBuildProjectHandler({
+      projectManager,
+      io,
+      middlewares: [withProjectMiddleware],
+    }),
   ];
 
   return [createHandler, ...projectBoundHandlers];

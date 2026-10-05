@@ -28,10 +28,10 @@ describe("Gateway menus", () => {
     expect(frame).toContain("agentcore add gateway --name MyGateway");
     expect(frame).toContain("agentcore deploy");
     expect(frame).not.toContain("agentcore gateway create");
-    expect(frame).not.toContain("this command runs from the command line");
+    expect(frame).not.toContain("run it with:");
     expect(screen.core.gateway.calls).toEqual([]);
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(screen.lastFrame, "inspect MCP tool gateways and their targets");
     expect(screen.core.gateway.calls).toEqual([]);
   });
 
@@ -44,7 +44,7 @@ describe("Gateway menus", () => {
   )("direct route %s cannot expose mutation help", async (path) => {
     const screen = renderScreen(`/agentcore/${path}`);
     await waitForText(() => screen.frames.join("\n"), "Usage:");
-    expect(screen.frames.join("\n")).not.toContain("this command runs from the command line");
+    expect(screen.frames.join("\n")).not.toContain("run it with:");
     expect(screen.frames.join("\n")).not.toContain(`agentcore ${path.replaceAll("/", " ")}`);
     expect(screen.core.gateway.calls).toEqual([]);
   });
@@ -59,6 +59,6 @@ describe("Gateway menus", () => {
     await waitForText(screen.lastFrame, "Create an AgentCore Gateway");
     expect(screen.lastFrame()).toContain("agentcore deploy");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(screen.lastFrame, "inspect MCP tool gateways and their targets");
   });
 });

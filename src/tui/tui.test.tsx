@@ -136,8 +136,10 @@ describe("TUI handoff", () => {
     const routePromise = root.route(["node", "agentcore", "--region", "us-west-2"]);
     await waitFor(() => streams.stdout().includes("type to choose a command"));
 
+    // dev is already the first in-project entry, so wait for the filter
+    // itself to render before pressing enter, not just the highlight.
     stdin.write("dev");
-    await waitFor(() => streams.stdout().includes("❯ dev"));
+    await waitFor(() => streams.stdout().includes("/ dev"));
     stdin.write("\r");
 
     // The project has no runtimes, so dev's own validation fails: proof the
@@ -230,7 +232,7 @@ describe("TUI resize", () => {
 });
 
 describe("TUI launch", () => {
-  const CREATE_ROW = "create a new AgentCore project";
+  const CREATE_ROW = "create a new project";
   const BANNER = "No project detected - create a new project to get started";
 
   test("an unrelated TUI command does not resolve the current project", async () => {
@@ -248,7 +250,9 @@ describe("TUI launch", () => {
     });
 
     const routePromise = root.route(["node", "agentcore", "runtime"]);
-    await waitFor(() => streams.stdout().includes("inspect AgentCore Runtimes"));
+    await waitFor(() =>
+      streams.stdout().includes("inspect hosted agent code, its endpoints, and versions"),
+    );
     expect(resolveCalls).toBe(0);
 
     stdin.write(String.fromCharCode(3));

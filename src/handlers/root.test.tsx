@@ -11,18 +11,18 @@ import {
 // The order `agentcore --help` and the TUI root menu list the commands in.
 const WORKFLOW_ORDER = [
   "create",
+  "dev",
+  "deploy",
+  "invoke",
+  "status",
+  "logs",
+  "traces",
   "add",
   "remove",
-  "dev",
-  "build",
-  "deploy",
-  "status",
-  "invoke",
-  "log",
-  "traces",
   "export",
+  "build",
 ];
-const RESOURCES_ORDER = ["eval", "gateway", "harness", "identity", "memory", "payment", "runtime"];
+const RESOURCES_ORDER = ["harness", "runtime", "gateway", "identity", "memory", "eval", "payment"];
 const SETTINGS_ORDER = ["feedback", "config", "update"];
 
 // helpCommandNames reads the command names off the "Commands:" section of help.

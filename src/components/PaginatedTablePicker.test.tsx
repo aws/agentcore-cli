@@ -94,7 +94,7 @@ describe("paginated table picker contract", () => {
 
     await waitForText(r.lastFrame, "loading harnesses");
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "manage config-defined agents: model, prompt, and tools");
   });
 
   test("keeps Escape active after a query fails", async () => {
@@ -104,7 +104,7 @@ describe("paginated table picker contract", () => {
 
     await waitForText(r.lastFrame, "access denied");
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "manage config-defined agents: model, prompt, and tools");
   });
 
   test("distinguishes first-page and later-page empty states", async () => {
@@ -112,7 +112,10 @@ describe("paginated table picker contract", () => {
     await waitForText(firstPage.lastFrame, "No harnesses found in this Region.");
     expect(firstPage.lastFrame()).not.toContain("page 1");
     await firstPage.press("escape");
-    await waitForText(firstPage.lastFrame, "manage AgentCore harnesses");
+    await waitForText(
+      firstPage.lastFrame,
+      "manage config-defined agents: model, prompt, and tools",
+    );
     firstPage.unmount();
 
     const core = new TestCoreClient();
@@ -234,7 +237,7 @@ describe("paginated table picker contract", () => {
     expect(core.harness.calls.some((call) => call.method === "getHarness")).toBe(false);
 
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "manage config-defined agents: model, prompt, and tools");
     previousPage.resolve();
   });
 

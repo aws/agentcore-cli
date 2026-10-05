@@ -59,14 +59,13 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
 
-    // Type step: code-based is the preselected default.
+    // Type step: config-based is listed first and preselected.
     await waitForText(r.lastFrame, "what kind of agent to start with?");
     const typeStep = r.lastFrame()!;
-    expect(typeStep).toContain("● code-based");
-    expect(typeStep).toContain("○ config-based");
+    expect(typeStep).toContain("● config-based");
+    expect(typeStep).toContain("○ code-based");
     expect(typeStep).not.toContain("config-based (recommended)");
-    expect(typeStep.indexOf("● code-based")).toBeLessThan(typeStep.indexOf("○ config-based"));
-    await r.press("down"); // harness
+    expect(typeStep.indexOf("● config-based")).toBeLessThan(typeStep.indexOf("○ code-based"));
     await r.press("return");
 
     // Model step: fields stay hidden until the provider is confirmed.
@@ -91,10 +90,12 @@ describe("project create wizard", () => {
     expect(review).toContain("./DemoApp");
     await r.press("return");
 
-    // Success: next steps point at the new directory and deploy.
+    // Success: next steps point at the new directory and deploy, since
+    // `agentcore dev` does not serve harnesses.
     await waitForText(r.lastFrame, "✔ project created in ./DemoApp", 5000);
     expect(r.lastFrame()).toContain("cd DemoApp");
     expect(r.lastFrame()).toContain("agentcore deploy");
+    expect(r.lastFrame()).not.toContain("agentcore dev");
 
     // The manager received exactly the input the flag-driven handler builds
     // for `agentcore create --name DemoApp`.
@@ -127,8 +128,7 @@ describe("project create wizard", () => {
     await r.write("TunedApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
 
     // Enter focuses the selected provider's model field. The cursor starts at
     // the end of the prefilled id, so typing appends.
@@ -165,8 +165,7 @@ describe("project create wizard", () => {
     await r.write("OpenAIApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
 
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down");
@@ -222,8 +221,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("ProviderApp");
     await r.press("return");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
 
     await r.press("down"); // openai
@@ -244,8 +242,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("ModelApp");
     await r.press("return");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
 
     await r.press("down"); // openai
@@ -271,8 +268,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("CompactApp");
     await r.press("return");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
 
     const frame = r.lastFrame()!;
@@ -299,8 +295,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("CompactApp");
     await r.press("return");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down");
     await r.press("down");
@@ -326,8 +321,7 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "name your project");
     await r.write("CompactApp");
     await r.press("return");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("down");
     await r.press("down");
@@ -380,6 +374,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
     await waitForText(r.lastFrame, "● code-based");
     await r.press("return");
 
@@ -398,6 +393,10 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("agent-python-strands");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./StrandsApp", 5000);
+    // A runtime project can run locally first, so the next step is dev.
+    expect(r.lastFrame()).toContain("cd StrandsApp");
+    expect(r.lastFrame()).toContain("agentcore dev");
+    expect(r.lastFrame()).not.toContain("agentcore deploy");
 
     // Identical to the flag-driven `--template agent-python-strands` input.
     expect(inputs).toEqual([
@@ -434,6 +433,7 @@ describe("project create wizard", () => {
     await r.write("CnBma");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     await r.press("down"); // agent-python-strands-container
@@ -461,6 +461,7 @@ describe("project create wizard", () => {
     await r.write("HelloApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     await r.press("down"); // agent-python-strands-container
@@ -501,6 +502,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
@@ -538,6 +540,7 @@ describe("project create wizard", () => {
     await r.write("EmptyApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
@@ -548,6 +551,9 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
     await waitForText(r.lastFrame, "project created in ./EmptyApp", 5000);
+    // Nothing to run locally, so the next step is deploy.
+    expect(r.lastFrame()).toContain("agentcore deploy");
+    expect(r.lastFrame()).not.toContain("agentcore dev");
 
     expect(inputs[0]).toEqual({ name: "EmptyApp", skipInstall: false, skipGit: false });
 
@@ -653,8 +659,7 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return");
     await r.press("return");
@@ -696,8 +701,7 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return"); // focus model id
     await r.press("return"); // accept model id
@@ -738,8 +742,7 @@ describe("project create wizard", () => {
     await r.write("DemoApp");
     await r.press("return");
     await waitForText(r.lastFrame, "what kind of agent to start with?");
-    await r.press("down"); // harness
-    await r.press("return");
+    await r.press("return"); // config-based is the default
     await waitForText(r.lastFrame, "choose a model provider");
     await r.press("return");
     await r.press("return");
@@ -817,6 +820,8 @@ describe("project create dispatch", () => {
     await waitFor(() => streams.stdout().includes("DemoApp"));
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("what kind of agent to start with?"));
+    stdin.write("\u001B[B"); // down: code-based
+    await waitFor(() => streams.stdout().includes("● code-based"));
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("choose a template"));
     stdin.write("\r");

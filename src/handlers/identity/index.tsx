@@ -8,7 +8,7 @@ import { createOauth2CredentialProviderHandler } from "./oauth2-credential-provi
 import { createPaymentCredentialProviderHandler } from "./payment-credential-provider";
 
 export function createIdentityHandler(core: Core, io: AppIO): Router {
-  return new Router("identity", "manage AgentCore Identity resources")
+  return new Router("identity", "manage API key and OAuth credential providers")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .handler(createApiKeyCredentialProviderHandler(core, io))

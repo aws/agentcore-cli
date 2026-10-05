@@ -347,7 +347,7 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { type: "step", message: `Deploying ${artifact.id}` };
+    yield { type: "step", message: `Deploying ${artifact.id} (usually takes a few minutes)` };
     const { outputs, stackArn } = yield* this.runCdk(
       { kind: "deploy", stackArtifactId: artifact.id },
       options,

@@ -16,7 +16,7 @@ import { createHarnessLogsHandler } from "./logs";
 import { createHarnessTracesHandler } from "./traces";
 
 export function createHarnessHandler(core: Core, io: AppIO): Router {
-  const harness = new Router("harness", "manage AgentCore harnesses");
+  const harness = new Router("harness", "manage config-defined agents: model, prompt, and tools");
 
   // Open the TUI by default if no flags or arguments are passed
   harness.use(withTuiOnEmptyFlagsAndArgs(core, io));

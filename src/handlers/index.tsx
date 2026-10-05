@@ -90,13 +90,15 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   });
 
   root.menuSection("resources");
-  root.handler(createEvalHandler(core, io));
-  root.handler(createGatewayHandler(core, io));
+  // Ordered from the agent outward: what runs it, what it calls, what it
+  // remembers, then how it is measured.
   root.handler(createHarnessHandler(core, io));
+  root.handler(createRuntimeHandler(core, io));
+  root.handler(createGatewayHandler(core, io));
   root.handler(createIdentityHandler(core, io));
   root.handler(createMemoryHandler(core, io));
+  root.handler(createEvalHandler(core, io));
   root.handler(createPaymentHandler(core, io));
-  root.handler(createRuntimeHandler(core, io));
 
   root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
@@ -105,7 +107,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // These have no screen of their own but belong with the commands around
   // them, so the menu keeps them in place; selecting one opens its help, except
   // dev, which closes the TUI and runs (see CommandHandoffScreen).
-  root.listInMenu("dev", "log", "traces", "export", "payment");
+  root.listInMenu("dev", "logs", "traces", "export", "payment");
 
   // Invoking with no subcommand launches the interactive TUI.
   root.default(renderTui(core, io));

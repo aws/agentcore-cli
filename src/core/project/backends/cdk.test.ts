@@ -414,7 +414,10 @@ describe("CdkBackend.deploy", () => {
       { type: "step", message: `Verifying AWS account ${TARGET.account}` },
       { type: "step", message: "Synthesizing CloudFormation templates" },
       { type: "step", message: "Enabling CloudWatch Transaction Search" },
-      { type: "step", message: "Deploying AgentCore-example-default-0" },
+      {
+        type: "step",
+        message: "Deploying AgentCore-example-default-0 (usually takes a few minutes)",
+      },
     ]);
     expect(subject.transactionSearchRegions).toEqual([TARGET.region]);
     expect(deployed.result).toEqual({ outputs: { RuntimeArn: "arn:runtime" } });
@@ -473,7 +476,10 @@ describe("CdkBackend.deploy", () => {
       (event) => event.type === "step" && event.message.startsWith("Deploying"),
     );
     expect(deployed.events.slice(deployStep)).toEqual([
-      { type: "step", message: "Deploying AgentCore-example-default-0" },
+      {
+        type: "step",
+        message: "Deploying AgentCore-example-default-0 (usually takes a few minutes)",
+      },
       { type: "output", line: "AgentCore-example-default-0 | 4/12 | CREATE_IN_PROGRESS" },
     ]);
   });
@@ -862,9 +868,9 @@ describe("CdkBackend.deploy", () => {
     // After the stack update, since a resource in the stack may have used the
     // provider until this deploy removed the reference.
     const messages = stepMessages(deployed.events);
-    expect(messages.indexOf("Deploying AgentCore-example-default-0")).toBeLessThan(
-      messages.indexOf("Removing credential provider 'example_default_wallet'"),
-    );
+    expect(
+      messages.indexOf("Deploying AgentCore-example-default-0 (usually takes a few minutes)"),
+    ).toBeLessThan(messages.indexOf("Removing credential provider 'example_default_wallet'"));
     expect(deployed.result).toEqual({ outputs: {} });
   });
 

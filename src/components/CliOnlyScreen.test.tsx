@@ -43,26 +43,26 @@ describe("menus separate mixed command groups with a divider", () => {
   test("the root menu", async () => {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
 
-    await waitForText(r.lastFrame, "❯ add");
+    await waitForText(r.lastFrame, "❯ dev");
+    // build is hidden from the menu: deploy already runs it.
     expect(menuEntries(r.lastFrame()!)).toEqual({
       screens: [
+        "dev",
+        "deploy",
+        "invoke",
+        "status",
+        "logs",
+        "traces",
         "add",
         "remove",
-        "dev",
-        "build",
-        "deploy",
-        "status",
-        "invoke",
-        "log",
-        "traces",
         "export",
-        "eval",
-        "gateway",
         "harness",
+        "runtime",
+        "gateway",
         "identity",
         "memory",
+        "eval",
         "payment",
-        "runtime",
       ],
       cliOnly: ["feedback", "config", "update"],
     });
@@ -141,7 +141,7 @@ describe("every command-line-only command opens on screen", () => {
           command.commands.map((child) => child.name()),
         );
       } else {
-        await waitForText(r.lastFrame, "this command runs from the command line");
+        await waitForText(r.lastFrame, "run it with:");
         const help = command.createHelp();
         const frame = r.lastFrame()!.replace(/\s+/g, " ");
         expect(frame).toContain(help.commandUsage(command));
@@ -183,7 +183,7 @@ describe("paths without a screen of their own", () => {
 
     await waitForText(r.lastFrame, "agentcore → eval → evaluator → delete");
     const frame = r.lastFrame()!.replace(/\s+/g, " ");
-    expect(frame).toContain("this command runs from the command line");
+    expect(frame).toContain("run it with:");
     expect(frame).toContain("agentcore eval evaluator delete [options]");
     expect(frame).toContain("--id");
 
@@ -203,7 +203,7 @@ describe("option help groups", () => {
     const r = renderScreen("/agentcore/eval/batch-evaluation/evaluate");
     await r.resize(220, 200);
 
-    await waitForText(r.lastFrame, "this command runs from the command line");
+    await waitForText(r.lastFrame, "run it with:");
     const frame = r.lastFrame()!;
     const positions = [
       "configuration",
@@ -238,7 +238,7 @@ describe("option help groups", () => {
   test("a command whose flags carry no group keeps a single options section", async () => {
     const r = renderScreen("/agentcore/eval/evaluator/delete");
 
-    await waitForText(r.lastFrame, "this command runs from the command line");
+    await waitForText(r.lastFrame, "run it with:");
     const frame = r.lastFrame()!;
     expect(frame).toContain(headingLine("options"));
     expect(frame).not.toContain(headingLine("configuration"));
@@ -317,7 +317,7 @@ describe("option help groups", () => {
     }
 
     await r.resize(180, 100);
-    await waitForText(r.lastFrame, "this command runs from the command line");
+    await waitForText(r.lastFrame, "run it with:");
     expect(r.lastFrame()).toContain("FIRSTVALUE");
     expect(r.lastFrame()).toContain("FINALVALUE");
     await r.press("escape");

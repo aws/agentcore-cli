@@ -108,7 +108,7 @@ export function CliOnlyScreen({ ctx, path }: CliOnlyScreenProps) {
 
   return (
     <CommandInfoScreen path={path} description={help.commandDescription(command)}>
-      <Text color={theme.colors.muted}>this command runs from the command line</Text>
+      <Text color={theme.colors.muted}>run it with:</Text>
       <Text> </Text>
       <Text color={theme.colors.primary}>{`  ${help.commandUsage(command)}`}</Text>
       <KeyValueTable
