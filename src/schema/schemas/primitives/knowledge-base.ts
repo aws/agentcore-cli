@@ -1,4 +1,5 @@
 import { uniqueBy } from '../zod-util';
+import { KmsKeyArnSchema } from './evaluator';
 import { z } from 'zod';
 
 /**
@@ -34,6 +35,7 @@ const S3_BUCKET_NAME = /^(?!xn--)(?!sthree-)[a-z0-9](?!.*\.\.)[a-z0-9.-]{1,61}[a
 export const S3DataSourceSchema = z
   .object({
     type: z.literal('S3'),
+    kmsKeyArn: KmsKeyArnSchema.optional().describe('Customer-managed KMS key used to encrypt the S3 source documents'),
     uri: z
       .string()
       .min(1)
