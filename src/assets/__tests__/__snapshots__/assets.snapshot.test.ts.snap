@@ -45,6 +45,7 @@ agentcore status    # checks deployment status
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/bin/cdk.ts should match snapshot 1`] = `
 "#!/usr/bin/env node
 import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
+import { parseProjectSpec } from '../lib/project-spec';
 import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
@@ -70,7 +71,9 @@ async function main() {
   const configRoot = path.resolve(process.cwd(), '..');
   const configIO = new ConfigIO({ baseDir: configRoot });
 
-  const spec = await configIO.readProjectSpec();
+  const { spec, knowledgeBaseKmsKeys } = parseProjectSpec(
+    JSON.parse(await fs.promises.readFile(path.join(configRoot, 'agentcore.json'), 'utf8'))
+  );
   const targets = await configIO.readAWSDeploymentTargets();
 
   // The vended CDK project compiles against the published @aws/agentcore-cdk
@@ -238,6 +241,7 @@ async function main() {
 
     new AgentCoreStack(app, stackName, {
       spec,
+      knowledgeBaseKmsKeys,
       mcpSpec,
       credentials,
       connectorParametersByFile,
@@ -436,6 +440,8 @@ export interface AgentCoreStackProps extends StackProps {
    * The AgentCore project specification containing agents, memories, and credentials.
    */
   spec: AgentCoreProjectSpec;
+  /** KMS keys encrypting S3 source documents, keyed by knowledge base name. */
+  knowledgeBaseKmsKeys?: Record<string, string[]>;
   /**
    * The MCP specification containing gateways and servers.
    */
@@ -507,6 +513,23 @@ export class AgentCoreStack extends Stack {
       appProps.credentials = credentials;
     }
     this.application = new AgentCoreApplication(this, 'Application', appProps as any);
+
+    for (const [name, keyArns] of Object.entries(props.knowledgeBaseKmsKeys ?? {})) {
+      const knowledgeBase = this.application.knowledgeBases.get(name);
+      if (!knowledgeBase) {
+        throw new Error(\`Cannot grant S3 decryption permissions to unknown knowledge base '\${name}'\`);
+      }
+      for (const keyArn of new Set(keyArns)) {
+        const keyRegion = keyArn.split(':')[3] || this.region;
+        knowledgeBase.role.addToPolicy(
+          new iam.PolicyStatement({
+            actions: ['kms:Decrypt'],
+            resources: [keyArn],
+            conditions: { StringEquals: { 'kms:ViaService': \`s3.\${keyRegion}.\${this.urlSuffix}\` } },
+          })
+        );
+      }
+    }
 
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
@@ -675,6 +698,64 @@ export class AgentCoreStack extends Stack {
 "
 `;
 
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/lib/project-spec.ts should match snapshot 1`] = `
+"import { AgentCoreProjectSpecSchema, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
+
+// Keep in sync with KmsKeyArnSchema in the CLI's schema module.
+const KMS_KEY_ARN_PATTERN = /^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\\/[a-zA-Z0-9-]{36}$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export interface ParsedProjectSpec {
+  spec: AgentCoreProjectSpec;
+  knowledgeBaseKmsKeys: Record<string, string[]>;
+}
+
+/**
+ * The published CDK schema does not yet accept S3 encryption keys. Validate
+ * those fields here and retain them for the stack's IAM grants, then validate
+ * the remaining project with the published schema.
+ */
+export function parseProjectSpec(input: unknown): ParsedProjectSpec {
+  const keys = new Map<string, string[]>();
+  let project = input;
+  if (isRecord(input) && Array.isArray(input.knowledgeBases)) {
+    project = {
+      ...input,
+      knowledgeBases: input.knowledgeBases.map(kb => {
+        if (!isRecord(kb) || !Array.isArray(kb.dataSources)) {
+          return kb;
+        }
+        return {
+          ...kb,
+          dataSources: kb.dataSources.map(source => {
+            if (!isRecord(source) || source.type !== 'S3') {
+              return source;
+            }
+            const { kmsKeyArn, ...dataSource } = source;
+            if (kmsKeyArn !== undefined) {
+              if (typeof kmsKeyArn !== 'string' || !KMS_KEY_ARN_PATTERN.test(kmsKeyArn)) {
+                throw new Error(\`Invalid S3 kmsKeyArn for knowledge base '\${String(kb.name)}': expected a KMS key ARN\`);
+              }
+              if (typeof kb.name === 'string') {
+                const kbKeys = keys.get(kb.name) ?? [];
+                kbKeys.push(kmsKeyArn);
+                keys.set(kb.name, kbKeys);
+              }
+            }
+            return dataSource;
+          }),
+        };
+      }),
+    };
+  }
+  return { spec: AgentCoreProjectSpecSchema.parse(project), knowledgeBaseKmsKeys: Object.fromEntries(keys) };
+}
+"
+`;
+
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/npmignore.template should match snapshot 1`] = `
 "*.ts
 !*.d.ts
@@ -720,8 +801,9 @@ exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/package.json should m
 `;
 
 exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/test/cdk.test.ts should match snapshot 1`] = `
-"import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+"import { AgentCoreProjectSpecSchema } from '@aws/agentcore-cdk';
+import * as cdk from 'aws-cdk-lib';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AgentCoreStack } from '../lib/cdk-stack';
 
 test('AgentCoreStack synthesizes with empty spec', () => {
@@ -750,6 +832,99 @@ test('AgentCoreStack synthesizes with empty spec', () => {
   template.hasOutput('StackNameOutput', {
     Description: 'Name of the CloudFormation Stack',
   });
+});
+
+
+test.each([
+  ['aws', 'us-east-1'],
+  ['aws-cn', 'cn-north-1'],
+  ['aws-us-gov', 'us-gov-west-1'],
+])('S3 ingestion grants scoped decrypt in %s', (partition, region) => {
+  const app = new cdk.App();
+  const keyArn = \`arn:\${partition}:kms:\${region}:123456789012:key/12345678-1234-1234-1234-123456789012\`;
+  const props = {
+    env: { account: '123456789012', region },
+    spec: AgentCoreProjectSpecSchema.parse({
+      name: 'testproject', version: 1, managedBy: 'CDK' as const, runtimes: [],
+      knowledgeBases: [{ name: 'docs', type: 'AgentCoreKnowledgeBase' as const,
+        dataSources: [{ type: 'S3' as const, uri: 's3://my-bucket/docs/' }] }],
+    }),
+    knowledgeBaseKmsKeys: { docs: [keyArn] },
+  };
+  const stack = new AgentCoreStack(app, 'EncryptedStack', props);
+  const template = Template.fromStack(stack);
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([{
+        Action: 'kms:Decrypt', Effect: 'Allow', Resource: keyArn,
+        Condition: { StringEquals: { 'kms:ViaService': stack.resolve(\`s3.\${stack.region}.\${stack.urlSuffix}\`) } },
+      }]),
+    },
+  });
+});
+"
+`;
+
+exports[`Assets Directory Snapshots > CDK assets > cdk/cdk/test/project-spec.test.ts should match snapshot 1`] = `
+"import { parseProjectSpec } from '../lib/project-spec';
+import { AgentCoreStack } from '../lib/cdk-stack';
+import { App } from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+
+const keyArn = 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012';
+
+function project(kmsKeyArn?: unknown) {
+  return {
+    name: 'testproject', version: 1, managedBy: 'CDK', runtimes: [],
+    knowledgeBases: [{ name: 'docs', type: 'AgentCoreKnowledgeBase', dataSources: [
+      { type: 'S3', uri: 's3://my-bucket/docs/', ...(kmsKeyArn === undefined ? {} : { kmsKeyArn }) },
+    ] }],
+  };
+}
+
+test('preserves S3 encryption keys through the published schema without mutating the input', () => {
+  const input = project(keyArn);
+  const parsed = parseProjectSpec(input);
+  expect(parsed.knowledgeBaseKmsKeys).toEqual({ docs: [keyArn] });
+  expect(parsed.spec.knowledgeBases?.[0]?.dataSources[0]).toEqual({ type: 'S3', uri: 's3://my-bucket/docs/' });
+  expect(input.knowledgeBases[0].dataSources[0].kmsKeyArn).toBe(keyArn);
+  const stack = new AgentCoreStack(new App(), 'ParsedStack', parsed);
+  const policies = Template.fromStack(stack).findResources('AWS::IAM::Policy');
+  const statements = Object.values(policies).flatMap(policy => policy.Properties.PolicyDocument.Statement);
+  expect(statements.filter(statement => statement.Action === 'kms:Decrypt')).toHaveLength(1);
+  expect(statements.find(statement => statement.Action === 'kms:Decrypt').Resource).toBe(keyArn);
+});
+
+test.each(['*', 'arn:aws:kms:us-east-1:123456789012:alias/key', '', null, 123])('rejects invalid encryption key %j', value => {
+  expect(() => parseProjectSpec(project(value))).toThrow('Invalid S3 kmsKeyArn');
+});
+
+test('retains strict validation of unknown data source fields', () => {
+  const input = project(keyArn);
+  const source = { ...input.knowledgeBases[0].dataSources[0], unexpected: true };
+  expect(() => parseProjectSpec({ ...input, knowledgeBases: [{ ...input.knowledgeBases[0], dataSources: [source] }] })).toThrow();
+});
+
+test('unencrypted S3 sources do not grant KMS permissions', () => {
+  const parsed = parseProjectSpec(project());
+  expect(parsed.knowledgeBaseKmsKeys).toEqual({});
+  const stack = new AgentCoreStack(new App(), 'UnencryptedStack', parsed);
+  const policies = Template.fromStack(stack).findResources('AWS::IAM::Policy');
+  const statements = Object.values(policies).flatMap(policy => policy.Properties.PolicyDocument.Statement);
+  expect(statements.some(statement => statement.Action === 'kms:Decrypt')).toBe(false);
+});
+
+test.each([null, [], { knowledgeBases: [null] }, { knowledgeBases: [{ dataSources: null }] }])('rejects malformed project %j', value => {
+  expect(() => parseProjectSpec(value)).toThrow();
+});
+
+test('connector sources retain published schema validation', () => {
+  const input = project();
+  const connector = { type: 'WEB', connectorConfigFile: 'app/docs/connector.json' };
+  const parsed = parseProjectSpec({ ...input, knowledgeBases: [{ ...input.knowledgeBases[0], dataSources: [connector] }] });
+  expect(parsed.spec.knowledgeBases?.[0]?.dataSources[0]).toEqual(connector);
+  expect(parsed.knowledgeBaseKmsKeys).toEqual({});
+  expect(() => parseProjectSpec({ ...input, knowledgeBases: [{ ...input.knowledgeBases[0], dataSources: [{ ...connector, kmsKeyArn: keyArn }] }] })).toThrow();
 });
 "
 `;
@@ -798,9 +973,11 @@ exports[`Assets Directory Snapshots > File listing > should match the expected f
   "cdk/gitignore.template",
   "cdk/jest.config.js",
   "cdk/lib/cdk-stack.ts",
+  "cdk/lib/project-spec.ts",
   "cdk/npmignore.template",
   "cdk/package.json",
   "cdk/test/cdk.test.ts",
+  "cdk/test/project-spec.test.ts",
   "cdk/tsconfig.json",
   "container/python/Dockerfile",
   "container/python/dockerignore.template",
