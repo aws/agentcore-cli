@@ -45,7 +45,7 @@ The following is a small valid configuration:
 name: assistant
 model:
   bedrockModelConfig:
-    modelId: global.anthropic.claude-sonnet-4-6
+    modelId: global.anthropic.claude-sonnet-5-5
 memory:
   managedMemoryConfiguration: {}
 ```
@@ -79,7 +79,7 @@ provider credential.
 
 Provider configurations support `temperature` (0-2), `topP` (0-1), and a positive
 integer `maxTokens`, but individual models can reject optional fields entirely.
-For example, Claude Sonnet 5 rejects `temperature`; leave it unset for that model.
+For example, Claude Sonnet 5 and 5.5 reject `temperature`; leave it unset for those models.
 Check the selected model's parameter support before enabling tuning fields.
 `maxTokens` inside the selected model configuration limits output for each model call. The top-level `maxTokens`
 field applies across the invocation, which can make several model calls.
@@ -89,9 +89,8 @@ For Bedrock:
 ```yaml
 model:
   bedrockModelConfig:
-    modelId: global.anthropic.claude-sonnet-4-6
+    modelId: global.anthropic.claude-sonnet-5-5
     apiFormat: converse_stream
-    temperature: 0.2
     maxTokens: 4096
 ```
 
@@ -100,7 +99,7 @@ For a direct OpenAI model:
 ```yaml
 model:
   openAiModelConfig:
-    modelId: gpt-5
+    modelId: gpt-6.1-sol
     apiFormat: responses
     apiKeyArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/apikeycredentialprovider/openai
 ```
@@ -110,7 +109,7 @@ For Gemini:
 ```yaml
 model:
   geminiModelConfig:
-    modelId: gemini-2.5-flash
+    modelId: gemini-3.8-flash
     apiKeyArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/apikeycredentialprovider/gemini
     topK: 40
 ```
@@ -120,7 +119,7 @@ For LiteLLM, use a provider-prefixed model ID:
 ```yaml
 model:
   liteLlmModelConfig:
-    modelId: openai/gpt-5
+    modelId: openai/gpt-6.1-sol
     apiBase: https://models.example.com/v1
     apiKeyArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/apikeycredentialprovider/model-proxy
 ```
