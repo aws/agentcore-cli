@@ -292,6 +292,8 @@ export const ProjectRuntimeSchema = z
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
     executionRoleArn: z.string().optional(),
     additionalPolicies: z.array(z.string().min(1)).optional(),
+    /** Enables the CDK-managed Bedrock Managed Agents session role for this runtime. */
+    bedrockManagedAgents: z.boolean().optional(),
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
     tags: TagsSchema.optional(),

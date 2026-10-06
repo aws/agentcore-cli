@@ -372,6 +372,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "Container",
+        bedrockManagedAgents: true,
         entrypoint: "lifecycle/server.py",
         codeLocation: "app/agent",
         dockerfile: "Dockerfile",
