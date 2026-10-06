@@ -1,0 +1,18 @@
+name: Workflow Metrics
+on:
+  workflow_run:
+    workflows: [canary]
+    types: [completed]
+
+permissions:
+  id-token: write
+
+jobs:
+  metrics:
+    uses: aws/agentcore-devx-devtools/.github/workflows/workflow-metrics.yml@d145deb62f1adc8be63fa4879a488499e1128a46
+    with:
+      namespace: AgentCoreCLI/Workflows
+      os: Linux
+      role-secret-name: E2E_AWS_ROLE_ARN
+    secrets:
+      WORKFLOW_SECRETS_READER_ROLE_ARN: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}

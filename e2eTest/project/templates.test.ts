@@ -146,7 +146,7 @@ const A2aResponseSchema = z.object({
 
 describe(
   "add, dev, deploy, invoke for runtime templates",
-  { sequential: true, tags: [TAGS.RUNTIME] },
+  { sequential: true, tags: [TAGS.RUNTIME, TAGS.CANARY] },
   () => {
     const cli = new CliRunner();
     const projectName = `${E2E_PREFIX}${Date.now().toString(36)}`;

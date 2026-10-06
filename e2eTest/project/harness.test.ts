@@ -58,7 +58,8 @@ const HarnessInvokeResponseSchema = z.object({
   transcript: z.array(TranscriptItemSchema).min(2),
 });
 
-describe("add, deploy, and invoke harnesses", { sequential: true, tags: [TAGS.HARNESS] }, () => {
+const harnessTags = [TAGS.HARNESS, TAGS.CANARY];
+describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessTags }, () => {
   const cli = new CliRunner();
   const projectName = `${E2E_PREFIX}${Date.now().toString(36)}`;
   let projectDir: string;

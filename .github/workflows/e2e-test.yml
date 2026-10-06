@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: ""
+      linuxOnly:
+        description: Run E2E tests only on Linux
+        required: false
+        type: boolean
+        default: false
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN:
         required: true
@@ -25,9 +30,13 @@ on:
         description: Vitest tag expression, for example runtime || canary
         type: string
         default: ""
+      linuxOnly:
+        description: Run E2E tests only on Linux
+        type: boolean
+        default: false
 
 concurrency:
-  group: e2e-test-${{ inputs.ref || github.ref }}-${{ inputs.tags || 'all' }}
+  group: e2e-test-${{ inputs.ref || github.ref }}-${{ inputs.tags || 'all' }}-${{ inputs.linuxOnly && 'linux-only' || 'all-os' }}
   cancel-in-progress: false
 
 env:
@@ -40,7 +49,7 @@ jobs:
       id-token: write
       contents: read
     outputs:
-      is-authorized: ${{ steps.check.outputs.is_authorized }}
+      is-authorized: ${{ github.workflow == 'canary' || steps.check.outputs.is_authorized == 'true' }}
     steps:
       - name: Fetch secrets from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
@@ -71,25 +80,21 @@ jobs:
     name: test (${{ matrix.name }})
     needs: authorize
     if: needs.authorize.outputs.is-authorized == 'true'
-    runs-on: ${{ fromJSON(matrix.runner) }}
+    runs-on: >-
+      ${{ fromJSON(
+        matrix.name == 'Linux' &&
+          format('["codebuild-agentcore-e2e-{0}-{1}","e2e-linux"]', github.run_id, github.run_attempt)
+        || matrix.name == 'Windows' &&
+          format('["codebuild-agentcore-e2e-{0}-{1}","image:windows-1.0","e2e-windows"]', github.run_id, github.run_attempt)
+        || matrix.name == 'macOS' && '["macos-latest"]'
+      ) }}
     permissions:
       id-token: write
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Per-job labels stop GitHub from routing a job to the runner CodeBuild created for another job.
-          # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-labels.html
-          - name: Linux
-            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "e2e-linux"]'
-          - name: Windows
-            runner: '["codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}", "image:windows-1.0", "e2e-windows"]'
-
-          # CodeBuild does not support macOS.
-          # https://docs.aws.amazon.com/codebuild/latest/userguide/action-runner-questions.html#action-runner-platform
-          - name: macOS
-            runner: '["macos-latest"]'
+        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Windows","macOS"]') }}
     steps:
       - uses: actions/checkout@v7
         with:

@@ -82,19 +82,16 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{/each}}{{/if}}
 """
 
-# serve_a2a serves one agent instance, so it is bound to a fixed session and
-# actor; get_memory_session_manager returns None (in-process history only) until
-# the deployed MEMORY_ID env var is set by the CDK.
-agent = Agent(
-    name="{{ name }}",
-    model=load_model(),
-    session_manager=get_memory_session_manager("default-session", "default-user"),
-    system_prompt=SYSTEM_PROMPT,
-    tools=tools,
-)
+def create_agent(context_id: str) -> Agent:
+    return Agent(
+        name="{{ name }}",
+        model=load_model(),
+        session_manager=get_memory_session_manager(context_id, "default-user"),
+        system_prompt=SYSTEM_PROMPT,
+        tools=tools,
+    )
 
 # serve_a2a binds 0.0.0.0:9000 in the container (the AgentCore A2A service
-# contract) and publishes the agent card at /.well-known/agent-card.json. The
-# card is derived by introspecting the executor's agent.
+# contract) and publishes the agent card at /.well-known/agent-card.json.
 if __name__ == "__main__":
-    serve_a2a(StrandsA2AExecutor(agent))
+    serve_a2a(StrandsA2AExecutor(agent_factory=create_agent))

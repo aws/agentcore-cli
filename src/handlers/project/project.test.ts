@@ -328,14 +328,16 @@ describe("project create", () => {
   // The A2A and AG-UI strands templates take the same model-provider overrides
   // as agent-python-strands: same model module, same per-provider extras, same
   // credential wiring — only the protocol differs.
-  const PROTOCOL_STRANDS_TEMPLATES: [string, string][] = [
-    ["a2a-python-strands", "A2A"],
-    ["agui-python-strands", "AGUI"],
+  // The third column is each template's strands-agents version range: the A2A
+  // template is pinned (upstream #2511), AG-UI still carries the open range.
+  const PROTOCOL_STRANDS_TEMPLATES: [string, string, string][] = [
+    ["a2a-python-strands", "A2A", "~= 1.57.2"],
+    ["agui-python-strands", "AGUI", ">= 1.15.0, < 2.0.0"],
   ];
 
   test.each(PROTOCOL_STRANDS_TEMPLATES)(
     "%s scaffolds an API-key provider like agent-python-strands",
-    async (template, protocol) => {
+    async (template, protocol, strandsRange) => {
       const { path: directory, cleanup } = await inTempDirectory();
       cleanups.push(cleanup);
       const apiKeyPath = join(directory, "api-key.txt");
@@ -375,14 +377,14 @@ describe("project create", () => {
       expect(loadModel).toContain(`model_id="${DEFAULT_MODEL_IDS.Anthropic}"`);
       expect(loadModel).not.toContain("BedrockModel");
       const pyproject = await Bun.file(join(projectRoot, "app", "agent", "pyproject.toml")).text();
-      expect(pyproject).toContain('"strands-agents[anthropic] >= 1.15.0, < 2.0.0"');
-      expect(pyproject).not.toContain('"strands-agents >= 1.15.0, < 2.0.0"');
+      expect(pyproject).toContain(`"strands-agents[anthropic] ${strandsRange}"`);
+      expect(pyproject).not.toContain(`"strands-agents ${strandsRange}"`);
     },
   );
 
   test.each(PROTOCOL_STRANDS_TEMPLATES)(
     "%s still scaffolds its Bedrock default without overrides",
-    async (template, protocol) => {
+    async (template, protocol, strandsRange) => {
       const { path: directory, cleanup } = await inTempDirectory();
       cleanups.push(cleanup);
       await run([
@@ -406,7 +408,7 @@ describe("project create", () => {
       expect(loadModel).toContain("from strands.models.bedrock import BedrockModel");
       expect(loadModel).toContain(`model_id="${DEFAULT_MODEL_IDS.Bedrock}"`);
       const pyproject = await Bun.file(join(projectRoot, "app", "agent", "pyproject.toml")).text();
-      expect(pyproject).toContain('"strands-agents >= 1.15.0, < 2.0.0"');
+      expect(pyproject).toContain(`"strands-agents ${strandsRange}"`);
       expect(pyproject).not.toContain("strands-agents[");
     },
   );
