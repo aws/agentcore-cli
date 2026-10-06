@@ -25,27 +25,27 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
       - [`agentcore traces harness list`](#agentcore-traces-harness-list)
       - [`agentcore traces harness get`](#agentcore-traces-harness-get)
   - [`agentcore add`](#agentcore-add)
+    - [`agentcore add config-bundle`](#agentcore-add-config-bundle)
     - [`agentcore add harness`](#agentcore-add-harness)
+    - [`agentcore add memory`](#agentcore-add-memory)
     - [`agentcore add runtime`](#agentcore-add-runtime)
-    - [`agentcore add runtime-endpoint`](#agentcore-add-runtime-endpoint)
+    - [`agentcore add online-eval`](#agentcore-add-online-eval)
+    - [`agentcore add online-insight`](#agentcore-add-online-insight)
+    - [`agentcore add evaluator`](#agentcore-add-evaluator)
+      - [`agentcore add evaluator llm-as-a-judge`](#agentcore-add-evaluator-llm-as-a-judge)
+      - [`agentcore add evaluator code-based`](#agentcore-add-evaluator-code-based)
+    - [`agentcore add credentials`](#agentcore-add-credentials)
+      - [`agentcore add credentials api-key`](#agentcore-add-credentials-api-key)
+      - [`agentcore add credentials oauth`](#agentcore-add-credentials-oauth)
+      - [`agentcore add credentials payment`](#agentcore-add-credentials-payment)
     - [`agentcore add gateway`](#agentcore-add-gateway)
     - [`agentcore add gateway-target`](#agentcore-add-gateway-target)
     - [`agentcore add gateway-connector`](#agentcore-add-gateway-connector)
     - [`agentcore add policy-engine`](#agentcore-add-policy-engine)
     - [`agentcore add policy`](#agentcore-add-policy)
-    - [`agentcore add credentials`](#agentcore-add-credentials)
-      - [`agentcore add credentials api-key`](#agentcore-add-credentials-api-key)
-      - [`agentcore add credentials oauth`](#agentcore-add-credentials-oauth)
-      - [`agentcore add credentials payment`](#agentcore-add-credentials-payment)
-    - [`agentcore add memory`](#agentcore-add-memory)
-    - [`agentcore add evaluator`](#agentcore-add-evaluator)
-      - [`agentcore add evaluator llm-as-a-judge`](#agentcore-add-evaluator-llm-as-a-judge)
-      - [`agentcore add evaluator code-based`](#agentcore-add-evaluator-code-based)
-    - [`agentcore add online-eval`](#agentcore-add-online-eval)
-    - [`agentcore add online-insight`](#agentcore-add-online-insight)
-    - [`agentcore add config-bundle`](#agentcore-add-config-bundle)
     - [`agentcore add payment-manager`](#agentcore-add-payment-manager)
     - [`agentcore add payment-connector`](#agentcore-add-payment-connector)
+    - [`agentcore add runtime-endpoint`](#agentcore-add-runtime-endpoint)
   - [`agentcore remove`](#agentcore-remove)
   - [`agentcore export`](#agentcore-export)
     - [`agentcore export harness`](#agentcore-export-harness)
@@ -495,6 +495,23 @@ agentcore add [options] [command]
 
 add project resources
 
+#### `agentcore add config-bundle`
+
+```text
+agentcore add config-bundle [options]
+```
+
+add a configuration bundle to the current project
+
+**Options**
+
+- `--name <name>`: the name of the configuration bundle (required)
+- `--description <description>`: a description of the configuration bundle
+- `--components <components>`: component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
+- `--branch-name <branch-name>`: branch name for the initial configuration (default: "mainline")
+- `--commit-message <commit-message>`: message describing the initial configuration
+- `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for component configurations
+
 #### `agentcore add harness`
 
 ```text
@@ -530,6 +547,26 @@ add a harness to the current project
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 
+#### `agentcore add memory`
+
+```text
+agentcore add memory [options]
+```
+
+add a Memory to the current project
+
+**Options**
+
+- `--name <name>`: the name of the Memory (required)
+- `--description <description>`: a description of what the Memory stores
+- `--event-expiry-duration <event-expiry-duration>`: how long raw events are retained, in days (3-365) (default: 30)
+- `--strategies <strategies>`: long-term Memory strategies: comma-separated types, or the JSON strategies[] as stored in agentcore.json
+- `--indexed-keys <indexed-keys>`: metadata keys indexed for filtering (JSON IndexedKey[]); requires at least one strategy
+- `--stream-delivery-resources <stream-delivery-resources>`: destinations Memory records are streamed to (JSON StreamDeliveryResources)
+- `--encryption-key-arn <encryption-key-arn>`: customer managed KMS key ARN used to encrypt the Memory
+- `--execution-role-arn <execution-role-arn>`: IAM role the Memory assumes; a default role is created when omitted
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
 #### `agentcore add runtime`
 
 ```text
@@ -562,20 +599,155 @@ add a Runtime to the current project
 - `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --type import)
 - `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --type import)
 
-#### `agentcore add runtime-endpoint`
+#### `agentcore add online-eval`
 
 ```text
-agentcore add runtime-endpoint [options]
+agentcore add online-eval [options]
 ```
 
-add a named endpoint (version alias) to a runtime
+add an online evaluation config to the current project
 
 **Options**
 
-- `--runtime <runtime>`: the parent runtime name (required)
-- `--name <name>`: the endpoint name (e.g., prod, staging) (required)
-- `--version <version>`: the runtime version this endpoint points to (default: 1)
-- `--description <description>`: description of the endpoint
+- `--name <name>`: the name of the online evaluation config (required)
+- `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
+- `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
+- `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
+- `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
+- `--evaluators <evaluators...>`: evaluator name(s), Builtin.\* IDs, or ARNs to apply
+- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
+- `--description <description>`: a description of the config's monitoring purpose
+- `--enable-on-create <enable-on-create>`: enable evaluation immediately after deploy (default true; pass false to add it paused)
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
+#### `agentcore add online-insight`
+
+```text
+agentcore add online-insight [options]
+```
+
+add an online insight config to the current project
+
+**Options**
+
+- `--name <name>`: the name of the online insight config (required)
+- `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
+- `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
+- `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
+- `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
+- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs (required)
+- `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s): DAILY, WEEKLY, MONTHLY
+- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
+- `--description <description>`: a description of the config's monitoring purpose
+- `--enable-on-create <enable-on-create>`: enable insights immediately after deploy (default true; pass false to add it paused)
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
+#### `agentcore add evaluator`
+
+```text
+agentcore add evaluator [options] [command]
+```
+
+add a custom evaluator to the current project
+
+##### `agentcore add evaluator llm-as-a-judge`
+
+```text
+agentcore add evaluator llm-as-a-judge [options]
+```
+
+add an LLM-as-a-Judge evaluator to the current project
+
+**Options**
+
+- `--name <name>`: the name of the evaluator (required)
+- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL (required)
+- `--model-provider <model-provider>`: model provider for the judge: Bedrock (default) or OpenResponses
+- `--model <model>`: judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID (required)
+- `--instructions <instructions>`: scoring instructions for the judge (inline text, 'file://&lt;path&gt;', or '-' for stdin); use level placeholders like '{context}' (required)
+- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale (required)
+- `--description <description>`: a description of what this evaluator measures
+- `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
+##### `agentcore add evaluator code-based`
+
+```text
+agentcore add evaluator code-based [options]
+```
+
+add a code-based evaluator to the current project
+
+**Options**
+
+- `--name <name>`: the name of the evaluator (required)
+- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL (required)
+- `--lambda-arn <lambda-arn>`: ARN of an existing Lambda that scores a session
+- `--timeout-seconds <timeout-seconds>`: evaluator timeout in seconds (1-300)
+- `--description <description>`: a description of what this evaluator measures
+- `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
+
+#### `agentcore add credentials`
+
+```text
+agentcore add credentials [options] [command]
+```
+
+add AgentCore Identity credential providers to the current project
+
+##### `agentcore add credentials api-key`
+
+```text
+agentcore add credentials api-key [options]
+```
+
+add an API key credential provider to the current project
+
+**Options**
+
+- `--name <name>`: the name of the credential provider (required)
+- `--api-key <api-key>`: the API key (file://path or - for stdin; inline values are rejected)
+- `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
+
+##### `agentcore add credentials oauth`
+
+```text
+agentcore add credentials oauth [options]
+```
+
+add an OAuth2 credential provider to the current project
+
+**Options**
+
+- `--name <name>`: the name of the credential provider (required)
+- `--vendor <vendor>`: the OAuth2 vendor (e.g. GithubOauth2); custom providers use the guided flags instead (default: "CustomOauth2")
+- `--client-id <client-id>`: OAuth2 client ID (guided custom OAuth2)
+- `--discovery-url <discovery-url>`: OAuth2 discovery URL (guided custom OAuth2)
+- `--scopes <scopes...>`: OAuth2 scopes the provider grants (guided custom OAuth2)
+- `--provider-configuration <provider-configuration>`: complete secret-free Oauth2ProviderConfigInput JSON (required for vendored providers)
+- `--client-secret <client-secret>`: the client secret (file://path or - for stdin; inline values are rejected)
+- `--client-secret-reference <client-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
+
+##### `agentcore add credentials payment`
+
+```text
+agentcore add credentials payment [options]
+```
+
+add a payment credential provider to the current project
+
+**Options**
+
+- `--name <name>`: the name of the credential provider (required)
+- `--provider <provider>`: the payment provider: CoinbaseCDP or StripePrivy (required)
+- `--api-key-id <api-key-id>`: Coinbase CDP API key ID
+- `--api-key-secret <api-key-secret>`: Coinbase CDP API key secret (file://path or - for stdin; inline values are rejected)
+- `--wallet-secret <wallet-secret>`: Coinbase CDP wallet secret (file://path or - for stdin; inline values are rejected)
+- `--app-id <app-id>`: Privy application ID
+- `--app-secret <app-secret>`: Privy application secret (file://path or - for stdin; inline values are rejected)
+- `--authorization-private-key <authorization-private-key>`: Stripe/Privy authorization private key (file://path or - for stdin; inline values are rejected)
+- `--authorization-id <authorization-id>`: Stripe/Privy authorization identifier
 
 #### `agentcore add gateway`
 
@@ -670,193 +842,6 @@ add a Cedar Policy to a project Policy Engine
 - `--enforcement-mode <enforcement-mode>`: enforcement mode: active or log-only
 - `--authorization-phase <authorization-phase>`: authorization phase: initiate or return-output (default inferred from the statement)
 
-#### `agentcore add credentials`
-
-```text
-agentcore add credentials [options] [command]
-```
-
-add AgentCore Identity credential providers to the current project
-
-##### `agentcore add credentials api-key`
-
-```text
-agentcore add credentials api-key [options]
-```
-
-add an API key credential provider to the current project
-
-**Options**
-
-- `--name <name>`: the name of the credential provider (required)
-- `--api-key <api-key>`: the API key (file://path or - for stdin; inline values are rejected)
-- `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
-
-##### `agentcore add credentials oauth`
-
-```text
-agentcore add credentials oauth [options]
-```
-
-add an OAuth2 credential provider to the current project
-
-**Options**
-
-- `--name <name>`: the name of the credential provider (required)
-- `--vendor <vendor>`: the OAuth2 vendor (e.g. GithubOauth2); custom providers use the guided flags instead (default: "CustomOauth2")
-- `--client-id <client-id>`: OAuth2 client ID (guided custom OAuth2)
-- `--discovery-url <discovery-url>`: OAuth2 discovery URL (guided custom OAuth2)
-- `--scopes <scopes...>`: OAuth2 scopes the provider grants (guided custom OAuth2)
-- `--provider-configuration <provider-configuration>`: complete secret-free Oauth2ProviderConfigInput JSON (required for vendored providers)
-- `--client-secret <client-secret>`: the client secret (file://path or - for stdin; inline values are rejected)
-- `--client-secret-reference <client-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
-
-##### `agentcore add credentials payment`
-
-```text
-agentcore add credentials payment [options]
-```
-
-add a payment credential provider to the current project
-
-**Options**
-
-- `--name <name>`: the name of the credential provider (required)
-- `--provider <provider>`: the payment provider: CoinbaseCDP or StripePrivy (required)
-- `--api-key-id <api-key-id>`: Coinbase CDP API key ID
-- `--api-key-secret <api-key-secret>`: Coinbase CDP API key secret (file://path or - for stdin; inline values are rejected)
-- `--wallet-secret <wallet-secret>`: Coinbase CDP wallet secret (file://path or - for stdin; inline values are rejected)
-- `--app-id <app-id>`: Privy application ID
-- `--app-secret <app-secret>`: Privy application secret (file://path or - for stdin; inline values are rejected)
-- `--authorization-private-key <authorization-private-key>`: Stripe/Privy authorization private key (file://path or - for stdin; inline values are rejected)
-- `--authorization-id <authorization-id>`: Stripe/Privy authorization identifier
-
-#### `agentcore add memory`
-
-```text
-agentcore add memory [options]
-```
-
-add a Memory to the current project
-
-**Options**
-
-- `--name <name>`: the name of the Memory (required)
-- `--description <description>`: a description of what the Memory stores
-- `--event-expiry-duration <event-expiry-duration>`: how long raw events are retained, in days (3-365) (default: 30)
-- `--strategies <strategies>`: long-term Memory strategies: comma-separated types, or the JSON strategies[] as stored in agentcore.json
-- `--indexed-keys <indexed-keys>`: metadata keys indexed for filtering (JSON IndexedKey[]); requires at least one strategy
-- `--stream-delivery-resources <stream-delivery-resources>`: destinations Memory records are streamed to (JSON StreamDeliveryResources)
-- `--encryption-key-arn <encryption-key-arn>`: customer managed KMS key ARN used to encrypt the Memory
-- `--execution-role-arn <execution-role-arn>`: IAM role the Memory assumes; a default role is created when omitted
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
-
-#### `agentcore add evaluator`
-
-```text
-agentcore add evaluator [options] [command]
-```
-
-add a custom evaluator to the current project
-
-##### `agentcore add evaluator llm-as-a-judge`
-
-```text
-agentcore add evaluator llm-as-a-judge [options]
-```
-
-add an LLM-as-a-Judge evaluator to the current project
-
-**Options**
-
-- `--name <name>`: the name of the evaluator (required)
-- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL (required)
-- `--model-provider <model-provider>`: model provider for the judge: Bedrock (default) or OpenResponses
-- `--model <model>`: judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID (required)
-- `--instructions <instructions>`: scoring instructions for the judge (inline text, 'file://&lt;path&gt;', or '-' for stdin); use level placeholders like '{context}' (required)
-- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale (required)
-- `--description <description>`: a description of what this evaluator measures
-- `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
-
-##### `agentcore add evaluator code-based`
-
-```text
-agentcore add evaluator code-based [options]
-```
-
-add a code-based evaluator to the current project
-
-**Options**
-
-- `--name <name>`: the name of the evaluator (required)
-- `--level <level>`: what to score: SESSION, TRACE, or TOOL\_CALL (required)
-- `--lambda-arn <lambda-arn>`: ARN of an existing Lambda that scores a session
-- `--timeout-seconds <timeout-seconds>`: evaluator timeout in seconds (1-300)
-- `--description <description>`: a description of what this evaluator measures
-- `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
-
-#### `agentcore add online-eval`
-
-```text
-agentcore add online-eval [options]
-```
-
-add an online evaluation config to the current project
-
-**Options**
-
-- `--name <name>`: the name of the online evaluation config (required)
-- `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
-- `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
-- `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
-- `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
-- `--evaluators <evaluators...>`: evaluator name(s), Builtin.\* IDs, or ARNs to apply
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
-- `--description <description>`: a description of the config's monitoring purpose
-- `--enable-on-create <enable-on-create>`: enable evaluation immediately after deploy (default true; pass false to add it paused)
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
-
-#### `agentcore add online-insight`
-
-```text
-agentcore add online-insight [options]
-```
-
-add an online insight config to the current project
-
-**Options**
-
-- `--name <name>`: the name of the online insight config (required)
-- `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
-- `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
-- `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
-- `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
-- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs (required)
-- `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s): DAILY, WEEKLY, MONTHLY
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
-- `--description <description>`: a description of the config's monitoring purpose
-- `--enable-on-create <enable-on-create>`: enable insights immediately after deploy (default true; pass false to add it paused)
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
-
-#### `agentcore add config-bundle`
-
-```text
-agentcore add config-bundle [options]
-```
-
-add a configuration bundle to the current project
-
-**Options**
-
-- `--name <name>`: the name of the configuration bundle (required)
-- `--description <description>`: a description of the configuration bundle
-- `--components <components>`: component configuration map (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
-- `--branch-name <branch-name>`: branch name for the initial configuration (default: "mainline")
-- `--commit-message <commit-message>`: message describing the initial configuration
-- `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for component configurations
-
 #### `agentcore add payment-manager`
 
 ```text
@@ -893,6 +878,21 @@ add a connector to a project payment manager
 - `--name <name>`: the payment connector name (required)
 - `--credential <credential>`: an existing payment credential to reuse
 - `--quick-create`: create a CoinbaseCDP connector through Quick Create (default: false)
+
+#### `agentcore add runtime-endpoint`
+
+```text
+agentcore add runtime-endpoint [options]
+```
+
+add a named endpoint (version alias) to a runtime
+
+**Options**
+
+- `--runtime <runtime>`: the parent runtime name (required)
+- `--name <name>`: the endpoint name (e.g., prod, staging) (required)
+- `--version <version>`: the runtime version this endpoint points to (default: 1)
+- `--description <description>`: description of the endpoint
 
 ### `agentcore remove`
 
@@ -981,7 +981,7 @@ create a harness
 - `--max-iterations <max-iterations>`: max agent loop iterations per invocation
 - `--max-tokens <max-tokens>`: max total output tokens per invocation
 - `--timeout-seconds <timeout-seconds>`: max duration in seconds per invocation
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
 
 #### `agentcore harness get`
 
@@ -1166,7 +1166,7 @@ create a harness endpoint
 - `--id <id>`: the ID of the harness (required)
 - `--name <name>`: the name of the endpoint (required)
 - `--target-version <target-version>`: the harness version the endpoint points to (default latest)
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags>`: tags to apply (JSON object of key/value strings)
 
 ##### `agentcore harness endpoint get`
 
@@ -2068,7 +2068,7 @@ create an LLM-as-a-Judge evaluator
 - `--instructions <instructions>`: evaluation instructions (inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--rating-scale <rating-scale>`: rating scale: a preset (1-5-quality | 1-3-simple | pass-fail | good-neutral-bad) or a custom RatingScale (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags>`: tags to apply (JSON object of key/value strings; inline, file://&lt;path&gt;, or - for stdin)
 
 ###### `agentcore eval evaluator llm-as-a-judge update`
 
@@ -2110,7 +2110,7 @@ create a code-based (Lambda-backed) evaluator
 - `--lambda-arn <lambda-arn>`: ARN of the Lambda function that scores a session (required)
 - `--timeout <timeout>`: Lambda timeout in seconds (1-300)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags>`: tags to apply (JSON object of key/value strings; inline, file://&lt;path&gt;, or - for stdin)
 
 ###### `agentcore eval evaluator code-based update`
 
@@ -2185,7 +2185,7 @@ create an online evaluation config
 - `--name <name>`: the name of the online evaluation config (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: whether to enable evaluation immediately (default true; pass false to create it paused)
-- `--tags <tags...>`: resource tags as repeated key=value entries or a JSON object
+- `--tags <tags>`: resource tags (JSON object of key/value strings)
 - `--agent <agent>`: harness ID or Runtime ID whose traffic to sample
 - `--data-source-config <data-source-config>`: the traces to sample (JSON DataSourceConfig), as an alternative to --agent
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (default DEFAULT)
