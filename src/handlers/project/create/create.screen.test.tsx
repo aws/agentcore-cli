@@ -45,7 +45,7 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
   return inputs;
 }
 
-const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5";
+const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5-5";
 
 describe("project create wizard", () => {
   test("harness flow: name → type → model provider → review → created", async () => {
@@ -171,7 +171,7 @@ describe("project create wizard", () => {
     await r.press("down");
     expect(r.lastFrame()).toContain("● openai");
     await r.press("return"); // focus model id
-    expect(r.lastFrame()).toContain("gpt-5");
+    expect(r.lastFrame()).toContain("gpt-6.1-sol");
     await r.press("return"); // focus API key ARN
     await r.press("return");
     await waitForText(r.lastFrame, "enter an API key ARN for openai");
@@ -183,7 +183,7 @@ describe("project create wizard", () => {
     expect(review).toContain("provider");
     expect(review).toContain("openai");
     expect(review).toContain("model");
-    expect(review).toContain("gpt-5");
+    expect(review).toContain("gpt-6.1-sol");
     expect(review).toContain("API key ARN");
     expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
     await r.press("return");
@@ -197,7 +197,7 @@ describe("project create wizard", () => {
         name: "OpenAIApp",
         model: {
           provider: "open_ai",
-          modelId: "gpt-5",
+          modelId: "gpt-6.1-sol",
           apiKeyArn,
         },
       },
@@ -208,7 +208,7 @@ describe("project create wizard", () => {
     expect(spec.credentials).toEqual([]);
     const harness = parse(await Bun.file(join(root, "app", "OpenAIApp", "harness.yaml")).text());
     expect(harness.model).toEqual({
-      openAiModelConfig: { modelId: "gpt-5", apiKeyArn },
+      openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyArn },
     });
     expect(harness.memory).toEqual({ managedMemoryConfiguration: {} });
     expect(harness.systemPrompt).toBeUndefined();
@@ -232,7 +232,7 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("● gemini");
     await r.press("up"); // openai
     await r.press("return");
-    expect(r.lastFrame()).toContain("gpt-5-custom");
+    expect(r.lastFrame()).toContain("gpt-6.1-sol-custom");
     r.unmount();
   });
 

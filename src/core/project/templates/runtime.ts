@@ -25,11 +25,11 @@ type ModelProviderTemplateConfig = {
 
 /** The model id each provider block renders when the user does not pass one. */
 const DEFAULT_MODEL_IDS: Record<ModelProvider, string> = {
-  Bedrock: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-  Anthropic: "claude-sonnet-4-5-20250929",
-  OpenAI: "gpt-4.1",
-  Gemini: "gemini-2.5-flash",
-  LiteLLM: "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+  Bedrock: "global.anthropic.claude-sonnet-5-5",
+  Anthropic: "claude-sonnet-5-5",
+  OpenAI: "gpt-6.1-sol",
+  Gemini: "gemini-3.8-flash",
+  LiteLLM: "bedrock/global.anthropic.claude-sonnet-5-5",
 };
 
 function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProviderTemplateConfig {

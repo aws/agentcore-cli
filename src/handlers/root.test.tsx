@@ -59,6 +59,28 @@ describe("createRootHandler", () => {
     );
   });
 
+  test("add lists resources grouped in the top-level resource order", () => {
+    const add = compiledRootCommand().commands.find((child) => child.name() === "add")!;
+    expect(helpCommandNames(add.helpInformation())).toEqual([
+      "harness",
+      "runtime",
+      "runtime-endpoint",
+      "gateway",
+      "gateway-target",
+      "gateway-connector",
+      "policy-engine",
+      "policy",
+      "credentials",
+      "memory",
+      "evaluator",
+      "online-eval",
+      "online-insight",
+      "config-bundle",
+      "payment-manager",
+      "payment-connector",
+    ]);
+  });
+
   test("--help lists commands in the root menu order", () => {
     const command = compiledRootCommand();
     expect(helpCommandNames(command.helpInformation())).toEqual([

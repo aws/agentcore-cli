@@ -81,7 +81,7 @@ JSON syntax:
   }
 
 Example:
-  --model '{"bedrockModelConfig":{"modelId":"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}}'`,
+  --model '{"bedrockModelConfig":{"modelId":"global.anthropic.claude-sonnet-5-5"}}'`,
 
   tools: `(JSON: list of objects)
 The tools available to the agent: remote MCP servers, AgentCore Gateway,

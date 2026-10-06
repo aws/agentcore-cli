@@ -22,7 +22,7 @@ import {
 
 export const MODEL_ID_FORMATS: Record<EvaluatorModelProvider, string> = {
   Bedrock:
-    "a Bedrock model ID (e.g. anthropic.claude-3-5-sonnet-20240620-v1:0) or an inference-profile/foundation-model ARN",
+    "a Bedrock model ID (e.g. global.anthropic.claude-sonnet-5-5) or an inference-profile/foundation-model ARN",
   OpenResponses:
     "an OpenResponses model ID (a non-empty identifier without spaces, e.g. openai.gpt-5.4)",
 };

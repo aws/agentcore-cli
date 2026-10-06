@@ -81,7 +81,7 @@ describe("project create", () => {
       await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
     );
     expect(harness.model).toEqual({
-      bedrockModelConfig: { modelId: "global.anthropic.claude-sonnet-5" },
+      bedrockModelConfig: { modelId: "global.anthropic.claude-sonnet-5-5" },
     });
     expect(harness.memory).toEqual({ managedMemoryConfiguration: {} });
     expect(harness.systemPrompt).toBeUndefined();

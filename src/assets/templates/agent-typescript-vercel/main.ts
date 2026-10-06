@@ -20,7 +20,7 @@ const app = new BedrockAgentCoreApp({
     requestSchema,
     async *process(payload) {
       const result = streamText({
-        model: bedrock('global.anthropic.claude-sonnet-4-5-20250929-v1:0'),
+        model: bedrock('global.anthropic.claude-sonnet-5-5'),
         system: SYSTEM_PROMPT,
         prompt: payload.prompt,
       });
