@@ -222,6 +222,13 @@ export function HarnessModelField({
     else if (fitsAt(anchor, rowsAt(anchor))) target = anchor;
     else if (fitsAt(offset, viewportHeight)) target = offset;
     else target = Math.min(position.top, bottom - viewportHeight);
+    // The viewport is only as tall as the content while everything fits (nothing
+    // above constrains it), so a field appended below the list is measured
+    // against a viewport that has not grown yet and looks out of view. Never
+    // scroll past the bottom offset: when the content fits it is 0 and the list
+    // stays put; when it really overflows the rule above still applies.
+    const bottomOffset = Math.max(0, scroll.getContentHeight() - viewportHeight);
+    target = Math.min(target, bottomOffset);
     if (target !== offset) scroll.scrollTo(target);
   }, [focusedField]);
 

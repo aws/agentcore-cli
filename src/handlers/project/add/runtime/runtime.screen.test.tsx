@@ -268,6 +268,29 @@ describe("project add runtime wizard", () => {
     r.unmount();
   });
 
+  test("a China deployment target shapes the model step even when the shell's region is commercial", async () => {
+    const projectRoot = await inProject();
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "cn-north-1" }]),
+    );
+    // The base context resolves us-east-1; the project's target decides.
+    const r = renderScreen("/agentcore/add/runtime");
+
+    await waitForText(r.lastFrame, "what should this runtime be called?");
+    await r.write("cn_target_agent");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await selectTemplate(r, "agent-python-strands");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "choose a model provider");
+    expect(r.lastFrame()).toContain("● litellm");
+    expect(r.lastFrame()).not.toContain("● bedrock");
+    expect(flatFrame(r.lastFrame).match(/not accessible from China[\s│]*regions/g)).toHaveLength(4);
+    r.unmount();
+  });
+
   test("scaffolds the Bedrock Managed Agents environment", async () => {
     const projectRoot = await inProject();
     const r = renderScreen("/agentcore/add/runtime");

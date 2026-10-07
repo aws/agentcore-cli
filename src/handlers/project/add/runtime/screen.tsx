@@ -6,7 +6,8 @@ import { RegionKey } from "../../../keys";
 import { AgentNameSchema } from "../../../../projectSchemas/runtime";
 import type { ScreenProps } from "../../../types";
 import type { Project } from "../../types";
-import { ProjectGate, projectQueryKey } from "../../ProjectGate";
+import { LoadingFrame, ProjectGate, projectQueryKey, useProjectTargets } from "../../ProjectGate";
+import { isChinaRegion } from "../../../../core/partition";
 import {
   ChoiceField,
   Step,
@@ -105,9 +106,45 @@ export function AddRuntimeScreen({ ctx, core }: ScreenProps) {
       onBack={() => navigate(ADD_MENU)}
     >
       {(project) => (
-        <AddRuntimeWizard project={project} core={core} region={ctx.value(RegionKey)} />
+        <AddRuntimeLoader project={project} core={core} region={ctx.value(RegionKey)} />
       )}
     </ProjectGate>
+  );
+}
+
+// AddRuntimeLoader resolves the region the model step should reason about.
+// The China add gate keys on the project's deployment targets first and falls
+// back to the resolved region only when there are none, so the wizard reads the
+// same answer: a China target makes the model step start on a China-capable
+// provider and mark the blocked ones even when the shell's region is
+// commercial, instead of offering Bedrock and refusing at submit.
+function AddRuntimeLoader({
+  project,
+  core,
+  region,
+}: {
+  project: Project;
+  core: ScreenProps["core"];
+  region: string | undefined;
+}) {
+  const navigate = useNavigate();
+  const targets = useProjectTargets(core, project);
+
+  if (targets.data !== undefined) {
+    const chinaTarget = targets.data.find((target) => isChinaRegion(target.region));
+    return (
+      <AddRuntimeWizard project={project} core={core} region={chinaTarget?.region ?? region} />
+    );
+  }
+
+  return (
+    <LoadingFrame
+      breadcrumb={BREADCRUMB}
+      description={DESCRIPTION}
+      query={targets}
+      loadingLabel="loading deployment targets…"
+      onBack={() => navigate(ADD_MENU)}
+    />
   );
 }
 
@@ -118,7 +155,7 @@ function AddRuntimeWizard({
 }: {
   project: Project;
   core: ScreenProps["core"];
-  /** The command's resolved region; a China region shapes the model step. */
+  /** The region the model step reasons about: a China deployment target's, else the command's. */
   region: string | undefined;
 }) {
   const navigate = useNavigate();

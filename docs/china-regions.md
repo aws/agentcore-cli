@@ -26,7 +26,10 @@
   target yet and the resolved region is a China region — and at `agentcore deploy` — deploying
   to a China target fails when a runtime was scaffolded with an inaccessible model provider
   (recorded as the runtime's `modelProvider` in `agentcore.json`; delete that field if you have
-  replaced the model wiring in code). Harness projects are not available in China regions.
+  replaced the model wiring in code). The `agentcore add runtime` wizard's model step reads the
+  same answer, so with a China deployment target it starts on a China-capable provider and marks
+  the blocked ones even when the shell's region is commercial. Harness projects are not available
+  in China regions.
 - **Resource families:** only Runtimes, Gateways (without connector-backed Targets: the curated
   `web-search` and `bedrock-knowledge-bases` connectors are refused there), and credentials are
   available in China

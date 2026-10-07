@@ -318,6 +318,46 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("confirming the preselected provider keeps the provider list in view when everything fits", async () => {
+    // A 40-row terminal: the list and the one Bedrock field fit together, so
+    // revealing the field must not scroll the list away (the viewport is
+    // content-sized until something constrains it, which once made the new
+    // field look out of view).
+    const r = renderScreen("/agentcore/create");
+    await walkToStrandsModelStep(r, "FitsApp");
+    expect(r.lastFrame()).toContain("● bedrock");
+
+    await r.press("return"); // focus the model id
+    await waitForText(r.lastFrame, "a Bedrock model or inference profile ID");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const frame = r.lastFrame()!;
+    expect(frame).toContain("choose a model provider");
+    expect(frame).toContain("● bedrock");
+    expect(frame).toContain("○ anthropic");
+    expect(frame).toContain("○ litellm");
+    expect(frame).toContain(STRANDS_BEDROCK_MODEL_ID);
+    r.unmount();
+  });
+
+  test("the config-based model step keeps its provider list in view the same way", async () => {
+    const r = renderScreen("/agentcore/create");
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("FitsHarness");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("return"); // config-based is the default
+    await waitForText(r.lastFrame, "choose a model provider");
+
+    await r.press("return"); // focus the model id
+    await waitForText(r.lastFrame, DEFAULT_MODEL_ID);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const frame = r.lastFrame()!;
+    expect(frame).toContain("choose a model provider");
+    expect(frame).toContain("● bedrock");
+    expect(frame).toContain("○ litellm");
+    r.unmount();
+  });
+
   test("the model step scrolls only to reveal a field that is out of view", async () => {
     const r = renderScreen("/agentcore/create");
     await r.resize(80, 24);
