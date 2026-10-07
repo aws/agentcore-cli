@@ -7,6 +7,7 @@ import { darkTheme } from "../../components/ui/_core.js";
 import { useKeyHints, useWizard } from "../../components/wizard";
 import { isChinaRegion } from "../../core/partition";
 import { SourceResolver } from "../../io";
+import { modelIdHelp, type ModelDocsProvider } from "../../projectSchemas/modelDocs";
 import { DEFAULT_MODEL_IDS, type ModelProvider } from "../../projectSchemas/runtime";
 import type { ScaffoldRuntimeInput } from "./types";
 
@@ -216,13 +217,30 @@ interface ModelField {
   patternError?: string;
 }
 
+// Where each provider lists its model IDs. OpenAI-compatible endpoints have no
+// single list: the IDs are whatever the endpoint serves.
+const MODEL_DOCS: Record<ModelProvider, ModelDocsProvider | undefined> = {
+  Bedrock: "bedrock",
+  Anthropic: "anthropic",
+  OpenAI: "open_ai",
+  OpenAICompatible: undefined,
+  Gemini: "gemini",
+  LiteLLM: "lite_llm",
+};
+
+function withModelDocs(provider: ModelProvider, what: string): string {
+  const docs = MODEL_DOCS[provider];
+  return docs === undefined ? what : modelIdHelp(docs, what);
+}
+
 function modelFields(provider: ModelProvider, china: boolean): ModelField[] {
   const label = providerLabel(provider);
   const fields: ModelField[] = [
     {
       key: "modelId",
       name: "model ID",
-      helpText:
+      helpText: withModelDocs(
+        provider,
         provider === "Bedrock"
           ? "a Bedrock model or inference profile ID"
           : provider === "LiteLLM"
@@ -232,6 +250,7 @@ function modelFields(provider: ModelProvider, china: boolean): ModelField[] {
             : provider === "OpenAICompatible"
               ? "the model name at your OpenAI-compatible endpoint (no default)"
               : `the ${label} model to use`,
+      ),
       placeholder:
         provider === "LiteLLM" && china
           ? CHINA_LITELLM_PLACEHOLDER

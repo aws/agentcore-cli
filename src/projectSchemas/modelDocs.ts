@@ -6,7 +6,7 @@
 export const MODEL_DOCS_URLS = {
   bedrock: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html",
   anthropic: "https://docs.anthropic.com/en/docs/about-claude/models",
-  open_ai: "https://developers.openai.com/api/docs/models",
+  open_ai: "https://developers.openai.com/api/docs/models/all",
   gemini: "https://ai.google.dev/gemini-api/docs/models",
   lite_llm: "https://docs.litellm.ai/docs/providers",
   open_responses: "https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html",
