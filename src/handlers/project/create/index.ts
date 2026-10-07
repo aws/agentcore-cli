@@ -30,6 +30,7 @@ import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
 import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import { MODEL_DOCS_URLS } from "../../../projectSchemas/modelDocs";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -56,6 +57,17 @@ const ModelProviderFlagSchema = z.preprocess((value) => {
   return MODEL_PROVIDER_FLAG_ALIASES[lower] ?? lower;
 }, z.enum(MODEL_PROVIDER_FLAG_VALUES));
 type ModelProviderFlag = z.infer<typeof ModelProviderFlagSchema>;
+
+// Where each --model-provider lists its model IDs. openai_compatible has no
+// single list: the IDs are whatever the chosen endpoint serves.
+const MODEL_ID_FLAG_HELP = [
+  "(model id)",
+  "Model IDs by --model-provider:",
+  ...(["bedrock", "anthropic", "open_ai", "gemini", "lite_llm"] as const).map(
+    (provider) => `  ${provider.padEnd(18)}${MODEL_DOCS_URLS[provider]}`,
+  ),
+  `  ${"openai_compatible".padEnd(18)}the IDs your endpoint serves`,
+].join("\n");
 
 export const DEFAULT_CREATE_RUNTIME_NAME = "agent";
 
@@ -92,6 +104,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         "model id for the scaffolded Runtime code, overriding the provider's default " +
           "(required with openai_compatible, and with litellm in China regions)",
         z.string().min(1).optional(),
+        { help: MODEL_ID_FLAG_HELP },
       ),
       flag(
         "api-key",

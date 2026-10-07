@@ -8,7 +8,7 @@ import type {
   UpdateHarnessRequest,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CreateHarnessInput } from "../handlers/harness/types";
-import { DEFAULT_HARNESS_MODEL } from "../projectSchemas/harness";
+import { DEFAULT_HARNESS_MODEL, harnessModelIdHelp } from "../projectSchemas/harness";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
@@ -590,12 +590,12 @@ const MODEL_PROVIDERS: {
   {
     kind: "bedrock",
     label: "bedrock",
-    description: "Anthropic Claude and other models on Amazon Bedrock",
+    description: "an Amazon Bedrock model or inference profile",
     fields: [
       {
         key: "modelId",
         name: "model ID",
-        helpText: "a Bedrock model or inference profile ID",
+        helpText: harnessModelIdHelp("bedrock", "a Bedrock model or inference profile ID"),
         placeholder: DEFAULT_HARNESS_MODEL.modelId,
         required: true,
         requiredError: "enter a Bedrock model or inference profile ID",
@@ -610,7 +610,7 @@ const MODEL_PROVIDERS: {
       {
         key: "modelId",
         name: "model ID",
-        helpText: "the Gemini model to use",
+        helpText: harnessModelIdHelp("gemini", "the Gemini model to use"),
         placeholder: "gemini-3.8-flash",
         required: true,
         requiredError: "enter a Gemini model ID",
@@ -633,7 +633,7 @@ const MODEL_PROVIDERS: {
       {
         key: "modelId",
         name: "model ID",
-        helpText: "the OpenAI model to use",
+        helpText: harnessModelIdHelp("open_ai", "the OpenAI model to use"),
         placeholder: "gpt-6.1-sol",
         required: true,
         requiredError: "enter an OpenAI model ID",
@@ -656,7 +656,7 @@ const MODEL_PROVIDERS: {
       {
         key: "modelId",
         name: "model ID",
-        helpText: "the LiteLLM model identifier (provider/model)",
+        helpText: harnessModelIdHelp("lite_llm", "the LiteLLM model identifier (provider/model)"),
         placeholder: "anthropic/claude-sonnet-5-5",
         required: true,
         requiredError: "enter a LiteLLM model identifier",

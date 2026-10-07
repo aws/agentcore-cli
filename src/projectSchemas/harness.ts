@@ -15,6 +15,7 @@ import { ConnectionSchema } from "./connections";
 import { uniqueBy } from "./zod-util";
 import { TagsSchema } from "./tags";
 import { z } from "zod";
+import { modelIdHelp } from "./modelDocs";
 export const CONTAINER_URI_PATTERN =
   /^(([0-9]{12})\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com(\.cn)?|public\.ecr\.aws)\/((?:[a-z0-9]+(?:[._-][a-z0-9]+)*\/)*[a-z0-9]+(?:[._-][a-z0-9]+)*)(?::([^:@]{1,300}))?(?:@(.+))?$/;
 export const MAX_CONTAINER_URI_LENGTH = 1024;
@@ -49,6 +50,10 @@ export const HARNESS_DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
   gemini: "gemini-3.8-flash",
   lite_llm: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
 };
+/** The harness model ID field's help text, with a link to the provider's model IDs. */
+export function harnessModelIdHelp(provider: HarnessModelProvider, what: string): string {
+  return modelIdHelp(provider, what);
+}
 export const MAX_LITE_LLM_API_BASE_LENGTH = 16383;
 export const BedrockApiFormatSchema = z.enum(["converse_stream", "responses", "chat_completions"]);
 export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;

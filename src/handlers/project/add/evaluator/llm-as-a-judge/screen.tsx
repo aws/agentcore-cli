@@ -41,15 +41,21 @@ import {
   type RatingScalePreset,
 } from "./ratingScales";
 import { RegionKey } from "../../../../keys";
+import { modelIdHelp, type ModelDocsProvider } from "../../../../../projectSchemas/modelDocs";
 
 const BREADCRUMB = ["agentcore", "add", "evaluator", "llm-as-a-judge"];
+
+const JUDGE_MODEL_DOCS: Record<EvaluatorModelProvider, ModelDocsProvider> = {
+  Bedrock: "bedrock",
+  OpenResponses: "open_responses",
+};
 const DESCRIPTION = "add an LLM-as-a-Judge evaluator to the current project";
 
 const PROVIDER_CHOICES: Choice<EvaluatorModelProvider>[] = [
   {
     value: "Bedrock",
     label: "Bedrock",
-    description: "Anthropic Claude and other models on Amazon Bedrock",
+    description: "an Amazon Bedrock model or inference profile",
   },
   {
     value: "OpenResponses",
@@ -252,7 +258,7 @@ function AddLlmAsAJudgeEvaluatorWizard({
             opensFor: () => true,
             label: "Model ID",
             name: "model ID",
-            help: MODEL_ID_FORMATS[provider],
+            help: modelIdHelp(JUDGE_MODEL_DOCS[provider], MODEL_ID_FORMATS[provider]),
             placeholder: MODEL_PLACEHOLDERS[provider],
             value: values.models[provider],
             onChange: (model) => set({ models: { ...values.models, [provider]: model } }),

@@ -8,6 +8,7 @@ import { darkTheme } from "../../components/ui/_core.js";
 import { useKeyHints, useWizard } from "../../components/wizard";
 import {
   HARNESS_DEFAULT_MODEL_IDS,
+  harnessModelIdHelp,
   type HarnessModelProvider,
   type HarnessModelSchema,
 } from "../../projectSchemas/harness";
@@ -43,7 +44,7 @@ const MODEL_PROVIDERS: {
   {
     provider: "bedrock",
     label: "bedrock",
-    description: "Anthropic Claude and other models on Amazon Bedrock",
+    description: "an Amazon Bedrock model or inference profile",
   },
   {
     provider: "open_ai",
@@ -129,10 +130,12 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
     {
       key: "modelId",
       name: "model ID",
-      helpText:
+      helpText: harnessModelIdHelp(
+        provider,
         provider === "bedrock"
           ? "a Bedrock model or inference profile ID"
           : `the ${providerLabel(provider)} model to use`,
+      ),
       placeholder: HARNESS_DEFAULT_MODEL_IDS[provider],
       required: true,
       requiredError: `enter a model ID for ${providerLabel(provider)}`,
