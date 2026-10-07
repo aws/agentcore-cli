@@ -115,7 +115,10 @@ describe("Runtime invoke routing", () => {
     await waitForText(screen.lastFrame, "type to choose a command");
     await screen.write("runtime");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await waitForText(
+      screen.lastFrame,
+      "agentcore → runtime → inspect hosted agent code, its endpoints, and versions",
+    );
     await screen.write("invoke");
     await screen.press("return");
     await waitForText(screen.lastFrame, RUNTIME_ID);
@@ -130,7 +133,10 @@ describe("Runtime invoke routing", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Runtime to invoke");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await waitForText(
+      screen.lastFrame,
+      "agentcore → runtime → inspect hosted agent code, its endpoints, and versions",
+    );
     await screen.press("escape");
     await waitForText(screen.lastFrame, "agentcore → the platform for production AI agents");
   });
@@ -146,7 +152,10 @@ describe("Runtime invoke routing", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Runtime to invoke");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await waitForText(
+      screen.lastFrame,
+      "agentcore → runtime → inspect hosted agent code, its endpoints, and versions",
+    );
   });
 
   test("esc from an initial endpoint picker returns to the Runtime picker", async () => {
@@ -264,7 +273,10 @@ describe("Runtime invoke routing", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Runtime to invoke");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await waitForText(
+      screen.lastFrame,
+      "agentcore → runtime → inspect hosted agent code, its endpoints, and versions",
+    );
     await screen.write("invoke");
     await screen.press("return");
     await waitForText(screen.lastFrame, "choose a Runtime to invoke");

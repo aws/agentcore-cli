@@ -114,9 +114,15 @@ describe("project add online-insight", () => {
         "--enable-on-create",
         "false",
         "--tags",
-        '{"team":"ml"}',
+        "team=ml",
+        "--tags",
+        "env=prod",
       ],
-      { description: "monitor prod", enableOnCreate: false, tags: { team: "ml" } },
+      {
+        description: "monitor prod",
+        enableOnCreate: false,
+        tags: { team: "ml", env: "prod" },
+      },
     ],
   ])("%s", async (_label, flags, expected) => {
     const { projectRoot, cleanup } = await initProject({

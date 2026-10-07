@@ -364,7 +364,9 @@ describe("project add evaluator llm-as-a-judge", () => {
       "--kms-key-arn",
       kms,
       "--tags",
-      '{"team":"ml"}',
+      "team=ml",
+      "--tags",
+      "env=prod",
     ]);
 
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -372,7 +374,7 @@ describe("project add evaluator llm-as-a-judge", () => {
     expect(evaluator).toMatchObject({
       description: "gate on grounding",
       kmsKeyArn: kms,
-      tags: { team: "ml" },
+      tags: { team: "ml", env: "prod" },
     });
   });
 

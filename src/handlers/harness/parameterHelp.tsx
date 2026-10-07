@@ -81,7 +81,7 @@ JSON syntax:
   }
 
 Example:
-  --model '{"bedrockModelConfig":{"modelId":"us.anthropic.claude-sonnet-4-5-20250929-v1:0"}}'`,
+  --model '{"bedrockModelConfig":{"modelId":"global.anthropic.claude-sonnet-5-5"}}'`,
 
   tools: `(JSON: list of objects)
 The tools available to the agent: remote MCP servers, AgentCore Gateway,
@@ -305,10 +305,12 @@ JSON syntax:
 Example:
   --authorizer-configuration '{"customJWTAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["my-app"]}}'`,
 
-  tags: `(JSON: map of string to string)
-Tags to apply to the harness resource. Up to 50 entries; keys up to 128
-characters, values up to 256.
+  tags: `(repeated key=value or JSON: map of string to string)
+Tags to apply to the harness resource. Repeat --tags for key=value entries, or
+provide one JSON object. Up to 50 entries; keys up to 128 characters, values
+up to 256.
 
 Example:
+  --tags team=ml-platform --tags env=dev
   --tags '{"team":"ml-platform","env":"dev"}'`,
 };

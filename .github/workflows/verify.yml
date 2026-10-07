@@ -54,9 +54,7 @@ jobs:
         if: runner.os == 'Linux' && !cancelled()
       - run: bun run typecheck
         if: runner.os == 'Linux' && !cancelled()
-      # braces@3.0.3 (GHSA-vfj7-8cjw-p6xm, via @aws-cdk/toolkit-lib and secretlint) has no patched
-      # release yet; drop the ignore once one ships and `bun audit fix` picks it up.
-      - run: bun audit --ignore GHSA-vfj7-8cjw-p6xm
+      - run: bun run audit
         if: runner.os == 'Linux' && !cancelled()
       - run: bun run secrets:check
         if: runner.os == 'Linux' && !cancelled()

@@ -131,13 +131,15 @@ describe("project add evaluator code-based", () => {
       "--kms-key-arn",
       kms,
       "--tags",
-      '{"team":"ml"}',
+      "team=ml",
+      "--tags",
+      "env=prod",
     ]);
 
     expect(await evaluator(projectRoot, "full")).toMatchObject({
       description: "external scorer",
       kmsKeyArn: kms,
-      tags: { team: "ml" },
+      tags: { team: "ml", env: "prod" },
     });
   });
 

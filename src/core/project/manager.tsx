@@ -1483,8 +1483,8 @@ export class FsProjectManager implements ProjectManager {
       throw new InvalidEnvironmentError(
         `Cannot create the default deployment target for project '${project.name}' because ` +
           `the AWS account could not be resolved: ${cause.message}\n` +
-          `Check that valid AWS credentials are configured (for example via 'aws configure', ` +
-          `AWS_PROFILE, or environment variables) and re-run 'agentcore deploy'.`,
+          `Sign in with 'aws login' (or set AWS_PROFILE or credential environment variables) ` +
+          `and re-run 'agentcore deploy'.`,
         { cause: error },
       );
     }

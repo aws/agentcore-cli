@@ -3,9 +3,8 @@ import { createHandler, flag, ProjectKey } from "../../../../../router";
 import { InputValidationError } from "../../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../../projectSchemas/aws-targets";
 import { EvaluatorSchema } from "../../../../../projectSchemas/evaluator";
-import { TagsSchema } from "../../../../../projectSchemas/tags";
 import type { AddResourceInput, Project } from "../../../types";
-import { parseJsonFlagWithSchema } from "../../../../utils";
+import { parseTags } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
 
@@ -76,7 +75,11 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         "customer-managed KMS key ARN to encrypt the evaluator",
         z.string().optional(),
       ),
-      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
+      flag(
+        "tags",
+        "tags as repeated key=value entries or a JSON object",
+        z.array(z.string()).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
@@ -92,7 +95,7 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
           level: flags["level"],
           description: flags["description"],
           kmsKeyArn: flags["kms-key-arn"],
-          tags: parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema),
+          tags: parseTags(flags["tags"]),
           ...(lambdaArn !== undefined
             ? { lambdaArn }
             : { timeoutSeconds: flags["timeout-seconds"] }),

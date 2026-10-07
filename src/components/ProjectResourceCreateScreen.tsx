@@ -55,7 +55,7 @@ export function ProjectResourceCreateScreen({ resource }: ProjectResourceCreateS
         {`AgentCore ${config.pluralLabel} are created and managed as part of an AgentCore project.`}
       </Text>
       <Text> </Text>
-      <Text>Run these commands from the command line:</Text>
+      <Text>Run these commands:</Text>
       <Text> </Text>
       <Text color={darkTheme.colors.primary}>{"  agentcore create"}</Text>
       <Text color={darkTheme.colors.primary}>{"  cd <project-directory>"}</Text>

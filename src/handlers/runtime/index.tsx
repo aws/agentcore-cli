@@ -14,7 +14,7 @@ import { createRuntimeTracesHandler } from "./traces";
 import { createRuntimeVersionHandler } from "./version";
 
 export function createRuntimeHandler(core: Core, io: AppIO): Router {
-  return new Router("runtime", "inspect AgentCore Runtimes")
+  return new Router("runtime", "inspect hosted agent code, its endpoints, and versions")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list", "invoke", "shell", "exec", "version", "endpoint")

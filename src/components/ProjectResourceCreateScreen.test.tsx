@@ -14,19 +14,19 @@ const RESOURCES = [
   {
     resource: "runtime",
     label: "Runtime",
-    parentDescription: "inspect AgentCore Runtimes",
+    parentDescription: "inspect hosted agent code, its endpoints, and versions",
     addCommand: "agentcore add runtime",
   },
   {
     resource: "memory",
     label: "Memory",
-    parentDescription: "inspect AgentCore Memories",
+    parentDescription: "inspect agent memory: sessions, events, and records",
     addCommand: "agentcore add memory",
   },
   {
     resource: "gateway",
     label: "Gateway",
-    parentDescription: "inspect AgentCore Gateways",
+    parentDescription: "inspect MCP tool gateways and their targets",
     addCommand: "agentcore add gateway --name MyGateway",
   },
 ] as const satisfies {
@@ -54,7 +54,7 @@ describe("project resource creation guidance", () => {
       expect(frame).toContain(addCommand);
       expect(frame).toContain("agentcore deploy");
       expect(frame).not.toContain("┌");
-      expect(frame).not.toContain("this command runs from the command line");
+      expect(frame).not.toContain("run it with:");
 
       await r.press("escape");
       await waitForText(r.lastFrame, parentDescription);

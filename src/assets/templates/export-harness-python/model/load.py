@@ -72,7 +72,7 @@ from strands.models.bedrock import BedrockModel
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
     return BedrockModel(
-        model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-4-5-20250929-v1:0{{/if}}",
+        model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-5-5{{/if}}",
 {{#if modelMaxTokens}}
         max_tokens={{modelMaxTokens}},
 {{/if}}
@@ -140,7 +140,7 @@ def load_model():
     {{/if}}
     return {{#if (eq modelApiFormat "responses")}}OpenAIResponsesModel{{else}}OpenAIModel{{/if}}(
         client_args={"api_key": _get_api_key()},
-        model_id="{{#if modelId}}{{modelId}}{{else}}gpt-4.1{{/if}}",
+        model_id="{{#if modelId}}{{modelId}}{{else}}gpt-6.1-sol{{/if}}",
         params=params,
     )
 {{/if}}
@@ -195,7 +195,7 @@ def load_model() -> GeminiModel:
     {{/if}}
     return GeminiModel(
         client_args={"api_key": _get_api_key()},
-        model_id="{{#if modelId}}{{modelId}}{{else}}gemini-2.5-flash{{/if}}",
+        model_id="{{#if modelId}}{{modelId}}{{else}}gemini-3.8-flash{{/if}}",
         params=params,
     )
 {{/if}}
@@ -258,7 +258,7 @@ def load_model() -> LiteLLMModel:
     {{/if}}
     return LiteLLMModel(
         client_args=client_args,
-        model_id="{{#if modelId}}{{modelId}}{{else}}bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0{{/if}}",
+        model_id="{{#if modelId}}{{modelId}}{{else}}bedrock/global.anthropic.claude-sonnet-5-5{{/if}}",
         params=params,
     )
 {{/if}}

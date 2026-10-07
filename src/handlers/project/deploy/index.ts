@@ -22,6 +22,9 @@ type DeployProjectHandlerConfig = {
   middlewares?: Middleware[];
 };
 
+/** The command both entry points suggest once a deploy succeeds. */
+export const DEPLOY_NEXT_STEP = "agentcore invoke";
+
 /** The line both entry points print once a deploy finishes. */
 export function deployedMessage(
   project: Project,
@@ -114,6 +117,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         ctx.require(JsonRendererKey).renderJson({ message, ...result });
         return;
       }
+      if (!result.tornDown) config.io.stderr.write(`Next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
 

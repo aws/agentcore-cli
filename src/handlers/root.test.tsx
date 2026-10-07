@@ -11,18 +11,18 @@ import {
 // The order `agentcore --help` and the TUI root menu list the commands in.
 const WORKFLOW_ORDER = [
   "create",
+  "dev",
+  "deploy",
+  "invoke",
+  "status",
+  "logs",
+  "traces",
   "add",
   "remove",
-  "dev",
-  "build",
-  "deploy",
-  "status",
-  "invoke",
-  "log",
-  "traces",
   "export",
+  "build",
 ];
-const RESOURCES_ORDER = ["eval", "gateway", "harness", "identity", "memory", "payment", "runtime"];
+const RESOURCES_ORDER = ["harness", "runtime", "gateway", "identity", "memory", "eval", "payment"];
 const SETTINGS_ORDER = ["feedback", "config", "update"];
 
 // helpCommandNames reads the command names off the "Commands:" section of help.
@@ -57,6 +57,28 @@ describe("createRootHandler", () => {
     expect(add.commands.map((child) => child.name())).toEqual(
       expect.arrayContaining(["harness", "runtime", "memory", "gateway"]),
     );
+  });
+
+  test("add lists resources grouped in the top-level resource order", () => {
+    const add = compiledRootCommand().commands.find((child) => child.name() === "add")!;
+    expect(helpCommandNames(add.helpInformation())).toEqual([
+      "harness",
+      "runtime",
+      "runtime-endpoint",
+      "gateway",
+      "gateway-target",
+      "gateway-connector",
+      "policy-engine",
+      "policy",
+      "credentials",
+      "memory",
+      "evaluator",
+      "online-eval",
+      "online-insight",
+      "config-bundle",
+      "payment-manager",
+      "payment-connector",
+    ]);
   });
 
   test("--help lists commands in the root menu order", () => {

@@ -252,7 +252,11 @@ describe("project add memory", () => {
         executionRoleArn: "arn:aws:iam::123456789012:role/MyMemoryRole",
       },
     ],
-    ["tags", ["--name", "x", "--tags", '{"team":"ml"}'], { tags: { team: "ml" } }],
+    [
+      "tags",
+      ["--name", "x", "--tags", "team=ml", "--tags", "env=prod"],
+      { tags: { team: "ml", env: "prod" } },
+    ],
   ])("%s", async (_label, flags, expected) => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -495,11 +499,7 @@ describe("project add memory", () => {
       ],
       /stream content configuration field 'unexpected' is not supported by project memory resources/,
     ],
-    [
-      "validates tags as a string map",
-      ["--name", "x", "--tags", '["team=ml"]'],
-      /Invalid value for option '--tags'/,
-    ],
+    ["rejects a malformed tag entry", ["--name", "x", "--tags", "team"], /expected key=value/],
   ])("%s", async (_label, flags, error) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);

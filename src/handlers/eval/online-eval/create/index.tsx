@@ -9,19 +9,17 @@ import {
   assertMutuallyExclusiveFlags,
   coreOptsFromCtx,
   parseJsonFlag,
-  parseJsonFlagWithSchema,
+  parseTags,
 } from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 import { OnlineEvalOutputConfigFlag } from "../outputConfig";
-import { TagsSchema } from "../../../../projectSchemas/tags";
 
-const tagsHelp = `(JSON: map of string to string)
-Tags applied to the online evaluation configuration.
-
-Accepts inline JSON, file://<path>, or - to read stdin.
+const tagsHelp = `(repeated key=value or JSON: map of string to string)
+Tags applied to the online evaluation configuration. Repeat --tags for multiple key=value pairs.
 
 Example:
+  --tags team=ml-platform --tags env=prod
   --tags '{"team":"ml-platform","env":"prod"}'`;
 
 const CONFIGURATION = "Configuration:";
@@ -50,10 +48,15 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.enum(["true", "false"]).optional(),
         { group: CONFIGURATION },
       ),
-      flag("tags", "resource tags (JSON object of key/value strings)", z.string().optional(), {
-        group: CONFIGURATION,
-        help: tagsHelp,
-      }),
+      flag(
+        "tags",
+        "resource tags as repeated key=value entries or a JSON object",
+        z.array(z.string()).optional(),
+        {
+          group: CONFIGURATION,
+          help: tagsHelp,
+        },
+      ),
       flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional(), {
         group: SESSION_SOURCE,
       }),
@@ -104,20 +107,15 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("'--endpoint' can only be used with '--agent'");
       }
 
-      // One resolver shared across every stdin-capable flag (--tags, --filters,
+      // One resolver shared across every stdin-capable flag (--filters,
       // --data-source-config, --output-config) so a second `-` is rejected
       // rather than reading empty after the first drains stdin.
       const source = new SourceResolver({ stdin: io.stdin });
       const outputConfig = await OnlineEvalOutputConfigFlag.resolve(flags["output-config"], source);
-      const tags = parseJsonFlagWithSchema(
-        "tags",
-        await source.resolveText("tags", flags["tags"]),
-        TagsSchema,
-      );
       const common = {
         name: flags["name"],
         description: flags["description"],
-        tags,
+        tags: parseTags(flags["tags"]),
         outputConfig,
         samplingRate: flags["sampling-rate"],
         sessionTimeoutMinutes: flags["session-timeout-minutes"],

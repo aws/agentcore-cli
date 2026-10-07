@@ -14,7 +14,7 @@ import {
   resolveRuntimeTemplateShortcut,
   type TemplateName,
 } from "../shortcuts";
-import { DEFAULT_CREATE_RUNTIME_NAME, resolveScaffoldHarnessInput } from "./index";
+import { createNextStep, DEFAULT_CREATE_RUNTIME_NAME, resolveScaffoldHarnessInput } from "./index";
 import {
   HarnessModelField,
   emptyHarnessModel,
@@ -63,7 +63,7 @@ interface CreateProjectFormValues {
 function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
   return {
     name: "",
-    kind: "agent",
+    kind: "harness",
     model: emptyHarnessModel(),
     template: DEFAULT_TEMPLATE,
     runtimeModel: emptyRuntimeModel(region),
@@ -82,15 +82,14 @@ function templateTakesModelProvider(template: TemplateName): boolean {
 
 const PROJECT_KIND_CHOICES: Choice<ProjectKind>[] = [
   {
-    value: "agent",
-    label: "code-based",
-    description:
-      "create an agent or MCP server using an SDK like Strands, LangGraph, or FastMCP, deployed to AgentCore Runtime",
-  },
-  {
     value: "harness",
     label: "config-based",
-    description: "create a managed, config-based agent with AgentCore harness",
+    description: "define a managed agent in config: pick a model, prompt, and tools",
+  },
+  {
+    value: "agent",
+    label: "code-based",
+    description: "write your own agent with an SDK like Strands or LangGraph, hosted on Runtime",
   },
 ];
 
@@ -192,7 +191,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
   return (
     <Wizard
       breadcrumb={["agentcore", "create"]}
-      description="create a new AgentCore project"
+      description="create a new project"
       // Esc from the first step leaves the wizard for the root menu, the
       // same place RouterScreen's esc goes.
       onCancel={() => navigate("/agentcore")}
@@ -215,7 +214,10 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       }}
       runningLabel={`creating ${values.name}…`}
       successLabel={`project created in ./${values.name}`}
-      successNextSteps={[`cd ${values.name}`, "agentcore deploy"]}
+      successNextSteps={[
+        `cd ${values.name}`,
+        createNextStep(values.kind === "agent" && values.template !== EMPTY_TEMPLATE_NAME),
+      ]}
       successHint="enter exits"
       onDone={() => {
         ctx.value(TuiExitMessageKey)?.(`Next step:\n  cd ${values.name}/ && agentcore`);

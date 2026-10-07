@@ -61,7 +61,7 @@ describe("parseTags", () => {
   });
 
   test("rejects JSON array (not an object)", () => {
-    expect(() => parseTags(['["a","b"]'])).toThrow("expected key=value");
+    expect(() => parseTags(['["team=ml"]'])).toThrow("must be an object");
   });
 
   test("rejects JSON with non-string values", () => {

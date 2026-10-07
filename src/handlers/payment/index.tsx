@@ -10,7 +10,7 @@ import { createPaymentSessionHandler } from "./session";
 
 export function createPaymentHandler(core: Core, io: AppIO): Router {
   return (
-    new Router("payment", "inspect AgentCore Payments")
+    new Router("payment", "inspect payment managers, sessions, and instruments")
       .use(withTuiOnEmptyFlagsAndArgs(core, io))
       .default(renderTui(core, io))
       // No payment screens ship yet: every leaf runs from the command line and the

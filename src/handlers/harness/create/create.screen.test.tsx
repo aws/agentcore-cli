@@ -245,6 +245,8 @@ describe("harness create wizard", () => {
     await r.press("down"); // litellm
     await waitForText(r.lastFrame, "● litellm");
     await r.press("return"); // focus the model id field
+    await waitForText(r.lastFrame, "Custom API base URL");
+    expect(r.lastFrame()).toContain("leave blank to use the model provider's default endpoint");
     await r.write("anthropic/claude-3-sonnet");
     await r.press("return"); // api key arn — optional, leave empty
     await r.press("return"); // api base url — optional, leave empty
@@ -415,7 +417,7 @@ describe("harness create wizard", () => {
 
     // Esc from the hub: the finished wizard must not come back.
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "manage config-defined agents: model, prompt, and tools");
     expect(r.lastFrame()).not.toContain("the name of your harness");
     r.unmount();
   });
@@ -431,7 +433,7 @@ describe("harness create wizard", () => {
     await waitForText(r.lastFrame, "the name of your harness");
 
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage AgentCore harnesses");
+    await waitForText(r.lastFrame, "manage config-defined agents: model, prompt, and tools");
     r.unmount();
   });
 });

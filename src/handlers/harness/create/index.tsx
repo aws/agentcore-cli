@@ -11,7 +11,7 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
-import { coreOptsFromCtx, parseJsonFlag } from "../../utils.tsx";
+import { coreOptsFromCtx, parseJsonFlag, parseTags } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
 import { parameterHelp } from "../parameterHelp.tsx";
 
@@ -84,9 +84,14 @@ export const createCreateHarnessHandler = (core: Core) =>
       flag("max-iterations", "max agent loop iterations per invocation", z.number().optional()),
       flag("max-tokens", "max total output tokens per invocation", z.number().optional()),
       flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
-      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional(), {
-        help: parameterHelp.tags,
-      }),
+      flag(
+        "tags",
+        "tags as repeated key=value entries or a JSON object",
+        z.array(z.string()).optional(),
+        {
+          help: parameterHelp.tags,
+        },
+      ),
     ],
     handle: async (ctx, flags) => {
       const response = await core.harness.createHarness(
@@ -122,7 +127,7 @@ export const createCreateHarnessHandler = (core: Core) =>
           maxIterations: flags["max-iterations"],
           maxTokens: flags["max-tokens"],
           timeoutSeconds: flags["timeout-seconds"],
-          tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
+          tags: parseTags(flags["tags"]),
         },
         coreOptsFromCtx(ctx),
       );

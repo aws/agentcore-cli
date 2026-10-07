@@ -162,6 +162,7 @@ describe("project deploy handler", () => {
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("CREATE_IN_PROGRESS");
     expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
+    expect(subject.io.stderr()).toContain("Next step:\n  agentcore invoke");
     // Stack outputs are rendered only with --json; without it stdout stays empty.
     expect(subject.io.stdout()).toBe("");
   });
@@ -191,6 +192,7 @@ describe("project deploy handler", () => {
       message: "Deployed project 'orders' to target 'staging'",
       ...result,
     });
+    expect(subject.io.stderr()).not.toContain("Next step");
   });
 
   test("renders a teardown result as JSON with the removal message", async () => {
@@ -362,6 +364,8 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).toContain("Removed project 'orders' from target 'default'");
     // "Deployed" would be the wrong word for a stack that no longer exists.
     expect(subject.io.stderr()).not.toContain("Deployed project");
+    // There is nothing left to invoke.
+    expect(subject.io.stderr()).not.toContain("agentcore invoke");
   });
 
   test("rejects an unknown target without invoking the backend", async () => {
@@ -430,7 +434,7 @@ describe("project deploy handler", () => {
     const message = await messageFrom(subject.run(["--region", "us-east-1"]));
 
     expect(message).toContain("Could not load credentials from any providers");
-    expect(message).toContain("aws configure");
+    expect(message).toContain("aws login");
     expect(subject.calls).toEqual([]);
   });
 });

@@ -1855,7 +1855,7 @@ describe("FsProjectManager.deploy", () => {
     await expect(
       deploy(subject.manager, project, "default", { region: "us-east-2" }),
     ).rejects.toThrow(
-      /the AWS account could not be resolved: The security token included in the request is expired[\s\S]*aws configure/,
+      /the AWS account could not be resolved: The security token included in the request is expired[\s\S]*aws login/,
     );
     expect(subject.calls).toEqual([]);
     expect(await Bun.file(targetsFile(root)).exists()).toBe(false);

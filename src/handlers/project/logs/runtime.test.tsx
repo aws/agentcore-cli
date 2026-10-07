@@ -104,7 +104,7 @@ function command(projectBackend: ProjectBackend) {
     core,
     io,
     run: (args: string[] = []) =>
-      root.route(["bun", "agentcore", "log", "runtime", ...args, "--region", "us-east-1"]),
+      root.route(["bun", "agentcore", "logs", "runtime", ...args, "--region", "us-east-1"]),
   };
 }
 

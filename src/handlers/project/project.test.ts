@@ -82,7 +82,7 @@ describe("project create", () => {
       await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
     );
     expect(harness.model).toEqual({
-      bedrockModelConfig: { modelId: "global.anthropic.claude-sonnet-5" },
+      bedrockModelConfig: { modelId: "global.anthropic.claude-sonnet-5-5" },
     });
     expect(harness.memory).toEqual({ managedMemoryConfiguration: {} });
     expect(harness.systemPrompt).toBeUndefined();
@@ -113,7 +113,7 @@ describe("project create", () => {
   test("a harness create installs CDK dependencies and git only (no uv sync)", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
-    const { core } = await run(["create", "--name", "MyAgent"]);
+    const { io, core } = await run(["create", "--name", "MyAgent"]);
 
     const projectRoot = join(directory, "MyAgent");
     expect(core.projectCommands).toEqual([
@@ -123,12 +123,14 @@ describe("project create", () => {
       },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
+    // `agentcore dev` does not serve harnesses, so the next step is deploy.
+    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
   });
 
   test("the empty template scaffolds a project with no runtime and no harness", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
-    await run([
+    const { io } = await run([
       "create",
       "--name",
       "MyAgent",
@@ -143,6 +145,7 @@ describe("project create", () => {
     expect(spec.runtimes ?? []).toEqual([]);
     expect(spec.harnesses ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app"))).toBe(true);
+    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
   });
 
   test("rejects --model-provider with the empty template", async () => {
@@ -223,7 +226,7 @@ describe("project create", () => {
     expect(io.stderr()).toContain("Syncing Python dependencies with uv");
     expect(io.stderr()).toContain("Initializing git repository");
     expect(io.stderr()).toContain("Created project 'MyAgent' in ./MyAgent");
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
+    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore dev");
   });
 
   test("--skip-install and --skip-git run no commands", async () => {

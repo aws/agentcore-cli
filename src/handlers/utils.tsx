@@ -164,15 +164,35 @@ export function assertMutuallyExclusiveFlags(
   }
 }
 
-// parseTags parses a tags flag that accepts two mutually exclusive forms:
-//   - Repeated key=value shorthand: ["env=prod", "team=foo"]
-//   - A single JSON object: ['{"env":"prod","team":"foo"}']
-// The two forms cannot be mixed. Returns undefined when the input is empty.
+/**
+ * Given tag values, parses either repeated `key=value` entries (for example,
+ * `["env=prod", "team=foo"]`) or a single JSON object (for example,
+ * `['{"env":"prod","team":"foo"}']`).
+ *
+ * The two forms cannot be mixed. Returns `undefined` when the input is missing
+ * or empty.
+ *
+ * @param values - Tag values supplied through `--tags`.
+ * @returns Parsed tags, or `undefined` when no tags were provided.
+ * @throws {InputValidationError} If an entry is malformed or a JSON value is not a string.
+ */
 export function parseTags(values: string[] | undefined): Record<string, string> | undefined {
   if (!values || values.length === 0) return undefined;
 
-  const first = values[0];
-  if (values.length === 1 && first?.trimStart().startsWith("{")) {
+  const jsonIndex = values.findIndex((value) => {
+    const trimmed = value.trimStart();
+    return trimmed.startsWith("{") || trimmed.startsWith("[");
+  });
+  if (jsonIndex !== -1) {
+    if (values.length > 1) {
+      throw new InputValidationError(
+        "--tags accepts either one JSON object or repeated key=value entries, not both",
+      );
+    }
+    const first = values[jsonIndex]!;
+    if (first.trimStart().startsWith("[")) {
+      throw new InputValidationError("--tags JSON must be an object of string key-value pairs");
+    }
     const parsed = parseJsonFlag<Record<string, unknown>>("tags", first);
     if (parsed === undefined) return undefined;
     if (Array.isArray(parsed)) {

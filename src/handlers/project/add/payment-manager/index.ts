@@ -121,7 +121,7 @@ export const createAddPaymentManagerHandler = (config: AddProjectResourceConfig)
       flag("description", "payment manager description", z.string().optional()),
       flag(
         "auto-payment",
-        "automatically settle payment requests",
+        "disable automatic payment settlement",
         z.boolean().default(DEFAULT_AUTO_PAYMENT),
       ),
       flag(

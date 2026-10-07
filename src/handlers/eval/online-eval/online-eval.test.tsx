@@ -381,7 +381,7 @@ describe("flag validation", () => {
 
   test("create rejects a non-string --tags value rather than passing it to the API", async () => {
     await expect(run([...CREATE_BASE, "--tags", '{"team":42}'])).rejects.toThrow(
-      /Invalid value for option '--tags'/,
+      /must be a string/,
     );
   });
 

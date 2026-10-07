@@ -49,7 +49,7 @@ const PROVIDER_CHOICES: Choice<EvaluatorModelProvider>[] = [
   {
     value: "Bedrock",
     label: "Bedrock",
-    description: "an Amazon Bedrock model or inference profile",
+    description: "Anthropic Claude and other models on Amazon Bedrock",
   },
   {
     value: "OpenResponses",
@@ -59,7 +59,7 @@ const PROVIDER_CHOICES: Choice<EvaluatorModelProvider>[] = [
 ];
 
 /** The Evaluator service sends a temperature, which Claude models from Opus 4.7 on refuse. **/
-export const DEFAULT_JUDGE_MODEL = "global.anthropic.claude-sonnet-4-6";
+export const DEFAULT_JUDGE_MODEL = "global.anthropic.claude-sonnet-5-5";
 
 const MODEL_PLACEHOLDERS: Record<EvaluatorModelProvider, string> = {
   Bedrock: DEFAULT_JUDGE_MODEL,

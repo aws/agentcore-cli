@@ -43,7 +43,7 @@ const MODEL_PROVIDERS: {
   {
     provider: "bedrock",
     label: "bedrock",
-    description: "an Amazon Bedrock model or inference profile",
+    description: "Anthropic Claude and other models on Amazon Bedrock",
   },
   {
     provider: "open_ai",
@@ -107,7 +107,7 @@ export function harnessModelSummary(values: HarnessModelValues): Record<string, 
     provider: providerLabel(values.provider),
     model: model.modelId,
     ...(model.apiKeyArn !== undefined && { "API key ARN": model.apiKeyArn }),
-    ...(model.apiBase !== undefined && { "API base URL": model.apiBase }),
+    ...(model.apiBase !== undefined && { "Custom API base URL": model.apiBase }),
   };
 }
 
@@ -159,8 +159,8 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
   if (provider === "lite_llm") {
     fields.push({
       key: "apiBase",
-      name: "API base URL",
-      helpText: "optional · the provider API endpoint",
+      name: "Custom API base URL",
+      helpText: "optional · leave blank to use the model provider's default endpoint",
       placeholder: "https://…",
       required: false,
       requiredError: "",

@@ -199,7 +199,7 @@ describe("project add harness wizard", () => {
     // provider's default. The pointer follows focus into them while the radio
     // marker keeps showing the choice.
     await waitForText(screen.lastFrame, "model ID");
-    expect(screen.lastFrame()).toContain("gpt-5");
+    expect(screen.lastFrame()).toContain("gpt-6.1-sol");
     expect(screen.lastFrame()).toContain("API key ARN");
     expect(screen.lastFrame()).toContain("● openai");
     expect(screen.lastFrame()).not.toContain("❯ ● openai");
@@ -214,13 +214,13 @@ describe("project add harness wizard", () => {
     await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
     const review = flatFrame(screen.lastFrame);
     expect(review).toContain("provider openai");
-    expect(review).toContain("model gpt-5");
+    expect(review).toContain("model gpt-6.1-sol");
     expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added harness 'assistant'");
     expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
-      openAiModelConfig: { modelId: "gpt-5", apiKeyArn },
+      openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyArn },
     });
     screen.unmount();
   }, 15000);
@@ -237,7 +237,10 @@ describe("project add harness wizard", () => {
     await screen.press("return");
 
     // LiteLLM is the one provider with an API base; its key is optional.
-    await waitForText(screen.lastFrame, "API base URL");
+    await waitForText(screen.lastFrame, "Custom API base URL");
+    expect(screen.lastFrame()).toContain(
+      "leave blank to use the model provider's default endpoint",
+    );
     expect(screen.lastFrame()).toContain(`bedrock/${DEFAULT_HARNESS_MODEL.modelId}`);
     await screen.press("return"); // keep the default model ID
     await screen.press("return"); // no API key ARN
@@ -247,7 +250,7 @@ describe("project add harness wizard", () => {
     await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
     const review = flatFrame(screen.lastFrame);
     expect(review).toContain("provider litellm");
-    expect(review).toContain("API base URL https://llm.example.com/v1");
+    expect(review).toContain("Custom API base URL https://llm.example.com/v1");
     expect(review).not.toContain("API key ARN");
     await screen.press("return");
 

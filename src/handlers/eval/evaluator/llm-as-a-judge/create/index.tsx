@@ -5,7 +5,7 @@ import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import { isValidEvaluatorModelId } from "../../../../../projectSchemas/evaluator";
 import type { Core } from "../../../../types";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../../utils";
+import { coreOptsFromCtx, parseTags } from "../../../../utils";
 import {
   buildEvaluatorModelConfig,
   modelProviderFlag,
@@ -36,8 +36,8 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
       flag(
         "tags",
-        "tags to apply (JSON object of key/value strings; inline, file://<path>, or - for stdin)",
-        z.string().optional(),
+        "tags as repeated key=value entries or a JSON object",
+        z.array(z.string()).optional(),
       ),
     ],
     handle: async (ctx, flags) => {
@@ -57,10 +57,6 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
         throw new InputValidationError("Option '--instructions' must resolve to non-empty text");
       }
       const ratingScale = await resolveRatingScale(flags["rating-scale"], source);
-      const tags = parseJsonFlag<Record<string, string>>(
-        "tags",
-        await source.resolveText("tags", flags["tags"]),
-      );
 
       const response = await core.eval.createEvaluator(
         {
@@ -74,7 +70,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
             },
           },
           kmsKeyArn: flags["kms-key-arn"],
-          tags,
+          tags: parseTags(flags["tags"]),
         },
         coreOptsFromCtx(ctx),
       );

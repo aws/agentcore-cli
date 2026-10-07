@@ -171,6 +171,8 @@ describe("project deploy screen", () => {
     expect(frame).toContain("✓ Deploying stack");
     // Stack outputs are not listed, as the command prints them only with --json.
     expect(frame).not.toContain("RuntimeArn");
+    // The next step, as the command prints it.
+    expect(frame).toContain("agentcore invoke");
     expect(frame).toContain("[enter] go back");
 
     // …and never confirms a teardown.
@@ -333,6 +335,8 @@ describe("project deploy screen", () => {
 
     await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
     expect(deploys[0]!.confirmed).toBe(true);
+    // Nothing is left to invoke.
+    expect(r.lastFrame()).not.toContain("agentcore invoke");
     r.unmount();
   });
 
@@ -347,6 +351,8 @@ describe("project deploy screen", () => {
 
     await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
     expect(r.lastFrame()).not.toContain("Deployed project");
+    // Nothing is left to invoke, so the invoke next step follows the result too.
+    expect(r.lastFrame()).not.toContain("agentcore invoke");
     r.unmount();
   });
 

@@ -1,7 +1,7 @@
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
-import { coreOptsFromCtx, parseJsonFlag } from "../../../utils.tsx";
+import { coreOptsFromCtx, parseTags } from "../../../utils.tsx";
 import { JsonRendererKey } from "../../../../tui";
 
 export const createCreateEndpointHandler = (core: Core) =>
@@ -16,7 +16,11 @@ export const createCreateEndpointHandler = (core: Core) =>
         "the harness version the endpoint points to (default latest)",
         z.string().optional(),
       ),
-      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
+      flag(
+        "tags",
+        "tags as repeated key=value entries or a JSON object",
+        z.array(z.string()).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       const response = await core.harness.createHarnessEndpoint(
@@ -24,7 +28,7 @@ export const createCreateEndpointHandler = (core: Core) =>
           harnessId: flags["id"],
           endpointName: flags["name"],
           targetVersion: flags["target-version"],
-          tags: parseJsonFlag<Record<string, string>>("tags", flags["tags"]),
+          tags: parseTags(flags["tags"]),
         },
         coreOptsFromCtx(ctx),
       );

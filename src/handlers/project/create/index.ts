@@ -59,10 +59,19 @@ type ModelProviderFlag = z.infer<typeof ModelProviderFlagSchema>;
 
 export const DEFAULT_CREATE_RUNTIME_NAME = "agent";
 
+/**
+ * The command both entry points suggest after create. A runtime project can be
+ * run locally first; `agentcore dev` does not serve harnesses yet, so the rest
+ * go straight to deploy.
+ */
+export function createNextStep(scaffoldsRuntime: boolean): string {
+  return scaffoldsRuntime ? "agentcore dev" : "agentcore deploy";
+}
+
 export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =>
   createHandler({
     name: "create",
-    description: "create a new AgentCore project",
+    description: "create a new project",
     middlewares: config.middlewares,
     flags: [
       flag("name", "name of the project to create", ProjectNameSchema),
@@ -175,7 +184,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         },
         () => {
           config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
-          config.io.stderr.write(`Next steps:\n  cd ${name}\n  agentcore deploy\n`);
+          config.io.stderr.write(
+            `Next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+          );
         },
       );
     },

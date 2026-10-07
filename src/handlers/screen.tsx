@@ -11,18 +11,19 @@ import { LoadingFrame, useProjectDetected } from "./project/ProjectGate";
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const ROOT_CLI_SECTION_COMMANDS = ["update"];
 const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
-const PROJECT_HIDDEN_OPTIONS = ["create"];
+// build is a step deploy already runs; it stays a command but not a menu entry.
+const PROJECT_HIDDEN_OPTIONS = ["create", "build"];
 const PROJECT_REQUIRED_OPTIONS = [
+  "dev",
+  "deploy",
+  "invoke",
+  "status",
+  "logs",
+  "traces",
   "add",
   "remove",
-  "dev",
-  "build",
-  "deploy",
-  "status",
-  "invoke",
-  "log",
-  "traces",
   "export",
+  "build",
 ];
 const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS];
 

@@ -132,9 +132,11 @@ describe("project add online-eval", () => {
         "--sampling-rate",
         "5",
         "--tags",
-        '{"team":"ml"}',
+        "team=ml",
+        "--tags",
+        "env=prod",
       ],
-      { tags: { team: "ml" } },
+      { tags: { team: "ml", env: "prod" } },
     ],
   ])("%s", async (_label, flags, expected) => {
     const { projectRoot, cleanup } = await initProject({

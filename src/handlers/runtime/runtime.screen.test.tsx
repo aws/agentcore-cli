@@ -143,7 +143,10 @@ describe("runtime picker", () => {
 
     await waitForText(r.lastFrame, "checkout");
     await r.press("escape");
-    await waitForText(r.lastFrame, "agentcore → runtime → inspect AgentCore Runtimes");
+    await waitForText(
+      r.lastFrame,
+      "agentcore → runtime → inspect hosted agent code, its endpoints, and versions",
+    );
     expect(r.lastFrame()).toContain("list AgentCore Runtimes");
   });
 

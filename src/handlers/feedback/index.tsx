@@ -12,7 +12,7 @@ import { CliVersionManagerKey } from "../keys";
 export const createFeedbackHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "feedback",
-    description: "send feedback about the AgentCore CLI to the team",
+    description: "send feedback about AgentCore to the team",
     arguments: [argument("message", "the feedback message to send", z.string())],
     flags: [
       flag(

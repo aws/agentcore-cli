@@ -1,7 +1,7 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
-import { parseJsonFlagWithSchema } from "../../../utils";
+import { parseJsonFlagWithSchema, parseTags } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -13,7 +13,6 @@ import {
   StreamContentLevelSchema,
   type MemoryStrategy,
 } from "../../../../projectSchemas/memory";
-import { TagsSchema } from "../../../../projectSchemas/tags";
 import type { AddResourceInput } from "../../types";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
 
@@ -163,7 +162,11 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         "IAM role the Memory assumes; a default role is created when omitted",
         z.string().optional(),
       ),
-      flag("tags", "tags to apply (JSON object of key/value strings)", z.string().optional()),
+      flag(
+        "tags",
+        "tags as repeated key=value entries or a JSON object",
+        z.array(z.string()).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
@@ -196,7 +199,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         encryptionKeyArn: flags["encryption-key-arn"],
         executionRoleArn: flags["execution-role-arn"],
         streamDeliveryResources: inputStreamDelivery,
-        tags: parseJsonFlagWithSchema("tags", flags["tags"], TagsSchema),
+        tags: parseTags(flags["tags"]),
       };
 
       await addProjectResource(

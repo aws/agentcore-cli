@@ -55,21 +55,23 @@ export function createAddProjectResourceHandler(
     withProject({ projectManager: config.projectManager, cwd: process.cwd() }),
     withTuiWhenInteractive(core, config.io),
   );
-  projectAdd.handler(createAddConfigBundleHandler(config));
+  // Grouped like the top-level resources: harness, runtime, gateway, identity,
+  // memory, eval, then payment. Registration order is menu and --help order.
   projectAdd.handler(createAddHarnessHandler(config));
-  projectAdd.handler(createAddMemoryHandler(config));
   projectAdd.handler(createAddRuntimeHandler(config));
-  projectAdd.handler(createAddOnlineEvalHandler(config));
-  projectAdd.handler(createAddOnlineInsightHandler(config));
-  projectAdd.handler(createAddEvaluatorHandler(config, core));
-  projectAdd.handler(createAddCredentialsHandler(config, core));
+  projectAdd.handler(createAddRuntimeEndpointHandler(config));
   projectAdd.handler(createAddGatewayHandler(config));
   projectAdd.handler(createAddGatewayTargetHandler(config));
   projectAdd.handler(createAddGatewayConnectorHandler(config));
   projectAdd.handler(createAddPolicyEngineHandler(config));
   projectAdd.handler(createAddPolicyHandler(config));
+  projectAdd.handler(createAddCredentialsHandler(config, core));
+  projectAdd.handler(createAddMemoryHandler(config));
+  projectAdd.handler(createAddEvaluatorHandler(config, core));
+  projectAdd.handler(createAddOnlineEvalHandler(config));
+  projectAdd.handler(createAddOnlineInsightHandler(config));
+  projectAdd.handler(createAddConfigBundleHandler(config));
   projectAdd.handler(createAddPaymentManagerHandler(config));
   projectAdd.handler(createAddPaymentConnectorHandler(config));
-  projectAdd.handler(createAddRuntimeEndpointHandler(config));
   return projectAdd;
 }

@@ -590,7 +590,7 @@ const MODEL_PROVIDERS: {
   {
     kind: "bedrock",
     label: "bedrock",
-    description: "an Amazon Bedrock model or inference profile",
+    description: "Anthropic Claude and other models on Amazon Bedrock",
     fields: [
       {
         key: "modelId",
@@ -611,7 +611,7 @@ const MODEL_PROVIDERS: {
         key: "modelId",
         name: "model ID",
         helpText: "the Gemini model to use",
-        placeholder: "gemini-2.5-pro",
+        placeholder: "gemini-3.8-flash",
         required: true,
         requiredError: "enter a Gemini model ID",
       },
@@ -634,7 +634,7 @@ const MODEL_PROVIDERS: {
         key: "modelId",
         name: "model ID",
         helpText: "the OpenAI model to use",
-        placeholder: "gpt-5",
+        placeholder: "gpt-6.1-sol",
         required: true,
         requiredError: "enter an OpenAI model ID",
       },
@@ -657,7 +657,7 @@ const MODEL_PROVIDERS: {
         key: "modelId",
         name: "model ID",
         helpText: "the LiteLLM model identifier (provider/model)",
-        placeholder: "anthropic/claude-3-sonnet",
+        placeholder: "anthropic/claude-sonnet-5-5",
         required: true,
         requiredError: "enter a LiteLLM model identifier",
       },
@@ -671,8 +671,8 @@ const MODEL_PROVIDERS: {
       },
       {
         key: "apiBase",
-        name: "API base URL",
-        helpText: "optional · the provider API endpoint",
+        name: "Custom API base URL",
+        helpText: "optional · leave blank to use the model provider's default endpoint",
         placeholder: "https://…",
         required: false,
         requiredError: "",
@@ -808,7 +808,7 @@ function ModelStep({
       {error && <Text color={theme.colors.error}>{error}</Text>}
       {provider.kind !== "default" && (
         <Text color={theme.colors.primary}>
-          use the command line to pass additional params, e.g.,{" "}
+          pass additional params with flags, e.g.,{" "}
           <Text color={theme.colors.primary}>agentcore harness create --name …</Text>
         </Text>
       )}

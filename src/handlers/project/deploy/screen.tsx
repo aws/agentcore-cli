@@ -7,7 +7,12 @@ import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
-import { declaresNothingDeployable, deployedMessage, teardownQuestion } from "./index";
+import {
+  declaresNothingDeployable,
+  DEPLOY_NEXT_STEP,
+  deployedMessage,
+  teardownQuestion,
+} from "./index";
 
 const BREADCRUMB = ["agentcore", "deploy"];
 const DESCRIPTION = "deploy the project to AWS";
@@ -98,7 +103,11 @@ function DeployConfirm({
         // The title follows the result, not the preflight heuristic, which
         // synthesis can disagree with. Outputs are not listed: the command
         // prints them only with --json.
-        return { title: deployedMessage(project, targetName, result), rows: {} };
+        return {
+          title: deployedMessage(project, targetName, result),
+          rows: {},
+          nextSteps: result.tornDown ? [] : [DEPLOY_NEXT_STEP],
+        };
       }}
       successTitle="Deploy finished"
       runningLabel="deploying…"

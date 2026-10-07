@@ -307,7 +307,7 @@ describe("harness write flow", () => {
         "--max-iterations",
         "25",
         "--tags",
-        '{"created-by":"agentcore-cli-e2e"}',
+        "created-by=agentcore-cli-e2e",
       ]);
       matchGolden(FIXTURES, "create.golden.json", out);
 

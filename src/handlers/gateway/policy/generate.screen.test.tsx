@@ -59,7 +59,7 @@ describe("gateway policy generate screen", () => {
     await screen.press("escape");
     await waitForText(screen.lastFrame, "choose a Gateway to generate a policy for");
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "inspect AgentCore Gateways");
+    await waitForText(screen.lastFrame, "inspect MCP tool gateways and their targets");
     expect(screen.lastFrame()).toContain("policy");
   });
 
