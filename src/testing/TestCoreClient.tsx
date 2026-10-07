@@ -1563,6 +1563,23 @@ export class TestIdentityClient implements CoreIdentityClient {
     if (this.error) throw this.error;
     return DEFAULT_LIST_PAYMENT_PROVIDERS_RESPONSE;
   }
+
+  async ensureWorkloadIdentity(name: string, options: CoreOptions): Promise<{ created: boolean }> {
+    this.calls.push({ method: "ensureWorkloadIdentity", args: [name, options] });
+    if (this.error) throw this.error;
+    return { created: false };
+  }
+
+  async getWorkloadAccessToken(name: string, options: CoreOptions): Promise<string> {
+    this.calls.push({ method: "getWorkloadAccessToken", args: [name, options] });
+    if (this.error) throw this.error;
+    return "test-workload-token";
+  }
+
+  async deleteWorkloadIdentity(name: string, options: CoreOptions): Promise<void> {
+    this.calls.push({ method: "deleteWorkloadIdentity", args: [name, options] });
+    if (this.error) throw this.error;
+  }
 }
 
 // Payment command tests use real Core clients; configure a stub explicitly if a

@@ -1,10 +1,11 @@
-import { beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import z from "zod";
 import { E2E_PREFIX, TAGS } from "../constants";
 import { CliRunner, parseResult } from "../helpers/run";
+import { retry } from "../helpers/retry";
 import { TIMEOUT_MS } from "../timeouts";
 
 type HarnessTestCase = {
@@ -58,6 +59,12 @@ const HarnessInvokeResponseSchema = z.object({
   transcript: z.array(TranscriptItemSchema).min(2),
 });
 
+const responseText = (response: z.infer<typeof HarnessInvokeResponseSchema>) =>
+  response.transcript
+    .filter((item) => item.kind === "text")
+    .flatMap((item) => item.text ?? [])
+    .join("");
+
 const harnessTags = [TAGS.HARNESS, TAGS.CANARY];
 describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessTags }, () => {
   const cli = new CliRunner();
@@ -91,6 +98,80 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessT
     },
   );
 
+  describe.skipIf(process.arch !== "arm64")("local invocation", { sequential: true }, () => {
+    const sessionId = (label: string) => `${label}${Date.now().toString(36)}`.padEnd(40, "x");
+    let dev: ReturnType<CliRunner["start"]> | undefined;
+    let devOutput = "";
+    let port: number | undefined;
+
+    beforeAll(() => {
+      dev = cli.start(["dev", "--mode", "headless"], projectDir);
+      const capture = (chunk: Buffer) => {
+        devOutput += chunk.toString();
+        const match = devOutput.match(/Harness endpoint listening on port (\d+)\./);
+        if (match?.[1]) port = Number(match[1]);
+      };
+      dev.stdout.on("data", capture);
+      dev.stderr.on("data", capture);
+    }, TIMEOUT_MS.PROJECT_DEV);
+
+    afterAll(async () => {
+      if (!dev || dev.exitCode !== null) return;
+      dev.kill("SIGTERM");
+      await new Promise<void>((resolve) => dev?.once("close", resolve));
+    });
+
+    const invoke = (prompt: string, session: string) =>
+      retry(async () => {
+        if (!dev || dev.exitCode !== null) {
+          throw new Error(`agentcore dev exited.\nstdout/stderr = ${devOutput}`);
+        }
+        if (port === undefined) {
+          throw new Error(`Harness endpoint is not ready.\nstdout/stderr = ${devOutput}`);
+        }
+        return parseResult(
+          HarnessInvokeResponseSchema,
+          await cli.run(
+            [
+              "invoke",
+              "--harness",
+              "disabled_memory",
+              "--local",
+              "--port",
+              String(port),
+              "--prompt",
+              prompt,
+              "--session-id",
+              session,
+              "--json",
+            ],
+            projectDir,
+          ),
+        );
+      }, TIMEOUT_MS.PROJECT_INVOKE * 0.9);
+
+    test(
+      "disabled_memory keeps history within a session and drops it for a new one",
+      { timeout: TIMEOUT_MS.PROJECT_INVOKE * 3 },
+      async () => {
+        const session = sessionId("harnesslocala");
+        await invoke("Remember the word zephyr. Reply with OK.", session);
+        const same = await invoke(
+          "What word did I ask you to remember? Reply with the word only.",
+          session,
+        );
+        const fresh = await invoke(
+          "What word did I ask you to remember? If none, reply NONE.",
+          sessionId("harnesslocalb"),
+        );
+
+        expect(same.sessionId).toBe(session);
+        expect(responseText(same).toLowerCase()).toContain("zephyr");
+        expect(responseText(fresh).toLowerCase()).not.toContain("zephyr");
+      },
+    );
+  });
+
   test("deploys all harnesses", { timeout: TIMEOUT_MS.PROJECT_DEPLOY }, async () => {
     const deployment = parseResult(
       DeployResponseSchema,
@@ -110,13 +191,10 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessT
           projectDir,
         ),
       );
-      const responseText = response.transcript
-        .filter((item) => item.kind === "text")
-        .flatMap((item) => item.text ?? [])
-        .join("");
+      const text = responseText(response);
 
-      expect(responseText.trim()).not.toBe("");
-      if (harness.expectedText) expect(responseText).toContain(harness.expectedText);
+      expect(text.trim()).not.toBe("");
+      if (harness.expectedText) expect(text).toContain(harness.expectedText);
     },
   );
 

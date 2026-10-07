@@ -32,8 +32,6 @@ import {
   createLineSplitter,
   requireTool,
   runProcess,
-  readTextFile,
-  readYamlFile,
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../io";
@@ -49,7 +47,7 @@ import {
   buildExportNotesMarkdown,
   mapHarnessToExportPlan,
 } from "./templates/export";
-import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harness";
+import type { HarnessSpec } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
@@ -64,10 +62,9 @@ import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config"
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
-import { enclosingProjectRoot, projectSpecPath } from "./fsUtils";
+import { enclosingProjectRoot, projectSpecPath, readHarnessFiles } from "./fsUtils";
 import {
   AgentCoreCLIError,
-  DeserializationError,
   InputValidationError,
   InvalidEnvironmentError,
   MalformedServiceResponseError,
@@ -1026,7 +1023,7 @@ export class FsProjectManager implements ProjectManager {
     // Resolve the harness spec + system prompt: from the prefetched service
     // payload (--arn) or from the in-project harness files (--name).
     let harnessName: string;
-    let spec: z.output<typeof HarnessSpecSchema>;
+    let spec: HarnessSpec;
     let systemPrompt: string;
     let harnessDir: string | undefined;
     if (input.prefetched) {
@@ -1050,34 +1047,9 @@ export class FsProjectManager implements ProjectManager {
         type: "step",
         message: `Reading harness configuration from '${join(entry.path, "harness.yaml")}'`,
       };
-      const harnessPath = join(harnessDir, "harness.yaml");
-      const parsed = HarnessYamlSchema.safeParse(await readYamlFile(harnessPath));
-      if (!parsed.success) {
-        throw new InputValidationError(
-          `Invalid harness.yaml at '${harnessPath}': ${z.prettifyError(parsed.error)}`,
-          { cause: parsed.error },
-        );
-      }
-      spec = parsed.data;
-      systemPrompt = spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT;
-      if (spec.systemPrompt === undefined) {
-        const promptPath = join(harnessDir, "system-prompt.md");
-        try {
-          systemPrompt = await readTextFile(promptPath);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            throw new DeserializationError(promptPath, {
-              cause: error,
-              details: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
-        if (!systemPrompt.trim()) {
-          throw new InputValidationError(
-            `System prompt file '${promptPath}' is empty or whitespace-only.`,
-          );
-        }
-      }
+      const files = await readHarnessFiles(harnessDir);
+      spec = files.spec;
+      systemPrompt = files.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT;
     }
 
     // Refuse to overwrite anything: the target name must be free in the spec

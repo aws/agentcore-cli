@@ -1,3 +1,4 @@
+import type { Harness } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { InspectorTraces } from "../../../core/dev/inspector/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 
@@ -35,3 +36,10 @@ export type DevTraceCollectorStarter = (options: {
   /** Reports a trace-persistence failure (the export is still acked to stop retries). */
   onError?: (error: unknown) => void;
 }) => Promise<DevTraceCollector>;
+
+/** AWS access the local harness hosts need, adapted from core by the dev handler. */
+export interface HarnessDevAws {
+  deployedHarness(name: string): Promise<Harness | undefined>;
+  /** `createdIdentity` names the dev workload identity when this call created it. **/
+  workloadAccessToken(): Promise<{ token: string; createdIdentity?: string }>;
+}

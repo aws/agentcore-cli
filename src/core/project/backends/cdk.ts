@@ -34,11 +34,13 @@ import type { AwsCredentials, CreateCloudFormationClient } from "../../types";
 import {
   createCredentialProvisioner,
   createCredentialRemover,
+  createDevIdentityRemover,
   orphanedCredentials,
   type CredentialProviderCalls,
   type CredentialProviderRef,
   type CredentialProvisioner,
   type CredentialRemover,
+  type DevIdentityRemover,
 } from "./cdk/credentials";
 import {
   countDeployableResources,
@@ -137,6 +139,7 @@ export type CdkBackendConfig = {
   loadBootstrapTemplate?: BootstrapTemplateLoader;
   provisionCredentials?: CredentialProvisioner;
   removeCredentials?: CredentialRemover;
+  removeDevIdentity?: DevIdentityRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
 };
@@ -155,6 +158,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly loadBootstrapTemplate: BootstrapTemplateLoader;
   private readonly provisionCredentials: CredentialProvisioner;
   private readonly removeCredentials: CredentialRemover;
+  private readonly removeDevIdentity: DevIdentityRemover;
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
 
@@ -179,6 +183,7 @@ export class CdkBackend implements ProjectBackend {
     this.provisionCredentials =
       config.provisionCredentials ?? createCredentialProvisioner(config.identity);
     this.removeCredentials = config.removeCredentials ?? createCredentialRemover(config.identity);
+    this.removeDevIdentity = config.removeDevIdentity ?? createDevIdentityRemover(config.identity);
     this.describeStack =
       config.describeStack ??
       ((region, credentials, stackName) =>
@@ -444,6 +449,11 @@ export class CdkBackend implements ProjectBackend {
       region: target.region,
       targetName: target.name,
       providers: [...orphaned, ...project.spec.credentials],
+    });
+    yield* this.removeDevIdentity(project, {
+      credentials: options.credentials,
+      region: target.region,
+      targetName: target.name,
     });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };

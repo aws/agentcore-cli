@@ -1,5 +1,7 @@
 // Every upstream fetch carries the client abort signal, so a browser disconnect tears down the agent request.
 import { randomUUID } from "node:crypto";
+import type { InvokeHarnessStreamOutput } from "@aws-sdk/client-bedrock-agentcore";
+import { harnessTurnResponse } from "../harness/endpoint";
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
 import {
   apiError,
@@ -18,6 +20,18 @@ export async function handleInvocations(
   request: HttpRequest,
 ): Promise<HttpResponse> {
   const parsed = parseJsonBody(request.body);
+  const harnessName = asString(parsed?.harnessName);
+
+  if (deps.harnesses && harnessName) {
+    return harnessTurnResponse(
+      deps.harnesses,
+      harnessName,
+      parsed,
+      request.signal,
+      toInspectorEvent,
+    );
+  }
+
   const agentName = asString(parsed?.agentName);
   // Request header, agent body, and echoed x-session-id must agree, so one session id is computed once.
   const sessionId = asString(parsed?.sessionId) ?? randomUUID();
@@ -270,4 +284,23 @@ async function invokeAguiAgent(
     accept: "text/event-stream",
     normalizeSse: false,
   });
+}
+
+export function toInspectorEvent(event: InvokeHarnessStreamOutput): Record<string, unknown> {
+  const failure =
+    event.runtimeClientError ?? event.validationException ?? event.internalServerException;
+  if (failure) return { type: "error", message: failure.message };
+  const [type, value] = Object.entries(event)[0] as [string, Record<string, unknown>];
+  const flat: Record<string, unknown> = { type, ...value };
+  const delta = event.contentBlockDelta?.delta;
+  if (delta?.text !== undefined) flat.delta = { type: "text", text: delta.text };
+  else if (delta?.toolUse) flat.delta = { type: "toolUse", input: delta.toolUse.input };
+  else if (delta?.toolResult) flat.delta = { type: "toolResult", results: delta.toolResult };
+  else if (delta?.reasoningContent) {
+    flat.delta = { type: "reasoningContent", ...delta.reasoningContent };
+  }
+  const start = event.contentBlockStart?.start;
+  if (start?.toolUse) flat.start = { type: "toolUse", toolUse: start.toolUse };
+  else if (start?.toolResult) flat.start = { type: "toolResult", toolResult: start.toolResult };
+  return flat;
 }

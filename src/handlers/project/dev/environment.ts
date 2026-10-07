@@ -1,14 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseEnv } from "node:util";
-import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { InputValidationError } from "../../../errors";
 
 const RESERVED_ENV_KEYS = ["PORT", "FASTMCP_PORT", "LOCAL_DEV"] as const;
 
 export type DevEnvironmentInput = {
   projectRoot: string;
-  runtime: ProjectRuntime;
+  env?: Record<string, string>;
   region?: string;
 };
 
@@ -50,9 +49,7 @@ export function createDevEnvironmentLoader(
   const read = config.readFile ?? readFile;
 
   return async (input) => {
-    const env = Object.fromEntries(
-      (input.runtime.envVars ?? []).map(({ name, value }) => [name, value]),
-    );
+    const env = { ...input.env };
     if (input.region) env.AWS_REGION = input.region;
 
     Object.assign(env, await localEnvironment(input.projectRoot, read));

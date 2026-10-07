@@ -2,6 +2,12 @@ import type { HttpResponse } from "../../../io/httpServer";
 
 const encoder = new TextEncoder();
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+export function isLoopbackHost(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host.replace(/:\d+$/, ""));
+}
+
 export function json(status: number, body: unknown): HttpResponse {
   return {
     status,

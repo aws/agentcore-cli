@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { createDevEnvironmentLoader } from "./environment";
 
 const projectRoot = "/workspace/project";
 
-const runtime = (envVars: { name: string; value: string }[] = []) =>
-  ({ name: "orders", build: "Container", envVars }) as ProjectRuntime;
-
-const input = (envVars: { name: string; value: string }[] = []) => ({
+const input = (env: Record<string, string> = {}) => ({
   projectRoot,
-  runtime: runtime(envVars),
+  env,
   region: "us-east-1",
 });
 
@@ -30,11 +26,11 @@ second"
 
     await expect(
       loader(
-        input([
-          { name: "SHARED", value: "runtime" },
-          { name: "RUNTIME_ONLY", value: "yes" },
-          { name: "PORT", value: "1234" },
-        ]),
+        input({
+          SHARED: "runtime",
+          RUNTIME_ONLY: "yes",
+          PORT: "1234",
+        }),
       ),
     ).resolves.toEqual({
       env: {
@@ -59,7 +55,7 @@ second"
       },
     });
 
-    const pending = loader(input([{ name: "RUNTIME_ONLY", value: "yes" }]));
+    const pending = loader(input({ RUNTIME_ONLY: "yes" }));
     if (expectedError) {
       await expect(pending).rejects.toThrow(expectedError);
     } else {

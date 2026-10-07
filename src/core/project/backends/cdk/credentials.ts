@@ -7,6 +7,7 @@ import {
 import { MalformedServiceResponseError, ProjectStateError } from "../../../../errors/errors";
 import type { CoreIdentityClient } from "../../../../handlers/identity/types";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
+import { devWorkloadIdentityName } from "../../../identity";
 import type {
   ApiKeyCredential,
   Credential,
@@ -73,6 +74,7 @@ export type CredentialProviderCalls = Pick<
   | "deleteApiKeyCredentialProvider"
   | "deleteOauth2CredentialProvider"
   | "deletePaymentCredentialProvider"
+  | "deleteWorkloadIdentity"
 >;
 
 type ProviderDeletes = Pick<
@@ -105,6 +107,11 @@ export type CredentialRemovalInput = CredentialProvisionInput & {
 export type CredentialRemover = (
   project: Project,
   input: CredentialRemovalInput,
+) => AsyncGenerator<ProjectEvent, void>;
+
+export type DevIdentityRemover = (
+  project: Project,
+  input: CredentialProvisionInput,
 ) => AsyncGenerator<ProjectEvent, void>;
 
 /**
@@ -154,6 +161,27 @@ export function createCredentialRemover(identity: ProviderDeletes): CredentialRe
             `Delete it with 'aws bedrock-agentcore-control ${DELETE_COMMANDS[authorizerType]}'.`,
         };
       }
+    }
+  };
+}
+
+export function createDevIdentityRemover(
+  identity: Pick<CredentialProviderCalls, "deleteWorkloadIdentity">,
+): DevIdentityRemover {
+  return async function* removeDevIdentity(project, { region, credentials, targetName }) {
+    const name = devWorkloadIdentityName(project.name, targetName);
+    yield { type: "step", message: `Removing workload identity '${name}'` };
+    const options: CoreOptions = { region, credentials };
+    try {
+      await identity.deleteWorkloadIdentity(name, options);
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException) return;
+      yield {
+        type: "step",
+        message:
+          `Could not remove workload identity '${name}': ${(error as Error).message}. ` +
+          `Delete it with 'aws bedrock-agentcore-control delete-workload-identity --name ${name}'.`,
+      };
     }
   };
 }

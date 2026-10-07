@@ -9,6 +9,7 @@ import type { Core } from "../types";
 import { createCreateProjectHandler } from "./create";
 import { createRemoveProjectHandler } from "./remove";
 import { createDevProjectHandler } from "./dev";
+import { createHarnessDevAws } from "./dev/harness";
 import { loadDevEnvironment } from "./dev/environment";
 import { createDeployProjectHandler } from "./deploy";
 import { createStatusProjectHandler } from "./status";
@@ -51,6 +52,8 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
       inspectorAssets: new InspectorAssets(),
       isInteractive: () => process.stdout.isTTY === true,
       watchFile,
+      harnessDevAws: (project, target, region) =>
+        createHarnessDevAws(core, project, target, region),
     }),
     createDeployProjectHandler({
       projectManager,

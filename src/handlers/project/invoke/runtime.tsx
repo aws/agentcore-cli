@@ -25,13 +25,8 @@ export async function invokeProjectRuntimeLocally(
     throw new InputValidationError("--json cannot be used with --output-file");
   }
   const protocol = runtime.protocol ?? "HTTP";
-  const unsupportedFlag = Object.entries({
-    target: flags.target,
-    qualifier: flags.qualifier,
-    "bearer-token": flags["bearer-token"],
-  }).find(([, value]) => value !== undefined)?.[0];
-  if (unsupportedFlag !== undefined) {
-    throw new InputValidationError(`--${unsupportedFlag} cannot be used with --local`);
+  if (flags["bearer-token"] !== undefined) {
+    throw new InputValidationError("--bearer-token cannot be used with --local");
   }
   if (
     protocol !== "MCP" &&

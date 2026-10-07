@@ -273,7 +273,9 @@ run the project locally for development
 **Options**
 
 - `--agent <agent>`: Runtime to run
-- `--port <port>`: port for the development server
+- `--harness <harness>`: Harness to run
+- `--target <target>`: deployment target whose resources local harnesses reference (default: "default")
+- `--port <port>`: port for the selected runtime, or the harness endpoint with --harness
 - `--no-traces`: disable local OTEL trace collection
 - `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (agents stream to the terminal) (default: "headless")
 - `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
@@ -305,8 +307,8 @@ invoke a Runtime, harness, or Gateway
 - `--harness <harness>`: the harness to invoke: its name in this project, its ID, or its ARN
 - `--gateway <gateway>`: the Gateway to invoke: its name in this project, its ID, or its ARN
 - `--target <target>`: project deployment target (default: "default")
-- `--local`: invoke the local development server (project Runtime only) (default: false)
-- `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)
+- `--local`: invoke the local development server (project Runtime or harness) (default: false)
+- `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000, harness 8090)
 - `--payload <payload>`: the inline payload to send
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--content-type <content-type>`: the payload content type

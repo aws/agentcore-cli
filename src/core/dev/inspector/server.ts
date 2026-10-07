@@ -8,12 +8,18 @@ import type { HttpRequest, HttpRequestHandler, HttpResponse } from "../../../io/
 import { handleInvocations } from "./invocations";
 import { handleMcpProxy, handleA2aAgentCard } from "./proxies";
 import { handleResources } from "./resources";
-import { apiError, asString, errorMessage, json, parseJsonBody, parseTimeParam } from "./respond";
+import {
+  apiError,
+  asString,
+  errorMessage,
+  json,
+  isLoopbackHost,
+  parseJsonBody,
+  parseTimeParam,
+} from "./respond";
 import type { InspectorDeps } from "./types";
 
 const DEV_SERVER_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
-
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** Bounds a payload that carries full spans per row. */
 const TRACE_LIST_LIMIT = 200;
@@ -33,8 +39,7 @@ export function createInspectorHandler(deps: InspectorDeps): HttpRequestHandler 
   return async (request) => {
     // A custom domain resolving to 127.0.0.1 would bypass origin checks, so only loopback Host headers are accepted.
     const host = request.headers.host ?? "";
-    const hostname = host.replace(/:\d+$/, "");
-    if (!LOOPBACK_HOSTS.has(hostname)) return forbidden("Forbidden");
+    if (!isLoopbackHost(host)) return forbidden("Forbidden");
 
     // CORS only stops the browser reading responses, so side effects (starting agents, invoking with AWS credentials) must be blocked here before any handler runs.
     const origin = asString(request.headers.origin);
@@ -68,7 +73,7 @@ async function route(deps: InspectorDeps, request: HttpRequest): Promise<HttpRes
   if (method === "GET" && pathname === "/api/a2a/agent-card") {
     return handleA2aAgentCard(deps, url, request.signal);
   }
-  if (method === "GET" && pathname === "/api/resources") return handleResources(deps);
+  if (method === "GET" && pathname === "/api/resources") return await handleResources(deps);
   if (method === "GET" && !pathname.startsWith("/api/")) {
     const asset = await serveAsset(deps, pathname);
     if (asset) return asset;
@@ -82,7 +87,9 @@ function handleStatus(deps: InspectorDeps): HttpResponse {
   const status = {
     mode: "dev",
     agents: snapshot.map(({ name, buildType, protocol }) => ({ name, buildType, protocol })),
-    harnesses: (deps.project?.spec.harnesses ?? []).map(({ name }) => ({ name })),
+    harnesses:
+      deps.harnesses?.snapshot() ??
+      (deps.project?.spec.harnesses ?? []).map(({ name }) => ({ name })),
     running: snapshot
       .filter((agent) => agent.phase === "running" && agent.port !== undefined)
       .map(({ name, port }) => ({ name, port: port! })),

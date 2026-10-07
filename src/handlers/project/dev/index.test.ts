@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { HarnessSpecSchema } from "../../../projectSchemas/harness";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
@@ -8,9 +9,10 @@ import {
   SilentCLIError,
   UserCancellationError,
 } from "../../../errors";
-import type { HttpRequestHandler, PortChecker } from "../../../io";
+import type { HarnessDevHostsConfig, HarnessHostEvent } from "../../../core/dev/harness/hosts";
+import { AsyncChannel, type HttpRequestHandler, type PortChecker } from "../../../io";
 import { ProjectKey, ValueContext } from "../../../router";
-import { testIO } from "../../../testing";
+import { testIO, waitFor } from "../../../testing";
 import { JsonRendererKey } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import type { Project } from "../types";
@@ -22,7 +24,13 @@ import {
 } from "../bma";
 import { createDevProjectHandler, type DevProjectHandlerConfig } from ".";
 import type { DevEnvironmentInput } from "./environment";
-import type { DevEvent, DevRunner, DevServerInput, DevTraceCollector } from "./types";
+import type {
+  DevEvent,
+  DevRunner,
+  DevServerInput,
+  DevTraceCollector,
+  HarnessDevAws,
+} from "./types";
 
 function runtime(name = "orders", build: ProjectRuntime["build"] = "CodeZip"): ProjectRuntime {
   return {
@@ -34,11 +42,14 @@ function runtime(name = "orders", build: ProjectRuntime["build"] = "CodeZip"): P
   } as ProjectRuntime;
 }
 
-function project(...runtimes: ProjectRuntime[]): Project {
+function harnessProject(harnesses: string[], ...runtimes: ProjectRuntime[]): Project {
   return {
     name: "test-project",
     rootPath: "/workspace/project",
-    spec: { runtimes } as Project["spec"],
+    spec: {
+      runtimes,
+      harnesses: harnesses.map((name) => ({ name, path: `app/${name}` })),
+    } as Project["spec"],
   };
 }
 
@@ -49,6 +60,10 @@ function bmaRuntime(overrides: Partial<ProjectRuntime> = {}): ProjectRuntime {
     additionalPolicies: [BMA_POLICY_FILE],
     ...overrides,
   };
+}
+
+function project(...runtimes: ProjectRuntime[]): Project {
+  return harnessProject([], ...runtimes);
 }
 
 function captureRunner(events: DevEvent[] = []) {
@@ -105,19 +120,21 @@ function fakeCollector() {
 type HarnessOptions = {
   project?: Project;
   tty?: boolean;
-  reloadedRuntimes?: ProjectRuntime[];
+  reloaded?: Project;
   codeZip?: ReturnType<typeof captureRunner>;
   container?: ReturnType<typeof captureRunner>;
   checkPort?: PortChecker;
   json?: boolean;
   loadEnvironment?: DevProjectHandlerConfig["loadDevEnvironment"];
+  createHarnessHosts?: DevProjectHandlerConfig["createHarnessHosts"];
 };
 
 function harness(options: HarnessOptions = {}) {
   const io = testIO();
   const ui = { starts: [] as { port?: number }[], opened: [] as string[], closed: 0 };
   const watchers: { path: string; onChange: () => void }[] = [];
-  let capturedHandler: HttpRequestHandler | undefined;
+  const servers: { port?: number; handler: HttpRequestHandler }[] = [];
+  const harnessDevAws: Parameters<DevProjectHandlerConfig["harnessDevAws"]>[] = [];
   const codeZip = options.codeZip ?? captureRunner();
   const container = options.container ?? captureRunner();
   const collector = fakeCollector();
@@ -134,7 +151,7 @@ function harness(options: HarnessOptions = {}) {
     checkPort: options.checkPort ?? (async () => true),
     startTraceCollector: collector.start,
     startServer: async (requestHandler, serverOptions) => {
-      capturedHandler = requestHandler;
+      servers.push({ port: serverOptions?.port, handler: requestHandler });
       ui.starts.push({ port: serverOptions?.port });
       return {
         port: serverOptions?.port ?? 8081,
@@ -152,9 +169,13 @@ function harness(options: HarnessOptions = {}) {
       watchers.push({ path, onChange });
     },
     projectManager: {
-      resolve: async () =>
-        options.reloadedRuntimes ? project(...options.reloadedRuntimes) : undefined,
+      resolve: async () => options.reloaded,
     },
+    harnessDevAws: (...args) => {
+      harnessDevAws.push(args);
+      return {} as HarnessDevAws;
+    },
+    createHarnessHosts: options.createHarnessHosts,
     waitReady: async () => {
       await Bun.sleep(5);
     },
@@ -176,16 +197,19 @@ function harness(options: HarnessOptions = {}) {
     io,
     ui,
     watchers,
-    inspectorHandler: () => capturedHandler,
+    harnessDevAws,
+    inspectorHandler: () => servers.at(-1)?.handler,
     run: (
       flags: {
         agent?: string;
+        harness?: string;
+        target?: string;
         port?: number;
         traces?: boolean;
         mode?: "browser" | "headless" | "tui";
         "ui-port"?: number;
       } = {},
-    ) => handler.handle(ctx, { traces: true, mode: "headless", ...flags }, {}),
+    ) => handler.handle(ctx, { traces: true, mode: "headless", target: "default", ...flags }, {}),
   };
 }
 
@@ -230,7 +254,24 @@ describe("project dev selection and dispatch", () => {
   );
 
   test.each([
-    [project(), {}, "This project has no runtimes", InputValidationError],
+    [
+      project(),
+      {},
+      "This project has no runtimes or harnesses. Add one and retry.",
+      InputValidationError,
+    ],
+    [
+      harnessProject(["h1"]),
+      { harness: "nope" },
+      "Harness 'nope' was not found. Available harnesses: h1.",
+      ResourceNotFoundError,
+    ],
+    [
+      harnessProject(["h1"], runtime("orders")),
+      { harness: "h1", agent: "orders" },
+      "--agent and --harness cannot be used together.",
+      InputValidationError,
+    ],
     [
       project(runtime("orders"), runtime("support", "Container")),
       { port: 4567 },
@@ -244,7 +285,7 @@ describe("project dev selection and dispatch", () => {
       ResourceNotFoundError,
     ],
   ] as const)(
-    "rejects invalid runtime selection",
+    "rejects invalid resource selection",
     async (configuredProject, flags, message, ErrorType) => {
       const pending = harness({ project: configuredProject }).run(flags);
       await expect(pending).rejects.toBeInstanceOf(ErrorType);
@@ -262,7 +303,7 @@ describe("project dev selection and dispatch", () => {
     expect(subject.environmentInputs).toEqual([
       {
         projectRoot: "/workspace/project",
-        runtime: expect.objectContaining({ name: "support" }),
+        env: {},
         region: "us-west-2",
       },
     ]);
@@ -499,7 +540,7 @@ describe("project dev Inspector UI mode", () => {
 
   test("agentcore.json edits reload the supervised agents", async () => {
     const subject = harness({
-      reloadedRuntimes: [bmaRuntime({ tags: undefined }), runtime("orders"), runtime("payments")],
+      reloaded: project(bmaRuntime({ tags: undefined }), runtime("orders"), runtime("payments")),
     });
     const { pending } = await runUi(subject);
 
@@ -513,7 +554,7 @@ describe("project dev Inspector UI mode", () => {
       "orders",
       "payments",
     ]);
-    expect(subject.io.stderr()).toContain("Reloaded agents from agentcore.json.");
+    expect(subject.io.stderr()).toContain("Reloaded agents and harnesses from agentcore.json.");
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
@@ -613,4 +654,174 @@ describe("project dev interruption", () => {
 
     await expect(harness({ codeZip }).run({ agent: "orders" })).rejects.toBe(failure);
   });
+});
+
+describe("project dev harnesses", () => {
+  function fakeHosts(failures: { start?: Error; pull?: Error; events?: Error } = {}) {
+    const calls: string[] = [];
+    const channel = new AsyncChannel<HarnessHostEvent>();
+    const configs: HarnessDevHostsConfig[] = [];
+    const cleanup = { done: false };
+    let eventsFailure = failures.events;
+    const create = (config: HarnessDevHostsConfig) => {
+      configs.push(config);
+      calls.push(`create:${config.harnesses.map(({ name }) => name).join(",")}`);
+      const close = () => {
+        cleanup.done = true;
+        channel.close();
+      };
+      config.signal.addEventListener("abort", () => setTimeout(close), { once: true });
+      return {
+        invoke: async () => {
+          throw new Error("unused");
+        },
+        events: async function* () {
+          const error = eventsFailure;
+          eventsFailure = undefined;
+          if (error) throw error;
+          yield* channel;
+        },
+        setHarnesses: (entries: { name: string }[]) => {
+          calls.push(`set:${entries.map(({ name }) => name).join(",")}`);
+        },
+        snapshot: () => [],
+        start: async (name: string) => {
+          calls.push(`start:${name}`);
+          if (failures.start) throw failures.start;
+        },
+        pullImage: async () => {
+          calls.push("pull");
+          if (failures.pull) throw failures.pull;
+          return "docker" as const;
+        },
+      };
+    };
+    return { calls, channel, configs, cleanup, create };
+  }
+
+  async function interrupt(pending: Promise<unknown>) {
+    process.emit("SIGINT", "SIGINT");
+    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+  }
+
+  test("a harness only project serves the endpoint and streams harness output until interrupted", async () => {
+    const hosts = fakeHosts();
+    const subject = harness({ project: harnessProject(["h1"]), createHarnessHosts: hosts.create });
+    const pending = subject.run();
+
+    await waitFor(() => subject.io.stderr().includes("Harness endpoint listening on port 8090."));
+    hosts.channel.push({ agentName: "h1", event: { type: "stdout", line: "runtime up" } });
+    hosts.channel.push({ event: { type: "status", message: "Image ready (sha256:1)" } });
+    await waitFor(() => subject.io.stderr().includes("Image ready (sha256:1)"));
+    await interrupt(pending);
+
+    expect(subject.io.stdout()).toContain("[h1] runtime up");
+    expect(subject.collector.starts[0]?.host).toBe("0.0.0.0");
+    expect(subject.harnessDevAws).toEqual([[harnessProject(["h1"]), "default", "us-west-2"]]);
+    expect(hosts.calls).toEqual(["create:h1"]);
+  });
+
+  test("hosts get the loader environment with container OTEL and ports above the endpoint", async () => {
+    const hosts = fakeHosts();
+    const subject = harness({ project: harnessProject(["h1"]), createHarnessHosts: hosts.create });
+    const pending = subject.run();
+    await waitFor(() => hosts.configs.length > 0);
+    const [config] = hosts.configs;
+
+    const env = await config!.environment({
+      spec: HarnessSpecSchema.parse({
+        name: "h1",
+        model: { provider: "bedrock", modelId: "model" },
+        environmentVariables: { MODE: "local" },
+      }),
+    });
+    const ports = [
+      ...(await Promise.all([config!.hostPort("h1"), config!.hostPort("h2")])),
+      await config!.hostPort("h1"),
+    ];
+    await interrupt(pending);
+
+    expect(subject.environmentInputs).toEqual([
+      { projectRoot: "/workspace/project", env: { MODE: "local" }, region: "us-west-2" },
+    ]);
+    expect(env).toMatchObject({
+      FROM_LOADER: "yes",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:43180",
+      OTEL_SERVICE_NAME: "h1",
+    });
+    expect(ports).toEqual([8091, 8092, 8091]);
+  });
+
+  const failure = new InputValidationError("unsupported field");
+  test.each([
+    ["start", { start: failure }, { harness: "h1" }],
+    ["events", { events: failure }, {}],
+  ] as const)(
+    "a failed harness %s fails the command and stops the hosts",
+    async (_step, failures, flags) => {
+      const hosts = fakeHosts(failures);
+      const subject = harness({
+        project: harnessProject(["h1"]),
+        createHarnessHosts: hosts.create,
+      });
+
+      await expect(subject.run(flags)).rejects.toBe(failure);
+      expect(hosts.configs[0]!.signal.aborted).toBe(true);
+      expect(hosts.cleanup.done).toBe(true);
+      expect(subject.collector.state.closed).toBe(1);
+    },
+  );
+
+  test.each([
+    [harnessProject(["h1"]), { port: 9000 }, 9000, undefined],
+    [harnessProject(["h1"], runtime()), { harness: "h1", port: 9000 }, 9000, undefined],
+    [harnessProject(["h1"], runtime()), { port: 9000 }, 8090, 9000],
+  ] as const)(
+    "--port follows the selection (%#)",
+    async (configuredProject, flags, endpointPort, runtimePort) => {
+      const subject = harness({
+        project: configuredProject,
+        createHarnessHosts: fakeHosts().create,
+      });
+      const pending = subject.run(flags);
+
+      await waitFor(
+        () =>
+          subject.io.stderr().includes(`Harness endpoint listening on port ${endpointPort}.`) &&
+          (runtimePort === undefined || subject.codeZip.inputs.length > 0),
+      );
+      await interrupt(pending);
+
+      expect(subject.codeZip.inputs[0]?.port).toBe(runtimePort);
+    },
+  );
+
+  test.each([
+    [{}, "pull", "set:h1,h2", ["orders"]],
+    [{ harness: "h1", target: "staging" }, "start:h1", "set:h1", []],
+  ] as const)(
+    "browser mode pulls or starts in the background and reloads the selection on edit (%o)",
+    async (flags, background, reload, agents) => {
+      const hosts = fakeHosts({ pull: new Error("offline") });
+      const subject = harness({
+        project: harnessProject(["h1"]),
+        reloaded: harnessProject(["h1", "h2"], runtime("orders")),
+        createHarnessHosts: hosts.create,
+      });
+      const pending = subject.run({ mode: "browser", ...flags });
+
+      await waitFor(() => hosts.calls.includes(background));
+      subject.watchers[0]!.onChange();
+      await waitFor(() => hosts.calls.includes(reload));
+      expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual([...agents]);
+      await interrupt(pending);
+
+      expect(hosts.calls).toEqual(["create:h1", background, reload]);
+      expect(subject.harnessDevAws[0]?.[1]).toBe("target" in flags ? flags.target : "default");
+      expect(subject.io.stderr().includes("Harness image pull failed: offline")).toBe(
+        background === "pull",
+      );
+      expect(subject.io.stderr()).toContain("Reloaded agents and harnesses from agentcore.json.");
+    },
+  );
 });

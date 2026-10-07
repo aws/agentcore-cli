@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { InvokeHarnessStreamOutput } from "@aws-sdk/client-bedrock-agentcore";
 import { type HttpRequestHandler, startHttpServer } from "../../../io/httpServer";
-import { parseAgentEvent } from "./invocations";
+import { parseAgentEvent, toInspectorEvent } from "./invocations";
 import { ServerFarm, fakeSupervisor, post, runningAgent } from "./testkit";
 import type { InspectorDeps } from "./types";
 
@@ -265,5 +266,86 @@ describe("AGUI agent invocation", () => {
     const response = await post(url, "/invocations", { agentName: "orders" });
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ success: false, error: "prompt is required" });
+  });
+});
+
+describe("harness invocations", () => {
+  const turn = (events: InvokeHarnessStreamOutput[]) => ({
+    sessionId: "s1",
+    events: (async function* () {
+      yield* events;
+    })(),
+  });
+
+  test.each([
+    [
+      { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "hi" } } },
+      { type: "contentBlockDelta", contentBlockIndex: 0, delta: { type: "text", text: "hi" } },
+    ],
+    [
+      {
+        contentBlockStart: {
+          contentBlockIndex: 1,
+          start: { toolUse: { toolUseId: "t", name: "shell" } },
+        },
+      },
+      {
+        type: "contentBlockStart",
+        contentBlockIndex: 1,
+        start: { type: "toolUse", toolUse: { toolUseId: "t", name: "shell" } },
+      },
+    ],
+    [
+      { contentBlockDelta: { contentBlockIndex: 1, delta: { toolUse: { input: "{}" } } } },
+      { type: "contentBlockDelta", contentBlockIndex: 1, delta: { type: "toolUse", input: "{}" } },
+    ],
+    [
+      { contentBlockDelta: { contentBlockIndex: 2, delta: { toolResult: [{ text: "ok" }] } } },
+      {
+        type: "contentBlockDelta",
+        contentBlockIndex: 2,
+        delta: { type: "toolResult", results: [{ text: "ok" }] },
+      },
+    ],
+    [
+      {
+        contentBlockDelta: {
+          contentBlockIndex: 4,
+          delta: { reasoningContent: { signature: "sig123" } },
+        },
+      },
+      {
+        type: "contentBlockDelta",
+        contentBlockIndex: 4,
+        delta: { type: "reasoningContent", signature: "sig123" },
+      },
+    ],
+    [{ runtimeClientError: { message: "boom" } }, { type: "error", message: "boom" }],
+  ] as [InvokeHarnessStreamOutput, Record<string, unknown>][])("flattens %j", (event, expected) => {
+    expect(toInspectorEvent(event)).toEqual(expected);
+  });
+
+  test("routes a harnessName body and returns the session id", async () => {
+    const calls: unknown[] = [];
+    const { url } = await farm.inspector({
+      supervisor: fakeSupervisor(),
+      harnesses: {
+        invoke: async (...args: unknown[]) => {
+          calls.push(args.slice(0, 2));
+          return turn([{ messageStart: { role: "assistant" } }] as InvokeHarnessStreamOutput[]);
+        },
+        snapshot: () => [],
+      },
+    });
+
+    const response = await post(url, "/invocations", {
+      harnessName: "h1",
+      prompt: "hi",
+      harnessOverrides: { maxIterations: 2 },
+    });
+
+    expect(response.headers.get("x-session-id")).toBe("s1");
+    expect(await response.text()).toBe('data: {"type":"messageStart","role":"assistant"}\n\n');
+    expect(calls).toEqual([["h1", { prompt: "hi", harnessOverrides: { maxIterations: 2 } }]]);
   });
 });

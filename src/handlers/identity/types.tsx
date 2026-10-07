@@ -100,4 +100,8 @@ export interface CoreIdentityClient {
     name: string,
     options: CoreOptions,
   ): Promise<DeletePaymentCredentialProviderResponse>;
+
+  ensureWorkloadIdentity(name: string, options: CoreOptions): Promise<{ created: boolean }>;
+  getWorkloadAccessToken(name: string, options: CoreOptions): Promise<string>;
+  deleteWorkloadIdentity(name: string, options: CoreOptions): Promise<void>;
 }

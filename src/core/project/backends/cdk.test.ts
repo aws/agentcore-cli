@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
+import { ResourceNotFoundException } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { FsReadWriteJson, ProcessFailedError } from "../../../io";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
@@ -15,7 +16,9 @@ import type {
   CredentialProvisioner,
   CredentialRemovalInput,
   CredentialRemover,
+  DevIdentityRemover,
 } from "./cdk/credentials";
+import { createDevIdentityRemover } from "./cdk/credentials";
 import { DEPLOYED_STATE_RELATIVE_PATH, updateTargetState } from "./cdk/deployedState";
 import type { DeployBackendInput } from "./types";
 import type { ResolvedProjectResource } from "../../../handlers/project/types";
@@ -56,6 +59,7 @@ function unusedIdentity(): CredentialProviderCalls {
     deleteApiKeyCredentialProvider: unexpected("deleteApiKeyCredentialProvider"),
     deleteOauth2CredentialProvider: unexpected("deleteOauth2CredentialProvider"),
     deletePaymentCredentialProvider: unexpected("deletePaymentCredentialProvider"),
+    deleteWorkloadIdentity: unexpected("deleteWorkloadIdentity"),
   };
 }
 
@@ -162,6 +166,7 @@ type HarnessOptions = {
   transactionSearchError?: Error;
   provisionCredentials?: CredentialProvisioner;
   removeCredentials?: CredentialRemover;
+  removeDevIdentity?: DevIdentityRemover;
   /** Stack returned by CloudFormation. Defaults to a present stack; null means absent. */
   describedStack?: Stack | null;
   /** Failure thrown by the fake synth process after emitting its output. */
@@ -252,6 +257,7 @@ function harness(options: HarnessOptions = {}) {
     ...(options.removeCredentials && {
       removeCredentials: options.removeCredentials,
     }),
+    ...(options.removeDevIdentity && { removeDevIdentity: options.removeDevIdentity }),
     describeStack: async (region, provider, stackName) => {
       stackReads.push({ stackName, region, credentials: provider });
       if (options.describedStack === null) return undefined;
@@ -885,6 +891,57 @@ describe("CdkBackend.deploy", () => {
       ),
     ).rejects.toThrow(/no stack .* exists .* to remove.*Add a resource/s);
     expect(subject.runs).toEqual([]);
+  });
+
+  test("teardown removes the dev identity after credentials and before target state", async () => {
+    const order: string[] = [];
+    const removeCredentials: CredentialRemover = async function* () {
+      order.push("credentials");
+      yield { type: "step", message: "Removing credentials" };
+    };
+    const removeDevIdentity: DevIdentityRemover = async function* (_project, input) {
+      order.push(`identity:${input.targetName}:${input.region}`);
+      yield { type: "step", message: "Removing dev identity" };
+    };
+    const subject = harness({ removeCredentials, removeDevIdentity });
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+
+    await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(order).toEqual(["credentials", "identity:default:us-east-1"]);
+  });
+
+  test.each([
+    ["not found is ignored", new ResourceNotFoundException({ message: "gone", $metadata: {} }), []],
+    [
+      "a failure is reported",
+      new Error("denied"),
+      [
+        "Could not remove workload identity 'agentcore-dev-example-default': denied. " +
+          "Delete it with 'aws bedrock-agentcore-control delete-workload-identity --name agentcore-dev-example-default'.",
+      ],
+    ],
+  ])("dev identity remover: %s", async (_case, error, warnings) => {
+    const remove = createDevIdentityRemover({
+      deleteWorkloadIdentity: async () => {
+        throw error;
+      },
+    });
+
+    const events = await collect(
+      remove(await project(), {
+        region: "us-east-1",
+        credentials: async () => ({ accessKeyId: "key", secretAccessKey: "secret" }),
+        targetName: "default",
+      }),
+    );
+
+    expect(events.map((event) => (event as { message: string }).message).slice(1)).toEqual(
+      warnings,
+    );
   });
 
   test("does not probe for a stack when there is something to deploy", async () => {

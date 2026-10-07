@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,14 +13,31 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
+import type { AwsCredentialIdentityProvider } from "@smithy/types";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { ContainerDevRunner } from "./container";
+import { waitFor } from "../../testing";
+import { ContainerDevRunner, containerCredentials } from "./container";
+
+type CredentialsMount = { directory: string; config: string; credentials: unknown; mode: number };
 
 type ProcessCall = {
   command: string[];
   options: StreamProcessOptions;
   envFile?: { path: string; contents: string; mode: number };
+  mount?: CredentialsMount;
 };
+
+const STATIC_CREDENTIALS = { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" };
+
+async function readMount(directory: string): Promise<CredentialsMount> {
+  const credentialsPath = join(directory, "credentials.json");
+  const [config, credentials, metadata] = await Promise.all([
+    readFile(join(directory, "config"), "utf8"),
+    readFile(credentialsPath, "utf8"),
+    stat(credentialsPath),
+  ]);
+  return { directory, config, credentials: JSON.parse(credentials), mode: metadata.mode & 0o777 };
+}
 
 type StreamBehavior = (
   command: string[],
@@ -63,7 +81,7 @@ function harness(
   config: {
     available?: (tool: string, probeArgs?: string[]) => Promise<boolean>;
     stream?: StreamBehavior;
-    awsDirectory?: string;
+    credentials?: AwsCredentialIdentityProvider;
     processEnv?: NodeJS.ProcessEnv;
   } = {},
 ) {
@@ -77,6 +95,8 @@ function harness(
       const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
       call.envFile = { path, contents, mode: metadata.mode & 0o777 };
     }
+    const volume = command.indexOf("-v");
+    if (volume >= 0) call.mount = await readMount(command[volume + 1]!.split(":")[0]!);
     if (config.stream) yield* config.stream(command, options);
   };
   return {
@@ -88,7 +108,7 @@ function harness(
         (async (tool) => {
           return tool === "docker";
         }),
-      awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
+      credentials: config.credentials ?? (async () => STATIC_CREDENTIALS),
       processEnv: config.processEnv ?? {
         AWS_ACCESS_KEY_ID: "test-access-key",
         AWS_SECRET_ACCESS_KEY: "test-secret-key",
@@ -209,6 +229,8 @@ describe("ContainerDevRunner", () => {
       `127.0.0.1:3000:${containerPort}`,
       "--add-host",
       "host.docker.internal:host-gateway",
+      "-v",
+      `${run.mount!.directory}:/agentcore-aws:ro`,
       "--env-file",
       run.envFile!.path,
       imageTag(root),
@@ -218,8 +240,7 @@ describe("ContainerDevRunner", () => {
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
     });
     expect(parseEnv(run.envFile!.contents)).toEqual({
-      AWS_ACCESS_KEY_ID: "test-access-key",
-      AWS_SECRET_ACCESS_KEY: "test-secret-key",
+      AWS_CONFIG_FILE: "/agentcore-aws/config",
       API_KEY: "super-secret",
       PORT: String(containerPort),
       LOCAL_DEV: "1",
@@ -231,41 +252,82 @@ describe("ContainerDevRunner", () => {
     expect(run.command.join(" ")).not.toContain("test-secret-key");
   });
 
-  test("uses a shared AWS config and rejects missing credentials", async () => {
+  test.each([
+    ["podman", false],
+    ["finch", true],
+  ] as const)("%s run maps host.docker.internal: %p", async (tool, mapsHost) => {
+    const root = await projectRoot(runtime({}));
+    const { calls, runner } = harness({ available: async (candidate) => candidate === tool });
+
+    await collect(runner.run(input(root, runtime({}))));
+
+    const run = commandCall(calls, "run");
+    expect(run.command[0]).toBe(tool);
+    expect(run.command.includes("--add-host")).toBe(mapsHost);
+  });
+
+  test("mounts host-resolved credentials in place of the host AWS profile", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
-    const awsDirectory = join(root, ".aws");
-    await mkdir(awsDirectory);
-    await writeFile(join(awsDirectory, "config"), "[profile sandbox]\nregion=us-east-1\n");
+    const expiration = new Date(Date.now() + 3_600_000);
     const { calls, runner } = harness({
-      awsDirectory,
+      credentials: async () => ({ ...STATIC_CREDENTIALS, sessionToken: "token", expiration }),
       processEnv: { AWS_PROFILE: "sandbox", AWS_REGION: "us-east-1" },
     });
 
     await collect(runner.run(input(root, projectRuntime)));
 
     const run = commandCall(calls, "run");
-    expect(run.command).toContain(`${awsDirectory}:/aws-config:ro`);
-    expect(run.command).not.toContain("AWS_PROFILE");
-    expect(run.command).not.toContain("AWS_CONFIG_FILE");
-    expect(parseEnv(run.envFile!.contents)).toMatchObject({
-      AWS_PROFILE: "sandbox",
+    expect(run.mount).toEqual({
+      directory: run.mount!.directory,
+      config: "[default]\ncredential_process = cat /agentcore-aws/credentials.json\n",
+      credentials: {
+        Version: 1,
+        AccessKeyId: "test-access-key",
+        SecretAccessKey: "test-secret-key",
+        SessionToken: "token",
+        Expiration: expiration.toISOString(),
+      },
+      mode: process.platform === "win32" ? run.mount!.mode : 0o600,
+    });
+    expect(parseEnv(run.envFile!.contents)).toEqual({
       AWS_REGION: "us-east-1",
-      AWS_CONFIG_FILE: "/aws-config/config",
-      AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
+      AWS_CONFIG_FILE: "/agentcore-aws/config",
+      API_KEY: "super-secret",
+      PORT: "8080",
+      LOCAL_DEV: "1",
     });
-    expect(run.command.join(" ")).not.toContain("sandbox");
+    expect(existsSync(run.mount!.directory)).toBe(false);
+  });
 
-    const missing = harness({
-      awsDirectory: join(root, "missing-aws"),
-      processEnv: {},
+  test.each([
+    [
+      "app credentials skip the mount",
+      { AWS_ACCESS_KEY_ID: "app-key", AWS_SECRET_ACCESS_KEY: "app-secret" },
+      undefined,
+    ],
+    ["unresolvable credentials are rejected", {}, "Unable to resolve AWS credentials"],
+  ] as const)("%s", async (_case, env, error) => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness({
+      credentials: async () => {
+        throw new Error("no credentials");
+      },
     });
-    const missingCredentials = collect(missing.runner.run(input(root, projectRuntime)));
-    await expect(missingCredentials).rejects.toBeInstanceOf(InvalidEnvironmentError);
-    await expect(missingCredentials).rejects.toThrow(
-      "Unable to resolve AWS credentials for the container",
-    );
-    expect(missing.calls).toHaveLength(0);
+    const runInput = { ...input(root, projectRuntime), env };
+
+    const run = collect(runner.run(runInput));
+
+    if (error) {
+      await expect(run).rejects.toBeInstanceOf(InvalidEnvironmentError);
+      await expect(run).rejects.toThrow(error);
+      expect(calls).toHaveLength(0);
+    } else {
+      await run;
+      expect(commandCall(calls, "run").command).not.toContain("-v");
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents)).toMatchObject(env);
+    }
   });
 
   test("preserves an existing build context .dockerignore", async () => {
@@ -682,5 +744,55 @@ describe("ContainerDevRunner", () => {
       { type: "status", message: "Starting container" },
       { type: "stderr", line: "run output" },
     ]);
+  });
+});
+
+describe("containerCredentials", () => {
+  const soon = () => new Date(Date.now() + 60_000);
+  const later = () => new Date(Date.now() + 3_600_000);
+
+  test("forces a refresh near expiry and rewrites the file until closed", async () => {
+    let calls = 0;
+    const mounted = await containerCredentials(
+      {},
+      async (options) => ({
+        accessKeyId: `key-${++calls}`,
+        secretAccessKey: "secret",
+        expiration: options?.forceRefresh ? later() : soon(),
+      }),
+      5,
+    );
+    const directory = mounted.args[1]!.split(":")[0]!;
+    const accessKey = async () =>
+      ((await readMount(directory)).credentials as { AccessKeyId: string }).AccessKeyId;
+
+    expect(await accessKey()).toBe("key-2");
+    await waitFor(async () => (await accessKey()) === "key-4");
+    await mounted.close();
+    const closedAt = calls;
+    await Bun.sleep(20);
+
+    expect(calls).toBe(closedAt);
+    expect(existsSync(directory)).toBe(false);
+  });
+
+  test("a failed refresh keeps the last credentials", async () => {
+    let calls = 0;
+    const mounted = await containerCredentials(
+      {},
+      async () => {
+        if (++calls > 1) throw new Error("expired session");
+        return { ...STATIC_CREDENTIALS, expiration: later() };
+      },
+      5,
+    );
+    const directory = mounted.args[1]!.split(":")[0]!;
+
+    await waitFor(() => calls >= 3);
+
+    expect((await readMount(directory)).credentials).toMatchObject({
+      AccessKeyId: "test-access-key",
+    });
+    await mounted.close();
   });
 });

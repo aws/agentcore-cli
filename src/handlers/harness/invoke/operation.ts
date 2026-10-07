@@ -1,3 +1,4 @@
+import type { InvokeHarnessStreamOutput } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../../core/types";
 import type { CoreHarnessClient } from "../types";
 import { applyEvent, finishTurn, newSessionId, newTurn, type TranscriptItem } from "./transcript";
@@ -9,6 +10,23 @@ export type HarnessInvokeResult = {
   latencyMs?: number;
   transcript: TranscriptItem[];
 };
+
+export async function foldHarnessTurn(
+  prompt: string,
+  sessionId: string,
+  events: AsyncIterable<InvokeHarnessStreamOutput>,
+): Promise<HarnessInvokeResult> {
+  const turn = newTurn();
+  for await (const event of events) applyEvent(turn, event);
+  finishTurn(turn);
+  return {
+    sessionId,
+    stopReason: turn.stopReason,
+    usage: turn.usage,
+    latencyMs: turn.latencyMs,
+    transcript: [{ kind: "user", text: prompt }, ...turn.items],
+  };
+}
 
 export async function invokeHarnessTurn(
   client: CoreHarnessClient,
@@ -34,15 +52,5 @@ export async function invokeHarnessTurn(
     signal,
   );
 
-  const turn = newTurn();
-  for await (const event of response.stream ?? []) applyEvent(turn, event);
-  finishTurn(turn);
-
-  return {
-    sessionId,
-    stopReason: turn.stopReason,
-    usage: turn.usage,
-    latencyMs: turn.latencyMs,
-    transcript: [{ kind: "user", text: input.prompt }, ...turn.items],
-  };
+  return foldHarnessTurn(input.prompt, sessionId, response.stream ?? (async function* () {})());
 }

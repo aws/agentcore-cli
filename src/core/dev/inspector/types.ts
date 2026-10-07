@@ -5,7 +5,9 @@
  * implementations (DevSupervisor, the trace store, bundled assets) at the edge,
  * and tests inject fakes.
  */
+import type { InvokeHarnessStreamOutput } from "@aws-sdk/client-bedrock-agentcore";
 import type { Project } from "../../../handlers/project/types";
+import type { HarnessInvokeRequest } from "../harness/request";
 
 /** One managed agent's state, as reported by GET /api/status. */
 export interface InspectorAgentStatus {
@@ -45,6 +47,22 @@ export interface InspectorAssets {
   read(path: string): Promise<{ body: Uint8Array; contentType: string } | undefined>;
 }
 
+export interface InspectorHarnessStatus {
+  name: string;
+  phase: "idle" | "starting" | "running" | "failed";
+  sessionId?: string;
+  error?: string;
+}
+
+export interface InspectorHarnesses {
+  snapshot(): InspectorHarnessStatus[];
+  invoke(
+    name: string,
+    request: HarnessInvokeRequest,
+    signal: AbortSignal,
+  ): Promise<{ sessionId: string; events: AsyncIterable<InvokeHarnessStreamOutput> }>;
+}
+
 /** Everything the Inspector request handler is composed from. */
 export interface InspectorDeps {
   supervisor: InspectorSupervisor;
@@ -54,4 +72,5 @@ export interface InspectorDeps {
   project?: Project;
   /** Agent name to pre-select in the UI. */
   selectedAgent?: string;
+  harnesses?: InspectorHarnesses;
 }

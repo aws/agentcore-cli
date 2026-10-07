@@ -620,6 +620,14 @@ const {
   ...yamlFields
 } = HarnessSpecSchema.shape;
 
+/** The API and harness.yaml key for each model provider. */
+export const HARNESS_MODEL_CONFIG_KEYS = {
+  bedrock: "bedrockModelConfig",
+  open_ai: "openAiModelConfig",
+  gemini: "geminiModelConfig",
+  lite_llm: "liteLlmModelConfig",
+} as const;
+
 /** The on-disk format only; CLI options and construct inputs keep their existing shape. */
 export const HarnessYamlSchema = z
   .object({

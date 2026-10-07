@@ -2,15 +2,19 @@ import {
   CreateApiKeyCredentialProviderCommand,
   CreateOauth2CredentialProviderCommand,
   CreatePaymentCredentialProviderCommand,
+  CreateWorkloadIdentityCommand,
   DeleteApiKeyCredentialProviderCommand,
   DeleteOauth2CredentialProviderCommand,
   DeletePaymentCredentialProviderCommand,
+  DeleteWorkloadIdentityCommand,
   GetApiKeyCredentialProviderCommand,
   GetOauth2CredentialProviderCommand,
   GetPaymentCredentialProviderCommand,
+  GetWorkloadIdentityCommand,
   ListApiKeyCredentialProvidersCommand,
   ListOauth2CredentialProvidersCommand,
   ListPaymentCredentialProvidersCommand,
+  ResourceNotFoundException,
   UpdateApiKeyCredentialProviderCommand,
   UpdateOauth2CredentialProviderCommand,
   UpdatePaymentCredentialProviderCommand,
@@ -30,6 +34,7 @@ import {
   type ListPaymentCredentialProvidersResponse,
   type UpdatePaymentCredentialProviderResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import { GetWorkloadAccessTokenCommand } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   CoreIdentityClient,
   CreateApiKeyCredentialProviderInput,
@@ -42,10 +47,13 @@ import type {
 import type { AwsClients, CoreOptions } from "./types";
 import { toClientConfig } from "./utils";
 
+export function devWorkloadIdentityName(project: string, target: string): string {
+  return `agentcore-dev-${project}-${target}`;
+}
+
 export class IdentityClient implements CoreIdentityClient {
-  // Narrowed to `control` so any holder of a cached control client satisfies it;
-  // CoreClient passes itself.
-  constructor(private readonly clients: Pick<AwsClients, "control">) {}
+  /** Narrowed to the two AgentCore clients so any holder of cached clients satisfies it; CoreClient passes itself. **/
+  constructor(private readonly clients: Pick<AwsClients, "control" | "data">) {}
 
   async createApiKeyCredentialProvider(
     input: CreateApiKeyCredentialProviderInput,
@@ -183,5 +191,40 @@ export class IdentityClient implements CoreIdentityClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeletePaymentCredentialProviderCommand({ name }));
+  }
+
+  async ensureWorkloadIdentity(name: string, options: CoreOptions): Promise<{ created: boolean }> {
+    const control = this.clients.control(toClientConfig(options));
+    try {
+      await control.send(new GetWorkloadIdentityCommand({ name }));
+      return { created: false };
+    } catch (error) {
+      if (!(error instanceof ResourceNotFoundException)) throw error;
+    }
+    try {
+      await control.send(new CreateWorkloadIdentityCommand({ name }));
+      return { created: true };
+    } catch (createError) {
+      /** A duplicate create returns ValidationException, so a second get decides whether another developer created it. **/
+      try {
+        await control.send(new GetWorkloadIdentityCommand({ name }));
+        return { created: false };
+      } catch {
+        throw createError;
+      }
+    }
+  }
+
+  async getWorkloadAccessToken(name: string, options: CoreOptions): Promise<string> {
+    const response = await this.clients
+      .data(toClientConfig(options))
+      .send(new GetWorkloadAccessTokenCommand({ workloadName: name }));
+    return response.workloadAccessToken!;
+  }
+
+  async deleteWorkloadIdentity(name: string, options: CoreOptions): Promise<void> {
+    await this.clients
+      .control(toClientConfig(options))
+      .send(new DeleteWorkloadIdentityCommand({ name }));
   }
 }

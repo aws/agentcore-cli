@@ -22,6 +22,8 @@ import { projectResourceNames } from "../selection";
 import { RESOURCE_LABELS, type ProjectInvokableResource } from "../types";
 import { createInvokeRuntimeHandler, invokeRuntimeFlags } from "../../runtime/invoke";
 import { invokeProjectRuntimeLocally } from "./runtime";
+import { invokeProjectHarnessLocally } from "./harness";
+import { DEV_PORTS } from "../../../core/dev/port";
 
 const RESOURCE = "Resource options:";
 const RESOURCE_TYPES = ["runtime", "harness", "gateway"] as const;
@@ -51,12 +53,12 @@ const selectionFlags = [
     z.string().min(1).optional(),
     { group: RESOURCE },
   ),
-  flag("local", "invoke the local development server (project Runtime only)", z.boolean(), {
+  flag("local", "invoke the local development server (project Runtime or harness)", z.boolean(), {
     group: RESOURCE,
   }),
   flag(
     "port",
-    "local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)",
+    `local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000, harness ${DEV_PORTS.HARNESS})`,
     z.coerce.number().int().min(1).max(65535).optional(),
     { group: RESOURCE },
   ),
@@ -134,7 +136,7 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
       const acceptedFlags = [
         ...RESOURCE_TYPES,
         "target",
-        ...(resourceType === "runtime" ? ["local", "port"] : []),
+        ...(resourceType === "gateway" ? [] : ["local", "port"]),
         ...handler.flags().map(({ name }) => name),
       ];
       const unsupported = Object.entries(flags).find(
@@ -156,6 +158,15 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
         throw new InputValidationError("--port requires --local");
       }
       if (flags.local) {
+        const deployedOnly = (["target", "qualifier"] as const).find((name) => isSet(flags[name]));
+        if (deployedOnly) {
+          throw new InputValidationError(`--${deployedOnly} cannot be used with --local`);
+        }
+        if (resourceType === "harness") {
+          const harness = project!.spec.harnesses.find(({ name }) => name === identifier)!;
+          await invokeProjectHarnessLocally(io, ctx, harness, flags);
+          return;
+        }
         const runtime = project!.spec.runtimes.find(({ name }) => name === identifier)!;
         await invokeProjectRuntimeLocally(io, ctx, runtime, flags);
         return;

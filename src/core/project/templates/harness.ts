@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import { stringify } from "yaml";
 import { ZodError, z } from "zod";
-import { HarnessSpecSchema, type HarnessSpec } from "../../../projectSchemas/harness";
+import {
+  HARNESS_MODEL_CONFIG_KEYS,
+  HarnessSpecSchema,
+  type HarnessSpec,
+} from "../../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors/errors";
 import type { TemplateRenderer, TemplateResolver } from "./types";
@@ -93,12 +97,7 @@ function buildTemplateContext(spec: HarnessSpec) {
     ...settings
   } = spec;
   const { provider, ...modelConfig } = model;
-  const modelKey = {
-    bedrock: "bedrockModelConfig",
-    open_ai: "openAiModelConfig",
-    gemini: "geminiModelConfig",
-    lite_llm: "liteLlmModelConfig",
-  }[provider];
+  const modelKey = HARNESS_MODEL_CONFIG_KEYS[provider];
   const { mode, ...memoryConfig } = memory ?? {};
   const memoryKey =
     mode &&

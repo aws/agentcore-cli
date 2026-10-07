@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { defaultProvider } from "@aws-sdk/credential-provider-node";
+import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@smithy/types";
 import { InputValidationError, InvalidEnvironmentError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
@@ -16,14 +19,10 @@ import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
 const CONTAINER_TOOLS = ["docker", "podman", "finch"] as const;
-const AWS_ENV_KEYS = [
-  "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
-  "AWS_SESSION_TOKEN",
-  "AWS_REGION",
-  "AWS_DEFAULT_REGION",
-  "AWS_PROFILE",
-] as const;
+const AWS_ENV_KEYS = ["AWS_REGION", "AWS_DEFAULT_REGION"] as const;
+const CREDENTIALS_MOUNT = "/agentcore-aws";
+const CREDENTIALS_REFRESH_MS = 60_000;
+const CREDENTIALS_MIN_LIFETIME_MS = 15 * 60_000;
 const CLEANUP_TIMEOUT_MS = 2_000;
 const DOCKERFILE_NAME = "Dockerfile";
 const CONTAINER_RUNTIME_INSTALL_HINT =
@@ -50,26 +49,32 @@ __pycache__
 agentcore/
 `;
 
-type ContainerTool = (typeof CONTAINER_TOOLS)[number];
-type ToolAvailable = typeof toolAvailable;
+export type ContainerTool = (typeof CONTAINER_TOOLS)[number];
+export type ToolAvailable = typeof toolAvailable;
+
+export type ContainerCredentials = {
+  args: string[];
+  env: Record<string, string>;
+  close(): Promise<void>;
+};
 
 type ContainerDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
   toolAvailable?: ToolAvailable;
-  awsDirectory?: string;
+  credentials?: AwsCredentialIdentityProvider;
   processEnv?: NodeJS.ProcessEnv;
 };
 
 export class ContainerDevRunner implements DevRunner {
   private readonly streamProcess: ProcessStreamer;
   private readonly toolAvailable: ToolAvailable;
-  private readonly awsDirectory: string;
+  private readonly credentials: AwsCredentialIdentityProvider;
   private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
-    this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
+    this.credentials = config.credentials ?? defaultProvider();
     this.processEnv = config.processEnv ?? process.env;
   }
 
@@ -91,160 +96,250 @@ export class ContainerDevRunner implements DevRunner {
       throw new ResourceNotFoundError(`no container Dockerfile exists at ${dockerfilePath}`);
     }
 
-    const hasAwsCredentials = Boolean(
-      (input.env?.AWS_ACCESS_KEY_ID ?? this.processEnv.AWS_ACCESS_KEY_ID) &&
-      (input.env?.AWS_SECRET_ACCESS_KEY ?? this.processEnv.AWS_SECRET_ACCESS_KEY),
-    );
-    const hasAwsConfig = existsSync(this.awsDirectory);
-    if (!hasAwsCredentials && !hasAwsConfig) {
-      throw new InvalidEnvironmentError(
-        "Unable to resolve AWS credentials for the container. Configure AWS credentials " +
-          "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then retry.",
-      );
-    }
-
-    const tool = await this.resolveContainerTool(input.signal);
-    input.signal.throwIfAborted();
-    if (input.runtime.buildContextPath) {
-      const dockerignore = ensureBuildContextDockerignore(context);
-      if (dockerignore) {
-        yield { type: "status", message: `Created protective ${dockerignore}` };
+    const credentials = await containerCredentials(input.env, this.credentials);
+    try {
+      const tool = await resolveContainerTool(this.toolAvailable, input.signal);
+      input.signal.throwIfAborted();
+      if (input.runtime.buildContextPath) {
+        const dockerignore = ensureBuildContextDockerignore(context);
+        if (dockerignore) {
+          yield { type: "status", message: `Created protective ${dockerignore}` };
+        }
       }
-    }
 
-    const runtimeName = input.runtime.name.toLowerCase();
-    const projectId = hashString(resolve(input.projectRoot));
-    const imageTag = `agentcore-dev/${sanitizeImageNameComponent(runtimeName)}-${projectId}`;
-    const containerName = `agentcore-dev-${runtimeName}-${projectId}`;
-    await this.removeContainer(tool, containerName, context);
-    input.signal.throwIfAborted();
+      const runtimeName = input.runtime.name.toLowerCase();
+      const projectId = hashString(resolve(input.projectRoot));
+      const imageTag = `agentcore-dev/${sanitizeImageNameComponent(runtimeName)}-${projectId}`;
+      const containerName = `agentcore-dev-${runtimeName}-${projectId}`;
+      const processOptions = { cwd: context, env: this.processEnv };
+      await removeContainer(this.streamProcess, tool, containerName, processOptions);
+      input.signal.throwIfAborted();
 
-    const buildArgs = input.runtime.customDockerBuildArgs ?? {};
-    const buildArgFlags = Object.entries(buildArgs).flatMap(([key, value]) => [
-      "--build-arg",
-      `${key}=${value}`,
-    ]);
-    const redactedBuildArgFlags = Object.keys(buildArgs).flatMap((key) => [
-      "--build-arg",
-      `${key}=<redacted>`,
-    ]);
-    const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
-    const buildOptions: StreamProcessOptions = {
-      cwd: context,
-      env: this.processEnv,
-      redactedCommand: [
-        tool,
-        "build",
-        "-f",
-        dockerfile,
-        "-t",
-        imageTag,
-        ...redactedBuildArgFlags,
-        ".",
-      ],
-      signal: input.signal,
-    };
-
-    yield { type: "status", message: `Building image with ${tool}` };
-    yield* this.streamProcess(buildCommand, buildOptions);
-
-    const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
-    const forwardedEnv: Record<string, string> = {};
-    for (const key of AWS_ENV_KEYS) {
-      if (this.processEnv[key]) forwardedEnv[key] = this.processEnv[key];
-    }
-    Object.assign(forwardedEnv, input.env, {
-      PORT: String(containerPort),
-      LOCAL_DEV: "1",
-    });
-    if (input.runtime.protocol === "MCP") {
-      forwardedEnv.FASTMCP_PORT = String(containerPort);
-    }
-    const awsMount = hasAwsConfig ? ["-v", `${this.awsDirectory}:/aws-config:ro`] : [];
-    if (awsMount.length) {
-      forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
-      forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
-    }
-    const envFile = join(tmpdir(), `agentcore-dev-${randomUUID()}.env`);
-    try {
-      await writeFile(envFile, serializeEnvironment(forwardedEnv), {
-        flag: "wx",
-        mode: 0o600,
-      });
-    } catch (error) {
-      await rm(envFile, { force: true });
-      throw error;
-    }
-    const runCommand = [
-      tool,
-      "run",
-      "--rm",
-      "--name",
-      containerName,
-      "-p",
-      `127.0.0.1:${input.port}:${containerPort}`,
-      // Docker Engine on Linux does not define host.docker.internal (Desktop,
-      // Podman, and Finch do); the mapping makes the OTLP endpoint rewrite
-      // resolve everywhere and is harmless where the name already exists.
-      "--add-host",
-      "host.docker.internal:host-gateway",
-      ...awsMount,
-      "--env-file",
-      envFile,
-      imageTag,
-    ];
-
-    yield { type: "status", message: "Starting container" };
-    try {
-      yield* this.streamProcess(runCommand, {
+      const buildArgs = input.runtime.customDockerBuildArgs ?? {};
+      const buildArgFlags = Object.entries(buildArgs).flatMap(([key, value]) => [
+        "--build-arg",
+        `${key}=${value}`,
+      ]);
+      const redactedBuildArgFlags = Object.keys(buildArgs).flatMap((key) => [
+        "--build-arg",
+        `${key}=<redacted>`,
+      ]);
+      const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
+      const buildOptions: StreamProcessOptions = {
         cwd: context,
         env: this.processEnv,
+        redactedCommand: [
+          tool,
+          "build",
+          "-f",
+          dockerfile,
+          "-t",
+          imageTag,
+          ...redactedBuildArgFlags,
+          ".",
+        ],
         signal: input.signal,
-      });
-    } finally {
+      };
+
+      yield { type: "status", message: `Building image with ${tool}` };
+      yield* this.streamProcess(buildCommand, buildOptions);
+
+      const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
+      const envFile = await writeContainerEnvFile(
+        {
+          ...credentials.env,
+          ...input.env,
+          PORT: String(containerPort),
+          LOCAL_DEV: "1",
+          ...(input.runtime.protocol === "MCP" && { FASTMCP_PORT: String(containerPort) }),
+        },
+        this.processEnv,
+      );
+      const runCommand = [
+        ...containerRunArgs(tool, containerName, input.port, containerPort),
+        ...credentials.args,
+        "--env-file",
+        envFile,
+        imageTag,
+      ];
+
+      yield { type: "status", message: "Starting container" };
       try {
-        await this.removeContainer(tool, containerName, context);
+        yield* this.streamProcess(runCommand, { ...processOptions, signal: input.signal });
       } finally {
-        await rm(envFile, { force: true });
+        try {
+          await removeContainer(this.streamProcess, tool, containerName, processOptions);
+        } finally {
+          await rm(envFile, { force: true });
+        }
       }
+    } finally {
+      await credentials.close();
     }
   }
+}
 
-  private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
-    for (const tool of CONTAINER_TOOLS) {
-      const hasVersion = await this.toolAvailable(tool);
-      signal.throwIfAborted();
-      if (!hasVersion) continue;
+export async function resolveContainerTool(
+  available: ToolAvailable,
+  signal: AbortSignal,
+): Promise<ContainerTool> {
+  for (const tool of CONTAINER_TOOLS) {
+    const hasVersion = await available(tool);
+    signal.throwIfAborted();
+    if (!hasVersion) continue;
 
-      const canBuild = await this.toolAvailable(tool, ["build", "--help"]);
-      signal.throwIfAborted();
-      if (canBuild) return tool;
-      if (tool === "finch") {
-        throw new InvalidEnvironmentError(
-          "Finch is installed but its VM is not initialized. Run 'finch vm init' and retry.",
-        );
-      }
+    const canBuild = await available(tool, ["build", "--help"]);
+    signal.throwIfAborted();
+    if (canBuild) return tool;
+    if (tool === "finch") {
+      throw new InvalidEnvironmentError(
+        "Finch is installed but its VM is not initialized. Run 'finch vm init' and retry.",
+      );
     }
-    throw new MissingToolError("container runtime", CONTAINER_RUNTIME_INSTALL_HINT);
   }
+  throw new MissingToolError("container runtime", CONTAINER_RUNTIME_INSTALL_HINT);
+}
 
-  private async removeContainer(
-    tool: ContainerTool,
-    containerName: string,
-    cwd: string,
-  ): Promise<void> {
+export async function removeContainer(
+  stream: ProcessStreamer,
+  tool: ContainerTool,
+  name: string,
+  options: { cwd: string; env: NodeJS.ProcessEnv },
+): Promise<void> {
+  try {
+    for await (const _event of stream([tool, "rm", "-f", name], {
+      ...options,
+      signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
+    })) {
+      // Best-effort cleanup intentionally discards command output.
+    }
+  } catch {
+    // A missing container and an unavailable daemon are both safe to ignore here.
+  }
+}
+
+/** The CLI resolves AWS credentials on the host and keeps a mounted credential_process file current, so the container never needs the host's AWS configuration. **/
+export async function containerCredentials(
+  env: Record<string, string> | undefined,
+  provider: AwsCredentialIdentityProvider,
+  refreshMs = CREDENTIALS_REFRESH_MS,
+): Promise<ContainerCredentials> {
+  if (env?.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) {
+    return { args: [], env: {}, close: async () => {} };
+  }
+  let credentials: AwsCredentialIdentity;
+  try {
+    credentials = await longLived(provider);
+  } catch (error) {
+    throw new InvalidEnvironmentError(
+      "Unable to resolve AWS credentials for the container. Configure AWS credentials " +
+        "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then retry.",
+      { cause: error },
+    );
+  }
+  const directory = await mkdtemp(join(tmpdir(), "agentcore-dev-aws-"));
+  try {
+    await writeFile(
+      join(directory, "config"),
+      `[default]\ncredential_process = cat ${CREDENTIALS_MOUNT}/credentials.json\n`,
+      { mode: 0o600 },
+    );
+    await writeCredentialProcessFile(directory, credentials);
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+  const stop = new AbortController();
+  const refreshing = refreshCredentialProcessFile(directory, provider, refreshMs, stop.signal);
+  return {
+    args: ["-v", `${directory}:${CREDENTIALS_MOUNT}:ro`],
+    env: { AWS_CONFIG_FILE: `${CREDENTIALS_MOUNT}/config` },
+    close: async () => {
+      stop.abort();
+      await refreshing;
+      await rm(directory, { recursive: true, force: true });
+    },
+  };
+}
+
+async function refreshCredentialProcessFile(
+  directory: string,
+  provider: AwsCredentialIdentityProvider,
+  refreshMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  while (!signal.aborted) {
     try {
-      for await (const _event of this.streamProcess([tool, "rm", "-f", containerName], {
-        cwd,
-        env: this.processEnv,
-        signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
-      })) {
-        // Best-effort cleanup intentionally discards command output.
-      }
+      await sleep(refreshMs, undefined, { signal });
+      await writeCredentialProcessFile(directory, await longLived(provider));
     } catch {
-      // A missing container and an unavailable daemon are both safe to ignore here.
+      /** A failed refresh keeps the last credentials. The next interval tries again. **/
     }
   }
+}
+
+async function longLived(provider: AwsCredentialIdentityProvider): Promise<AwsCredentialIdentity> {
+  const credentials = await provider();
+  const remaining = (credentials.expiration?.getTime() ?? Infinity) - Date.now();
+  return remaining < CREDENTIALS_MIN_LIFETIME_MS ? provider({ forceRefresh: true }) : credentials;
+}
+
+async function writeCredentialProcessFile(
+  directory: string,
+  credentials: AwsCredentialIdentity,
+): Promise<void> {
+  const path = join(directory, "credentials.json");
+  const staged = `${path}.${randomUUID()}`;
+  await writeFile(
+    staged,
+    JSON.stringify({
+      Version: 1,
+      AccessKeyId: credentials.accessKeyId,
+      SecretAccessKey: credentials.secretAccessKey,
+      SessionToken: credentials.sessionToken,
+      Expiration: credentials.expiration?.toISOString(),
+    }),
+    { mode: 0o600 },
+  );
+  await rename(staged, path);
+}
+
+export async function writeContainerEnvFile(
+  env: Record<string, string>,
+  processEnv: NodeJS.ProcessEnv,
+): Promise<string> {
+  const forwardedEnv: Record<string, string> = {};
+  for (const key of AWS_ENV_KEYS) {
+    if (processEnv[key]) forwardedEnv[key] = processEnv[key];
+  }
+  Object.assign(forwardedEnv, env);
+  const envFile = join(tmpdir(), `agentcore-dev-${randomUUID()}.env`);
+  try {
+    await writeFile(envFile, serializeEnvironment(forwardedEnv), { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    await rm(envFile, { force: true });
+    throw error;
+  }
+  return envFile;
+}
+
+export function containerRunArgs(
+  tool: ContainerTool,
+  name: string,
+  hostPort: number,
+  containerPort: number,
+): string[] {
+  return [
+    tool,
+    "run",
+    "--rm",
+    "--name",
+    name,
+    "-p",
+    `127.0.0.1:${hostPort}:${containerPort}`,
+    /** Docker Engine on Linux does not define host.docker.internal. Podman defines it and rejects the host-gateway mapping, so the mapping is added for Docker and Finch only. **/
+    ...(tool === "podman" ? [] : ["--add-host", "host.docker.internal:host-gateway"]),
+  ];
 }
 
 function ensureBuildContextDockerignore(context: string): string | undefined {

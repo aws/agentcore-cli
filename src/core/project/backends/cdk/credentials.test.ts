@@ -242,6 +242,7 @@ function account(
       remove("payment", name, options);
       return {};
     },
+    async deleteWorkloadIdentity() {},
   };
 
   return {

@@ -1,8 +1,10 @@
+import { join } from "node:path";
+import { readHarnessFiles } from "../../project/fsUtils";
 import type { HttpResponse } from "../../../io/httpServer";
 import { apiError, json } from "./respond";
 import type { InspectorDeps } from "./types";
 
-export function handleResources(deps: InspectorDeps): HttpResponse {
+export async function handleResources(deps: InspectorDeps): Promise<HttpResponse> {
   const project = deps.project;
   if (!project) return apiError(404, "No agentcore project found");
 
@@ -21,8 +23,21 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
       protocol: runtime.protocol ?? "HTTP",
       envVars: runtime.envVars?.map((envVar) => envVar.name) ?? [],
     })),
-    // Project schema has no per-harness model or tool spec yet, so neutral defaults.
-    harnesses: spec.harnesses.map((harness) => ({ name: harness.name, model: "", tools: [] })),
+    harnesses: await Promise.all(
+      spec.harnesses.map(async ({ name, path }) => {
+        try {
+          const { spec: harness } = await readHarnessFiles(join(project.rootPath, path));
+          return {
+            name,
+            modelConfig: harness.model,
+            tools: harness.tools.map((tool) => tool.name),
+            skills: harness.skills,
+          };
+        } catch {
+          return { name, modelConfig: undefined, tools: [], skills: [] };
+        }
+      }),
+    ),
     memories: spec.memories.map((memory) => ({
       name: memory.name,
       strategies: memory.strategies.map((strategy) => ({

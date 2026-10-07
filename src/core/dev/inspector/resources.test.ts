@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { Project } from "../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
@@ -108,8 +111,8 @@ function project(): Project {
 }
 
 describe("GET /api/resources", () => {
-  test("flattens the project spec into the resource graph", () => {
-    const response = handleResources(deps({ project: project() }));
+  test("flattens the project spec into the resource graph", async () => {
+    const response = await handleResources(deps({ project: project() }));
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body as string)).toEqual({
       success: true,
@@ -126,7 +129,7 @@ describe("GET /api/resources", () => {
           envVars: ["STAGE"],
         },
       ],
-      harnesses: [{ name: "support", model: "", tools: [] }],
+      harnesses: [{ name: "support", modelConfig: undefined, tools: [], skills: [] }],
       memories: [
         {
           name: "chat",
@@ -162,12 +165,46 @@ describe("GET /api/resources", () => {
     });
   });
 
-  test("returns 404 when there is no project", () => {
-    const response = handleResources(deps());
+  test("returns 404 when there is no project", async () => {
+    const response = await handleResources(deps());
     expect(response.status).toBe(404);
     expect(JSON.parse(response.body as string)).toEqual({
       success: false,
       error: "No agentcore project found",
     });
+  });
+
+  test("reports each harness model, tools, and skills from harness.yaml", async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), "inspector-test-"));
+    await mkdir(join(rootPath, "h1"));
+    await writeFile(
+      join(rootPath, "h1", "harness.yaml"),
+      JSON.stringify({
+        name: "h1",
+        model: { bedrockModelConfig: { modelId: "m1" } },
+        tools: [{ type: "remote_mcp", name: "docs", config: { remoteMcp: { url: "https://x" } } }],
+        skills: [{ path: "./skills/a" }],
+      }),
+    );
+    const spec = ProjectSpecSchema.parse({
+      name: "inspectorTest",
+      version: 2,
+      managedBy: "CDK",
+      runtimes: [],
+      harnesses: [{ name: "h1", path: "h1" }],
+    });
+
+    const response = await handleResources(
+      deps({ project: { name: "inspectorTest", rootPath, spec } }),
+    );
+
+    expect(JSON.parse(response.body as string).harnesses).toEqual([
+      {
+        name: "h1",
+        modelConfig: { provider: "bedrock", modelId: "m1" },
+        tools: ["docs"],
+        skills: [{ path: "./skills/a" }],
+      },
+    ]);
   });
 });

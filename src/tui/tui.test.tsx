@@ -125,7 +125,7 @@ describe("TUI handoff", () => {
       ({
         name: "test-project",
         rootPath: process.cwd(),
-        spec: { runtimes: [] } as unknown as Project["spec"],
+        spec: { runtimes: [], harnesses: [] } as unknown as Project["spec"],
       }) as Project;
     const { streams, stdin } = ttyTestIO();
     const root = createRootHandler(core, {
@@ -142,7 +142,7 @@ describe("TUI handoff", () => {
     await waitFor(() => streams.stdout().includes("/ dev"));
     stdin.write("\r");
 
-    // The project has no runtimes, so dev's own validation fails: proof the
+    // The project has no runtimes or harnesses, so dev's own validation fails: proof the
     // TUI handed off to the dev command rather than showing its help.
     const error = await routePromise.catch((error) => error);
     expect(error).toBeInstanceOf(InputValidationError);

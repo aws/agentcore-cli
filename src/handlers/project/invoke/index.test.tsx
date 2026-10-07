@@ -7,6 +7,7 @@ import type {
   GetGatewayResponse,
   GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { InvokeHarnessStreamOutput } from "@aws-sdk/client-bedrock-agentcore";
 import type { ProjectBackend } from "../../../core/project";
 import { ExitCode } from "../../../errors";
 import { startHttpServer, type HttpServerHandle } from "../../../io";
@@ -25,6 +26,8 @@ import {
 import * as tui from "../../../tui";
 import { createRootHandler } from "../../index";
 import { RegionKey } from "../../keys";
+import { foldHarnessTurn } from "../../harness/invoke/operation";
+import { sseEvent } from "../../../core/dev/inspector/respond";
 
 const servers: HttpServerHandle[] = [];
 const cleanups: Array<() => Promise<void>> = [];
@@ -272,12 +275,6 @@ describe("invoke", () => {
       args: ["--runtime", "checkout", "--prompt", "hi"],
       resources: { runtimes: [RUNTIME] },
       message: "--prompt does not apply to a Runtime",
-    },
-    {
-      name: "--local for a harness",
-      args: ["--harness", "support", "--local"],
-      resources: { harnesses: [HARNESS] },
-      message: "--local does not apply to a Harness",
     },
     {
       name: "--target with an ID",
@@ -618,5 +615,81 @@ describe("invoke", () => {
     await expect(run([...args], { runtimes: [RUNTIME] }, { writeTargets: false })).rejects.toThrow(
       message,
     );
+  });
+});
+
+describe("invoke --harness --local", () => {
+  const SESSION = "local-harness-session-000000000000000";
+
+  async function localHarness(events: InvokeHarnessStreamOutput[]) {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(Buffer.concat(events.map((event) => sseEvent({ event }))), {
+          headers: { "x-session-id": SESSION },
+        }),
+    });
+    cleanups.push(async () => server.stop(true));
+    return server.port!;
+  }
+
+  test.each([
+    {
+      name: "rejects deployed-only flags locally",
+      args: ["--harness", "support", "--prompt", "hi", "--local", "--qualifier", "prod"],
+      message: "--qualifier cannot be used with --local",
+    },
+    {
+      name: "requires --prompt",
+      args: ["--harness", "support", "--local"],
+      message: "required option '--prompt <prompt>' not specified",
+    },
+  ])("$name", async ({ args, message }) => {
+    await expect(run([...args], { harnesses: [HARNESS] }, { writeTargets: false })).rejects.toThrow(
+      message,
+    );
+  });
+
+  test("prints the same JSON as the deployed path", async () => {
+    const events = [
+      { messageStart: { role: "assistant" } },
+      { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "hello" } } },
+      { messageStop: { stopReason: "end_turn" } },
+    ] as InvokeHarnessStreamOutput[];
+    const port = await localHarness(events);
+
+    const subject = await routedCommand(
+      ["--harness", "support", "--prompt", "hi", "--local", "--port", String(port), "--json"],
+      { harnesses: [HARNESS] },
+    );
+    await subject.route();
+    const deployed = await foldHarnessTurn(
+      "hi",
+      SESSION,
+      (async function* () {
+        yield* events;
+      })(),
+    );
+
+    const withoutLatency = ({ latencyMs: _latency, ...rest }: Record<string, unknown>) => rest;
+    expect(withoutLatency(JSON.parse(subject.io.stdout()))).toEqual(
+      withoutLatency(JSON.parse(JSON.stringify(deployed))),
+    );
+  });
+
+  test("error item exits nonzero", async () => {
+    const port = await localHarness([
+      { runtimeClientError: { message: "model refused" } },
+    ] as InvokeHarnessStreamOutput[]);
+
+    const subject = await routedCommand(
+      ["--harness", "support", "--prompt", "hi", "--local", "--port", String(port), "--json"],
+      { harnesses: [HARNESS] },
+    );
+
+    const code = await runWithExitCode(subject.route);
+
+    expect(JSON.parse(subject.io.stdout()).transcript.at(-1).kind).toBe("error");
+    expect(code).not.toBe(ExitCode.SUCCESS);
   });
 });

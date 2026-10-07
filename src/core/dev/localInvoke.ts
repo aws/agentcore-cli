@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { InputValidationError, InvalidEnvironmentError } from "../../errors";
+import type { InvokeHarnessStreamOutput } from "@aws-sdk/client-bedrock-agentcore";
+import {
+  AgentCoreCLIError,
+  ERROR_SOURCE,
+  InputValidationError,
+  InvalidEnvironmentError,
+} from "../../errors";
 import type { ProtocolMode } from "../../projectSchemas/constants";
 import { abortable } from "../abortable";
 import type { RuntimeInvokeResponse } from "../invokeRuntime";
+import { harnessEvents } from "./harness/request";
+import { errorMessage, iterateBody } from "./inspector/respond";
 
 export type LocalRuntimeInvokeRequest = {
   port: number;
@@ -76,9 +84,8 @@ export async function invokeLocalRuntime(
     });
   } catch (error) {
     if (signal?.aborted) throw signal.reason ?? error;
-    const detail = error instanceof Error ? error.message : String(error);
     throw new InvalidEnvironmentError(
-      `Could not reach local dev server on port ${request.port} (${detail}). Start it with: ` +
+      `Could not reach local dev server on port ${request.port} (${errorMessage(error)}). Start it with: ` +
         `agentcore dev --mode headless --agent <name> --port ${request.port}`,
       { cause: error },
     );
@@ -97,5 +104,45 @@ export async function invokeLocalRuntime(
     traceState: response.headers.get("tracestate") ?? undefined,
     baggage: response.headers.get("baggage") ?? undefined,
     body: signal ? abortable(body, signal) : body,
+  };
+}
+
+export async function invokeLocalHarness(
+  request: { port: number; name: string; prompt: string; sessionId?: string },
+  signal?: AbortSignal,
+): Promise<{ sessionId: string; events: AsyncGenerator<InvokeHarnessStreamOutput> }> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `http://127.0.0.1:${request.port}/harness/${encodeURIComponent(request.name)}/invocations`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Agentcore-Local": "1" },
+        body: JSON.stringify({ prompt: request.prompt, sessionId: request.sessionId }),
+        signal,
+      },
+    );
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    throw new InvalidEnvironmentError(
+      `Could not reach the local harness endpoint on port ${request.port} (${errorMessage(error)}). Start it with: ` +
+        `agentcore dev --harness ${request.name} --port ${request.port}`,
+      { cause: error },
+    );
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text;
+    try {
+      message = (JSON.parse(text) as { error?: string }).error ?? text;
+    } catch {}
+    throw new AgentCoreCLIError(message, {
+      source: response.status < 500 ? ERROR_SOURCE.USER : ERROR_SOURCE.SERVICE,
+    });
+  }
+  const body = iterateBody(response.body);
+  return {
+    sessionId: response.headers.get("x-session-id")!,
+    events: harnessEvents(signal ? abortable(body, signal) : body),
   };
 }

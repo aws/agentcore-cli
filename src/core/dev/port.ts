@@ -3,7 +3,7 @@ import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { PortChecker } from "../../io";
 
 const MAX_PORT_ATTEMPTS = 100;
-export const DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
+export const DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000, HARNESS: 8090 } as const;
 
 export type DevPort = {
   port: number;
