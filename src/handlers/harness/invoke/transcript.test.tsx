@@ -268,7 +268,7 @@ describe("turn completion", () => {
     expect(turn.stopReason).toBe("end_turn");
     expect(turn.usage?.totalTokens).toBe(150);
     expect(turn.latencyMs).toBe(1234);
-    expect(turnSummary(turn)).toBe("end_turn · 150 tokens · 1.2s");
+    expect(turnSummary(turn)).toBe("end_turn · 150 tokens");
   });
 
   test("turnSummary omits pieces the stream never reported", () => {

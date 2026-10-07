@@ -122,7 +122,8 @@ describe("invoke chat screen", () => {
     await sendMessage(r, "hi agent");
 
     await waitForText(r.lastFrame, "Hello from the agent");
-    await waitForText(r.lastFrame, "end_turn · 15 tokens · 0.8s");
+    await waitForText(r.lastFrame, "end_turn · 15 tokens");
+    expect(r.lastFrame()).not.toContain("0.8s");
     // The user's message renders as a `❯` line and the prompt is ready again.
     expect(r.lastFrame()).toContain("❯ hi agent");
     expect(r.lastFrame()).toContain("session:");

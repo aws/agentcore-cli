@@ -229,11 +229,10 @@ export function finishTurn(turn: Turn): void {
 }
 
 // turnSummary renders the turn's outcome on one line, e.g.
-// `end_turn · 150 tokens · 1.2s`. Pieces the stream never reported are omitted.
+// `end_turn · 150 tokens`. Pieces the stream never reported are omitted.
 export function turnSummary(turn: Turn): string {
   const parts: string[] = [turn.stopReason ?? "done"];
   if (turn.usage?.totalTokens !== undefined) parts.push(`${turn.usage.totalTokens} tokens`);
-  if (turn.latencyMs !== undefined) parts.push(`${(turn.latencyMs / 1000).toFixed(1)}s`);
   return parts.join(" · ");
 }
 
