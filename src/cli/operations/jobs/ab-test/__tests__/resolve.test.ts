@@ -1,6 +1,7 @@
 import type { AgentCoreProjectSpec } from '../../../../../schema';
+import { PERMISSIONS_BOUNDARY_ENV_VAR } from '../../../../constants';
 import { getOrCreateABTestRole, resolveRuntimeTargetNames } from '../resolve';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockIamSend } = vi.hoisted(() => ({
   mockIamSend: vi.fn(),
@@ -29,6 +30,12 @@ vi.mock('@aws-sdk/client-iam', () => ({
 
 vi.mock('../../../../aws/account', () => ({
   getCredentialProvider: vi.fn().mockReturnValue({}),
+}));
+
+// The boundary falls back to the machine config, so leaving this unmocked would make the
+// assertions depend on whatever ~/.agentcore/config.json holds on the developer's machine.
+vi.mock('../../../../../lib/schemas/io/global-config', () => ({
+  readGlobalConfig: vi.fn().mockResolvedValue({ success: true, config: {} }),
 }));
 
 const accountId = '123456789012';
@@ -79,8 +86,20 @@ function entityAlreadyExistsError(): Error {
 }
 
 describe('getOrCreateABTestRole', () => {
+  const savedBoundaryEnv = process.env[PERMISSIONS_BOUNDARY_ENV_VAR];
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Same reason as the global-config mock above: the boundary also reads the environment.
+    delete process.env[PERMISSIONS_BOUNDARY_ENV_VAR];
+  });
+
+  afterEach(() => {
+    if (savedBoundaryEnv === undefined) {
+      delete process.env[PERMISSIONS_BOUNDARY_ENV_VAR];
+    } else {
+      process.env[PERMISSIONS_BOUNDARY_ENV_VAR] = savedBoundaryEnv;
+    }
   });
 
   it('creates a new role and applies its inline permissions policy', async () => {
@@ -88,6 +107,34 @@ describe('getOrCreateABTestRole', () => {
 
     await expect(getOrCreateABTestRole(roleOptions())).resolves.toBe(roleArn);
     expect(mockIamSend).toHaveBeenCalledTimes(2);
+  });
+
+  it('omits PermissionsBoundary when the project configures none', async () => {
+    mockIamSend.mockResolvedValueOnce({ Role: { Arn: roleArn } }).mockResolvedValueOnce({});
+
+    await getOrCreateABTestRole(roleOptions());
+
+    const createInput = (mockIamSend.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input;
+    expect(createInput.PermissionsBoundary).toBeUndefined();
+  });
+
+  it('expands a boundary policy name into an ARN for CreateRole', async () => {
+    mockIamSend.mockResolvedValueOnce({ Role: { Arn: roleArn } }).mockResolvedValueOnce({});
+
+    await getOrCreateABTestRole({ ...roleOptions(), permissionsBoundary: 'AgentCoreExecutionRoleBoundary' });
+
+    const createInput = (mockIamSend.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input;
+    expect(createInput.PermissionsBoundary).toBe(`arn:aws:iam::${accountId}:policy/AgentCoreExecutionRoleBoundary`);
+  });
+
+  it('passes a boundary ARN through unchanged', async () => {
+    const boundaryArn = `arn:aws:iam::${accountId}:policy/Custom/Boundary`;
+    mockIamSend.mockResolvedValueOnce({ Role: { Arn: roleArn } }).mockResolvedValueOnce({});
+
+    await getOrCreateABTestRole({ ...roleOptions(), permissionsBoundary: boundaryArn });
+
+    const createInput = (mockIamSend.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input;
+    expect(createInput.PermissionsBoundary).toBe(boundaryArn);
   });
 
   it('reuses an existing role when its trust policy matches', async () => {

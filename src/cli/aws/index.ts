@@ -1,6 +1,15 @@
 export { detectAwsContext, type AwsContext } from './aws-context';
 export { detectAccount, getCredentialProvider } from './account';
 export { getPartition, arnPrefix, dnsSuffix, serviceEndpoint, consoleDomain } from './partition';
+export {
+  resolvePermissionsBoundary,
+  isPermissionsBoundaryArn,
+  permissionsBoundaryCdkContext,
+  toPermissionsBoundaryArn,
+  type PermissionsBoundaryContextValue,
+  type ResolvePermissionsBoundaryOptions,
+  type PermissionsBoundaryArnContext,
+} from './permissions-boundary';
 export { detectRegion, type RegionDetectionResult } from './region';
 export { applyTargetRegionToEnv, withTargetRegion } from './target-region';
 export {

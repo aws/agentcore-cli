@@ -410,6 +410,43 @@ export type HarnessRegistryEntry = z.infer<typeof HarnessRegistryEntrySchema>;
 const BUILTIN_EVALUATOR_PREFIX = 'Builtin.';
 const ARN_PREFIX = 'arn:';
 
+/**
+ * An IAM policy name or a full IAM policy ARN.
+ *
+ * Names follow the CreatePolicy API character set (`[\w+=,.@-]`, max 128) and cannot contain
+ * `:`, so one field accepts both forms unambiguously. The ARN branch is partition-agnostic and
+ * keeps the account segment loose so customer-managed (`iam::111122223333:policy/Name`),
+ * AWS-managed (`iam::aws:policy/Name`) and pseudo-parameter (`iam::${AWS::AccountId}:policy/Name`)
+ * forms all pass. A single regex (rather than a refinement) keeps the constraint visible in the
+ * generated JSON Schema for editor validation.
+ */
+const IAM_POLICY_NAME_OR_ARN_PATTERN = /^(?:arn:[^:]+:iam::[^:]*:policy\/.+|[\w+=,.@-]{1,128})$/;
+
+/**
+ * Project-wide IAM settings applied to every role the CLI creates.
+ */
+export const ProjectIamSettingsSchema = z
+  .object({
+    /**
+     * Permissions boundary attached to every IAM role created for this project.
+     *
+     * Accepts a policy name or a full policy ARN. A bare name is resolved against the
+     * deployment target's own partition and account, so one value works across targets.
+     * Required in accounts where an organization boundary denies `iam:CreateRole` unless
+     * the new role carries a boundary.
+     */
+    permissionsBoundary: z
+      .string()
+      .regex(
+        IAM_POLICY_NAME_OR_ARN_PATTERN,
+        'permissionsBoundary must be an IAM policy name (e.g. "AgentCoreExecutionRoleBoundary") or a policy ARN (e.g. "arn:aws:iam::111122223333:policy/AgentCoreExecutionRoleBoundary")'
+      )
+      .optional(),
+  })
+  .strict();
+
+export type ProjectIamSettings = z.infer<typeof ProjectIamSettingsSchema>;
+
 export const AgentCoreProjectSpecSchema = z
   .object({
     $schema: z.string().optional(),
@@ -417,6 +454,7 @@ export const AgentCoreProjectSpecSchema = z
     version: z.number().int().min(1),
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
+    iam: ProjectIamSettingsSchema.optional(),
 
     runtimes: z
       .array(AgentEnvSpecSchema)
