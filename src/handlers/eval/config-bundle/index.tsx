@@ -15,11 +15,13 @@ export function createConfigBundleHandler(core: Core, io: AppIO): Router {
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list", "version")
+    .listInMenu("create", "update", "delete")
     .handler(createCreateConfigBundleHandler(core, io))
     .handler(createGetConfigBundleHandler(core))
     .handler(createListConfigBundlesHandler(core))
     .handler(createUpdateConfigBundleHandler(core, io))
     .handler(createDeleteConfigBundleHandler(core))
+    .commandSection("related commands")
     .handler(createConfigBundleVersionHandler(core, io));
 }
 

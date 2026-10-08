@@ -103,6 +103,34 @@ test("menuSection starts a divider at the next registered handler without reorde
   const command = compile(root, ValueContext.EmptyContext());
   expect(command.commands.map((child) => child.name())).toEqual(["a", "b", "c"]);
   expect(command.commands.map(commandMenuSectionStart)).toEqual([undefined, "later", undefined]);
+  expect(command.helpInformation()).toContain("Commands:\n");
+  expect(command.helpInformation()).not.toContain("Later:");
+});
+
+test("commandSection groups subsequent children in both menus and help", () => {
+  const root = new Router("app")
+    .handler(leaf("get", () => {}))
+    .commandSection("related commands")
+    .handler(leaf("target", () => {}))
+    .handler(leaf("policy", () => {}));
+
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map((child) => child.name())).toEqual(["get", "target", "policy"]);
+  expect(command.commands.map(commandMenuSectionStart)).toEqual([
+    undefined,
+    "related commands",
+    undefined,
+  ]);
+  const help = command.helpInformation();
+  expect(help).toMatch(/Commands:\n  get\s+\n/);
+  expect(help).toMatch(/Related commands:\n  target\n  policy\n/);
+});
+
+test("a trailing commandSection has no effect", () => {
+  const root = new Router("app").handler(leaf("get", () => {})).commandSection("related commands");
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map(commandMenuSectionStart)).toEqual([undefined]);
+  expect(command.helpInformation()).not.toContain("Related commands:");
 });
 
 test("a trailing menuSection with no handler after it draws no divider", () => {

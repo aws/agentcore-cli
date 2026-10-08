@@ -11,6 +11,7 @@ import {
   testIO,
   tick,
   waitForText,
+  compiledRootCommand,
 } from "../testing";
 import { glyphs } from "./ui/_core";
 import { createProjectHandlers } from "../handlers/project";
@@ -64,6 +65,84 @@ function menuGroups(frame: string): { title: string | undefined; names: string[]
 // rendered frames — behavior a user would see, not internal state.
 
 describe("menu rendering", () => {
+  test.each([
+    {
+      path: "/agentcore/gateway",
+      actions: ["create", "get", "list", "invoke"],
+      related: ["target", "connector", "rule", "policy"],
+      cli: [],
+    },
+    {
+      path: "/agentcore/memory",
+      actions: ["create", "get", "list"],
+      related: ["event", "record", "actor", "session"],
+      cli: [],
+    },
+    {
+      path: "/agentcore/harness",
+      actions: ["create", "get", "list", "update", "delete", "invoke", "exec", "shell"],
+      related: ["logs", "traces", "endpoint", "version"],
+      cli: [],
+    },
+    {
+      path: "/agentcore/runtime",
+      actions: ["create", "get", "list", "invoke", "shell", "exec"],
+      related: ["version", "endpoint", "logs", "traces"],
+      cli: [],
+    },
+    {
+      path: "/agentcore/eval/evaluator",
+      actions: ["get", "list", "delete"],
+      related: ["llm-as-a-judge", "code-based"],
+      cli: [],
+    },
+    {
+      path: "/agentcore/eval/config-bundle",
+      actions: ["create", "get", "list", "update", "delete"],
+      related: ["version"],
+      cli: [],
+    },
+    {
+      path: "/agentcore/eval/ab-test",
+      actions: ["get", "list", "pause", "resume", "stop", "delete"],
+      related: ["config-based", "target-based"],
+      cli: [],
+    },
+  ])(
+    "$path separates actions from related commands in TUI and help",
+    async ({ path, actions, related, cli }) => {
+      const r = renderScreen(path);
+      await waitForText(r.lastFrame, "type to choose a command");
+      await r.resize(100, 45);
+      const groups = menuGroups(r.lastFrame()!);
+      expect(groups).toEqual([
+        { title: undefined, names: [...actions] },
+        { title: "related commands", names: [...related] },
+        ...(cli.length ? [{ title: "cli", names: [...cli] }] : []),
+      ]);
+      r.unmount();
+
+      const command = path
+        .split("/")
+        .filter(Boolean)
+        .slice(1)
+        .reduce(
+          (parent, name) => parent.commands.find((child) => child.name() === name)!,
+          compiledRootCommand(),
+        );
+      const help = command.helpInformation();
+      const directHelp = help.split("Commands:\n")[1]?.split("Related commands:\n")[0] ?? "";
+      const relatedHelp = help.split("Related commands:\n")[1] ?? "";
+      for (const name of actions.filter((action) =>
+        command.commands.some((child) => child.name() === action),
+      )) {
+        expect(directHelp).toMatch(new RegExp(`^  ${name} {2,}`, "m"));
+      }
+      for (const name of related) expect(relatedHelp).toMatch(new RegExp(`^  ${name} {2,}`, "m"));
+      expect(relatedHelp).not.toBe("");
+    },
+  );
+
   test.each([
     "/agentcore/logs",
     "/agentcore/traces",

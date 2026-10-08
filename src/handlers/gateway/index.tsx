@@ -22,6 +22,7 @@ export function createGatewayHandler(core: Core, io: AppIO): Router {
     .handler(createGetGatewayHandler(core))
     .handler(createListGatewaysHandler(core))
     .handler(createInvokeGatewayHandler(core, io))
+    .commandSection("related commands")
     .handler(createGatewayTargetHandler(core, io))
     .handler(createGatewayConnectorHandler(core, io))
     .handler(createGatewayRuleHandler(core, io))

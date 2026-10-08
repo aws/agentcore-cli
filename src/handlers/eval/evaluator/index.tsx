@@ -14,11 +14,13 @@ export function createEvaluatorHandler(core: Core, io: AppIO): Router {
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
-    .handler(createLlmAsAJudgeHandler(core, io))
-    .handler(createCodeBasedHandler(core, io))
+    .listInMenu("delete", "llm-as-a-judge", "code-based")
     .handler(createGetEvaluatorHandler(core))
     .handler(createListEvaluatorsHandler(core))
-    .handler(createDeleteEvaluatorHandler(core));
+    .handler(createDeleteEvaluatorHandler(core))
+    .commandSection("related commands")
+    .handler(createLlmAsAJudgeHandler(core, io))
+    .handler(createCodeBasedHandler(core, io));
 }
 
 export { EvaluatorScreen } from "./screen.tsx";

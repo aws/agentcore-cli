@@ -59,6 +59,7 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
     - [`agentcore harness delete`](#agentcore-harness-delete)
     - [`agentcore harness invoke`](#agentcore-harness-invoke)
     - [`agentcore harness exec`](#agentcore-harness-exec)
+    - [`agentcore harness shell`](#agentcore-harness-shell)
     - [`agentcore harness logs`](#agentcore-harness-logs)
     - [`agentcore harness traces`](#agentcore-harness-traces)
       - [`agentcore harness traces list`](#agentcore-harness-traces-list)
@@ -134,15 +135,15 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
       - [`agentcore memory session list`](#agentcore-memory-session-list)
   - [`agentcore eval`](#agentcore-eval)
     - [`agentcore eval evaluator`](#agentcore-eval-evaluator)
+      - [`agentcore eval evaluator get`](#agentcore-eval-evaluator-get)
+      - [`agentcore eval evaluator list`](#agentcore-eval-evaluator-list)
+      - [`agentcore eval evaluator delete`](#agentcore-eval-evaluator-delete)
       - [`agentcore eval evaluator llm-as-a-judge`](#agentcore-eval-evaluator-llm-as-a-judge)
         - [`agentcore eval evaluator llm-as-a-judge create`](#agentcore-eval-evaluator-llm-as-a-judge-create)
         - [`agentcore eval evaluator llm-as-a-judge update`](#agentcore-eval-evaluator-llm-as-a-judge-update)
       - [`agentcore eval evaluator code-based`](#agentcore-eval-evaluator-code-based)
         - [`agentcore eval evaluator code-based create`](#agentcore-eval-evaluator-code-based-create)
         - [`agentcore eval evaluator code-based update`](#agentcore-eval-evaluator-code-based-update)
-      - [`agentcore eval evaluator get`](#agentcore-eval-evaluator-get)
-      - [`agentcore eval evaluator list`](#agentcore-eval-evaluator-list)
-      - [`agentcore eval evaluator delete`](#agentcore-eval-evaluator-delete)
     - [`agentcore eval online-eval`](#agentcore-eval-online-eval)
       - [`agentcore eval online-eval create`](#agentcore-eval-online-eval-create)
       - [`agentcore eval online-eval get`](#agentcore-eval-online-eval-get)
@@ -1085,6 +1086,21 @@ run a shell command in a harness
 - `--session-id <session-id>`: the Runtime session ID to run in (33-100 characters)
 - `--qualifier <qualifier>`: the harness endpoint qualifier to run in (default DEFAULT)
 - `--timeout <timeout>`: seconds to wait for the command (1-3600)
+
+#### `agentcore harness shell`
+
+```text
+agentcore harness shell [options]
+```
+
+open an interactive shell in a harness
+
+**Options**
+
+- `--id <id>`: the ID of the harness (required)
+- `--qualifier <qualifier>`: the harness endpoint qualifier
+- `--session-id <session-id>`: the Runtime session ID to use
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
 
 #### `agentcore harness logs`
 
@@ -2047,6 +2063,43 @@ agentcore eval evaluator [options] [command]
 
 manage AgentCore evaluators
 
+##### `agentcore eval evaluator get`
+
+```text
+agentcore eval evaluator get [options]
+```
+
+get an evaluator by ID
+
+**Options**
+
+- `--id <id>`: the ID of the evaluator (required)
+
+##### `agentcore eval evaluator list`
+
+```text
+agentcore eval evaluator list [options]
+```
+
+list evaluators
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return
+
+##### `agentcore eval evaluator delete`
+
+```text
+agentcore eval evaluator delete [options]
+```
+
+delete an evaluator by ID
+
+**Options**
+
+- `--id <id>`: the ID of the evaluator to delete (required)
+
 ##### `agentcore eval evaluator llm-as-a-judge`
 
 ```text
@@ -2130,43 +2183,6 @@ update a code-based (Lambda-backed) evaluator
 - `--lambda-arn <lambda-arn>`: ARN of the Lambda function that scores a session
 - `--timeout <timeout>`: Lambda timeout in seconds (1-300)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
-
-##### `agentcore eval evaluator get`
-
-```text
-agentcore eval evaluator get [options]
-```
-
-get an evaluator by ID
-
-**Options**
-
-- `--id <id>`: the ID of the evaluator (required)
-
-##### `agentcore eval evaluator list`
-
-```text
-agentcore eval evaluator list [options]
-```
-
-list evaluators
-
-**Options**
-
-- `--next-token <next-token>`: pagination token returned by a previous request
-- `--max-results <max-results>`: maximum number of items to return
-
-##### `agentcore eval evaluator delete`
-
-```text
-agentcore eval evaluator delete [options]
-```
-
-delete an evaluator by ID
-
-**Options**
-
-- `--id <id>`: the ID of the evaluator to delete (required)
 
 #### `agentcore eval online-eval`
 

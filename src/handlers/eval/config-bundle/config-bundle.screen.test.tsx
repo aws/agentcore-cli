@@ -105,17 +105,19 @@ function coreWithBundles(bundles: ConfigurationBundleSummary[]): TestCoreClient 
 }
 
 describe("configuration bundle menu", () => {
-  test("lists the read-only commands, then the rest as command line only", async () => {
+  test("lists bundle actions before related version commands", async () => {
     const screen = renderScreen("/agentcore/eval/config-bundle");
 
     await waitForText(
       screen.lastFrame,
       "get the latest or a specific configuration bundle version",
     );
+    await screen.resize(100, 45);
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["get", "list", "version"],
-      cliOnly: ["create", "update", "delete"],
+      screens: ["create", "get", "list", "update", "delete", "version"],
+      cliOnly: [],
     });
+    expect(screen.lastFrame()).toContain("── related commands");
   });
 
   test("the version menu offers only list", async () => {

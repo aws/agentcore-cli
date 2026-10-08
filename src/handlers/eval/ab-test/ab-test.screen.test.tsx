@@ -63,14 +63,16 @@ function coreWithTests(tests: ABTestSummary[]): TestCoreClient {
 }
 
 describe("ab-test menu", () => {
-  test("lists the read-only commands, then the rest as command line only", async () => {
+  test("lists A/B test actions before related commands", async () => {
     const screen = renderScreen("/agentcore/eval/ab-test");
 
     await waitForText(screen.lastFrame, "list A/B tests");
+    await screen.resize(100, 45);
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["get", "list"],
-      cliOnly: ["pause", "resume", "stop", "delete", "config-based", "target-based"],
+      screens: ["get", "list", "pause", "resume", "stop", "delete", "config-based", "target-based"],
+      cliOnly: [],
     });
+    expect(screen.lastFrame()).toContain("── related commands");
   });
 });
 

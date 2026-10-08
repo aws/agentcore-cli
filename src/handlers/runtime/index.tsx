@@ -23,6 +23,8 @@ export function createRuntimeHandler(core: Core, io: AppIO): Router {
     .handler(createInvokeRuntimeHandler(core, io))
     .handler(createRuntimeShellHandler(core, io))
     .handler(createRuntimeExecHandler(core, io))
+    .commandSection("related commands")
+    .listInMenu("logs", "traces")
     .handler(createRuntimeVersionHandler(core, io))
     .handler(createRuntimeEndpointHandler(core, io))
     .handler(createRuntimeLogsHandler(core, io))

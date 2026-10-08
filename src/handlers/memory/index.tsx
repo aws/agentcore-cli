@@ -16,6 +16,7 @@ export function createMemoryHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .handler(createGetMemoryHandler(core))
     .handler(createListMemoriesHandler(core))
+    .commandSection("related commands")
     .handler(createMemoryEventHandler(core, io))
     .handler(createMemoryRecordHandler(core, io))
     .handler(createMemoryActorHandler(core, io))

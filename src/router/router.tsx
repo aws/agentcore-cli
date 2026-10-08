@@ -78,6 +78,7 @@ function isTuiChildSupportProvider(h: Handler): h is Handler & TuiChildSupportPr
 
 interface MenuLayoutProvider {
   menuSectionStartOf(commandName: string): string | undefined;
+  helpGroupOf(commandName: string): string | undefined;
   isListedInMenu(commandName: string): boolean;
 }
 
@@ -289,6 +290,8 @@ export function compile(
       if (isMenuLayoutProvider(node) && childCommand instanceof RoutedCommand) {
         childCommand.menuSectionStart = node.menuSectionStartOf(child.name());
         childCommand.listedInMenu = node.isListedInMenu(child.name());
+        const helpGroup = node.helpGroupOf(child.name());
+        if (helpGroup) childCommand.helpGroup(helpGroup);
       }
       c.addCommand(childCommand);
     }
@@ -324,6 +327,8 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
   private tuiCommandNames?: ReadonlySet<string>;
   private sectionStarts = new Map<string, string>();
   private pendingSection?: string;
+  private helpGroups = new Map<string, string>();
+  private activeHelpGroup?: string;
   private menuListed = new Set<string>();
   private cliVersion?: string;
 
@@ -345,6 +350,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
       this.sectionStarts.set(handler.name(), this.pendingSection);
       this.pendingSection = undefined;
     }
+    if (this.activeHelpGroup) this.helpGroups.set(handler.name(), this.activeHelpGroup);
     return this;
   }
 
@@ -374,8 +380,20 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
     return this;
   }
 
+  // commandSection starts a section in both the TUI menu and --help.
+  // Children stay in this help group until another commandSection is declared.
+  commandSection(title: string): this {
+    this.menuSection(title);
+    this.activeHelpGroup = `${title.charAt(0).toUpperCase()}${title.slice(1)}:`;
+    return this;
+  }
+
   menuSectionStartOf(commandName: string): string | undefined {
     return this.sectionStarts.get(commandName);
+  }
+
+  helpGroupOf(commandName: string): string | undefined {
+    return this.helpGroups.get(commandName);
   }
 
   // listInMenu keeps the named children in their registered place in this

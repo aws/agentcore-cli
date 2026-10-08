@@ -132,11 +132,11 @@ describe("eval command hierarchy", () => {
       .find((c) => c.name() === "evaluator");
 
     expect(evaluator?.children().map((c) => c.name())).toEqual([
-      "llm-as-a-judge",
-      "code-based",
       "get",
       "list",
       "delete",
+      "llm-as-a-judge",
+      "code-based",
     ]);
     expect(
       evaluator
