@@ -111,7 +111,7 @@ describe("menus separate mixed command groups with a divider", () => {
       ],
       cliOnly: [],
     });
-    expect(r.lastFrame()).toContain("── related commands");
+    expect(r.lastFrame()).toContain("── resources");
     expect(hasCliDivider(r.lastFrame()!)).toBe(false);
     r.unmount();
   });
@@ -183,7 +183,7 @@ describe("paths without a screen of their own", () => {
     const r = renderScreen("/agentcore/eval/evaluator");
 
     await waitForText(r.lastFrame, "type to choose a command");
-    expect(r.lastFrame()).toContain("── related commands");
+    expect(r.lastFrame()).toContain("── resources");
     await r.write("delete");
     await waitForText(r.lastFrame, "❯ delete");
     await r.press("return");

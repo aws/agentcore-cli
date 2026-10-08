@@ -24,7 +24,7 @@ export function createAbTestHandler(core: Core, io: AppIO): Router {
     .handler(createResumeAbTestHandler(core))
     .handler(createStopAbTestHandler(core))
     .handler(createDeleteAbTestHandler(core))
-    .commandSection("related commands")
+    .commandSection("resources")
     .handler(createConfigBasedAbTestHandler(core, io))
     .handler(createTargetBasedAbTestHandler(core, io));
 }

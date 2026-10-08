@@ -109,7 +109,7 @@ describe("menu rendering", () => {
       cli: [],
     },
   ])(
-    "$path separates actions from related commands in TUI and help",
+    "$path separates actions from resources in TUI and help",
     async ({ path, actions, related, cli }) => {
       const r = renderScreen(path);
       await waitForText(r.lastFrame, "type to choose a command");
@@ -117,7 +117,7 @@ describe("menu rendering", () => {
       const groups = menuGroups(r.lastFrame()!);
       expect(groups).toEqual([
         { title: undefined, names: [...actions] },
-        { title: "related commands", names: [...related] },
+        { title: "resources", names: [...related] },
         ...(cli.length ? [{ title: "cli", names: [...cli] }] : []),
       ]);
       r.unmount();
@@ -131,8 +131,8 @@ describe("menu rendering", () => {
           compiledRootCommand(),
         );
       const help = command.helpInformation();
-      const directHelp = help.split("Commands:\n")[1]?.split("Related commands:\n")[0] ?? "";
-      const relatedHelp = help.split("Related commands:\n")[1] ?? "";
+      const directHelp = help.split("Commands:\n")[1]?.split("Resources:\n")[0] ?? "";
+      const relatedHelp = help.split("Resources:\n")[1] ?? "";
       for (const name of actions.filter((action) =>
         command.commands.some((child) => child.name() === action),
       )) {

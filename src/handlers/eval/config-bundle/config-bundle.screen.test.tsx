@@ -117,7 +117,7 @@ describe("configuration bundle menu", () => {
       screens: ["create", "get", "list", "update", "delete", "version"],
       cliOnly: [],
     });
-    expect(screen.lastFrame()).toContain("── related commands");
+    expect(screen.lastFrame()).toContain("── resources");
   });
 
   test("the version menu offers only list", async () => {

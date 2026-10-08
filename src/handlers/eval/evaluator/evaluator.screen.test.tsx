@@ -61,7 +61,7 @@ function coreWithEvaluators(evaluators: EvaluatorSummary[]): TestCoreClient {
 }
 
 describe("evaluator menu", () => {
-  test("lists evaluator actions before related commands", async () => {
+  test("lists evaluator actions before resources", async () => {
     const screen = renderScreen("/agentcore/eval/evaluator");
 
     await waitForText(screen.lastFrame, "get an evaluator by ID");
@@ -70,7 +70,7 @@ describe("evaluator menu", () => {
       screens: ["get", "list", "delete", "llm-as-a-judge", "code-based"],
       cliOnly: [],
     });
-    expect(screen.lastFrame()).toContain("── related commands");
+    expect(screen.lastFrame()).toContain("── resources");
   });
 
   test("the eval root menu shows evaluator and online-eval", async () => {

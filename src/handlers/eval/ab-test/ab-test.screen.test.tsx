@@ -63,7 +63,7 @@ function coreWithTests(tests: ABTestSummary[]): TestCoreClient {
 }
 
 describe("ab-test menu", () => {
-  test("lists A/B test actions before related commands", async () => {
+  test("lists A/B test actions before resources", async () => {
     const screen = renderScreen("/agentcore/eval/ab-test");
 
     await waitForText(screen.lastFrame, "list A/B tests");
@@ -72,7 +72,7 @@ describe("ab-test menu", () => {
       screens: ["get", "list", "pause", "resume", "stop", "delete", "config-based", "target-based"],
       cliOnly: [],
     });
-    expect(screen.lastFrame()).toContain("── related commands");
+    expect(screen.lastFrame()).toContain("── resources");
   });
 });
 

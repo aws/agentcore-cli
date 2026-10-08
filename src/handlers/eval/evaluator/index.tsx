@@ -18,7 +18,7 @@ export function createEvaluatorHandler(core: Core, io: AppIO): Router {
     .handler(createGetEvaluatorHandler(core))
     .handler(createListEvaluatorsHandler(core))
     .handler(createDeleteEvaluatorHandler(core))
-    .commandSection("related commands")
+    .commandSection("resources")
     .handler(createLlmAsAJudgeHandler(core, io))
     .handler(createCodeBasedHandler(core, io));
 }
