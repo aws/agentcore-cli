@@ -358,10 +358,12 @@ function resolveModel(
     case "gemini": {
       context.modelProvider = model.provider === "open_ai" ? "OpenAI" : "Gemini";
       context.strandsExtras = model.provider === "open_ai" ? "openai" : "gemini";
-      // The schema guarantees apiKeyArn for these providers.
+      // The schema guarantees apiKeyArn or apiKeyCredentialName for these providers.
       attachIdentityProvider(
         context,
-        model.apiKeyArn!,
+        model.apiKeyCredentialName !== undefined
+          ? { credentialName: model.apiKeyCredentialName }
+          : { arn: model.apiKeyArn! },
         model.provider,
         projectSpec,
         credentials,
@@ -373,10 +375,12 @@ function resolveModel(
       context.modelProvider = "LiteLLM";
       context.strandsExtras = "litellm";
       if (model.apiBase) context.litellmApiBase = model.apiBase;
-      if (model.apiKeyArn) {
+      if (model.apiKeyCredentialName !== undefined || model.apiKeyArn) {
         attachIdentityProvider(
           context,
-          model.apiKeyArn,
+          model.apiKeyCredentialName !== undefined
+            ? { credentialName: model.apiKeyCredentialName }
+            : { arn: model.apiKeyArn! },
           model.provider,
           projectSpec,
           credentials,
@@ -401,21 +405,27 @@ function resolveModel(
 }
 
 /**
- * Wire a non-Bedrock model's API key through AgentCore Identity: derive the
- * credential-provider name from the token-vault ARN, reference it from the
- * generated load.py, and register a credential entry so deploy grants access.
+ * Wire a non-Bedrock model's API key through AgentCore Identity: take the
+ * project credential the model names, or derive the credential-provider name
+ * from the token-vault ARN, reference it from the generated load.py, and
+ * register a credential entry so deploy grants access.
  */
 function attachIdentityProvider(
   context: Record<string, unknown>,
-  apiKeyArn: string,
+  apiKey: { arn: string } | { credentialName: string },
   provider: string,
   projectSpec: ProjectSpec,
   credentials: Credential[],
   notes: ExportNote[],
 ): void {
-  // ARN form: arn:aws:bedrock-agentcore:<region>:<acct>:token-vault/<vault>/apikeycredentialprovider/<name>
-  const arnNameMatch = /\/apikeycredentialprovider\/([^/]+)$/.exec(apiKeyArn);
-  const credentialName = arnNameMatch ? arnNameMatch[1]! : `${projectSpec.name}${provider}ApiKey`;
+  let credentialName: string;
+  if ("credentialName" in apiKey) {
+    credentialName = apiKey.credentialName;
+  } else {
+    // ARN form: arn:aws:bedrock-agentcore:<region>:<acct>:token-vault/<vault>/apikeycredentialprovider/<name>
+    const arnNameMatch = /\/apikeycredentialprovider\/([^/]+)$/.exec(apiKey.arn);
+    credentialName = arnNameMatch ? arnNameMatch[1]! : `${projectSpec.name}${provider}ApiKey`;
+  }
   const envVarName = credentialEnvVarName(credentialName);
 
   context.hasIdentity = true;
@@ -425,11 +435,22 @@ function attachIdentityProvider(
   if (!exists) {
     credentials.push({ authorizerType: "ApiKeyCredentialProvider", name: credentialName });
   }
+  if ("credentialName" in apiKey) {
+    notes.push({
+      category: MODEL_API_KEY_NOTE_CATEGORY,
+      message:
+        `The harness model authenticates with the project credential "${credentialName}"; the ` +
+        `exported agent uses the same credential. ${exists ? "" : `A credential entry named "${credentialName}" was added to agentcore.json. `}` +
+        `Deploy provisions it from ${envVarName} in agentcore/.env.local, so make sure that ` +
+        `variable holds your key. \`agentcore dev\` reads the same variable.`,
+    });
+    return;
+  }
   notes.push({
     category: MODEL_API_KEY_NOTE_CATEGORY,
     message:
       `The harness model authenticates with the AgentCore Identity API-key provider ` +
-      `"${credentialName}" (${apiKeyArn}). A credential entry named "${credentialName}" was ` +
+      `"${credentialName}" (${apiKey.arn}). A credential entry named "${credentialName}" was ` +
       `added to agentcore.json. Deploy creates a provider for it scoped to the project and ` +
       `target, so add ${envVarName}=<your-key> to agentcore/.env.local before the first ` +
       `deploy. \`agentcore dev\` reads the same variable.`,

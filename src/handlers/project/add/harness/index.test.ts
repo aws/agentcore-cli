@@ -13,12 +13,13 @@ import {
 import { DeserializationError, InputValidationError } from "../../../../errors";
 import { FsReadWriteJson, type ReadWriteJson } from "../../../../io";
 import { HarnessYamlSchema } from "../../../../projectSchemas/harness";
+import { credentialEnvVarName } from "../../../../projectSchemas/credential";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
-async function run(args: string[], opts?: { core?: TestCoreClient }) {
-  const io = testIO();
+async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: string }) {
+  const io = testIO({ stdin: opts?.stdin });
   const core = opts?.core ?? new TestCoreClient();
   const root = createRootHandler(core, {
     io: io.io,
@@ -425,6 +426,105 @@ describe("project add harness", () => {
       name: "x",
       path: "app/x",
     });
+  });
+
+  test("--api-key stores the key under a project credential the model names", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const keyPath = join(projectRoot, "key.txt");
+    await Bun.write(keyPath, "sk-file\n");
+
+    await run([
+      "add",
+      "harness",
+      "--name",
+      "x",
+      "--model",
+      '{"provider":"open_ai","modelId":"gpt-4"}',
+      "--api-key",
+      `file://${keyPath}`,
+    ]);
+
+    const harnessYaml = parse(await Bun.file(join(projectRoot, "app", "x", "harness.yaml")).text());
+    expect(harnessYaml.model).toEqual({
+      openAiModelConfig: { modelId: "gpt-4", apiKeyCredentialName: "xOpenAIApiKey" },
+    });
+    const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(agentcoreJson.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "xOpenAIApiKey" },
+    ]);
+    const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(envLocal).toContain(`${credentialEnvVarName("xOpenAIApiKey")}='sk-file'`);
+  });
+
+  test("--api-key reads the key from stdin", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run(
+      [
+        "add",
+        "harness",
+        "--name",
+        "x",
+        "--model",
+        '{"provider":"lite_llm","modelId":"anthropic/claude-3"}',
+        "--api-key",
+        "-",
+      ],
+      { stdin: "sk-stdin" },
+    );
+    const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(envLocal).toContain(`${credentialEnvVarName("xLiteLLMApiKey")}='sk-stdin'`);
+  });
+
+  test.each<[string, string, RegExp]>([
+    [
+      "an apiKeyArn in --model",
+      '{"provider":"open_ai","modelId":"gpt-4","apiKeyArn":"arn:aws:bedrock-agentcore:us-east-1:123456789012:api-key/k"}',
+      /--api-key cannot be combined with apiKeyArn or apiKeyCredentialName in --model/,
+    ],
+    [
+      "an apiKeyCredentialName in --model",
+      '{"provider":"open_ai","modelId":"gpt-4","apiKeyCredentialName":"k"}',
+      /--api-key cannot be combined with apiKeyArn or apiKeyCredentialName in --model/,
+    ],
+    [
+      "a bedrock model",
+      '{"provider":"bedrock","modelId":"m"}',
+      /--api-key is not supported for the bedrock model provider/,
+    ],
+  ])("--api-key is refused with %s, before stdin is read", async (_label, model, expected) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const error = await run([
+      "add",
+      "harness",
+      "--name",
+      "x",
+      "--model",
+      model,
+      "--api-key",
+      "-",
+    ]).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toMatch(expected);
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
+  });
+
+  test("a --model naming a credential the project lacks is refused", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "add",
+        "harness",
+        "--name",
+        "x",
+        "--model",
+        '{"provider":"open_ai","modelId":"gpt-4","apiKeyCredentialName":"missing"}',
+      ]),
+    ).rejects.toThrow("no credential named 'missing' exists in this project");
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
   });
 
   test("--system-prompt overrides the default system-prompt.md", async () => {

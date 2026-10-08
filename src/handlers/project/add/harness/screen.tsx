@@ -19,6 +19,7 @@ import {
   HarnessModelField,
   emptyHarnessModel,
   harnessModelSummary,
+  resolveHarnessModelApiKey,
   toHarnessModelInput,
   type HarnessModelValues,
 } from "../../HarnessModelField";
@@ -153,9 +154,11 @@ function AddHarnessWizard({
       description={DESCRIPTION}
       onCancel={() => navigate(ADD_MENU)}
       onSubmit={async function* () {
+        // The API key is read here, at submit, the way the flag path reads --api-key.
+        const apiKey = await resolveHarnessModelApiKey(values.model);
         const updated = yield* core.projectManager.addResource(
           project,
-          toAddHarnessInput(project, targets, toHarnessInput(values)),
+          toAddHarnessInput(project, targets, toHarnessInput(values), apiKey),
           { region },
         );
         queryClient.setQueryData(projectQueryKey(), updated);

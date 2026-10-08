@@ -727,6 +727,160 @@ describe("FsProjectManager.addResource", () => {
     },
   );
 
+  describe("a harness with a managed API key", () => {
+    async function emptyProject() {
+      await inTempDirectory();
+      const setup = manager();
+      const { project } = await runCreate(setup.manager, {
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+      });
+      return { subject: setup.manager, project };
+    }
+
+    async function collectSteps(iterator: AsyncGenerator<ProjectEvent, Project>) {
+      const steps: string[] = [];
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) return { steps, project: next.value };
+        if (next.value.type === "step") steps.push(next.value.message);
+      }
+    }
+
+    test("declares the credential, names it from harness.yaml, and writes the key to .env.local", async () => {
+      const { subject, project } = await emptyProject();
+      const updated = await runAdd(subject, project, {
+        resourceType: "harness",
+        resourceConfig: { name: "assistant", model: { provider: "open_ai", modelId: "gpt" } },
+        apiKey: "sk-secret",
+      });
+
+      expect(updated.spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: "assistantOpenAIApiKey" },
+      ]);
+      const harnessYaml = await readFile(
+        join(project.rootPath, "app", "assistant", "harness.yaml"),
+        "utf8",
+      );
+      expect(harnessYaml).toContain("apiKeyCredentialName: assistantOpenAIApiKey");
+      expect(harnessYaml).not.toContain("apiKeyArn");
+      const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
+      expect(envLocal).toContain(
+        "# API key for the OpenAI model provider (harness assistant)\n" +
+          `${credentialEnvVarName("assistantOpenAIApiKey")}='sk-secret'`,
+      );
+    });
+
+    test.each([
+      ["gemini", "Gemini"],
+      ["lite_llm", "LiteLLM"],
+    ] as const)("names a %s key credential with the %s label", async (provider, label) => {
+      const { subject, project } = await emptyProject();
+      const updated = await runAdd(subject, project, {
+        resourceType: "harness",
+        resourceConfig: { name: "assistant", model: { provider, modelId: "m" } },
+        apiKey: "sk-secret",
+      });
+      expect(updated.spec.credentials.map(({ name }) => name)).toEqual([`assistant${label}ApiKey`]);
+    });
+
+    test("reuses an existing credential and leaves an existing .env.local value alone", async () => {
+      const { subject, project } = await emptyProject();
+      const credentialName = "assistantOpenAIApiKey";
+      const withCredential = await runAdd(subject, project, {
+        resourceType: "credential",
+        resourceConfig: { authorizerType: "ApiKeyCredentialProvider", name: credentialName },
+        envEntries: [{ key: credentialEnvVarName(credentialName), value: "old", comment: "c" }],
+      });
+
+      const { steps, project: updated } = await collectSteps(
+        subject.addResource(withCredential, {
+          resourceType: "harness",
+          resourceConfig: { name: "assistant", model: { provider: "open_ai", modelId: "gpt" } },
+          apiKey: "new",
+        }),
+      );
+
+      expect(updated.spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: credentialName },
+      ]);
+      expect(steps).toContain(
+        `'${credentialEnvVarName(credentialName)}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+      );
+      const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
+      expect(envLocal).toContain(`${credentialEnvVarName(credentialName)}='old'`);
+      expect(envLocal).not.toContain("new");
+    });
+
+    test("refuses an API key for bedrock and alongside an apiKeyArn, writing nothing", async () => {
+      const { subject, project } = await emptyProject();
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "harness",
+          resourceConfig: { name: "assistant", model: { provider: "bedrock", modelId: "m" } },
+          apiKey: "sk-secret",
+        }),
+      ).rejects.toBeInstanceOf(InputValidationError);
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "harness",
+          resourceConfig: {
+            name: "assistant",
+            model: { provider: "open_ai", modelId: "gpt", apiKeyArn: "arn:aws:key" },
+          },
+          apiKey: "sk-secret",
+        }),
+      ).rejects.toBeInstanceOf(InputValidationError);
+      expect(existsSync(join(project.rootPath, "app", "assistant"))).toBe(false);
+      const spec = ProjectSpecSchema.parse(
+        JSON.parse(await readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf8")),
+      );
+      expect(spec.credentials).toEqual([]);
+      expect(spec.harnesses).toEqual([]);
+    });
+
+    test("refuses a model naming a credential the project does not declare", async () => {
+      const { subject, project } = await emptyProject();
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "harness",
+          resourceConfig: {
+            name: "assistant",
+            model: { provider: "open_ai", modelId: "gpt", apiKeyCredentialName: "missing" },
+          },
+        }),
+      ).rejects.toThrow(
+        new ResourceNotFoundError("no credential named 'missing' exists in this project"),
+      );
+      expect(existsSync(join(project.rootPath, "app", "assistant"))).toBe(false);
+    });
+
+    test("create threads harnessApiKey through to the scaffolded harness", async () => {
+      await inTempDirectory();
+      const { manager: subject } = manager();
+      const { project } = await runCreate(subject, {
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldHarnessInput: {
+          name: "example",
+          model: {
+            provider: "gemini",
+            modelId: "gemini-pro",
+            apiKeyCredentialName: "exampleGeminiApiKey",
+          },
+        },
+        harnessApiKey: "sk-gemini",
+      });
+      expect(project.spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: "exampleGeminiApiKey" },
+      ]);
+      const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
+      expect(envLocal).toContain(`${credentialEnvVarName("exampleGeminiApiKey")}='sk-gemini'`);
+    });
+  });
+
   // Model-provider templates are gated in the aws-cn partition: none of the
   // template model providers are reachable there, so the add must fail before
   // any scaffolding. Provider-free templates and commercial-only targets pass.

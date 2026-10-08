@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import { stringify } from "yaml";
 import { ZodError, z } from "zod";
-import { HarnessSpecSchema, type HarnessSpec } from "../../../projectSchemas/harness";
+import {
+  HarnessSpecSchema,
+  type HarnessModelProvider,
+  type HarnessSpec,
+} from "../../../projectSchemas/harness";
 import { FsTreeNode } from "./fsTree";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors/errors";
 import type { TemplateRenderer, TemplateResolver } from "./types";
@@ -29,6 +33,27 @@ const TEMPLATE_FIELDS = new Set([
   "connections",
   "tags",
 ]);
+
+/** How a non-Bedrock harness model provider is spelled in the credential it gets an API key from. */
+export const HARNESS_API_KEY_PROVIDER_LABELS: Record<
+  Exclude<HarnessModelProvider, "bedrock">,
+  string
+> = {
+  open_ai: "OpenAI",
+  gemini: "Gemini",
+  lite_llm: "LiteLLM",
+};
+
+/**
+ * The project credential a harness's managed API key is stored under, named the
+ * way a runtime's is (`<name><Provider>ApiKey`).
+ */
+export function harnessApiKeyCredentialName(
+  harnessName: string,
+  provider: Exclude<HarnessModelProvider, "bedrock">,
+): string {
+  return `${harnessName}${HARNESS_API_KEY_PROVIDER_LABELS[provider]}ApiKey`;
+}
 
 type GetHarnessTemplateResolverConfig = {
   assetSource: AssetSource;
@@ -162,7 +187,7 @@ function buildTemplateContext(spec: HarnessSpec) {
     modelConfig,
     apiFormatExample:
       provider === "bedrock" ? "converse_stream" : provider === "open_ai" ? "responses" : undefined,
-    apiKeyExample: provider !== "bedrock" && !model.apiKeyArn,
+    apiKeyExample: provider !== "bedrock" && !model.apiKeyArn && !model.apiKeyCredentialName,
     modelMaxTokensExample: !("maxTokens" in spec.model),
     managedMemoryEmpty: mode === "managed" && Object.keys(memoryConfig).length === 0,
     additionalSettings: Object.entries(yaml)

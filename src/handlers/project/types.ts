@@ -163,6 +163,12 @@ export type CreateProjectInput = CreateProjectInputBase &
     | {
         /** The harness the created project declares (the default create path). */
         scaffoldHarnessInput: ScaffoldHarnessInput;
+        /**
+         * The harness model's API key, already read from its source. Stored in
+         * agentcore/.env.local under a project credential the model names; never
+         * written to the spec.
+         */
+        harnessApiKey?: string;
         scaffoldRuntimeInput?: undefined;
         importBedrockAgent?: undefined;
       }
@@ -349,6 +355,12 @@ export type AddResourceInput =
   | {
       resourceType: "harness";
       resourceConfig: z.input<typeof HarnessSpecSchema>;
+      /**
+       * The model's API key, already read from its source. Stored in
+       * agentcore/.env.local under a project credential the model names
+       * (`apiKeyCredentialName`); never written to the spec.
+       */
+      apiKey?: string;
     }
   | {
       resourceType: "runtime";

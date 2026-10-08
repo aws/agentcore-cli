@@ -21,6 +21,7 @@ import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { DEFAULT_HARNESS_MODEL } from "../../../../projectSchemas/harness";
+import { credentialEnvVarName } from "../../../../projectSchemas/credential";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
@@ -184,7 +185,7 @@ describe("project add harness wizard", () => {
     screen.unmount();
   }, 15000);
 
-  test("a provider other than Bedrock asks for its model ID and API key ARN", async () => {
+  test("a provider other than Bedrock asks for its model ID and an API key ARN", async () => {
     const projectRoot = await inProject();
     const screen = renderScreen("/agentcore/add/harness");
     await reachModelStep(screen, "assistant");
@@ -200,12 +201,19 @@ describe("project add harness wizard", () => {
     // marker keeps showing the choice.
     await waitForText(screen.lastFrame, "model ID");
     expect(screen.lastFrame()).toContain("gpt-6.1-sol");
-    expect(screen.lastFrame()).toContain("API key ARN");
+    expect(screen.lastFrame()).toContain("API key");
     expect(screen.lastFrame()).toContain("● openai");
     expect(screen.lastFrame()).not.toContain("❯ ● openai");
-    await screen.press("return"); // on to the API key ARN
+    await screen.press("return"); // on to the API key
     await screen.press("return"); // empty → the field says what is missing
-    await waitForText(screen.lastFrame, "enter an API key ARN for openai");
+    await waitForText(
+      screen.lastFrame,
+      "enter the API key file or credential provider ARN for openai",
+    );
+    await screen.write("sk-inline-secret");
+    await screen.press("return"); // an inline secret is refused
+    await waitForText(screen.lastFrame, "inline secrets are not accepted");
+    for (let i = 0; i < "sk-inline-secret".length; i++) await screen.press("backspace");
     const apiKeyArn =
       "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/apikeycredentialprovider/OpenAIKey";
     await screen.write(apiKeyArn);
@@ -222,6 +230,37 @@ describe("project add harness wizard", () => {
     expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
       openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyArn },
     });
+    screen.unmount();
+  }, 15000);
+
+  test("a file:// API key is stored as a project credential the model names", async () => {
+    const projectRoot = await inProject();
+    const keyPath = join(projectRoot, "openai-key.txt");
+    await writeFile(keyPath, "sk-from-file\n");
+    const screen = renderScreen("/agentcore/add/harness");
+    await reachModelStep(screen, "assistant");
+
+    await screen.press("down"); // openai
+    await waitForText(screen.lastFrame, "❯ ● openai");
+    await screen.press("return"); // model id
+    await waitForText(screen.lastFrame, "model ID");
+    await screen.press("return"); // on to the API key
+    await screen.write(`file://${keyPath}`);
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "this harness will be added to agentcore.json");
+    expect(flatFrame(screen.lastFrame).replace(/\s/g, "")).toContain(`APIkeyfile://${keyPath}`);
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "added harness 'assistant'");
+    expect((await harnessYaml(projectRoot, "assistant")).model).toEqual({
+      openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyCredentialName: "assistantOpenAIApiKey" },
+    });
+    expect((await projectSpec(projectRoot)).credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "assistantOpenAIApiKey" },
+    ]);
+    const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(envLocal).toContain(`${credentialEnvVarName("assistantOpenAIApiKey")}='sk-from-file'`);
     screen.unmount();
   }, 15000);
 
@@ -243,7 +282,7 @@ describe("project add harness wizard", () => {
     );
     expect(screen.lastFrame()).toContain(`bedrock/${DEFAULT_HARNESS_MODEL.modelId}`);
     await screen.press("return"); // keep the default model ID
-    await screen.press("return"); // no API key ARN
+    await screen.press("return"); // no API key
     await screen.write("https://llm.example.com/v1");
     await screen.press("return");
 
@@ -251,7 +290,7 @@ describe("project add harness wizard", () => {
     const review = flatFrame(screen.lastFrame);
     expect(review).toContain("provider litellm");
     expect(review).toContain("Custom API base URL https://llm.example.com/v1");
-    expect(review).not.toContain("API key ARN");
+    expect(review).not.toContain("API key");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added harness 'assistant'");

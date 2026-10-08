@@ -18,7 +18,9 @@ import { createNextStep, DEFAULT_CREATE_RUNTIME_NAME, resolveScaffoldHarnessInpu
 import {
   HarnessModelField,
   emptyHarnessModel,
+  harnessModelApiKeySource,
   harnessModelSummary,
+  resolveHarnessModelApiKey,
   toHarnessModelInput,
   type HarnessModelValues,
 } from "../HarnessModelField";
@@ -106,7 +108,7 @@ const TEMPLATE_CHOICES: Choice<TemplateName>[] = PROJECT_TEMPLATE_NAMES.map((tem
 
 // buildCreateInput translates the form through the same resolver as the
 // flag-driven path, including its existing API-key ARN support. apiKey is the
-// code-based model step's key, already read from its file:// source.
+// chosen model step's key, already read from its file:// source.
 export function buildCreateInput(
   values: CreateProjectFormValues,
   apiKey?: string,
@@ -122,8 +124,10 @@ export function buildCreateInput(
         "model-provider": model.provider,
         "model-id": model.modelId,
         "api-key-arn": model.apiKeyArn,
+        "api-key": harnessModelApiKeySource(values.model),
         "api-base": model.apiBase,
       }),
+      ...(apiKey !== undefined && { harnessApiKey: apiKey }),
     };
   }
   if (values.template === EMPTY_TEMPLATE_NAME) {
@@ -202,9 +206,11 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         // read here, at submit, the way the flag path reads --api-key.
         assertProjectPathFits(values.name, ctx.require(PlatformKey));
         const apiKey =
-          values.kind === "agent" && templateTakesModelProvider(values.template)
-            ? await resolveRuntimeModelApiKey(toRuntimeModelOverrides(values.runtimeModel))
-            : undefined;
+          values.kind === "harness"
+            ? await resolveHarnessModelApiKey(values.model)
+            : templateTakesModelProvider(values.template)
+              ? await resolveRuntimeModelApiKey(toRuntimeModelOverrides(values.runtimeModel))
+              : undefined;
         const input = buildCreateInput(values, apiKey);
         const resolvedRegion = ctx.require(RegionKey);
         validateCreateRegionSupport(input, resolvedRegion);

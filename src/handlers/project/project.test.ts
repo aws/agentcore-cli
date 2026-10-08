@@ -16,6 +16,7 @@ import {
 import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
+import { resolveScaffoldHarnessInput } from "./create/index";
 
 async function run(
   args: string[],
@@ -160,6 +161,142 @@ describe("project create", () => {
     await expect(
       run(["create", "--name", "MyAgent", "--model-provider", "anthropic"]),
     ).rejects.toThrow(/--model-provider only applies to runtime templates/);
+  });
+
+  test.each([
+    ["open_ai", "openAiModelConfig", "MyAgentOpenAIApiKey", "gpt-6.1-sol"],
+    ["gemini", "geminiModelConfig", "MyAgentGeminiApiKey", "gemini-3.8-flash"],
+    [
+      "litellm",
+      "liteLlmModelConfig",
+      "MyAgentLiteLLMApiKey",
+      "bedrock/global.anthropic.claude-sonnet-5-5",
+    ],
+  ])(
+    "the default harness takes --model-provider %s with a file:// --api-key",
+    async (provider, modelKey, credentialName, modelId) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const apiKeyPath = join(directory, "api-key.txt");
+      await Bun.write(apiKeyPath, "harness-api-key\n");
+
+      await run([
+        "create",
+        "--name",
+        "MyAgent",
+        "--model-provider",
+        provider,
+        "--api-key",
+        `file://${apiKeyPath}`,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      const projectRoot = join(directory, "MyAgent");
+      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+      expect(spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: credentialName },
+      ]);
+      const harness = parse(
+        await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
+      );
+      expect(harness.model).toEqual({
+        [modelKey]: { modelId, apiKeyCredentialName: credentialName },
+      });
+      const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+      expect(envLocal).toContain(`${credentialEnvVarName(credentialName)}='harness-api-key'`);
+    },
+  );
+
+  test("the default harness reads --api-key from stdin", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run(
+      [
+        "create",
+        "--name",
+        "MyAgent",
+        "--model-provider",
+        "gemini",
+        "--model-id",
+        "gemini-pro",
+        "--api-key",
+        "-",
+        "--skip-install",
+        "--skip-git",
+      ],
+      { stdin: "stdin-key\n" },
+    );
+    const projectRoot = join(directory, "MyAgent");
+    const harness = parse(
+      await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
+    );
+    expect(harness.model).toEqual({
+      geminiModelConfig: { modelId: "gemini-pro", apiKeyCredentialName: "MyAgentGeminiApiKey" },
+    });
+    const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
+    expect(envLocal).toContain("'stdin-key'");
+  });
+
+  test("the default harness refuses --api-key for bedrock, and an inline key, before writing", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await expectError(
+      run(["create", "--name", "MyAgent", "--api-key", "-"], { stdin: "key" }),
+      /--api-key is not supported for the bedrock model provider/,
+      InputValidationError,
+    );
+    await expectError(
+      run(["create", "--name", "MyAgent", "--model-provider", "bedrock", "--api-key", "-"], {
+        stdin: "key",
+      }),
+      /--api-key is not supported for the bedrock model provider/,
+      InputValidationError,
+    );
+    await expectError(
+      run(["create", "--name", "MyAgent", "--model-provider", "open_ai", "--api-key", "sk-inline"]),
+      /inline secret values are not accepted/,
+      SourceResolutionError,
+    );
+    expect(existsSync(join(directory, "MyAgent"))).toBe(false);
+  });
+
+  test("the default harness requires --api-key for open_ai and gemini", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await expectError(
+      run(["create", "--name", "MyAgent", "--model-provider", "open_ai"]),
+      /--model-provider open_ai requires --api-key/,
+      InputValidationError,
+    );
+    expect(existsSync(join(directory, "MyAgent"))).toBe(false);
+  });
+
+  test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
+    expect(() =>
+      resolveScaffoldHarnessInput({
+        name: "MyAgent",
+        "model-provider": "open_ai",
+        "api-key": "file://key.txt",
+        "api-key-arn":
+          "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/apikeycredentialprovider/k",
+      }),
+    ).toThrow(/either an API key or an API key credential provider ARN, not both/);
+  });
+
+  test("--api-base still only applies to runtime templates", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    await expect(
+      run([
+        "create",
+        "--name",
+        "MyAgent",
+        "--model-provider",
+        "litellm",
+        "--api-base",
+        "https://x.example.com",
+      ]),
+    ).rejects.toThrow(/--api-base only applies to runtime templates/);
   });
 
   test("rejects --api-key with a template that does not support it", async () => {

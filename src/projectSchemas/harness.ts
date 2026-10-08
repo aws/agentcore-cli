@@ -66,6 +66,12 @@ export const HarnessModelSchema = z
     provider: HarnessModelProviderSchema,
     modelId: z.string().min(1, "Model ID is required"),
     apiKeyArn: z.string().optional(),
+    /**
+     * A project credential (`credentials` in agentcore.json) whose API key credential provider the
+     * model uses. Resolved to its ARN at synth time from the deployed credentials, so the CLI can
+     * create and manage the provider. Mutually exclusive with `apiKeyArn`.
+     */
+    apiKeyCredentialName: z.string().min(1).optional(),
     apiFormat: HarnessApiFormatSchema.optional(),
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
@@ -97,13 +103,29 @@ export const HarnessModelSchema = z
         });
       }
     }
+    if (model.apiKeyArn !== undefined && model.apiKeyCredentialName !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Set either apiKeyArn or apiKeyCredentialName, not both",
+        path: ["apiKeyCredentialName"],
+      });
+    }
+    if (model.apiKeyCredentialName !== undefined && model.provider === "bedrock") {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          'apiKeyCredentialName is not supported for the "bedrock" provider; Bedrock uses the harness role',
+        path: ["apiKeyCredentialName"],
+      });
+    }
     if (
       model.apiKeyArn === undefined &&
+      model.apiKeyCredentialName === undefined &&
       (model.provider === "open_ai" || model.provider === "gemini")
     ) {
       ctx.addIssue({
         code: "custom",
-        message: `apiKeyArn is required for the "${model.provider}" provider`,
+        message: `apiKeyArn or apiKeyCredentialName is required for the "${model.provider}" provider`,
         path: ["apiKeyArn"],
       });
     }

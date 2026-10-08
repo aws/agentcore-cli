@@ -5,6 +5,7 @@ import {
   HarnessSpecSchema,
   HarnessToolSchema,
   HarnessTruncationConfigSchema,
+  HarnessYamlSchema,
   HarnessMemoryRetrievalConfigSchema,
   validateApiFormat,
 } from "./harness";
@@ -39,6 +40,43 @@ describe("harness custom validation", () => {
         apiBase: "https://proxy.example.com",
       }).success,
     ).toBe(false);
+  });
+  it("names the model's API key by credential, apart from apiKeyArn and never for bedrock", () => {
+    const messages = (model: unknown) => {
+      const result = HarnessModelSchema.safeParse(model);
+      return result.success ? [] : result.error.issues.map((issue) => issue.message);
+    };
+    for (const provider of ["open_ai", "gemini", "lite_llm"]) {
+      expect(messages({ provider, modelId: "m", apiKeyCredentialName: "key" })).toEqual([]);
+    }
+    expect(
+      messages({
+        provider: "open_ai",
+        modelId: "m",
+        apiKeyArn: "arn:key",
+        apiKeyCredentialName: "key",
+      }),
+    ).toEqual(["Set either apiKeyArn or apiKeyCredentialName, not both"]);
+    expect(messages({ provider: "bedrock", modelId: "m", apiKeyCredentialName: "key" })).toEqual([
+      'apiKeyCredentialName is not supported for the "bedrock" provider; Bedrock uses the harness role',
+    ]);
+    expect(messages({ provider: "gemini", modelId: "m" })).toEqual([
+      'apiKeyArn or apiKeyCredentialName is required for the "gemini" provider',
+    ]);
+    expect(messages({ provider: "open_ai", modelId: "m", apiKeyCredentialName: "" })).not.toEqual(
+      [],
+    );
+  });
+  it("reads apiKeyCredentialName from a harness.yaml model config", () => {
+    const parsed = HarnessYamlSchema.parse({
+      name: "harness",
+      model: { openAiModelConfig: { modelId: "gpt", apiKeyCredentialName: "harnessOpenAIApiKey" } },
+    }) as { model: unknown };
+    expect(parsed.model).toEqual({
+      provider: "open_ai",
+      modelId: "gpt",
+      apiKeyCredentialName: "harnessOpenAIApiKey",
+    });
   });
   // The pinned @aws/agentcore-cdk rejects additionalParams on every provider but lite_llm, and
   // re-parses harness.yaml at synth — so accepting it here would defer the failure to

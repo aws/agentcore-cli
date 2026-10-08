@@ -50,6 +50,7 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
 
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5-5";
 const STRANDS_BEDROCK_MODEL_ID = DEFAULT_MODEL_IDS.Bedrock;
+const API_KEY_HELP = "file://<path> to the key file";
 
 describe("project create wizard", () => {
   test("harness flow: name → type → model provider → review → created", async () => {
@@ -176,9 +177,9 @@ describe("project create wizard", () => {
     expect(r.lastFrame()).toContain("● openai");
     await r.press("return"); // focus model id
     expect(r.lastFrame()).toContain("gpt-6.1-sol");
-    await r.press("return"); // focus API key ARN
+    await r.press("return"); // focus API key
     await r.press("return");
-    await waitForText(r.lastFrame, "enter an API key ARN for openai");
+    await waitForText(r.lastFrame, "enter the API key file or credential provider ARN for openai");
     await r.write(apiKeyArn);
     await r.press("return");
 
@@ -188,7 +189,7 @@ describe("project create wizard", () => {
     expect(review).toContain("openai");
     expect(review).toContain("model");
     expect(review).toContain("gpt-6.1-sol");
-    expect(review).toContain("API key ARN");
+    expect(review).toContain("API key");
     expect(review.replace(/\s/g, "")).toContain(apiKeyArn);
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./OpenAIApp", 5000);
@@ -218,6 +219,75 @@ describe("project create wizard", () => {
     expect(harness.systemPrompt).toBeUndefined();
     r.unmount();
   }, 10000);
+
+  test("a file:// API key is read at submit and stored as the harness's project credential", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await writeFile(join(directory, "key.txt"), "sk-wizard\n");
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("KeyApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("return"); // config-based is the default
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("down"); // openai
+    await r.press("return"); // focus model id
+    await r.press("return"); // focus API key
+    await r.write("file://./key.txt");
+    await r.press("return");
+
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()!.replace(/\s/g, "")).toContain("APIkeyfile://./key.txt");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./KeyApp", 5000);
+
+    expect(inputs[0]).toEqual({
+      name: "KeyApp",
+      skipInstall: false,
+      skipGit: false,
+      scaffoldHarnessInput: {
+        name: "KeyApp",
+        model: {
+          provider: "open_ai",
+          modelId: "gpt-6.1-sol",
+          apiKeyCredentialName: "KeyAppOpenAIApiKey",
+        },
+      },
+      harnessApiKey: "sk-wizard",
+    });
+    const root = join(directory, "KeyApp");
+    const spec = await Bun.file(join(root, "agentcore", "agentcore.json")).json();
+    expect(spec.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "KeyAppOpenAIApiKey" },
+    ]);
+    const harness = parse(await Bun.file(join(root, "app", "KeyApp", "harness.yaml")).text());
+    expect(harness.model).toEqual({
+      openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyCredentialName: "KeyAppOpenAIApiKey" },
+    });
+    expect(await Bun.file(join(root, "agentcore", ".env.local")).text()).toContain("'sk-wizard'");
+    r.unmount();
+  }, 10000);
+
+  test("an inline API key is refused in the model step", async () => {
+    const r = renderScreen("/agentcore/create");
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("InlineApp");
+    await r.press("return");
+    await r.press("return"); // config-based is the default
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("down"); // openai
+    await r.press("return"); // focus model id
+    await r.press("return"); // focus API key
+    await r.write("sk-inline");
+    await r.press("return");
+    await waitForText(r.lastFrame, "inline secrets are not accepted");
+    expect(r.lastFrame()).not.toContain("this project will be created");
+    r.unmount();
+  });
 
   test("switching providers preserves each provider's model input", async () => {
     const r = renderScreen("/agentcore/create");
@@ -252,15 +322,15 @@ describe("project create wizard", () => {
     await r.press("down"); // openai
     await waitForText(r.lastFrame, "● openai");
     expect(r.lastFrame()).not.toContain("model ID");
-    expect(r.lastFrame()).not.toContain("API key ARN");
+    expect(r.lastFrame()).not.toContain(API_KEY_HELP);
 
     await r.press("return");
     await waitForText(r.lastFrame, "model ID");
-    expect(r.lastFrame()).toContain("API key ARN");
+    expect(r.lastFrame()).toContain(API_KEY_HELP);
 
     await r.press("escape");
     await waitFor(() => !(r.lastFrame() ?? "").includes("model ID"));
-    expect(r.lastFrame()).not.toContain("API key ARN");
+    expect(r.lastFrame()).not.toContain(API_KEY_HELP);
     expect(r.lastFrame()).toContain("● openai");
     r.unmount();
   });
@@ -312,7 +382,7 @@ describe("project create wizard", () => {
     expect(lines[0]).toContain("agentcore → create");
     expect(lines).toContain(" choose a model provider");
     expect(lines).toContain(" model ID");
-    expect(lines).toContain(" API key ARN");
+    expect(lines).toContain(" API key");
     expect(lines.at(-2)).toBe("─".repeat(80));
     expect(lines.at(-1)).toContain("[enter] continue");
     r.unmount();
@@ -376,7 +446,7 @@ describe("project create wizard", () => {
     };
     const firstContentLine = 4;
 
-    // Model ID and API key ARN are already visible, so the view stays put.
+    // Model ID and API key are already visible, so the view stays put.
     await r.press("return");
     await waitForText(r.lastFrame, "the litellm model to use");
     expect((await settledLines())[firstContentLine]).toBe(" choose a model provider");

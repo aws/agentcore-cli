@@ -164,6 +164,46 @@ describe("mapHarnessToExportPlan model mapping", () => {
     expect(result.credentials).toEqual([]);
   });
 
+  test.each([
+    ["open_ai", "gpt-4.1", "OpenAI"],
+    ["lite_llm", "openai/gpt-4.1", "LiteLLM"],
+  ] as const)(
+    "uses a %s model's apiKeyCredentialName as the credential directly",
+    (provider, modelId, modelProvider) => {
+      const credentialName = "assistantOpenAIApiKey";
+      const result = plan({
+        spec: harness({ model: { provider, modelId, apiKeyCredentialName: credentialName } }),
+        projectSpec: projectSpec({
+          credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: credentialName }],
+        }),
+      });
+
+      expect(result.context.modelProvider).toBe(modelProvider);
+      expect(result.context.hasIdentity).toBe(true);
+      expect(result.context.identityProviders).toEqual([
+        { name: credentialName, envVarName: credentialEnvVarName(credentialName) },
+      ]);
+      expect(result.credentials).toEqual([]);
+      expect(categories(result)).toEqual([MODEL_API_KEY_NOTE_CATEGORY]);
+      expect(result.notes[0]!.message).toContain(`project credential "${credentialName}"`);
+      expect(result.notes[0]!.message).not.toContain("was added to agentcore.json");
+    },
+  );
+
+  test("declares a named credential the project does not have yet", () => {
+    const result = plan({
+      spec: harness({
+        model: { provider: "gemini", modelId: "gemini-2.5-flash", apiKeyCredentialName: "GemKey" },
+      }),
+    });
+    expect(result.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "GemKey" },
+    ]);
+    expect(result.notes[0]!.message).toContain(
+      'A credential entry named "GemKey" was added to agentcore.json',
+    );
+  });
+
   test("threads LiteLLM apiBase and additionalParams and trusts bedrock/ models without a key", () => {
     const result = plan({
       spec: harness({

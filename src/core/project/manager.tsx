@@ -7,6 +7,7 @@ import type {
   CreateProjectInput,
   DeployProjectInput,
   DeployResult,
+  EnvLocalEntry,
   ExportHarnessInput,
   ExportHarnessResult,
   ResolveDeployedResourceInput,
@@ -40,7 +41,12 @@ import {
 import { withOutputEvents } from "./events";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
-import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./templates/harness";
+import {
+  HARNESS_API_KEY_PROVIDER_LABELS,
+  getHarnessTemplateResolver,
+  harnessApiKeyCredentialName,
+  validateHarnessTemplateSource,
+} from "./templates/harness";
 import { createProjectTree } from "./templates/project";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -56,6 +62,7 @@ import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project"
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import {
   CredentialSchema,
+  credentialEnvVarName,
   credentialEnvironmentVariableNames,
 } from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
@@ -442,6 +449,7 @@ export class FsProjectManager implements ProjectManager {
       yield* this.addResource(scaffolded, {
         resourceType: "harness",
         resourceConfig: input.scaffoldHarnessInput,
+        apiKey: input.harnessApiKey,
       });
     }
 
@@ -605,17 +613,82 @@ export class FsProjectManager implements ProjectManager {
 
     switch (input.resourceType) {
       case "harness": {
+        const harnessName = input.resourceConfig.name;
+        const model = input.resourceConfig.model;
+        let resourceConfig = input.resourceConfig;
+        // A managed API key is stored the way a runtime's is: a project
+        // credential the model names, its secret in .env.local, provisioned
+        // on deploy before synth resolves the name to its ARN.
+        let harnessEnvEntries: EnvLocalEntry[] = [];
+        if (input.apiKey !== undefined) {
+          if (model.provider === "bedrock") {
+            throw new InputValidationError(
+              'an API key is not supported for the "bedrock" model provider; Bedrock uses the harness role',
+            );
+          }
+          if (model.apiKeyArn !== undefined) {
+            throw new InputValidationError(
+              "an API key cannot be combined with the model's apiKeyArn; give one or the other",
+            );
+          }
+          const credentialName = harnessApiKeyCredentialName(harnessName, model.provider);
+          resourceConfig = {
+            ...resourceConfig,
+            model: { ...model, apiKeyCredentialName: credentialName },
+          };
+          if (!projectSpec.credentials.some((credential) => credential.name === credentialName)) {
+            projectSpec.credentials.push({
+              authorizerType: "ApiKeyCredentialProvider",
+              name: credentialName,
+            });
+          }
+          harnessEnvEntries = [
+            {
+              key: credentialEnvVarName(credentialName),
+              value: input.apiKey,
+              comment: `API key for the ${HARNESS_API_KEY_PROVIDER_LABELS[model.provider]} model provider (harness ${harnessName})`,
+            },
+          ];
+        }
+        const credentialName = resourceConfig.model.apiKeyCredentialName;
+        if (credentialName !== undefined) {
+          const credential = projectSpec.credentials.find(
+            (candidate) => candidate.name === credentialName,
+          );
+          if (!credential) {
+            throw new ResourceNotFoundError(
+              `no credential named '${credentialName}' exists in this project`,
+            );
+          }
+          if (credential.authorizerType !== "ApiKeyCredentialProvider") {
+            throw new InputValidationError(
+              `credential '${credentialName}' is a ${credential.authorizerType}, not an ApiKeyCredentialProvider`,
+            );
+          }
+        }
+
         yield { type: "step", message: `Scaffolding harness in project` };
-        const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
+        const outputPath = join(project.rootPath, "app", harnessName);
         scaffoldedPaths.push(outputPath);
 
         const resolver = getHarnessTemplateResolver({
           assetSource: this.assetSource,
           templateRenderer: this.templateRenderer,
         });
-        const result = await resolver.resolve(input.resourceConfig);
+        const result = await resolver.resolve(resourceConfig);
         await result.tree.write(dirname(outputPath));
         if (result.spec.harnesses) projectSpec.harnesses.push(...result.spec.harnesses);
+        if (harnessEnvEntries.length > 0) {
+          envFile = new EnvLocalFile(project.rootPath);
+          yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+          const { skipped } = await envFile.insertIfNew(harnessEnvEntries);
+          for (const key of skipped) {
+            yield {
+              type: "step",
+              message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+            };
+          }
+        }
         break;
       }
       case "runtime": {
