@@ -66,12 +66,19 @@ def load_model():
 {{#if modelAdditionalParams}}
 import json
 {{/if}}
+{{#if bedrockPromptCaching}}
+from strands.models import CacheConfig
+{{/if}}
 from strands.models.bedrock import BedrockModel
 
 
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
     return BedrockModel(
+{{#if bedrockPromptCaching}}
+        # Cache the system prompt and tool definitions automatically.
+        cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True),
+{{/if}}
         model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-5-5{{/if}}",
 {{#if modelMaxTokens}}
         max_tokens={{modelMaxTokens}},

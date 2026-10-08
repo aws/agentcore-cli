@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import z from "zod";
 import { parse, stringify } from "yaml";
 import { FsProjectManager } from "./manager";
@@ -86,14 +87,132 @@ function exportInput(overrides: Partial<ExportHarnessInput> = {}): ExportHarness
 }
 
 describe("FsProjectManager.exportHarness rendered tree", () => {
-  test("an exported harness permits the framework version selected by the SDK integration", async () => {
+  test("an exported harness retains the SDK Strands integration", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject);
 
     const result = await drain(subject.exportHarness(project, exportInput()));
 
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents >= 1.54.0, < 2.0.0"');
+    expect(pyproject).toContain('"bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0"');
+  });
+
+  test("builds the agent with create_harness and the builtin tools and plugins", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    // A service harness that sets no prompt or truncation, so the harness defaults apply.
+    const spec = HarnessSpecSchema.parse({
+      name: "remote",
+      model: { provider: "bedrock", modelId: "global.anthropic.claude-opus-5-5" },
+    });
+
+    const result = await drain(
+      subject.exportHarness(project, { prefetched: { spec }, targetAgentName: "remoteAgent" }),
+    );
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("cache[session_id] = build_session_agent(");
+    expect(main).toContain("from strands_harness.tools import read, write, edit");
+    expect(main).toContain('tools.append(make_web_fetch(mode="markdown"))');
+    // No prompt set: create_harness applies the contract prompt.
+    expect(main).not.toContain("system_prompt=");
+    expect(main).toContain("SummarizingConversationManager(**");
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("from strands_harness import create_harness");
+    expect(runtime).toContain(
+      '_PLUGIN_TOOL_NAMES = frozenset(["todo_write","retrieve_offloaded_content"])',
+    );
+    expect(runtime).toContain("evict_after_cycles=None");
+    expect(runtime).toContain("def _add_subagent_tool(");
+    const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
+    expect(loadModel).toContain(
+      'cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True)',
+    );
+    const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
+    expect(pyproject).toContain('"strands-agents[web-fetch] ~= 1.57.1"');
+    expect(pyproject).toContain('"strands-harness == 0.1.2"');
+  });
+
+  test("renders only the builtins and plugins allowedTools selects", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["shell", "read"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("system_prompt=DEFAULT_SYSTEM_PROMPT,");
+    expect(main).toContain("from strands_harness.tools import read\n");
+    expect(main).not.toContain("make_web_fetch");
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("_PLUGIN_TOOL_NAMES = frozenset([])");
+    expect(runtime).not.toContain("make_subagent");
+    expect(runtime).not.toContain("ContextOffloader");
+    const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
+    expect(pyproject).toContain('"strands-agents ~= 1.57.1"');
+  });
+
+  test("reports usage per model call unless a subagent can add to it", async () => {
+    const { manager: subject } = manager();
+    const render = async (allowedTools: string[]) => {
+      const project = await projectWithHarness(subject, { allowedTools });
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      return Bun.file(join(result.agentPath, "main.py")).text();
+    };
+
+    const withSubagent = await render(["subagent"]);
+    expect(withSubagent).toContain("metadata = budget.metadata_event()");
+    const without = await render(["shell"]);
+    expect(without).not.toContain("budget.metadata_event()");
+    expect(without).toMatch(/if "metadata" in event\["event"\]:\n\s+yield event/);
+  });
+
+  test("renders a subagent with no builtin tools to inherit", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["subagent"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("_SUBAGENT_BUILTIN_TOOL_NAMES = frozenset([])");
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).not.toContain("# Built-in tools");
+    expect(main).not.toContain("from strands_harness.tools import");
+  });
+
+  test("prefixes MCP tools with their server name", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      tools: [
+        {
+          type: "remote_mcp",
+          name: "exa",
+          config: { remoteMcp: { url: "https://mcp.exa.ai/mcp" } },
+        },
+      ],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const client = await Bun.file(join(result.agentPath, "mcp_client", "client.py")).text();
+    expect(client).toContain('prefix="exa"');
+  });
+
+  test("counts an inline function turn's usage when handing the call off", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      tools: [
+        {
+          type: "inline_function",
+          name: "lookup",
+          config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+        },
+      ],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain('budget.after_model_call(event["event"]["metadata"])');
   });
 
   test("loads only the MCP tools allowedTools selects", async () => {
@@ -135,7 +254,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain("top_k");
   });
 
-  test("renders invocation-scoped native Strands limits without a custom hook", async () => {
+  test("enforces limits with one budget shared by the agent and its subagents", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {
       maxIterations: 3,
@@ -146,13 +265,16 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const result = await drain(subject.exportHarness(project, exportInput()));
 
     expect(existsSync(join(result.agentPath, "hooks"))).toBe(false);
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("if self.iterations > 3:");
+    expect(runtime).toContain('if self.usage["outputTokens"] >= 128:');
+    expect(runtime).toContain('LimitExceeded("max_iterations_exceeded")');
+    expect(runtime).toContain('LimitExceeded("max_output_tokens_exceeded")');
     const main = await Bun.file(join(result.agentPath, "main.py")).text();
-    expect(main).toContain('"turns": 3');
-    expect(main).toContain('"output_tokens": 128');
+    // The budget reaches subagents through the invocation state.
+    expect(main).toContain('invocation_state={"budget": budget}');
     expect(main).toContain("cancel_signal = threading.Event()");
-    expect(main).toContain("limits=limits");
-    expect(main).not.toContain("ExecutionLimitsHook");
-    expect(main).not.toContain("agent.cancel()");
+    expect(main).not.toContain("limits=");
   });
 
   test("leaves hooks/ and memory/ out of a plain export", async () => {
@@ -248,7 +370,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["temperature"] = 0.2');
     expect(loadModel).toContain('params["top_p"] = 0.8');
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents[openai] >= 1.54.0, < 2.0.0"');
+    expect(pyproject).toContain('"strands-agents[openai,web-fetch] ~= 1.57.1"');
     expect(pyproject).not.toContain('"openai ~= 1.0.0"');
   });
 
@@ -275,7 +397,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["top_p"] = 0.9');
     expect(loadModel).toContain('params["top_k"] = 20');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[gemini] >= 1.54.0, < 2.0.0"',
+      '"strands-agents[gemini,web-fetch] ~= 1.57.1"',
     );
   });
 
@@ -300,7 +422,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["top_p"] = 0.7');
     expect(loadModel).toContain('json.loads("{\\"max_retries\\":2}")');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[litellm] >= 1.54.0, < 2.0.0"',
+      '"strands-agents[litellm,web-fetch] ~= 1.57.1"',
     );
   });
 
@@ -320,7 +442,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(main).toContain("from strands import AgentSkills");
     expect(main).toContain('SlidingWindowConversationManager(**{"window_size":12}, per_turn=True)');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents >= 1.54.0, < 2.0.0"',
+      '"strands-agents[web-fetch] ~= 1.57.1"',
     );
   });
 
@@ -371,6 +493,23 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 });
 
 describe("FsProjectManager.exportHarness side effects", () => {
+  test("leaves the system prompt to the harness default when the harness sets none", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    const dir = join(project.rootPath, "app", "assistant");
+    const configPath = join(dir, "harness.yaml");
+    const config = parse(await Bun.file(configPath).text());
+    delete config.systemPrompt;
+    await Bun.write(configPath, stringify(config));
+    await rm(join(dir, "system-prompt.md"), { force: true });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).not.toContain("DEFAULT_SYSTEM_PROMPT");
+    expect(main).not.toContain("system_prompt=");
+  });
+
   test.each(["inline", "file"] as const)(
     "exports the %s prompt and inline summary without rewriting YAML",
     async (source) => {
@@ -529,3 +668,70 @@ function failingWriteJson() {
   };
   return { json, failNextWrite: () => (shouldFail = true) };
 }
+
+const hasPython = spawnSync("python3", ["--version"]).status === 0;
+
+describe("FsProjectManager.exportHarness generated Python", () => {
+  // Every template branch must render to valid Python; Handlebars cannot check that.
+  const variants: Record<string, Record<string, unknown> & { withProjectMemory?: boolean }> = {
+    default: {},
+    "no builtins or plugins": { allowedTools: ["exa"] },
+    "subagent without builtins": { allowedTools: ["subagent"] },
+    "subagent with limits": { maxIterations: 3, maxTokens: 64, timeoutSeconds: 5 },
+    "memory and skills": {
+      memory: { mode: "existing", name: "chat_history" },
+      skills: [{ s3Uri: "s3://bucket/skills" }],
+      withProjectMemory: true,
+    },
+    "inline function and MCP": {
+      tools: [
+        {
+          type: "inline_function",
+          name: "lookup",
+          config: {
+            inlineFunction: { description: "Look up an order", inputSchema: { type: "object" } },
+          },
+        },
+        {
+          type: "remote_mcp",
+          name: "exa",
+          config: { remoteMcp: { url: "https://mcp.exa.ai/mcp" } },
+        },
+      ],
+    },
+  };
+
+  for (const [name, harness] of Object.entries(variants)) {
+    test.skipIf(!hasPython)(`compiles: ${name}`, async () => {
+      const { withProjectMemory, ...harnessConfig } = harness;
+      const { manager: subject } = manager();
+      let project = await projectWithHarness(subject, harnessConfig);
+      if (withProjectMemory) {
+        project = await drain(
+          subject.addResource(project, {
+            resourceType: "memory",
+            resourceConfig: {
+              name: "chat_history",
+              eventExpiryDuration: 30,
+              strategies: [{ type: "SEMANTIC" }],
+            },
+          }),
+        );
+      }
+
+      const result = await drain(subject.exportHarness(project, exportInput()));
+
+      const files = [
+        "main.py",
+        "harness_runtime.py",
+        join("model", "load.py"),
+        join("mcp_client", "client.py"),
+      ].map((file) => join(result.agentPath, file));
+      // A missing context value renders as `undefined`, which compiles but fails at import.
+      for (const file of files) expect(await Bun.file(file).text()).not.toContain("undefined");
+      const compiled = spawnSync("python3", ["-m", "py_compile", ...files], { encoding: "utf-8" });
+      expect(compiled.stderr).toBe("");
+      expect(compiled.status).toBe(0);
+    });
+  }
+});

@@ -44,7 +44,6 @@ import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./tem
 import { createProjectTree } from "./templates/project";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
-  DEFAULT_EXPORT_SYSTEM_PROMPT,
   EXPORT_NOTES_FILENAME,
   buildExportNotesMarkdown,
   mapHarnessToExportPlan,
@@ -1061,14 +1060,14 @@ export class FsProjectManager implements ProjectManager {
     // payload (--arn) or from the in-project harness files (--name).
     let harnessName: string;
     let spec: z.output<typeof HarnessSpecSchema>;
-    let systemPrompt: string;
+    // Undefined when the harness sets no prompt, so the export keeps the harness contract prompt.
+    let systemPrompt: string | undefined;
     let harnessDir: string | undefined;
     if (input.prefetched) {
       spec = input.prefetched.spec;
       harnessName = spec.name;
       const prompt = input.prefetched.systemPrompt?.trim();
-      systemPrompt =
-        prompt && prompt.length > 0 ? prompt : (spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT);
+      systemPrompt = prompt && prompt.length > 0 ? prompt : spec.systemPrompt;
     } else {
       harnessName = input.harnessName!;
       const entry = projectSpec.harnesses.find((candidate) => candidate.name === harnessName);
@@ -1093,7 +1092,7 @@ export class FsProjectManager implements ProjectManager {
         );
       }
       spec = parsed.data;
-      systemPrompt = spec.systemPrompt ?? DEFAULT_EXPORT_SYSTEM_PROMPT;
+      systemPrompt = spec.systemPrompt;
       if (spec.systemPrompt === undefined) {
         const promptPath = join(harnessDir, "system-prompt.md");
         try {
@@ -1106,7 +1105,7 @@ export class FsProjectManager implements ProjectManager {
             });
           }
         }
-        if (!systemPrompt.trim()) {
+        if (systemPrompt !== undefined && !systemPrompt.trim()) {
           throw new InputValidationError(
             `System prompt file '${promptPath}' is empty or whitespace-only.`,
           );
