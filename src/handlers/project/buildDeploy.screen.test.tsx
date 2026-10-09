@@ -3,9 +3,12 @@ import { QueryClient } from "@tanstack/react-query";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
+import { CommandRunMetricEventKey } from "../../router";
 import {
+  assertMetricEmitted,
   cleanupScreens,
   flatFrame,
+  getTestTelemetryClient,
   initProject,
   inProjectContext,
   inTempDirectory,
@@ -159,7 +162,17 @@ describe("project deploy screen", () => {
     const { backend, deploys } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core);
-    const r = renderScreen("/agentcore/deploy", { core });
+    const { client, filePath, cleanup } = await getTestTelemetryClient();
+    cleanups.push(cleanup);
+    const event = client.createMetricEvent("cli.command_run", {
+      exit_reason: "success",
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+    });
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: (ctx) => ctx.withValue(CommandRunMetricEventKey, event),
+    });
 
     // A project with resources is not asked anything, as on the command line.
     await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
@@ -179,6 +192,16 @@ describe("project deploy screen", () => {
     expect(deploys).toHaveLength(1);
     expect(deploys[0]!.confirmed).toBe(false);
     expect(deploys[0]!.input.target.name).toBe("default");
+    await event.emit(100);
+    await client.shutdown();
+    await assertMetricEmitted(filePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+      project_runtime_count: 0,
+      project_memory_count: 0,
+      project_gateway_count: 0,
+      project_harness_count: 1,
+    });
     r.unmount();
   });
 
@@ -324,7 +347,17 @@ describe("project deploy screen", () => {
     const { backend, deploys } = fakeBackend({ result: { outputs: {}, tornDown: true } });
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core, { empty: true });
-    const r = renderScreen("/agentcore/deploy", { core });
+    const { client, filePath, cleanup } = await getTestTelemetryClient();
+    cleanups.push(cleanup);
+    const event = client.createMetricEvent("cli.command_run", {
+      exit_reason: "success",
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+    });
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: (ctx) => ctx.withValue(CommandRunMetricEventKey, event),
+    });
 
     await waitForFlatText(r.lastFrame, "declares no resources to deploy");
     // Confirm lays its (y/N) inline, so the question wraps around it.
@@ -335,6 +368,16 @@ describe("project deploy screen", () => {
 
     await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
     expect(deploys[0]!.confirmed).toBe(true);
+    await event.emit(100);
+    await client.shutdown();
+    await assertMetricEmitted(filePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+      project_runtime_count: 0,
+      project_memory_count: 0,
+      project_gateway_count: 0,
+      project_harness_count: 0,
+    });
     // Nothing is left to invoke.
     expect(r.lastFrame()).not.toContain("agentcore invoke");
     r.unmount();

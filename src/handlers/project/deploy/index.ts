@@ -4,10 +4,12 @@ import { UserCancellationError } from "../../../errors/errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
+  CommandRunMetricEventKey,
   createHandler,
   flag,
   GlobalConfigAccessorKey,
   ProjectKey,
+  type Context,
   type Middleware,
 } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
@@ -72,6 +74,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
     handle: async (ctx, flags) => {
       // withProject has already resolved the enclosing project.
       const project = ctx.require(ProjectKey);
+      recordProjectResourceCounts(ctx, project);
       const jsonOutput = ctx.require(JsonKey);
       const canPrompt =
         !flags.yes &&
@@ -120,6 +123,46 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       if (!result.tornDown) config.io.stderr.write(`Next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
+
+export function recordProjectResourceCounts(ctx: Context, project: Project): void {
+  const { spec } = project;
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({
+    project_runtime_count: spec.runtimes.length,
+    project_memory_count: spec.memories.length,
+    project_knowledge_base_count: spec.knowledgeBases.length,
+    project_credential_count: spec.credentials.length,
+    project_evaluator_count: spec.evaluators.length,
+    project_online_eval_config_count: spec.onlineEvalConfigs.length,
+    project_gateway_count: spec.agentCoreGateways.length,
+    project_tool_runtime_count: spec.toolRuntimes?.length ?? 0,
+    project_policy_engine_count: spec.policyEngines.length,
+    project_config_bundle_count: spec.configBundles.length,
+    project_harness_count: spec.harnesses.length,
+    project_payment_manager_count: spec.payments?.length ?? 0,
+    project_gateway_target_count: spec.agentCoreGateways.reduce(
+      (count, gateway) => count + gateway.targets.length,
+      0,
+    ),
+    project_policy_count: spec.policyEngines.reduce(
+      (count, engine) => count + engine.policies.length,
+      0,
+    ),
+    project_runtime_endpoint_count: spec.runtimes.reduce(
+      (count, runtime) => count + Object.keys(runtime.endpoints ?? {}).length,
+      0,
+    ),
+    project_payment_connector_count:
+      spec.payments?.reduce((count, manager) => count + manager.connectors.length, 0) ?? 0,
+    project_memory_strategy_count: spec.memories.reduce(
+      (count, memory) => count + memory.strategies.length,
+      0,
+    ),
+    project_knowledge_base_data_source_count: spec.knowledgeBases.reduce(
+      (count, knowledgeBase) => count + knowledgeBase.dataSources.length,
+      0,
+    ),
+  });
+}
 
 /**
  * True when the spec declares none of the resources `removeAllResources`
