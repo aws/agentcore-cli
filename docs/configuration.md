@@ -607,12 +607,81 @@ Deployment target
 ]
 ```
 
-| Field         | Required | Description                             |
-| ------------- | -------- | --------------------------------------- |
-| `name`        | Yes      | Target name (used with `--target` flag) |
-| `description` | No       | Target description                      |
-| `account`     | Yes      | AWS account ID (12 digits)              |
-| `region`      | Yes      | AWS region                              |
+| Field                | Required | Description                                                                         |
+| -------------------- | -------- | ----------------------------------------------------------------------------------- |
+| `name`               | Yes      | Target name (used with `--target` flag)                                             |
+| `description`        | No       | Target description                                                                  |
+| `account`            | Yes      | AWS account ID (12 digits)                                                          |
+| `region`             | Yes      | AWS region                                                                          |
+| `resourceNameSuffix` | No       | 1-8 alphanumeric characters appended to the project name in deployed resource names |
+
+### Multiple targets in one account and region
+
+Each target deploys its own CloudFormation stack (`AgentCore-<project>-<target>`), but deployed resources are named
+after the project, not the target (for example the runtime `myapp_agent`). Two targets in the same account and region
+therefore collide unless you give them different `resourceNameSuffix` values:
+
+```json
+[
+  { "name": "dev", "account": "123456789012", "region": "us-east-1", "resourceNameSuffix": "Dev" },
+  { "name": "prod", "account": "123456789012", "region": "us-east-1", "resourceNameSuffix": "Prod" }
+]
+```
+
+```bash
+agentcore deploy --target dev -y    # runtime myappDev_agent, memory myappDev_..., gateway myappDev-...
+agentcore deploy --target prod -y   # runtime myappProd_agent, ...
+```
+
+- **The suffix counts toward the project name limit.** Project name plus suffix must stay within 23 characters.
+- **Only set a suffix on new targets.** Adding or changing `resourceNameSuffix` on an already-deployed target renames
+  its resources, so CloudFormation replaces them. Replaced memories lose their stored data.
+- **Credential providers are shared.** API key and OAuth credential providers are named after the credential, not the
+  project, so targets in the same account and region use the same providers. All targets read their secrets from the
+  same `.env.local`.
+- **Payments are not supported** in this setup. Payment managers and connectors aren't prefixed with the project name,
+  so deploy fails if two targets in the same account and region both deploy them.
+- **Some commands ignore `--target`.** `logs`, `traces` and `dev` don't take `--target`; they use the first target in
+  `aws-targets.json`.
+
+Deploy fails with a clear error when a target would collide with another target that is already deployed (or deployed in
+the same run). If the colliding target hasn't been deployed yet, deploy only warns.
+
+#### Projects created before `resourceNameSuffix`
+
+The CDK app in `agentcore/cdk/bin/cdk.ts` is copied once, at `agentcore create`. In older projects it ignores
+`resourceNameSuffix`, so deploy stops with an error until you update it:
+
+1. Add this helper next to `toStackName`:
+
+   ```ts
+   function readResourceNameSuffixes(configRoot: string): Record<string, string> {
+     const raw = JSON.parse(fs.readFileSync(path.join(configRoot, 'aws-targets.json'), 'utf8')) as {
+       name?: unknown;
+       resourceNameSuffix?: unknown;
+     }[];
+     const suffixes: Record<string, string> = {};
+     for (const entry of raw) {
+       if (typeof entry.name === 'string' && typeof entry.resourceNameSuffix === 'string') {
+         suffixes[entry.name] = entry.resourceNameSuffix;
+       }
+     }
+     return suffixes;
+   }
+   ```
+
+2. In `main()`, after the targets are read, add `const resourceNameSuffixes = readResourceNameSuffixes(configRoot);`.
+3. Inside `for (const target of targets)`, pass the suffixed name to the stack instead of `spec`:
+
+   ```ts
+   const physicalProjectName = `${spec.name}${resourceNameSuffixes[target.name] ?? ''}`;
+   new AgentCoreStack(app, stackName, {
+     spec: physicalProjectName === spec.name ? spec : { ...spec, name: physicalProjectName },
+     // ...other props unchanged
+   });
+   ```
+
+Keep `toStackName(spec.name, target.name)` and the `agentcore:project-name` tag on the plain project name.
 
 ### Supported Regions
 

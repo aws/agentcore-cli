@@ -7,12 +7,13 @@
  *   5. Return results
  */
 import { ConfigIO, ResourceNotFoundError, toError } from '../../../lib';
-import type { DeployedState } from '../../../schema';
 import type { CloudWatchFilterConfig, InsightConfig } from '../../aws/agentcore-batch-evaluation';
 import { generateClientToken, getBatchEvaluation, startBatchEvaluation } from '../../aws/agentcore-batch-evaluation';
 import { resolveEndpointName, runtimeLogGroup } from '../../aws/cloudwatch';
 import { getRegion } from '../../commands/shared/region-utils';
 import { ExecLogger } from '../../logging/exec-logger';
+import { resolveAgentState } from '../jobs/shared/resolve-agent-state';
+import { getPhysicalProjectNameForTarget } from '../resource-naming';
 import { saveInsightsRun, updateInsightsRun } from './insights-storage';
 import type { InsightsRunRecord, RunInsightsOptions, RunInsightsResult } from './types';
 
@@ -40,7 +41,11 @@ export async function runInsightsCommand(options: RunInsightsOptions): Promise<R
     // 1. Load project config + deployed state
     logger?.startStep('Load project config');
     const configIO = new ConfigIO();
-    const [projectSpec, deployedState] = await Promise.all([configIO.readProjectSpec(), configIO.readDeployedState()]);
+    const [projectSpec, deployedState, awsTargets] = await Promise.all([
+      configIO.readProjectSpec(),
+      configIO.readDeployedState(),
+      configIO.readAWSDeploymentTargets(),
+    ]);
 
     const region = await getRegion(options.region);
     logger?.log(`Region: ${region}`);
@@ -84,7 +89,8 @@ export async function runInsightsCommand(options: RunInsightsOptions): Promise<R
 
       const runtimeId = agentState.runtimeId;
       const endpointName = resolveEndpointName(options.endpoint);
-      const serviceName = `${projectSpec.name}_${options.agent}.${endpointName}`;
+      const physicalProjectName = getPhysicalProjectNameForTarget(projectSpec.name, awsTargets, agentState.targetName);
+      const serviceName = `${physicalProjectName}_${options.agent}.${endpointName}`;
       const logGroupName = runtimeLogGroup(runtimeId, options.endpoint);
 
       logger?.log(`Agent: ${options.agent} (runtime: ${runtimeId})`);
@@ -203,17 +209,6 @@ export async function runInsightsCommand(options: RunInsightsOptions): Promise<R
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function resolveAgentState(
-  deployedState: DeployedState,
-  agentName: string
-): { runtimeId: string; runtimeArn: string; roleArn?: string } | undefined {
-  for (const target of Object.values(deployedState.targets)) {
-    const agent = target.resources?.runtimes?.[agentName];
-    if (agent) return agent;
-  }
-  return undefined;
-}
 
 function buildFilterConfig(options: RunInsightsOptions): CloudWatchFilterConfig | undefined {
   if (options.sessionIds && options.sessionIds.length > 0) {

@@ -188,6 +188,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
   // returns after the sync step — still carries the sync outcome: dep_sync_* telemetry and
   // the user-facing rewrite notice must survive a deploy that fails after the sync ran.
   let dependencySyncResult: DependencySyncResult | undefined;
+  let usesResourceNameSuffix: boolean | undefined;
 
   const startStep = (name: string) => {
     currentStepName = name;
@@ -214,6 +215,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       error,
       logPath: logger.getRelativeLogPath(),
       dependencySyncResult,
+      usesResourceNameSuffix,
     };
   };
 
@@ -237,6 +239,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     // calls that don't receive an explicit region option.
     // See https://github.com/aws/agentcore-cli/issues/924.
     restoreEnv = applyTargetRegionToEnv(target.region);
+    usesResourceNameSuffix = Boolean(target.resourceNameSuffix);
     endStep('success');
 
     // Read project spec for gateway information (used later for deploy step name and outputs)
@@ -536,6 +539,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         stackName,
         logPath: logger.getRelativeLogPath(),
         dependencySyncResult,
+        usesResourceNameSuffix,
       };
     }
 
@@ -555,6 +559,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         stackName,
         logPath: logger.getRelativeLogPath(),
         dependencySyncResult,
+        usesResourceNameSuffix,
       };
     }
 
@@ -627,6 +632,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
         stackName,
         logPath: logger.getRelativeLogPath(),
         dependencySyncResult,
+        usesResourceNameSuffix,
       };
     }
 
@@ -1041,6 +1047,7 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
       notes,
       postDeployWarnings: allWarnings.length > 0 ? allWarnings : undefined,
       dependencySyncResult,
+      usesResourceNameSuffix,
     };
   } catch (err: unknown) {
     logger.log(getErrorMessage(err), 'error');

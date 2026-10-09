@@ -19,6 +19,7 @@ interface AwsDeploymentTarget {
   description?: string; // @max 256
   account: string; // @regex ^[0-9]{12}$ - AWS account ID (exactly 12 digits)
   region: AgentCoreRegion;
+  resourceNameSuffix?: string; // @regex ^[A-Za-z0-9]{1,8}$ - appended to the project name in deployed resource names (e.g. "Dev" -> myappDev_agent); lets several targets share one account+region
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import {
 } from '../../../../cli/aws/agentcore-config-bundles';
 import { ConfigIO } from '../../../../lib';
 import { getBundleNameVariants } from '../../../operations/config-bundle/bundle-name-variants';
+import { getPhysicalProjectName } from '../../../operations/resource-naming';
 import { useEffect, useRef, useState } from 'react';
 
 export interface BundleWithMeta {
@@ -58,6 +59,7 @@ export function useConfigBundleHub(): ConfigBundleHubState {
           return;
         }
         const resolvedRegion = targets[0]!.region;
+        const bundleProjectNames = [getPhysicalProjectName(projectSpec.name, targets[0]), projectSpec.name];
         if (mountedRef.current) setRegion(resolvedRegion);
 
         // Get config bundles from project config (agentcore.json)
@@ -86,7 +88,7 @@ export function useConfigBundleHub(): ConfigBundleHubState {
         const enriched = await Promise.all(
           projectBundles.map(async (bundleSpec): Promise<BundleWithMeta> => {
             const deployed = deployedBundles[bundleSpec.name];
-            const nameVariants = getBundleNameVariants(bundleSpec.name, projectSpec.name);
+            const nameVariants = getBundleNameVariants(bundleSpec.name, bundleProjectNames);
             const listMatch = allBundlesList?.bundles.find(b => nameVariants.includes(b.bundleName));
             if (!deployed) {
               // Not yet deployed — show from project config only
@@ -133,7 +135,7 @@ export function useConfigBundleHub(): ConfigBundleHubState {
               try {
                 const allBundles =
                   allBundlesList ?? (await listConfigurationBundles({ region: resolvedRegion, maxResults: 100 }));
-                const nameVariants = getBundleNameVariants(bundleSpec.name, projectSpec.name);
+                const nameVariants = getBundleNameVariants(bundleSpec.name, bundleProjectNames);
                 const match = allBundles.bundles.find(b => nameVariants.includes(b.bundleName));
                 if (match) {
                   effectiveBundleId = match.bundleId;

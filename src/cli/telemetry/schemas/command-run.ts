@@ -152,6 +152,8 @@ const DeployAttrs = safeSchema({
   dep_sync_opted_out: z.boolean().optional(),
   dep_sync_skew_warning: z.boolean().optional(),
   dep_sync_reinstalled: z.boolean().optional(),
+  /** Whether a deployed target sets resourceNameSuffix (several targets in one account+region). */
+  uses_resource_name_suffix: z.boolean().optional(),
 });
 
 const DevAttrs = safeSchema({
