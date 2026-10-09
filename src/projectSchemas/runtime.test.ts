@@ -24,6 +24,36 @@ const networkConfig = {
   securityGroups: ["sg-0123456789abcdef0"],
 };
 describe("runtime custom validation", () => {
+  it("keeps explicit binding selection independent of role policy mode and validates named memory", () => {
+    const binding = {
+      bindingMode: "explicit",
+      connections: [{ id: "alias", to: { type: "memory", name: "ChatHistory" } }],
+    };
+    const parsed = ProjectRuntimeSchema.parse({ ...codeZipAgent, ...binding });
+    expect(parsed).toMatchObject(binding);
+    expect(parsed.executionRoleConfig).toBeUndefined();
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
+        executionRoleArn: "arn:aws:iam::111122223333:role/source",
+        executionRoleConfig: { policyMode: "explicit" },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
+        connections: [
+          {
+            to: {
+              type: "memory",
+              name: "ChatHistory",
+              arn: "arn:aws:bedrock-agentcore:us-west-2:111122223333:memory/source",
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
   it("validates Dockerfile paths through the shared guard", () => {
     expect(isValidDockerfilePath(".docker/Dockerfile")).toBe(true);
     for (const path of ["../Dockerfile", "/Dockerfile", "docker/", "a//Dockerfile", "a;rm"]) {

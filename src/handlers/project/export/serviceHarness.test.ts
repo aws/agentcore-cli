@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { Harness } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError, MalformedServiceResponseError } from "../../../errors";
 import {
-  MEMORY_TUNING_NOTE_CATEGORY,
   SERVICE_FIELD_OMITTED_NOTE_CATEGORY,
   harnessIdFromArn,
   mapServiceHarnessToSpec,
@@ -315,15 +314,19 @@ describe("mapServiceHarnessToSpec", () => {
     expect(openAi.modelAdditionalParams).toEqual({ reasoning: { effort: "low" } });
   });
 
-  test("notes external-memory tuning that cannot be wired automatically", () => {
-    const { spec, notes } = mapServiceHarnessToSpec(
+  test("preserves external-memory namespace tuning for native session integration", () => {
+    const { spec, notes, memoryRetrievalConfig } = mapServiceHarnessToSpec(
       serviceHarness({
         memory: {
           agentCoreMemoryConfiguration: {
             arn: "arn:aws:bedrock-agentcore:us-west-2:111122223333:memory/m-1",
             messagesCount: 12,
             retrievalConfig: {
-              "/users/{actorId}/facts": { topK: 8, relevanceScore: 0.7 },
+              "/users/{actorId}/facts": {
+                topK: 8,
+                relevanceScore: 0.7,
+                strategyId: "source-strategy",
+              },
             },
           },
         },
@@ -331,7 +334,10 @@ describe("mapServiceHarnessToSpec", () => {
     );
 
     expect(spec.memory).toMatchObject({ mode: "existing", messagesCount: 12 });
-    expect(notes.map((note) => note.category)).toEqual([MEMORY_TUNING_NOTE_CATEGORY]);
+    expect(notes).toEqual([]);
+    expect(memoryRetrievalConfig).toEqual({
+      "/users/{actorId}/facts": { topK: 8, relevanceScore: 0.7, strategyId: "source-strategy" },
+    });
   });
 
   test("rejects a VPC harness without explicit subnets/security groups before anything is written", () => {

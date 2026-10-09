@@ -86,6 +86,126 @@ function exportInput(overrides: Partial<ExportHarnessInput> = {}): ExportHarness
 }
 
 describe("FsProjectManager.exportHarness rendered tree", () => {
+  test("renders native Gateway clients and source Memory without cloning dependencies", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    const memoryArn = "arn:aws:bedrock-agentcore:us-east-1:111122223333:memory/source-memory";
+    const gatewayArn = "arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/source-gateway";
+    const noAuthArn = "arn:aws:bedrock-agentcore:us-west-2:111122223333:gateway/no-auth";
+    const before = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json();
+    const result = await drain(
+      subject.exportHarness(project, {
+        targetAgentName: "SourceAgent",
+        prefetched: {
+          spec: HarnessSpecSchema.parse({
+            name: "Source",
+            model: { provider: "bedrock", modelId: "us.amazon.nova-lite-v1:0" },
+            memory: { mode: "existing", arn: memoryArn, actorId: "source-actor" },
+            tools: [
+              {
+                type: "agentcore_gateway",
+                name: "signed",
+                config: { agentCoreGateway: { gatewayArn } },
+              },
+              {
+                type: "agentcore_gateway",
+                name: "public",
+                config: { agentCoreGateway: { gatewayArn: noAuthArn, outboundAuth: { none: {} } } },
+              },
+            ],
+          }),
+          memoryRetrievalConfig: {
+            "/source/{memoryStrategyId}/{actorId}/{sessionId}/facts": {
+              topK: 4,
+              relevanceScore: 0,
+              strategyId: "source-strategy",
+            },
+          },
+          executionRoleSource: {
+            roleArn: "arn:aws:iam::111122223333:role/source",
+            inlinePolicies: [],
+            managedPolicyArns: ["arn:aws:iam::111122223333:policy/source"],
+            tags: {},
+          },
+        },
+      }),
+    );
+    const client = await Bun.file(join(result.agentPath, "mcp_client", "client.py")).text();
+    expect(client).toContain(
+      'url = os.environ.get("AGENTCORE_GATEWAY_GATEWAY_SOURCE_GATEWAY_URL")',
+    );
+    expect(client).toContain('aws_service="bedrock-agentcore", aws_region="us-west-2"');
+    expect(client).toContain('url = os.environ.get("AGENTCORE_GATEWAY_GATEWAY_NO_AUTH_URL")');
+    expect(client).toContain("lambda: streamablehttp_client(url)");
+    expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
+      "mcp-proxy-for-aws >= 1.7.0",
+    );
+    const session = await Bun.file(join(result.agentPath, "memory", "session.py")).text();
+    expect(session).toContain('MEMORY_ID = os.getenv("AGENTCORE_MEMORY_MEMORY_SOURCE_MEMORY_ID")');
+    expect(session).toContain('REGION = "us-east-1"');
+    expect(session).toContain(
+      '"/source/{memoryStrategyId}/{actorId}/{sessionId}/facts": RetrievalConfig(top_k=4, relevance_score=0, strategy_id="source-strategy")',
+    );
+    const after = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json();
+    for (const field of ["memories", "agentCoreGateways", "harnesses", "credentials"]) {
+      expect(after[field]).toEqual(before[field]);
+    }
+    expect(after.runtimes.at(-1)).toMatchObject({
+      bindingMode: "explicit",
+      executionRoleConfig: { policyMode: "explicit" },
+    });
+  });
+
+  test("retains original MCP provider placeholders and rejects unsupported auth templates", async () => {
+    const { manager: subject } = manager();
+    const provider =
+      "arn:aws:bedrock-agentcore:us-west-2:111122223333:token-vault/default/apikeycredentialprovider/source";
+    const project = await projectWithHarness(subject, {
+      tools: [
+        {
+          type: "remote_mcp",
+          name: "remote",
+          config: {
+            remoteMcp: {
+              url: "https://remote.example/mcp",
+              headers: { Authorization: `Bearer \${${provider}}` },
+            },
+          },
+        },
+      ],
+    });
+    const result = await drain(subject.exportHarness(project, exportInput()));
+    const client = await Bun.file(join(result.agentPath, "mcp_client", "client.py")).text();
+    expect(client).toContain('@requires_api_key(provider_name="source")');
+    expect(client).toContain('"Bearer " + _get_');
+    const after = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json();
+    expect(after.credentials).toEqual([]);
+    expect(result.notes[0]!.message).toContain("No secret values");
+    const spec = HarnessSpecSchema.parse({
+      name: "bad",
+      model: { provider: "bedrock", modelId: "example" },
+      tools: [
+        {
+          type: "remote_mcp",
+          name: "bad",
+          config: {
+            remoteMcp: {
+              url: "https://remote.example/mcp",
+              headers: { Authorization: "${unsupported}" },
+            },
+          },
+        },
+      ],
+    });
+    await expect(
+      drain(
+        subject.exportHarness(project, {
+          targetAgentName: "Bad",
+          prefetched: { spec },
+        }),
+      ),
+    ).rejects.toThrow("authentication cannot be downgraded");
+  });
   test("an exported harness permits the framework version selected by the SDK integration", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject);
@@ -169,7 +289,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
   test("wires an in-project memory through memory/session.py", async () => {
     const { manager: subject } = manager();
     let project = await projectWithHarness(subject, {
-      memory: { mode: "existing", name: "chat_history" },
+      memory: { mode: "existing", name: "chat_history", actorId: "source-actor" },
     });
     project = await drain(
       subject.addResource(project, {
@@ -190,6 +310,10 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
       "from memory.session import get_memory_session_manager",
     );
     expect(result.notes).toEqual([]);
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain('_actor_id = "source-actor"');
+    expect(main).not.toContain("default-user");
+    expect(main).not.toContain("request_headers");
   });
 
   test("renders memory retrieval tuning and notes messagesCount", async () => {

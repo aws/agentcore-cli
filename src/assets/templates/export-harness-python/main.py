@@ -316,11 +316,11 @@ def _make_conversation_manager():
 {{#if hasMemory}}
 def agent_factory():
     cache = {}
-    def get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
+    def get_or_create_agent(session_id{{#if hasSkillsFetcher}}, skill_plugins=None{{/if}}):
         {{#if actorId}}
-        _actor_id = "{{actorId}}"
+        _actor_id = {{safeJson actorId}}
         {{else}}
-        _actor_id = user_id
+        raise ValueError("Memory requires a configured source actorId; review EXPORT_NOTES.md")
         {{/if}}
         key = f"{session_id}/{_actor_id}"
         if key not in cache:
@@ -469,13 +469,10 @@ async def invoke(payload, context):
 {{/if}}
 
 {{#if hasMemory}}
-    session_id = getattr(context, 'session_id', 'default-session')
-    {{#if actorId}}
-    user_id = "{{actorId}}"
-    {{else}}
-    user_id = getattr(context, 'user_id', 'default-user')
-    {{/if}}
-    agent = get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
+    session_id = getattr(context, 'session_id', None)
+    if not session_id:
+        raise ValueError("Memory requires a Runtime session id")
+    agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{else}}
     session_id = getattr(context, 'session_id', 'default-session')
     agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})

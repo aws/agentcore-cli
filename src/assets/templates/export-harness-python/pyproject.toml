@@ -13,6 +13,8 @@ dependencies = [
     "bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0",
     "botocore[crt] ~= 1.43.0",
     "mcp >= 1.28.1, < 2.0.0",
+    {{#if hasIamGateway}}"mcp-proxy-for-aws >= 1.7.0, < 2.0.0",
+    {{/if}}
     {{#if bedrockMantle}}"aws-bedrock-token-generator >= 1.1.0, < 2.0.0",
     {{/if}}"strands-agents{{#if strandsExtras}}[{{strandsExtras}}]{{/if}} >= 1.54.0, < 2.0.0",
     

@@ -10,7 +10,7 @@ import type {
   ResolvedDeployedResource,
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
-import { cdkCompatibilityWarning } from "./cdk/compatibility";
+import { cdkCompatibilityWarning, requireRuntimeCapabilities } from "./cdk/compatibility";
 import {
   createLineSplitter,
   FsReadWriteJson,
@@ -210,6 +210,7 @@ export class CdkBackend implements ProjectBackend {
     await this.ensureCdkDependencies(project);
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
+    requireRuntimeCapabilities(this.cdkDirectory(project), project.spec.runtimes);
     if (compatibilityWarning) {
       yield { type: "warning", message: compatibilityWarning };
     }

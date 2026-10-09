@@ -2626,6 +2626,26 @@ export class TestPolicyClient implements CorePolicyClient {
 // TestCoreClient implements the Core contract with fully controllable sub-clients.
 export class TestCoreClient implements Core {
   readonly harness = new TestHarnessClient();
+  executionRoleSourceError?: Error;
+  executionRoleSourcePolicies: Record<string, unknown> = {};
+  readonly executionRoleSourceCalls: { roleArn: string; options: CoreOptions }[] = [];
+  readonly executionRoleSource: Core["executionRoleSource"] = {
+    read: async (roleArn: string, options: CoreOptions) => {
+      this.executionRoleSourceCalls.push({ roleArn, options });
+      if (this.executionRoleSourceError) throw this.executionRoleSourceError;
+      return {
+        roleArn,
+        inlinePolicies: Object.entries(this.executionRoleSourcePolicies).map(
+          ([name, document]) => ({
+            name,
+            document: document as Record<string, unknown>,
+          }),
+        ),
+        managedPolicyArns: [],
+        tags: {},
+      };
+    },
+  };
   readonly identity = new TestIdentityClient();
   readonly payment = new TestPaymentClient();
   readonly memory = new TestMemoryClient();

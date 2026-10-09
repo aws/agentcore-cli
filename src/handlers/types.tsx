@@ -11,9 +11,11 @@ import type { Context } from "../router";
 import type { CoreFetch } from "../core/types";
 import type { ProjectManager } from "./project/types.ts";
 import type { CoreBedrockAgentImporter } from "../core/project/bedrockAgentImport";
+import type { CoreExecutionRoleSourceReader } from "./project/export/types";
 
 export interface Core {
   harness: CoreHarnessClient;
+  executionRoleSource: CoreExecutionRoleSourceReader;
   identity: CoreIdentityClient;
   memory: CoreMemoryClient;
   runtime: CoreRuntimeClient;

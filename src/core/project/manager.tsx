@@ -1219,6 +1219,8 @@ export class FsProjectManager implements ProjectManager {
       projectSpec,
       sourceNotes: input.prefetched?.notes,
       modelAdditionalParams: input.prefetched?.modelAdditionalParams,
+      executionRoleSource: input.prefetched?.executionRoleSource,
+      memoryRetrievalConfig: input.prefetched?.memoryRetrievalConfig,
     });
 
     yield { type: "step", message: `Rendering agent code at 'app/${targetAgentName}'` };

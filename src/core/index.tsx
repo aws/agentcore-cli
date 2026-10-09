@@ -8,6 +8,7 @@ import { EvalClient } from "./eval";
 import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
 import type { OpenHarnessShell } from "./harnessShell";
+import { ExecutionRoleSourceReader } from "./executionRoleSource";
 import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
 import { PaymentClient } from "./payment";
@@ -85,6 +86,7 @@ export class CoreClient implements AwsClients {
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
   readonly harness: HarnessClient;
+  readonly executionRoleSource = new ExecutionRoleSourceReader(this);
   readonly identity: IdentityClient = new IdentityClient(this);
   readonly memory: MemoryClient = new MemoryClient(this);
   readonly runtime: RuntimeClient;
