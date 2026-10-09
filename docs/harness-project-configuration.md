@@ -17,7 +17,7 @@
 
 ## Harness Project Files
 
-`agentcore create` (without `--template`) and `agentcore add harness` share the same
+The `agentcore create` wizard's harness option and `agentcore add harness` share the same
 scaffolding flow. Each harness has `app/<name>/harness.yaml` and
 `app/<name>/system-prompt.md`:
 

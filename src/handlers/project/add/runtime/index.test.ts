@@ -411,6 +411,27 @@ describe("project add runtime", () => {
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
   });
 
+  test("escapes quotes in --model-id in the scaffolded model code", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "quoted",
+      "--template",
+      "agent-python-strands",
+      "--model-provider",
+      "lite_llm",
+      "--model-id",
+      'openai/we"ird',
+    ]);
+
+    const loadPy = await Bun.file(join(projectRoot, "app", "quoted", "model", "load.py")).text();
+    expect(loadPy).toContain('model_id="openai/we\\"ird"');
+  });
+
   test("openai_compatible renders the OpenAI client against --api-base", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -642,7 +663,7 @@ describe("project add runtime", () => {
         run(["add", "runtime", "--name", "my_agent", "--template", template]),
       ).rejects.toThrow();
       const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-      expect(spec.runtimes).toEqual([]);
+      expect(spec.runtimes ?? []).toEqual([]);
       expect(
         await Bun.file(join(projectRoot, "app", "my_agent", "lifecycle", "server.py")).exists(),
       ).toBe(false);

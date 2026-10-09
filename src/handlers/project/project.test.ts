@@ -2,7 +2,6 @@ import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { parse } from "yaml";
 import { createRootHandler } from "../index";
 import {
   createSilentLogger,
@@ -15,7 +14,6 @@ import {
 } from "../../testing";
 import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
-import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { resolveScaffoldHarnessInput } from "./create/index";
 
 async function run(
@@ -69,30 +67,16 @@ describe("project create", () => {
     expect(io.stderr()).not.toContain("Next steps");
   });
 
-  test("scaffolds a harness project by default, named for the project", async () => {
+  test("scaffolds an empty project when --template is omitted", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
-    await run(["create", "--name", "MyAgent"]);
+    await run(["create", "--name", "MyAgent", "--skip-install", "--skip-git"]);
 
     const projectRoot = join(directory, "MyAgent");
     const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.harnesses).toEqual([{ name: "MyAgent", path: "app/MyAgent" }]);
-    expect(spec.runtimes).toEqual([]);
-
-    const harness = parse(
-      await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
-    );
-    expect(harness.model).toEqual({
-      bedrockModelConfig: { modelId: "global.anthropic.claude-sonnet-5-5" },
-    });
-    expect(harness.memory).toEqual({ managedMemoryConfiguration: {} });
-    expect(harness.systemPrompt).toBeUndefined();
-    expect(harness.tools).toEqual([]);
-    expect(harness.skills).toEqual([]);
-    expect(existsSync(join(projectRoot, "app", "MyAgent", "harness.json"))).toBe(false);
-    expect(await Bun.file(join(projectRoot, "app", "MyAgent", "system-prompt.md")).exists()).toBe(
-      true,
-    );
+    expect(spec.runtimes ?? []).toEqual([]);
+    expect(spec.harnesses ?? []).toEqual([]);
+    expect(existsSync(join(projectRoot, "app", "MyAgent"))).toBe(false);
   });
 
   test("refuses a project root that would exceed MAX_PATH on Windows, leaving nothing behind", async () => {
@@ -111,7 +95,7 @@ describe("project create", () => {
     expect(await readdir(deep)).toEqual(["Deep"]);
   });
 
-  test("a harness create installs CDK dependencies and git only (no uv sync)", async () => {
+  test("an empty create installs CDK dependencies and git only (no uv sync)", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const { io, core } = await run(["create", "--name", "MyAgent"]);
@@ -124,8 +108,13 @@ describe("project create", () => {
       },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
-    // `agentcore dev` does not serve harnesses, so the next step is deploy.
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
+    // An empty project has nothing to run or deploy yet, so the next steps point at `add`.
+    expect(io.stderr()).toContain("Created empty project 'MyAgent' in ./MyAgent.");
+    expect(io.stderr()).toMatch(
+      /Next steps:\n  cd MyAgent\n  agentcore add harness +add a config-based agent/,
+    );
+    expect(io.stderr()).toMatch(/agentcore add runtime +add a code-based agent from a template/);
+    expect(io.stderr()).toContain("agentcore add --help");
   });
 
   test("the empty template scaffolds a project with no runtime and no harness", async () => {
@@ -146,130 +135,7 @@ describe("project create", () => {
     expect(spec.runtimes ?? []).toEqual([]);
     expect(spec.harnesses ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app"))).toBe(true);
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
-  });
-
-  test("rejects --model-provider with the empty template", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run(["create", "--name", "MyAgent", "--template", "empty", "--model-provider", "anthropic"]),
-    ).rejects.toThrow(/--model-provider only applies to runtime templates/);
-  });
-
-  test("rejects --model-provider without a template", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run(["create", "--name", "MyAgent", "--model-provider", "anthropic"]),
-    ).rejects.toThrow(/--model-provider only applies to runtime templates/);
-  });
-
-  test.each([
-    ["open_ai", "openAiModelConfig", "MyAgentOpenAIApiKey", "gpt-6.1-sol"],
-    ["gemini", "geminiModelConfig", "MyAgentGeminiApiKey", "gemini-3.8-flash"],
-    [
-      "litellm",
-      "liteLlmModelConfig",
-      "MyAgentLiteLLMApiKey",
-      "bedrock/global.anthropic.claude-sonnet-5-5",
-    ],
-  ])(
-    "the default harness takes --model-provider %s with a file:// --api-key",
-    async (provider, modelKey, credentialName, modelId) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(directory, "api-key.txt");
-      await Bun.write(apiKeyPath, "harness-api-key\n");
-
-      await run([
-        "create",
-        "--name",
-        "MyAgent",
-        "--model-provider",
-        provider,
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--skip-install",
-        "--skip-git",
-      ]);
-
-      const projectRoot = join(directory, "MyAgent");
-      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-      expect(spec.credentials).toEqual([
-        { authorizerType: "ApiKeyCredentialProvider", name: credentialName },
-      ]);
-      const harness = parse(
-        await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
-      );
-      expect(harness.model).toEqual({
-        [modelKey]: { modelId, apiKeyCredentialName: credentialName },
-      });
-      const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-      expect(envLocal).toContain(`${credentialEnvVarName(credentialName)}='harness-api-key'`);
-    },
-  );
-
-  test("the default harness reads --api-key from stdin", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await run(
-      [
-        "create",
-        "--name",
-        "MyAgent",
-        "--model-provider",
-        "gemini",
-        "--model-id",
-        "gemini-pro",
-        "--api-key",
-        "-",
-        "--skip-install",
-        "--skip-git",
-      ],
-      { stdin: "stdin-key\n" },
-    );
-    const projectRoot = join(directory, "MyAgent");
-    const harness = parse(
-      await Bun.file(join(projectRoot, "app", "MyAgent", "harness.yaml")).text(),
-    );
-    expect(harness.model).toEqual({
-      geminiModelConfig: { modelId: "gemini-pro", apiKeyCredentialName: "MyAgentGeminiApiKey" },
-    });
-    const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(envLocal).toContain("'stdin-key'");
-  });
-
-  test("the default harness refuses --api-key for bedrock, and an inline key, before writing", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await expectError(
-      run(["create", "--name", "MyAgent", "--api-key", "-"], { stdin: "key" }),
-      /--api-key is not supported for the bedrock model provider/,
-      InputValidationError,
-    );
-    await expectError(
-      run(["create", "--name", "MyAgent", "--model-provider", "bedrock", "--api-key", "-"], {
-        stdin: "key",
-      }),
-      /--api-key is not supported for the bedrock model provider/,
-      InputValidationError,
-    );
-    await expectError(
-      run(["create", "--name", "MyAgent", "--model-provider", "open_ai", "--api-key", "sk-inline"]),
-      /inline secret values are not accepted/,
-      SourceResolutionError,
-    );
-    expect(existsSync(join(directory, "MyAgent"))).toBe(false);
-  });
-
-  test("the default harness requires --api-key for open_ai and gemini", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await expectError(
-      run(["create", "--name", "MyAgent", "--model-provider", "open_ai"]),
-      /--model-provider open_ai requires --api-key/,
-      InputValidationError,
-    );
-    expect(existsSync(join(directory, "MyAgent"))).toBe(false);
+    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore add harness");
   });
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
@@ -282,60 +148,6 @@ describe("project create", () => {
           "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/apikeycredentialprovider/k",
       }),
     ).toThrow(/either an API key or an API key credential provider ARN, not both/);
-  });
-
-  test("--api-base still only applies to runtime templates", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyAgent",
-        "--model-provider",
-        "litellm",
-        "--api-base",
-        "https://x.example.com",
-      ]),
-    ).rejects.toThrow(/--api-base only applies to runtime templates/);
-  });
-
-  test("rejects --api-key with a template that does not support it", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await expect(
-      run(
-        [
-          "create",
-          "--name",
-          "MyProject",
-          "--template",
-          "agent-python-minimal",
-          "--api-key",
-          "-",
-          "--skip-install",
-          "--skip-git",
-        ],
-        { stdin: "secret-key" },
-      ),
-    ).rejects.toThrow(/--api-key is not valid with the agent-python-minimal template/);
-    expect(existsSync(join(directory, "MyProject"))).toBe(false);
-  });
-
-  test("rejects --model-provider with a template that does not support it", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-langchain",
-        "--model-provider",
-        "anthropic",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/--model-provider is not valid with the agent-python-langchain template/);
   });
 
   test("runs the post-scaffold steps and reports progress on stderr", async () => {
@@ -405,69 +217,8 @@ describe("project create", () => {
     expect(await Bun.file(join(projectRoot, "app", "agent", "main.py")).exists()).toBe(true);
   });
 
-  test("scaffolds a keyless LiteLLM runtime with no credential", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await run([
-      "create",
-      "--name",
-      "MyProject",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "lite_llm",
-      "--skip-install",
-      "--skip-git",
-    ]);
-
-    const projectRoot = join(directory, "MyProject");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes).toHaveLength(1);
-    expect(spec.credentials ?? []).toEqual([]);
-  });
-
-  test.each<[string, string]>([
-    ["anthropic", "agentAnthropicApiKey"],
-    ["open_ai", "agentOpenAIApiKey"],
-    ["gemini", "agentGeminiApiKey"],
-    ["lite_llm", "agentLiteLLMApiKey"],
-  ])("scaffolds a runtime with a %s API-key credential", async (provider, credentialName) => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "test-api-key");
-
-    await run([
-      "create",
-      "--name",
-      "MyProject",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      provider,
-      "--api-key",
-      `file://${apiKeyPath}`,
-      "--skip-install",
-      "--skip-git",
-    ]);
-
-    const projectRoot = join(directory, "MyProject");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.credentials).toContainEqual({
-      authorizerType: "ApiKeyCredentialProvider",
-      name: credentialName,
-    });
-    const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(envLocal).toContain("test-api-key");
-    const loadModel = await Bun.file(join(projectRoot, "app", "agent", "model", "load.py")).text();
-    expect(loadModel).toContain(
-      `os.environ.get("${credentialEnvVarName(credentialName, "_NAME")}", "${credentialName}")`,
-    );
-  });
-
-  // The A2A and AG-UI strands templates take the same model-provider overrides
-  // as agent-python-strands: same model module, same per-provider extras, same
-  // credential wiring — only the protocol differs.
+  // The A2A and AG-UI strands templates scaffold the same Bedrock model module
+  // as agent-python-strands — only the protocol differs.
   // The third column is each template's strands-agents version range: the A2A
   // template is pinned (upstream #2511), AG-UI still carries the open range.
   const PROTOCOL_STRANDS_TEMPLATES: [string, string, string][] = [
@@ -476,54 +227,7 @@ describe("project create", () => {
   ];
 
   test.each(PROTOCOL_STRANDS_TEMPLATES)(
-    "%s scaffolds an API-key provider like agent-python-strands",
-    async (template, protocol, strandsRange) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(directory, "api-key.txt");
-      await Bun.write(apiKeyPath, "test-api-key");
-
-      await run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        template,
-        "--model-provider",
-        "anthropic",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--skip-install",
-        "--skip-git",
-      ]);
-
-      const projectRoot = join(directory, "MyProject");
-      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-      expect(spec.runtimes[0]).toMatchObject({
-        name: "agent",
-        protocol,
-        modelProvider: "Anthropic",
-      });
-      expect(spec.credentials).toEqual([
-        { authorizerType: "ApiKeyCredentialProvider", name: "agentAnthropicApiKey" },
-      ]);
-      expect(await Bun.file(join(projectRoot, "agentcore", ".env.local")).text()).toContain(
-        "test-api-key",
-      );
-      const loadModel = await Bun.file(
-        join(projectRoot, "app", "agent", "model", "load.py"),
-      ).text();
-      expect(loadModel).toContain("from strands.models.anthropic import AnthropicModel");
-      expect(loadModel).toContain(`model_id="${DEFAULT_MODEL_IDS.Anthropic}"`);
-      expect(loadModel).not.toContain("BedrockModel");
-      const pyproject = await Bun.file(join(projectRoot, "app", "agent", "pyproject.toml")).text();
-      expect(pyproject).toContain(`"strands-agents[anthropic] ${strandsRange}"`);
-      expect(pyproject).not.toContain(`"strands-agents ${strandsRange}"`);
-    },
-  );
-
-  test.each(PROTOCOL_STRANDS_TEMPLATES)(
-    "%s still scaffolds its Bedrock default without overrides",
+    "%s scaffolds its Bedrock default",
     async (template, protocol, strandsRange) => {
       const { path: directory, cleanup } = await inTempDirectory();
       cleanups.push(cleanup);
@@ -553,312 +257,6 @@ describe("project create", () => {
     },
   );
 
-  test.each(["openai_compatible", "openai-compatible", "OpenAICompatible"])(
-    "%s renders the OpenAI client against the base URL and records the provider",
-    async (spelling) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(directory, "api-key.txt");
-      await Bun.write(apiKeyPath, "sk-compatible");
-
-      await run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        spelling,
-        "--model-id",
-        "deepseek-chat",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--api-base",
-        "https://api.deepseek.com/v1",
-        "--skip-install",
-        "--skip-git",
-      ]);
-
-      const projectRoot = join(directory, "MyProject");
-      const appRoot = join(projectRoot, "app", "agent");
-      const loadModel = await Bun.file(join(appRoot, "model", "load.py")).text();
-      expect(loadModel).toContain("from strands.models.openai import OpenAIModel");
-      expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
-      expect(loadModel).toContain('model_id="deepseek-chat"');
-      const pyproject = await Bun.file(join(appRoot, "pyproject.toml")).text();
-      expect(pyproject).toContain('"strands-agents[openai] >= 1.15.0, < 2.0.0"');
-      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-      expect(spec.runtimes[0].modelProvider).toBe("OpenAICompatible");
-      expect(spec.runtimes[0].modelApiBase).toBeUndefined();
-      expect(spec.credentials).toEqual([
-        { authorizerType: "ApiKeyCredentialProvider", name: "agentOpenAICompatibleApiKey" },
-      ]);
-    },
-  );
-
-  test("openai_compatible requires --api-base", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-compatible");
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "openai_compatible",
-        "--model-id",
-        "deepseek-chat",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/openai_compatible requires --api-base/);
-    expect(existsSync(join(directory, "MyProject"))).toBe(false);
-  });
-
-  test("openai_compatible requires --model-id (it has no default)", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-compatible");
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "openai_compatible",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--api-base",
-        "https://api.deepseek.com/v1",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/openai_compatible requires --model-id/);
-    expect(existsSync(join(directory, "MyProject"))).toBe(false);
-  });
-
-  test("open_ai always calls api.openai.com and refuses --api-base", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-openai");
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "open_ai",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--api-base",
-        "https://api.deepseek.com/v1",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/only supported with the openai_compatible model provider/);
-    expect(existsSync(join(directory, "MyProject"))).toBe(false);
-  });
-
-  test("open_ai scaffolds the OpenAI client without a base URL and persists none", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-openai");
-    await run([
-      "create",
-      "--name",
-      "MyProject",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "open_ai",
-      "--api-key",
-      `file://${apiKeyPath}`,
-      "--skip-install",
-      "--skip-git",
-    ]);
-    const projectRoot = join(directory, "MyProject");
-    const loadModel = await Bun.file(join(projectRoot, "app", "agent", "model", "load.py")).text();
-    expect(loadModel).not.toContain("base_url");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0].modelApiBase).toBeUndefined();
-  });
-
-  test("rejects --api-base with a provider other than openai_compatible", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-ant");
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "anthropic",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--api-base",
-        "https://example.com/v1",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/only supported with the openai_compatible model provider/);
-    expect(existsSync(join(directory, "MyProject"))).toBe(false);
-  });
-
-  test("rejects an --api-base that is not a URL", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "MyProject",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "openai_compatible",
-        "--model-id",
-        "deepseek-chat",
-        "--api-base",
-        "api.deepseek.com",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/url/i);
-  });
-
-  test("agent-typescript-strands scaffolds an API-key provider through AgentCore Identity", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-ant-ts");
-
-    await run([
-      "create",
-      "--name",
-      "TsAgent",
-      "--template",
-      "agent-typescript-strands",
-      "--model-provider",
-      "anthropic",
-      "--api-key",
-      `file://${apiKeyPath}`,
-      "--skip-install",
-      "--skip-git",
-    ]);
-
-    const appRoot = join(directory, "TsAgent", "app", "agent");
-    const spec = await Bun.file(join(directory, "TsAgent", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0]).toMatchObject({
-      modelProvider: "Anthropic",
-      runtimeVersion: "NODE_22",
-    });
-    expect(spec.credentials).toEqual([
-      { authorizerType: "ApiKeyCredentialProvider", name: "agentAnthropicApiKey" },
-    ]);
-    const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
-    expect(loadModel).toContain("from '@strands-agents/sdk/models/anthropic'");
-    expect(loadModel).toContain(`modelId: '${DEFAULT_MODEL_IDS.Anthropic}'`);
-    expect(loadModel).not.toContain("BedrockModel");
-    const apiKey = await Bun.file(join(appRoot, "model", "apiKey.ts")).text();
-    expect(apiKey).toContain("from 'bedrock-agentcore/identity'");
-    expect(apiKey).toContain(
-      `process.env.${credentialEnvVarName("agentAnthropicApiKey")}_NAME ?? "agentAnthropicApiKey"`,
-    );
-    const pkg = await Bun.file(join(appRoot, "package.json")).json();
-    expect(pkg.dependencies["@anthropic-ai/sdk"]).toBeDefined();
-    expect(pkg.dependencies["openai"]).toBeUndefined();
-    expect(await Bun.file(join(directory, "TsAgent", "agentcore", ".env.local")).text()).toContain(
-      "sk-ant-ts",
-    );
-  });
-
-  test("agent-typescript-strands with openai_compatible points the OpenAI client at the endpoint", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(directory, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-ds");
-
-    await run([
-      "create",
-      "--name",
-      "TsAgent",
-      "--template",
-      "agent-typescript-strands",
-      "--model-provider",
-      "openai_compatible",
-      "--model-id",
-      "deepseek-chat",
-      "--api-key",
-      `file://${apiKeyPath}`,
-      "--api-base",
-      "https://api.deepseek.com/v1",
-      "--skip-install",
-      "--skip-git",
-    ]);
-
-    const appRoot = join(directory, "TsAgent", "app", "agent");
-    const loadModel = await Bun.file(join(appRoot, "model", "load.ts")).text();
-    expect(loadModel).toContain("from '@strands-agents/sdk/models/openai'");
-    expect(loadModel).toContain("clientConfig: { baseURL: 'https://api.deepseek.com/v1' }");
-    expect(loadModel).toContain("modelId: 'deepseek-chat'");
-    const pkg = await Bun.file(join(appRoot, "package.json")).json();
-    expect(pkg.dependencies["openai"]).toBeDefined();
-    expect(pkg.dependencies["@anthropic-ai/sdk"]).toBeUndefined();
-    const spec = await Bun.file(join(directory, "TsAgent", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0].modelProvider).toBe("OpenAICompatible");
-    expect(spec.runtimes[0].modelApiBase).toBeUndefined();
-  });
-
-  test("lite_llm on a TypeScript template points at openai_compatible", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "TsAgent",
-        "--template",
-        "agent-typescript-strands",
-        "--model-provider",
-        "lite_llm",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/only available for Python templates.*openai_compatible with --api-base/);
-  });
-
-  test("openai_compatible without a template is refused before the harness path", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "HarnessApp",
-        "--model-provider",
-        "openai_compatible",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/--model-provider only applies to runtime templates/);
-    expect(existsSync(join(directory, "HarnessApp"))).toBe(false);
-  });
-
   test("agent-typescript-strands keeps its Bedrock default without the identity module", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
@@ -885,27 +283,6 @@ describe("project create", () => {
       "tsx",
       "zod",
     ]);
-  });
-
-  test("rejects lite_llm for a TypeScript template", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "TsAgent",
-        "--template",
-        "agent-typescript-strands",
-        "--model-provider",
-        "lite_llm",
-        "--model-id",
-        "deepseek/deepseek-chat",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow(/only available for Python templates/);
-    expect(existsSync(join(directory, "TsAgent"))).toBe(false);
   });
 
   test("scaffolds a Container agent from the strands -container template", async () => {
@@ -1130,6 +507,15 @@ describe("project create", () => {
   test("rejects a reserved --name", async () => {
     cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["create", "--name", "test"])).rejects.toThrow(/conflicts with/);
+  });
+
+  test("rejects the model flags it no longer takes", async () => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    for (const removed of ["--model-provider", "--model-id", "--api-key", "--api-base"]) {
+      await expect(run(["create", "--name", "MyAgent", removed, "x"])).rejects.toThrow(
+        `unknown option '${removed}'`,
+      );
+    }
   });
 
   test("rejects an unknown --template value", async () => {
@@ -1722,8 +1108,8 @@ describe("project build", () => {
 
   test("resolves the project from a nested directory", async () => {
     const projectRoot = await inBuildableProject();
-    // The default create scaffolds a harness directory named for the project.
-    process.chdir(join(projectRoot, "app", "MyAgent"));
+    // The default (empty) create still scaffolds the app directory.
+    process.chdir(join(projectRoot, "app"));
 
     const { core } = await run(["build"]);
 
@@ -1779,40 +1165,10 @@ describe("create in China regions", () => {
         "--region",
         "cn-north-1",
       ]),
-    ).rejects.toThrow(/not accessible from China regions.*To use this template/);
+    ).rejects.toThrow(
+      /not accessible from China regions.*To use this template.*'agentcore create' takes no model flags/,
+    );
   });
-
-  test.each(["litellm", "LiteLLM", "openai-compatible"])(
-    "accepts the add-runtime provider spelling %s on create",
-    async (spelling) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(directory, "api-key.txt");
-      await Bun.write(apiKeyPath, "sk-test\n");
-      const openai = spelling.toLowerCase() === "openai-compatible";
-      await run([
-        "create",
-        "--name",
-        "CnAlias",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        spelling,
-        "--model-id",
-        openai ? "deepseek-chat" : "deepseek/deepseek-chat",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        ...(openai ? ["--api-base", "https://api.deepseek.com/v1"] : []),
-        ...skips,
-        "--region",
-        "cn-north-1",
-      ]);
-      const spec = JSON.parse(
-        await readFile(join(directory, "CnAlias", "agentcore", "agentcore.json"), "utf8"),
-      );
-      expect(spec.runtimes[0].modelProvider).toBe(openai ? "OpenAICompatible" : "LiteLLM");
-    },
-  );
 
   test("rejects the Bedrock Managed Agents template", async () => {
     cleanups.push((await inTempDirectory()).cleanup);
@@ -1829,98 +1185,6 @@ describe("create in China regions", () => {
       ]),
     ).rejects.toThrow(/Bedrock Managed Agents is not available in China regions/);
   });
-
-  test("requires --model-id with litellm", async () => {
-    cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "CnAgent",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "lite_llm",
-        ...skips,
-        "--region",
-        "cn-north-1",
-      ]),
-    ).rejects.toThrow(/requires --model-id in China regions/);
-  });
-
-  test("scaffolds litellm with --model-id and persists the provider", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await run([
-      "create",
-      "--name",
-      "CnAgent",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "lite_llm",
-      "--model-id",
-      "openai/qwen-max",
-      ...skips,
-      "--region",
-      "cn-north-1",
-    ]);
-
-    const projectRoot = join(directory, "CnAgent");
-    const loadPy = await readFile(join(projectRoot, "app", "agent", "model", "load.py"), "utf8");
-    expect(loadPy).toContain('model_id="openai/qwen-max"');
-
-    const spec = JSON.parse(
-      await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
-    );
-    expect(spec.runtimes[0].modelProvider).toBe("LiteLLM");
-    expect(spec.runtimes[0].modelId).toBe("openai/qwen-max");
-    // The template's default memory is dropped in China (AgentCore Memory has
-    // no CloudFormation type there), while the memory module stays in the code.
-    expect(spec.memories ?? []).toEqual([]);
-    expect(existsSync(join(projectRoot, "app", "agent", "memory"))).toBe(true);
-  });
-
-  test.each([
-    ["a2a-python-strands", "A2A"],
-    ["agui-python-strands", "AGUI"],
-  ])(
-    "scaffolds %s with litellm and --model-id, dropping the memory resource but keeping the module",
-    async (template, protocol) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      await run([
-        "create",
-        "--name",
-        "CnProto",
-        "--template",
-        template,
-        "--model-provider",
-        "lite_llm",
-        "--model-id",
-        "deepseek/deepseek-chat",
-        ...skips,
-        "--region",
-        "cn-north-1",
-      ]);
-
-      const projectRoot = join(directory, "CnProto");
-      const loadPy = await readFile(join(projectRoot, "app", "agent", "model", "load.py"), "utf8");
-      expect(loadPy).toContain("from strands.models.litellm import LiteLLMModel");
-      expect(loadPy).toContain('model_id="deepseek/deepseek-chat"');
-      const spec = JSON.parse(
-        await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
-      );
-      expect(spec.runtimes[0]).toMatchObject({
-        protocol,
-        modelProvider: "LiteLLM",
-        modelId: "deepseek/deepseek-chat",
-      });
-      expect(spec.memories ?? []).toEqual([]);
-      // main.py imports memory/session.py unconditionally; it must survive the strip.
-      expect(existsSync(join(projectRoot, "app", "agent", "memory", "session.py"))).toBe(true);
-    },
-  );
 
   test.each(["a2a-python-strands", "agui-python-strands"])(
     "rejects %s on its Bedrock default",
@@ -1940,123 +1204,6 @@ describe("create in China regions", () => {
       ).rejects.toThrow(/not accessible from China regions/);
     },
   );
-
-  test.each(["agent-python-strands", "agent-typescript-strands"])(
-    "refuses open_ai on %s like the other unreachable providers",
-    async (template) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(directory, "api-key.txt");
-      await Bun.write(apiKeyPath, "sk-openai");
-      await expect(
-        run([
-          "create",
-          "--name",
-          "CnOpenAI",
-          "--template",
-          template,
-          "--model-provider",
-          "open_ai",
-          "--api-key",
-          `file://${apiKeyPath}`,
-          ...skips,
-          "--region",
-          "cn-north-1",
-        ]),
-      ).rejects.toThrow(
-        /OpenAI is not accessible from China regions.*--model-provider openai_compatible --api-base/,
-      );
-      expect(existsSync(join(directory, "CnOpenAI"))).toBe(false);
-    },
-  );
-
-  test.each([
-    ["agent-python-strands", "model/load.py", '"base_url": "https://api.deepseek.com/v1"'],
-    ["a2a-python-strands", "model/load.py", '"base_url": "https://api.deepseek.com/v1"'],
-    ["agui-python-strands", "model/load.py", '"base_url": "https://api.deepseek.com/v1"'],
-    ["agent-typescript-strands", "model/load.ts", "baseURL: 'https://api.deepseek.com/v1'"],
-  ])(
-    "scaffolds %s with openai_compatible, recording the provider",
-    async (template, file, needle) => {
-      const { path: directory, cleanup } = await inTempDirectory();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(directory, "api-key.txt");
-      await Bun.write(apiKeyPath, "sk-ds");
-      await run([
-        "create",
-        "--name",
-        "CnOpenAI",
-        "--template",
-        template,
-        "--model-provider",
-        "openai_compatible",
-        "--model-id",
-        "deepseek-chat",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--api-base",
-        "https://api.deepseek.com/v1",
-        ...skips,
-        "--region",
-        "cn-north-1",
-      ]);
-
-      const projectRoot = join(directory, "CnOpenAI");
-      expect(await readFile(join(projectRoot, "app", "agent", file), "utf8")).toContain(needle);
-      const spec = JSON.parse(
-        await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
-      );
-      expect(spec.runtimes[0].modelProvider).toBe("OpenAICompatible");
-      expect(spec.runtimes[0].modelApiBase).toBeUndefined();
-      expect(spec.memories ?? []).toEqual([]);
-      // The entrypoint imports the memory module unconditionally; it must survive the strip.
-      expect(existsSync(join(projectRoot, "app", "agent", "memory"))).toBe(true);
-    },
-  );
-
-  test("rejects a bedrock/ LiteLLM model id in a China region", async () => {
-    const { cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await expect(
-      run([
-        "create",
-        "--name",
-        "CnBedrockRoute",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "lite_llm",
-        "--model-id",
-        "bedrock/us.anthropic.claude-sonnet-4-5-20250514-v1:0",
-        ...skips,
-        "--region",
-        "cn-north-1",
-      ]),
-    ).rejects.toThrow(/'bedrock\/' LiteLLM model id prefix routes to Amazon Bedrock/);
-  });
-
-  test("escapes quotes in --model-id in the scaffolded model code", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    await run([
-      "create",
-      "--name",
-      "QuotedModel",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "lite_llm",
-      "--model-id",
-      'openai/we"ird',
-      ...skips,
-      "--region",
-      "cn-north-1",
-    ]);
-
-    const projectRoot = join(directory, "QuotedModel");
-    const loadPy = await readFile(join(projectRoot, "app", "agent", "model", "load.py"), "utf8");
-    expect(loadPy).toContain('model_id="openai/we\\"ird"');
-  });
 
   test("allows a provider-free template", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -2078,11 +1225,12 @@ describe("create in China regions", () => {
     expect(spec.runtimes[0].modelProvider).toBeUndefined();
   });
 
-  test("rejects the default harness project", async () => {
+  test("allows omitting --template, which scaffolds the empty project", async () => {
     cleanups.push((await inTempDirectory()).cleanup);
-    await expect(
-      run(["create", "--name", "CnHarness", ...skips, "--region", "cn-north-1"]),
-    ).rejects.toThrow(/Harness projects are not available in China regions/);
+    const { io } = await run(["create", "--name", "CnDefault", ...skips, "--region", "cn-north-1"]);
+    // Harnesses are not available in China, so the next steps skip `add harness`.
+    expect(io.stderr()).toContain("Next steps:\n  cd CnDefault\n  agentcore add runtime");
+    expect(io.stderr()).not.toContain("add harness");
   });
 
   test("allows the empty template", async () => {
