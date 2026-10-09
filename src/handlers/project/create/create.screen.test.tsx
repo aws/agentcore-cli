@@ -1101,10 +1101,14 @@ describe("project create wizard", () => {
 
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
-    await waitForText(r.lastFrame, "project created in ./EmptyApp", 5000);
-    // Nothing to run locally, so the next step is deploy.
-    expect(r.lastFrame()).toContain("agentcore deploy");
-    expect(r.lastFrame()).not.toContain("agentcore dev");
+    await waitForText(r.lastFrame, "empty project created in ./EmptyApp", 5000);
+    // Nothing to run or deploy yet, so the next steps point at `add`.
+    const frame = flatFrame(r.lastFrame);
+    expect(frame).toContain("no agents or other resources yet");
+    expect(frame).toContain("agentcore add harness");
+    expect(frame).toContain("agentcore add runtime");
+    expect(frame).toContain("agentcore add --help");
+    expect(frame).not.toContain("agentcore dev");
 
     expect(inputs[0]).toEqual({ name: "EmptyApp", skipInstall: false, skipGit: false });
 
@@ -1447,6 +1451,6 @@ describe("project create dispatch", () => {
     ]);
 
     expect(existsSync(join(directory, "FlagApp", "agentcore", "agentcore.json"))).toBe(true);
-    expect(streams.stderr()).toContain("Created project 'FlagApp'");
+    expect(streams.stderr()).toContain("Created empty project 'FlagApp'");
   }, 10000);
 });

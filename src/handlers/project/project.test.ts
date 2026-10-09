@@ -108,8 +108,13 @@ describe("project create", () => {
       },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
-    // An empty project has nothing for `agentcore dev` to serve, so the next step is deploy.
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
+    // An empty project has nothing to run or deploy yet, so the next steps point at `add`.
+    expect(io.stderr()).toContain("Created empty project 'MyAgent' in ./MyAgent.");
+    expect(io.stderr()).toMatch(
+      /Next steps:\n  cd MyAgent\n  agentcore add harness +add a config-based agent/,
+    );
+    expect(io.stderr()).toMatch(/agentcore add runtime +add a code-based agent from a template/);
+    expect(io.stderr()).toContain("agentcore add --help");
   });
 
   test("the empty template scaffolds a project with no runtime and no harness", async () => {
@@ -130,7 +135,7 @@ describe("project create", () => {
     expect(spec.runtimes ?? []).toEqual([]);
     expect(spec.harnesses ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app"))).toBe(true);
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore deploy");
+    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore add harness");
   });
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
@@ -1222,7 +1227,10 @@ describe("create in China regions", () => {
 
   test("allows omitting --template, which scaffolds the empty project", async () => {
     cleanups.push((await inTempDirectory()).cleanup);
-    await run(["create", "--name", "CnDefault", ...skips, "--region", "cn-north-1"]);
+    const { io } = await run(["create", "--name", "CnDefault", ...skips, "--region", "cn-north-1"]);
+    // Harnesses are not available in China, so the next steps skip `add harness`.
+    expect(io.stderr()).toContain("Next steps:\n  cd CnDefault\n  agentcore add runtime");
+    expect(io.stderr()).not.toContain("add harness");
   });
 
   test("allows the empty template", async () => {

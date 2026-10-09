@@ -30,6 +30,7 @@ import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
 import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
 import { chinaModelProviderRestriction } from "../../../core/project/manager";
+import { isChinaRegion } from "../../../core/partition";
 import { harnessApiKeyCredentialName } from "../../../core/project/templates/harness";
 
 type CreateProjectHandlerConfig = {
@@ -54,6 +55,44 @@ export const DEFAULT_CREATE_RUNTIME_NAME = "agent";
  */
 export function createNextStep(scaffoldsRuntime: boolean): string {
   return scaffoldsRuntime ? "agentcore dev" : "agentcore deploy";
+}
+
+/**
+ * The next steps after creating an empty project, shared by the flag path and
+ * the wizard: it has nothing to run or deploy yet, so they point at
+ * `agentcore add`. Harnesses are left out in China regions, where they are not
+ * available.
+ */
+export function emptyProjectNextSteps(name: string, china: boolean): string[] {
+  const steps: [string, string][] = [
+    ...(china
+      ? []
+      : [["agentcore add harness", "add a config-based agent: pick a model, prompt, and tools"]]),
+    ["agentcore add runtime", "add a code-based agent from a template"],
+    [
+      "agentcore add --help",
+      "see everything else you can add (memory, gateways, credentials, ...)",
+    ],
+    ["agentcore deploy", "deploy to AWS once the project has resources"],
+  ] as [string, string][];
+  const width = Math.max(...steps.map(([command]) => command.length)) + 2;
+  return [
+    `cd ${name}`,
+    ...steps.map(([command, description]) => `${command.padEnd(width)}${description}`),
+  ];
+}
+
+export const EMPTY_PROJECT_SUMMARY = "It has no agents or other resources yet.";
+
+/** The full message printed after creating an empty project. */
+export function emptyProjectCreatedMessage(name: string, china: boolean): string {
+  return [
+    `Created empty project '${name}' in ./${name}. ${EMPTY_PROJECT_SUMMARY}`,
+    "",
+    "Next steps:",
+    ...emptyProjectNextSteps(name, china).map((step) => `  ${step}`),
+    "",
+  ].join("\n");
 }
 
 export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =>
@@ -137,6 +176,10 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
           project: projectReference(project),
         },
         () => {
+          if (template === EMPTY_TEMPLATE_NAME) {
+            config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
+            return;
+          }
           config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
           config.io.stderr.write(
             `Next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
