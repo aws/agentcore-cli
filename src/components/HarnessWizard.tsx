@@ -8,7 +8,11 @@ import type {
   UpdateHarnessRequest,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CreateHarnessInput } from "../handlers/harness/types";
-import { DEFAULT_HARNESS_MODEL, harnessModelIdHelp } from "../projectSchemas/harness";
+import {
+  DEFAULT_HARNESS_MODEL,
+  HARNESS_DEFAULT_MODEL_IDS,
+  harnessModelIdHelp,
+} from "../projectSchemas/harness";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
@@ -70,6 +74,7 @@ export function emptyHarnessForm(): HarnessFormValues {
 
 // defaultModelId is the model ID a provider starts with in the create flow.
 function defaultModelId(kind: ModelKind): string {
+  if (kind === "litellm") return HARNESS_DEFAULT_MODEL_IDS.lite_llm;
   return kind === DEFAULT_HARNESS_MODEL.provider ? DEFAULT_HARNESS_MODEL.modelId : "";
 }
 
@@ -657,14 +662,15 @@ const MODEL_PROVIDERS: {
         key: "modelId",
         name: "model ID",
         helpText: harnessModelIdHelp("lite_llm", "the LiteLLM model identifier (provider/model)"),
-        placeholder: "anthropic/claude-sonnet-5-5",
+        placeholder: HARNESS_DEFAULT_MODEL_IDS.lite_llm,
         required: true,
         requiredError: "enter a LiteLLM model identifier",
       },
       {
         key: "apiKeyArn",
         name: "API key ARN",
-        helpText: "optional · an AgentCore Identity API-key credential provider ARN",
+        helpText:
+          "optional · Providers that require API keys need an AgentCore Identity API-key credential provider ARN. Bedrock models can use AWS IAM or an API key.",
         placeholder: "arn:aws:bedrock-agentcore:…:token-vault/…",
         required: false,
         requiredError: "",
@@ -783,7 +789,7 @@ function ModelStep({
   return (
     <Box flexDirection="column" paddingX={1}>
       <FormRadioGroup
-        name="choose a model provider"
+        name="choose a model provider or gateway"
         helpText="the provider and model that will power the harness"
         options={rows}
         focusedIndex={focusedField === null ? index : undefined}

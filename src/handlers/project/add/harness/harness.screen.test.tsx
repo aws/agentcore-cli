@@ -277,6 +277,9 @@ describe("project add harness wizard", () => {
 
     // LiteLLM is the one provider with an API base; its key is optional.
     await waitForText(screen.lastFrame, "Custom API base URL");
+    expect(flatFrame(screen.lastFrame)).toContain(
+      "optional · API-key providers need file://<path> or an AgentCore Identity API-key credential provider ARN. Bedrock can use AWS IAM or an API key.",
+    );
     expect(screen.lastFrame()).toContain(
       "leave blank to use the model provider's default endpoint",
     );

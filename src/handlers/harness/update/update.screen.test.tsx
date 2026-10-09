@@ -96,40 +96,60 @@ describe("harness update wizard", () => {
     r.unmount();
   });
 
-  test("prefills the current bedrock model and sends nothing when unchanged", async () => {
-    const core = coreForUpdate();
-    const current = currentHarness();
-    current.harness!.model = {
-      bedrockModelConfig: { modelId: "us.anthropic.claude-opus-4-8" },
-    };
-    core.harness.setGetResponse(current);
-    const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
+  test.each([
+    ["bedrock", { bedrockModelConfig: { modelId: "us.anthropic.claude-opus-4-8" } }],
+    [
+      "litellm",
+      {
+        liteLlmModelConfig: {
+          modelId: "anthropic/claude-sonnet-5-5",
+          apiKeyArn:
+            "arn:aws:bedrock-agentcore:us-east-1:123:token-vault/default/apikeycredentialprovider/anthropic",
+          apiBase: "https://models.example.com/v1",
+        },
+      },
+    ],
+  ] as const)(
+    "prefills the current %s model and sends nothing when unchanged",
+    async (provider, model) => {
+      const core = coreForUpdate();
+      const current = currentHarness();
+      current.harness!.model = model;
+      const modelId =
+        "bedrockModelConfig" in model
+          ? model.bedrockModelConfig.modelId
+          : model.liteLlmModelConfig.modelId;
+      core.harness.setGetResponse(current);
+      const r = renderScreen("/agentcore/harness/update/MyHarness-abc123", { core });
 
-    // The harness's bedrock provider is preselected. Its persisted model id is
-    // revealed after confirming the provider.
-    await waitForText(r.lastFrame, "● bedrock");
-    expect(r.lastFrame()).not.toContain("us.anthropic.claude-opus-4-8");
-    await r.press("return"); // into the model id field
-    await waitForText(r.lastFrame, "us.anthropic.claude-opus-4-8");
-    await r.press("return"); // accept it unchanged
-    await waitForText(r.lastFrame, "● managed");
-    await r.press("return");
-    await waitForText(r.lastFrame, "[✓] browser");
-    await r.press("return");
-    await waitForText(r.lastFrame, "type or paste the agent's instructions");
-    await r.write(" Now v2.");
-    await r.write("\x04");
-    await waitForText(r.lastFrame, "sent to UpdateHarness");
-    await r.press("return");
+      await waitForText(r.lastFrame, `● ${provider}`);
+      expect(r.lastFrame()).not.toContain(modelId);
+      await r.press("return"); // into the model id field
+      await waitForText(r.lastFrame, modelId);
+      await r.press("return"); // accept it unchanged
+      if (provider === "litellm") {
+        await r.press("return"); // keep the existing key
+        await r.press("return"); // keep the existing endpoint
+      }
+      await waitForText(r.lastFrame, "● managed");
+      await r.press("return");
+      await waitForText(r.lastFrame, "[✓] browser");
+      await r.press("return");
+      await waitForText(r.lastFrame, "type or paste the agent's instructions");
+      await r.write(" Now v2.");
+      await r.write("\x04");
+      await waitForText(r.lastFrame, "sent to UpdateHarness");
+      await r.press("return");
 
-    await waitFor(() => core.harness.calls.some((c) => c.method === "updateHarness"));
-    const call = core.harness.calls.find((c) => c.method === "updateHarness")!;
-    expect(call.args[0]).toEqual({
-      harnessId: "MyHarness-abc123",
-      systemPrompt: [{ text: "You are v1. Now v2." }],
-    });
-    r.unmount();
-  });
+      await waitFor(() => core.harness.calls.some((c) => c.method === "updateHarness"));
+      const call = core.harness.calls.find((c) => c.method === "updateHarness")!;
+      expect(call.args[0]).toEqual({
+        harnessId: "MyHarness-abc123",
+        systemPrompt: [{ text: "You are v1. Now v2." }],
+      });
+      r.unmount();
+    },
+  );
 
   test("reveals the current bring-your-own memory ARN only after enter", async () => {
     const core = coreForUpdate();

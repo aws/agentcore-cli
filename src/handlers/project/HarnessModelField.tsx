@@ -193,9 +193,9 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
     fields.push({
       key: "apiKey",
       name: "API key",
-      helpText:
-        (optional ? "optional · " : "") +
-        "file://<path> to the key file, or a credential provider ARN",
+      helpText: optional
+        ? "optional · API-key providers need file://<path> or an AgentCore Identity API-key credential provider ARN. Bedrock can use AWS IAM or an API key."
+        : "file://<path> to the key file, or a credential provider ARN",
       placeholder: optional ? "optional" : "file://./api-key.txt",
       required: !optional,
       requiredError: `enter the API key file or credential provider ARN for ${providerLabel(provider)}`,
@@ -361,7 +361,7 @@ export function HarnessModelField({
       >
         <FormRadioGroup
           key="provider"
-          helpText="choose a model provider"
+          helpText="choose a model provider or gateway"
           options={options}
           focusedIndex={focusedField === null ? providerIndex : undefined}
           selectedIndex={providerIndex}

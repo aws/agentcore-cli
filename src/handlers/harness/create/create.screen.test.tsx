@@ -1,6 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import type { CreateHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import { DEFAULT_HARNESS_MODEL } from "../../../projectSchemas/harness";
+import { DEFAULT_HARNESS_MODEL, HARNESS_DEFAULT_MODEL_IDS } from "../../../projectSchemas/harness";
 import {
   renderScreen,
   waitForText,
@@ -49,7 +49,7 @@ describe("harness create wizard", () => {
 
     // Step: model provider — bedrock is preselected with the default model ID;
     // enter reveals it and enter again accepts it.
-    await waitForText(r.lastFrame, "choose a model provider");
+    await waitForText(r.lastFrame, "choose a model provider or gateway");
     expect(r.lastFrame()).toContain("● model provider ──");
     expect(r.lastFrame()).toContain("● bedrock");
     expect(r.lastFrame()).not.toContain("service default");
@@ -231,46 +231,61 @@ describe("harness create wizard", () => {
     r.unmount();
   });
 
-  test("litellm omits the optional fields left empty", async () => {
-    const core = coreForCreate();
-    const r = renderScreen("/agentcore/harness/create", { core });
+  test.each([HARNESS_DEFAULT_MODEL_IDS.lite_llm, "anthropic/claude-3-sonnet"])(
+    "litellm uses %s and omits the optional fields left empty",
+    async (modelId) => {
+      const core = coreForCreate();
+      const r = renderScreen("/agentcore/harness/create", { core });
 
-    await waitForText(r.lastFrame, "the name of your harness");
-    await r.write("my_agent");
-    await r.press("return");
+      await waitForText(r.lastFrame, "the name of your harness");
+      await r.write("my_agent");
+      await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // gemini
-    await r.press("down"); // openai
-    await r.press("down"); // litellm
-    await waitForText(r.lastFrame, "● litellm");
-    await r.press("return"); // focus the model id field
-    await waitForText(r.lastFrame, "Custom API base URL");
-    expect(r.lastFrame()).toContain("leave blank to use the model provider's default endpoint");
-    await r.write("anthropic/claude-3-sonnet");
-    await r.press("return"); // api key arn — optional, leave empty
-    await r.press("return"); // api base url — optional, leave empty
-    await r.press("return");
+      await waitForText(r.lastFrame, "choose a model provider");
+      await r.press("down"); // gemini
+      await r.press("down"); // openai
+      await r.press("down"); // litellm
+      await waitForText(r.lastFrame, "● litellm");
+      await r.press("return"); // focus the model id field
+      await waitForText(r.lastFrame, "Custom API base URL");
+      expect(r.lastFrame()?.replace(/\s+/g, " ")).toContain(
+        "optional · Providers that require API keys need an AgentCore Identity API-key credential provider ARN. Bedrock models can use AWS IAM or an API key.",
+      );
+      expect(r.lastFrame()).toContain("leave blank to use the model provider's default endpoint");
+      await waitForText(r.lastFrame, HARNESS_DEFAULT_MODEL_IDS.lite_llm);
+      if (modelId !== HARNESS_DEFAULT_MODEL_IDS.lite_llm) {
+        for (let i = 0; i < HARNESS_DEFAULT_MODEL_IDS.lite_llm.length; i++) {
+          await r.press("backspace");
+        }
+        expect(r.lastFrame()).toContain(HARNESS_DEFAULT_MODEL_IDS.lite_llm);
+        await r.press("return");
+        await waitForText(r.lastFrame, "enter a LiteLLM model identifier");
+        await r.write(modelId);
+      }
+      await r.press("return"); // api key arn — optional, leave empty
+      await r.press("return"); // api base url — optional, leave empty
+      await r.press("return");
 
-    await waitForText(r.lastFrame, "how should the harness remember conversations?");
-    await r.press("return");
-    await waitForText(r.lastFrame, "which tools should the agent be able to use?");
-    await r.press("return");
-    await waitForText(r.lastFrame, "type or paste the agent's instructions");
-    await r.write("\x04");
-    await waitForText(r.lastFrame, "sent to CreateHarness");
-    await r.press("return");
+      await waitForText(r.lastFrame, "how should the harness remember conversations?");
+      await r.press("return");
+      await waitForText(r.lastFrame, "which tools should the agent be able to use?");
+      await r.press("return");
+      await waitForText(r.lastFrame, "type or paste the agent's instructions");
+      await r.write("\x04");
+      await waitForText(r.lastFrame, "sent to CreateHarness");
+      await r.press("return");
 
-    await waitFor(() => core.harness.calls.some((c) => c.method === "createHarness"));
-    const call = core.harness.calls.find((c) => c.method === "createHarness")!;
-    expect(call.args[0]).toEqual({
-      harnessName: "my_agent",
-      model: { liteLlmModelConfig: { modelId: "anthropic/claude-3-sonnet" } },
-      memory: { managedMemoryConfiguration: {} },
-      tools: [BROWSER_TOOL],
-    });
-    r.unmount();
-  });
+      await waitFor(() => core.harness.calls.some((c) => c.method === "createHarness"));
+      const call = core.harness.calls.find((c) => c.method === "createHarness")!;
+      expect(call.args[0]).toEqual({
+        harnessName: "my_agent",
+        model: { liteLlmModelConfig: { modelId } },
+        memory: { managedMemoryConfiguration: {} },
+        tools: [BROWSER_TOOL],
+      });
+      r.unmount();
+    },
+  );
 
   test("switching providers leaves the Bedrock default out of other providers' model ID", async () => {
     const r = renderScreen("/agentcore/harness/create", { core: coreForCreate() });
