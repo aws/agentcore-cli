@@ -139,7 +139,7 @@ describe("project status handler", () => {
           : undefined,
     });
     const subject = statusCommand(backend);
-    const projectRoot = await inProject();
+    const projectRoot = await inProject({ harnesses: [{ name: "orders", path: "app/orders" }] });
     const stateDirectory = join(projectRoot, "agentcore", ".cli");
     await mkdir(stateDirectory, { recursive: true });
     await Bun.write(

@@ -125,7 +125,10 @@ afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 /** Scaffolds a project whose aws-targets.json holds exactly `contents`, and cds into it. */
 async function inProjectWithTargets(contents: string = JSON.stringify(TARGETS)): Promise<string> {
-  const { projectRoot, cleanup } = await initProject({ name: "orders" });
+  const { projectRoot, cleanup } = await initProject({
+    name: "orders",
+    flags: ["--template", "agent-python-minimal"],
+  });
   cleanups.push(cleanup);
   await writeFile(join(projectRoot, "agentcore", "aws-targets.json"), contents);
   return projectRoot;

@@ -75,7 +75,11 @@ async function inProject(
   core: TestCoreClient,
   options: { empty?: boolean; targets?: boolean; staging?: boolean } = {},
 ): Promise<string> {
-  const { projectRoot, cleanup } = await initProject({ name: "orders", core });
+  const { projectRoot, cleanup } = await initProject({
+    name: "orders",
+    flags: ["--template", "agent-python-minimal"],
+    core,
+  });
   cleanups.push(cleanup);
   if (options.targets !== false) {
     await writeFile(

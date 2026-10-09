@@ -40,11 +40,12 @@ A project holds either kind of agent, or both:
   AgentCore runs for you.
 - A **Runtime** is agent code you own, scaffolded from a template and deployed for you.
 
-Create a Harness project, deploy it, and send a prompt:
+Create a project, add a Harness to it, deploy it, and send a prompt:
 
 ```bash
-agentcore create --name MyAssistant
-cd MyAssistant
+agentcore create --name MyProject
+cd MyProject
+agentcore add harness --name MyAssistant
 agentcore deploy
 agentcore invoke --harness MyAssistant --prompt "Hey, what can you do for me?"
 ```
@@ -55,16 +56,19 @@ To start from code you own instead, pick a template (`agentcore create --help` l
 agentcore create --name MyAgent --template agent-python-strands
 ```
 
-Templates that take a model provider (`agent-python-strands` and its `-container` variant,
-`a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) also accept
-`--model-provider` (`bedrock`, `anthropic`, `open_ai`, `openai_compatible`, `gemini`, `lite_llm`;
-`openai` and `litellm` are accepted too; LiteLLM is Python-only), `--model-id`, and
-`--api-key file://<path>`; the API key is kept in `agentcore/.env.local` and provisioned as an
-AgentCore Identity credential on deploy. `openai_compatible` is the OpenAI client pointed at any
-OpenAI-compatible endpoint (DeepSeek, Qwen, a self-hosted vLLM, …): it requires
-`--api-base <url>` and `--model-id <model>`, since nothing is known about the endpoint until you
-name it, while `open_ai` always calls api.openai.com and takes neither. A self-hosted endpoint that
-ignores authentication still needs an `--api-key` file; any placeholder value works.
+`agentcore create --template` scaffolds the template with its default model provider (Amazon
+Bedrock for the model-backed templates). To use another provider, add the runtime with
+`agentcore add runtime --template <template>` instead: templates that take a model provider
+(`agent-python-strands` and its `-container` variant, `a2a-python-strands`, `agui-python-strands`,
+`agent-typescript-strands`) accept `--model-provider` (`bedrock`, `anthropic`, `open_ai`,
+`openai_compatible`, `gemini`, `lite_llm`; `openai` and `litellm` are accepted too; LiteLLM is
+Python-only), `--model-id`, and `--api-key file://<path>` there; the API key is kept in
+`agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy.
+`openai_compatible` is the OpenAI client pointed at any OpenAI-compatible endpoint (DeepSeek, Qwen,
+a self-hosted vLLM, …): it requires `--api-base <url>` and `--model-id <model>`, since nothing is
+known about the endpoint until you name it, while `open_ai` always calls api.openai.com and takes
+neither. A self-hosted endpoint that ignores authentication still needs an `--api-key` file; any
+placeholder value works.
 
 Run `agentcore create` with no flags for a guided setup; for those templates the wizard asks the
 same provider, model id, and API-key-file questions. Either way, run it outside any existing

@@ -255,11 +255,7 @@ create a new project
 **Options**
 
 - `--name <name>`: name of the project to create (required)
-- `--template <template>`: the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key
-- `--model-provider <model-provider>`: model provider for templates that support it: bedrock, anthropic, open\_ai (or openai), openai\_compatible, gemini, or lite\_llm (or litellm)
-- `--model-id <model-id>`: model id for the scaffolded Runtime code, overriding the provider's default (required with openai\_compatible, and with litellm in China regions)
-- `--api-key <api-key>`: API key for non-Bedrock providers: '-' for stdin, 'file://path' for file
-- `--api-base <api-base>`: base URL of the endpoint for --model-provider openai\_compatible (required with it, not accepted with other providers)
+- `--template <template>`: the template to scaffold the Runtime from (default: "empty")
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)
 
@@ -509,6 +505,7 @@ add a harness to the current project (not available in China regions)
 
 - `--name <name>`: the name of the harness
 - `--model <model>`: model configuration (JSON)
+- `--api-key <api-key>`: API key for a non-Bedrock --model; '-' for stdin, 'file://path' for file
 - `--system-prompt <system-prompt>`: the agent's system prompt
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
 - `--tools <tools>`: tools available to the agent (JSON)
