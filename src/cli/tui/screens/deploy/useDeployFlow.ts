@@ -170,6 +170,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     logger,
     isInteractive,
     selectedTarget: selectedTargets?.[0],
+    selectedTargets,
     dependencySyncCheckOnly: diffMode,
   });
 
@@ -778,7 +779,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (preflight.phase === 'error') {
       const error = preflight.lastError ?? new Error('Preflight failed');
       const attrs = withDepSyncAttrs(
-        context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
+        context ? computeDeployAttrs(context.projectSpec, 'deploy', selectedTargets) : { ...DEFAULT_DEPLOY_ATTRS },
         preflight.dependencySyncResult
       );
       withCommandRunTelemetry('deploy', attrs, () => ({ success: false as const, error })).catch(() => {
@@ -791,7 +792,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
     if (!cdkToolkitWrapper) return;
 
     const attrs = withDepSyncAttrs(
-      context ? computeDeployAttrs(context.projectSpec, 'deploy') : { ...DEFAULT_DEPLOY_ATTRS },
+      context ? computeDeployAttrs(context.projectSpec, 'deploy', selectedTargets) : { ...DEFAULT_DEPLOY_ATTRS },
       preflight.dependencySyncResult
     );
 
@@ -1082,7 +1083,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
       const error = preflight.lastError ?? new Error('Preflight failed');
       const attrs = withDepSyncAttrs(
         context
-          ? computeDeployAttrs(context.projectSpec, 'diff')
+          ? computeDeployAttrs(context.projectSpec, 'diff', selectedTargets)
           : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
         preflight.dependencySyncResult
       );
@@ -1097,7 +1098,7 @@ export function useDeployFlow(options: DeployFlowOptions = {}): DeployFlowState 
 
     const attrs = withDepSyncAttrs(
       context
-        ? computeDeployAttrs(context.projectSpec, 'diff')
+        ? computeDeployAttrs(context.projectSpec, 'diff', selectedTargets)
         : { ...DEFAULT_DEPLOY_ATTRS, deploy_mode: 'diff' as const },
       preflight.dependencySyncResult
     );

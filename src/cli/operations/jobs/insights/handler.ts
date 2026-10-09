@@ -21,6 +21,7 @@ import type { CloudWatchFilterConfig, DataSourceConfig } from '../../../aws/agen
 import { resolveEndpointName, runtimeLogGroup } from '../../../aws/cloudwatch';
 import { detectRegion } from '../../../aws/region';
 import { ExecLogger } from '../../../logging/exec-logger';
+import { getPhysicalProjectNameForTarget } from '../../resource-naming';
 import { resolveBatchEvaluatorIds } from '../batch-evaluation/build-source';
 import { NOT_FOUND_STATUS } from '../shared/constants';
 import { regionFromArn, resolveJobRegion } from '../shared/region';
@@ -108,7 +109,12 @@ export const insightsHandler: InsightsHandler = {
         }
 
         const endpointName = resolveEndpointName(opts.endpoint);
-        const serviceName = `${projectSpec.name}_${agentName}.${endpointName}`;
+        const physicalProjectName = getPhysicalProjectNameForTarget(
+          projectSpec.name,
+          awsTargets,
+          agentState.targetName
+        );
+        const serviceName = `${physicalProjectName}_${agentName}.${endpointName}`;
         const logGroupName = runtimeLogGroup(agentState.runtimeId, opts.endpoint);
         logger?.log(`Service name: ${serviceName}`);
         logger?.log(`Log group: ${logGroupName}`);

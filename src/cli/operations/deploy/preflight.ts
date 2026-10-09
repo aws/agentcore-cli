@@ -11,8 +11,9 @@ import { validateAwsCredentials } from '../../aws/account';
 import { LocalCdkProject } from '../../cdk/local-cdk-project';
 import { CdkToolkitWrapper, createCdkToolkitWrapper, silentIoHost } from '../../cdk/toolkit-lib';
 import { checkBootstrapStatus, checkStacksStatus, formatCdkEnvironment } from '../../cloudformation';
-import { MAX_GATEWAY_NAME_LENGTH, MAX_RUNTIME_NAME_LENGTH } from '../../constants';
+import { CDK_PROJECT_DIR, MAX_GATEWAY_NAME_LENGTH, MAX_RUNTIME_NAME_LENGTH } from '../../constants';
 import { cleanupStaleLockFiles } from '../../tui/utils';
+import { getPhysicalProjectName, validatePhysicalProjectName } from '../resource-naming';
 import type { IIoHost } from '@aws-cdk/toolkit-lib';
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
@@ -108,8 +109,15 @@ export function hasDeployableResources(spec: AgentCoreProjectSpec): boolean {
  * Validates the CDK project and loads configuration.
  * Also validates AWS credentials are configured before proceeding.
  * Returns the project context needed for subsequent steps.
+ *
+ * @param selectedTarget Target whose credentials are validated (defaults to the first target).
+ * @param deployingTargets Every target this deploy will touch, when more than one is selected
+ *   (TUI multi-select). Defaults to `[selectedTarget]`, or all targets when none is selected.
  */
-export async function validateProject(selectedTarget?: AwsDeploymentTarget): Promise<PreflightContext> {
+export async function validateProject(
+  selectedTarget?: AwsDeploymentTarget,
+  deployingTargets?: AwsDeploymentTarget[]
+): Promise<PreflightContext> {
   // Find the agentcore config directory, walking up from cwd if needed
   const configRoot = requireConfigRoot();
   // Project root is the parent of the agentcore directory
@@ -128,9 +136,11 @@ export async function validateProject(selectedTarget?: AwsDeploymentTarget): Pro
   // deployed-state.json is written by the CLI after every successful deploy, so it is a
   // reliable indicator of whether a CloudFormation stack exists for this project.
   let hasExistingStack = false;
+  let deployedTargetNames: string[] = [];
   try {
     const deployedState = await configIO.readDeployedState();
-    hasExistingStack = Object.keys(deployedState.targets).length > 0;
+    deployedTargetNames = Object.keys(deployedState.targets);
+    hasExistingStack = deployedTargetNames.length > 0;
   } catch {
     // No deployed state file — no existing stack
   }
@@ -148,11 +158,30 @@ export async function validateProject(selectedTarget?: AwsDeploymentTarget): Pro
     isTeardownDeploy = true;
   }
 
-  // Validate runtime names don't exceed AWS limits
-  validateRuntimeNames(projectSpec);
+  const targetsToDeploy = deployingTargets ?? (selectedTarget ? [selectedTarget] : awsTargets);
 
-  // Validate gateway names don't exceed AWS limits
-  validateGatewayNames(projectSpec);
+  // Validate per-target resource name prefixes (project name + optional resourceNameSuffix)
+  for (const target of targetsToDeploy) {
+    validatePhysicalProjectName(projectSpec.name, target);
+  }
+  const physicalProjectNames = targetsToDeploy.length
+    ? [...new Set(targetsToDeploy.map(t => getPhysicalProjectName(projectSpec.name, t)))]
+    : [projectSpec.name];
+
+  for (const physicalProjectName of physicalProjectNames) {
+    // Validate runtime names don't exceed AWS limits
+    validateRuntimeNames(projectSpec, physicalProjectName);
+
+    // Validate gateway names don't exceed AWS limits
+    validateGatewayNames(projectSpec, physicalProjectName);
+  }
+
+  // Validate targets sharing an account+region won't collide on physical resource names.
+  // A teardown deploy creates nothing, so it can't collide.
+  if (!isTeardownDeploy) {
+    validateTargetIsolation(projectSpec, awsTargets, targetsToDeploy, deployedTargetNames);
+    validateCdkAppSupportsSuffix(targetsToDeploy, configRoot);
+  }
 
   // Validate Container agents have Dockerfiles
   validateContainerAgents(projectSpec, configRoot);
@@ -177,8 +206,7 @@ export async function validateProject(selectedTarget?: AwsDeploymentTarget): Pro
 /**
  * Validates that combined runtime names (projectName_agentName) don't exceed AWS limits.
  */
-function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
-  const projectName = projectSpec.name;
+function validateRuntimeNames(projectSpec: AgentCoreProjectSpec, projectName: string): void {
   for (const agent of projectSpec.runtimes || []) {
     const agentName = agent.name;
     if (agentName) {
@@ -199,8 +227,7 @@ function validateRuntimeNames(projectSpec: AgentCoreProjectSpec): void {
  * The deployed gateway resource name is `${projectName}-${gatewayName}` and AWS rejects names
  * over 48 chars at CreateGateway — surface that here instead of as an opaque CREATE_FAILED.
  */
-export function validateGatewayNames(projectSpec: AgentCoreProjectSpec): void {
-  const projectName = projectSpec.name;
+export function validateGatewayNames(projectSpec: AgentCoreProjectSpec, projectName: string = projectSpec.name): void {
   for (const gateway of projectSpec.agentCoreGateways || []) {
     // Imported gateways carry an explicit resourceName that AWS already accepted; skip those.
     if (gateway.resourceName) continue;
@@ -212,6 +239,80 @@ export function validateGatewayNames(projectSpec: AgentCoreProjectSpec): void {
           `Shorten the project name or gateway name in agentcore.json.`
       );
     }
+  }
+}
+
+/**
+ * Validates that targets sharing an account+region won't collide on physical resource names.
+ *
+ * Deployed resource names are prefixed with the project name (plus the target's optional
+ * resourceNameSuffix), not the target name, so two such targets need different suffixes.
+ * Payment managers/connectors aren't prefixed at all and can never be isolated this way.
+ *
+ * Fails only when the other target is already deployed or deployed in the same run; otherwise
+ * warns, so configs that deploy fine today (only one of the targets ever deployed) keep working.
+ */
+export function validateTargetIsolation(
+  projectSpec: AgentCoreProjectSpec,
+  awsTargets: readonly AwsDeploymentTarget[],
+  targetsToDeploy: readonly AwsDeploymentTarget[],
+  deployedTargetNames: readonly string[]
+): void {
+  const hasPayments = (projectSpec.payments?.length ?? 0) > 0;
+  const blocking = new Set([...deployedTargetNames, ...targetsToDeploy.map(t => t.name)]);
+  const reported = new Set<string>();
+
+  for (const target of targetsToDeploy) {
+    const physicalName = getPhysicalProjectName(projectSpec.name, target);
+    for (const other of awsTargets) {
+      if (other.name === target.name || other.account !== target.account || other.region !== target.region) {
+        continue;
+      }
+      const sameNames = getPhysicalProjectName(projectSpec.name, other) === physicalName;
+      if (!sameNames && !hasPayments) continue;
+
+      const pairKey = [target.name, other.name].sort().join('\0');
+      if (reported.has(pairKey)) continue;
+      reported.add(pairKey);
+
+      const reason = sameNames
+        ? `both prefix their resource names with "${physicalName}". ` +
+          `Set a different "resourceNameSuffix" on one of them in aws-targets.json.`
+        : `the project has payment managers, which are not prefixed with the project name and can't be ` +
+          `isolated per target. Deploy one of these targets to a different account or region.`;
+      const message =
+        `Targets "${target.name}" and "${other.name}" deploy to the same account (${target.account}) ` +
+        `and region (${target.region}), and ${reason}`;
+
+      if (blocking.has(other.name)) {
+        throw new ValidationError(message);
+      }
+      console.warn(`Warning: ${message} Deploying "${other.name}" as well will fail.`);
+    }
+  }
+}
+
+/**
+ * The vended CDK app is copied once at `agentcore create`, so projects created before
+ * resourceNameSuffix existed would silently ignore it and collide anyway. Fail early instead.
+ */
+function validateCdkAppSupportsSuffix(targetsToDeploy: readonly AwsDeploymentTarget[], configRoot: string): void {
+  const suffixed = targetsToDeploy.find(t => t.resourceNameSuffix);
+  if (!suffixed) return;
+
+  const cdkAppPath = path.join(configRoot, CDK_PROJECT_DIR, 'bin', 'cdk.ts');
+  let source: string;
+  try {
+    source = readFileSync(cdkAppPath, 'utf-8');
+  } catch {
+    return; // Missing/unreadable CDK app is reported by the CDK project validation/build steps.
+  }
+  if (!source.includes('resourceNameSuffix')) {
+    throw new ValidationError(
+      `Target "${suffixed.name}" sets resourceNameSuffix, but this project's CDK app (${cdkAppPath}) ` +
+        `predates that option and would ignore it. Update agentcore/cdk/bin/cdk.ts as described in ` +
+        `docs/configuration.md ("Multiple targets in one account and region").`
+    );
   }
 }
 

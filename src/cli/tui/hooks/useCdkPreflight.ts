@@ -148,6 +148,8 @@ export interface PreflightOptions {
   skipIdentityCheck?: boolean;
   /** Target selected by the TUI. Falls back to the first configured target when omitted. */
   selectedTarget?: AwsDeploymentTarget;
+  /** Every target selected for this deploy (multi-select), used for cross-target name collision checks. */
+  selectedTargets?: AwsDeploymentTarget[];
   /**
    * Preview mode (diff): the managed-dependency sync runs check-only, computing the plan and a
    * future-tense notice without writing package.json or running npm install. Previews must never
@@ -226,6 +228,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     isInteractive = false,
     skipIdentityCheck = false,
     selectedTarget,
+    selectedTargets,
     dependencySyncCheckOnly = false,
   } = options;
 
@@ -425,7 +428,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
         let preflightContext: PreflightContext;
         let target: AwsDeploymentTarget | undefined;
         try {
-          preflightContext = await validateProject(selectedTarget);
+          preflightContext = await validateProject(selectedTarget, selectedTargets);
           target = selectedTarget ?? preflightContext.awsTargets[0];
           setContext(preflightContext);
           // Make aws-targets.json region authoritative for downstream SDK / CDK
@@ -713,6 +716,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     teardownConfirmed,
     restoreRegionEnv,
     selectedTarget,
+    selectedTargets,
   ]);
 
   // Handle identity-setup phase (after user provides credentials)

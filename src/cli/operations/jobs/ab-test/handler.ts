@@ -20,6 +20,7 @@ import { getGatewayDetail, getOnlineEvaluationConfig } from '../../../aws/agentc
 import { detectRegion } from '../../../aws/region';
 import { getErrorMessage } from '../../../errors';
 import { ExecLogger } from '../../../logging/exec-logger';
+import { getPhysicalProjectNameForTarget } from '../../resource-naming';
 import { NOT_FOUND_STATUS } from '../shared/constants';
 import { regionFromArn, resolveJobRegion } from '../shared/region';
 import type { ABTestHandler, ABTestJobRecord, DebugCheckResult, StartABTestJobOptions } from '../shared/types';
@@ -124,6 +125,13 @@ export const abTestHandler: ABTestHandler = {
       logger?.log(`Gateway ARN: ${gatewayArn}`);
       logger?.endStep('success');
 
+      // Name the test and its role after the target that owns the gateway, so targets sharing an
+      // account (distinct resourceNameSuffix) don't collide on the account-wide names.
+      const gatewayTargetName = Object.entries(deployedState.targets).find(
+        ([, target]) => resolveGatewayArn(opts.gateway, target.resources) === gatewayArn
+      )?.[0];
+      const physicalProjectName = getPhysicalProjectNameForTarget(projectSpec.name, awsTargets, gatewayTargetName);
+
       // Build variants + eval config (throws ValidationError on missing mode inputs).
       const built = buildABTestRequest(opts, deployedResources);
 
@@ -135,7 +143,7 @@ export const abTestHandler: ABTestHandler = {
         opts.onProgress?.('role', 'Creating execution role (waiting for IAM propagation)...');
         roleArn = await getOrCreateABTestRole({
           region,
-          projectName: projectSpec.name,
+          projectName: physicalProjectName,
           testName: opts.name,
           gatewayArn,
         });
@@ -149,7 +157,7 @@ export const abTestHandler: ABTestHandler = {
       opts.onProgress?.('starting', `Creating A/B test "${opts.name}"...`);
       const createOptions = {
         region,
-        name: `${projectSpec.name}_${opts.name}`,
+        name: `${physicalProjectName}_${opts.name}`,
         description: opts.description,
         gatewayArn,
         roleArn,
