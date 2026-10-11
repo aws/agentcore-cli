@@ -24,6 +24,7 @@ const DEFAULT_GROUPS = [
       "remove",
       "export",
       "build",
+      "migrate",
     ],
   },
   {

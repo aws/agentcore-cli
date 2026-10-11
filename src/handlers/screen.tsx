@@ -11,8 +11,10 @@ import { LoadingFrame, useProjectDetected } from "./project/ProjectGate";
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const ROOT_CLI_SECTION_COMMANDS = ["update"];
 const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
+// migrate is a one-off command-line upgrade of a v0 project; it is never a menu entry.
+const ALWAYS_HIDDEN_OPTIONS = ["migrate"];
 // build is a step deploy already runs; it stays a command but not a menu entry.
-const PROJECT_HIDDEN_OPTIONS = ["create", "build"];
+const PROJECT_HIDDEN_OPTIONS = ["create", "build", ...ALWAYS_HIDDEN_OPTIONS];
 const PROJECT_REQUIRED_OPTIONS = [
   "dev",
   "deploy",
@@ -25,7 +27,7 @@ const PROJECT_REQUIRED_OPTIONS = [
   "export",
   "build",
 ];
-const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS];
+const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS, ...ALWAYS_HIDDEN_OPTIONS];
 
 export interface RootScreenProps extends ScreenProps {
   inProject?: boolean;

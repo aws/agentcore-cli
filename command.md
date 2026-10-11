@@ -50,6 +50,7 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
   - [`agentcore export`](#agentcore-export)
     - [`agentcore export harness`](#agentcore-export-harness)
   - [`agentcore build`](#agentcore-build)
+  - [`agentcore migrate`](#agentcore-migrate)
 - [Resource commands](#resource-commands)
   - [`agentcore harness`](#agentcore-harness)
     - [`agentcore harness create`](#agentcore-harness-create)
@@ -948,6 +949,14 @@ agentcore build [options]
 ```
 
 build the project's deployable artifacts
+
+### `agentcore migrate`
+
+```text
+agentcore migrate [options]
+```
+
+migrate an AgentCore CLI v0 project to the current project format
 
 ## Resource commands
 

@@ -1,5 +1,12 @@
 import { type Handler } from "../../router";
-import { checkPort, openBrowser, startHttpServer, watchFile, type AppIO } from "../../io";
+import {
+  checkPort,
+  openBrowser,
+  runProcess,
+  startHttpServer,
+  watchFile,
+  type AppIO,
+} from "../../io";
 import { CodeZipDevRunner } from "../../core/dev/codezip";
 import { ContainerDevRunner } from "../../core/dev/container";
 import { InspectorAssets } from "../../core/dev/inspectorAssets";
@@ -13,6 +20,7 @@ import { loadDevEnvironment } from "./dev/environment";
 import { createDeployProjectHandler } from "./deploy";
 import { createStatusProjectHandler } from "./status";
 import { createBuildProjectHandler } from "./build";
+import { createMigrateProjectHandler } from "./migrate";
 import type { ProjectManager } from "./types";
 import { createAddProjectResourceHandler } from "./add";
 import { createExportProjectResourceHandler } from "./export";
@@ -34,6 +42,8 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
   // Returned in workflow order, which is the order `--help` and the TUI menu list them in:
   // the inner loop (dev, deploy, invoke), then observing it, then changing the project.
   // build is a step deploy already runs, so it goes last and the TUI menu hides it.
+  // migrate is a one-off upgrade from a v0 project, so it follows build; it
+  // finds the project itself because withProject can't parse a v0 project.
   const projectBoundHandlers = [
     createDevProjectHandler({
       projectManager,
@@ -77,6 +87,7 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
       io,
       middlewares: [withProjectMiddleware],
     }),
+    createMigrateProjectHandler({ runner: runProcess }),
   ];
 
   return [createHandler, ...projectBoundHandlers];
