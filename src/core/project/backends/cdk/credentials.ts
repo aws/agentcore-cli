@@ -39,9 +39,14 @@ export type DeployedCredentials = Record<string, DeployedCredential>;
 /**
  * The Identity name a credential's provider is created under. Scoped to the project
  * and target so two targets in one account and region never share a provider.
+ *
+ * A v0 project keeps the bare credential name v0 created its providers under: the
+ * agent code it deployed looks them up by that name, and a scoped name would create a
+ * second set of providers beside the ones still in use.
  */
-function providerName(projectName: string, targetName: string, credentialName: string): string {
-  return `${projectName}_${targetName}_${credentialName}`;
+function providerName(project: Project, targetName: string, credentialName: string): string {
+  if (project.legacy) return credentialName;
+  return `${project.name}_${targetName}_${credentialName}`;
 }
 
 const PROVIDER_NAME_MAX_LENGTH = 128;
@@ -133,6 +138,10 @@ export function orphanedCredentials(
  * nothing outside this target can be using it. A provider that is already gone is
  * not an error, and a provider that cannot be deleted is reported rather than
  * failing the deploy that already changed the stack.
+ *
+ * A v0 project's providers carry the bare credential name, so another project in the
+ * account can be using the same API key or OAuth provider; those are never deleted.
+ * Payment providers are deleted, as v0's own teardown deleted them.
  */
 export function createCredentialRemover(identity: ProviderDeletes): CredentialRemover {
   return async function* removeCredentials(
@@ -141,7 +150,14 @@ export function createCredentialRemover(identity: ProviderDeletes): CredentialRe
   ) {
     const options: CoreOptions = { region, credentials };
     for (const { name, authorizerType } of providers) {
-      const provider = providerName(project.name, targetName, name);
+      const provider = providerName(project, targetName, name);
+      if (project.legacy && authorizerType !== "PaymentCredentialProvider") {
+        yield {
+          type: "step",
+          message: `Leaving credential provider '${provider}' in place: v0 projects can share it`,
+        };
+        continue;
+      }
       yield { type: "step", message: `Removing credential provider '${provider}'` };
       try {
         await deleteProvider(identity, authorizerType, provider, options);
@@ -202,7 +218,7 @@ export function createCredentialProvisioner(
     // Every name is composed and checked before the first lookup, so one that is
     // too long fails the deploy before it touches Identity.
     const named: NamedCredential[] = declared.map((credential) => {
-      const provider = providerName(project.name, targetName, credential.name);
+      const provider = providerName(project, targetName, credential.name);
       if (provider.length > PROVIDER_NAME_MAX_LENGTH) {
         throw new ProjectStateError(
           `Credential '${credential.name}' would create a credential provider named ` +
