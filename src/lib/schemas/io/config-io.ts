@@ -201,8 +201,10 @@ export class ConfigIO {
 
   /**
    * Resolve a fallback region from environment variables or AWS profile config.
+   * Public so callers that need a region before any deploy target is saved (e.g.
+   * resolving a derived evaluator's level) can reuse the same precedence.
    */
-  private async resolveRegionFallback(): Promise<string | undefined> {
+  async resolveRegionFallback(): Promise<string | undefined> {
     // Check env vars first
     const envRegion = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
     if (envRegion && AgentCoreRegionSchema.safeParse(envRegion).success) {
