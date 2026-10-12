@@ -67,10 +67,10 @@ describe("evaluator menu", () => {
     await waitForText(screen.lastFrame, "get an evaluator by ID");
     await screen.resize(100, 45);
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["get", "list", "delete", "llm-as-a-judge", "code-based"],
+      screens: ["get", "list"],
       cliOnly: [],
     });
-    expect(screen.lastFrame()).toContain("── resources");
+    expect(screen.lastFrame()).not.toContain("── resources");
   });
 
   test("the eval root menu shows evaluator and online-eval", async () => {

@@ -65,7 +65,7 @@ describe("OAuth2 credential provider menu", () => {
     await waitForText(screen.lastFrame, "get an OAuth2 credential provider");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: ["create", "update", "delete"],
+      cliOnly: [],
     });
   });
 });

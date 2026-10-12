@@ -46,7 +46,6 @@ export function createHarnessHandler(core: Core, io: AppIO): Router {
   harness.handler(createExecHarnessHandler(core, io));
   harness.handler(createHarnessShellHandler(core, io));
   harness.commandSection("resources");
-  harness.listInMenu("logs", "traces");
   harness.handler(createHarnessLogsHandler(core, io));
   harness.handler(createHarnessTracesHandler(core, io));
 

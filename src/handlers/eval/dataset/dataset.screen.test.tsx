@@ -59,7 +59,7 @@ describe("dataset menu", () => {
     await waitForText(screen.lastFrame, "get a dataset's metadata");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: ["create", "delete", "update", "publish"],
+      cliOnly: [],
     });
   });
 });

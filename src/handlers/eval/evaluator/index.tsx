@@ -14,7 +14,6 @@ export function createEvaluatorHandler(core: Core, io: AppIO): Router {
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
-    .listInMenu("delete", "llm-as-a-judge", "code-based")
     .handler(createGetEvaluatorHandler(core))
     .handler(createListEvaluatorsHandler(core))
     .handler(createDeleteEvaluatorHandler(core))

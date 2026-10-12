@@ -1,5 +1,4 @@
 import { test, expect, describe, afterEach } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { PACKAGE_VERSION } from "../constants";
 import {
   cleanupScreens,
@@ -19,19 +18,7 @@ import type { Project } from "../handlers/project/types";
 
 afterEach(cleanupScreens);
 
-const PROJECT_WORKFLOW = [
-  "create",
-  "dev",
-  "deploy",
-  "invoke",
-  "status",
-  "logs",
-  "traces",
-  "add",
-  "remove",
-  "export",
-  "build",
-];
+const PROJECT_WORKFLOW = ["create", "dev", "deploy", "invoke", "status", "add", "remove", "build"];
 
 // menuGroups reads a RouterScreen frame's option names in display order,
 // grouped under the divider each follows (untitled for the leading group). The
@@ -81,31 +68,31 @@ describe("menu rendering", () => {
     {
       path: "/agentcore/harness",
       actions: ["create", "get", "list", "update", "delete", "invoke", "exec", "shell"],
-      related: ["logs", "traces", "endpoint", "version"],
+      related: ["endpoint", "version"],
       cli: [],
     },
     {
       path: "/agentcore/runtime",
       actions: ["create", "get", "list", "invoke", "shell", "exec"],
-      related: ["version", "endpoint", "logs", "traces"],
+      related: ["version", "endpoint"],
       cli: [],
     },
     {
       path: "/agentcore/eval/evaluator",
-      actions: ["get", "list", "delete"],
-      related: ["llm-as-a-judge", "code-based"],
+      actions: ["get", "list"],
+      related: [],
       cli: [],
     },
     {
       path: "/agentcore/eval/config-bundle",
-      actions: ["create", "get", "list", "update", "delete"],
+      actions: ["get", "list"],
       related: ["version"],
       cli: [],
     },
     {
       path: "/agentcore/eval/ab-test",
-      actions: ["get", "list", "pause", "resume", "stop", "delete"],
-      related: ["config-based", "target-based"],
+      actions: ["get", "list"],
+      related: [],
       cli: [],
     },
   ])(
@@ -117,7 +104,7 @@ describe("menu rendering", () => {
       const groups = menuGroups(r.lastFrame()!);
       expect(groups).toEqual([
         { title: undefined, names: [...actions] },
-        { title: "resources", names: [...related] },
+        ...(related.length ? [{ title: "resources", names: [...related] }] : []),
         ...(cli.length ? [{ title: "cli", names: [...cli] }] : []),
       ]);
       r.unmount();
@@ -139,77 +126,9 @@ describe("menu rendering", () => {
         expect(directHelp).toMatch(new RegExp(`^  ${name} {2,}`, "m"));
       }
       for (const name of related) expect(relatedHelp).toMatch(new RegExp(`^  ${name} {2,}`, "m"));
-      expect(relatedHelp).not.toBe("");
+      if (related.length > 0) expect(relatedHelp).not.toBe("");
     },
   );
-
-  test.each([
-    "/agentcore/logs",
-    "/agentcore/traces",
-    "/agentcore/harness/traces",
-    "/agentcore/runtime/traces",
-    "/agentcore/payment",
-    "/agentcore/payment/connector",
-    "/agentcore/payment/manager",
-    "/agentcore/payment/session",
-    "/agentcore/payment/instrument",
-  ])("%s has no extra divider above a CLI-only menu", async (path) => {
-    const r = renderScreen(path, { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "type to choose a command");
-
-    const frame = r.lastFrame()!;
-    const lines = frame.split("\n");
-    const filterRow = lines.findIndex((line) => /^\s*\/ /.test(line));
-    expect(lines[filterRow + 2]).toMatch(/^\s*❯ /);
-    expect(hasCliDivider(frame)).toBe(false);
-    r.unmount();
-  });
-
-  test("CLI-only command names use the same white and focused colors as other commands", () => {
-    // A separate process keeps ANSI enabled without changing the plain-text screen tests.
-    const result = spawnSync(
-      process.execPath,
-      [
-        "--eval",
-        `
-          import { renderScreen, waitForText } from "./src/testing/renderScreen.tsx";
-          const frames = [];
-          for (const [path, selected] of [
-            ["/agentcore", "feedback"],
-            ["/agentcore/harness", "logs"],
-          ]) {
-            const screen = renderScreen(path);
-            await waitForText(screen.lastFrame, selected);
-            const idle = screen.lastFrame();
-            await screen.write(selected);
-            frames.push({ idle, focused: screen.lastFrame(), selected });
-            screen.unmount();
-          }
-          process.stdout.write(JSON.stringify(frames));
-        `,
-      ],
-      {
-        cwd: new URL("../../", import.meta.url),
-        env: { ...process.env, FORCE_COLOR: "3", NO_COLOR: undefined, WT_SESSION: "bun-test" },
-        timeout: 10_000,
-        encoding: "utf8",
-      },
-    );
-    expect(result.status).toBe(0);
-    const frames = JSON.parse(result.stdout) as {
-      idle: string;
-      focused: string;
-      selected: string;
-    }[];
-    for (const [index, names] of [
-      ["runtime", "feedback", "config", "update"],
-      ["get", "update", "logs", "traces"],
-    ].entries()) {
-      const frame = frames[index]!;
-      for (const name of names) expect(frame.idle).toContain(`\u001b[37m${name}`);
-      expect(frame.focused).toContain(`\u001b[36m${glyphs.pointer} \u001b[1m${frame.selected}`);
-    }
-  });
 
   test("lists the current command's subcommands with their descriptions", async () => {
     const r = renderScreen("/agentcore");
@@ -228,8 +147,8 @@ describe("menu rendering", () => {
     expect(new Set([...entries.screens, ...entries.cliOnly]).size).toBe(
       entries.screens.length + entries.cliOnly.length,
     );
-    expect(frame).toContain("config");
-    expect(frame).toContain("read/write global config values");
+    expect(visible).not.toContain("config");
+    expect(visible).not.toContain("feedback");
     r.unmount();
   });
 
@@ -239,9 +158,9 @@ describe("menu rendering", () => {
 
     const entries = menuEntries(r.lastFrame()!);
     expect(entries.screens).toEqual(
-      expect.arrayContaining(["harness", "identity", "runtime", "memory", "gateway", "payment"]),
+      expect.arrayContaining(["harness", "identity", "runtime", "memory", "gateway"]),
     );
-    expect(entries.cliOnly).not.toContain("payment");
+    expect(entries.screens).not.toContain("payment");
     r.unmount();
   });
 
@@ -271,9 +190,9 @@ describe("menu rendering", () => {
       },
       {
         title: "resources",
-        names: ["harness", "runtime", "gateway", "identity", "memory", "eval", "payment"],
+        names: ["harness", "runtime", "gateway", "identity", "memory", "eval"],
       },
-      { title: "cli", names: ["feedback", "config", "update"] },
+      { title: "cli", names: ["update"] },
     ]);
     r.unmount();
   });
@@ -422,13 +341,13 @@ describe("narrow terminals", () => {
 });
 
 describe("filtering", () => {
-  test("removes the CLI-only divider when filtering leaves only that group and restores it", async () => {
+  test("CLI-only commands cannot be found through the filter", async () => {
     const r = renderScreen("/agentcore");
     await waitForText(r.lastFrame, "❯ create");
     expect(hasCliDivider(r.lastFrame()!)).toBe(true);
 
     await r.write("feedback");
-    await waitForText(r.lastFrame, "❯ feedback");
+    await waitForText(r.lastFrame, "No matches");
     expect(hasCliDivider(r.lastFrame()!)).toBe(false);
 
     for (const _ of "feedback") await r.press("backspace");
@@ -554,18 +473,6 @@ describe("navigation", () => {
 describe("short terminals", () => {
   const ROWS = 15;
 
-  test("does not reserve a row for a redundant CLI-only divider", async () => {
-    const r = renderScreen("/agentcore/logs", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ runtime");
-    await r.resize(100, 8);
-
-    expect(r.lastFrame()).toContain("❯ runtime");
-    expect(r.lastFrame()).toContain("harness");
-    expect(r.lastFrame()).not.toContain("more");
-    expect(hasCliDivider(r.lastFrame()!)).toBe(false);
-    r.unmount();
-  });
-
   // fullMenu renders the root menu at the default height, where every option fits.
   async function fullMenu() {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
@@ -668,9 +575,9 @@ describe("short terminals", () => {
     const full = await fullMenu();
     const r = await shortMenu();
 
-    const target = full.names.indexOf("payment");
+    const target = full.names.indexOf("eval");
     for (let i = 0; i < target; i++) await r.press("down");
-    await waitForText(r.lastFrame, "❯ payment");
+    await waitForText(r.lastFrame, "❯ eval");
     const groups = menuGroups(r.lastFrame()!);
     expect(groups[0]!.title).toBe("resources");
     expect(groups[0]!.names[0]).not.toBe("harness");

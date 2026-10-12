@@ -1,6 +1,6 @@
 import { Text } from "ink";
 import type { ScreenProps } from "../handlers/types";
-import { CommandInfoScreen } from "./CliOnlyScreen";
+import { CommandInfoScreen } from "./CommandInfoScreen";
 import { darkTheme } from "./ui/_core.js";
 
 export type ProjectCreateResource = "runtime" | "memory" | "gateway";

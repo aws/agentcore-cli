@@ -24,9 +24,7 @@ export function createAddProjectResourceHandler(
   config: AddProjectResourceConfig,
   core: Core,
 ): Router {
-  // The resources with a wizard of their own. Every other resource is listed in
-  // the add menu as command line only and opens its help instead (see
-  // CliOnlyScreen).
+  // Only resources with a wizard of their own appear in the add menu.
   const projectAdd = new Router("add", "add project resources").supportedTuiCommands(
     "runtime",
     "runtime-endpoint",

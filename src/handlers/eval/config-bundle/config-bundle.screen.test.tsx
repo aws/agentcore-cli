@@ -114,7 +114,7 @@ describe("configuration bundle menu", () => {
     );
     await screen.resize(100, 45);
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["create", "get", "list", "update", "delete", "version"],
+      screens: ["get", "list", "version"],
       cliOnly: [],
     });
     expect(screen.lastFrame()).toContain("── resources");

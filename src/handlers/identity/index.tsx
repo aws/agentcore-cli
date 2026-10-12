@@ -11,6 +11,7 @@ export function createIdentityHandler(core: Core, io: AppIO): Router {
   return new Router("identity", "manage API key and OAuth credential providers")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
+    .supportedTuiCommands("api-key-credential-provider", "oauth2-credential-provider")
     .handler(createApiKeyCredentialProviderHandler(core, io))
     .handler(createOauth2CredentialProviderHandler(core, io))
     .handler(createPaymentCredentialProviderHandler(core, io));

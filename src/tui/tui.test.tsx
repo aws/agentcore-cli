@@ -269,7 +269,7 @@ describe("TUI launch", () => {
       globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const routePromise = root.route(["node", "agentcore"]);
-    await waitFor(() => streams.stdout().includes("read/write global config values"));
+    await waitFor(() => streams.stdout().includes("check for and install CLI updates"));
     stdin.write(String.fromCharCode(3));
     await routePromise;
     return streams.stdout();

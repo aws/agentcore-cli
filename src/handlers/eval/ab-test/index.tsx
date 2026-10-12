@@ -17,7 +17,6 @@ export function createAbTestHandler(core: Core, io: AppIO): Router {
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
-    .listInMenu("pause", "resume", "stop", "delete", "config-based", "target-based")
     .handler(createGetAbTestHandler(core, io))
     .handler(createListAbTestsHandler(core))
     .handler(createPauseAbTestHandler(core))

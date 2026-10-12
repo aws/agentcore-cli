@@ -122,7 +122,7 @@ import { GatewayRuleListScreen } from "../handlers/gateway/rule/list/screen.tsx"
 import { GatewayRuleGetScreen } from "../handlers/gateway/rule/get/screen.tsx";
 import { GatewayInvokeScreen } from "../handlers/gateway/invoke/screen.tsx";
 import { GatewayPolicyGenerateScreen } from "../handlers/gateway/policy/screen.tsx";
-import { CommandFallbackScreen } from "./CliOnlyScreen.tsx";
+import { CommandFallbackScreen } from "./CommandFallbackScreen.tsx";
 import { CommandHandoffScreen } from "./CommandHandoffScreen.tsx";
 import { ProjectResourceCreateScreen } from "./ProjectResourceCreateScreen.tsx";
 import { BuildProjectScreen } from "../handlers/project/build/screen.tsx";

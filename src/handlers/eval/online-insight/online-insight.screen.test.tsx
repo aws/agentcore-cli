@@ -69,7 +69,7 @@ describe("online-insight menu", () => {
     await waitForText(screen.lastFrame, "get an online insight config by ID");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: ["create", "update", "pause", "resume", "delete"],
+      cliOnly: [],
     });
   });
 });

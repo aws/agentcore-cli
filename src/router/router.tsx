@@ -396,11 +396,8 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
     return this.helpGroups.get(commandName);
   }
 
-  // listInMenu keeps the named children in their registered place in this
-  // router's interactive menu, styled like the commands with a screen, instead
-  // of moving them below the command-line-only divider. Selecting one still
-  // opens its help; command-line behavior is untouched. Names that are not
-  // registered children are ignored.
+  // listInMenu keeps a child with a TUI handoff in its registered place in the
+  // interactive menu. Names that are not registered children are ignored.
   listInMenu(...commands: string[]): this {
     for (const command of commands) this.menuListed.add(command);
     return this;

@@ -15,7 +15,6 @@ export function createConfigBundleHandler(core: Core, io: AppIO): Router {
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list", "version")
-    .listInMenu("create", "update", "delete")
     .handler(createCreateConfigBundleHandler(core, io))
     .handler(createGetConfigBundleHandler(core))
     .handler(createListConfigBundlesHandler(core))

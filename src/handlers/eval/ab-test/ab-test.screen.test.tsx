@@ -69,10 +69,10 @@ describe("ab-test menu", () => {
     await waitForText(screen.lastFrame, "list A/B tests");
     await screen.resize(100, 45);
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["get", "list", "pause", "resume", "stop", "delete", "config-based", "target-based"],
+      screens: ["get", "list"],
       cliOnly: [],
     });
-    expect(screen.lastFrame()).toContain("── resources");
+    expect(screen.lastFrame()).not.toContain("── resources");
   });
 });
 

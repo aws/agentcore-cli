@@ -49,8 +49,8 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   `DEFAULT_GLOBAL_CONFIG`, and `applyOverrides` in `src/globalConfig/`. Retired keys in an existing
   `~/.agentcore/config.json` are dropped on read (the zod schema strips unknown keys).
 - **TUI support is opt-in per top-level command** via the root's `.supportedTuiCommands(...)`.
-  Handler registration order is `--help` and menu order, but the menu moves commands without a
-  screen under a "cli" divider unless the router names them in `.listInMenu(...)`.
+  Handler registration order is `--help` and menu order. Commands without TUI support
+  are omitted from the TUI menu.
   `.menuSection(title)` draws a menu divider above the next registered handler (menu only).
 - **Terminal size: use `useWindowSize` from `src/components/ui/useWindowSize.tsx`, not Ink's.**
   Ink's hook adds a stdout `resize` listener per call (every `Divider` calls it), so busy screens

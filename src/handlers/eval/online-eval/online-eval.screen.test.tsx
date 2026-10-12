@@ -67,7 +67,7 @@ describe("online-eval menu", () => {
     await waitForText(screen.lastFrame, "get an online evaluation config by ID");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: ["create", "update", "pause", "resume", "delete"],
+      cliOnly: [],
     });
   });
 });
