@@ -2110,7 +2110,6 @@ describe("FsProjectManager.resolve", () => {
     "0.1.0-alpha.45",
     "0.1.0-alpha.46",
     "0.1.0",
-    "1.0.0-rc.3",
     "^0.1.0-alpha.45",
     undefined,
     19,
@@ -2133,7 +2132,7 @@ describe("FsProjectManager.resolve", () => {
     });
   });
 
-  test.each([undefined, 0, 2, 3, "1"])(
+  test.each([undefined, 0, 3, "1"])(
     "does not apply v0 dependency guidance to project version %s",
     async (version) => {
       const { root } = await legacyProject("^0.1.0-alpha.19", version);
@@ -2260,15 +2259,125 @@ describe("FsProjectManager.resolve", () => {
     ).rejects.toThrow("'export harness' isn't available for v0 projects yet");
   });
 
-  test("loads a v1 project with an old CDK declaration without legacy guidance", async () => {
-    const { root, configPath } = await legacyProject("^0.1.0-alpha.19", 2);
+  async function v1Project(dependency: unknown): Promise<{ root: string; configPath: string }> {
+    const { root, configPath } = await legacyProject(dependency, 2);
     await writeFile(configPath, JSON.stringify({ name: "example", version: 2 }));
+    return { root, configPath };
+  }
 
-    const project = await manager().manager.resolve({ filePath: root });
+  function v1WithV0LibraryMessage(spec: string): string {
+    return (
+      "agentcore/agentcore.json says this is a v1 project (version 2), but its CDK library is " +
+      `v0 (@aws/agentcore-cdk ${spec}). Set "version" back to 1, or run \`agentcore migrate\` ` +
+      "to upgrade it."
+    );
+  }
 
-    expect(project?.spec.version).toBe(2);
-    expect(project?.name).toBe("example");
+  function v0WithV1LibraryMessage(spec: string): string {
+    return (
+      "agentcore/agentcore.json says this is a v0 project (version 1), but its CDK library is " +
+      `v1 (@aws/agentcore-cdk ${spec}). Set "version" to 2, or reinstall the v0 CDK app.`
+    );
+  }
+
+  test.each([
+    ["^0.1.0-alpha.19", "^0.1.0-alpha.19"],
+    ["0.1.0-alpha.45", "0.1.0-alpha.45"],
+    ["~0.1.0-alpha.45", "~0.1.0-alpha.45"],
+    ["0.1.0", "0.1.0"],
+    [" ^0.1.0-alpha.45 ", "^0.1.0-alpha.45"],
+  ])(
+    "rejects a v1 project whose CDK library is v0 (%s) without changing files",
+    async (dependency, shown) => {
+      const { root, configPath } = await v1Project(dependency);
+      const manifestPath = join(root, "agentcore", "cdk", "package.json");
+      const before = await Promise.all([
+        readFile(configPath, "utf8"),
+        readFile(manifestPath, "utf8"),
+      ]);
+      const subject = manager();
+
+      const error = await subject.manager
+        .resolve({ filePath: root })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect(error).toHaveProperty("message", v1WithV0LibraryMessage(shown));
+      expect(
+        await Promise.all([readFile(configPath, "utf8"), readFile(manifestPath, "utf8")]),
+      ).toEqual(before);
+      expect(subject.commands).toEqual([]);
+      expect(subject.checkedTools).toEqual([]);
+    },
+  );
+
+  test("rejects a v1 project with a v0 CDK library even when its spec is invalid", async () => {
+    const { root } = await legacyProject("^0.1.0-alpha.19", 2);
+
+    const error = await manager()
+      .manager.resolve({ filePath: root })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ProjectStateError);
+    expect(error).toHaveProperty("message", v1WithV0LibraryMessage("^0.1.0-alpha.19"));
+    expect((error as Error).cause).toBeInstanceOf(DeserializationError);
   });
+
+  test.each(["1.0.0-rc.5", "^1.0.0-rc.5", "~1.0.0-preview.33", "1.0.0", "2.1.0"])(
+    "rejects a v0 project whose CDK library is v1 (%s)",
+    async (dependency) => {
+      const { root } = await legacyProject(dependency, 1);
+      const subject = manager();
+
+      const error = await subject.manager
+        .resolve({ filePath: root })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect(error).toHaveProperty("message", v0WithV1LibraryMessage(dependency));
+      expect(subject.commands).toEqual([]);
+    },
+  );
+
+  test.each(["1.0.0-rc.5", "^1.0.0-preview.33", "~1.0.0", "1.2.3"])(
+    "loads a v1 project with v1 CDK library %s",
+    async (dependency) => {
+      const { root } = await v1Project(dependency);
+
+      const project = await manager().manager.resolve({ filePath: root });
+
+      expect(project?.spec.version).toBe(2);
+      expect(project?.legacy).toBeUndefined();
+    },
+  );
+
+  test.each([
+    undefined,
+    19,
+    "not-semver",
+    "file:../agentcore-cdk",
+    "git+https://example.com/agentcore-cdk.git",
+    "workspace:*",
+    "latest",
+    "*",
+    ">=0.1.0-alpha.19",
+  ])("loads a v1 project with unrecognized CDK dependency %s", async (dependency) => {
+    const { root } = await v1Project(dependency);
+
+    expect((await manager().manager.resolve({ filePath: root }))?.spec.version).toBe(2);
+  });
+
+  test.each(["missing", "malformed", "invalid-shape"] as const)(
+    "loads a v1 project when its CDK manifest is %s",
+    async (state) => {
+      const { root } = await v1Project("^0.1.0-alpha.19");
+      const manifestPath = join(root, "agentcore", "cdk", "package.json");
+      if (state === "missing") await rm(manifestPath);
+      else await writeFile(manifestPath, state === "malformed" ? "{ not valid json" : "null");
+
+      expect((await manager().manager.resolve({ filePath: root }))?.spec.version).toBe(2);
+    },
+  );
 
   test("round-trips a project it just created", async () => {
     const root = await inTempDirectory();

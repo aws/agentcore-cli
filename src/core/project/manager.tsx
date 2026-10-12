@@ -106,7 +106,7 @@ import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
 import { isBmaRuntime } from "../../handlers/project/bma";
-import { projectFormat } from "./legacy/detect";
+import { projectFormat, type ProjectFormat } from "./legacy/detect";
 import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
 
@@ -117,7 +117,43 @@ const UV_INSTALL_HINT = "Install uv: https://docs.astral.sh/uv/getting-started/i
 // v0.24.2 introduced dependency syncing with this exact CDK pin.
 const MINIMUM_V0_CDK_VERSION = "0.1.0-alpha.45";
 
+interface CdkDependency {
+  /** As written in package.json, trimmed. */
+  spec: string;
+  version: string;
+}
+
+function v0DependencyWarning(dependency: CdkDependency | undefined): string | undefined {
+  if (!dependency || !semver.lt(dependency.version, MINIMUM_V0_CDK_VERSION)) return undefined;
+  return (
+    "This project's CDK dependencies are older than v0.24.2. " +
+    "Run `npx @aws/agentcore@0 deploy` once to update them, then try again."
+  );
+}
+
+/** Rejects a project whose agentcore.json format and vended CDK library major disagree. */
+function assertCdkLibraryMatches(
+  format: ProjectFormat,
+  dependency: CdkDependency | undefined,
+  cause?: unknown,
+): void {
+  if (!dependency) return;
+  const library: ProjectFormat = semver.major(dependency.version) >= 1 ? "v1" : "v0";
+  if (library === format) return;
+
+  const declared = `@aws/agentcore-cdk ${dependency.spec}`;
+  throw new ProjectStateError(
+    format === "v1"
+      ? "agentcore/agentcore.json says this is a v1 project (version 2), but its CDK library is " +
+          `v0 (${declared}). Set "version" back to 1, or run \`agentcore migrate\` to upgrade it.`
+      : "agentcore/agentcore.json says this is a v0 project (version 1), but its CDK library is " +
+          `v1 (${declared}). Set "version" to 2, or reinstall the v0 CDK app.`,
+    { cause },
+  );
+}
+
 /**
+
  * Shown when a runtime template hardwired to an unreachable model provider
  * targets a China (aws-cn) region and takes no --model-provider override
  * (langchain, vercel, `--type import`). Amazon Bedrock, Anthropic, OpenAI, and
@@ -402,8 +438,10 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = projectSpecPath(rootPath);
+    const cdkDependency = await this.declaredCdkDependency(rootPath);
     try {
       const spec = await this.json.read(configPath, ProjectSpecSchema);
+      assertCdkLibraryMatches("v1", cdkDependency);
       return {
         name: spec.name,
         rootPath,
@@ -415,16 +453,20 @@ export class FsProjectManager implements ProjectManager {
           .read(configPath, z.object({ version: z.unknown().optional() }))
           .catch(() => undefined);
         if (projectFormat(header) === "v0") {
-          const warning = await this.v0DependencyWarning(rootPath);
+          const warning = v0DependencyWarning(cdkDependency);
           if (warning) throw new ProjectStateError(warning, { cause: error });
+          assertCdkLibraryMatches("v0", cdkDependency, error);
           return loadLegacyProject(rootPath, this.json);
         }
+        // An invalid v1 spec on a v0 CDK app is almost always a hand-bumped version.
+        if (header?.version === 2) assertCdkLibraryMatches("v1", cdkDependency, error);
       }
       throw error;
     }
   }
 
-  private async v0DependencyWarning(rootPath: string): Promise<string | undefined> {
+  /** The `@aws/agentcore-cdk` dependency the vended CDK app declares, if it is a plain semver. */
+  private async declaredCdkDependency(rootPath: string): Promise<CdkDependency | undefined> {
     const manifest = await this.json
       .read(
         join(rootPath, "agentcore", "cdk", "package.json"),
@@ -434,13 +476,9 @@ export class FsProjectManager implements ProjectManager {
     const declared = manifest?.dependencies?.["@aws/agentcore-cdk"];
     if (typeof declared !== "string") return undefined;
 
-    const version = semver.valid(declared.trim().replace(/^[~^=]/, ""));
-    if (!version || !semver.lt(version, MINIMUM_V0_CDK_VERSION)) return undefined;
-
-    return (
-      "This project's CDK dependencies are older than v0.24.2. " +
-      "Run `npx @aws/agentcore@0 deploy` once to update them, then try again."
-    );
+    const spec = declared.trim();
+    const version = semver.valid(spec.replace(/^[~^=]/, ""));
+    return version ? { spec, version } : undefined;
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
