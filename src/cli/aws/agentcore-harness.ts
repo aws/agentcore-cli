@@ -72,10 +72,11 @@ export interface HarnessTool {
   config?: Record<string, unknown>;
 }
 
+/** A skill source in InvokeHarness API shape — not the project (harness.json) shape, which uses `s3Uri`/`gitUrl`. */
 export type HarnessSkill =
   | { path: string }
-  | { s3Uri: string }
-  | { gitUrl: string; path?: string; auth?: { credentialArn: string; username?: string } };
+  | { s3: { uri: string } }
+  | { git: { url: string; path?: string; auth?: { credentialArn: string; username?: string } } };
 
 export interface HarnessAgentCoreMemoryConfiguration {
   arn: string;
