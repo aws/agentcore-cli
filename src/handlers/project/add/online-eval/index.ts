@@ -18,7 +18,7 @@ export interface OnlineEvalInput {
   endpoint?: string;
   logGroupNames?: string[];
   serviceNames?: string[];
-  evaluators?: string[];
+  evaluators: string[];
   samplingRate: number;
   description?: string;
   enableOnCreate?: boolean;
@@ -53,7 +53,7 @@ export function toAddOnlineEvalInput(
     ONLINE_EVAL_DEPLOYED_NAME_MAX_LENGTH,
     targets,
   );
-  validateEvaluatorReferences(project, input.evaluators ?? []);
+  validateEvaluatorReferences(project, input.evaluators);
 
   const parsed = OnlineEvalConfigSchema.safeParse({
     name: input.name,
@@ -107,7 +107,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
       flag(
         "evaluators",
         "evaluator name(s), Builtin.* IDs, or ARNs to apply",
-        z.array(z.string()).optional(),
+        z.array(z.string()).min(1),
       ),
       flag(
         "sampling-rate",
