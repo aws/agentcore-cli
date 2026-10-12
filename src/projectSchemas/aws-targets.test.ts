@@ -29,18 +29,19 @@ describe("AWS deployment targets", () => {
     expect(AwsAccountIdSchema.safeParse(account).success).toBe(false);
   });
 
-  test.each([
-    "",
-    "1default",
-    "-default",
-    "_default",
-    "has_underscore",
-    "has-hyphen",
-    "has spaces",
-    "has.dots",
-  ])("rejects invalid target name %j", (name) => {
-    expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);
-  });
+  test.each(["", "1default", "-default", "_default", "has_underscore", "has spaces", "has.dots"])(
+    "rejects invalid target name %j",
+    (name) => {
+      expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);
+    },
+  );
+
+  test.each(["prod-us", "a-b-c", "us-east-1", "trailing-"])(
+    "accepts hyphenated target name %j, as the v0 CLI did",
+    (name) => {
+      expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(true);
+    },
+  );
 
   test("enforces target name and description lengths", () => {
     expect(DeploymentTargetNameSchema.safeParse("a".repeat(64)).success).toBe(true);

@@ -42,11 +42,11 @@ export const DeploymentTargetNameSchema = z
   .min(1)
   .max(64)
   /**
-   Letters and digits only: the target is the middle segment of every deployed resource name, so a separator inside it would make two targets compose the same name.
+   The v0 CLI's rule, so v0 targets such as `prod-us` keep working. The target is the middle segment of deployed resource names (`<project><sep><target><sep><name>`). Where the separator is `_` because the service disallows `-` (Runtime, Memory, Harness, ...), the CDK library writes the target's hyphens as underscores; `-` and `/` separated names (Gateway, ECR, Lambda, ...) and the `AgentCore-<project>-<target>` stack name keep them.
   **/
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9]*$/,
-    "Name must start with a letter and contain only letters and digits",
+    /^[a-zA-Z][a-zA-Z0-9-]*$/,
+    "Name must start with a letter and contain only letters, digits, and hyphens",
   )
   .describe("Unique identifier for the deployment target");
 
