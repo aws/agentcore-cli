@@ -68,11 +68,6 @@ interface Option {
   section?: string;
 }
 
-export interface TuiOnlyCommand {
-  name: string;
-  description: string;
-}
-
 export interface RouterScreenProps extends ScreenProps {
   // banner is content shown above the standard screen header.
   banner?: React.ReactNode;
@@ -80,9 +75,6 @@ export interface RouterScreenProps extends ScreenProps {
   // segment is the app root; the last is the command whose subcommands are the
   // menu options.
   path: string[];
-  // tuiOnlyCommands are navigable informational flows that intentionally do
-  // not exist in the CLI command tree.
-  tuiOnlyCommands?: TuiOnlyCommand[];
   // optionHints adds short contextual guidance alongside selected menu options.
   optionHints?: Readonly<Record<string, string>>;
   // optionNotices adds warning-colored guidance alongside selected menu options.
@@ -112,7 +104,6 @@ export function RouterScreen(props: RouterScreenProps) {
 function CommandMenu({
   banner,
   path,
-  tuiOnlyCommands = [],
   optionHints,
   optionNotices,
   cliSectionCommands = [],
@@ -153,16 +144,11 @@ function CommandMenu({
         },
       ];
     });
-    const actualNames = new Set(actual.map((option) => option.name));
-    const tuiOnly = tuiOnlyCommands
-      .filter((option) => !actualNames.has(option.name))
-      .map((option): Option => ({ ...option, hint: optionHints?.[option.name] }));
     return [
-      ...tuiOnly,
       ...actual.filter((option) => option.section !== CLI_ONLY_SECTION),
       ...actual.filter((option) => option.section === CLI_ONLY_SECTION),
     ].filter((option) => !hiddenOptions?.includes(option.name));
-  }, [cliSectionCommands, command, hiddenOptions, optionHints, optionNotices, tuiOnlyCommands]);
+  }, [cliSectionCommands, command, hiddenOptions, optionHints, optionNotices]);
 
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);

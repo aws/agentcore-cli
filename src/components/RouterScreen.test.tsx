@@ -55,13 +55,13 @@ describe("menu rendering", () => {
   test.each([
     {
       path: "/agentcore/gateway",
-      actions: ["create", "get", "list", "invoke"],
+      actions: ["get", "list", "invoke"],
       related: ["target", "connector", "rule", "policy"],
       cli: [],
     },
     {
       path: "/agentcore/memory",
-      actions: ["create", "get", "list"],
+      actions: ["get", "list"],
       related: ["event", "record", "actor", "session"],
       cli: [],
     },
@@ -73,7 +73,7 @@ describe("menu rendering", () => {
     },
     {
       path: "/agentcore/runtime",
-      actions: ["create", "get", "list", "invoke", "shell", "exec"],
+      actions: ["get", "list", "invoke", "shell", "exec"],
       related: ["version", "endpoint"],
       cli: [],
     },
