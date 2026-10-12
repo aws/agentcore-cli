@@ -42,8 +42,9 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
   // Returned in workflow order, which is the order `--help` and the TUI menu list them in:
   // the inner loop (dev, deploy, invoke), then observing it, then changing the project.
   // build is a step deploy already runs, so it goes last and the TUI menu hides it.
-  // migrate is a one-off upgrade from a v0 project, so it follows build; it
-  // finds the project itself because withProject can't parse a v0 project.
+  // migrate is a one-off upgrade from a v0 project, so it follows build. It
+  // locates the raw project itself because migration validates the source files
+  // before the compatibility loader translates them into the current shape.
   const projectBoundHandlers = [
     createDevProjectHandler({
       projectManager,

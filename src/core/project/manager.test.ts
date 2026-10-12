@@ -2104,20 +2104,18 @@ describe("FsProjectManager.resolve", () => {
     "latest",
     "*",
     ">=0.1.0-alpha.19",
-  ])(
-    "preserves v0 schema validation for an updated or unknown dependency %s",
-    async (dependency) => {
-      const { root, configPath } = await legacyProject(dependency, 1);
+  ])("loads a valid v0 project with updated or custom dependency %s", async (dependency) => {
+    const { root } = await legacyProject(dependency, 1);
 
-      const error = await manager()
-        .manager.resolve({ filePath: root })
-        .catch((caught: unknown) => caught);
+    const project = await manager().manager.resolve({ filePath: root });
 
-      expect(error).toBeInstanceOf(DeserializationError);
-      expect(error).toHaveProperty("message", expect.stringContaining(configPath));
-      expect(error).toHaveProperty("message", expect.not.stringContaining("npx @aws/agentcore@0"));
-    },
-  );
+    expect(project).toMatchObject({
+      name: "example",
+      rootPath: root,
+      spec: { name: "example", version: 2, managedBy: "CDK" },
+      legacy: { format: "v0", v0Spec: { name: "example", version: 1 } },
+    });
+  });
 
   test.each([undefined, 0, 2, 3, "1"])(
     "does not apply v0 dependency guidance to project version %s",
@@ -2134,17 +2132,81 @@ describe("FsProjectManager.resolve", () => {
   );
 
   test.each(["missing", "malformed", "invalid-shape"] as const)(
-    "preserves the original schema error when the v0 CDK manifest is %s",
+    "loads a valid v0 project when its CDK manifest is %s",
     async (state) => {
       const { root, manifestPath } = await legacyProject("^0.1.0-alpha.19", 1);
       if (state === "missing") await rm(manifestPath);
       else await writeFile(manifestPath, state === "malformed" ? "{ not valid json" : "null");
 
-      await expect(manager().manager.resolve({ filePath: root })).rejects.toBeInstanceOf(
-        DeserializationError,
-      );
+      expect(await manager().manager.resolve({ filePath: root })).toMatchObject({
+        legacy: { format: "v0" },
+      });
     },
   );
+
+  test("reports v0 schema errors after the dependency gate passes", async () => {
+    const { root, configPath } = await legacyProject("0.1.0-alpha.45", 1);
+    await writeFile(configPath, JSON.stringify({ name: "not-valid!", version: 1 }));
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toThrow(
+      "Project name must start with a letter and contain only alphanumeric characters",
+    );
+  });
+
+  test("reads v0 deployment target names with v0 rules", async () => {
+    const { root } = await legacyProject("0.1.0-alpha.45", 1);
+    const subject = manager().manager;
+    const project = await subject.resolve({ filePath: root });
+    if (!project) throw new Error("expected project");
+    await writeFile(
+      join(root, "agentcore", "aws-targets.json"),
+      JSON.stringify([
+        { name: "prod-us", account: "111122223333", region: "us-east-1" },
+        { name: "PROD-US", account: "111122223333", region: "us-west-2" },
+      ]),
+    );
+
+    expect(await subject.listTargets(project)).toEqual([
+      { name: "prod-us", account: "111122223333", region: "us-east-1" },
+      { name: "PROD-US", account: "111122223333", region: "us-west-2" },
+    ]);
+  });
+
+  test("blocks deploys and project writes until their v0 compatibility paths land", async () => {
+    const { root } = await legacyProject("0.1.0-alpha.45", 1);
+    const subject = manager().manager;
+    const project = await subject.resolve({ filePath: root });
+    if (!project) throw new Error("expected project");
+
+    await expect(subject.build(project).next()).rejects.toThrow(
+      "'build' isn't available for v0 projects yet",
+    );
+    await expect(
+      subject
+        .deploy(project, {
+          target: "default",
+          region: "us-east-1",
+          confirmTeardown: async () => false,
+          transactionSearch: false,
+        })
+        .next(),
+    ).rejects.toThrow("'deploy' isn't available for v0 projects yet");
+    await expect(
+      runAdd(subject, project, {
+        resourceType: "memory",
+        resourceConfig: getDefaultMemorySpec("memory"),
+      }),
+    ).rejects.toThrow("'add' isn't available for v0 projects yet");
+    await expect(
+      subject.removeResource(project, { resourceType: "memory", name: "memory" }),
+    ).rejects.toThrow("'remove' isn't available for v0 projects yet");
+    await expect(subject.removeAllResources(project)).rejects.toThrow(
+      "'remove all' isn't available for v0 projects yet",
+    );
+    await expect(
+      subject.exportHarness(project, { harnessName: "harness", targetAgentName: "agent" }).next(),
+    ).rejects.toThrow("'export harness' isn't available for v0 projects yet");
+  });
 
   test("loads a v1 project with an old CDK declaration without legacy guidance", async () => {
     const { root, configPath } = await legacyProject("^0.1.0-alpha.19", 2);
