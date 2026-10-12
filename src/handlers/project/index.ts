@@ -11,7 +11,7 @@ import { CodeZipDevRunner } from "../../core/dev/codezip";
 import { ContainerDevRunner } from "../../core/dev/container";
 import { InspectorAssets } from "../../core/dev/inspectorAssets";
 import { startOtelCollector } from "../../core/dev/otel/collector";
-import { withProject, withTuiWhenInteractive } from "../../middleware";
+import { withProject, withTuiWhenInteractive, withV0ProjectGuard } from "../../middleware";
 import type { Core } from "../types";
 import { createCreateProjectHandler } from "./create";
 import { createRemoveProjectHandler } from "./remove";
@@ -79,7 +79,7 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
     createRemoveProjectHandler({
       projectManager,
       io,
-      middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
+      middlewares: [withV0ProjectGuard(), withProjectMiddleware, withTuiWhenInteractive(core, io)],
     }),
     createExportProjectResourceHandler({ projectManager, core, io }),
     createBuildProjectHandler({

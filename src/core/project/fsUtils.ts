@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 
 /** The project spec, relative to the project root. */
 export const PROJECT_SPEC_RELATIVE_PATH = join("agentcore", "agentcore.json");
@@ -18,6 +20,18 @@ export function enclosingProjectRoot(directory: string): string | undefined {
     if (dirname(current) === current) {
       return undefined;
     }
+  }
+}
+
+/** Checks the project header without requiring the v1 project schema to parse. */
+export async function isV0Project(rootPath: string): Promise<boolean> {
+  try {
+    const contents = await readFile(projectSpecPath(rootPath), "utf8");
+    const header = z.object({ version: z.unknown().optional() }).safeParse(JSON.parse(contents));
+    return header.success && header.data.version === 1;
+  } catch {
+    // Leave unreadable or malformed specs to normal project validation.
+    return false;
   }
 }
 

@@ -72,7 +72,12 @@ import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config"
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
-import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
+import {
+  defaultExportProjectName,
+  enclosingProjectRoot,
+  isV0Project,
+  projectSpecPath,
+} from "./fsUtils";
 import { parseArn } from "../arn";
 import {
   AgentCoreCLIError,
@@ -417,10 +422,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   private async v0DependencyWarning(rootPath: string): Promise<string | undefined> {
-    const header = await this.json
-      .read(projectSpecPath(rootPath), z.object({ version: z.unknown().optional() }))
-      .catch(() => undefined);
-    if (header?.version !== 1) return undefined;
+    if (!(await isV0Project(rootPath))) return undefined;
 
     const manifest = await this.json
       .read(
