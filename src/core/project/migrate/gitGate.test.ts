@@ -52,7 +52,17 @@ describe("checkGitGate", () => {
     expect(calls).toEqual([
       ["git", "-C", ROOT, "rev-parse", "--is-inside-work-tree"],
       ["git", "-C", ROOT, "ls-files", "--error-unmatch", "agentcore/agentcore.json"],
-      ["git", "-C", ROOT, "--no-optional-locks", "status", "--porcelain", "--", "."],
+      [
+        "git",
+        "-C",
+        ROOT,
+        "--no-optional-locks",
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--",
+        ".",
+      ],
     ]);
   });
 
@@ -224,5 +234,16 @@ describe("checkGitGate with real git", () => {
     expect(error).toBeInstanceOf(ProjectStateError);
     expect((error as Error).message).toContain(" M agentcore/agentcore.json");
     expect((error as Error).message).toContain("?? notes.txt");
+  });
+
+  test("finds untracked files when git status is configured to hide them", async () => {
+    const root = await projectDirectory();
+    await git(root, "init", "--quiet");
+    await git(root, "add", ".");
+    await git(root, "commit", "--quiet", "-m", "init");
+    await git(root, "config", "status.showUntrackedFiles", "no");
+    await writeFile(join(root, "notes.txt"), "untracked\n");
+
+    await expect(checkGitGate(runProcess, root)).rejects.toThrow("?? notes.txt");
   });
 });

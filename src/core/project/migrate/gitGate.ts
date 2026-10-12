@@ -54,8 +54,16 @@ export async function checkGitGate(
   }
 
   // --no-optional-locks keeps status from refreshing the index, so the check
-  // never contends with a git process the user has running.
-  const status = await git(["--no-optional-locks", "status", "--porcelain", "--", "."]);
+  // never contends with a git process the user has running. Force untracked
+  // files to be reported even when status.showUntrackedFiles is configured off.
+  const status = await git([
+    "--no-optional-locks",
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+    "--",
+    ".",
+  ]);
   if (!status.ok) {
     throw new ProjectStateError(
       "Couldn't read the git status of the project." + gitDetail(status.output),
