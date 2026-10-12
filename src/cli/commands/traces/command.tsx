@@ -2,9 +2,11 @@ import { serializeResult } from '../../../lib';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { loadDeployedProjectConfig } from '../../operations/resolve-agent';
+import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { getProjectRootMismatch, projectExists, requireProject } from '../../tui/guards';
-import { handleTracesGet, handleTracesList } from './action';
-import type { TracesGetOptions, TracesListOptions } from './types';
+import { handleTracesCompare, handleTracesGet, handleTracesList } from './action';
+import { TraceComparisonView } from './comparison-view';
+import type { TracesCompareOptions, TracesGetOptions, TracesListOptions } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { Box, Text, render } from 'ink';
 
@@ -172,6 +174,60 @@ export const registerTraces = (program: Command) => {
             <Text color="green">Trace saved to: {result.filePath}</Text>
             {result.consoleUrl && <Text color="gray">Console: {result.consoleUrl}</Text>}
           </Box>
+        );
+      } catch (error) {
+        if (cliOptions.json) {
+          console.log(JSON.stringify({ success: false, error: getErrorMessage(error) }));
+        } else {
+          render(<Text color="red">Error: {getErrorMessage(error)}</Text>);
+        }
+        process.exit(1);
+      }
+    });
+
+  traces
+    .command('compare <baselineTraceId> <candidateTraceId>')
+    .description('Compare latency and token metrics of two traces')
+    .option('--runtime <name>', 'Select specific runtime')
+    .option('--since <time>', 'Start time — defaults to 12h ago (e.g. 5m, 1h, 2d, ISO 8601, epoch ms)')
+    .option('--until <time>', 'End time — defaults to now (e.g. now, 1h, ISO 8601, epoch ms)')
+    .option('--json', 'Output as JSON')
+    .action(async (baselineTraceId: string, candidateTraceId: string, cliOptions: TracesCompareOptions) => {
+      try {
+        if (!requireTracesProject(cliOptions.json)) return;
+        const context = await loadDeployedProjectConfig();
+        const result = await withCommandRunTelemetry('traces.compare', {}, () =>
+          handleTracesCompare(context, baselineTraceId, candidateTraceId, cliOptions)
+        );
+
+        if (!result.success) {
+          if (cliOptions.json) {
+            console.log(JSON.stringify(serializeResult(result)));
+          } else {
+            render(
+              <Box flexDirection="column">
+                <Text color="red">Error: {result.error.message}</Text>
+                {result.consoleUrl && <Text color="gray">Console: {result.consoleUrl}</Text>}
+              </Box>
+            );
+          }
+          process.exit(1);
+          return;
+        }
+
+        if (cliOptions.json) {
+          console.log(JSON.stringify(serializeResult(result)));
+          return;
+        }
+
+        render(
+          <TraceComparisonView
+            baseline={result.baseline}
+            candidate={result.candidate}
+            deltas={result.deltas}
+            warnings={result.warnings}
+            consoleUrl={result.consoleUrl}
+          />
         );
       } catch (error) {
         if (cliOptions.json) {
