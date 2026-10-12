@@ -721,8 +721,8 @@ export function buildHarnessBaseOpts(
   if (options.skills) {
     baseOpts.skills = options.skills.split(',').map(s => {
       const trimmed = s.trim();
-      if (trimmed.startsWith('s3://')) return { s3Uri: trimmed };
-      if (trimmed.startsWith('https://')) return { gitUrl: trimmed };
+      if (trimmed.startsWith('s3://')) return { s3: { uri: trimmed } };
+      if (trimmed.startsWith('https://')) return { git: { url: trimmed } };
       return { path: trimmed };
     });
   }

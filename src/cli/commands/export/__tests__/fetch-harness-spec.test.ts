@@ -315,7 +315,7 @@ describe('mapApiHarnessToSpec', () => {
     });
 
     it('passes through an already-lowercase S3 skill { s3Uri }', () => {
-      const { spec } = mapApiHarnessToSpec(makeApiHarness({ skills: [{ s3Uri: 's3://b/p/' }] }));
+      const { spec } = mapApiHarnessToSpec(makeApiHarness({ skills: [{ s3Uri: 's3://b/p/' } as any] }));
       expect(spec.skills[0]).toEqual({ s3Uri: 's3://b/p/' });
     });
 
