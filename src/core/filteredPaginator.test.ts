@@ -140,7 +140,7 @@ describe("FilteredPaginator", () => {
         nextToken: undefined,
         maxResults: 1,
         defaultPageSize: 10,
-        resourceLabel: "Online insight",
+        resourceLabel: "Gateway target",
       }),
     ).rejects.toBeInstanceOf(ResultTruncationError);
   });

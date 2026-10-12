@@ -5,10 +5,8 @@ import type { AppIO } from "../../io";
 import type { Core } from "../types";
 import { createEvaluatorHandler } from "./evaluator";
 import { createOnlineEvalHandler } from "./online-eval";
-import { createOnlineInsightHandler } from "./online-insight";
 import { createDatasetHandler } from "./dataset";
 import { createBatchEvaluationHandler } from "./batch-evaluation";
-import { createBatchInsightsHandler } from "./batch-insights";
 import { createOnDemandHandler } from "./ondemand";
 import { createConfigBundleHandler } from "./config-bundle";
 import { createAbTestHandler } from "./ab-test";
@@ -23,20 +21,16 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .supportedTuiCommands(
       "evaluator",
       "online-eval",
-      "online-insight",
       "dataset",
       "batch-evaluation",
-      "batch-insights",
       "config-bundle",
       "ab-test",
       "recommendation",
     )
     .handler(createEvaluatorHandler(core, io))
     .handler(createOnlineEvalHandler(core, io))
-    .handler(createOnlineInsightHandler(core, io))
     .handler(createDatasetHandler(core, io))
     .handler(createBatchEvaluationHandler(core, io))
-    .handler(createBatchInsightsHandler(core, io))
     .handler(createOnDemandHandler(core, io))
     .handler(createConfigBundleHandler(core, io))
     .handler(createAbTestHandler(core, io))

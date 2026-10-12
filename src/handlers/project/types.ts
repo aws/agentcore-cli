@@ -380,10 +380,6 @@ export type AddResourceInput =
       resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
     }
   | {
-      resourceType: "online-insight";
-      resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
-    }
-  | {
       resourceType: "memory";
       resourceConfig: z.input<typeof MemorySchema>;
     }
@@ -481,7 +477,6 @@ export type RemoveResourceInput =
         | "credential"
         | "config-bundle"
         | "online-eval"
-        | "online-insight"
         | "memory"
         | "evaluator"
         | "gateway"

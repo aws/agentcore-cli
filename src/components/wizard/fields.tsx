@@ -474,11 +474,11 @@ export type MultiTextFieldProps = {
 
 // MultiTextField collects several short answers that belong together — a branch
 // and the commit message that lands on it, say — as stacked inputs on one step,
-// the way the online-insight settings and the harness model step lay theirs
-// out. One input has focus at a time: enter validates it the way a TextField
-// would and moves down, the arrows move without validating, and enter on the
-// last input re-checks every input (so one skipped with the arrows cannot slip
-// through) before continuing. Esc goes back a step.
+// the way the harness model step lays its out. One input has focus at a time:
+// enter validates it the way a TextField would and moves down, the arrows move
+// without validating, and enter on the last input re-checks every input (so one
+// skipped with the arrows cannot slip through) before continuing. Esc goes back
+// a step.
 export function MultiTextField({ inputs }: MultiTextFieldProps) {
   const { advance, back, isLast } = useWizard();
   const [focused, setFocused] = useState(0);

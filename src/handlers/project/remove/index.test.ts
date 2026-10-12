@@ -122,26 +122,6 @@ describe("project remove", () => {
       expectedRemaining: [],
     },
     {
-      label: "online-insight",
-      commands: [
-        [
-          "add",
-          "online-insight",
-          "--name",
-          "failures",
-          "--agent",
-          "agent",
-          "--insight",
-          "Builtin.Insight.FailureAnalysis",
-          "--sampling-rate",
-          "5",
-        ],
-        ["remove", "online-insight", "--name", "failures"],
-      ],
-      specKey: "onlineEvalConfigs",
-      expectedRemaining: [],
-    },
-    {
       label: "memory",
       commands: [
         ["add", "memory", "--name", "recall"],

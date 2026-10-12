@@ -75,7 +75,6 @@ describe("createRootHandler", () => {
       "memory",
       "evaluator",
       "online-eval",
-      "online-insight",
       "config-bundle",
       "payment-manager",
       "payment-connector",

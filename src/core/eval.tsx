@@ -132,13 +132,6 @@ import type {
   CreateTargetBasedABTestInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
-  CreateOnlineInsightInput,
-  CreateOnlineInsightResponse,
-  UpdateOnlineInsightInput,
-  GetOnlineInsightResponse,
-  ListOnlineInsightsResponse,
-  UpdateOnlineInsightResponse,
-  DeleteOnlineInsightResponse,
   EvaluateInput,
   EvaluateResult,
   GetBatchEvaluationResult,
@@ -149,7 +142,6 @@ import type {
   InvokeDatasetInput,
   InvokeDatasetResult,
   SpanRecord,
-  StartBatchInsightsInput,
   StartBatchEvaluationInput,
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
@@ -168,7 +160,6 @@ import type { Addition } from "./datasetDiff";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { isValidEvaluatorModelId, type EvaluatorModelProvider } from "../projectSchemas/evaluator";
 import type { Logger } from "../logging";
-import { FilteredPaginator } from "./filteredPaginator";
 import { toClientConfig } from "./utils";
 import { grantOnlineEvalScope } from "./onlineEvalExecutionRole";
 import { accountIdFromArn, deleteAbTestRole, provisionAbTestRole } from "./abTestExecutionRole";
@@ -209,7 +200,6 @@ const EVAL_INSIGHTS_ROW_LIMIT: InsightsRowLimit = {
     ),
 };
 
-const DEFAULT_BATCH_INSIGHTS_PAGE_SIZE = 50;
 const BATCH_EVALUATION_RESULT_MAX_PAGES = 100;
 
 // noopLogger is the default for the optional logger arg so callers that don't
@@ -222,8 +212,6 @@ const noopLogger: Logger = {
   error: () => {},
   child: () => noopLogger,
 };
-
-const DEFAULT_ONLINE_INSIGHT_PAGE_SIZE = 100;
 
 export class EvalClient implements CoreEvalClient {
   constructor(
@@ -496,14 +484,6 @@ export class EvalClient implements CoreEvalClient {
     }
   }
 
-  async getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail> {
-    const { detail } = await this.getBatchEvaluation(id, options, { includeResults: false });
-    if (!EvalClient.isBatchInsights(detail)) {
-      throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
-    }
-    return detail;
-  }
-
   async listBatchEvaluations(
     nextToken: string | undefined,
     maxResults: number | undefined,
@@ -694,25 +674,6 @@ export class EvalClient implements CoreEvalClient {
     );
   }
 
-  async listBatchInsights(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListBatchEvaluationsResponse> {
-    const page = await FilteredPaginator.paginate({
-      fetchPage: async (token, size) => {
-        const r = await this.listBatchEvaluations(token, size, options);
-        return { items: r.batchEvaluations ?? [], nextToken: r.nextToken };
-      },
-      predicate: EvalClient.isBatchInsights,
-      nextToken,
-      maxResults,
-      defaultPageSize: DEFAULT_BATCH_INSIGHTS_PAGE_SIZE,
-      resourceLabel: "Batch Insights",
-    });
-    return { batchEvaluations: page.items, nextToken: page.nextToken };
-  }
-
   async startBatchEvaluation(
     input: StartBatchEvaluationInput,
     options: CoreOptions,
@@ -727,23 +688,6 @@ export class EvalClient implements CoreEvalClient {
         evaluationMetadata: input.groundTruth ? { sessionMetadata: input.groundTruth } : undefined,
         kmsKeyArn: input.kmsKeyArn,
         outputConfig: input.outputConfig,
-      }),
-    );
-  }
-
-  async startBatchInsights(
-    input: StartBatchInsightsInput,
-    options: CoreOptions,
-  ): Promise<StartBatchEvaluationResponse> {
-    const dataSourceConfig = await this.dataSourceConfigForSource(input.source, options);
-    return this.clients.data(toClientConfig(options)).send(
-      new StartBatchEvaluationCommand({
-        batchEvaluationName: input.name,
-        description: input.description,
-        insights: input.insightIds?.map((insightId) => ({ insightId })),
-        evaluators: input.evaluatorIds?.map((evaluatorId) => ({ evaluatorId })),
-        dataSourceConfig,
-        kmsKeyArn: input.kmsKeyArn,
       }),
     );
   }
@@ -793,10 +737,6 @@ export class EvalClient implements CoreEvalClient {
         filterConfig,
       },
     };
-  }
-
-  private static isBatchInsights(job: { insights?: unknown[] }): boolean {
-    return Boolean(job.insights?.length);
   }
 
   async getTracesForAgent(input: GetTracesInput, options: CoreOptions): Promise<SessionTrace[]> {
@@ -1073,158 +1013,6 @@ export class EvalClient implements CoreEvalClient {
     return input.evaluationExecutionRoleArn
       ? control.send(command)
       : retryWhileRolePropagates(() => control.send(command));
-  }
-
-  async createOnlineInsight(
-    input: CreateOnlineInsightInput,
-    options: CoreOptions,
-  ): Promise<CreateOnlineInsightResponse> {
-    const dataSourceConfig =
-      input.agent !== undefined
-        ? await agentDataSource(input.agent, input.endpoint, this.clients, options)
-        : input.dataSourceConfig;
-    const control = this.clients.control(toClientConfig(options));
-
-    const command = new CreateOnlineEvaluationConfigCommand({
-      onlineEvaluationConfigName: input.name,
-      description: input.description,
-      rule: toRule(input.samplingRate, input.sessionTimeoutMinutes, input.filters),
-      dataSourceConfig,
-      insights: input.insightIds.map((insightId) => ({ insightId })),
-      clusteringConfig: input.clusteringConfig,
-      evaluationExecutionRoleArn: input.evaluationExecutionRoleArn,
-      enableOnCreate: input.enableOnCreate ?? true,
-    });
-
-    return control.send(command);
-  }
-
-  async updateOnlineInsight(
-    id: string,
-    update: UpdateOnlineInsightInput,
-    options: CoreOptions,
-  ): Promise<UpdateOnlineInsightResponse> {
-    const control = this.clients.control(toClientConfig(options));
-    // This GET is both the merge base (UpdateOnlineEvaluationConfig replaces the
-    // whole rule/insights, so unset fields must be carried over) and the guard
-    // that rejects a plain online-EVAL config, which carries no insights.
-    const current = await control.send(
-      new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }),
-    );
-    if ((current.insights?.length ?? 0) === 0)
-      throw new InputValidationError(`"${id}" is not an online-insight config`, {
-        meta: { onlineEvaluationConfigId: id },
-      });
-
-    const samplingPercentage =
-      update.samplingRate ?? current.rule?.samplingConfig?.samplingPercentage;
-    const sessionTimeoutMinutes =
-      update.sessionTimeoutMinutes ?? current.rule?.sessionConfig?.sessionTimeoutMinutes;
-    const filters = update.filters ?? current.rule?.filters;
-
-    const insights =
-      update.insightIds !== undefined
-        ? update.insightIds.map((insightId) => ({ insightId }))
-        : current.insights;
-    const clusteringConfig = update.clusteringConfig ?? current.clusteringConfig;
-
-    let dataSourceConfig = current.dataSourceConfig;
-    if (update.dataSourceConfig !== undefined) {
-      dataSourceConfig = update.dataSourceConfig;
-    } else if (update.agent !== undefined) {
-      dataSourceConfig = await agentDataSource(
-        update.agent,
-        update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint,
-        this.clients,
-        options,
-      );
-    } else if (update.clearEndpoint || update.endpoint !== undefined) {
-      const currentLogGroup =
-        current.dataSourceConfig && "cloudWatchLogs" in current.dataSourceConfig
-          ? current.dataSourceConfig.cloudWatchLogs?.logGroupNames?.[0]
-          : undefined;
-      const runtimeId = currentLogGroup ? runtimeIdFromLogGroup(currentLogGroup) : undefined;
-      if (!runtimeId) {
-        throw new InputValidationError(
-          `Online insight config "${id}" was not created from an agent; ` +
-            `pass --agent or --data-source-config to repoint it`,
-          { meta: { onlineEvaluationConfigId: id } },
-        );
-      }
-      const endpoint = update.clearEndpoint ? DEFAULT_ENDPOINT_QUALIFIER : update.endpoint;
-      dataSourceConfig = await agentDataSource(runtimeId, endpoint, this.clients, options);
-    }
-
-    return control.send(
-      new UpdateOnlineEvaluationConfigCommand({
-        onlineEvaluationConfigId: id,
-        rule: toRule(samplingPercentage, sessionTimeoutMinutes, filters),
-        dataSourceConfig,
-        insights,
-        clusteringConfig,
-        evaluationExecutionRoleArn: update.evaluationExecutionRoleArn,
-      }),
-    );
-  }
-
-  async getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse> {
-    const control = this.clients.control(toClientConfig(options));
-    const config = await control.send(
-      new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }),
-    );
-    if ((config.insights?.length ?? 0) === 0)
-      throw new InputValidationError(`"${id}" is not an online-insight config`, {
-        meta: { onlineEvaluationConfigId: id },
-      });
-    return config;
-  }
-
-  async listOnlineInsights(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListOnlineInsightsResponse> {
-    const page = await FilteredPaginator.paginate({
-      fetchPage: async (token, size) => {
-        const r = await this.listOnlineEvaluationConfigs(token, size, options);
-        return { items: r.onlineEvaluationConfigs ?? [], nextToken: r.nextToken };
-      },
-      predicate: (c) => (c.insights?.length ?? 0) > 0,
-      nextToken,
-      maxResults,
-      defaultPageSize: DEFAULT_ONLINE_INSIGHT_PAGE_SIZE,
-      resourceLabel: "Online insight",
-    });
-    return { onlineEvaluationConfigs: page.items, nextToken: page.nextToken };
-  }
-
-  async setOnlineInsightExecutionStatus(
-    id: string,
-    executionStatus: "ENABLED" | "DISABLED",
-    options: CoreOptions,
-  ): Promise<UpdateOnlineInsightResponse> {
-    const config = await this.clients
-      .control(toClientConfig(options))
-      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
-    if ((config.insights?.length ?? 0) === 0)
-      throw new InputValidationError(`"${id}" is not an online-insight config`, {
-        meta: { onlineEvaluationConfigId: id },
-      });
-    return this.setOnlineEvaluationExecutionStatus(id, executionStatus, options);
-  }
-
-  async deleteOnlineInsight(
-    id: string,
-    options: CoreOptions,
-  ): Promise<DeleteOnlineInsightResponse> {
-    const config = await this.clients
-      .control(toClientConfig(options))
-      .send(new GetOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
-    if ((config.insights?.length ?? 0) === 0)
-      throw new InputValidationError(`"${id}" is not an online-insight config`, {
-        meta: { onlineEvaluationConfigId: id },
-      });
-    return this.deleteOnlineEvaluationConfig(id, options);
   }
 
   // updateOnlineEvaluationConfig fetches the current config and merges the

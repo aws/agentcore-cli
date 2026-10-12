@@ -108,15 +108,6 @@ describe("project remove screen", () => {
         },
       },
       {
-        resourceType: "online-insight",
-        resourceConfig: {
-          name: "trends",
-          samplingRate: 10,
-          agent: RUNTIME,
-          insights: ["Builtin.Coherence"],
-        },
-      },
-      {
         resourceType: "evaluator",
         resourceConfig: {
           name: "judge",
@@ -177,7 +168,6 @@ describe("project remove screen", () => {
       "credential",
       "config-bundle",
       "online-eval",
-      "online-insight",
       "evaluator",
       "gateway",
       "gateway-target",

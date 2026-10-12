@@ -1,6 +1,0 @@
-{
-  "$error": {
-    "name": "ResourceNotFoundException",
-    "message": "Online evaluation configuration not found"
-  }
-}

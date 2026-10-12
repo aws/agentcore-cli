@@ -59,21 +59,12 @@ import {
   OnlineEvalGetScreen,
   OnlineEvalGetJsonScreen,
 } from "../handlers/eval/online-eval/get/screen.tsx";
-import { OnlineInsightScreen } from "../handlers/eval/online-insight/screen.tsx";
-import { OnlineInsightListScreen } from "../handlers/eval/online-insight/list/screen.tsx";
-import {
-  OnlineInsightGetScreen,
-  OnlineInsightGetJsonScreen,
-} from "../handlers/eval/online-insight/get/screen.tsx";
 import { BatchEvaluationScreen } from "../handlers/eval/batch-evaluation/screen.tsx";
 import { BatchEvaluationListScreen } from "../handlers/eval/batch-evaluation/list/screen.tsx";
 import { BatchEvaluationGetJsonScreen } from "../handlers/eval/batch-evaluation/get/screen.tsx";
 import { RecommendationScreen } from "../handlers/eval/recommendation/screen.tsx";
 import { RecommendationListScreen } from "../handlers/eval/recommendation/list/screen.tsx";
 import { RecommendationGetJsonScreen } from "../handlers/eval/recommendation/get/screen.tsx";
-import { BatchInsightsScreen } from "../handlers/eval/batch-insights/screen.tsx";
-import { BatchInsightsListScreen } from "../handlers/eval/batch-insights/list/screen.tsx";
-import { BatchInsightsGetJsonScreen } from "../handlers/eval/batch-insights/get/screen.tsx";
 import { DatasetScreen } from "../handlers/eval/dataset/screen.tsx";
 import { DatasetListScreen } from "../handlers/eval/dataset/list/screen.tsx";
 import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset/get/screen.tsx";
@@ -136,7 +127,6 @@ import { AddGatewayScreen } from "../handlers/project/add/gateway/screen.tsx";
 import { AddGatewayTargetScreen } from "../handlers/project/add/gateway-target/screen.tsx";
 import { AddGatewayConnectorScreen } from "../handlers/project/add/gateway-connector/screen.tsx";
 import { AddOnlineEvalScreen } from "../handlers/project/add/online-eval/screen.tsx";
-import { AddOnlineInsightScreen } from "../handlers/project/add/online-insight/screen.tsx";
 import { AddHarnessScreen } from "../handlers/project/add/harness/screen.tsx";
 import { AddConfigBundleScreen } from "../handlers/project/add/config-bundle/screen.tsx";
 import { AddPolicyEngineScreen } from "../handlers/project/add/policy-engine/screen.tsx";
@@ -665,26 +655,6 @@ function RouteTable({ ctx, core }: ScreenProps) {
         path="agentcore/eval/online-eval/get/:configId/json"
         element={<OnlineEvalGetJsonScreen ctx={ctx} core={core} />}
       />
-      <Route
-        path="agentcore/eval/online-insight"
-        element={<OnlineInsightScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/eval/online-insight/list"
-        element={<OnlineInsightListScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/eval/online-insight/get"
-        element={<Navigate to="/agentcore/eval/online-insight/list" replace />}
-      />
-      <Route
-        path="agentcore/eval/online-insight/get/:configId"
-        element={<OnlineInsightGetScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/eval/online-insight/get/:configId/json"
-        element={<OnlineInsightGetJsonScreen ctx={ctx} core={core} />}
-      />
       <Route path="agentcore/eval/dataset" element={<DatasetScreen ctx={ctx} core={core} />} />
       <Route
         path="agentcore/eval/dataset/list"
@@ -786,22 +756,6 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/eval/ab-test/get/:abTestId/json"
         element={<AbTestGetJsonScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/eval/batch-insights"
-        element={<BatchInsightsScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/eval/batch-insights/list"
-        element={<BatchInsightsListScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/eval/batch-insights/get"
-        element={<Navigate to="/agentcore/eval/batch-insights/list" replace />}
-      />
-      <Route
-        path="agentcore/eval/batch-insights/get/:batchEvaluationId"
-        element={<BatchInsightsGetJsonScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/memory/event" element={<MemoryEventScreen ctx={ctx} core={core} />} />
       <Route
@@ -942,10 +896,6 @@ function RouteTable({ ctx, core }: ScreenProps) {
       <Route
         path="agentcore/add/online-eval"
         element={<AddOnlineEvalScreen ctx={ctx} core={core} />}
-      />
-      <Route
-        path="agentcore/add/online-insight"
-        element={<AddOnlineInsightScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/add/harness" element={<AddHarnessScreen ctx={ctx} core={core} />} />
       <Route

@@ -26,7 +26,6 @@ type RootResourceType =
 type RemovableResourceType =
   | RootResourceType
   | "online-eval"
-  | "online-insight"
   | "gateway-target"
   | "gateway-connector"
   | "policy"
@@ -58,21 +57,10 @@ const RESOURCE_PICKER_CONFIGS: RemovableResourcePickerConfig[] = [
   rootResourceTypePickerConfig("credential", (spec) => spec.credentials),
   rootResourceTypePickerConfig("config-bundle", (spec) => spec.configBundles),
   rootResourceTypePickerConfig("evaluator", (spec) => spec.evaluators),
-  // online-eval and online-insight share the onlineEvalConfigs collection; an
-  // insight config is the one with a non-empty `insights` array.
   {
     resourceType: "online-eval",
     listResources: (spec) =>
-      spec.onlineEvalConfigs
-        .filter((config) => (config.insights?.length ?? 0) === 0)
-        .map(({ name }) => ({ resourceType: "online-eval", name })),
-  },
-  {
-    resourceType: "online-insight",
-    listResources: (spec) =>
-      spec.onlineEvalConfigs
-        .filter((config) => (config.insights?.length ?? 0) > 0)
-        .map(({ name }) => ({ resourceType: "online-insight", name })),
+      spec.onlineEvalConfigs.map(({ name }) => ({ resourceType: "online-eval", name })),
   },
   rootResourceTypePickerConfig("gateway", (spec) => spec.agentCoreGateways),
   rootResourceTypePickerConfig("policy-engine", (spec) => spec.policyEngines),

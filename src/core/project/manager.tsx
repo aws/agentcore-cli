@@ -779,8 +779,7 @@ export class FsProjectManager implements ProjectManager {
         projectSpec.configBundles.push(parseResource(ConfigBundleSchema, input.resourceConfig));
         break;
       }
-      case "online-eval":
-      case "online-insight": {
+      case "online-eval": {
         projectSpec.onlineEvalConfigs.push(
           parseResource(OnlineEvalConfigSchema, input.resourceConfig),
         );
@@ -1782,7 +1781,6 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "config-bundle":
       return "configBundles";
     case "online-eval":
-    case "online-insight":
       return "onlineEvalConfigs";
     case "memory":
       return "memories";
