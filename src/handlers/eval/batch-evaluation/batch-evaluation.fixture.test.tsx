@@ -72,14 +72,14 @@ function createFixtureCore(): CoreClient {
 
 // run drives the real router (parsing → middleware → handler → CoreClient) against
 // the fixture-backed SDK clients and returns captured stdout.
-async function run(args: string[]): Promise<string> {
+async function run(args: string[], region = REGION): Promise<string> {
   const io = testIO();
   const root = createRootHandler(createFixtureCore(), {
     io: io.io,
     logger: createSilentLogger(),
     globalConfigAccessor: new TestGlobalConfigAccessor(),
   });
-  await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  await root.route(["node", "agentcore", ...args, "--region", region]);
   return io.stdout();
 }
 
@@ -117,6 +117,73 @@ describe("eval batch-evaluation (fixture-backed)", () => {
     expect(detail.status).toBe("COMPLETED");
     expect(detail.results).toBeUndefined();
   });
+
+  // Recorded from real jobs with deliberately incomplete traces and a mixed job
+  // with custom output. Re-recording needs these jobs and their retained logs.
+  // Redact account identifiers in recordings before publishing them.
+  test.each([
+    [
+      "errors",
+      "cli_logs_errors_20261013-0ce8bc1c19",
+      "FAILED",
+      0,
+      2,
+      "JobProcessorCustomerException",
+    ],
+    [
+      "missing-events",
+      "cli_logs_missing_spans_20261013-c5290ec8b4",
+      "FAILED",
+      0,
+      2,
+      "LogEventMissingException",
+    ],
+    [
+      "mixed-custom-output",
+      "cli_logs_mixed_retry_20261013-356d56c3e2",
+      "COMPLETED_WITH_ERRORS",
+      1,
+      1,
+      "LogEventMissingException",
+    ],
+  ] as const)(
+    "get retains recorded %s output",
+    async (name, id, status, scores, errors, errorType) => {
+      const stdout = await run(
+        ["eval", "batch-evaluation", "get", "--id", id, "--json"],
+        "us-east-1",
+      );
+
+      const detail = JSON.parse(stdout);
+      expect(detail.batchEvaluationId).toBe(id);
+      expect(detail.status).toBe(status);
+      expect(detail.results).toHaveLength(scores + errors);
+      const scored = detail.results.filter(
+        (result: { score?: number }) => typeof result.score === "number",
+      );
+      const failed = detail.results.filter(
+        (result: { error?: string }) => result.error !== undefined,
+      );
+      expect(scored).toHaveLength(scores);
+      expect(failed).toHaveLength(errors);
+      for (const result of scored) {
+        expect(result.evaluatorId).toBe("Builtin.Helpfulness");
+        expect(result.error).toBeUndefined();
+      }
+      for (const result of failed) {
+        expect(result.errorType).toBe(errorType);
+        expect(result.sessionId).toStartWith("cli-error-session-");
+        if (errorType === "LogEventMissingException") {
+          expect(result.error).toContain("missing a corresponding log event");
+          expect(result.evaluatorId).toBe("Builtin.Helpfulness");
+        } else {
+          expect(result.error).toContain("No spans were found for the session");
+          expect(result.evaluatorId).toBeUndefined();
+        }
+      }
+      matchGolden(FIXTURES, `get-${name}.golden.json`, stdout);
+    },
+  );
 
   test("list returns the service page", async () => {
     const stdout = await run(["eval", "batch-evaluation", "list", "--json"]);
