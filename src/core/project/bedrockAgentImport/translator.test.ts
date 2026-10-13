@@ -389,7 +389,7 @@ test.each([
     }).translate();
 
     expect(plan.files[file]).toContain(
-      `MEMORY_ID = os.getenv("AGENTCORE_MEMORY_${"A".repeat(42)}MEMORY_ID")`,
+      `MEMORY_ID = os.getenv("MEMORY_${"A".repeat(42)}MEMORY_ID")`,
     );
   },
 );

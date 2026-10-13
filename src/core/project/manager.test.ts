@@ -273,9 +273,7 @@ describe("FsProjectManager.create", () => {
     const session = await Bun.file(
       join(directory, "example", "app", "agent_python_strands", "memory", "session.py"),
     ).text();
-    expect(session).toContain(
-      'MEMORY_ID = os.getenv("AGENTCORE_MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")',
-    );
+    expect(session).toContain('MEMORY_ID = os.getenv("MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")');
   });
 
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {

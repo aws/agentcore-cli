@@ -184,9 +184,13 @@ export const MemorySchema = z
   });
 export type Memory = z.infer<typeof MemorySchema>;
 
-/** Derives the env var name the CDK backend injects with the deployed memory id. */
+/**
+ * The env var the CDK backend sets on the runtime with the deployed memory id: `MEMORY_<NAME>_ID`, the
+ * memory name uppercased. This is the name the v0 CLI deployed, kept so v0 agent code keeps finding its
+ * memory after migration; @aws/agentcore-cdk sets the same name (aws/agentcore-l3-cdk-constructs#418).
+ */
 export function memoryEnvVarName(memoryName: string): string {
-  return `AGENTCORE_MEMORY_${memoryName.toUpperCase()}_ID`;
+  return `MEMORY_${memoryName.toUpperCase()}_ID`;
 }
 
 export function defaultMemoryName(runtimeName: string): string {
