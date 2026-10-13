@@ -1,7 +1,7 @@
 import { ProjectStateError } from "../../../errors";
 import type { Project } from "../../../handlers/project/types";
 
-/** Keep v0 projects read-only until the operation-specific compatibility paths land. */
+/** Guard operations whose implementation rewrites files using the v1 project shape. */
 export function assertV1Project(project: Project, command: string): void {
   if (!project.legacy) return;
   throw new ProjectStateError(

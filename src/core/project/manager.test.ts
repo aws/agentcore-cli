@@ -2172,25 +2172,76 @@ describe("FsProjectManager.resolve", () => {
     ]);
   });
 
-  test("blocks deploys and project writes until their v0 compatibility paths land", async () => {
+  test("allows v0 builds and deploys through the configured backend", async () => {
+    const { root } = await legacyProject("0.1.0-alpha.45", 1);
+    const builds: Project[] = [];
+    const deploys: { project: Project; input: DeployBackendInput }[] = [];
+    const backend: ProjectBackend = {
+      async *build(project) {
+        builds.push(project);
+        yield { type: "step", message: "Building" };
+      },
+      async *deploy(project, input) {
+        deploys.push({ project, input });
+        yield { type: "step", message: "Deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await subject.resolve({ filePath: root });
+    if (!project) throw new Error("expected project");
+    await writeFile(
+      join(root, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }]),
+    );
+
+    const build = subject.build(project);
+    expect(await build.next()).toEqual({
+      done: false,
+      value: { type: "step", message: "Building" },
+    });
+    expect(await build.next()).toEqual({ done: true, value: undefined });
+    const deploy = subject.deploy(project, {
+      target: "default",
+      region: "us-east-1",
+      confirmTeardown: async () => false,
+      transactionSearch: false,
+    });
+    expect(await deploy.next()).toEqual({
+      done: false,
+      value: { type: "step", message: "Deploying" },
+    });
+    expect(await deploy.next()).toEqual({ done: true, value: { outputs: {} } });
+    expect(builds).toEqual([project]);
+    expect(deploys).toEqual([
+      {
+        project,
+        input: {
+          target: { name: "default", account: "111122223333", region: "us-east-1" },
+          confirmTeardown: expect.any(Function),
+          transactionSearch: false,
+        },
+      },
+    ]);
+  });
+
+  test("blocks v0 operations that rewrite files using the v1 shape", async () => {
     const { root } = await legacyProject("0.1.0-alpha.45", 1);
     const subject = manager().manager;
     const project = await subject.resolve({ filePath: root });
     if (!project) throw new Error("expected project");
 
-    await expect(subject.build(project).next()).rejects.toThrow(
-      "'build' isn't available for v0 projects yet",
-    );
-    await expect(
-      subject
-        .deploy(project, {
-          target: "default",
-          region: "us-east-1",
-          confirmTeardown: async () => false,
-          transactionSearch: false,
-        })
-        .next(),
-    ).rejects.toThrow("'deploy' isn't available for v0 projects yet");
     await expect(
       runAdd(subject, project, {
         resourceType: "memory",
