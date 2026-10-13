@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { stringify } from "yaml";
 import { ZodError, z } from "zod";
 import {
+  encodeHarnessYaml,
   HarnessSpecSchema,
   type HarnessModelProvider,
   type HarnessSpec,
@@ -102,84 +103,15 @@ export function getHarnessTemplateResolver(
 }
 
 function buildTemplateContext(spec: HarnessSpec) {
-  const {
-    model,
-    memory,
-    skills,
-    containerUri,
-    networkMode,
-    networkConfig,
-    lifecycleConfig,
-    sessionStoragePath,
-    efsAccessPoints,
-    s3AccessPoints,
-    authorizerType: _authorizerType,
-    authorizerConfiguration,
-    ...settings
-  } = spec;
+  const { model, memory } = spec;
   const { provider, ...modelConfig } = model;
-  const modelKey = {
-    bedrock: "bedrockModelConfig",
-    open_ai: "openAiModelConfig",
-    gemini: "geminiModelConfig",
-    lite_llm: "liteLlmModelConfig",
-  }[provider];
   const { mode, ...memoryConfig } = memory ?? {};
-  const memoryKey =
-    mode &&
-    {
-      managed: "managedMemoryConfiguration",
-      existing: "agentCoreMemoryConfiguration",
-      disabled: "disabled",
-    }[mode];
-  const mounts = [
-    ...(sessionStoragePath ? [{ sessionStorage: { mountPath: sessionStoragePath } }] : []),
-    ...(efsAccessPoints ?? []).map((efsAccessPoint) => ({ efsAccessPoint })),
-    ...(s3AccessPoints ?? []).map((s3FilesAccessPoint) => ({ s3FilesAccessPoint })),
-  ];
-  const runtime = Object.fromEntries(
-    Object.entries({
-      networkConfiguration: networkMode
-        ? {
-            networkMode,
-            networkModeConfig: networkConfig && {
-              subnets: networkConfig.subnets,
-              securityGroups: networkConfig.securityGroups,
-            },
-          }
-        : undefined,
-      lifecycleConfiguration: lifecycleConfig,
-      filesystemConfigurations: mounts.length ? mounts : undefined,
-    }).filter(([, value]) => value !== undefined),
-  );
   const yaml = Object.fromEntries(
-    Object.entries({
-      ...settings,
-      model: { [modelKey]: modelConfig },
-      memory: memoryKey ? { [memoryKey]: memoryConfig } : undefined,
-      skills: skills.map((skill) => {
-        if ("s3Uri" in skill) return { s3: { uri: skill.s3Uri } };
-        if ("gitUrl" in skill) {
-          const { gitUrl, ...git } = skill;
-          return { git: { url: gitUrl, ...git } };
-        }
-        return skill;
-      }),
-      environmentArtifact: containerUri ? { containerConfiguration: { containerUri } } : undefined,
-      environment: Object.keys(runtime).length
-        ? { agentCoreRuntimeEnvironment: runtime }
-        : undefined,
-      networkConfig: networkConfig?.vpcId ? { vpcId: networkConfig.vpcId } : undefined,
-      authorizerConfiguration: authorizerConfiguration && {
-        customJWTAuthorizer: authorizerConfiguration.customJwtAuthorizer,
-      },
-    })
-      .filter(([, value]) => value !== undefined)
-      .map(([key, value]) => [
-        key,
-        // Quoted multiline values cannot absorb the template's section-separating blank lines.
-        stringify({ [key]: value }, { blockQuote: false }).slice(0, -1),
-      ]),
+    Object.entries(encodeHarnessYaml(spec)).map(([key, value]) => [
+      key,
+      // Quoted multiline values cannot absorb the template's section-separating blank lines.
+      stringify({ [key]: value }, { blockQuote: false }).slice(0, -1),
+    ]),
   );
   return {
     ...spec,

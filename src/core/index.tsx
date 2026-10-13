@@ -32,6 +32,8 @@ import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
 import { BedrockAgentImporter, type CoreBedrockAgentImporter } from "./project/bedrockAgentImport";
+import { FsProjectMigrator } from "./project/migrate";
+import type { ProjectMigrator } from "../handlers/project/migrate/types";
 
 export type {
   AwsClients,
@@ -59,6 +61,7 @@ type CoreClientConfig = {
   newSessionId?: () => string;
   now?: () => number;
   bedrockAgentImporter?: CoreBedrockAgentImporter;
+  projectMigrator?: ProjectMigrator;
   openRuntimeShell?: OpenRuntimeShell;
   openHarnessShell?: OpenHarnessShell;
 };
@@ -96,6 +99,7 @@ export class CoreClient implements AwsClients {
 
   readonly projectManager: ProjectManager;
   readonly bedrockAgentImporter: CoreBedrockAgentImporter;
+  readonly projectMigrator: ProjectMigrator;
   readonly fetch: CoreFetch;
 
   constructor(config: CoreClientConfig) {
@@ -144,6 +148,14 @@ export class CoreClient implements AwsClients {
         ),
     });
     this.bedrockAgentImporter = config.bedrockAgentImporter ?? new BedrockAgentImporter();
+    // Shares the CloudFormation client factory, so stack reads go through the same
+    // record/replay seam as deploy.
+    this.projectMigrator =
+      config.projectMigrator ??
+      new FsProjectMigrator({
+        logger: this.logger.child({ module: "projectMigrator" }),
+        createCloudFormationClient: config.createCloudFormationClient,
+      });
   }
 
   // control returns the control-plane client for `config`, creating and caching it

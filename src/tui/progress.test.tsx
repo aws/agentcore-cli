@@ -3,6 +3,7 @@ import { testIO, tick, waitFor } from "../testing";
 import {
   applyProgressEvent,
   driveProgress,
+  progressFrom,
   runWithProgress,
   settleProgress,
   type ProgressEvent,
@@ -271,5 +272,44 @@ describe("driveProgress", () => {
       }),
     ).rejects.toBe(failure);
     expect(last).toBe("failed:one");
+  });
+});
+
+describe("progressFrom", () => {
+  test("yields the events a callback operation emits, then returns its result", async () => {
+    const generator = progressFrom(async (emit) => {
+      emit({ type: "step", message: "one" });
+      await tick();
+      emit({ type: "warning", message: "careful" });
+      emit({ type: "step", message: "two" });
+      return 42;
+    });
+    const events: ProgressEvent[] = [];
+    let next = await generator.next();
+    while (!next.done) {
+      events.push(next.value);
+      next = await generator.next();
+    }
+    expect(events).toEqual([
+      { type: "step", message: "one" },
+      { type: "warning", message: "careful" },
+      { type: "step", message: "two" },
+    ]);
+    expect(next.value).toBe(42);
+  });
+
+  test("rethrows the operation's error after its events", async () => {
+    const io = testIO();
+    const failure = new Error("boom");
+    await expect(
+      runWithProgress(
+        progressFrom(async (emit) => {
+          emit({ type: "step", message: "working" });
+          throw failure;
+        }),
+        { io: io.io },
+      ),
+    ).rejects.toBe(failure);
+    expect(io.stderr()).toBe("working");
   });
 });

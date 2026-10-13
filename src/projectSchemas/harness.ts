@@ -806,6 +806,97 @@ export const HarnessYamlSchema = z
   )
   .pipe(HarnessSpecSchema);
 
+const MODEL_CONFIG_KEYS = {
+  bedrock: "bedrockModelConfig",
+  open_ai: "openAiModelConfig",
+  gemini: "geminiModelConfig",
+  lite_llm: "liteLlmModelConfig",
+} as const satisfies Record<HarnessModelProvider, string>;
+
+const MEMORY_CONFIG_KEYS = {
+  managed: "managedMemoryConfiguration",
+  existing: "agentCoreMemoryConfiguration",
+  disabled: "disabled",
+} as const satisfies Record<HarnessMemoryRef["mode"], string>;
+
+/**
+ * Encodes a harness spec as a `harness.yaml` document: the inverse of
+ * {@link HarnessYamlSchema}'s transform. Fields that are unset are omitted.
+ *
+ * The on-disk format cannot say "no network mode" or "no authorizer type": reading
+ * it back always yields `networkMode: PUBLIC` and `authorizerType: AWS_IAM`
+ * (or `CUSTOM_JWT` with an authorizer configuration), which is what an unset
+ * field means.
+ */
+export function encodeHarnessYaml(spec: HarnessSpec): Record<string, unknown> {
+  const {
+    name,
+    model,
+    systemPrompt,
+    tools,
+    skills,
+    allowedTools,
+    memory,
+    containerUri,
+    networkMode,
+    networkConfig,
+    lifecycleConfig,
+    sessionStoragePath,
+    efsAccessPoints,
+    s3AccessPoints,
+    authorizerType: _authorizerType,
+    authorizerConfiguration,
+    ...settings
+  } = spec;
+  const { provider, ...modelConfig } = model;
+  const { mode, ...memoryConfig } = memory ?? {};
+  const mounts = [
+    ...(sessionStoragePath ? [{ sessionStorage: { mountPath: sessionStoragePath } }] : []),
+    ...(efsAccessPoints ?? []).map((efsAccessPoint) => ({ efsAccessPoint })),
+    ...(s3AccessPoints ?? []).map((s3FilesAccessPoint) => ({ s3FilesAccessPoint })),
+  ];
+  const runtime = withoutUndefined({
+    networkConfiguration: networkMode
+      ? withoutUndefined({
+          networkMode,
+          networkModeConfig: networkConfig && {
+            subnets: networkConfig.subnets,
+            securityGroups: networkConfig.securityGroups,
+          },
+        })
+      : undefined,
+    lifecycleConfiguration: lifecycleConfig,
+    filesystemConfigurations: mounts.length ? mounts : undefined,
+  });
+  return withoutUndefined({
+    name,
+    model: { [MODEL_CONFIG_KEYS[provider]]: modelConfig },
+    systemPrompt: systemPrompt === undefined ? undefined : [{ text: systemPrompt }],
+    tools,
+    skills: skills.map((skill) => {
+      if ("s3Uri" in skill) return { s3: { uri: skill.s3Uri } };
+      if ("gitUrl" in skill) {
+        const { gitUrl, ...git } = skill;
+        return { git: { url: gitUrl, ...git } };
+      }
+      return skill;
+    }),
+    allowedTools,
+    memory: mode ? { [MEMORY_CONFIG_KEYS[mode]]: memoryConfig } : undefined,
+    ...settings,
+    environmentArtifact: containerUri ? { containerConfiguration: { containerUri } } : undefined,
+    environment: Object.keys(runtime).length ? { agentCoreRuntimeEnvironment: runtime } : undefined,
+    networkConfig: networkConfig?.vpcId ? { vpcId: networkConfig.vpcId } : undefined,
+    authorizerConfiguration: authorizerConfiguration && {
+      customJWTAuthorizer: authorizerConfiguration.customJwtAuthorizer,
+    },
+  });
+}
+
+function withoutUndefined(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
+}
+
 export const HarnessRegistryEntrySchema = z.object({
   name: HarnessNameSchema,
   path: z.string().min(1, "Path to harness config directory is required"),

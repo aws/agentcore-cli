@@ -1,5 +1,6 @@
 import { InvalidEnvironmentError, ProjectStateError } from "../../../errors";
 import { ProcessFailedError, type ProcessRunner } from "../../../io";
+import { REPORTS_RELATIVE_PATH } from "./reports";
 
 /** The project spec as git sees it: repository-relative, always forward slashes. */
 const PROJECT_SPEC_GIT_PATH = "agentcore/agentcore.json";
@@ -63,6 +64,8 @@ export async function checkGitGate(
     "--untracked-files=all",
     "--",
     ".",
+    // Migrate's own reports, which a project's .gitignore may not cover.
+    `:(exclude)${REPORTS_RELATIVE_PATH}`,
   ]);
   if (!status.ok) {
     throw new ProjectStateError(

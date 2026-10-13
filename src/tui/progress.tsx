@@ -22,6 +22,36 @@ export function isProgressGenerator<T>(
   return typeof (result as AsyncGenerator<ProgressEvent, T>)[Symbol.asyncIterator] === "function";
 }
 
+/**
+ * Adapts an operation that reports progress through callbacks into a progress
+ * generator: each event `run` emits is yielded in order, and the generator
+ * returns `run`'s result (or throws its error) once every event is out.
+ */
+export async function* progressFrom<T>(
+  run: (emit: (event: ProgressEvent) => void) => Promise<T>,
+): AsyncGenerator<ProgressEvent, T> {
+  const queue: ProgressEvent[] = [];
+  let wake: (() => void) | undefined;
+  let settled = false;
+  const operation = run((event) => {
+    queue.push(event);
+    wake?.();
+  });
+  const settle = () => {
+    settled = true;
+    wake?.();
+  };
+  operation.then(settle, settle);
+  while (true) {
+    while (queue.length > 0) yield queue.shift()!;
+    if (settled) return await operation;
+    await new Promise<void>((resolve) => {
+      wake = resolve;
+    });
+    wake = undefined;
+  }
+}
+
 export type RunWithProgressOptions = {
   io: AppIO;
   /** A single waiting step for callback operations; cleared before their first output. */

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { writeMigrationState } from "../../core/project/migrate/journal";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
 import { CommandRunMetricEventKey } from "../../router";
 import {
@@ -475,6 +476,35 @@ describe("project deploy screen", () => {
     expect(r.lastFrame()).not.toContain("Deployed project");
     // Nothing is left to invoke, so the invoke next step follows the result too.
     expect(r.lastFrame()).not.toContain("agentcore invoke");
+    r.unmount();
+  });
+
+  test("refuses a target a migration hasn't finished, before any backend work", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    await writeMigrationState(projectRoot, {
+      version: 2,
+      startedAt: "2026-10-13T00:00:00.000Z",
+      files: { status: "installed", backup: "agentcore/.cli/migrate-backup", changes: [] },
+      refactored: [],
+      targets: [
+        {
+          name: "default",
+          account: "111122223333",
+          region: "us-east-1",
+          stackName: "AgentCore-orders-default",
+          status: "pending",
+        },
+      ],
+    });
+    const r = renderScreen("/agentcore/deploy", { core });
+
+    await waitForFlatText(r.lastFrame, "agentcore migrate --target default");
+    expect(flatFrame(r.lastFrame)).toContain(
+      "Target 'default' (AWS account 111122223333, us-east-1) hasn't been migrated yet",
+    );
+    expect(deploys).toEqual([]);
     r.unmount();
   });
 

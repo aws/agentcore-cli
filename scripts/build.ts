@@ -24,9 +24,14 @@ const ASSET_NAMING = "agentcore-assets/[dir]/[name].[ext]";
 // __dirname to the *build machine's* path, which resolves on the builder and
 // fails everywhere else. Binaries therefore have to hand the Toolkit an
 // explicit copy of anything it would otherwise read from its package.
-const EXTERNAL = ["@aws-cdk/toolkit-lib", "@napi-rs/keyring"];
+//
+// @aws-cdk/cloudformation-diff (migrate's replacement check) is external for the
+// same reason: it loads its resource database from a file inside its package.
+const EXTERNAL = ["@aws-cdk/toolkit-lib", "@napi-rs/keyring", "@aws-cdk/cloudformation-diff"];
 
 const BOOTSTRAP_TEMPLATE = ["lib", "api", "bootstrap", "bootstrap-template.yaml"];
+
+const SERVICE_SPEC_DATABASE = "db.json.gz";
 
 // Shrink whitespace/syntax but keep identifiers: minified names make stack
 // traces unreadable and erase error names telemetry keys on.
@@ -79,6 +84,50 @@ function assetLoaderPlugin(): Bun.BunPlugin {
   };
 }
 
+/**
+ * `agentcore migrate` checks for replacements with @aws-cdk/cloudformation-diff,
+ * which reads the AWS resource specification from `db.json.gz` beside its
+ * @aws-cdk/aws-service-spec dependency, at a path built from `__dirname`. In a
+ * standalone binary that path is the build machine's, so this embeds the database
+ * and points the loader at the embedded copy instead.
+ */
+function serviceSpecDatabase(): string {
+  const diffManifest = Bun.resolveSync("@aws-cdk/cloudformation-diff/package.json", REPO_ROOT);
+  const specManifest = Bun.resolveSync(
+    "@aws-cdk/aws-service-spec/package.json",
+    resolve(diffManifest, ".."),
+  );
+  const database = join(resolve(specManifest, ".."), SERVICE_SPEC_DATABASE);
+  if (!existsSync(database)) {
+    throw new Error(
+      `@aws-cdk/aws-service-spec no longer ships ${SERVICE_SPEC_DATABASE}; looked in ${database}`,
+    );
+  }
+  return database;
+}
+
+function serviceSpecDatabasePlugin(database: string): Bun.BunPlugin {
+  const loader = /@aws-cdk[/\\]aws-service-spec[/\\]lib[/\\]index\.js$/;
+  const pathLine = "const DB_PATH = path.join(__dirname, '..', DB_COMPRESSED);";
+  return {
+    name: "aws-service-spec-database",
+    setup(build) {
+      build.onLoad({ filter: loader }, async ({ path }) => {
+        const source = await Bun.file(path).text();
+        if (!source.includes(pathLine)) {
+          throw new Error(`${path} no longer builds its database path as expected: ${pathLine}`);
+        }
+        return {
+          contents:
+            `import EMBEDDED_DB_PATH from ${JSON.stringify(database)} with { type: "file" };\n` +
+            source.replace(pathLine, "const DB_PATH = EMBEDDED_DB_PATH;"),
+          loader: "js",
+        };
+      });
+    },
+  };
+}
+
 function runtimeShellSdkPlugin(): Bun.BunPlugin {
   const runtimeEntry = Bun.resolveSync("bedrock-agentcore/runtime", REPO_ROOT);
   const runtimeDirectory = resolve(runtimeEntry, "..");
@@ -127,13 +176,13 @@ function bootstrapTemplate(): string {
   return template;
 }
 
-async function assertTemplateIsEmbedded(outfile: string, template: string): Promise<void> {
+async function assertFileIsEmbedded(outfile: string, file: string, label: string): Promise<void> {
   const [executable, contents] = await Promise.all([
     Bun.file(outfile).bytes(),
-    Bun.file(template).bytes(),
+    Bun.file(file).bytes(),
   ]);
   if (!Buffer.from(executable).includes(contents)) {
-    throw new Error(`${outfile} does not contain ${BOOTSTRAP_TEMPLATE.join("/")}`);
+    throw new Error(`${outfile} does not contain ${label}`);
   }
 }
 
@@ -196,6 +245,7 @@ async function compile(target: string): Promise<void> {
   await $`mkdir -p ${join(DIST, "bin")}`;
 
   const template = bootstrapTemplate();
+  const database = serviceSpecDatabase();
   await Bun.build({
     entrypoints: [ENTRYPOINT, ...assets, template],
     compile: { target: target as Bun.Build.CompileTarget, outfile },
@@ -203,11 +253,17 @@ async function compile(target: string): Promise<void> {
     define: DEFINE,
     root: REPO_ROOT,
     naming: { asset: ASSET_NAMING },
-    plugins: [assetLoaderPlugin(), runtimeShellSdkPlugin(), nativeKeyringPlugin(target)],
+    plugins: [
+      assetLoaderPlugin(),
+      runtimeShellSdkPlugin(),
+      nativeKeyringPlugin(target),
+      serviceSpecDatabasePlugin(database),
+    ],
   });
-  await assertTemplateIsEmbedded(outfile, template);
+  await assertFileIsEmbedded(outfile, template, BOOTSTRAP_TEMPLATE.join("/"));
+  await assertFileIsEmbedded(outfile, database, `aws-service-spec ${SERVICE_SPEC_DATABASE}`);
   console.log(
-    `Compiled ${target} → ${outfile} (${assets.length} assets embedded, plus the bootstrap template)`,
+    `Compiled ${target} → ${outfile} (${assets.length} assets embedded, plus the bootstrap template and the AWS resource specification)`,
   );
 }
 

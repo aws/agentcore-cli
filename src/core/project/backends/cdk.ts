@@ -43,6 +43,7 @@ import {
 import {
   countDeployableResources,
   stackArtifactForTarget,
+  synthCommand,
   type StackArtifact,
 } from "./cdk/assembly";
 import {
@@ -226,25 +227,13 @@ export class CdkBackend implements ProjectBackend {
         // Chunks still go to the debug log whole; the splitter reassembles them
         // into lines for the live progress tail.
         const lines = createLineSplitter(emit);
-        return this.runner(
-          [
-            "npm",
-            "run",
-            "cdk",
-            "--",
-            "synth",
-            "--quiet",
-            "--output",
-            this.assemblyDirectory(project),
-          ],
-          {
-            cwd: this.cdkDirectory(project),
-            onOutput: (chunk) => {
-              this.logger.debug(chunk);
-              lines.push(chunk);
-            },
+        return this.runner(synthCommand(this.assemblyDirectory(project)), {
+          cwd: this.cdkDirectory(project),
+          onOutput: (chunk) => {
+            this.logger.debug(chunk);
+            lines.push(chunk);
           },
-        ).finally(() => lines.flush());
+        }).finally(() => lines.flush());
       });
     } catch (error) {
       const credentialName = explainUndeployedCredentials

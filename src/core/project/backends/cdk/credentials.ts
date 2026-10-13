@@ -37,15 +37,24 @@ export type DeployedCredential = {
 export type DeployedCredentials = Record<string, DeployedCredential>;
 
 /**
+ * Whether the project keeps v0's credential provider names: a v0 project, or one
+ * `agentcore migrate` converted from v0 (`migratedFrom: "v1"`), whose deployed agent
+ * code and providers still use them.
+ */
+function keepsV0CredentialNames(project: Project): boolean {
+  return project.legacy !== undefined || project.spec.migratedFrom === "v1";
+}
+
+/**
  * The Identity name a credential's provider is created under. Scoped to the project
  * and target so two targets in one account and region never share a provider.
  *
- * A v0 project keeps the bare credential name v0 created its providers under: the
- * agent code it deployed looks them up by that name, and a scoped name would create a
- * second set of providers beside the ones still in use.
+ * A v0 project, and one migrated from v0, keeps the bare credential name v0 created
+ * its providers under: the agent code it deployed looks them up by that name, and a
+ * scoped name would create a second set of providers beside the ones still in use.
  */
 function providerName(project: Project, targetName: string, credentialName: string): string {
-  if (project.legacy) return credentialName;
+  if (keepsV0CredentialNames(project)) return credentialName;
   return `${project.name}_${targetName}_${credentialName}`;
 }
 
@@ -151,7 +160,7 @@ export function createCredentialRemover(identity: ProviderDeletes): CredentialRe
     const options: CoreOptions = { region, credentials };
     for (const { name, authorizerType } of providers) {
       const provider = providerName(project, targetName, name);
-      if (project.legacy && authorizerType !== "PaymentCredentialProvider") {
+      if (keepsV0CredentialNames(project) && authorizerType !== "PaymentCredentialProvider") {
         yield {
           type: "step",
           message: `Leaving credential provider '${provider}' in place: v0 projects can share it`,

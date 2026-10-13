@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
 import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
+import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
 import { SilentCLIError, UserCancellationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
@@ -210,6 +211,9 @@ async function delegateV0Deploy(
   config: DeployProjectHandlerConfig,
   input: Parameters<V0DeployRunner>[0],
 ): Promise<void> {
+  // A migration stopped while writing the files leaves a v0 spec beside a v1 CDK
+  // app; the v0 deployer mustn't deploy that.
+  await assertNoPendingMigration(input.projectRoot, input.target);
   if (!input.json) {
     config.io.stderr.write(
       "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.\n",

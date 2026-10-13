@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError, ProjectStateError } from "../../../errors";
 import { ProcessFailedError, runProcess, type ProcessRunner } from "../../../io";
+import { saveMigrationReport } from "./reports";
 import { checkGitGate, MAX_LISTED_CHANGES } from "./gitGate";
 
 const ROOT = "/work/orders";
@@ -62,6 +63,7 @@ describe("checkGitGate", () => {
         "--untracked-files=all",
         "--",
         ".",
+        ":(exclude)agentcore/.cli/migrate",
       ],
     ]);
   });
@@ -245,5 +247,15 @@ describe("checkGitGate with real git", () => {
     await writeFile(join(root, "notes.txt"), "untracked\n");
 
     await expect(checkGitGate(runProcess, root)).rejects.toThrow("?? notes.txt");
+  });
+
+  test("ignores migrate's own reports even when .gitignore doesn't cover them", async () => {
+    const root = await projectDirectory();
+    await git(root, "init", "--quiet");
+    await git(root, "add", ".");
+    await git(root, "commit", "--quiet", "-m", "init");
+    await saveMigrationReport(root, "plan-20261013T220000Z.md", "the plan\n");
+
+    expect(await checkGitGate(runProcess, root)).toEqual({ projectRoot: root });
   });
 });

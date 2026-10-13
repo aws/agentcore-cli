@@ -17,6 +17,8 @@ import {
 } from "../../../testing";
 import type { DeployBackendInput, ProjectBackend } from "../../../core/project";
 import type { V0DeployInput, V0DeployRunner } from "../../../core/project/legacy/deploy";
+import { writeMigrationState } from "../../../core/project/migrate/journal";
+import { ProjectStateError } from "../../../errors";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { DeployResult, Project, ProjectEvent, TeardownConfirmationRequest } from "../types";
 
@@ -159,6 +161,75 @@ async function emptyProjectSpec(projectRoot: string): Promise<void> {
     JSON.stringify({ name: "orders", version: 2 }),
   );
 }
+
+/** Records a pending migration of `pending` (or one stopped while writing files). */
+async function pendingMigration(
+  projectRoot: string,
+  pending: AwsDeploymentTarget[],
+  filesStatus: "writing" | "installed" = "installed",
+): Promise<void> {
+  await writeMigrationState(projectRoot, {
+    version: 2,
+    startedAt: "2026-10-13T00:00:00.000Z",
+    files: { status: filesStatus, backup: "agentcore/.cli/migrate-backup", changes: [] },
+    refactored: [],
+    targets: pending.map((target) => ({
+      name: target.name,
+      account: target.account,
+      region: target.region,
+      stackName: `AgentCore-orders-${target.name}`,
+      status: "pending" as const,
+    })),
+  });
+}
+
+describe("project deploy handler, with a pending migration", () => {
+  test("refuses a target the migration hasn't finished, naming its account and region", async () => {
+    const projectRoot = await inProjectWithTargets();
+    await pendingMigration(projectRoot, [STAGING_TARGET]);
+    const subject = await testDeployCommand({ outputs: {} });
+
+    const error = await subject.run(["--target", "staging", "--yes"]).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ProjectStateError);
+    expect(error.message).toBe(
+      "Target 'staging' (AWS account 444455556666, eu-west-1) hasn't been migrated yet: its " +
+        "stack AgentCore-orders-staging still has the v0 logical IDs, so a v1 deploy would " +
+        "replace its resources. Run `agentcore migrate --target staging` with credentials for " +
+        "account 444455556666, then deploy.",
+    );
+    expect(subject.calls).toEqual([]);
+  });
+
+  test("still deploys a target the migration finished", async () => {
+    const projectRoot = await inProjectWithTargets();
+    await pendingMigration(projectRoot, [STAGING_TARGET]);
+    const subject = await testDeployCommand({ outputs: {} });
+
+    await subject.run(["--target", "default", "--yes"]);
+
+    expect(subject.calls.map((call) => call.input.target.name)).toEqual(["default"]);
+  });
+
+  test("refuses a v0 deploy while a migration stopped writing the project files", async () => {
+    const projectRoot = await inProjectWithTargets();
+    await writeFile(
+      join(projectRoot, "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 1 }),
+    );
+    await pendingMigration(projectRoot, [DEFAULT_TARGET], "writing");
+    const legacyDeploys: V0DeployInput[] = [];
+    const subject = await testDeployCommand({ outputs: {} }, [], {
+      runV0Deploy: async (input) => {
+        legacyDeploys.push(input);
+        return 0;
+      },
+    });
+
+    await expect(subject.run(["--yes"])).rejects.toThrow("stopped while writing the project files");
+    expect(legacyDeploys).toEqual([]);
+  });
+});
 
 describe("project deploy handler", () => {
   test.each(["--yes", "--json"])(

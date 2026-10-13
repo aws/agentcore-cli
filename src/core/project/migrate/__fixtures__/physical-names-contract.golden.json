@@ -1,0 +1,28 @@
+{
+  "project": "maxproj",
+  "migratedFrom": "v1",
+  "names": {
+    "config-bundle cb1": "maxprojcb1",
+    "evaluator evalCat": "maxproj_evalCat",
+    "evaluator evalCode": "maxproj_evalCode",
+    "evaluator evalExt": "maxproj_evalExt",
+    "evaluator evalNum": "maxproj_evalNum",
+    "evaluator-function evalCode": "maxproj-eval-evalCode",
+    "gateway gw2": "maxproj-gw2",
+    "gateway-target-function gw1/lambdaPy": "maxproj-lambdaPy",
+    "gateway-target-function gw1/lambdaTs": "maxproj-lambdaTs",
+    "harness h1": "maxproj_h1",
+    "harness-repository h1": "maxproj/harness-h1",
+    "harness-role h1": "maxproj_h1",
+    "memory mem1": "maxproj_mem1",
+    "memory mem2": "maxproj_mem2",
+    "online-eval oe1": "maxproj_oe1",
+    "policy-engine pe1": "maxproj_pe1",
+    "runtime agentA": "maxproj_agentA",
+    "runtime agentB": "maxproj_agentB",
+    "runtime agentC": "maxproj_agentC",
+    "runtime agentD": "maxproj_agentD",
+    "runtime-repository agentB": "maxproj/agentb",
+    "tool-runtime rtTool": "maxproj_rtToolRuntime"
+  }
+}

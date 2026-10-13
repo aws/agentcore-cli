@@ -81,6 +81,12 @@ async function project(credentials: unknown[], envLocal?: string): Promise<Proje
   };
 }
 
+/** The same project after `agentcore migrate` converted it from v0. */
+async function migratedProject(credentials: unknown[], envLocal?: string): Promise<Project> {
+  const base = await project(credentials, envLocal);
+  return { ...base, spec: { ...base.spec, migratedFrom: "v1" } };
+}
+
 /** The same project loaded from a v0 `agentcore.json`. */
 async function legacyProject(credentials: unknown[], envLocal?: string): Promise<Project> {
   const v0Spec = v0Fixture("baseline.json");
@@ -994,6 +1000,36 @@ describe("createCredentialRemover", () => {
       ),
     );
     expect(subject.contents()).toEqual({ [OPENAI_PROVIDER]: existing });
+  });
+});
+
+describe("projects migrated from v0", () => {
+  test("keep the bare credential name v0 created the provider under", async () => {
+    const existing = { credentialProviderArn: "arn:apikey:openai-key" };
+    const subject = account({ "openai-key": existing });
+
+    const { result } = await run(
+      subject.provision,
+      await migratedProject([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n"),
+    );
+
+    expect(Object.keys(subject.contents())).toEqual(["openai-key"]);
+    expect(subject.contents()["openai-key"]?.operation).toBe("updated");
+    expect(result["openai-key"]?.credentialProviderArn).toBe("arn:apikey:openai-key");
+  });
+
+  test("never delete API key or OAuth providers, which v0 projects may share", async () => {
+    const subject = account({ "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } });
+
+    await collect(
+      createCredentialRemover(subject.client)(await migratedProject([]), {
+        ...INPUT,
+        providers: [API_KEY],
+      }),
+    );
+
+    expect(subject.deleted).toEqual([]);
+    expect(Object.keys(subject.contents())).toEqual(["openai-key"]);
   });
 });
 

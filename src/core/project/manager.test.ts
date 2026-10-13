@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -1926,6 +1927,37 @@ describe("FsProjectManager.deploy", () => {
     });
   });
 
+  test("refuses a target a migration hasn't finished, for every caller (CLI, TUI, harness dev)", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+    await writeMigrationState(root, {
+      version: 2,
+      startedAt: "2026-10-13T00:00:00.000Z",
+      files: { status: "installed", backup: "agentcore/.cli/migrate-backup", changes: [] },
+      refactored: ["staging"],
+      targets: [
+        {
+          name: "prod",
+          account: "444455556666",
+          region: "eu-west-1",
+          stackName: "AgentCore-example-prod",
+          status: "refactoring",
+          refactorId: "rf-1",
+        },
+      ],
+    });
+
+    await expect(deploy(subject.manager, project, "prod")).rejects.toThrow(
+      "Target 'prod' (AWS account 444455556666, eu-west-1) hasn't been migrated yet",
+    );
+    expect(subject.calls).toEqual([]);
+    expect(subject.accountCalls).toEqual([]);
+    // The migrated target deploys as usual.
+    await deploy(subject.manager, project, "staging");
+    expect(subject.calls.map((call) => call.input.target.name)).toEqual(["staging"]);
+  });
+
   test("rejects an unknown target before invoking the backend", async () => {
     const root = await inTempDirectory();
     const subject = deployManager();
@@ -2629,5 +2661,32 @@ describe("FsProjectManager removal", () => {
 
     expect(twice.removedEnvKeys).toEqual([]);
     expect(twice.project.spec.runtimes).toEqual([]);
+  });
+});
+
+describe("migratedFrom", () => {
+  test("survives reading and writing agentcore.json", async () => {
+    await inTempDirectory();
+    const setup = manager();
+    const { project } = await runCreate(setup.manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    await writeFile(specPath, JSON.stringify({ ...spec, migratedFrom: "v1" }, null, 2));
+
+    const migrated = await setup.manager.resolve({ filePath: project.rootPath });
+    if (!migrated) throw new Error("expected project");
+    expect(migrated.spec.migratedFrom).toBe("v1");
+    await runAdd(setup.manager, migrated, {
+      resourceType: "memory",
+      resourceConfig: getDefaultMemorySpec("extra"),
+    });
+
+    const written = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    expect(written.migratedFrom).toBe("v1");
   });
 });

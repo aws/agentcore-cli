@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeMigrationState } from "../../../core/project/migrate/journal";
 import {
   InternalServerException,
   type InvokeHarnessStreamOutput,
@@ -118,6 +121,8 @@ type HarnessOptions = {
   checkPort?: PortChecker;
   json?: boolean;
   loadEnvironment?: DevProjectHandlerConfig["loadDevEnvironment"];
+  /** Deploy through the real project manager instead of recording deployments. */
+  realDeploy?: boolean;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -139,11 +144,13 @@ function harness(options: HarnessOptions = {}) {
     harness: { arn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:harness/test" },
   } as GetHarnessResponse);
   const projectManager = core.projectManager;
-  projectManager.deploy = async function* (configuredProject, input) {
-    deployments.push({ project: configuredProject, input });
-    yield { type: "output", line: "Deploying harnesses" };
-    return { outputs: {} };
-  };
+  if (!options.realDeploy) {
+    projectManager.deploy = async function* (configuredProject, input) {
+      deployments.push({ project: configuredProject, input });
+      yield { type: "output", line: "Deploying harnesses" };
+      return { outputs: {} };
+    };
+  }
   projectManager.resolveTarget = async () => undefined;
   projectManager.resolveDeployedResource = async (_project, input) => {
     resolutions.push(input);
@@ -710,6 +717,36 @@ describe("project dev harnesses", () => {
     ]);
     expect(subject.deployments).toEqual([]);
     expect(subject.io.stderr()).toContain("running the latest v0 AgentCore CLI deploy");
+  });
+
+  test("harness dev's deploy refuses a target a migration hasn't finished", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-dev-migrate-"));
+    try {
+      await writeMigrationState(root, {
+        version: 2,
+        startedAt: "2026-10-13T00:00:00.000Z",
+        files: { status: "installed", backup: "agentcore/.cli/migrate-backup", changes: [] },
+        refactored: [],
+        targets: [
+          {
+            name: "default",
+            account: "111122223333",
+            region: "us-east-1",
+            stackName: "AgentCore-testProject-default",
+            status: "pending",
+          },
+        ],
+      });
+      const configured = { ...harnessProject(["support"]), rootPath: root };
+      const subject = harness({ project: configured, realDeploy: true });
+
+      await expect(subject.route([])).rejects.toThrow(
+        "Target 'default' (AWS account 111122223333, us-east-1) hasn't been migrated yet",
+      );
+      expect(subject.ui.starts).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test.each([

@@ -3,7 +3,6 @@ import {
   checkPort,
   openBrowser,
   runInheritedProcess,
-  runProcess,
   startHttpServer,
   watchFile,
   type AppIO,
@@ -54,9 +53,7 @@ export function createProjectHandlers(
   // Returned in workflow order, which is the order `--help` and the TUI menu list them in:
   // the inner loop (dev, deploy, invoke), then observing it, then changing the project.
   // build is a step deploy already runs, so it goes last and the TUI menu hides it.
-  // migrate is a one-off upgrade from a v0 project, so it follows build. It
-  // locates the raw project itself because migration validates the source files
-  // before the compatibility loader translates them into the current shape.
+  // migrate is a one-off upgrade from a v0 project, so it follows build.
   const projectBoundHandlers = [
     createDevProjectHandler({
       projectManager,
@@ -102,7 +99,7 @@ export function createProjectHandlers(
       io,
       middlewares: [withProjectMiddleware],
     }),
-    createMigrateProjectHandler({ runner: runProcess }),
+    createMigrateProjectHandler({ projectManager, migrator: core.projectMigrator, io }),
   ];
 
   return [createHandler, ...projectBoundHandlers];

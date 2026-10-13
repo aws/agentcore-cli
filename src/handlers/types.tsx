@@ -11,6 +11,7 @@ import type { Context } from "../router";
 import type { CoreFetch } from "../core/types";
 import type { ProjectManager } from "./project/types.ts";
 import type { CoreBedrockAgentImporter } from "../core/project/bedrockAgentImport";
+import type { ProjectMigrator } from "./project/migrate/types.ts";
 
 export interface Core {
   harness: CoreHarnessClient;
@@ -25,6 +26,8 @@ export interface Core {
   projectManager: ProjectManager;
   /** Imports an alias-pinned Bedrock Agent definition into owned runtime code. */
   bedrockAgentImporter: CoreBedrockAgentImporter;
+  /** Plans the upgrade of a v0 project to v1 (`agentcore migrate`). */
+  projectMigrator: ProjectMigrator;
   /** Shared outbound HTTP for handlers that call non-AWS APIs directly (e.g. feedback → Aperture). */
   fetch: CoreFetch;
 }

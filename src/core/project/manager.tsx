@@ -108,6 +108,7 @@ import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTem
 import { projectFormat, type ProjectFormat } from "./legacy/detect";
 import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
+import { assertNoPendingMigration } from "./migrate/journal";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -1423,6 +1424,9 @@ export class FsProjectManager implements ProjectManager {
     input: DeployProjectInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     assertV1Project(project, "deploy");
+    // A target `agentcore migrate` hasn't finished with still has its v0 logical
+    // IDs; every deploy path (CLI, TUI, harness dev) comes through here.
+    await assertNoPendingMigration(project.rootPath, input.target);
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     const fileExists = existsSync(targetsPath);
     const targets = await this.listTargets(project);
