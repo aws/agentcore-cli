@@ -13,8 +13,10 @@ import type {
   ExportHarnessResult,
   ResolveDeployedResourceInput,
   ResolveDeployedResourcesInput,
+  ResolveDevEnvironmentInput,
   ResolvedDeployedResource,
   ResolvedDeployedResources,
+  ResolvedDevEnvironment,
   ResolveProjectInput,
   ResolveProjectResourcesInput,
   ResolvedProjectResources,
@@ -1620,6 +1622,18 @@ export class FsProjectManager implements ProjectManager {
     const target = await this.resolveExistingTarget(project, input.target);
     const resources = await this.backendFor(project).resolveProjectResources(project, { target });
     return { resources, target };
+  }
+
+  public async resolveDevEnvironment(
+    project: Project,
+    input: ResolveDevEnvironmentInput,
+  ): Promise<ResolvedDevEnvironment> {
+    const target = await this.resolveExistingTarget(project, input.target);
+    const backend = this.backendFor(project);
+    const env = backend.resolveDevEnvironment
+      ? await backend.resolveDevEnvironment(project, { target })
+      : {};
+    return { env, target };
   }
 
   private async resolveExistingTarget(

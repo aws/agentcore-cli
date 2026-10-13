@@ -275,6 +275,16 @@ export type ResolveProjectResourcesInput = {
   target: string;
 };
 
+export type ResolveDevEnvironmentInput = {
+  /** Name of the aws-targets.json entry whose deployed resources local agents should use. */
+  target: string;
+};
+
+export type ResolvedDevEnvironment = {
+  env: Record<string, string>;
+  target: AwsDeploymentTarget;
+};
+
 /**
  * Every resource type a project can declare and deploy. Broader than
  * {@link ProjectInvokableResource}: status reports all of them, while invoke only
@@ -572,6 +582,12 @@ export interface ProjectManager {
     project: Project,
     input: ResolveProjectResourcesInput,
   ): Promise<ResolvedProjectResources>;
+
+  /** Resolve discovery variables for resources deployed to the named target. */
+  resolveDevEnvironment(
+    project: Project,
+    input: ResolveDevEnvironmentInput,
+  ): Promise<ResolvedDevEnvironment>;
 
   /** Add a resource to an existing AgentCore project. */
   addResource(

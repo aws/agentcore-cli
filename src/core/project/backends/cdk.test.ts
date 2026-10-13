@@ -1330,3 +1330,64 @@ describe("CdkBackend.resolveProjectResources", () => {
     ).toEqual([["gateway", "gw", ["owned", "second"]]]);
   });
 });
+
+describe("CdkBackend.resolveDevEnvironment", () => {
+  test("reads a v0 project's deployed resource state without calling AWS", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      memories: [{ name: "history" }],
+    } as unknown as typeof input.spec;
+    input.legacy = {
+      format: "v0",
+      v0Spec: {} as never,
+      extras: {} as never,
+    };
+    await updateTargetState(json, input.rootPath, TARGET.name, {
+      resources: {
+        stackName: "AgentCore-example-default",
+        memories: {
+          history: {
+            memoryId: "memory-v0",
+            memoryArn: "arn:memory/memory-v0",
+          },
+        },
+      },
+    });
+    const subject = harness();
+
+    const env = await subject.backend.resolveDevEnvironment(input, { target: TARGET });
+
+    expect(env).toEqual({ MEMORY_HISTORY_ID: "memory-v0" });
+    expect(subject.stackReads).toEqual([]);
+    expect(subject.credentialRegions).toEqual([]);
+  });
+
+  test("reads a v1 project's deployed resource values from its stack outputs", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      memories: [{ name: "history" }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: "AgentCore-example-default",
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          {
+            ExportName: "AgentCore-example-default-Memory-history-Id",
+            OutputValue: "memory-v1",
+          },
+        ],
+      },
+    });
+
+    const env = await subject.backend.resolveDevEnvironment(input, { target: TARGET });
+
+    expect(env).toEqual({ MEMORY_HISTORY_ID: "memory-v1" });
+    expect(subject.stackReads).toHaveLength(1);
+    expect(subject.credentialRegions).toEqual([TARGET.region]);
+  });
+});

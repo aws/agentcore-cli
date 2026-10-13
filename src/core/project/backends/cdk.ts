@@ -26,6 +26,7 @@ import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type {
   DeployBackendInput,
   ProjectBackend,
+  ResolveDevEnvironmentBackendInput,
   ResolveDeployedResourcesBackendInput,
   ResolveProjectResourcesBackendInput,
 } from "./types";
@@ -75,6 +76,7 @@ import {
   type PaymentConnectorAuthorizationUrlReporter,
 } from "./cdk/paymentConnectorAuthorizationUrls";
 import { describeStack } from "./cdk/stackReader";
+import { projectDevEnvironment } from "./cdk/devEnvironment";
 
 type StackDescriber = typeof describeStack;
 
@@ -665,6 +667,24 @@ export class CdkBackend implements ProjectBackend {
         }),
       ),
     ];
+  }
+
+  public async resolveDevEnvironment(
+    project: Project,
+    input: ResolveDevEnvironmentBackendInput,
+  ): Promise<Record<string, string>> {
+    const deployedState = await readDeployedState(this.json, project.rootPath);
+    const recorded = deployedState.targets[input.target.name];
+    const stackReference = stackReferenceOf(recorded);
+    const stack =
+      stackReference && !project.legacy
+        ? await this.describeStack(
+            input.target.region,
+            await this.credentialsForTarget(input.target),
+            stackReference,
+          )
+        : undefined;
+    return projectDevEnvironment({ project, recorded, stack: stack ?? undefined });
   }
 
   private async credentialsForTarget(target: AwsDeploymentTarget) {

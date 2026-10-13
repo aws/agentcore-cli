@@ -266,15 +266,18 @@ create a new project
 agentcore dev [options]
 ```
 
-run the project locally for development
+test project changes: run Runtimes locally or deploy for Harnesses; --mode browser opens Agent Inspector.
 
 **Options**
 
-- `--agent <agent>`: Runtime to run
+- `--agent <agent>`: runtime or harness to run
+- `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
+- `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (runtime output or harness invoke guidance) (default: "headless")
+- `--target <target>`: deployment target whose resources local Runtimes use, or to deploy for Harnesses (default: "default" when present)
 - `--port <port>`: port for the development server
 - `--no-traces`: disable local OTEL trace collection
-- `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (agents stream to the terminal) (default: "headless")
-- `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
+- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+- `--skip-deploy`: skip deployment and use the deployed harnesses (default: false)
 
 ### `agentcore deploy`
 

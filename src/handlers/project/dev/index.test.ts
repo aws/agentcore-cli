@@ -5,6 +5,7 @@ import {
   type InvokeHarnessStreamOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
@@ -118,6 +119,8 @@ type HarnessOptions = {
   checkPort?: PortChecker;
   json?: boolean;
   loadEnvironment?: DevProjectHandlerConfig["loadDevEnvironment"];
+  targets?: AwsDeploymentTarget[];
+  deployedEnvironment?: Record<string, string>;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -134,6 +137,7 @@ function harness(options: HarnessOptions = {}) {
   const resolutions: Parameters<
     DevProjectHandlerConfig["projectManager"]["resolveDeployedResource"]
   >[1][] = [];
+  const environmentResolutions: string[] = [];
   const core = new TestCoreClient();
   const harnessClient = core.harness.setGetResponse({
     harness: { arn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:harness/test" },
@@ -145,6 +149,14 @@ function harness(options: HarnessOptions = {}) {
     return { outputs: {} };
   };
   projectManager.resolveTarget = async () => undefined;
+  projectManager.listTargets = async () => options.targets ?? [];
+  projectManager.resolveDevEnvironment = async (_project, input) => {
+    environmentResolutions.push(input.target);
+    return {
+      env: options.deployedEnvironment ?? {},
+      target: options.targets!.find(({ name }) => name === input.target)!,
+    };
+  };
   projectManager.resolveDeployedResource = async (_project, input) => {
     resolutions.push(input);
     return {
@@ -214,6 +226,7 @@ function harness(options: HarnessOptions = {}) {
     deployments,
     legacyDeployments,
     resolutions,
+    environmentResolutions,
     harnessClient,
     io,
     ui,
@@ -267,6 +280,7 @@ describe("project dev selection and dispatch", () => {
         projectRoot: "/workspace/project",
         runtime: expect.objectContaining({ name: "orders" }),
         region: "us-west-2",
+        deployedEnvironment: {},
       },
     ]);
     expect(subject.codeZip.inputs).toHaveLength(1);
@@ -339,6 +353,7 @@ describe("project dev selection and dispatch", () => {
         projectRoot: "/workspace/project",
         runtime: expect.objectContaining({ name: "support" }),
         region: "us-west-2",
+        deployedEnvironment: {},
       },
     ]);
     expect(subject.container.inputs[0]).toMatchObject({
@@ -353,6 +368,67 @@ describe("project dev selection and dispatch", () => {
       runtime: { name: "support", build: "Container" },
     });
     expect(subject.io.stderr()).not.toContain("Skipping runtime");
+  });
+
+  test("uses the selected target's region and deployed resource environment", async () => {
+    const staging = {
+      name: "staging",
+      account: "111122223333",
+      region: "eu-west-1",
+    } as const;
+    const subject = harness({
+      targets: [staging],
+      deployedEnvironment: {
+        MEMORY_ORDERS_ID: "memory-1",
+        AGENTCORE_GATEWAY_TOOLS_URL: "https://tools.example.test",
+      },
+    });
+
+    await subject.run({ agent: "orders", target: "staging", traces: false });
+
+    expect(subject.environmentResolutions).toEqual(["staging"]);
+    expect(subject.environmentInputs).toEqual([
+      {
+        projectRoot: "/workspace/project",
+        runtime: expect.objectContaining({ name: "orders" }),
+        region: "eu-west-1",
+        deployedEnvironment: {
+          MEMORY_ORDERS_ID: "memory-1",
+          AGENTCORE_GATEWAY_TOOLS_URL: "https://tools.example.test",
+        },
+      },
+    ]);
+  });
+
+  test("uses the default target when several targets are configured", async () => {
+    const defaultTarget = {
+      name: "default",
+      account: "111122223333",
+      region: "us-east-2",
+    } as const;
+    const subject = harness({
+      targets: [{ name: "staging", account: "111122223333", region: "eu-west-1" }, defaultTarget],
+    });
+
+    await subject.run({ agent: "orders", traces: false });
+
+    expect(subject.environmentResolutions).toEqual(["default"]);
+    expect(subject.environmentInputs[0]?.region).toBe("us-east-2");
+  });
+
+  test("requires --target when several non-default targets are configured", async () => {
+    const subject = harness({
+      targets: [
+        { name: "staging", account: "111122223333", region: "eu-west-1" },
+        { name: "production", account: "111122223333", region: "us-east-1" },
+      ],
+    });
+
+    await expect(subject.run({ agent: "orders", traces: false })).rejects.toThrow(
+      "Pass --target <name> to choose which deployed resources local runtimes use",
+    );
+    expect(subject.environmentResolutions).toEqual([]);
+    expect(subject.codeZip.inputs).toEqual([]);
   });
 
   test("announces an automatically selected port", async () => {
@@ -423,6 +499,29 @@ describe("project dev headless multi-agent", () => {
     const { pending } = await supervised(subject);
 
     expect([codeZip.inputs[0]?.port, container.inputs[0]?.port]).toEqual([8080, 8081]);
+
+    process.emit("SIGINT", "SIGINT");
+    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+  });
+
+  test("shares one deployed environment read across agents launched together", async () => {
+    const codeZip = stayingRunner();
+    const container = stayingRunner();
+    const subject = harness({
+      project: twoRuntimes(),
+      codeZip,
+      container,
+      targets: [
+        {
+          name: "default",
+          account: "111122223333",
+          region: "us-east-1",
+        },
+      ],
+    });
+    const { pending } = await supervised(subject);
+
+    expect(subject.environmentResolutions).toEqual(["default"]);
 
     process.emit("SIGINT", "SIGINT");
     await expect(pending).rejects.toMatchObject({ exitCode: 130 });
@@ -631,6 +730,40 @@ describe("project dev Inspector UI mode", () => {
     await pending.catch(() => undefined);
   });
 
+  test("refreshes deployed resource variables on every Inspector start attempt", async () => {
+    const subject = harness({
+      targets: [
+        {
+          name: "staging",
+          account: "111122223333",
+          region: "eu-west-1",
+        },
+      ],
+      deployedEnvironment: { MEMORY_ORDERS_ID: "memory-1" },
+    });
+    const { pending } = await runUi(subject, ["--target", "staging", "--no-traces"]);
+
+    await inspectorRequest({
+      subject,
+      url: "/api/start",
+      body: { agentName: "orders" },
+    });
+    await inspectorRequest({
+      subject,
+      url: "/api/start",
+      body: { agentName: "orders" },
+    });
+
+    expect(subject.environmentResolutions).toEqual(["staging", "staging"]);
+    expect(subject.environmentInputs).toHaveLength(2);
+    expect(subject.environmentInputs.map(({ deployedEnvironment }) => deployedEnvironment)).toEqual(
+      [{ MEMORY_ORDERS_ID: "memory-1" }, { MEMORY_ORDERS_ID: "memory-1" }],
+    );
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
   test("an explicit --ui-port that is taken fails fast", async () => {
     const subject = harness({ checkPort: async () => false });
     await expect(subject.run({ mode: "browser", "ui-port": 9999 })).rejects.toThrow(
@@ -776,7 +909,7 @@ describe("project dev harnesses", () => {
   test("rejects harness flags on runtime dev", async () => {
     const subject = harness();
     await expect(subject.route(["--target=default", "--yes", "--skip-deploy"])).rejects.toThrow(
-      "--target, --yes, --skip-deploy does not apply to runtime dev",
+      "--yes, --skip-deploy does not apply to runtime dev",
     );
     expect(subject.codeZip.inputs).toHaveLength(0);
   });

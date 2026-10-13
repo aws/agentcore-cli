@@ -7,12 +7,23 @@ import { LocalSecrets } from "../../../io/localSecrets";
 const projectRoot = "/workspace/project";
 
 const runtime = (envVars: { name: string; value: string }[] = []) =>
-  ({ name: "orders", build: "Container", envVars }) as ProjectRuntime;
+  ({
+    name: "orders",
+    build: "Container",
+    protocol: "HTTP",
+    entrypoint: "main.py",
+    codeLocation: "app/orders",
+    envVars,
+  }) as ProjectRuntime;
 
-const input = (envVars: { name: string; value: string }[] = []) => ({
+const input = (
+  envVars: { name: string; value: string }[] = [],
+  deployedEnvironment: Record<string, string> = {},
+) => ({
   projectRoot,
   runtime: runtime(envVars),
   region: "us-east-1",
+  deployedEnvironment,
 });
 
 describe("createDevEnvironmentLoader", () => {
@@ -22,7 +33,12 @@ describe("createDevEnvironmentLoader", () => {
       readFile: async () => `MODEL_API_KEY='${encrypted.MODEL_API_KEY}'\nSTAGE=dev\n`,
     });
     await expect(loader(input())).resolves.toEqual({
-      env: { MODEL_API_KEY: "agent-value", STAGE: "dev", AWS_REGION: "us-east-1" },
+      env: {
+        MODEL_API_KEY: "agent-value",
+        STAGE: "dev",
+        AWS_REGION: "us-east-1",
+        AWS_DEFAULT_REGION: "us-east-1",
+      },
     });
   });
 
@@ -41,18 +57,56 @@ second"
 
     await expect(
       loader(
-        input([
-          { name: "SHARED", value: "runtime" },
-          { name: "RUNTIME_ONLY", value: "yes" },
-          { name: "PORT", value: "1234" },
-        ]),
+        input(
+          [
+            { name: "SHARED", value: "runtime" },
+            { name: "RUNTIME_ONLY", value: "yes" },
+            { name: "PORT", value: "1234" },
+          ],
+          {
+            SHARED: "deployed",
+            MEMORY_ORDERS_ID: "memory-1",
+            AGENTCORE_PAYMENT_BILLING_MANAGER_ARN: "arn:payment/billing",
+          },
+        ),
       ),
     ).resolves.toEqual({
       env: {
         SHARED: "local value",
         RUNTIME_ONLY: "yes",
-        AWS_REGION: "local-region",
+        AWS_REGION: "us-east-1",
+        AWS_DEFAULT_REGION: "us-east-1",
+        MEMORY_ORDERS_ID: "memory-1",
+        AGENTCORE_PAYMENT_BILLING_MANAGER_ARN: "arn:payment/billing",
         MULTILINE: "first\nsecond",
+      },
+    });
+  });
+
+  test("does not expose payment configuration to an ineligible runtime", async () => {
+    const loader = createDevEnvironmentLoader({
+      readFile: async () => {
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      },
+    });
+    const ineligible = {
+      ...runtime(),
+      entrypoint: "main.ts",
+    } as ProjectRuntime;
+
+    await expect(
+      loader({
+        ...input([], {
+          MEMORY_ORDERS_ID: "memory-1",
+          AGENTCORE_PAYMENT_BILLING_MANAGER_ARN: "arn:payment/billing",
+        }),
+        runtime: ineligible,
+      }),
+    ).resolves.toEqual({
+      env: {
+        AWS_REGION: "us-east-1",
+        AWS_DEFAULT_REGION: "us-east-1",
+        MEMORY_ORDERS_ID: "memory-1",
       },
     });
   });
@@ -75,7 +129,11 @@ second"
       await expect(pending).rejects.toThrow(expectedError);
     } else {
       await expect(pending).resolves.toEqual({
-        env: { RUNTIME_ONLY: "yes", AWS_REGION: "us-east-1" },
+        env: {
+          RUNTIME_ONLY: "yes",
+          AWS_REGION: "us-east-1",
+          AWS_DEFAULT_REGION: "us-east-1",
+        },
       });
     }
   });

@@ -25,6 +25,10 @@ export type ResolveProjectResourcesBackendInput = {
   target: AwsDeploymentTarget;
 };
 
+export type ResolveDevEnvironmentBackendInput = {
+  target: AwsDeploymentTarget;
+};
+
 /** Builds the deployable artifacts owned by a project's selected backend. */
 export interface ProjectBackend {
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
@@ -44,4 +48,9 @@ export interface ProjectBackend {
     project: Project,
     input: ResolveProjectResourcesBackendInput,
   ): Promise<ResolvedProjectResource[]>;
+  /** Resolves environment variables that let a local runtime use deployed project resources. */
+  resolveDevEnvironment?(
+    project: Project,
+    input: ResolveDevEnvironmentBackendInput,
+  ): Promise<Record<string, string>>;
 }

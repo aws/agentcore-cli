@@ -23,7 +23,7 @@ import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import { coreOptsFromCtx } from "../../utils";
 import type { CoreHarnessClient } from "../../harness/types";
-import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
+import { DEFAULT_TARGET_NAME, type AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { createDeployProjectHandler, DEPLOY_NEXT_STEP } from "../deploy";
 import type { Project, ProjectManager } from "../types";
 import { BMA_TEMPLATE_NAME, isBmaRuntime } from "../bma";
@@ -139,9 +139,8 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
       }),
       flag(
         "target",
-        'name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")',
+        'deployment target whose resources local Runtimes use, or to deploy for Harnesses (default: "default" when present)',
         z.string().min(1).optional(),
-        { group: HARNESS_OPTIONS_GROUP },
       ),
       flag(
         "yes",
@@ -181,9 +180,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
           },
         });
       } else {
-        const unsupportedFlags = (["target", "yes", "skip-deploy"] as const).filter(
-          (name) => flags[name],
-        );
+        const unsupportedFlags = (["yes", "skip-deploy"] as const).filter((name) => flags[name]);
         if (unsupportedFlags.length) {
           throw new InputValidationError(
             `${unsupportedFlags.map((name) => `--${name}`).join(", ")} does not apply to runtime dev.`,
@@ -199,6 +196,7 @@ export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
             traces: flags.traces,
             mode: flags.mode,
             uiPort: flags["ui-port"],
+            deploymentTarget: flags.target,
           },
         });
       }
@@ -349,6 +347,7 @@ async function runRuntimeDev({
     traces: boolean;
     mode: "browser" | "headless";
     uiPort?: number;
+    deploymentTarget?: string;
   };
 }): Promise<void> {
   const { runtimes } = input;
@@ -358,7 +357,13 @@ async function runRuntimeDev({
       let collector: DevTraceCollector | undefined;
       try {
         const project = ctx.require(ProjectKey);
-        const region = ctx.require(RegionKey);
+        let environmentProject = project;
+        const deploymentTarget = await resolveRuntimeDevTarget(
+          config.projectManager,
+          project,
+          input.deploymentTarget,
+        );
+        const region = deploymentTarget?.region ?? ctx.require(RegionKey);
         if (runtimes.length > 1 && input.port !== undefined) {
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
@@ -381,13 +386,34 @@ async function runRuntimeDev({
           : undefined;
         signal.throwIfAborted();
 
+        let deployedEnvironmentInFlight: Promise<Record<string, string>> | undefined;
+        const resolveDeployedEnvironment = async (): Promise<Record<string, string>> => {
+          if (!deploymentTarget) return {};
+          if (!deployedEnvironmentInFlight) {
+            const currentProject = environmentProject;
+            deployedEnvironmentInFlight = config.projectManager
+              .resolveDevEnvironment(currentProject, {
+                target: deploymentTarget.name,
+              })
+              .then(({ env }) => env);
+          }
+          const request = deployedEnvironmentInFlight;
+          try {
+            return await request;
+          } finally {
+            if (deployedEnvironmentInFlight === request) deployedEnvironmentInFlight = undefined;
+          }
+        };
+
         const getDevEnvVarsForRuntime = async (
           runtime: ProjectRuntime,
         ): Promise<Record<string, string>> => {
+          const deployedEnvironment = await resolveDeployedEnvironment();
           const { env } = await config.loadDevEnvironment({
             projectRoot: project.rootPath,
             runtime,
             region,
+            deployedEnvironment,
           });
           const otel =
             collector && (runtime.instrumentation?.enableOtel ?? true)
@@ -465,6 +491,7 @@ async function runRuntimeDev({
           try {
             const reloaded = await config.projectManager.resolve({ filePath: project.rootPath });
             if (!reloaded) return;
+            environmentProject = reloaded;
             const runtimes = reloaded.spec.runtimes.filter(supportsLocalDev);
             supervisor.setRuntimes(
               input.agent ? runtimes.filter((runtime) => runtime.name === input.agent) : runtimes,
@@ -492,6 +519,36 @@ async function runRuntimeDev({
     },
     () => config.io.stderr.write("Shutting down…\n"),
   );
+}
+
+async function resolveRuntimeDevTarget(
+  projectManager: ProjectManager,
+  project: Project,
+  requested?: string,
+): Promise<AwsDeploymentTarget | undefined> {
+  const targets = await projectManager.listTargets(project);
+  if (requested) {
+    const target = targets.find(({ name }) => name === requested);
+    if (!target) {
+      throw new ResourceNotFoundError(
+        `Project '${project.name}' has no deployment target named '${requested}'. Available targets: ${
+          targets.map(({ name }) => name).join(", ") || "none"
+        }.`,
+      );
+    }
+    return target;
+  }
+  const defaultTarget = targets.find(({ name }) => name === DEFAULT_TARGET_NAME);
+  if (defaultTarget) return defaultTarget;
+  if (targets.length === 1) return targets[0];
+  if (targets.length > 1) {
+    throw new InputValidationError(
+      `Project '${project.name}' has multiple deployment targets (${targets
+        .map(({ name }) => name)
+        .join(", ")}). Pass --target <name> to choose which deployed resources local runtimes use.`,
+    );
+  }
+  return undefined;
 }
 
 async function startRuntimeTraceCollector({
