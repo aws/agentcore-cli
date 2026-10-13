@@ -102,6 +102,15 @@ function cdkId(name: string): string {
   return name.replace(/_/g, "");
 }
 
+function stringAt(value: unknown, ...path: string[]): string | undefined {
+  let current = value;
+  for (const part of path) {
+    if (typeof current !== "object" || current === null || !(part in current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return typeof current === "string" ? current : undefined;
+}
+
 function findDeployedResourceId(
   stack: Stack,
   input: Pick<ResolvedDeployedResource, "resourceType" | "name">,
@@ -584,6 +593,14 @@ export class CdkBackend implements ProjectBackend {
           return asArn(byExportName("PolicyEngine", name, "Arn"));
         case "config-bundle":
           return asArn(byExportName("ConfigBundle", name, "Arn"));
+        case "dataset":
+          return asArn(stringAt(recorded?.resources, "datasets", name, "datasetArn"));
+        case "ab-test":
+          return asArn(stringAt(recorded?.resources, "abTests", name, "abTestArn"));
+        case "capacity-provider":
+          return asArn(
+            stringAt(recorded?.resources, "capacityProviders", name, "capacityProviderArn"),
+          );
         case "payment-manager":
           // @aws/agentcore-cdk's AgentCorePayments construct writes the payment
           // outputs at stack scope without an exportName, under keys built from
@@ -615,9 +632,15 @@ export class CdkBackend implements ProjectBackend {
     const resolve = (
       resourceType: DeployableResource,
       name: string,
-      options: { owner?: string; children?: ResolvedProjectResource[] } = {},
+      options: {
+        owner?: string;
+        children?: ResolvedProjectResource[];
+        forceLocalOnly?: boolean;
+      } = {},
     ): ResolvedProjectResource => {
-      const identifier = identifierOf(resourceType, name, options.owner);
+      const identifier = options.forceLocalOnly
+        ? undefined
+        : identifierOf(resourceType, name, options.owner);
       return {
         resourceType,
         name,
@@ -657,6 +680,14 @@ export class CdkBackend implements ProjectBackend {
         }),
       ),
       ...spec.configBundles.map(({ name }) => resolve("config-bundle", name)),
+      ...(project.legacy?.extras.datasets ?? []).map(({ name }) => resolve("dataset", name)),
+      ...(project.legacy?.extras.abTests ?? []).map(({ name }) => resolve("ab-test", name)),
+      ...(project.legacy?.extras.capacityProviders ?? []).map(({ name }) =>
+        resolve("capacity-provider", name),
+      ),
+      ...(project.legacy?.extras.unassignedTargets ?? []).map(({ name }) =>
+        resolve("gateway-target", name, { forceLocalOnly: true }),
+      ),
       ...(spec.payments ?? []).map((manager) =>
         resolve("payment-manager", manager.name, {
           children: (manager.connectors ?? []).map(({ name }) =>

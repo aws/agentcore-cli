@@ -293,6 +293,9 @@ export type DeployableResource =
   | "policy-engine"
   | "policy"
   | "config-bundle"
+  | "dataset"
+  | "ab-test"
+  | "capacity-provider"
   | "payment-manager"
   | "payment-connector"
   | "runtime-endpoint";

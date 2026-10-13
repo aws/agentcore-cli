@@ -30,6 +30,8 @@ const DETAIL_ROUTES: Partial<Record<DeployableResource, (id: string) => string>>
   harness: (id) => `/agentcore/harness/get/${encodeURIComponent(id)}`,
   memory: (id) => `/agentcore/memory/get/${encodeURIComponent(id)}`,
   gateway: (id) => `/agentcore/gateway/get/${encodeURIComponent(id)}`,
+  dataset: (id) => `/agentcore/eval/dataset/get/${encodeURIComponent(id)}`,
+  "ab-test": (id) => `/agentcore/eval/ab-test/get/${encodeURIComponent(id)}`,
 };
 
 type StatusNode = LinkedResourceNode;

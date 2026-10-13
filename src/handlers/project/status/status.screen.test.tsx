@@ -18,6 +18,7 @@ import {
   waitForText,
 } from "../../../testing";
 import type { Project, ResolvedProjectResource } from "../types";
+import { buildStatusNodes } from "./screen";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -122,6 +123,23 @@ function focusedLine(frame: string | undefined): string {
 }
 
 describe("project status screen", () => {
+  test("links deployed v0 datasets and A/B tests to their v1 detail screens", () => {
+    const nodes = buildStatusNodes(project({}).spec, [
+      deployed("dataset", "orders", { arn: `${ARN}:dataset/dataset-orders` }),
+      deployed("ab-test", "checkout", { arn: `${ARN}:ab-test/ab-test-checkout` }),
+      deployed("capacity-provider", "workers", {
+        arn: `${ARN}:capacity-provider/workers-AbCdEf1234`,
+      }),
+    ]);
+    const children = nodes.find(({ id }) => id === "project")?.children;
+
+    expect(children?.map(({ data }) => data)).toEqual([
+      { route: "/agentcore/eval/dataset/get/dataset-orders" },
+      { route: "/agentcore/eval/ab-test/get/ab-test-checkout" },
+      { hint: "capacity-provider workers has no detail view." },
+    ]);
+  });
+
   test("groups the runtime agent's Runtime and Memory beneath it", async () => {
     const screen = renderStatus(core());
 

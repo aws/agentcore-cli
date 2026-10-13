@@ -21,6 +21,8 @@ import type { DeployBackendInput } from "./types";
 import type { ResolvedProjectResource } from "../../../handlers/project/types";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
+import { v0Fixture } from "../legacy/fixtures-test-support";
+import { translateV0Spec } from "../legacy/translate";
 
 const TARGET = {
   name: "default",
@@ -1328,5 +1330,76 @@ describe("CdkBackend.resolveProjectResources", () => {
         children?.map((child) => child.name),
       ]),
     ).toEqual([["gateway", "gw", ["owned", "second"]]]);
+  });
+
+  test("resolves v0-only resources from legacy extras and deployed state", async () => {
+    const input = await project();
+    const v0Spec = v0Fixture("baseline.json");
+    v0Spec.datasets = v0Fixture("top-datasets-nonempty.json").datasets;
+    v0Spec.abTests = v0Fixture("top-abTests-nonempty.json").abTests;
+    v0Spec.capacityProviders = v0Fixture("runtime-capacityProvider.json").capacityProviders;
+    v0Spec.unassignedTargets = v0Fixture("top-unassignedTargets.json").unassignedTargets;
+    const translated = translateV0Spec(v0Spec);
+    input.spec = translated.spec;
+    input.legacy = { format: "v0", v0Spec, extras: translated.extras };
+    await updateTargetState(json, input.rootPath, TARGET.name, {
+      stackArn: STACK_ARN,
+      resources: {
+        datasets: {
+          ds1: { datasetId: "dataset-1", datasetArn: "arn:dataset/dataset-1" },
+        },
+        abTests: {
+          ab1: { abTestId: "ab-test-1", abTestArn: "arn:ab-test/ab-test-1" },
+        },
+        capacityProviders: {
+          cp1: {
+            capacityProviderId: "cp1-AbCdEf1234",
+            capacityProviderArn: "arn:capacity-provider/cp1-AbCdEf1234",
+          },
+        },
+      },
+    });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [out(`${S}-GatewayTarget-u1-Id`, "must-not-match-an-unassigned-target")],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(
+      resources.filter(({ resourceType, name }) =>
+        ["dataset:ds1", "ab-test:ab1", "capacity-provider:cp1", "gateway-target:u1"].includes(
+          `${resourceType}:${name}`,
+        ),
+      ),
+    ).toEqual([
+      {
+        resourceType: "dataset",
+        name: "ds1",
+        deploymentState: "deployed",
+        arn: "arn:dataset/dataset-1",
+      },
+      {
+        resourceType: "ab-test",
+        name: "ab1",
+        deploymentState: "deployed",
+        arn: "arn:ab-test/ab-test-1",
+      },
+      {
+        resourceType: "capacity-provider",
+        name: "cp1",
+        deploymentState: "deployed",
+        arn: "arn:capacity-provider/cp1-AbCdEf1234",
+      },
+      {
+        resourceType: "gateway-target",
+        name: "u1",
+        deploymentState: "local-only",
+      },
+    ]);
   });
 });
