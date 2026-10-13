@@ -5,6 +5,7 @@ import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
 import { projectSpecPath } from "../../../core/project/fsUtils";
+import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -53,6 +54,8 @@ export type DevProjectHandlerConfig = {
   harness: Pick<CoreHarnessClient, "getHarness" | "invokeHarness">;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
+  /** Runs the final v0 deployer when harness dev is opened from a v0 project. */
+  runV0Deploy?: V0DeployRunner;
 };
 
 /** Env for a spawned agent so its OTEL SDK reports to the collector as this runtime. */

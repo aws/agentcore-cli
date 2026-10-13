@@ -2,6 +2,7 @@ import { type Handler } from "../../router";
 import {
   checkPort,
   openBrowser,
+  runInheritedProcess,
   runProcess,
   startHttpServer,
   watchFile,
@@ -27,9 +28,20 @@ import { createExportProjectResourceHandler } from "./export";
 import { createProjectInvokeHandler } from "./invoke";
 import { createProjectLogsHandler } from "./logs";
 import { createProjectTracesHandler } from "./traces";
+import { executeV0Deploy, type V0DeployRunner } from "../../core/project/legacy/deploy";
 
-export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
+export type ProjectHandlerOptions = {
+  runV0Deploy?: V0DeployRunner;
+};
+
+export function createProjectHandlers(
+  core: Core,
+  io: AppIO,
+  options: ProjectHandlerOptions = {},
+): Handler[] {
   const projectManager: ProjectManager = core.projectManager;
+  const runLegacyDeploy =
+    options.runV0Deploy ?? ((input) => executeV0Deploy(input, runInheritedProcess));
 
   const createHandler = createCreateProjectHandler({
     projectManager,
@@ -48,6 +60,7 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
   const projectBoundHandlers = [
     createDevProjectHandler({
       projectManager,
+      runV0Deploy: runLegacyDeploy,
       harness: core.harness,
       io,
       middlewares: [withProjectMiddleware],
@@ -67,6 +80,7 @@ export function createProjectHandlers(core: Core, io: AppIO): Handler[] {
     createDeployProjectHandler({
       projectManager,
       io,
+      runV0Deploy: runLegacyDeploy,
       middlewares: [withProjectMiddleware],
     }),
     createProjectInvokeHandler(core, io),

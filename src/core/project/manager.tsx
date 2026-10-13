@@ -1374,6 +1374,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+    assertV1Project(project, "build");
     yield* this.backendFor(project).build(project);
   }
 
@@ -1384,6 +1385,7 @@ export class FsProjectManager implements ProjectManager {
     project: Project,
     input: DeployProjectInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
+    assertV1Project(project, "deploy");
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     const fileExists = existsSync(targetsPath);
     const targets = await this.listTargets(project);

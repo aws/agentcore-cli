@@ -20,6 +20,7 @@ import {
   withPlatform,
 } from "../middleware";
 import type { AppIO } from "../io";
+import type { V0DeployRunner } from "../core/project/legacy/deploy";
 import type { Core } from "./types.tsx";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
@@ -31,6 +32,8 @@ export interface RootHandlerConfig {
   globalConfigAccessor: GlobalConfigAccessor;
   /** Host platform, defaults to `process.platform`. Tests pass "win32" to exercise Windows paths. */
   platform?: NodeJS.Platform;
+  /** Overrides the v0 deploy subprocess boundary in tests. */
+  runV0Deploy?: V0DeployRunner;
 }
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
@@ -85,7 +88,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
 
   // Install sub handlers. Registration order is menu/help order; project is
   // the primary workflow, so it goes first.
-  createProjectHandlers(core, io).forEach((handler) => {
+  createProjectHandlers(core, io, { runV0Deploy: config.runV0Deploy }).forEach((handler) => {
     root.handler(handler);
   });
 

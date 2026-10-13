@@ -11,10 +11,13 @@ import {
   inTempDirectory,
   renderScreen,
   TestCoreClient,
+  waitFor,
   waitForFlatText,
   waitForText,
 } from "../../testing";
 import type { DeployResult, Project, ProjectEvent } from "./types";
+import { ProjectKey } from "../../router";
+import { TuiHandoffKey } from "../../tui/handoff";
 
 // The build and deploy screens run the same ProjectManager generators the
 // commands run, so these tests stub the backend exactly as the handler tests
@@ -187,6 +190,56 @@ describe("project build screen", () => {
 });
 
 describe("project deploy screen", () => {
+  test("a translated v0 project hands the selected target to the deploy command", async () => {
+    const core = new TestCoreClient();
+    const project = {
+      name: "orders",
+      rootPath: "/workspace/orders",
+      spec: {
+        name: "orders",
+        version: 2,
+        managedBy: "CDK",
+        runtimes: [],
+        memories: [],
+        knowledgeBases: [],
+        credentials: [],
+        evaluators: [],
+        onlineEvalConfigs: [],
+        agentCoreGateways: [],
+        policyEngines: [],
+        configBundles: [],
+        harnesses: [],
+      },
+      legacy: {
+        format: "v0",
+        v0Spec: {} as never,
+        extras: {
+          abTests: [],
+          datasets: [],
+          capacityProviders: [],
+          unassignedTargets: [],
+        },
+      },
+    } as Project;
+    core.projectManager.listTargets = async () => [
+      { name: "default", account: "111122223333", region: "us-east-1" },
+    ];
+    let handoff: string[] | undefined;
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(ProjectKey, project).withValue(TuiHandoffKey, (args) => {
+          handoff = args;
+        }),
+    });
+
+    await waitFor(() => handoff !== undefined);
+
+    expect(handoff).toEqual(["deploy", "--target", "default"]);
+    expect(core.projectCommands).toEqual([]);
+    r.unmount();
+  });
+
   test("one target: deploys to it at once, then the CLI's own success line", async () => {
     const { backend, deploys } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });

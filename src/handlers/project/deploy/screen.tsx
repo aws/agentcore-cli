@@ -1,8 +1,11 @@
+import { useEffect } from "react";
+import { useApp } from "ink";
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
+import { TuiHandoffKey } from "../../../tui/handoff";
 import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
@@ -40,20 +43,33 @@ export function DeployProjectScreen({ ctx, core }: ScreenProps) {
           description={DESCRIPTION}
           onBack={goBack}
         >
-          {({ targetName, target, back }) => (
-            <DeployConfirm
-              project={project}
-              ctx={ctx}
-              core={core}
-              targetName={targetName}
-              target={target}
-              onCancel={back}
-            />
-          )}
+          {({ targetName, target, back }) =>
+            project.legacy ? (
+              <LegacyDeployHandoff ctx={ctx} targetName={targetName} />
+            ) : (
+              <DeployConfirm
+                project={project}
+                ctx={ctx}
+                core={core}
+                targetName={targetName}
+                target={target}
+                onCancel={back}
+              />
+            )
+          }
         </DeploymentTargetPicker>
       )}
     </ProjectGate>
   );
+}
+
+function LegacyDeployHandoff({ ctx, targetName }: { ctx: Context; targetName: string }) {
+  const { exit } = useApp();
+  useEffect(() => {
+    ctx.value(TuiHandoffKey)?.(["deploy", "--target", targetName]);
+    exit();
+  }, [ctx, exit, targetName]);
+  return null;
 }
 
 function DeployConfirm({

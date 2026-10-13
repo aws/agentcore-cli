@@ -1,6 +1,12 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
-import { UserCancellationError } from "../../../errors/errors";
+import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
+import {
+  runV0Deploy,
+  V0_CLI_VERSION,
+  type V0DeployRunner,
+} from "../../../core/project/legacy/deploy";
+import { SilentCLIError, UserCancellationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
@@ -16,10 +22,11 @@ import { JsonKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
 import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
-type DeployProjectHandlerConfig = {
+export type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
   middlewares?: Middleware[];
+  runV0Deploy?: V0DeployRunner;
 };
 
 /** The command both entry points suggest once a deploy succeeds. */
@@ -55,7 +62,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
   createHandler({
     name: "deploy",
     description: "deploy the project to AWS",
-    middlewares: config.middlewares,
+    middlewares: [withV0Deploy(config), ...(config.middlewares ?? [])],
     flags: [
       flag(
         "target",
@@ -73,6 +80,15 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       // withProject has already resolved the enclosing project.
       const project = ctx.require(ProjectKey);
       const jsonOutput = ctx.require(JsonKey);
+      if (project.legacy) {
+        await delegateV0Deploy(config, {
+          projectRoot: project.rootPath,
+          target: flags.target,
+          yes: flags.yes,
+          json: jsonOutput,
+        });
+        return;
+      }
       const canPrompt =
         !flags.yes &&
         !jsonOutput &&
@@ -120,6 +136,49 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       if (!result.tornDown) config.io.stderr.write(`Next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
+
+/**
+ * Direct deploy must detect v0 before withProject parses it. This lets the v0
+ * deployer repair projects whose CDK dependency predates the translated view.
+ */
+function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
+  return (handler) => ({
+    name: () => handler.name(),
+    description: () => handler.description(),
+    flags: () => handler.flags(),
+    arguments: () => handler.arguments(),
+    doesSupportTui: () => handler.doesSupportTui(),
+    children: () => handler.children(),
+    handle: async (ctx, flags, args) => {
+      const projectRoot = enclosingProjectRoot(process.cwd());
+      if (projectRoot && (await isV0Project(projectRoot))) {
+        await delegateV0Deploy(config, {
+          projectRoot,
+          target: flags.target as string,
+          yes: flags.yes as boolean,
+          json: ctx.require(JsonKey),
+        });
+        return;
+      }
+      await handler.handle(ctx, flags, args);
+    },
+  });
+}
+
+async function delegateV0Deploy(
+  config: DeployProjectHandlerConfig,
+  input: Parameters<V0DeployRunner>[0],
+): Promise<void> {
+  if (!input.json) {
+    config.io.stderr.write(
+      `This is a v0 project; running AgentCore CLI ${V0_CLI_VERSION} deploy in compatibility mode.\n`,
+    );
+  }
+  const exitCode = await (config.runV0Deploy ?? runV0Deploy)(input);
+  if (exitCode !== 0) {
+    throw new SilentCLIError("v0 deploy exited unsuccessfully", { exitCode });
+  }
+}
 
 /**
  * True when the spec declares none of the resources `removeAllResources`

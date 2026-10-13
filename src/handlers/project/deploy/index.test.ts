@@ -12,6 +12,7 @@ import {
   testIO,
 } from "../../../testing";
 import type { DeployBackendInput, ProjectBackend } from "../../../core/project";
+import type { V0DeployInput, V0DeployRunner } from "../../../core/project/legacy/deploy";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { DeployResult, Project, ProjectEvent, TeardownConfirmationRequest } from "../types";
 
@@ -85,6 +86,7 @@ type TestDeployOptions = {
   resolveAccount?: (region: string) => Promise<string>;
   /** Seeds the global config's transactionSearch flag (defaults to on). */
   transactionSearch?: boolean;
+  runV0Deploy?: V0DeployRunner;
 };
 
 function testDeployCommand(
@@ -111,6 +113,7 @@ function testDeployCommand(
           },
     ),
     logger: createSilentLogger(),
+    runV0Deploy: options.runV0Deploy,
   });
 
   return {
@@ -147,7 +150,7 @@ async function emptyProjectSpec(projectRoot: string): Promise<void> {
 
 describe("project deploy handler", () => {
   test.each(["--yes", "--json"])(
-    "gives legacy dependency guidance with %s before resolving an account or deploying",
+    "delegates a legacy deploy with %s before resolving an account or using v1 CDK",
     async (flag) => {
       const projectRoot = await inProjectWithTargets();
       const specPath = join(projectRoot, "agentcore", "agentcore.json");
@@ -162,25 +165,53 @@ describe("project deploy handler", () => {
         readFile(manifestPath, "utf8"),
       ]);
       const accountCalls: string[] = [];
+      const legacyDeploys: V0DeployInput[] = [];
       const subject = testDeployCommand({ outputs: {} }, [], {
         resolveAccount: async (region) => {
           accountCalls.push(region);
           return DEFAULT_TARGET.account;
         },
+        runV0Deploy: async (input) => {
+          legacyDeploys.push(input);
+          return 0;
+        },
       });
 
-      await expect(subject.run([flag])).rejects.toThrow(
-        "Run `npx @aws/agentcore@0 deploy` once to update them, then try again.",
-      );
+      await subject.run([flag]);
 
       expect(subject.calls).toEqual([]);
       expect(accountCalls).toEqual([]);
+      expect(legacyDeploys).toEqual([
+        {
+          projectRoot,
+          target: "default",
+          yes: flag === "--yes",
+          json: flag === "--json",
+        },
+      ]);
       expect(subject.io.stdout()).toBe("");
+      expect(subject.io.stderr()).toBe(
+        flag === "--json"
+          ? ""
+          : "This is a v0 project; running AgentCore CLI 0.31.1 deploy in compatibility mode.",
+      );
       expect(
         await Promise.all([readFile(specPath, "utf8"), readFile(manifestPath, "utf8")]),
       ).toEqual(before);
     },
   );
+
+  test("preserves the v0 deployer's non-zero exit code", async () => {
+    await inProjectWithTargets();
+    await writeFile(
+      join(process.cwd(), "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 1 }),
+    );
+    const subject = testDeployCommand({ outputs: {} }, [], { runV0Deploy: async () => 7 });
+
+    await expect(subject.run(["--yes"])).rejects.toMatchObject({ exitCode: 7 });
+    expect(subject.calls).toEqual([]);
+  });
 
   test("defaults to the default target and keeps progress off stdout", async () => {
     const subject = testDeployCommand(

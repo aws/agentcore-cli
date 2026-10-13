@@ -2172,7 +2172,7 @@ describe("FsProjectManager.resolve", () => {
     ]);
   });
 
-  test("allows v0 builds and deploys through the configured backend", async () => {
+  test("blocks v0 builds and direct manager deploys before reaching the v1 backend", async () => {
     const { root } = await legacyProject("0.1.0-alpha.45", 1);
     const builds: Project[] = [];
     const deploys: { project: Project; input: DeployBackendInput }[] = [];
@@ -2207,33 +2207,18 @@ describe("FsProjectManager.resolve", () => {
     );
 
     const build = subject.build(project);
-    expect(await build.next()).toEqual({
-      done: false,
-      value: { type: "step", message: "Building" },
-    });
-    expect(await build.next()).toEqual({ done: true, value: undefined });
+    await expect(build.next()).rejects.toThrow("v0 did not expose a standalone build command");
     const deploy = subject.deploy(project, {
       target: "default",
       region: "us-east-1",
       confirmTeardown: async () => false,
       transactionSearch: false,
     });
-    expect(await deploy.next()).toEqual({
-      done: false,
-      value: { type: "step", message: "Deploying" },
-    });
-    expect(await deploy.next()).toEqual({ done: true, value: { outputs: {} } });
-    expect(builds).toEqual([project]);
-    expect(deploys).toEqual([
-      {
-        project,
-        input: {
-          target: { name: "default", account: "111122223333", region: "us-east-1" },
-          confirmTeardown: expect.any(Function),
-          transactionSearch: false,
-        },
-      },
-    ]);
+    await expect(deploy.next()).rejects.toThrow(
+      "v0 projects must be deployed by the v0 compatibility runner",
+    );
+    expect(builds).toEqual([]);
+    expect(deploys).toEqual([]);
   });
 
   test("blocks v0 operations that rewrite files using the v1 shape", async () => {
