@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { createDevEnvironmentLoader } from "./environment";
+import { LocalSecrets } from "../../../io/localSecrets";
 
 const projectRoot = "/workspace/project";
 
@@ -15,14 +16,24 @@ const input = (envVars: { name: string; value: string }[] = []) => ({
 });
 
 describe("createDevEnvironmentLoader", () => {
+  test("decrypts local secrets before passing them to the agent", async () => {
+    const encrypted = await new LocalSecrets().encrypt({ MODEL_API_KEY: "agent-value" });
+    const loader = createDevEnvironmentLoader({
+      readFile: async () => `MODEL_API_KEY='${encrypted.MODEL_API_KEY}'\nSTAGE=dev\n`,
+    });
+    await expect(loader(input())).resolves.toEqual({
+      env: { MODEL_API_KEY: "agent-value", STAGE: "dev", AWS_REGION: "us-east-1" },
+    });
+  });
+
   test("merges runtime, region, and .env.local while removing runner-owned keys", async () => {
     const loader = createDevEnvironmentLoader({
       readFile: async () => `
 SHARED="local value"
 AWS_REGION=local-region
-PORT=9999
-FASTMCP_PORT=9998
-LOCAL_DEV=0
+PORT=enc:v1:ignored
+FASTMCP_PORT=enc:v1:ignored
+LOCAL_DEV=enc:v1:ignored
 MULTILINE="first
 second"
 `,

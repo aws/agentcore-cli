@@ -104,6 +104,9 @@
     "yaml": "^2.8.1",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "2.1.1"
+  },
   "overrides": {
     "@opentelemetry/core": "^2.10.0",
     "@aws-cdk/toolkit-lib": {

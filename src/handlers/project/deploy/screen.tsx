@@ -14,6 +14,7 @@ import {
   declaresNothingDeployable,
   DEPLOY_NEXT_STEP,
   deployedMessage,
+  recordProjectResourceCounts,
   teardownQuestion,
 } from "./index";
 
@@ -109,6 +110,7 @@ function DeployConfirm({
       isPending={false}
       error={null}
       action={async function* () {
+        recordProjectResourceCounts(ctx, project);
         const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
         const result = yield* core.projectManager.deploy(project, {
           target: targetName,

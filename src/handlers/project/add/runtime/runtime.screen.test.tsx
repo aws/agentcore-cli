@@ -23,6 +23,7 @@ import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
 import { DEFAULT_MODEL_IDS } from "../../../../projectSchemas/runtime";
+import { readEnvFile } from "../../../../io/envFile";
 import { RegionKey } from "../../../keys";
 
 const { cleanup, inProject, projectSpec, run } =
@@ -201,9 +202,10 @@ describe("project add runtime wizard", () => {
         { authorizerType: "ApiKeyCredentialProvider", name: "keyed_agentGeminiApiKey" },
       ]),
     );
-    expect(await Bun.file(join(projectRoot, "agentcore", ".env.local")).text()).toContain(
-      "AIza-test-key",
-    );
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
+        .AGENTCORE_CREDENTIAL_KEYED_AGENTGEMINIAPIKEY,
+    ).toBe("AIza-test-key");
     r.unmount();
   });
 

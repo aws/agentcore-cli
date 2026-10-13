@@ -14,6 +14,7 @@ import { DeserializationError, InputValidationError } from "../../../../errors";
 import { FsReadWriteJson, type ReadWriteJson } from "../../../../io";
 import { HarnessYamlSchema } from "../../../../projectSchemas/harness";
 import { credentialEnvVarName } from "../../../../projectSchemas/credential";
+import { readEnvFile } from "../../../../io/envFile";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -454,7 +455,12 @@ describe("project add harness", () => {
       { authorizerType: "ApiKeyCredentialProvider", name: "xOpenAIApiKey" },
     ]);
     const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(envLocal).toContain(`${credentialEnvVarName("xOpenAIApiKey")}='sk-file'`);
+    expect(envLocal).not.toContain("sk-file");
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))[
+        credentialEnvVarName("xOpenAIApiKey")
+      ],
+    ).toBe("sk-file");
   });
 
   test("--api-key reads the key from stdin", async () => {
@@ -474,7 +480,12 @@ describe("project add harness", () => {
       { stdin: "sk-stdin" },
     );
     const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(envLocal).toContain(`${credentialEnvVarName("xLiteLLMApiKey")}='sk-stdin'`);
+    expect(envLocal).not.toContain("sk-stdin");
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))[
+        credentialEnvVarName("xLiteLLMApiKey")
+      ],
+    ).toBe("sk-stdin");
   });
 
   test.each<[string, string, RegExp]>([

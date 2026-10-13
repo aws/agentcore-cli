@@ -23,6 +23,7 @@ import type { AppIO } from "../../../../io";
 import { DEFAULT_HARNESS_MODEL } from "../../../../projectSchemas/harness";
 import { credentialEnvVarName } from "../../../../projectSchemas/credential";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { readEnvFile } from "../../../../io/envFile";
 import { projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
 
@@ -260,7 +261,12 @@ describe("project add harness wizard", () => {
       { authorizerType: "ApiKeyCredentialProvider", name: "assistantOpenAIApiKey" },
     ]);
     const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(envLocal).toContain(`${credentialEnvVarName("assistantOpenAIApiKey")}='sk-from-file'`);
+    expect(envLocal).not.toContain("sk-from-file");
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))[
+        credentialEnvVarName("assistantOpenAIApiKey")
+      ],
+    ).toBe("sk-from-file");
     screen.unmount();
   }, 15000);
 

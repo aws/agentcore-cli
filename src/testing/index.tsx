@@ -45,3 +45,4 @@ export {
   type InitializedProject,
 } from "./projects";
 export { expectError } from "./errors";
+export { getTestTelemetryClient, assertMetricEmitted, withTelemetry } from "./telemetry";

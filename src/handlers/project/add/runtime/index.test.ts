@@ -13,6 +13,7 @@ import {
 import type { BedrockAgentImportPlan } from "../../../../core/project/bedrockAgentImport";
 import { credentialEnvVarName } from "../../../../projectSchemas/credential";
 import { InputValidationError } from "../../../../errors";
+import { readEnvFile } from "../../../../io/envFile";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -599,7 +600,10 @@ describe("project add runtime", () => {
       });
 
       const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-      expect(envLocal).toContain(`${envVarName}='test-api-key'`);
+      expect(envLocal).not.toContain("test-api-key");
+      expect((await readEnvFile(join(projectRoot, "agentcore", ".env.local")))[envVarName]).toBe(
+        "test-api-key",
+      );
     },
   );
 

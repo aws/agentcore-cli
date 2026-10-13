@@ -23,6 +23,8 @@ import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
+import { readEnvFile } from "../../../io/envFile";
+import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import { modelProviderOverridableCnMessage } from "../../../core/project/manager";
 
@@ -268,7 +270,11 @@ describe("project create wizard", () => {
     expect(harness.model).toEqual({
       openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyCredentialName: "KeyAppOpenAIApiKey" },
     });
-    expect(await Bun.file(join(root, "agentcore", ".env.local")).text()).toContain("'sk-wizard'");
+    expect(
+      (await readEnvFile(join(root, "agentcore", ".env.local")))[
+        credentialEnvVarName("KeyAppOpenAIApiKey")
+      ],
+    ).toBe("sk-wizard");
     r.unmount();
   }, 10000);
 
@@ -690,7 +696,12 @@ describe("project create wizard", () => {
       { authorizerType: "ApiKeyCredentialProvider", name: "agentAnthropicApiKey" },
     ]);
     const envLocal = await Bun.file(join(directory, "KeyedApp", "agentcore", ".env.local")).text();
-    expect(envLocal).toContain("sk-ant-test-key");
+    expect(envLocal).not.toContain("sk-ant-test-key");
+    expect(
+      (await readEnvFile(join(directory, "KeyedApp", "agentcore", ".env.local")))[
+        credentialEnvVarName("agentAnthropicApiKey")
+      ],
+    ).toBe("sk-ant-test-key");
     r.unmount();
   }, 10000);
 

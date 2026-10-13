@@ -15,6 +15,7 @@ import {
 import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { resolveScaffoldHarnessInput } from "./create/index";
+import { readEnvFile } from "../../io/envFile";
 
 async function run(
   args: string[],
@@ -782,8 +783,12 @@ describe("project add credentials", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY='sk-123'\n");
-    expect(env).not.toContain("AGENTCORE_CREDENTIAL_SVC_KEY='sk-123'\n\n");
+    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY='enc:v1:");
+    expect(env).not.toContain("sk-123");
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
+        .AGENTCORE_CREDENTIAL_SVC_KEY,
+    ).toBe("sk-123");
   });
 
   test("api-key without a secret writes a commented placeholder and tells the user to fill it", async () => {
@@ -875,7 +880,11 @@ describe("project add credentials", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain("AGENTCORE_CREDENTIAL_IDP_CLIENT_SECRET='sssh'");
+    expect(env).not.toContain("sssh");
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
+        .AGENTCORE_CREDENTIAL_IDP_CLIENT_SECRET,
+    ).toBe("sssh");
   });
 
   test("oauth vendored with --provider-configuration records the config and a secret placeholder", async () => {
@@ -923,7 +932,8 @@ describe("project add credentials", () => {
     const env = await Bun.file(envPath).text();
     expect(env).toStartWith(original);
     expect(env.match(/AGENTCORE_CREDENTIAL_SVC_KEY=/g)).toHaveLength(1);
-    expect(env).toContain("AGENTCORE_CREDENTIAL_SVC_KEY=user-managed");
+    expect(env).not.toContain("user-managed");
+    expect((await readEnvFile(envPath)).AGENTCORE_CREDENTIAL_SVC_KEY).toBe("user-managed");
     expect(io.stderr()).toContain("already exists");
   });
 

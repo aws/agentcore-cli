@@ -18,6 +18,7 @@ import {
 import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
+import { readEnvFile } from "../../../io/envFile";
 import { APP_CODE_RETAINED_NOTICE } from "./notice";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -181,7 +182,8 @@ describe("project remove", () => {
     });
     const envPath = join(projectRoot, ENV_LOCAL_RELATIVE_PATH);
     const envKey = credentialEnvVarName("svc-key");
-    expect(await Bun.file(envPath).text()).toContain(`${envKey}='sekret'`);
+    expect(await Bun.file(envPath).text()).not.toContain("sekret");
+    expect((await readEnvFile(envPath))[envKey]).toBe("sekret");
 
     const { io } = await run(["remove", "credential", "--name", "svc-key"]);
 

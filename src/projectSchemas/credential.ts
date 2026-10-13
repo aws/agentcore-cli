@@ -122,26 +122,27 @@ export function credentialEnvVarName(credentialName: string, suffix = ""): strin
   return `${CREDENTIAL_ENV_PREFIX}${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
 }
 
-/**
- * The suffixes the CLI appends to a credential's base variable to name one of its
- * fields — both the secret-bearing ones and the readable identifiers.
- */
-const CREDENTIAL_FIELD_SUFFIXES = [
+export const CREDENTIAL_SECRET_SUFFIXES = [
   "_CLIENT_SECRET",
   "_API_KEY_SECRET",
   "_APP_SECRET",
   "_WALLET_SECRET",
   "_AUTHORIZATION_PRIVATE_KEY",
-  // Identifiers rather than secrets. `_CLIENT_ID` is no longer written — an OAuth
-  // client id lives in agentcore.json — but deploy still reads it for projects
-  // created before that move, so a name that produces it is still a hazard.
+] as const;
+
+export const CREDENTIAL_REFERENCE_SUFFIXES = [
   "_CLIENT_ID",
   "_API_KEY_ID",
   "_APP_ID",
   "_AUTHORIZATION_ID",
-  // The provider name discovery variable every runtime receives.
   "_NAME",
 ] as const;
+
+/**
+ * The suffixes the CLI appends to a credential's base variable to name one of its
+ * fields — both the secret-bearing ones and the readable identifiers.
+ */
+const CREDENTIAL_FIELD_SUFFIXES = [...CREDENTIAL_SECRET_SUFFIXES, ...CREDENTIAL_REFERENCE_SUFFIXES];
 
 /**
  * Reports the field suffix a credential name ends in, if any.

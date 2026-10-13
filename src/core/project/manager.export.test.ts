@@ -11,6 +11,7 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { ExportHarnessInput, Project, ProjectEvent } from "../../handlers/project/types";
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import { readEnvFile } from "../../io/envFile";
 
 const originalCwd = process.cwd();
 const tempDirectories: string[] = [];
@@ -436,9 +437,12 @@ describe("FsProjectManager.exportHarness side effects", () => {
     expect(credential.authorizerType).toBe("ApiKeyCredentialProvider");
     expect(credential.name).toMatch(/^ordersMcpinternalX-Api-Key-[a-f0-9]{10}$/);
     const envLocal = await Bun.file(join(project.rootPath, "agentcore", ".env.local")).text();
-    expect(envLocal).toContain(
-      `AGENTCORE_CREDENTIAL_${credential.name.replace(/-/g, "_").toUpperCase()}='s3cret'`,
-    );
+    expect(envLocal).not.toContain("s3cret");
+    expect(
+      (await readEnvFile(join(project.rootPath, "agentcore", ".env.local")))[
+        `AGENTCORE_CREDENTIAL_${credential.name.replace(/-/g, "_").toUpperCase()}`
+      ],
+    ).toBe("s3cret");
     const mcpClient = await Bun.file(
       join(project.rootPath, "app", "assistantAgent", "mcp_client", "client.py"),
     ).text();

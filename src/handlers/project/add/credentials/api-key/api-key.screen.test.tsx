@@ -17,6 +17,7 @@ import { InputValidationError, SourceResolutionError } from "../../../../../erro
 import type { AppIO } from "../../../../../io";
 import { createRootHandler } from "../../../../index";
 import { createGatewayProjectTestHarness } from "../../gateway-test-support";
+import { readEnvFile } from "../../../../../io/envFile";
 
 const { cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness(
   "add-api-key-credential-wizard",
@@ -65,7 +66,11 @@ describe("project add credentials api-key wizard", () => {
       { authorizerType: "ApiKeyCredentialProvider", name: "service-key" },
     ]);
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_SERVICE_KEY='${secret}'`);
+    expect(env).not.toContain(secret);
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
+        .AGENTCORE_CREDENTIAL_SERVICE_KEY,
+    ).toBe(secret);
 
     await screen.press("return");
     await waitForText(

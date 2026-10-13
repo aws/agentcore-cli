@@ -181,10 +181,20 @@ export function createCredentialProvisioner(
 
     // Credential variables set in the process environment win over the file, so a
     // deploy can be handed its secrets without writing them to disk first.
-    const env = {
-      ...(await new EnvLocalFile(project.rootPath).read()),
-      ...credentialEnvironment(processEnv),
-    };
+    const needed = new Set(declared.flatMap(credentialEnvironmentVariableNames));
+    for (const credential of declared) {
+      if (
+        credential.authorizerType === "OAuthCredentialProvider" &&
+        credential.clientId === undefined &&
+        credential.providerConfig === undefined
+      ) {
+        needed.add(credentialEnvVarName(credential.name, "_CLIENT_ID"));
+      }
+    }
+    const env = await new EnvLocalFile(project.rootPath).read({
+      select: (name) => needed.has(name),
+      overrides: credentialEnvironment(processEnv),
+    });
     // Every Identity call runs against the deployment target's own credentials
     // rather than the default chain, in the region the target deploys to.
     const options: CoreOptions = { region, credentials };

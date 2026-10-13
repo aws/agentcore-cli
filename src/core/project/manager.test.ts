@@ -14,6 +14,7 @@ import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
+import { readEnvFile } from "../../io/envFile";
 import {
   BMA_CN_MESSAGE,
   cnConnectorTargetMessage,
@@ -768,8 +769,14 @@ describe("FsProjectManager.addResource", () => {
       const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
       expect(envLocal).toContain(
         "# API key for the OpenAI model provider (harness assistant)\n" +
-          `${credentialEnvVarName("assistantOpenAIApiKey")}='sk-secret'`,
+          `${credentialEnvVarName("assistantOpenAIApiKey")}='enc:v1:`,
       );
+      expect(
+        (await readEnvFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH)))[
+          credentialEnvVarName("assistantOpenAIApiKey")
+        ],
+      ).toBe("sk-secret");
+      expect(envLocal).not.toContain("sk-secret");
     });
 
     test.each([
@@ -809,7 +816,11 @@ describe("FsProjectManager.addResource", () => {
         `'${credentialEnvVarName(credentialName)}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
       );
       const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
-      expect(envLocal).toContain(`${credentialEnvVarName(credentialName)}='old'`);
+      expect(
+        (await readEnvFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH)))[
+          credentialEnvVarName(credentialName)
+        ],
+      ).toBe("old");
       expect(envLocal).not.toContain("new");
     });
 
@@ -877,7 +888,12 @@ describe("FsProjectManager.addResource", () => {
         { authorizerType: "ApiKeyCredentialProvider", name: "exampleGeminiApiKey" },
       ]);
       const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
-      expect(envLocal).toContain(`${credentialEnvVarName("exampleGeminiApiKey")}='sk-gemini'`);
+      expect(envLocal).not.toContain("sk-gemini");
+      expect(
+        (await readEnvFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH)))[
+          credentialEnvVarName("exampleGeminiApiKey")
+        ],
+      ).toBe("sk-gemini");
     });
   });
 

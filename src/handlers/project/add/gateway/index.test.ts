@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
@@ -150,6 +152,21 @@ describe("project add gateway", () => {
       source: "pairs",
       team: "agents",
     });
+  });
+
+  test("keeps a hyphenated target as is in the hyphen-separated deployed name", async () => {
+    const projectRoot = await inProject();
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "prod-us1", account: "111122223333", region: "us-east-1" }]),
+    );
+    const name = `g${"x".repeat(80)}`;
+
+    await expectError(
+      run(["add", "gateway", "--name", name]),
+      `Gateway deployed name 'TestProject-prod-us1-${name}' is 102 characters. The maximum is 100.`,
+      InputValidationError,
+    );
   });
 
   test.each<

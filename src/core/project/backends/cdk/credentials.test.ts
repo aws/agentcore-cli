@@ -340,7 +340,16 @@ describe("createCredentialProvisioner", () => {
 
   test("creates an API key provider under the target-scoped name, recorded under the spec name", async () => {
     const subject = account();
-    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
+    const input = await project([API_KEY]);
+    const file = new EnvLocalFile(input.rootPath);
+    await file.insertIfNew([
+      { key: "AGENTCORE_CREDENTIAL_OPENAI_KEY", value: "sk-live", comment: "API key" },
+    ]);
+    expect(await Bun.file(file.path).text()).not.toContain("sk-live");
+    await writeFile(
+      file.path,
+      (await Bun.file(file.path).text()) + "SOME_API_KEY=enc:v1:unrelated\n",
+    );
 
     const { events, result } = await run(subject.provision, input);
 
@@ -357,6 +366,13 @@ describe("createCredentialProvisioner", () => {
     expect(result).toEqual({
       "openai-key": recordedAs("ApiKeyCredentialProvider", CREATED_OPENAI),
     });
+  });
+
+  test("refuses an unreadable encrypted secret before calling Identity", async () => {
+    const subject = account();
+    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='enc:v1:broken'\n");
+    await expect(run(subject.provision, input)).rejects.toThrow(/Could not decrypt/);
+    expect(subject.optionsSeen).toEqual([]);
   });
 
   test("creates an API key provider from a Secrets Manager reference", async () => {
@@ -391,7 +407,10 @@ describe("createCredentialProvisioner", () => {
       {},
       { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env", HOME: "/should/not/matter" },
     );
-    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-from-file'\n");
+    const input = await project(
+      [API_KEY],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY=enc:v1:broken\nSOME_API_KEY=enc:v1:unrelated\n",
+    );
 
     await run(subject.provision, input);
 
