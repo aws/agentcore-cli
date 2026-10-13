@@ -319,6 +319,18 @@ export const ProjectRuntimeSchema = z
     protocol: ProtocolModeSchema.optional(),
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
     executionRoleArn: z.string().optional(),
+    bindingMode: z.literal("explicit").optional(),
+    executionRoleConfig: z
+      .object({
+        policyMode: z.literal("explicit"),
+        permissionsBoundaryArn: z
+          .string()
+          .regex(/^arn:[^:]+:iam::(?:\d{12}|aws):policy\/.+$/)
+          .optional(),
+        tags: TagsSchema.optional(),
+      })
+      .strict()
+      .optional(),
     additionalPolicies: z.array(z.string().min(1)).optional(),
     authorizerType: RuntimeAuthorizerTypeSchema.optional(),
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
@@ -329,6 +341,13 @@ export const ProjectRuntimeSchema = z
     connections: z.array(ConnectionSchema).optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.executionRoleArn !== undefined && data.executionRoleConfig) {
+      ctx.addIssue({
+        code: "custom",
+        message: "executionRoleConfig requires a newly created role, not executionRoleArn",
+        path: ["executionRoleConfig"],
+      });
+    }
     if (data.networkMode === "VPC" && !data.networkConfig) {
       ctx.addIssue({
         code: "custom",

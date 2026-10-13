@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AgentCoreCLIError } from "../../../errors";
+import { ExecutionRoleSourceReader } from "../../../core/executionRoleSource";
+import type { IAMClient } from "@aws-sdk/client-iam";
 import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
@@ -20,6 +22,7 @@ function serviceHarness(harnessName = "RemoteHarness") {
   return {
     harness: {
       harnessName,
+      executionRoleArn: "arn:aws:iam::111122223333:role/HarnessRole",
       model: { bedrockModelConfig: { modelId: "us.amazon.nova-lite-v1:0" } },
     },
   } as never;
@@ -78,6 +81,98 @@ async function inProjectWithHarness(
 }
 
 describe("project export harness handler", () => {
+  test("captures paginated source IAM at the SDK boundary and writes opaque policies", async () => {
+    const subject = testExportCommand();
+    const projectRoot = await inProjectWithHarness(subject);
+    const roleArn = "arn:aws:iam::111122223333:role/path/HarnessRole";
+    const boundary = "arn:aws:iam::111122223333:policy/boundary";
+    const managed = "arn:aws:iam::111122223333:policy/source";
+    const document = {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Deny",
+          Action: "s3:*",
+          NotResource: "arn:aws:s3:::allowed/*",
+          Condition: { StringEquals: { "aws:PrincipalTag/team": "agents%team" } },
+        },
+      ],
+    };
+    const replies: unknown[] = [
+      { Role: { Arn: roleArn, PermissionsBoundary: { PermissionsBoundaryArn: boundary } } },
+      { PolicyNames: ["Original"], IsTruncated: true, Marker: "next" },
+      { PolicyDocument: encodeURIComponent(JSON.stringify(document)) },
+      { PolicyNames: [], IsTruncated: false },
+      { AttachedPolicies: [{ PolicyArn: managed }], IsTruncated: false },
+      {
+        Tags: [
+          { Key: "team", Value: "agents" },
+          { Key: "aws:cloudformation:stack-name", Value: "source" },
+        ],
+        IsTruncated: false,
+      },
+    ];
+    const calls: { name: string; input: unknown }[] = [];
+    const reader = new ExecutionRoleSourceReader({
+      iam: () =>
+        ({
+          send: async (command: { constructor: { name: string }; input: unknown }) => {
+            calls.push({ name: command.constructor.name, input: command.input });
+            return replies.shift();
+          },
+        }) as unknown as IAMClient,
+    });
+    subject.core.executionRoleSource.read = reader.read.bind(reader);
+    subject.core.harness.setGetResponse({
+      harness: {
+        arn: HARNESS_ARN,
+        harnessName: "source",
+        executionRoleArn: roleArn,
+        model: { bedrockModelConfig: { modelId: "us.amazon.nova-lite-v1:0" } },
+      },
+    } as never);
+    await subject.run(["--arn", HARNESS_ARN, "--json"]);
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const exported = spec.runtimes.find(
+      (runtime: { name: string }) => runtime.name === "sourceAgent",
+    );
+    expect(exported).toMatchObject({
+      bindingMode: "explicit",
+      executionRoleConfig: {
+        policyMode: "explicit",
+        permissionsBoundaryArn: boundary,
+        tags: { team: "agents" },
+      },
+      additionalPolicies: ["source-role-Original.json", managed],
+    });
+    expect(
+      await Bun.file(join(projectRoot, "app", "sourceAgent", "source-role-Original.json")).json(),
+    ).toEqual(document);
+    expect(calls).toContainEqual({
+      name: "ListRolePoliciesCommand",
+      input: { RoleName: "HarnessRole", Marker: "next" },
+    });
+    expect(calls.some((call) => call.name === "GetPolicyVersionCommand")).toBe(false);
+    expect(replies).toEqual([]);
+  });
+
+  test("does not export when source IAM capture fails", async () => {
+    const subject = testExportCommand();
+    const projectRoot = await inProjectWithHarness(subject);
+    subject.core.harness.setGetResponse({
+      harness: {
+        harnessName: "source",
+        executionRoleArn: "arn:aws:iam::111122223333:role/source",
+        model: { bedrockModelConfig: { modelId: "us.amazon.nova-lite-v1:0" } },
+      },
+    } as never);
+    subject.core.executionRoleSourceError = new Error("AccessDenied");
+    const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
+    await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow("AccessDenied");
+    expect(existsSync(join(projectRoot, "app", "sourceAgent"))).toBe(false);
+    expect(await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text()).toBe(before);
+  });
+
   test("exports conventional prompt file contents as literal text", async () => {
     const prompt = "\uFEFFREADME.md\r\n";
     const subject = testExportCommand();
@@ -160,6 +255,7 @@ describe("project export harness handler", () => {
       codeLocation: "app/exportmeAgent",
       protocol: "HTTP",
       runtimeVersion: "PYTHON_3_14",
+      bindingMode: "explicit",
       networkMode: "PUBLIC",
       authorizerType: "AWS_IAM",
       tags: {},
@@ -301,6 +397,7 @@ describe("project export harness handler", () => {
     subject.core.harness.setGetResponse({
       harness: {
         harnessName: "remote_container",
+        executionRoleArn: "arn:aws:iam::111122223333:role/HarnessRole",
         model: { bedrockModelConfig: { modelId: "us.amazon.nova-lite-v1:0" } },
         environmentArtifact: {
           containerConfiguration: {
@@ -358,6 +455,11 @@ describe("project export harness handler", () => {
     const { path, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     subject.core.harness.setGetResponse(serviceHarness());
+    const document = {
+      Version: "2012-10-17",
+      Statement: [{ Effect: "Deny", Action: "s3:*", Resource: "*" }],
+    };
+    subject.core.executionRoleSourcePolicies = { Source: document };
 
     await subject.run([
       "--arn",
@@ -378,6 +480,18 @@ describe("project export harness handler", () => {
     ]);
     expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual([
       "RemoteHarnessAgent",
+    ]);
+    expect(spec.runtimes[0]).toMatchObject({
+      bindingMode: "explicit",
+      executionRoleConfig: { policyMode: "explicit" },
+      additionalPolicies: ["source-role-Source.json"],
+    });
+    expect(await Bun.file(join(agentPath, "source-role-Source.json")).json()).toEqual(document);
+    expect(subject.core.executionRoleSourceCalls).toEqual([
+      {
+        roleArn: "arn:aws:iam::111122223333:role/HarnessRole",
+        options: expect.objectContaining({ region: "us-west-2" }),
+      },
     ]);
     expect(existsSync(join(agentPath, "main.py"))).toBe(true);
     expect(existsSync(join(projectRoot, "agentcore", "cdk", "package.json"))).toBe(true);
@@ -482,25 +596,31 @@ describe("project export harness handler", () => {
   });
 
   test.each([
-    ["service harness is missing", {}, /no harness exists/],
-    ["service fetch fails", new Error("Access denied"), /Access denied/],
+    ["service harness is missing", {}, /no harness exists/, undefined],
+    ["service fetch fails", new Error("Access denied"), /Access denied/, undefined],
     [
       "service response cannot be mapped",
       { harness: { harnessName: "RemoteHarness", model: {} } },
       /no recognized model configuration/,
+      undefined,
     ],
-  ] as const)("does not create a project when the %s", async (_failure, response, error) => {
-    const subject = testExportCommand();
-    const { path, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    if (response instanceof Error) subject.core.harness.setError(response);
-    else subject.core.harness.setGetResponse(response as never);
+    ["source IAM capture fails", serviceHarness(), /AccessDenied/, new Error("AccessDenied")],
+  ] as const)(
+    "does not create a project when the %s",
+    async (_failure, response, error, sourceIamError) => {
+      const subject = testExportCommand();
+      const { path, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      if (response instanceof Error) subject.core.harness.setError(response);
+      else subject.core.harness.setGetResponse(response as never);
+      subject.core.executionRoleSourceError = sourceIamError;
 
-    await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow(error);
+      await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow(error);
 
-    expect(await readdir(path)).toEqual([]);
-    expect(subject.core.projectCommands).toEqual([]);
-  });
+      expect(await readdir(path)).toEqual([]);
+      expect(subject.core.projectCommands).toEqual([]);
+    },
+  );
 
   test.each([
     [["--target-agent-name", "9bad"], /invalid --target-agent-name/],

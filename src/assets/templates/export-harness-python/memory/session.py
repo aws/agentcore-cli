@@ -1,22 +1,25 @@
 import os
-import uuid
-from typing import Optional
 
-from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig{{#if memoryStrategies.length}}, RetrievalConfig{{/if}}
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig{{#if (or memoryStrategies.length memoryRetrievalNamespaces)}}, RetrievalConfig{{/if}}
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 
 MEMORY_ID = os.getenv("{{memoryEnvVarName}}")
-REGION = os.getenv("AWS_REGION")
+REGION = {{#if memoryRegion}}{{safeJson memoryRegion}}{{else}}os.getenv("AWS_REGION"){{/if}}
 
 
 def get_memory_session_manager(
-    session_id: Optional[str], actor_id: str
-) -> Optional[AgentCoreMemorySessionManager]:
+    session_id: str, actor_id: str
+) -> AgentCoreMemorySessionManager:
     if not MEMORY_ID:
-        return None
+        raise RuntimeError("Missing memory binding: {{memoryEnvVarName}}")
 
-    session_id = session_id or uuid.uuid4().hex
-
+{{#if memoryRetrievalNamespaces}}
+    retrieval_config = {
+{{#each memoryRetrievalNamespaces}}
+        {{safeJson namespace}}: RetrievalConfig(top_k={{topK}}, relevance_score={{relevanceScore}}{{#if strategyId}}, strategy_id={{safeJson strategyId}}{{/if}}),
+{{/each}}
+    }
+{{else}}
 {{#if memoryStrategies.length}}
     retrieval_config = {
 {{#if (includes memoryStrategies "SEMANTIC")}}
@@ -33,13 +36,14 @@ def get_memory_session_manager(
 {{/if}}
     }
 {{/if}}
+{{/if}}
 
     return AgentCoreMemorySessionManager(
         AgentCoreMemoryConfig(
             memory_id=MEMORY_ID,
             session_id=session_id,
             actor_id=actor_id,
-{{#if memoryStrategies.length}}
+{{#if (or memoryStrategies.length memoryRetrievalNamespaces)}}
             retrieval_config=retrieval_config,
 {{/if}}
         ),

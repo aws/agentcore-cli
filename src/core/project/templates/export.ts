@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type {
@@ -15,11 +16,23 @@ import type {
 } from "../../../projectSchemas/harness";
 import type { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { credentialEnvVarName, type Credential } from "../../../projectSchemas/credential";
-import { memoryEnvVarName, type Memory } from "../../../projectSchemas/memory";
+import type { Memory } from "../../../projectSchemas/memory";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors/errors";
 import { toPythonPackageName } from "../fsUtils";
 import { resourceNameFromArn } from "../../arn";
+import {
+  ConnectionSchema,
+  connectionIdForTarget,
+  connectionTokenFor,
+  type Connection,
+  type ConnectionTarget,
+  type GatewayOutboundAuth,
+} from "../../../projectSchemas/connections";
+import type {
+  ExecutionRoleSource,
+  MemoryRetrievalConfig,
+} from "../../../handlers/project/export/types";
 
 type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
 
@@ -46,6 +59,8 @@ export interface HarnessExportInput {
   sourceNotes?: ExportNote[];
   /** Service model additionalParams, which the local harness spec only holds for lite_llm. */
   modelAdditionalParams?: Record<string, unknown>;
+  executionRoleSource?: ExecutionRoleSource;
+  memoryRetrievalConfig?: MemoryRetrievalConfig;
 }
 
 /** The pure mapping result; the project manager executes it against the filesystem. */
@@ -74,11 +89,13 @@ export const GATEWAY_TOOL_NOTE_CATEGORY = "Gateway tool not exported — wire up
 export const BROWSER_TOOL_NOTE_CATEGORY = "Browser tool not exported — wire up manually";
 export const CODE_INTERPRETER_TOOL_NOTE_CATEGORY =
   "Code-interpreter tool not exported — wire up manually";
-export const MEMORY_ARN_NOTE_CATEGORY = "External memory reference not exported";
 export const MEMORY_MANAGED_NOTE_CATEGORY = "Managed harness memory not exported";
 export const MEMORY_NAME_NOT_FOUND_NOTE_CATEGORY = "Memory reference could not be resolved";
 export const MEMORY_MESSAGES_COUNT_NOTE_CATEGORY =
   "Memory messagesCount is not directly portable to Strands";
+export const MEMORY_ACTOR_NOTE_CATEGORY = "Memory requires a configured actorId";
+export const MEMORY_OWNERSHIP_NOTE_CATEGORY = "Source Memory ownership";
+export const SOURCE_ROLE_NOTE_CATEGORY = "Source execution-role policies retained";
 export const PATH_SKILLS_NOTE_CATEGORY = "path skills require container filesystem";
 export const GIT_SKILLS_CONTAINER_NOTE_CATEGORY = "git skills require git in container image";
 export const GIT_SKILLS_AUTH_NOTE_CATEGORY = "git skill credential provider referenced";
@@ -102,6 +119,28 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
   const envEntries: EnvLocalEntry[] = [];
   const policyFiles: Record<string, unknown> = {};
   const additionalPolicies: string[] = [];
+  const connections: Connection[] = (spec.connections ?? []).map((connection) => ({
+    ...connection,
+    to: { ...connection.to },
+  }));
+  const roleSource = input.executionRoleSource;
+  if (roleSource) {
+    for (const policy of roleSource.inlinePolicies) {
+      const filename = `source-role-${policy.name.replace(/[^a-zA-Z0-9_+=,.@-]/g, "_")}.json`;
+      if (filename in policyFiles)
+        throw new InputValidationError(`Source policy filename collision: ${filename}`);
+      policyFiles[filename] = policy.document;
+    }
+    additionalPolicies.push(...roleSource.managedPolicyArns);
+    notes.push({
+      category: SOURCE_ROLE_NOTE_CATEGORY,
+      message:
+        `Captured inline policies, managed-policy references, permissions boundary and durable tags from ${roleSource.roleArn}. ` +
+        "The runtime creates its own role and startup trust; source trust is not copied. " +
+        "No inferred application grants are added. Managed policies remain source-owned references. " +
+        "Principal-specific conditions and resource policies may need review for the new principal.",
+    });
+  }
 
   // Export always emits a CodeZip runtime. The generated agent is a self-contained Strands
   // application whose dependencies come from its own pyproject.toml, so it needs no image build
@@ -135,8 +174,15 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     });
   }
 
-  const model = resolveModel(spec, projectSpec, credentials, notes, input.modelAdditionalParams);
-  const memory = resolveMemory(spec, projectSpec, notes);
+  const model = resolveModel(
+    spec,
+    projectSpec,
+    credentials,
+    notes,
+    input.modelAdditionalParams,
+    !!roleSource,
+  );
+  const memory = resolveMemory(spec, projectSpec, notes, connections, input.memoryRetrievalConfig);
   const tools = resolveTools(
     spec,
     allowedToolPatterns,
@@ -144,11 +190,14 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     credentials,
     envEntries,
     notes,
+    connections,
   );
   const skills = resolveSkills(spec, credentials, notes);
-  for (const [file, doc] of Object.entries(skills.policyFiles)) policyFiles[file] = doc;
-  if (model.policyFile) policyFiles[model.policyFile.name] = model.policyFile.doc;
-  additionalPolicies.push(...Object.keys(policyFiles));
+  if (!roleSource) {
+    for (const [file, doc] of Object.entries(skills.policyFiles)) policyFiles[file] = doc;
+    if (model.policyFile) policyFiles[model.policyFile.name] = model.policyFile.doc;
+  }
+  additionalPolicies.unshift(...Object.keys(policyFiles));
 
   const hasExecutionLimits =
     spec.maxIterations !== undefined ||
@@ -175,6 +224,15 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     // Memory
     hasMemory: memory.provider !== undefined,
     memoryEnvVarName: memory.provider?.envVarName,
+    memoryRegion: memory.region,
+    memoryRetrievalNamespaces: undefinedIfEmpty(
+      Object.entries(memory.namespaceConfig ?? {}).map(([namespace, config]) => ({
+        namespace,
+        topK: config.topK ?? 3,
+        relevanceScore: config.relevanceScore ?? 0.5,
+        strategyId: config.strategyId,
+      })),
+    ),
     memoryStrategies: memory.provider?.strategies ?? [],
     memoryRetrievalTopK:
       memory.retrievalConfig?.topK !== undefined ? String(memory.retrievalConfig.topK) : undefined,
@@ -183,8 +241,7 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
         ? String(memory.retrievalConfig.relevanceScore)
         : undefined,
     actorId: memory.actorId,
-    // Gateways are never exported as code (see resolveTools); the template still
-    // needs the keys so its conditionals resolve.
+    hasIamGateway: tools.remoteMcpTools.some((tool) => tool.awsIam),
     // Tools. Empty collections become undefined: the template's custom `or`/
     // `some` helpers use JS truthiness, where [] is truthy, unlike `{{#if}}`.
     inlineFunctionTools: undefinedIfEmpty(tools.inlineFunctionTools),
@@ -222,6 +279,7 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     codeLocation: `app/${targetAgentName}` as ProjectRuntime["codeLocation"],
     protocol: "HTTP",
     runtimeVersion: "PYTHON_3_14",
+    bindingMode: "explicit",
     ...(envVars.length > 0 && { envVars }),
     ...(spec.networkMode && { networkMode: spec.networkMode }),
     ...(networkConfig && { networkConfig }),
@@ -232,7 +290,16 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     ...(spec.lifecycleConfig && { lifecycleConfiguration: spec.lifecycleConfig }),
     ...(filesystemConfigurations.length > 0 && { filesystemConfigurations }),
     ...(additionalPolicies.length > 0 && { additionalPolicies }),
-    ...(spec.connections?.length && { connections: spec.connections }),
+    ...(connections.length && { connections }),
+    ...(roleSource && {
+      executionRoleConfig: {
+        policyMode: "explicit",
+        ...(roleSource.permissionsBoundaryArn && {
+          permissionsBoundaryArn: roleSource.permissionsBoundaryArn,
+        }),
+        tags: roleSource.tags,
+      },
+    }),
     ...(spec.tags && { tags: spec.tags }),
     // NOTE: the harness's executionRoleArn is deliberately NOT carried over. The
     // exported agent is a new runtime that needs its own CDK-managed role so the
@@ -281,6 +348,7 @@ function resolveModel(
   credentials: Credential[],
   notes: ExportNote[],
   serviceAdditionalParams: Record<string, unknown> | undefined,
+  preserveProvider: boolean,
 ): ModelResolution {
   const model = spec.model;
   const additionalParams = serviceAdditionalParams ?? model.additionalParams;
@@ -368,6 +436,7 @@ function resolveModel(
         projectSpec,
         credentials,
         notes,
+        preserveProvider,
       );
       return { context };
     }
@@ -385,6 +454,7 @@ function resolveModel(
           projectSpec,
           credentials,
           notes,
+          preserveProvider,
         );
       } else if (!model.modelId.startsWith("bedrock/")) {
         // A bedrock/... LiteLLM model authenticates via the execution role; any
@@ -417,6 +487,7 @@ function attachIdentityProvider(
   projectSpec: ProjectSpec,
   credentials: Credential[],
   notes: ExportNote[],
+  preserveProvider: boolean,
 ): void {
   let credentialName: string;
   if ("credentialName" in apiKey) {
@@ -424,7 +495,11 @@ function attachIdentityProvider(
   } else {
     // ARN form: arn:aws:bedrock-agentcore:<region>:<acct>:token-vault/<vault>/apikeycredentialprovider/<name>
     const arnNameMatch = /\/apikeycredentialprovider\/([^/]+)$/.exec(apiKey.arn);
-    credentialName = arnNameMatch ? arnNameMatch[1]! : `${projectSpec.name}${provider}ApiKey`;
+    credentialName = preserveProvider
+      ? apiKeyProviderName(apiKey.arn)
+      : arnNameMatch
+        ? arnNameMatch[1]!
+        : `${projectSpec.name}${provider}ApiKey`;
   }
   const envVarName = credentialEnvVarName(credentialName);
 
@@ -432,7 +507,7 @@ function attachIdentityProvider(
   context.identityProviders = [{ name: credentialName, envVarName }];
 
   const exists = projectSpec.credentials.some((c) => c.name === credentialName);
-  if (!exists) {
+  if (!exists && ("credentialName" in apiKey || !preserveProvider)) {
     credentials.push({ authorizerType: "ApiKeyCredentialProvider", name: credentialName });
   }
   if ("credentialName" in apiKey) {
@@ -448,12 +523,13 @@ function attachIdentityProvider(
   }
   notes.push({
     category: MODEL_API_KEY_NOTE_CATEGORY,
-    message:
-      `The harness model authenticates with the AgentCore Identity API-key provider ` +
-      `"${credentialName}" (${apiKey.arn}). A credential entry named "${credentialName}" was ` +
-      `added to agentcore.json. Deploy creates a provider for it scoped to the project and ` +
-      `target, so add ${envVarName}=<your-key> to agentcore/.env.local before the first ` +
-      `deploy. \`agentcore dev\` reads the same variable.`,
+    message: preserveProvider
+      ? `The existing model API-key provider "${credentialName}" (${apiKey.arn}) is retained; no provider or secret is cloned. Review source-region and principal-specific access before invoking.`
+      : `The harness model authenticates with the AgentCore Identity API-key provider ` +
+        `"${credentialName}" (${apiKey.arn}). A credential entry named "${credentialName}" was ` +
+        `added to agentcore.json. Deploy creates a provider for it scoped to the project and ` +
+        `target, so add ${envVarName}=<your-key> to agentcore/.env.local before the first ` +
+        `deploy. \`agentcore dev\` reads the same variable.`,
   });
 }
 
@@ -465,15 +541,32 @@ interface MemoryResolution {
   provider?: { name: string; envVarName: string; strategies: string[] };
   actorId?: string;
   retrievalConfig?: HarnessMemoryRetrievalConfig;
+  region?: string;
+  namespaceConfig?: MemoryRetrievalConfig;
 }
 
 function resolveMemory(
   spec: HarnessSpec,
   projectSpec: ProjectSpec,
   notes: ExportNote[],
+  connections: Connection[],
+  serviceRetrievalConfig?: MemoryRetrievalConfig,
 ): MemoryResolution {
   const memory: HarnessMemoryRef | undefined = spec.memory;
   if (!memory || memory.mode === "disabled") return {};
+  if (
+    memory.mode === "existing" &&
+    !memory.actorId &&
+    (memory.arn || projectSpec.memories.some((entry) => entry.name === memory.name))
+  ) {
+    notes.push({
+      category: MEMORY_ACTOR_NOTE_CATEGORY,
+      message:
+        "The source Memory has no configured actorId. Dynamic actor identity is not supported by this export: " +
+        "the reserved Runtime user-id is not forwarded to agent code. Configure a real source actorId and re-export, " +
+        "or implement and authorize caller identity separately. No shared/default actor is generated.",
+    });
+  }
 
   if (memory.mode === "managed") {
     notes.push({
@@ -509,27 +602,67 @@ function resolveMemory(
           "memory/session.py if the exact restore limit is required.",
       });
     }
+    const namespaces = entry.strategies.flatMap(
+      (strategy) => strategy.namespaceTemplates ?? strategy.namespaces ?? [],
+    );
+    const connection = addConnection(
+      connections,
+      {
+        type: "memory",
+        name: entry.name,
+        ...(namespaces.length > 0 && { namespaces }),
+      },
+      "readwrite",
+    );
     return {
       provider: {
         name: entry.name,
-        envVarName: memoryEnvVarName(entry.name),
+        envVarName: `AGENTCORE_MEMORY_${connectionTokenFor(connection)}_ID`,
         strategies: entry.strategies.map(({ type }) => type),
       },
       actorId: memory.actorId,
       retrievalConfig: memory.retrievalConfig,
+      namespaceConfig: Object.fromEntries(
+        namespaces.map((namespace) => [namespace, memory.retrievalConfig ?? {}]),
+      ),
     };
   }
 
   if (memory.arn) {
     notes.push({
-      category: MEMORY_ARN_NOTE_CATEGORY,
+      category: MEMORY_OWNERSHIP_NOTE_CATEGORY,
       message:
-        `The harness references the external memory ${memory.arn}. The exported agent cannot be ` +
-        `wired to it automatically: the runtime role needs memory permissions on that ARN and the ` +
-        `memory id must reach the agent as an environment variable. Either add the memory to this ` +
-        `project and re-export, or grant access manually and set the env var read by ` +
-        `memory/session.py.`,
+        `Memory ${memory.arn} remains source-owned; imported CDK bindings do not transfer ownership. ` +
+        "If it was Harness-managed, retain it when deleting the source Harness with DeleteHarness.deleteManagedMemory=false to avoid deleting its data.",
     });
+    const connection = addConnection(
+      connections,
+      {
+        type: "memory",
+        arn: memory.arn,
+        ...(serviceRetrievalConfig &&
+          Object.keys(serviceRetrievalConfig).length && {
+            namespaces: Object.keys(serviceRetrievalConfig),
+          }),
+      },
+      "readwrite",
+    );
+    if (memory.messagesCount !== undefined) {
+      notes.push({
+        category: MEMORY_MESSAGES_COUNT_NOTE_CATEGORY,
+        message: `The source restored at most ${memory.messagesCount} messages. The exported session manager restores available history; it has no equivalent message-count setting.`,
+      });
+    }
+    return {
+      provider: {
+        name: connection.id ?? connectionIdForTarget(connection.to),
+        envVarName: `AGENTCORE_MEMORY_${connectionTokenFor(connection)}_ID`,
+        strategies: [],
+      },
+      actorId: memory.actorId,
+      region: memory.arn.split(":")[3],
+      namespaceConfig: serviceRetrievalConfig,
+    };
   }
   return { actorId: memory.actorId };
 }
@@ -547,7 +680,10 @@ interface ToolsResolution {
   remoteMcpTools: {
     name: string;
     pythonName: string;
-    url: string;
+    url?: string;
+    urlEnvVar?: string;
+    awsIam?: boolean;
+    awsRegion?: string;
     /** Tool patterns from `@server/tool` selectors; undefined loads every tool of the server. */
     toolPatterns?: string[];
     headerCredentials?: {
@@ -555,6 +691,9 @@ interface ToolsResolution {
       credentialName: string;
       envVarName: string;
       pythonName: string;
+      existing?: boolean;
+      prefix?: string;
+      suffix?: string;
     }[];
   }[];
   hasShell: boolean;
@@ -568,6 +707,7 @@ function resolveTools(
   credentials: Credential[],
   envEntries: EnvLocalEntry[],
   notes: ExportNote[],
+  connections: Connection[],
 ): ToolsResolution {
   const result: ToolsResolution = {
     inlineFunctionTools: [],
@@ -608,6 +748,25 @@ function resolveTools(
         if (headerKeys.length > 0) {
           headerCredentials = [];
           for (const headerKey of headerKeys) {
+            const value = cfg.headers![headerKey] ?? "";
+            if (value.includes("${")) {
+              const placeholder = /^([^$]*)\$\{(arn:[^{}]+)\}([^$]*)$/.exec(value);
+              if (!placeholder?.[2])
+                throw new InputValidationError(
+                  `Unsupported credential template in MCP header "${headerKey}" on "${tool.name}"; authentication cannot be downgraded.`,
+                );
+              const credentialName = apiKeyProviderName(placeholder[2]);
+              headerCredentials.push({
+                headerKey,
+                credentialName,
+                envVarName: credentialEnvVarName(credentialName),
+                pythonName: stablePythonIdentifier(`${tool.name}-${headerKey}`),
+                existing: true,
+                prefix: placeholder[1] ?? "",
+                suffix: placeholder[3] ?? "",
+              });
+              continue;
+            }
             const credentialName = remoteMcpCredentialName(projectSpec.name, tool.name, headerKey);
             const envVarName = credentialEnvVarName(credentialName);
             headerCredentials.push({
@@ -627,7 +786,7 @@ function resolveTools(
             }
             envEntries.push({
               key: envVarName,
-              value: cfg.headers![headerKey] ?? "",
+              value,
               comment: `"${headerKey}" header for MCP tool "${tool.name}" (exported from harness "${spec.name}")`,
             });
           }
@@ -635,8 +794,11 @@ function resolveTools(
             category: MCP_HEADER_CREDS_NOTE_CATEGORY,
             message:
               `MCP tool "${tool.name}" sends request headers whose values are managed via ` +
-              `AgentCore Identity. Credential entries were added to agentcore.json and the header ` +
-              `values written to agentcore/.env.local. Ensure each named API-key credential provider ` +
+              `AgentCore Identity. ARN placeholders retain their original provider names without cloning credentials. ` +
+              (headerCredentials.some((header) => !header.existing)
+                ? "Literal header values were written to agentcore/.env.local with new credential entries. "
+                : "No secret values or credential entries were created. ") +
+              `Captured policies are not expanded for newly created providers; review their access for the new principal. Ensure each named API-key credential provider ` +
               `exists in AgentCore Identity before invoking the exported runtime; deployment wires ` +
               `the provider references and runtime permissions.\n\n` +
               headerCredentials
@@ -654,15 +816,27 @@ function resolveTools(
         break;
       }
       case "agentcore_gateway": {
-        const cfg = configOf(tool, "agentCoreGateway") as { gatewayArn?: string } | undefined;
-        notes.push({
-          category: GATEWAY_TOOL_NOTE_CATEGORY,
-          message:
-            `The gateway tool "${tool.name}"${cfg?.gatewayArn ? ` (${cfg.gatewayArn})` : ""} was ` +
-            `not exported: gateway URL discovery, outbound auth, and IAM wiring are managed by ` +
-            `the harness runtime. To keep these tools, connect an MCP client to the gateway in ` +
-            `mcp_client/client.py and grant the runtime role bedrock-agentcore:InvokeGateway on ` +
-            `the gateway (or its OAuth token flow) before deploying.`,
+        const cfg = configOf(tool, "agentCoreGateway") as
+          { gatewayArn?: string; outboundAuth?: GatewayOutboundAuth } | undefined;
+        if (!cfg?.gatewayArn || (cfg.outboundAuth && "oauth" in cfg.outboundAuth)) {
+          notes.push({
+            category: GATEWAY_TOOL_NOTE_CATEGORY,
+            message: `Gateway tool "${tool.name}"${cfg?.gatewayArn ? ` (${cfg.gatewayArn})` : ""} was not exported. OAuth token flows are unsupported in this phase; wire the client/auth manually. IAM/SigV4 and no-auth gateways are supported.`,
+          });
+          break;
+        }
+        const connection = addConnection(connections, {
+          type: "gateway",
+          arn: cfg.gatewayArn,
+          outboundAuth: cfg.outboundAuth ?? { awsIam: {} },
+        });
+        result.remoteMcpTools.push({
+          name: tool.name,
+          pythonName: stablePythonIdentifier(tool.name),
+          urlEnvVar: `AGENTCORE_GATEWAY_${connectionTokenFor(connection)}_URL`,
+          awsIam: !(cfg.outboundAuth && "none" in cfg.outboundAuth),
+          awsRegion: cfg.gatewayArn.split(":")[3],
+          toolPatterns: serverToolPatterns(tool.name, allowedPatterns),
         });
         break;
       }
@@ -693,6 +867,46 @@ function resolveTools(
   }
 
   return result;
+}
+
+function addConnection(
+  connections: Connection[],
+  to: ConnectionTarget,
+  access?: Connection["access"],
+): Connection {
+  const existing = connections.find((connection) => {
+    if (connection.to.type === "gateway" && to.type === "gateway") {
+      return isDeepStrictEqual(
+        { ...connection.to, outboundAuth: connection.to.outboundAuth ?? { awsIam: {} } },
+        { ...to, outboundAuth: to.outboundAuth ?? { awsIam: {} } },
+      );
+    }
+    return isDeepStrictEqual(connection.to, to);
+  });
+  if (existing) {
+    if (access) existing.access = access;
+    return existing;
+  }
+  const connection = ConnectionSchema.parse({ to, ...(access && { access }) });
+  if (connections.some((entry) => connectionTokenFor(entry) === connectionTokenFor(connection))) {
+    throw new InputValidationError(
+      `Connection discovery name collision: ${connectionTokenFor(connection)}`,
+    );
+  }
+  connections.push(connection);
+  return connection;
+}
+
+function apiKeyProviderName(arn: string): string {
+  const match =
+    /^arn:[^:]+:bedrock-agentcore:[a-z0-9-]+:\d{12}:token-vault\/[^/]+\/apikeycredentialprovider\/([^/]+)$/.exec(
+      arn,
+    );
+  if (!match?.[1])
+    throw new InputValidationError(
+      "Export requires an existing API-key provider ARN, not an arbitrary credential template or OAuth flow.",
+    );
+  return match[1];
 }
 
 function undefinedIfEmpty<T>(values: T[]): T[] | undefined {

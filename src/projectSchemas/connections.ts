@@ -32,10 +32,17 @@ export const CODE_INTERPRETER_ARN_PATTERN =
 const MemoryTargetSchema = z
   .object({
     type: z.literal("memory"),
-    arn: z.string().regex(MEMORY_ARN_PATTERN, "Must be a valid bedrock-agentcore memory ARN"),
+    arn: z
+      .string()
+      .regex(MEMORY_ARN_PATTERN, "Must be a valid bedrock-agentcore memory ARN")
+      .optional(),
+    name: z.string().min(1).optional(),
     namespaces: z.array(z.string().min(1)).optional(),
   })
-  .strict();
+  .strict()
+  .refine((target) => (target.arn !== undefined) !== (target.name !== undefined), {
+    message: "Memory connection requires exactly one of arn or name",
+  });
 const GatewayTargetSchema = z
   .object({
     type: z.literal("gateway"),
@@ -92,3 +99,22 @@ export const ConnectionSchema = z
   .strict();
 export type Connection = z.infer<typeof ConnectionSchema>;
 export const ConnectionsSchema = z.array(ConnectionSchema);
+
+export function resourceIdFromArn(arn: string): string {
+  const resource = arn.split(":").pop() ?? arn;
+  return resource.slice(resource.lastIndexOf("/") + 1);
+}
+
+export function connectionIdForTarget(target: ConnectionTarget): string {
+  if (target.type === "memory" && target.name) return target.name;
+  const suffix = "arn" in target && target.arn ? resourceIdFromArn(target.arn) : target.type;
+  return `${target.type}-${suffix}`.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 64);
+}
+
+export function connectionEnvToken(id: string): string {
+  return id.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+export function connectionTokenFor(connection: Connection): string {
+  return connectionEnvToken(connection.id ?? connectionIdForTarget(connection.to));
+}
