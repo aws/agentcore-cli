@@ -3,7 +3,10 @@ import z from "zod";
 import { InputValidationError } from "../../../errors/errors";
 import { HarnessSpecSchema, type HarnessSpec } from "../../../projectSchemas/harness";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
-import { credentialEnvVarName } from "../../../projectSchemas/credential";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+} from "../../../projectSchemas/credential";
 import {
   ALLOWED_TOOLS_NOTE_CATEGORY,
   AWS_SKILLS_NOTE_CATEGORY,
@@ -136,7 +139,11 @@ describe("mapHarnessToExportPlan model mapping", () => {
     expect(result.context.modelTopP).toBe("0.8");
     expect(result.context.hasIdentity).toBe(true);
     expect(result.context.identityProviders).toEqual([
-      { name: "MyOpenAiKey", envVarName: "AGENTCORE_CREDENTIAL_MYOPENAIKEY" },
+      {
+        name: "MyOpenAiKey",
+        envVarName: "AGENTCORE_CREDENTIAL_MYOPENAIKEY",
+        providerNameEnvVarName: "CREDENTIAL_MYOPENAIKEY_NAME",
+      },
     ]);
     expect(result.credentials).toEqual([
       { authorizerType: "ApiKeyCredentialProvider", name: "MyOpenAiKey" },
@@ -181,7 +188,11 @@ describe("mapHarnessToExportPlan model mapping", () => {
       expect(result.context.modelProvider).toBe(modelProvider);
       expect(result.context.hasIdentity).toBe(true);
       expect(result.context.identityProviders).toEqual([
-        { name: credentialName, envVarName: credentialEnvVarName(credentialName) },
+        {
+          name: credentialName,
+          envVarName: credentialEnvVarName(credentialName),
+          providerNameEnvVarName: credentialProviderNameEnvVarName(credentialName),
+        },
       ]);
       expect(result.credentials).toEqual([]);
       expect(categories(result)).toEqual([MODEL_API_KEY_NOTE_CATEGORY]);

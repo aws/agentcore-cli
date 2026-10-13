@@ -11,7 +11,10 @@ import {
   ResourceNotFoundError,
 } from "../../errors/errors";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
-import { credentialEnvVarName } from "../../projectSchemas/credential";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+} from "../../projectSchemas/credential";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { readEnvFile } from "../../io/envFile";
@@ -276,6 +279,39 @@ describe("FsProjectManager.create", () => {
     ).text();
     expect(session).toContain('MEMORY_ID = os.getenv("MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")');
   });
+
+  test.each([
+    ["Python Strands", AGENT_PYTHON_STRANDS, "model/load.py"],
+    ["TypeScript Strands", AGENT_TYPESCRIPT_STRANDS, "model/apiKey.ts"],
+    ["A2A Python Strands", A2A_PYTHON_STRANDS, "model/load.py"],
+    ["AG-UI Python Strands", AGUI_PYTHON_STRANDS, "model/load.py"],
+  ] as const)(
+    "renders the %s credential names for local secrets and deployed provider discovery",
+    async (_label, template, modelFile) => {
+      const directory = await inTempDirectory();
+      await runCreate(manager().manager, {
+        name: "example",
+        scaffoldRuntimeInput: {
+          ...template,
+          modelProvider: "Anthropic",
+          apiKey: "sk-secret",
+        },
+        skipInstall: true,
+        skipGit: true,
+      });
+
+      const credentialName = `${template.runtimeName}AnthropicApiKey`;
+      const model = await Bun.file(
+        join(directory, "example", "app", template.runtimeName, ...modelFile.split("/")),
+      ).text();
+      const localSecretName = credentialEnvVarName(credentialName);
+      const providerName = credentialProviderNameEnvVarName(credentialName);
+
+      expect(model).toContain(providerName);
+      expect(model).toContain(localSecretName);
+      expect(model).not.toContain(`${localSecretName}_NAME`);
+    },
+  );
 
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
     const directory = await inTempDirectory();

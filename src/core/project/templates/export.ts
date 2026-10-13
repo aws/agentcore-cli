@@ -14,7 +14,11 @@ import type {
   HarnessTruncationConfig,
 } from "../../../projectSchemas/harness";
 import type { ProjectSpecSchema } from "../../../projectSchemas/project";
-import { credentialEnvVarName, type Credential } from "../../../projectSchemas/credential";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+  type Credential,
+} from "../../../projectSchemas/credential";
 import { memoryEnvVarName, type Memory } from "../../../projectSchemas/memory";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors/errors";
@@ -296,7 +300,11 @@ function resolveModel(
     modelTopP: model.topP !== undefined ? String(model.topP) : undefined,
     modelTopK: model.topK !== undefined ? String(model.topK) : undefined,
     hasIdentity: false,
-    identityProviders: [] as { name: string; envVarName: string }[],
+    identityProviders: [] as {
+      name: string;
+      envVarName: string;
+      providerNameEnvVarName: string;
+    }[],
   };
 
   switch (model.provider) {
@@ -427,9 +435,10 @@ function attachIdentityProvider(
     credentialName = arnNameMatch ? arnNameMatch[1]! : `${projectSpec.name}${provider}ApiKey`;
   }
   const envVarName = credentialEnvVarName(credentialName);
+  const providerNameEnvVarName = credentialProviderNameEnvVarName(credentialName);
 
   context.hasIdentity = true;
-  context.identityProviders = [{ name: credentialName, envVarName }];
+  context.identityProviders = [{ name: credentialName, envVarName, providerNameEnvVarName }];
 
   const exists = projectSpec.credentials.some((c) => c.name === credentialName);
   if (!exists) {

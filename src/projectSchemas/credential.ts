@@ -122,6 +122,17 @@ export function credentialEnvVarName(credentialName: string, suffix = ""): strin
   return `${CREDENTIAL_ENV_PREFIX}${credentialName.replace(/-/g, "_").toUpperCase()}${suffix}`;
 }
 
+/**
+ * Derives the discovery variable @aws/agentcore-cdk sets to the deployed Identity provider name.
+ *
+ * This intentionally does not share {@link CREDENTIAL_ENV_PREFIX}: local credential material keeps
+ * the `AGENTCORE_CREDENTIAL_` prefix, while deployed provider-name discovery uses the v0
+ * `CREDENTIAL_<NAME>_NAME` contract restored by aws/agentcore-l3-cdk-constructs#418.
+ */
+export function credentialProviderNameEnvVarName(credentialName: string): string {
+  return `CREDENTIAL_${credentialName.replace(/[.-]/g, "_").toUpperCase()}_NAME`;
+}
+
 export const CREDENTIAL_SECRET_SUFFIXES = [
   "_CLIENT_SECRET",
   "_API_KEY_SECRET",

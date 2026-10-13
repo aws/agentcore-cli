@@ -5,7 +5,10 @@ import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/
 import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
 import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
-import { credentialEnvVarName } from "../../../projectSchemas/credential";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+} from "../../../projectSchemas/credential";
 import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/memory";
 import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
@@ -14,7 +17,13 @@ import { resolveRuntimeTemplateProfile } from "../../../handlers/project/runtime
 
 /** A model provider's render context, spec entries, and .env.local secrets for a scaffolded runtime. */
 type ModelProviderTemplateConfig = {
-  templateRenderContext: { identityProviders: { name: string; envVarName: string }[] };
+  templateRenderContext: {
+    identityProviders: {
+      name: string;
+      envVarName: string;
+      providerNameEnvVarName: string;
+    }[];
+  };
   spec: SpecEntries;
   envEntries: EnvLocalEntry[];
 };
@@ -26,8 +35,11 @@ function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProvid
   }
   const credentialName = `${input.name}${modelProvider}ApiKey`;
   const envVarName = credentialEnvVarName(credentialName);
+  const providerNameEnvVarName = credentialProviderNameEnvVarName(credentialName);
   return {
-    templateRenderContext: { identityProviders: [{ name: credentialName, envVarName }] },
+    templateRenderContext: {
+      identityProviders: [{ name: credentialName, envVarName, providerNameEnvVarName }],
+    },
     spec: { credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: credentialName }] },
     envEntries: [
       {

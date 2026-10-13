@@ -243,7 +243,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
     expect(loadModel).toContain("from strands.models.openai_responses import OpenAIResponsesModel");
     expect(loadModel).toContain(
-      'IDENTITY_PROVIDER_NAME = os.environ.get("AGENTCORE_CREDENTIAL_OPENAIKEY_NAME", "OpenAiKey")',
+      'IDENTITY_PROVIDER_NAME = os.environ.get("CREDENTIAL_OPENAIKEY_NAME", "OpenAiKey")',
     );
     expect(loadModel).toContain('params["max_output_tokens"] = 512');
     expect(loadModel).toContain('params["temperature"] = 0.2');
