@@ -1,6 +1,7 @@
 import { CONFIG_DIR } from '../../../lib';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
 import { isChangesetInProgressError } from '../../errors';
+import { SYNTH_TARGET_ENV_VAR } from './constants';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
 import {
   BaseCredentials,
@@ -113,6 +114,9 @@ export class CdkToolkitWrapper {
       this.cloudAssemblySource = await this.toolkit.fromCdkApp(this.getCdkAppCommand(), {
         workingDirectory: this.projectDir,
         env: {
+          // Explicitly unset an inherited selection for unscoped operations.
+          [SYNTH_TARGET_ENV_VAR]:
+            this.options.targetNames === undefined ? undefined : JSON.stringify(this.options.targetNames),
           ...(region && { AWS_REGION: region, AWS_DEFAULT_REGION: region }),
         },
       });

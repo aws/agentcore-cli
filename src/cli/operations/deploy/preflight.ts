@@ -308,6 +308,8 @@ export async function buildCdkProject(cdkProject: LocalCdkProject): Promise<void
 }
 
 export interface SynthOptions {
+  /** Only construct these targets during synthesis, before credential resolution. */
+  targetNames?: string[];
   /** Custom IoHost for capturing CDK output. Defaults to silentIoHost. */
   ioHost?: IIoHost;
   /** Previous toolkit wrapper to dispose before synthesis. */
@@ -335,6 +337,7 @@ export async function synthesizeCdk(cdkProject: LocalCdkProject, options?: Synth
     projectDir: cdkProject.projectDir,
     ioHost: options?.ioHost ?? silentIoHost,
     region: options?.region,
+    targetNames: options?.targetNames,
   });
 
   // synth() produces the assembly internally and stores the directory for later use
