@@ -244,6 +244,27 @@ async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ n
 }
 
 describe("project dev selection and dispatch", () => {
+  test("loads the environment and dispatches a translated v0 runtime", async () => {
+    const configuredProject = project(runtime());
+    configuredProject.legacy = {
+      format: "v0",
+      v0Spec: {} as never,
+      extras: {} as never,
+    };
+    const subject = harness({ project: configuredProject });
+
+    await subject.run({ agent: "orders" });
+
+    expect(subject.environmentInputs).toEqual([
+      {
+        projectRoot: "/workspace/project",
+        runtime: expect.objectContaining({ name: "orders" }),
+        region: "us-west-2",
+      },
+    ]);
+    expect(subject.codeZip.inputs).toHaveLength(1);
+  });
+
   test.each([
     ["headless", undefined, project(bmaRuntime({ additionalPolicies: undefined }))],
     ["browser", undefined, project(bmaRuntime({ tags: undefined }))],

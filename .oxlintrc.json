@@ -13,7 +13,7 @@
       }
     ]
   },
-  "ignorePatterns": ["dist/", "node_modules/", "src/assets/"],
+  "ignorePatterns": ["dist/", "node_modules/", "src/assets/", "src/projectSchemas/v0/"],
   "overrides": [
     {
       "files": ["scripts/**", "src/testing/**", "**/*.test.*", "**/*-test-support.ts"],

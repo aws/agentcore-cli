@@ -72,12 +72,7 @@ import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config"
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
-import {
-  defaultExportProjectName,
-  enclosingProjectRoot,
-  isV0Project,
-  projectSpecPath,
-} from "./fsUtils";
+import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import { parseArn } from "../arn";
 import {
   AgentCoreCLIError,
@@ -102,6 +97,7 @@ import {
   DEFAULT_TARGET_NAME,
   type AwsDeploymentTarget,
 } from "../../projectSchemas/aws-targets";
+import { V0AwsDeploymentTargetsSchema } from "../../projectSchemas/v0";
 import type { RuntimeResourceConfig } from "../../handlers/project/add/runtime/types";
 import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
@@ -110,6 +106,9 @@ import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
 import { isBmaRuntime } from "../../handlers/project/bma";
+import { projectFormat } from "./legacy/detect";
+import { loadLegacyProject } from "./legacy/load";
+import { assertV1Project } from "./legacy/writeGate";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -403,27 +402,29 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = projectSpecPath(rootPath);
-    let spec: Project["spec"];
     try {
-      spec = await this.json.read(configPath, ProjectSpecSchema);
+      const spec = await this.json.read(configPath, ProjectSpecSchema);
+      return {
+        name: spec.name,
+        rootPath,
+        spec,
+      };
     } catch (error) {
-      // Version-1 projects fail the v1 schema before reaching deploy preflight.
       if (error instanceof DeserializationError) {
-        const warning = await this.v0DependencyWarning(rootPath);
-        if (warning) throw new ProjectStateError(warning, { cause: error });
+        const header = await this.json
+          .read(configPath, z.object({ version: z.unknown().optional() }))
+          .catch(() => undefined);
+        if (projectFormat(header) === "v0") {
+          const warning = await this.v0DependencyWarning(rootPath);
+          if (warning) throw new ProjectStateError(warning, { cause: error });
+          return loadLegacyProject(rootPath, this.json);
+        }
       }
       throw error;
     }
-    return {
-      name: spec.name,
-      rootPath,
-      spec,
-    };
   }
 
   private async v0DependencyWarning(rootPath: string): Promise<string | undefined> {
-    if (!(await isV0Project(rootPath))) return undefined;
-
     const manifest = await this.json
       .read(
         join(rootPath, "agentcore", "cdk", "package.json"),
@@ -544,6 +545,7 @@ export class FsProjectManager implements ProjectManager {
     input: AddResourceInput,
     options: AddResourceOptions = {},
   ): AsyncGenerator<ProjectEvent, Project> {
+    assertV1Project(project, "add");
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const projectSpecKey = toProjectSpecKey(input.resourceType);
 
@@ -934,6 +936,7 @@ export class FsProjectManager implements ProjectManager {
     project: Project,
     input: RemoveResourceInput,
   ): Promise<RemoveResourceResult> {
+    assertV1Project(project, "remove");
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -1059,6 +1062,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async removeAllResources(project: Project): Promise<RemoveResourcesResult> {
+    assertV1Project(project, "remove all");
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -1129,6 +1133,7 @@ export class FsProjectManager implements ProjectManager {
     project: Project | undefined,
     input: ExportHarnessInput,
   ): AsyncGenerator<ProjectEvent, ExportHarnessResult> {
+    if (project) assertV1Project(project, "export harness");
     if (!project) {
       if (!input.prefetched) {
         throw new ProjectStateError(
@@ -1524,7 +1529,10 @@ export class FsProjectManager implements ProjectManager {
   public async listTargets(project: Project): Promise<AwsDeploymentTarget[]> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     if (!existsSync(targetsPath)) return [];
-    return this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+    return this.json.read(
+      targetsPath,
+      project.legacy ? V0AwsDeploymentTargetsSchema : AwsDeploymentTargetsSchema,
+    );
   }
 
   public async resolveTarget(
@@ -1580,7 +1588,10 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<AwsDeploymentTarget> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     const targets = existsSync(targetsPath)
-      ? await this.json.read(targetsPath, AwsDeploymentTargetsSchema)
+      ? await this.json.read(
+          targetsPath,
+          project.legacy ? V0AwsDeploymentTargetsSchema : AwsDeploymentTargetsSchema,
+        )
       : [];
     if (targets.length === 0) {
       throw new ProjectStateError(
