@@ -16,7 +16,6 @@ import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/poli
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
 import type { AwsCredentialProvider } from "../../core/types";
-import type { LegacyProjectInfo } from "../../core/project/legacy/types";
 import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
 type CreateProjectInputBase = {
@@ -328,8 +327,6 @@ export type Project = {
   rootPath: string;
   /** The spec of the project (agentcore.json loaded into memory) */
   spec: z.infer<typeof ProjectSpecSchema>;
-  /** Present when a v0 project was translated into the current in-memory shape. */
-  legacy?: LegacyProjectInfo;
 };
 
 /** A line to add to agentcore/.env.local. Secret values travel here, never in the spec. */

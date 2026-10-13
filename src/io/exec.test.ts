@@ -9,6 +9,7 @@ import {
   MissingToolError,
   ProcessFailedError,
   requireTool,
+  runInheritedProcess,
   runProcess,
   streamProcess,
   toolAvailable,
@@ -96,6 +97,20 @@ describe("runProcess", () => {
     await expect(
       runProcess(["node", succeeding], { cwd: process.cwd(), signal: AbortSignal.abort() }),
     ).rejects.toThrow();
+  });
+});
+
+describe("runInheritedProcess", () => {
+  test("returns the child exit code", async () => {
+    const failing = await script("inherit-fail.js", "process.exit(7)");
+
+    await expect(runInheritedProcess(["node", failing], { cwd: process.cwd() })).resolves.toBe(7);
+  });
+
+  test("rejects with ProcessFailedError when the executable cannot spawn", async () => {
+    await expect(
+      runInheritedProcess(["definitely-not-a-real-tool-xyz"], { cwd: process.cwd() }),
+    ).rejects.toBeInstanceOf(ProcessFailedError);
   });
 });
 

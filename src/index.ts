@@ -18,17 +18,25 @@ import { createFileLogger, LOG_LEVEL } from "./logging";
 import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
-import { AgentCoreCLIError } from "./errors";
+import { AgentCoreCLIError, SilentCLIError } from "./errors";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
 import { NpmCliVersionManager, printUpdateNotice } from "./cliVersionManager";
 import { CliVersionManagerKey } from "./handlers/keys";
+import { runV0Compatibility } from "./v0Compatibility";
 
 // Suppress only the AWS SDK's Node.js version support warning before constructing clients.
 process.env.AWS_SDK_JS_NODE_VERSION_SUPPORT_WARNING_DISABLED = "true";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
+    const compatibilityExitCode = await runV0Compatibility(argv);
+    if (compatibilityExitCode !== undefined) {
+      throw new SilentCLIError("v0 compatibility command exited", {
+        exitCode: compatibilityExitCode,
+      });
+    }
+
     const startTime = Date.now();
     // generate a unique identifier corresponding to this process of this CLI. (ex. one command invoke, one TUI session)
     const cliSessionId = crypto.randomUUID();

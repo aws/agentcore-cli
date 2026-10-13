@@ -13,6 +13,3 @@ __fixtures__
 
 *.snap
 src/assets
-
-# Frozen copy of the v0 0.31.1 schemas; kept byte-identical to upstream.
-src/projectSchemas/v0

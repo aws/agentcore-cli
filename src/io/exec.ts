@@ -2,6 +2,7 @@
 // because the npm bundle targets Node — Bun APIs are unavailable there.
 import { type ChildProcess, execFileSync, spawn, type SpawnOptions } from "node:child_process";
 import { existsSync } from "node:fs";
+import { constants as osConstants } from "node:os";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
@@ -71,7 +72,9 @@ export function cmdSpawnArgs(script: string, args: string[]): { file: string; ar
 }
 
 function spawnCommand(executable: string, args: string[], options: SpawnOptions): ChildProcess {
-  const script = isWindows ? windowsCommandScript(executable, process.env) : undefined;
+  const script = isWindows
+    ? windowsCommandScript(executable, options.env ?? process.env)
+    : undefined;
   if (!script) return spawn(executable, args, options);
   const resolved = cmdSpawnArgs(script, args);
   return spawn(resolved.file, resolved.args, { ...options, windowsVerbatimArguments: true });
@@ -107,6 +110,18 @@ export type RunProcessOptions = {
 
 /** Runs a subprocess to completion. Injectable so tests never spawn real processes. */
 export type ProcessRunner = (command: string[], options: RunProcessOptions) => Promise<void>;
+
+export type InheritedProcessOptions = {
+  /** Working directory the process runs in. */
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+};
+
+/** Runs an interactive subprocess with the current terminal attached. */
+export type InheritedProcessRunner = (
+  command: string[],
+  options: InheritedProcessOptions,
+) => Promise<number>;
 
 export type ProcessEvent = { type: "stdout"; line: string } | { type: "stderr"; line: string };
 
@@ -163,6 +178,43 @@ export const runProcess: ProcessRunner = (
       if (signal?.aborted) reject(abortReason(signal));
       else if (exitCode === 0) resolve();
       else reject(new ProcessFailedError([executable!, ...args], cwd, exitCode, output));
+    });
+  });
+};
+
+/**
+ * Runs a subprocess with stdin/stdout/stderr inherited from the CLI and returns
+ * its exit code. This is intended for commands that fully own the terminal,
+ * including prompts and TUIs.
+ */
+export const runInheritedProcess: InheritedProcessRunner = (
+  [executable, ...args],
+  { cwd, env },
+) => {
+  if (!executable) {
+    return Promise.reject(new ProcessFailedError([], cwd, null, "command is empty"));
+  }
+
+  return new Promise((resolve, reject) => {
+    let child: ChildProcess;
+    try {
+      child = spawnCommand(executable, args, { cwd, env, stdio: "inherit" });
+    } catch (error) {
+      reject(new ProcessFailedError([executable, ...args], cwd, null, String(error)));
+      return;
+    }
+
+    child.once("error", (error) => {
+      reject(new ProcessFailedError([executable, ...args], cwd, null, String(error)));
+    });
+    child.once("close", (exitCode, signal) => {
+      if (exitCode !== null) {
+        resolve(exitCode);
+        return;
+      }
+
+      const signalNumber = signal ? osConstants.signals[signal] : undefined;
+      resolve(signalNumber === undefined ? 1 : 128 + signalNumber);
     });
   });
 };
