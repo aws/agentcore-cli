@@ -1,6 +1,5 @@
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { V0ProjectSpec } from "../../../projectSchemas/v0";
-import type { LegacyExtras } from "./types";
 
 type Json = Record<string, unknown>;
 
@@ -21,20 +20,21 @@ function renameArtifact(compute: unknown): unknown {
  * another name. Callers that need a valid v1 spec (migrate) validate the result.
  *
  * - `version` becomes 2 and `$schema` is dropped.
- * - `abTests`, `datasets`, `capacityProviders`, and `unassignedTargets` move into
- *   the returned extras; `httpGateways` (always empty in v0) is dropped.
+ * - `abTests`, `datasets`, `capacityProviders`, `unassignedTargets`, and
+ *   `httpGateways` have no v1 equivalent and are dropped from the translated
+ *   view. They remain available on `legacy.v0Spec`.
  * - `mcpRuntimeTools` becomes `toolRuntimes`, and every tool runtime's and gateway
  *   target's `compute.runtime.artifact` becomes `build`.
  * - Runtime `capacityProviderVolume` mounts are dropped: v1 has no capacity
  *   providers, and its code switches over the mount kinds it knows.
  */
-export function translateV0Spec(v0: V0ProjectSpec): { spec: ProjectSpec; extras: LegacyExtras } {
+export function translateV0Spec(v0: V0ProjectSpec): { spec: ProjectSpec } {
   const {
     $schema: _schema,
-    abTests,
-    datasets,
-    capacityProviders,
-    unassignedTargets,
+    abTests: _abTests,
+    datasets: _datasets,
+    capacityProviders: _capacityProviders,
+    unassignedTargets: _unassignedTargets,
     httpGateways: _httpGateways,
     mcpRuntimeTools,
     ...rest
@@ -60,16 +60,15 @@ export function translateV0Spec(v0: V0ProjectSpec): { spec: ProjectSpec; extras:
     version: 2,
     runtimes,
     agentCoreGateways,
-    ...(mcpRuntimeTools && {
-      toolRuntimes: (mcpRuntimeTools as Json[]).map((tool) => ({
-        ...tool,
-        compute: renameArtifact(tool.compute),
-      })),
-    }),
+    ...(mcpRuntimeTools?.length
+      ? {
+          toolRuntimes: (mcpRuntimeTools as Json[]).map((tool) => ({
+            ...tool,
+            compute: renameArtifact(tool.compute),
+          })),
+        }
+      : {}),
   } as unknown as ProjectSpec;
 
-  return {
-    spec,
-    extras: { abTests, datasets, capacityProviders, unassignedTargets } as LegacyExtras,
-  };
+  return { spec };
 }

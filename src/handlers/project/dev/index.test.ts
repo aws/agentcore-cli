@@ -256,7 +256,6 @@ describe("project dev selection and dispatch", () => {
     configuredProject.legacy = {
       format: "v0",
       v0Spec: {} as never,
-      extras: {} as never,
     };
     const subject = harness({ project: configuredProject });
 
@@ -695,12 +694,6 @@ describe("project dev harnesses", () => {
     configuredProject.legacy = {
       format: "v0",
       v0Spec: {} as never,
-      extras: {
-        abTests: [],
-        datasets: [],
-        capacityProviders: [],
-        unassignedTargets: [],
-      },
     };
     const subject = harness({ project: configuredProject });
 
@@ -710,12 +703,13 @@ describe("project dev harnesses", () => {
       {
         projectRoot: configuredProject.rootPath,
         target: "staging",
+        region: "us-west-2",
         yes: true,
         json: false,
       },
     ]);
     expect(subject.deployments).toEqual([]);
-    expect(subject.io.stderr()).toContain("running AgentCore CLI 0.31.1 deploy");
+    expect(subject.io.stderr()).toContain("running the latest v0 AgentCore CLI deploy");
   });
 
   test.each([

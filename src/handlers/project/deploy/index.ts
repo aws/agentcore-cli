@@ -1,11 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
-import {
-  runV0Deploy,
-  V0_CLI_VERSION,
-  type V0DeployRunner,
-} from "../../../core/project/legacy/deploy";
+import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { SilentCLIError, UserCancellationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
@@ -87,6 +83,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         await delegateV0Deploy(config, {
           projectRoot: project.rootPath,
           target: flags.target,
+          region: ctx.require(RegionKey),
           yes: flags.yes,
           json: jsonOutput,
         });
@@ -198,6 +195,7 @@ function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
         await delegateV0Deploy(config, {
           projectRoot,
           target: flags.target as string,
+          region: ctx.require(RegionKey),
           yes: flags.yes as boolean,
           json: ctx.require(JsonKey),
         });
@@ -214,7 +212,7 @@ async function delegateV0Deploy(
 ): Promise<void> {
   if (!input.json) {
     config.io.stderr.write(
-      `This is a v0 project; running AgentCore CLI ${V0_CLI_VERSION} deploy in compatibility mode.\n`,
+      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.\n",
     );
   }
   const exitCode = await (config.runV0Deploy ?? runV0Deploy)(input);

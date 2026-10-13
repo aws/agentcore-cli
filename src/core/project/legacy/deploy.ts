@@ -1,11 +1,11 @@
 import { runInheritedProcess, type InheritedProcessRunner } from "../../../io";
 
-export const V0_CLI_VERSION = "0.31.1";
-export const V0_CLI_PACKAGE = `@aws/agentcore@${V0_CLI_VERSION}`;
+export const V0_CLI_PACKAGE = "@aws/agentcore@0";
 
 export type V0DeployInput = {
   projectRoot: string;
   target: string;
+  region: string;
   yes: boolean;
   json: boolean;
 };
@@ -25,6 +25,8 @@ export async function executeV0Deploy(
     "deploy",
     "--target",
     input.target,
+    "--region",
+    input.region,
     ...(input.yes ? ["--yes"] : []),
     ...(input.json ? ["--json"] : []),
   ];

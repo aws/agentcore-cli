@@ -216,12 +216,6 @@ describe("project deploy screen", () => {
       legacy: {
         format: "v0",
         v0Spec: {} as never,
-        extras: {
-          abTests: [],
-          datasets: [],
-          capacityProviders: [],
-          unassignedTargets: [],
-        },
       },
     } as Project;
     core.projectManager.listTargets = async () => [

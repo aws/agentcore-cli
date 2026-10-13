@@ -13,7 +13,6 @@ import { ProjectSpecSchema } from "../../../../projectSchemas/project";
 import type { CoreOptions } from "../../../types";
 import { EnvLocalFile } from "../../envLocal";
 import { v0Fixture } from "../../legacy/fixtures-test-support";
-import { translateV0Spec } from "../../legacy/translate";
 import {
   createCredentialProvisioner,
   createCredentialRemover,
@@ -87,7 +86,7 @@ async function legacyProject(credentials: unknown[], envLocal?: string): Promise
   const v0Spec = v0Fixture("baseline.json");
   return {
     ...(await project(credentials, envLocal)),
-    legacy: { format: "v0", v0Spec, extras: translateV0Spec(v0Spec).extras },
+    legacy: { format: "v0", v0Spec },
   };
 }
 

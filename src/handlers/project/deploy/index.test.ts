@@ -164,7 +164,7 @@ describe("project deploy handler", () => {
   test.each(["--yes", "--json"])(
     "delegates a legacy deploy with %s before resolving an account or using v1 CDK",
     async (flag) => {
-      const projectRoot = await inProjectWithTargets();
+      const projectRoot = await inProjectWithTargets("[]");
       const specPath = join(projectRoot, "agentcore", "agentcore.json");
       const manifestPath = join(projectRoot, "agentcore", "cdk", "package.json");
       await writeFile(specPath, JSON.stringify({ name: "orders", version: 1 }));
@@ -189,7 +189,7 @@ describe("project deploy handler", () => {
         },
       });
 
-      await subject.run([flag]);
+      await subject.run(["--region", "eu-west-2", flag]);
 
       expect(subject.calls).toEqual([]);
       expect(accountCalls).toEqual([]);
@@ -197,6 +197,7 @@ describe("project deploy handler", () => {
         {
           projectRoot,
           target: "default",
+          region: "eu-west-2",
           yes: flag === "--yes",
           json: flag === "--json",
         },
@@ -205,7 +206,7 @@ describe("project deploy handler", () => {
       expect(subject.io.stderr()).toBe(
         flag === "--json"
           ? ""
-          : "This is a v0 project; running AgentCore CLI 0.31.1 deploy in compatibility mode.",
+          : "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
       );
       expect(
         await Promise.all([readFile(specPath, "utf8"), readFile(manifestPath, "utf8")]),

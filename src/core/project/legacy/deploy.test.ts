@@ -3,7 +3,7 @@ import type { InheritedProcessOptions, InheritedProcessRunner } from "../../../i
 import { executeV0Deploy, V0_CLI_PACKAGE } from "./deploy";
 
 describe("executeV0Deploy", () => {
-  test("pins the final v0 CLI and forwards deploy flags from the project root", async () => {
+  test("uses the latest v0 CLI and forwards deploy flags from the project root", async () => {
     const calls: Array<{ command: string[]; options: InheritedProcessOptions }> = [];
     const runner: InheritedProcessRunner = async (command, options) => {
       calls.push({ command, options });
@@ -14,6 +14,7 @@ describe("executeV0Deploy", () => {
       {
         projectRoot: "/workspace/project",
         target: "staging",
+        region: "eu-west-1",
         yes: true,
         json: true,
       },
@@ -30,6 +31,8 @@ describe("executeV0Deploy", () => {
           "deploy",
           "--target",
           "staging",
+          "--region",
+          "eu-west-1",
           "--yes",
           "--json",
         ],
@@ -50,6 +53,7 @@ describe("executeV0Deploy", () => {
       {
         projectRoot: "/workspace/project",
         target: "default",
+        region: "us-east-1",
         yes: false,
         json: false,
       },
@@ -59,6 +63,8 @@ describe("executeV0Deploy", () => {
       },
     );
 
-    expect(commands).toEqual([["npx", "--yes", V0_CLI_PACKAGE, "deploy", "--target", "default"]]);
+    expect(commands).toEqual([
+      ["npx", "--yes", V0_CLI_PACKAGE, "deploy", "--target", "default", "--region", "us-east-1"],
+    ]);
   });
 });

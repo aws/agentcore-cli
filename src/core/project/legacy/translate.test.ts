@@ -11,16 +11,17 @@ describe("translateV0Spec", () => {
     expect("$schema" in spec).toBe(false);
   });
 
-  test("moves v0-only collections into extras and drops httpGateways", () => {
-    const { spec, extras } = translateV0Spec(v0Fixture("top-abTests-nonempty.json"));
-    for (const key of ["abTests", "datasets", "capacityProviders", "httpGateways"]) {
+  test("drops collections that have no v1 equivalent from the translated view", () => {
+    const { spec } = translateV0Spec(v0Fixture("top-abTests-nonempty.json"));
+    for (const key of [
+      "abTests",
+      "datasets",
+      "capacityProviders",
+      "unassignedTargets",
+      "httpGateways",
+    ]) {
       expect(key in spec).toBe(false);
     }
-    expect(extras.abTests?.length).toBeGreaterThan(0);
-
-    const unassigned = translateV0Spec(v0Fixture("top-unassignedTargets.json"));
-    expect("unassignedTargets" in unassigned.spec).toBe(false);
-    expect(unassigned.extras.unassignedTargets?.length).toBeGreaterThan(0);
   });
 
   test("renames mcpRuntimeTools to toolRuntimes and artifact to build", () => {
@@ -33,6 +34,13 @@ describe("translateV0Spec", () => {
 
   test("omits toolRuntimes when v0 had no mcpRuntimeTools", () => {
     const { spec } = translateV0Spec(v0Fixture("baseline.json"));
+    expect("toolRuntimes" in spec).toBe(false);
+  });
+
+  test("omits toolRuntimes when v0 had an empty mcpRuntimeTools array", () => {
+    const v0 = v0Fixture("baseline.json");
+    v0.mcpRuntimeTools = [];
+    const { spec } = translateV0Spec(v0);
     expect("toolRuntimes" in spec).toBe(false);
   });
 
