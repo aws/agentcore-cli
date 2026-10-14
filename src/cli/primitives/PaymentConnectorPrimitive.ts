@@ -117,9 +117,10 @@ export class PaymentConnectorPrimitive extends BasePrimitive<AddPaymentConnector
         };
       }
 
-      // Build a credential name from the connector name (suffix indicates provider)
+      // Build a credential name from the connector name (suffix indicates provider). Connector names may
+      // contain underscores, which the credential provider ARN doesn't allow.
       const credentialSuffix = options.provider === 'StripePrivy' ? 'stripe-privy' : 'cdp';
-      const credentialName = `${options.manager}-${options.name}-${credentialSuffix}`;
+      const credentialName = `${options.manager}-${options.name.replace(/_/g, '-')}-${credentialSuffix}`;
 
       // Check for duplicate credential name
       this.checkDuplicate(project.credentials, credentialName, 'Credential');

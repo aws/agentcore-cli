@@ -103,6 +103,25 @@ describe('PaymentConnectorPrimitive', () => {
         expect(result.credentialName).toBe('mgr1-conn1-cdp');
       });
 
+      it('replaces underscores in the connector name so the credential provider ARN stays valid', async () => {
+        mockReadProjectSpec.mockResolvedValue(makeProject({ payments: [makeManager('mgr1')] }));
+
+        const result = await primitive.add({
+          manager: 'mgr1',
+          name: 'my_cdp',
+          provider: 'CoinbaseCDP',
+          apiKeyId: 'key-id',
+          apiKeySecret: 'key-secret',
+          walletSecret: 'wallet-secret',
+        });
+
+        if (!result.success) throw new Error('expected success');
+        expect(result.connectorName).toBe('my_cdp');
+        expect(result.credentialName).toBe('mgr1-my-cdp-cdp');
+        // Env var names are unchanged: hyphens and underscores both map to "_"
+        expect(mockSetEnvVar).toHaveBeenCalledWith('AGENTCORE_CREDENTIAL_MGR1_MY_CDP_CDP_API_KEY_ID', 'key-id');
+      });
+
       it('writes all 3 CoinbaseCDP env vars', async () => {
         mockReadProjectSpec.mockResolvedValue(makeProject({ payments: [makeManager('mgr1')] }));
 
