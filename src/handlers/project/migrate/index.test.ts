@@ -30,6 +30,8 @@ import {
 import {
   ALREADY_V1_MESSAGE,
   APPLY_HINT,
+  applyHint,
+  planBlockers,
   CONFIRM_QUESTION,
   formatMigrationPlan,
   formatMigrationResult,
@@ -393,6 +395,150 @@ function scriptedCli(
     run: (...args: string[]) => root.route(["node", "agentcore", "migrate", ...args]),
   };
 }
+
+describe("agentcore migrate, a not-ready summary", () => {
+  test("a missing CDK library shows only that line, with `agentcore update`", () => {
+    const blockers = planBlockers({
+      ...readyPlan("/p"),
+      ready: false,
+      checks: [
+        {
+          name: "cdk library",
+          ok: false,
+          message: "long message",
+          summary:
+            "This CLI can't keep this project's resource names yet. Run `agentcore update`, then run `agentcore migrate` again.",
+        },
+        { name: "v1 synth", ok: false, message: "doesn't support migratedFrom" },
+      ],
+      skippedStacks: [
+        { reason: "the converted project's v1 CDK app didn't synthesize (see the v1 synth check)" },
+      ],
+    });
+    expect(blockers).toEqual([
+      "cdk library: This CLI can't keep this project's resource names yet. Run `agentcore update`, then run `agentcore migrate` again.",
+    ]);
+  });
+
+  test("unsupported resources are one line pointing at the full plan, without their per-resource deletions", () => {
+    const stack: StackMigrationPlan = {
+      target: "default",
+      account: "1",
+      region: "us-east-1",
+      stackName: STACK,
+      moves: [],
+      unchanged: 0,
+      added: [],
+      removed: [
+        {
+          logicalId: "OnlineEvalOe2",
+          type: "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+          severity: "blocker",
+          reason: "the v1 template has no counterpart, so the v1 deploy would delete it",
+        },
+      ],
+      replaced: [],
+      updated: [],
+      blockers: [],
+      ready: false,
+    };
+    const blockers = planBlockers({
+      ...readyPlan("/p"),
+      ready: false,
+      checks: [
+        {
+          name: "supported resources",
+          ok: false,
+          message: "full",
+          summary:
+            "Migration blocked: This project uses resources that v1 doesn't support yet: online insights (oe2).",
+        },
+      ],
+      stacks: [stack],
+    });
+    expect(blockers).toEqual([
+      "Migration blocked: This project uses resources that v1 doesn't support yet: online insights (oe2).\n    See the full plan for how to fix it.",
+    ]);
+  });
+
+  test("a changed CDK app names the changed files instead of cutting the line off", async () => {
+    await inCommittedV0Project();
+    const subject = scriptedCli({
+      ready: false,
+      plan: {
+        checks: [
+          {
+            name: "cdk app",
+            ok: false,
+            message: "long",
+            summary:
+              "agentcore/cdk differs from the app v0 generated, and migrating replaces it, so these changes would be lost: added lib/a.ts, added lib/b.ts, added lib/c.ts, added lib/d.ts, modified bin/cdk.ts, and 2 more.",
+          },
+        ],
+      },
+    });
+    await subject.run().catch(() => {});
+    expect(subject.io.stdout()).toContain("modified bin/cdk.ts, and 2 more.");
+  });
+});
+
+describe("agentcore migrate, keeping unsupported resources", () => {
+  const retainingStack: StackMigrationPlan = {
+    target: "default",
+    account: "998846730471",
+    region: "us-east-1",
+    stackName: STACK,
+    moves: [],
+    unchanged: 3,
+    added: [],
+    removed: [],
+    replaced: [],
+    updated: [],
+    blockers: [],
+    ready: true,
+    retained: [
+      {
+        logicalId: "ApplicationDatasetGolden8AF7116D",
+        type: "AWS::BedrockAgentCore::Dataset",
+        physicalId:
+          "arn:aws:bedrock-agentcore:us-east-1:998846730471:dataset/CompatA_golden-ABCDEFGHIJ",
+        guidance: "manage it with the `agentcore eval dataset` commands, using its ID",
+      },
+    ],
+  };
+
+  test("the apply hint repeats the flags applying needs", () => {
+    expect(applyHint()).toBe(APPLY_HINT);
+    expect(applyHint(["--target prod"])).toBe(
+      "Nothing was changed. Run `agentcore migrate --yes --target prod` to apply these changes.",
+    );
+  });
+
+  test("the preview lists what stays in AWS outside the stack, by type and physical ID", async () => {
+    await inCommittedV0Project();
+    const subject = scriptedCli({ plan: { stacks: [retainingStack] } });
+
+    await subject.run();
+
+    const out = subject.io.stdout();
+    expect(out).toContain(
+      "  ! Keeps 1 resource in AWS outside the stack after migrating, where v1 won't manage it: " +
+        "AWS::BedrockAgentCore::Dataset arn:aws:bedrock-agentcore:us-east-1:998846730471:dataset/CompatA_golden-ABCDEFGHIJ",
+    );
+    const report = subject.calls.reports[0]!.contents;
+    expect(report).toContain("Kept in AWS outside the stack");
+    expect(report).toContain(
+      "AWS::BedrockAgentCore::Dataset: manage it with the `agentcore eval dataset` commands, using its ID.",
+    );
+    expect(report).not.toMatch(/delete it/i);
+  });
+
+  test("there's no --retain-unsupported flag: the prompt or --yes is the consent", async () => {
+    await inCommittedV0Project();
+    const subject = scriptedCli();
+    await expect(subject.run("--retain-unsupported")).rejects.toThrow(/unknown option/);
+  });
+});
 
 describe("agentcore migrate, applying", () => {
   test("passes --target to the plan", async () => {

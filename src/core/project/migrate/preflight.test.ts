@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { V0AgentCoreProjectSpecSchema } from "../../../projectSchemas/v0";
@@ -10,6 +11,7 @@ import {
   checkGit,
   checkProjectFormat,
   checkSupportedResources,
+  knowledgeBaseWarnings,
   OLD_CDK_MESSAGE,
   PRESERVE_RESOURCES_DOCS_URL,
   preflight,
@@ -124,79 +126,93 @@ describe("checkCdkPin", () => {
 });
 
 describe("checkSupportedResources", () => {
+  const without = (spec: ReturnType<typeof v0Fixture>, ...drop: Array<"insights" | "capacity">) =>
+    ({
+      ...spec,
+      ...(drop.includes("insights") && {
+        onlineEvalConfigs: spec.onlineEvalConfigs.filter((config) => config.insights === undefined),
+      }),
+      ...(drop.includes("capacity") && {
+        capacityProviders: [],
+        runtimes: spec.runtimes.map(
+          ({ capacityProviderConfiguration: _cp, filesystemConfigurations: _fs, ...runtime }) =>
+            runtime,
+        ),
+      }),
+    }) as typeof spec;
+
   test("passes a project without unsupported resources", () => {
     expect(checkSupportedResources(V0AgentCoreProjectSpecSchema.parse(F1_SPEC))).toEqual({
       name: "supported resources",
       ok: true,
-      message: "no knowledge bases, datasets, capacity providers, or online insights",
+      message: "no capacity providers or online insights",
     });
   });
 
-  test("blocks online insights, which v1 removed", () => {
-    const check = checkSupportedResources(v0Fixture("baseline.json"));
-    expect(check.ok).toBe(false);
-    expect(check.message).toContain("online insights (oe2)");
+  test("lets knowledge bases and datasets through: one migrates, the other is kept", () => {
+    const spec = without(v0Fixture("baseline.json"), "insights", "capacity");
+    expect(spec.knowledgeBases.length).toBeGreaterThan(0);
+    expect(checkSupportedResources(spec).ok).toBe(true);
+    expect(checkSupportedResources(v0Fixture("top-datasets-nonempty.json")).message).not.toContain(
+      "datasets",
+    );
   });
 
-  test("blocks knowledge bases, naming them", () => {
+  test("lists what still blocks on one summary line, and says why in the full message", () => {
     const check = checkSupportedResources(v0Fixture("baseline.json"));
     expect(check.ok).toBe(false);
-    expect(check.message).toMatch(
-      /^This project uses knowledge bases \(.+\), which v1 doesn't support yet/,
+    expect(check.summary).toStartWith(
+      "Migration blocked: This project uses resources that v1 doesn't support yet: ",
+    );
+    expect(check.summary).toContain("online insights (oe2)");
+    expect(check.message).toContain(
+      "has no evaluators, and every v1 online eval needs at least one",
     );
     expect(check.message).toContain("compatibility mode");
+    expect(check.message).toEndWith(`See ${PRESERVE_RESOURCES_DOCS_URL}`);
   });
 
-  test("gives a keep-the-data path and a delete path, linking the preserve guide", () => {
-    const message = checkSupportedResources(v0Fixture("baseline.json")).message;
-    expect(message).toContain("  To keep them and their data in AWS:\n");
-    expect(message).toContain(
-      "    1. In agentcore/cdk/lib/cdk-stack.ts, set DeletionPolicy Retain on them",
-    );
-    expect(message).toContain(
-      "    2. Run `agentcore deploy` (it deploys a v0 project with the v0 CLI).\n",
-    );
-    expect(message).toContain("They leave the stack but stay in AWS.\n");
-    expect(message).toContain(
-      "    4. Undo the change to cdk-stack.ts, commit, and run `agentcore migrate --dry-run`.\n",
-    );
-    expect(message).toContain("This deletes them from AWS.\n");
-    expect(message).toEndWith(`See ${PRESERVE_RESOURCES_DOCS_URL}`);
+  test("never tells the user to delete anything", () => {
+    for (const fixture of ["baseline.json", "runtime-capacityProviderArn-only.json"]) {
+      const { message } = checkSupportedResources(v0Fixture(fixture));
+      expect(message).not.toMatch(/delet|remove them/i);
+    }
   });
 
-  test("tells online insights alone to just be removed, with no keep path", () => {
-    const spec = v0Fixture("baseline.json");
-    const insightsOnly = {
-      ...spec,
-      knowledgeBases: [],
-      datasets: [],
-      capacityProviders: [],
-      runtimes: spec.runtimes.map(
-        ({ capacityProviderConfiguration: _cp, filesystemConfigurations: _fs, ...runtime }) =>
-          runtime,
-      ),
-    } as typeof spec;
-    const check = checkSupportedResources(insightsOnly);
-    expect(check.ok).toBe(false);
-    expect(check.message).toStartWith("This project runs online insights (oe2)");
-    expect(check.message).toContain("insights hold no data to keep.");
-    expect(check.message).not.toContain("To keep them");
-  });
-
-  test("blocks datasets", () => {
-    expect(checkSupportedResources(v0Fixture("top-datasets-nonempty.json")).message).toContain(
-      "datasets (",
-    );
-  });
-
-  test("blocks capacity providers and the runtimes that use them", () => {
+  test("blocks capacity providers and the runtimes that use them, saying why", () => {
     const check = checkSupportedResources(v0Fixture("runtime-capacityProviderArn-only.json"));
     expect(check.ok).toBe(false);
-    expect(check.message).toContain("runtimes on capacity providers (");
-    expect(check.message).toContain("  First move runtimes off their capacity providers:");
-    expect(checkSupportedResources(v0Fixture("runtime-capacityProvider.json")).message).toContain(
+    expect(check.summary).toContain("runtimes on capacity providers (");
+    expect(check.message).toContain("runtimes run on them");
+    expect(checkSupportedResources(v0Fixture("runtime-capacityProvider.json")).summary).toContain(
       "capacity providers (",
     );
+  });
+
+  test("warns that v1 no longer starts knowledge base ingestion", () => {
+    const [warning] = knowledgeBaseWarnings(v0Fixture("baseline.json"));
+    expect(warning).toContain("migrate and v1 keeps managing them");
+    expect(warning).toContain("aws bedrock-agent start-ingestion-job");
+    expect(knowledgeBaseWarnings(V0AgentCoreProjectSpecSchema.parse(F1_SPEC))).toEqual([]);
+  });
+});
+
+describe("checkCdkPin with a local library build", () => {
+  test("says it's a local build, not an old one, with a next step", async () => {
+    const root = await project();
+    const path = join(root, "agentcore", "cdk", "package.json");
+    const manifest = JSON.parse(readFileSync(path, "utf8")) as {
+      dependencies: Record<string, string>;
+    };
+    manifest.dependencies["@aws/agentcore-cdk"] = "file:../../libs/aws-agentcore-cdk-1.0.0.tgz";
+    writeFileSync(path, JSON.stringify(manifest));
+    const check = await checkCdkPin(root);
+    expect(check.ok).toBe(false);
+    expect(check.message).toContain(
+      "agentcore/cdk uses a local @aws/agentcore-cdk build (file:../../libs/aws-agentcore-cdk-1.0.0.tgz)",
+    );
+    expect(check.message).not.toContain("older than");
+    expect(check.message).toContain("`agentcore migrate` again");
   });
 });
 

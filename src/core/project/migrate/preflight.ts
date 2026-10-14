@@ -15,7 +15,13 @@ import { DEPLOYED_STATE_RELATIVE_PATH } from "../backends/cdk/deployedState";
 import { checkGitGate } from "./gitGate";
 import { checkCdkApp } from "./v0CdkApp";
 
+/**
+ * Checks that run before planning, so a project that can't migrate (not v0, not in
+ * git, an app or dependency migrate doesn't recognize, resources v1 can't keep)
+ * gets a clear reason up front rather than a failed or lossy migration.
+ */
 /** The CDK app's manifest, relative to the project root. */
+export const CDK_APP_RELATIVE_PATH = "agentcore/cdk";
 export const CDK_PACKAGE_RELATIVE_PATH = "agentcore/cdk/package.json";
 
 /** The first `@aws/agentcore-cdk` release the v0.24.2 CLI vended; older apps can't be migrated. */
@@ -126,11 +132,29 @@ export async function checkCdkPin(rootPath: string): Promise<MigrationCheck> {
     };
   }
   const pin = manifest.dependencies?.["@aws/agentcore-cdk"];
+  if (typeof pin === "string" && isLocalSpec(pin)) {
+    // A local build isn't old, it just isn't a release: comparing versions would mislead.
+    return {
+      name,
+      ok: false,
+      message:
+        `${CDK_APP_RELATIVE_PATH} uses a local @aws/agentcore-cdk build (${pin}), not the v0 ` +
+        "release the project was created with, so migrate can't tell what it deployed. Put " +
+        `the released dependency back (for example, \`git checkout -- ${CDK_PACKAGE_RELATIVE_PATH} ` +
+        `${CDK_APP_RELATIVE_PATH}/package-lock.json\`, then \`npm install\` in ${CDK_APP_RELATIVE_PATH}), ` +
+        "and run `agentcore migrate` again.",
+    };
+  }
   const match = typeof pin === "string" ? CDK_PIN_PATTERN.exec(pin) : null;
   if (!match || Number(match[1]) < MIN_CDK_ALPHA) {
     return { name, ok: false, message: OLD_CDK_MESSAGE };
   }
   return { name, ok: true, message: `@aws/agentcore-cdk ${String(pin)}` };
+}
+
+/** A dependency spec that points at a build on disk or a tarball rather than a published release. */
+function isLocalSpec(spec: string): boolean {
+  return /^(file:|link:|\.{1,2}\/|\/|~\/)/.test(spec.trim()) || /\.tgz$/.test(spec.trim());
 }
 
 /** v0 online eval configs that run insights, which v1 doesn't support. */
@@ -145,7 +169,14 @@ export function onlineInsightConfigs(v0: V0ProjectSpec): V0ProjectSpec["onlineEv
 export const PRESERVE_RESOURCES_DOCS_URL =
   "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/preserve-resources.html";
 
-/** Knowledge bases, datasets, capacity providers, and online insights have no v1 equivalent. */
+/**
+ * The resources migrating can't carry over, so the user hears about them before
+ * anything changes rather than finding them broken after. Knowledge bases migrate
+ * (v1 manages them) and datasets are kept in the account outside the stack, so
+ * neither is listed. Capacity providers are: runtimes run on them, and v1 can't
+ * run a runtime on one yet. So are online eval configs that run insights: they
+ * have no evaluators, and every v1 online eval needs one.
+ */
 export function checkSupportedResources(v0: V0ProjectSpec): MigrationCheck {
   const name = "supported resources";
   const runtimesOnCapacityProviders = v0.runtimes
@@ -155,69 +186,62 @@ export function checkSupportedResources(v0: V0ProjectSpec): MigrationCheck {
         (runtime.filesystemConfigurations ?? []).some((mount) => "capacityProviderVolume" in mount),
     )
     .map((runtime) => runtime.name);
-  // Resources AWS keeps when they leave the stack, so their data can outlive the migration.
-  const keepable = [
-    ["knowledge bases", v0.knowledgeBases.map((kb) => kb.name)],
-    ["datasets", (v0.datasets ?? []).map((dataset) => dataset.name)],
-    ["capacity providers", (v0.capacityProviders ?? []).map((provider) => provider.name)],
-  ] as const;
+  const capacityProviders = (v0.capacityProviders ?? []).map((provider) => provider.name);
   const insights = onlineInsightConfigs(v0).map((config) => config.name);
 
-  const listed = (groups: ReadonlyArray<readonly [string, readonly string[]]>) =>
-    groups
-      .filter(([, names]) => names.length > 0)
-      .map(([label, names]) => `${label} (${names.join(", ")})`)
-      .join("; ");
-  const resources = listed(keepable);
-  if (resources === "" && insights.length === 0 && runtimesOnCapacityProviders.length === 0) {
-    return {
-      name,
-      ok: true,
-      message: "no knowledge bases, datasets, capacity providers, or online insights",
-    };
+  const listed = [
+    capacityProviders.length > 0 ? `capacity providers (${capacityProviders.join(", ")})` : "",
+    runtimesOnCapacityProviders.length > 0
+      ? `runtimes on capacity providers (${runtimesOnCapacityProviders.join(", ")})`
+      : "",
+    insights.length > 0 ? `online insights (${insights.join(", ")})` : "",
+  ].filter(Boolean);
+  if (listed.length === 0) {
+    return { name, ok: true, message: "no capacity providers or online insights" };
   }
 
-  const lines: string[] = [];
-  if (resources !== "" || runtimesOnCapacityProviders.length > 0) {
-    lines.push(
-      `This project uses ${listed([
-        ...keepable,
-        ["runtimes on capacity providers", runtimesOnCapacityProviders],
-      ])}, which v1 doesn't support yet. Take them out of the project before migrating:`,
+  const summary = `Migration blocked: This project uses resources that v1 doesn't support yet: ${listed.join("; ")}.`;
+  const why: string[] = [];
+  if (capacityProviders.length > 0 || runtimesOnCapacityProviders.length > 0) {
+    why.push(
+      "Capacity providers: runtimes run on them, and v1 can't run a runtime on a capacity " +
+        "provider yet, so migrating would leave those runtimes without their compute.",
     );
-    if (runtimesOnCapacityProviders.length > 0) {
-      lines.push(
-        `  First move runtimes off their capacity providers: remove capacityProviderConfiguration ` +
-          `and capacity-provider volumes from them in ${SPEC_RELATIVE_PATH}, then ` +
-          "run `agentcore deploy`.",
-      );
-    }
-    if (resources !== "") {
-      lines.push(
-        "  To keep them and their data in AWS:",
-        "    1. In agentcore/cdk/lib/cdk-stack.ts, set DeletionPolicy Retain on them (for example " +
-          "with an Aspect that calls applyRemovalPolicy(RemovalPolicy.RETAIN)).",
-        "    2. Run `agentcore deploy` (it deploys a v0 project with the v0 CLI).",
-        `    3. Remove them from ${SPEC_RELATIVE_PATH} and run \`agentcore deploy\` again. ` +
-          "They leave the stack but stay in AWS.",
-        "    4. Undo the change to cdk-stack.ts, commit, and run `agentcore migrate --dry-run`.",
-        `  If you don't need them: remove them from ${SPEC_RELATIVE_PATH} and run ` +
-          "`agentcore deploy`. This deletes them from AWS.",
-      );
-    }
   }
   if (insights.length > 0) {
-    lines.push(
-      `This project runs online insights (${insights.join(", ")}), which v1 doesn't support. ` +
-        `Remove the insights settings from those online eval configs in ${SPEC_RELATIVE_PATH} ` +
-        "and run `agentcore deploy`; insights hold no data to keep.",
+    why.push(
+      "Online insights: an online eval config that runs insights has no evaluators, and every " +
+        "v1 online eval needs at least one, so v1 can't keep the config.",
     );
   }
-  lines.push(
-    "Or keep the project unmigrated and use it in compatibility mode.",
-    `See ${PRESERVE_RESOURCES_DOCS_URL}`,
-  );
-  return { name, ok: false, message: lines.join("\n") };
+  return {
+    name,
+    ok: false,
+    summary,
+    message: [
+      summary,
+      ...why,
+      "Keep using this project in compatibility mode until v1 supports them; nothing in it " +
+        "needs to change.",
+      `See ${PRESERVE_RESOURCES_DOCS_URL}`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * Knowledge bases migrate, and v1 keeps managing them, but v1's deploy doesn't
+ * start ingestion the way v0's did: after changing a knowledge base's data, the
+ * user starts it.
+ */
+export function knowledgeBaseWarnings(v0: V0ProjectSpec): string[] {
+  const names = v0.knowledgeBases.map((kb) => kb.name);
+  if (names.length === 0) return [];
+  return [
+    `Knowledge bases (${names.join(", ")}) migrate and v1 keeps managing them, but ` +
+      "`agentcore deploy` no longer starts ingestion jobs as the v0 CLI did. After changing a " +
+      "knowledge base's data, start one with `aws bedrock-agent start-ingestion-job " +
+      "--knowledge-base-id <id> --data-source-id <id>`.",
+  ];
 }
 
 /** The v0 deployed state, which says which resources already exist in AWS. */

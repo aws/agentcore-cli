@@ -4,6 +4,7 @@ import type {
   StackResourceChange,
 } from "../../../handlers/project/migrate/types";
 import { NAME_PROPERTIES } from "./mapping";
+import { RETAINABLE_TYPES } from "./retain";
 import {
   CDK_METADATA_TYPE,
   isCustomResource,
@@ -14,6 +15,11 @@ import {
   type CfnTemplate,
 } from "./templates";
 
+/**
+ * CloudFormation only tells you what a deploy replaces once you run it. Predicting
+ * it from the templates (with the AWS resource specification) lets migrate block a
+ * plan that would lose a runtime, memory, or dataset before anything changes.
+ */
 /** What the first v1 deploy after the refactor does to the stack's resources. */
 export type DeployImpact = {
   added: StackResource[];
@@ -370,6 +376,17 @@ function removal(
     severity,
     reason,
   });
+  if (RETAINABLE_TYPES.has(type)) {
+    return retained
+      ? change(
+          "info",
+          "v1 has no counterpart; it's retained, so the v1 deploy leaves it, and its data, in the account outside the stack, where v1 no longer manages it",
+        )
+      : change(
+          "blocker",
+          "v1 has no counterpart, and migrate couldn't plan keeping it, so the v1 deploy would delete it and its data",
+        );
+  }
   if (type.startsWith(AGENTCORE_TYPE_PREFIX) || KEPT_TYPES.has(type)) {
     return change(
       "blocker",

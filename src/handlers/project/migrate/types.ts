@@ -18,6 +18,11 @@ export type MigrationCheck = {
   ok: boolean;
   /** What was found, or what to do about it when the check failed. */
   message: string;
+  /**
+   * The one line the summary shows for a failed check, when the full message is
+   * too long for it; the full message goes in the plan file.
+   */
+  summary?: string;
 };
 
 /**
@@ -126,6 +131,13 @@ export type StackMigrationPlan = {
    */
   updated: StackResourceChange[];
   /**
+   * Deployed resources v1 has no counterpart for that the migration keeps in the
+   * account outside the stack, so their data outlives the move: the stack is
+   * updated to retain them before its refactor, and the first v1 deploy then
+   * leaves them in place. v1 doesn't manage them afterwards.
+   */
+  retained?: RetainedStackResource[];
+  /**
    * Problems with the stack as a whole (its name, the refactor template) that stop
    * it migrating. Resource-level blockers are the removed and replaced entries
    * with severity `blocker`.
@@ -133,6 +145,16 @@ export type StackMigrationPlan = {
   blockers: string[];
   /** No blockers of either kind: the stack can be refactored and deployed as v1 without losing a resource. */
   ready: boolean;
+};
+
+/** A deployed resource a migration keeps in the account outside the stack. */
+export type RetainedStackResource = {
+  logicalId: string;
+  type: string;
+  /** Its physical ID, when the stack's resources were read. */
+  physicalId?: string;
+  /** How to manage and delete it once v1 no longer does. */
+  guidance?: string;
 };
 
 /** Everything that stops one stack migrating: stack-level problems and blocking resource changes. */
@@ -227,6 +249,8 @@ export type StackRefactorResult = {
   region: string;
   outcome: StackRefactorOutcome;
   refactorId?: string;
+  /** The change set that set the retain policies on the stack's unsupported resources, when one ran. */
+  retainChangeSet?: string;
   /** Why it failed, for the failed outcomes. */
   message?: string;
 };

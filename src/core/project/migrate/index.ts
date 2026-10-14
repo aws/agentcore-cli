@@ -53,7 +53,8 @@ import {
 } from "./convertSpec";
 import { planStack, type PlannedStack } from "./plan";
 import { describe as describeRefactor, type PollOptions } from "./refactor";
-import { preflight } from "./preflight";
+import { knowledgeBaseWarnings, preflight } from "./preflight";
+import { RETAINED_GUIDANCE } from "./retain";
 import { saveMigrationReport } from "./reports";
 import { checkStack, cloudFormationStackReader } from "./stacks";
 import {
@@ -254,6 +255,7 @@ export class FsProjectMigrator implements ProjectMigrator {
       ...harnesses.flatMap((harness) => harness.warnings),
       ...sharedEnvironmentWarnings(targets.targets),
       ...credentialNameWarnings(v0Spec.credentials.map((credential) => credential.name)),
+      ...knowledgeBaseWarnings(v0Spec),
       ...library.warnings,
       ...overrideWarnings(cdkLibraryOverride),
     ];
@@ -372,6 +374,7 @@ export class FsProjectMigrator implements ProjectMigrator {
       stackName,
       renames: planned.renames,
       ...(planned.bridge && { bridge: planned.bridge }),
+      ...(planned.retain && { retain: planned.retain }),
       client: entry.client!,
       templates: async () =>
         (store ??=
@@ -466,8 +469,11 @@ export class FsProjectMigrator implements ProjectMigrator {
         ok: false,
         message:
           `${unsupported}, so the first deploy after migrating would replace this project's ` +
-          "resources. Update the AgentCore CLI to a release with that library, then run " +
-          "agentcore migrate again.",
+          "resources. Run `agentcore update`, then run `agentcore migrate` again.",
+        summary:
+          `This CLI can't keep this project's resource names yet (it vends ${CDK_LIBRARY} ` +
+          `${vended ?? "(unknown)"}; migrating needs ${MIN_MIGRATED_FROM_CDK_VERSION} or later). ` +
+          "Run `agentcore update`, then run `agentcore migrate` again.",
       },
       warnings: [],
     };
@@ -837,6 +843,16 @@ export class FsProjectMigrator implements ProjectMigrator {
           v1StackName: artifact.stackName,
           pins: pins.filter((pin) => pin.targets.includes(target.name)),
         });
+        if (stack.plan.retained && entry.client) {
+          // The plan names what it keeps by physical ID, so the user can find it later.
+          const ids = await physicalIds(entry.client, stackName);
+          for (const resource of stack.plan.retained) {
+            const physicalId = ids.get(resource.logicalId);
+            if (physicalId) resource.physicalId = physicalId;
+            const guidance = RETAINED_GUIDANCE[resource.type];
+            if (guidance) resource.guidance = guidance;
+          }
+        }
         planned.push({ ...entry, planned: stack });
       } catch (error) {
         // One target that can't be planned still leaves the rest of the report.

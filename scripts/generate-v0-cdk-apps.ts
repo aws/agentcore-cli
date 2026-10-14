@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Regenerates src/core/project/migrate/v0CdkApps.ts: what every CLI release that
- * creates v0 projects (v0.4.0 to v0.31.1, 1.0.0-preview.1 to 1.0.0-preview.33)
- * vended in agentcore/cdk, read from its git tag's src/assets/cdk. Releases that
- * vended identical apps share an entry. Run from a clone with the release tags:
+ * Migration must recognize the CDK app every v0 release generated, so it can tell
+ * an unmodified app (safe to replace with v1's) from one with customer changes
+ * (which replacing would lose). This regenerates that list,
+ * src/core/project/migrate/v0CdkApps.ts, from each release's git tag
+ * (v0.4.0 to v0.31.1, 1.0.0-preview.1 to 1.0.0-preview.33), rather than keeping
+ * it by hand, so a release can't be missed. Run it from a clone with the tags:
  *
  *   bun scripts/generate-v0-cdk-apps.ts
  */

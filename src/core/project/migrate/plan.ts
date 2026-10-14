@@ -9,9 +9,16 @@ import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { buildBridgeTemplate, verifyBridge } from "./bridge";
 import { mapLogicalIds, NAME_PROPERTIES, renamesOf, type LogicalIdMapping } from "./mapping";
 import { deployImpact } from "./replacements";
+import { resourcesToRetain, withRetain } from "./retain";
 import { CDK_METADATA_TYPE, resourcesOf, type CfnTemplate } from "./templates";
 import { resourcesOutsideV0App } from "./v0CdkApp";
 
+/**
+ * Planning is where a migration proves it's safe before it touches anything: it
+ * works out the stack refactor and predicts the first v1 deploy, so a plan that
+ * would replace or delete a resource the user needs is refused up front instead
+ * of discovered in AWS.
+ */
 export type StackPlanInput = {
   target: AwsDeploymentTarget;
   /** The deployed stack's name. */
@@ -34,6 +41,11 @@ export type PlannedStack = {
   renames: Map<string, string>;
   /** The template the refactor moves the stack to; absent when it couldn't be built. */
   bridge?: CfnTemplate;
+  /**
+   * The update to make before the refactor: the deployed template with retain
+   * policies on the unsupported resources it keeps. Absent when nothing needs it.
+   */
+  retain?: { template: CfnTemplate; logicalIds: Set<string> };
 };
 
 /**
@@ -99,15 +111,38 @@ export async function planStack(input: StackPlanInput): Promise<PlannedStack> {
     );
   }
 
+  // Resources v1 drops whose data a user would lose (datasets) are kept: the stack
+  // is first updated to retain them, so the refactor and the deploy start from there.
+  const retained = resourcesToRetain(
+    deployed,
+    new Set(mapping.onlyInOld.map((resource) => resource.logicalId)),
+  );
+  let start = deployed;
+  let retain: PlannedStack["retain"];
+  if (retained.length > 0) {
+    plan.retained = retained.map(({ logicalId, type }) => ({ logicalId, type }));
+    start = withRetain(
+      deployed,
+      retained.map((resource) => resource.logicalId),
+    );
+    const needed = retained.filter((resource) => !resource.alreadyRetained);
+    if (needed.length > 0) {
+      retain = {
+        template: start,
+        logicalIds: new Set(needed.map((resource) => resource.logicalId)),
+      };
+    }
+  }
+
   let bridge: CfnTemplate | undefined;
   try {
-    bridge = buildBridgeTemplate(deployed, renames);
+    bridge = buildBridgeTemplate(start, renames);
   } catch (error) {
     plan.blockers.push(`Couldn't build the refactor template: ${(error as Error).message}`);
   }
   if (bridge) {
     plan.blockers.push(
-      ...verifyBridge(deployed, bridge, renames).map(
+      ...verifyBridge(start, bridge, renames).map(
         (problem) => `The refactor template would change more than logical IDs: ${problem}`,
       ),
     );
@@ -120,7 +155,7 @@ export async function planStack(input: StackPlanInput): Promise<PlannedStack> {
   }
 
   plan.ready = bridge !== undefined && stackBlockerCount(plan) === 0;
-  return { plan, mapping, renames, ...(bridge && { bridge }) };
+  return { plan, mapping, renames, ...(bridge && { bridge }), ...(retain && { retain }) };
 }
 
 /** How a kept name's resource kind reads in a message. */

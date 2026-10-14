@@ -507,3 +507,131 @@ describe("physicalIdChanges", () => {
     ]);
   });
 });
+
+describe("applyMigration retaining unsupported resources", () => {
+  const DATASET = "ApplicationDatasetGolden8AF7116D";
+  const retained = {
+    Resources: {
+      OldMemory: { Type: "AWS::BedrockAgentCore::Memory" },
+      [DATASET]: {
+        Type: "AWS::BedrockAgentCore::Dataset",
+        DeletionPolicy: "Retain",
+        UpdateReplacePolicy: "Retain",
+      },
+    },
+  };
+  const stack = (status: string) => ({
+    Stacks: [{ StackName: "AgentCore-Proj-default", StackStatus: status, Parameters: [] }],
+  });
+  const policyChange = {
+    Type: "Resource",
+    ResourceChange: {
+      Action: "Modify",
+      LogicalResourceId: DATASET,
+      Replacement: "False",
+      Details: [
+        { Target: { Attribute: "DeletionPolicy" } },
+        { Target: { Attribute: "UpdateReplacePolicy" } },
+      ],
+    },
+  };
+
+  function retainingTarget(execute: unknown = {}) {
+    const { client, sent } = fakeCloudFormation({
+      DescribeStacks: [
+        stack("UPDATE_COMPLETE"),
+        stack("UPDATE_IN_PROGRESS"),
+        stack("UPDATE_COMPLETE"),
+      ],
+      CreateChangeSet: [{ Id: "cs" }],
+      DescribeChangeSet: [{ Status: "CREATE_COMPLETE", Changes: [policyChange] }],
+      ExecuteChangeSet: [execute],
+      GetTemplate: [{ TemplateBody: JSON.stringify(retained) }],
+      ListStackResources: [
+        stackResources([
+          ["OldMemory", "mem"],
+          [DATASET, "ds"],
+        ]),
+        stackResources([
+          ["NewMemory", "mem"],
+          [DATASET, "ds"],
+        ]),
+      ],
+      CreateStackRefactor: [{ StackRefactorId: "rf-default" }],
+      DescribeStackRefactor: [
+        { Status: "CREATE_COMPLETE" },
+        { ExecutionStatus: "EXECUTE_COMPLETE" },
+      ],
+      ListStackRefactorActions: [
+        moveActions("AgentCore-Proj-default", [["OldMemory", "NewMemory"]]),
+      ],
+      ExecuteStackRefactor: [{}],
+    });
+    const entry: ApplyTarget = {
+      target: { name: "default", account: "111111111111", region: "us-east-1" },
+      stackName: "AgentCore-Proj-default",
+      renames: new Map([["OldMemory", "NewMemory"]]),
+      bridge: {
+        Resources: {
+          NewMemory: retained.Resources.OldMemory,
+          [DATASET]: retained.Resources[DATASET],
+        },
+      },
+      retain: { template: retained, logicalIds: new Set([DATASET]) },
+      client,
+      templates: async () => ({ put: async () => "", remove: async () => {} }),
+    };
+    return { entry, sent };
+  }
+
+  test("sets the retain policies before the refactor, recording the change set while it runs", async () => {
+    const root = tempRoot();
+    const { entry, sent } = retainingTarget();
+    const { applier, saved } = config(root, freshState("default"), entry);
+
+    const result = await applyMigration(applier);
+
+    expect(result.migrated).toBe(true);
+    expect(result.stacks[0]).toMatchObject({ outcome: "refactored", refactorId: "rf-default" });
+    expect(result.stacks[0]?.retainChangeSet).toStartWith("agentcore-migrate-retain-");
+    const names = sent.map((command) => command.name);
+    expect(names.indexOf("ExecuteChangeSet")).toBeLessThan(names.indexOf("CreateStackRefactor"));
+    const statuses = saved.flatMap((state) => state.targets.map((t) => t.status));
+    expect(statuses).toContain("retaining");
+    expect(statuses.indexOf("retaining")).toBeLessThan(statuses.indexOf("refactoring"));
+  });
+
+  test("an unknown retain outcome stops before the refactor, with the change set's check commands", async () => {
+    const root = tempRoot();
+    const { entry, sent } = retainingTarget(new Error("socket hang up"));
+    const { applier, events } = config(root, freshState("default"), entry);
+
+    const result = await applyMigration(applier);
+
+    expect(result.stacks[0]?.outcome).toBe("needs-repair");
+    expect(sent.some((command) => command.name === "CreateStackRefactor")).toBe(false);
+    // An update whose outcome isn't known may have run, so the files stay as written.
+    expect(result.restored).toBeUndefined();
+    expect(events).toEqual(["write"]);
+    const recovery = result.recovery.join("\n");
+    expect(recovery).toContain(
+      "aws cloudformation describe-change-set --stack-name AgentCore-Proj-default",
+    );
+    expect(recovery).toContain("agentcore migrate --target default");
+    expect(recovery).not.toContain("describe-stack-refactor");
+    const state = await readMigrationState(root);
+    expect(state?.targets[0]).toMatchObject({ status: "retaining" });
+  });
+
+  test("a retain update CloudFormation refused puts the v0 files back", async () => {
+    const root = tempRoot();
+    const { entry } = retainingTarget(clientError("ValidationError"));
+    const { applier, events } = config(root, freshState("default"), entry);
+
+    const result = await applyMigration(applier);
+
+    expect(result.stacks[0]?.outcome).toBe("failed");
+    expect(result.restored).toBe(true);
+    expect(events).toEqual(["write", "restore"]);
+  });
+});

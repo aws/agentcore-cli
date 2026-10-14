@@ -14,6 +14,11 @@ import { onlineInsightConfigs } from "./preflight";
 
 type Json = Record<string, unknown>;
 
+/**
+ * Converting agentcore.json is done in memory and in a temporary copy first, so
+ * the plan can show exactly what the v1 files will be, and every problem with
+ * them, before the user agrees to change anything.
+ */
 /** Project-relative paths shown to users. Always forward slashes, on every platform. */
 export const SPEC_RELATIVE_PATH = "agentcore/agentcore.json";
 export const AWS_TARGETS_RELATIVE_PATH = "agentcore/aws-targets.json";

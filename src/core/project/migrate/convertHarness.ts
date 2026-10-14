@@ -30,6 +30,11 @@ export type ConvertedHarness = {
   facts?: HarnessFacts;
 };
 
+/**
+ * v1 reads harnesses from harness.yaml in a different shape than v0's
+ * harness.json; converting them keeps every harness working after the migration
+ * without the user rewriting its configuration by hand.
+ */
 /** Reads a harness registry entry's `harness.json` and converts it to `harness.yaml`. */
 export async function convertHarness(
   rootPath: string,

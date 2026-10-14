@@ -9,6 +9,10 @@ import type { MigrationCheck } from "../../../handlers/project/migrate/types";
 import { isStackNotFound } from "../backends/cdk/environment";
 import type { CfnTemplate } from "./templates";
 
+/**
+ * Reading the deployed stack (status, template, stack policy) is all planning
+ * needs from AWS, and it's read-only, so a preview never changes the account.
+ */
 /** The CloudFormation reads migration planning makes; all read-only. */
 export type StackReader = {
   /** The stack, or undefined when it doesn't exist. */

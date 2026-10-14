@@ -19,6 +19,10 @@ import { PROJECT_SPEC_RELATIVE_PATH } from "../fsUtils";
 import { FsTreeNode } from "../templates/fsTree";
 
 /**
+ * Planning builds the v1 project in a temporary copy, so the preview can install,
+ * convert, and synthesize for real without changing the user's project.
+ */
+/**
  * Directories never copied into or compared across a workspace: installed
  * dependencies (npm and Python virtual environments), caches, synth output, and git.
  */

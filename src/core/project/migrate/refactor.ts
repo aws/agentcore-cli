@@ -11,6 +11,12 @@ import {
 import type { CfnTemplate } from "./templates";
 import { templateLocation, type TemplateStore } from "./templateStore";
 
+/**
+ * A stack refactor renames logical IDs in place, so v1 takes over the deployed
+ * resources without recreating them. Its outcome isn't always readable (a lost
+ * response, a timeout), and guessing wrong would leave the files and the stack
+ * disagreeing, so anything not proven is reported as unknown, with how to check.
+ */
 /** One deployed stack to refactor onto new logical IDs. */
 export type RefactorStack = {
   target: string;

@@ -6,6 +6,11 @@ import type { CfnTemplate } from "./templates";
 import { resourcesOf } from "./templates";
 import { V0_CDK_APPS, V0_CDK_DEPENDENCY_NAMES, type V0CdkApp } from "./v0CdkApps";
 
+/**
+ * Migrating replaces agentcore/cdk with v1's app. That's only safe when the app is
+ * exactly what a v0 release generated: anything the user added there would be
+ * lost, and resources it creates deleted by the first v1 deploy.
+ */
 /** The v0 CDK app's directory, relative to the project root; migrating replaces it. */
 export const CDK_APP_DIRECTORY = "agentcore/cdk";
 
@@ -266,9 +271,18 @@ export async function checkCdkApp(rootPath: string): Promise<MigrationCheck> {
     ...closest.added.map((file) => `  added     ${CDK_APP_DIRECTORY}/${file}`),
     ...closest.modified.map((file) => `  modified  ${CDK_APP_DIRECTORY}/${file}`),
   ];
+  const changed = [
+    ...closest.added.map((file) => `added ${file}`),
+    ...closest.modified.map((file) => `modified ${file}`),
+  ];
+  const shown = changed.slice(0, SUMMARY_FILE_LIMIT);
+  const more = changed.length - shown.length;
   return {
     name,
     ok: false,
+    summary:
+      `${CDK_APP_DIRECTORY} differs from the app v0 generated, and migrating replaces it, so ` +
+      `these changes would be lost: ${shown.join(", ")}${more > 0 ? `, and ${more} more` : ""}.`,
     message: [
       `${CDK_APP_DIRECTORY} isn't the CDK app a release that creates v0 projects (v0.4.0 to ` +
         `v0.31.1, 1.0.0-preview.1 to 1.0.0-preview.33) created; compared with v0 ` +
@@ -284,6 +298,9 @@ export async function checkCdkApp(rootPath: string): Promise<MigrationCheck> {
     ].join("\n"),
   };
 }
+
+/** How many changed files the summary names before counting the rest. */
+const SUMMARY_FILE_LIMIT = 5;
 
 /** Whether the project's v0 app builds harness containers itself (`hasDockerfile`, v0.16.0 and later). */
 export async function appBuildsHarnessContainers(rootPath: string): Promise<boolean> {

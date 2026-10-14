@@ -20,7 +20,9 @@ const FileChangeSchema = z.object({
 
 /**
  * A deployment target whose stack still has its v0 logical IDs. `pending` hasn't
- * been refactored; `refactoring` had a refactor created (with `refactorId`), whose
+ * been refactored; `retaining` had the change set that retains its unsupported
+ * resources created (`changeSetName`), so a rerun plans it afresh from what the
+ * stack then holds; `refactoring` had a refactor created (with `refactorId`), whose
  * outcome a rerun reads back before doing anything else.
  */
 const JournalTargetSchema = z.object({
@@ -28,7 +30,9 @@ const JournalTargetSchema = z.object({
   account: z.string(),
   region: z.string(),
   stackName: z.string(),
-  status: z.enum(["pending", "refactoring"]),
+  status: z.enum(["pending", "retaining", "refactoring"]),
+  /** The change set that retains the target's unsupported resources, recorded while `retaining`. */
+  changeSetName: z.string().optional(),
   refactorId: z.string().optional(),
   /** The refactor's logical ID renames (deployed → v1), recorded with `refactorId`. */
   renames: z.array(z.tuple([z.string(), z.string()])).optional(),

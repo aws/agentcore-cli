@@ -130,6 +130,20 @@ describe("checkCdkApp", () => {
       "  modified  agentcore/cdk/README.md",
       "  modified  agentcore/cdk/cdk.json",
     ]);
+    // The summary names the files instead of cutting the long message off.
+    expect(check.summary).toBe(
+      "agentcore/cdk differs from the app v0 generated, and migrating replaces it, so these " +
+        "changes would be lost: added lib/uploads.ts, added notes.txt, modified README.md, " +
+        "modified cdk.json.",
+    );
+  });
+
+  test("the summary names up to five changed files, then counts the rest", async () => {
+    const root = await project();
+    for (const n of [1, 2, 3, 4, 5, 6, 7])
+      await write(root, `agentcore/cdk/lib/extra${n}.ts`, "x\n");
+    const check = await checkCdkApp(root);
+    expect(check.summary).toEndWith(", and 2 more.");
   });
 
   test("blocks a package.json with another dependency or changed scripts", async () => {

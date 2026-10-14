@@ -24,6 +24,7 @@ import {
   type StackMigrationPlan,
   type StackRefactorResult,
   type StackResourceChange,
+  type RetainedStackResource,
 } from "./types";
 
 export type { MigrationPlan, ProjectMigrator } from "./types";
@@ -52,6 +53,12 @@ export const CONFIRM_QUESTION = "Apply these changes? (y/N) ";
 /** Printed after a ready plan when nothing can confirm applying it. */
 export const APPLY_HINT =
   "Nothing was changed. Run `agentcore migrate --yes` to apply these changes.";
+
+/** The apply hint for a run that needs its other flags repeated to apply. */
+export function applyHint(flags: string[] = []): string {
+  if (flags.length === 0) return APPLY_HINT;
+  return `Nothing was changed. Run \`agentcore migrate --yes ${flags.join(" ")}\` to apply these changes.`;
+}
 
 /**
  * `agentcore migrate`: upgrades the enclosing v0 project to v1, one flow every
@@ -141,7 +148,11 @@ export const createMigrateProjectHandler = (config: MigrateProjectHandlerConfig)
           }
           const canPrompt =
             !flags.yes && !json && io.stdin.isTTY && io.stdout.isTTY && io.stderr.isTTY;
-          if (!flags.yes && !canPrompt) return showPlan(APPLY_HINT);
+          if (!flags.yes && !canPrompt) {
+            return showPlan(
+              applyHint([...(flags.target !== undefined ? [`--target ${flags.target}`] : [])]),
+            );
+          }
           // With --json the plan goes out once, with the result.
           if (!json) showPlan();
           // The question is settled here, before apply's progress UI mounts: nothing
@@ -289,33 +300,60 @@ function overrideWarningLines(cdkLibraryOverride: string, indent: string): strin
 
 /** One line per thing that keeps the plan from being ready. */
 export function planBlockers(plan: MigrationPlan): string[] {
+  const failed = (name: string) => plan.checks.some((check) => check.name === name && !check.ok);
+  // Some failures explain others: the summary shows the cause and leaves its
+  // consequences to the plan file, so the user sees what to act on.
+  const libraryMissing = failed(LIBRARY_CHECK);
+  const unsupported = failed(SUPPORTED_RESOURCES_CHECK);
   const lines: string[] = [];
   for (const check of plan.checks) {
-    if (!check.ok) lines.push(`${check.name}: ${brief(check.message)}`);
+    if (check.ok) continue;
+    if (libraryMissing && check.name === SYNTH_CHECK) continue;
+    if (check.name === SUPPORTED_RESOURCES_CHECK) {
+      lines.push(
+        `${check.summary ?? brief(check.message)}\n    See the full plan for how to fix it.`,
+      );
+      continue;
+    }
+    lines.push(`${check.name}: ${check.summary ?? brief(check.message)}`);
   }
   for (const problem of [...plan.problems, ...plan.deployedChanges]) {
     lines.push(`${problem.file} ${problem.path}: ${brief(problem.message)}`);
   }
   for (const skipped of plan.skippedStacks) {
+    if (libraryMissing && skipped.reason.includes(SYNTH_CHECK)) continue;
     const which = skipped.target === undefined ? "" : ` (${skipped.target})`;
     lines.push(`stack plan skipped${which}: ${brief(skipped.reason)}`);
   }
   for (const stack of plan.stacks) {
     for (const blocker of stack.blockers) lines.push(`${stack.stackName}: ${brief(blocker)}`);
     for (const change of [...stack.removed, ...stack.replaced, ...stack.updated]) {
-      if (change.severity === "blocker") {
-        lines.push(`${shortType(change.type)} ${change.logicalId}: ${brief(change.reason)}`);
-      }
+      if (change.severity !== "blocker") continue;
+      // The unsupported-resources line already covers what v1 can't keep.
+      if (unsupported && UNSUPPORTED_TYPES.some((type) => change.type.startsWith(type))) continue;
+      lines.push(`${shortType(change.type)} ${change.logicalId}: ${brief(change.reason)}`);
     }
   }
   return lines;
 }
 
+const LIBRARY_CHECK = "cdk library";
+const SYNTH_CHECK = "v1 synth";
+const SUPPORTED_RESOURCES_CHECK = "supported resources";
+/** Resource types the unsupported-resources check stands for in the summary. */
+const UNSUPPORTED_TYPES = [
+  "AWS::BedrockAgentCore::CapacityProvider",
+  "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+];
+
 /** What the first v1 deploy does to the stack, in one line. */
 function deployImpact(stack: StackMigrationPlan): string {
+  // Retained resources leave the stack but stay in the account: not deletions.
+  const kept = new Set((stack.retained ?? []).map((resource) => resource.logicalId));
+  const deleted = stack.removed.filter((change) => !kept.has(change.logicalId));
   const lost = [
     stack.replaced.length > 0 ? `replaces ${count(stack.replaced.length, "resource")}` : "",
-    stack.removed.length > 0 ? `deletes ${count(stack.removed.length, "resource")}` : "",
+    deleted.length > 0 ? `deletes ${count(deleted.length, "resource")}` : "",
   ].filter(Boolean);
   const parts = [
     lost.length === 0 ? "replaces nothing" : `${lost.join(", ")} (none that must be kept)`,
@@ -384,6 +422,14 @@ export function formatMigrationSummary(plan: MigrationPlan, planPath: string): s
         `  Moves ${count(stack.moves.length, "resource")} in ${stack.stackName} to new logical IDs (stack refactor)`,
         `  First v1 deploy: ${deployImpact(stack)}`,
       );
+      const retained = stack.retained ?? [];
+      if (retained.length > 0) {
+        lines.push(
+          `  ! Keeps ${count(retained.length, "resource")} in AWS outside the stack after ` +
+            `migrating, where v1 won't manage ${retained.length === 1 ? "it" : "them"}: ` +
+            `${listed(retained.map(retainedLabel))}`,
+        );
+      }
     }
     if (!plan.finishPending && plan.changes.length > 0) {
       lines.push(
@@ -653,6 +699,11 @@ export function formatMigrationPlan(plan: MigrationPlan): string {
 }
 
 /** One stack's refactor: what moves, then what the first v1 deploy changes, then the verdict. */
+/** A retained resource for the summary: its kind and the ID to find it by. */
+function retainedLabel(resource: RetainedStackResource): string {
+  return `${resource.type} ${resource.physicalId ?? resource.logicalId}`;
+}
+
 export function formatStackPlan(stack: StackMigrationPlan): string[] {
   const lines = [
     `Stack ${stack.stackName} (target '${stack.target}', ${stack.account}/${stack.region})`,
@@ -671,6 +722,30 @@ export function formatStackPlan(stack: StackMigrationPlan): string[] {
     );
   }
   lines.push(`  ${count(stack.unchanged, "resource")} keep their logical IDs`);
+  const retained = stack.retained ?? [];
+  if (retained.length > 0) {
+    lines.push(
+      "  Kept in AWS outside the stack: set to retain before the refactor, so the first v1 " +
+        "deploy leaves them, and their data, in place. v1 doesn't manage them afterwards.",
+      ...indent(
+        table(
+          ["TYPE", "LOGICAL ID", "PHYSICAL ID"],
+          retained.map((resource) => [
+            resource.type,
+            resource.logicalId,
+            resource.physicalId ?? "-",
+          ]),
+        ),
+      ),
+      ...[
+        ...new Map(
+          retained.flatMap((resource) =>
+            resource.guidance ? [[resource.type, resource.guidance] as const] : [],
+          ),
+        ),
+      ].map(([type, guidance]) => `    ${type}: ${guidance}.`),
+    );
+  }
 
   lines.push("  Then the first v1 deploy:");
   const changes = (label: string, entries: StackResourceChange[]) => {

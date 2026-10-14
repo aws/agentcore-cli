@@ -11,7 +11,7 @@ import { synthCommand } from "../backends/cdk/assembly";
  * tarball or package directory (made absolute, so `npm pack` output in the
  * current directory works). Lets the planner run against an unpublished library
  * build; never needed with a released CLI, whose vended app already pins a
- * library that understands the pinned names.
+ * library that supports migratedFrom.
  */
 export { CDK_LIBRARY_OVERRIDE_ENV };
 

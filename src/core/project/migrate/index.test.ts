@@ -274,7 +274,7 @@ describe("FsProjectMigrator.plan", () => {
     });
   });
 
-  test("blocks on unsupported resources and an old CDK app", async () => {
+  test("an old CDK app blocks; datasets don't (they're kept outside the stack)", async () => {
     const plan = await migrator().plan(
       await project({
         cdkPin: "0.1.0-alpha.30",
@@ -291,7 +291,7 @@ describe("FsProjectMigrator.plan", () => {
       }),
     );
     const failed = plan.checks.filter((check) => !check.ok).map((check) => check.name);
-    expect(failed).toEqual(["cdk dependencies", "supported resources"]);
+    expect(failed).toEqual(["cdk dependencies"]);
     expect(plan.ready).toBe(false);
   });
 });

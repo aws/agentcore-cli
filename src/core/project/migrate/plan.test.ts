@@ -18,6 +18,58 @@ const plan = async (deployed: string, v1: string, v1StackName = STACK, pins: Pin
     pins,
   });
 
+describe("planStack with a dataset v1 has no counterpart for", () => {
+  const DATASET = "ApplicationDatasetGolden8AF7116D";
+  const withDataset = (): CfnTemplate => {
+    const deployed = templateFixture("pinned.v0");
+    deployed.Resources![DATASET] = {
+      Type: "AWS::BedrockAgentCore::Dataset",
+      Properties: {
+        DatasetName: "CompatMig_golden",
+        SchemaType: "AGENTCORE_EVALUATION_PREDEFINED_V1",
+      },
+    };
+    return deployed;
+  };
+  const planWith = (deployed: CfnTemplate) =>
+    planStack({
+      target,
+      stackName: STACK,
+      v1StackName: STACK,
+      deployed,
+      v1: templateFixture("pinned.v1"),
+      pins: [],
+    });
+
+  test("is retained first, then refactored and left in the account", async () => {
+    const { plan: stack, retain, bridge } = await planWith(withDataset());
+    expect(stack.ready).toBe(true);
+    expect(stack.retained).toEqual([
+      { logicalId: DATASET, type: "AWS::BedrockAgentCore::Dataset" },
+    ]);
+    expect([...retain!.logicalIds]).toEqual([DATASET]);
+    expect(retain!.template.Resources![DATASET]).toMatchObject({
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+    });
+    // The refactor starts from the retained stack, so its template must carry the policies.
+    expect(bridge!.Resources![DATASET]!.DeletionPolicy).toBe("Retain");
+    const removed = stack.removed.find((change) => change.logicalId === DATASET)!;
+    expect(removed.severity).toBe("info");
+    expect(removed.reason).toContain("leaves it, and its data, in the account outside the stack");
+  });
+
+  test("a dataset the stack already retains needs no update, only the refactor", async () => {
+    const deployed = withDataset();
+    deployed.Resources![DATASET]!.DeletionPolicy = "Retain";
+    deployed.Resources![DATASET]!.UpdateReplacePolicy = "Retain";
+    const { plan: stack, retain } = await planWith(deployed);
+    expect(stack.ready).toBe(true);
+    expect(retain).toBeUndefined();
+    expect(stack.retained).toHaveLength(1);
+  });
+});
+
 describe("planStack", () => {
   test("the live CompatMig stack with pinned names: 10 moves and 0 replacements", async () => {
     const { plan: stack, bridge, renames } = await plan("pinned.v0", "pinned.v1");

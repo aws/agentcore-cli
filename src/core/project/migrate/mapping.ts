@@ -11,6 +11,12 @@ import {
   type ResourceReference,
 } from "./templates";
 
+/**
+ * v1 gives the same AWS resources different logical IDs than v0 did. Pairing them
+ * by what they are (their physical names and how they reference each other)
+ * rather than by how the IDs look lets the refactor move each resource to its v1
+ * ID instead of the deploy recreating it.
+ */
 /** The path recorded for a DependsOn entry, which no property path can equal. */
 const DEPENDS_ON_PATH = "(DependsOn)";
 

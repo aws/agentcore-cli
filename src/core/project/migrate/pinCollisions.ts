@@ -8,6 +8,11 @@ import { describePath } from "./issues";
 
 type Json = Record<string, unknown>;
 
+/**
+ * A migrated project keeps v0's physical names, which have no target segment, so
+ * two resources (or two targets in one account and region) can claim the same
+ * name. Finding that in the plan beats a deploy failing on a name conflict.
+ */
 /** One resource that takes an AWS physical name: its deployed name, or the one v0 naming composes. */
 type NameEntry = {
   label: string;

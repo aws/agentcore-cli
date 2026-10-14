@@ -34,9 +34,15 @@ import {
   type PollOptions,
   type RefactorAction,
 } from "./refactor";
+import { retainCheckCommands, retainResources } from "./retain";
 import type { CfnTemplate } from "./templates";
 import type { TemplateStore } from "./templateStore";
 
+/**
+ * Applying records each step in the journal before taking it, so a migration
+ * stopped at any point (a crash, Ctrl-C, a failed refactor) can be finished or
+ * undone, and deploying can refuse a target that's only half migrated.
+ */
 /** The one deployment target whose stack this run refactors. */
 export type ApplyTarget = {
   target: AwsDeploymentTarget;
@@ -45,6 +51,11 @@ export type ApplyTarget = {
   renames: ReadonlyMap<string, string>;
   /** The deployed template with the renames applied; absent when nothing moves. */
   bridge?: CfnTemplate;
+  /**
+   * The update made before the refactor: the deployed template with retain
+   * policies on the unsupported resources the migration keeps.
+   */
+  retain?: { template: CfnTemplate; logicalIds: ReadonlySet<string> };
   /** A CloudFormation client for the target's account and region. */
   client: CloudFormationClient;
   /** Where a template too big to pass inline is uploaded. */
@@ -184,29 +195,67 @@ export async function applyMigration(
 
     // 3. The selected target's stack.
     let outcome: StackRefactorResult["outcome"] | undefined;
-    if (entry && entry.renames.size === 0) {
+    if (entry && entry.renames.size === 0 && !entry.retain) {
       dropTarget(state, entry.target.name);
       outcome = "unchanged";
     } else if (entry) {
       if (guard.stop()) {
         result({ outcome: "not-started", message: INTERRUPTED });
       } else {
-        try {
-          await refactorTarget(entry, poll, async (refactorId) => {
-            result({ refactorId });
-            setTarget(state, {
-              name: entry.target.name,
-              account: entry.target.account,
-              region: entry.target.region,
-              stackName: entry.stackName,
-              status: "refactoring",
-              refactorId,
-              renames: [...entry.renames],
-            });
-            await save(rootPath, state);
+        const record = (status: JournalTarget["status"], extra: Partial<JournalTarget> = {}) =>
+          setTarget(state, {
+            name: entry.target.name,
+            account: entry.target.account,
+            region: entry.target.region,
+            stackName: entry.stackName,
+            status,
+            ...extra,
           });
-          result({ outcome: "refactored" });
-          markRefactored(state, entry.target.name);
+        try {
+          if (entry.retain) {
+            // Before the refactor, so the stack it moves (and the v1 deploy after it)
+            // already keeps the resources v1 has no counterpart for.
+            await retainResources(
+              {
+                stackName: entry.stackName,
+                region: entry.target.region,
+                template: entry.retain.template,
+                logicalIds: entry.retain.logicalIds,
+                client: entry.client,
+                templates: entry.templates,
+              },
+              {
+                ...poll,
+                onCreated: async (changeSetName) => {
+                  result({ retainChangeSet: changeSetName });
+                  record("retaining", { changeSetName });
+                  await save(rootPath, state);
+                },
+              },
+            );
+            record("pending");
+            await save(rootPath, state);
+          }
+          if (entry.renames.size === 0) {
+            dropTarget(state, entry.target.name);
+            result({ outcome: "unchanged" });
+          } else {
+            await refactorTarget(entry, poll, async (refactorId) => {
+              result({ refactorId });
+              setTarget(state, {
+                name: entry.target.name,
+                account: entry.target.account,
+                region: entry.target.region,
+                stackName: entry.stackName,
+                status: "refactoring",
+                refactorId,
+                renames: [...entry.renames],
+              });
+              await save(rootPath, state);
+            });
+            result({ outcome: "refactored" });
+            markRefactored(state, entry.target.name);
+          }
         } catch (error) {
           if (error instanceof ActionsMismatchError) {
             result({ outcome: "mismatch", message: error.message });
@@ -513,6 +562,20 @@ async function discard(rootPath: string): Promise<string[]> {
 }
 
 function repairSteps(entry: StackRefactorResult): string[] {
+  if (entry.retainChangeSet && !entry.refactorId) {
+    const [changeSet, stack] = retainCheckCommands(
+      entry.stackName,
+      entry.region,
+      entry.retainChangeSet,
+    );
+    return [
+      `Stack ${entry.stackName} (target '${entry.target}') needs a look before anything else is ` +
+        `done to it: ${entry.message ?? "the outcome of the update that retains its unsupported resources isn't known"}. ` +
+        "That update only sets retain policies; it doesn't change or replace any resource.",
+      `Check it with \`${changeSet}\` and \`${stack}\`. Once the stack is UPDATE_COMPLETE (or ` +
+        `UPDATE_ROLLBACK_COMPLETE), run \`agentcore migrate --target ${entry.target}\` to carry on.`,
+    ];
+  }
   const id = entry.refactorId ?? "<refactor ID>";
   const describe = `aws cloudformation describe-stack-refactor --stack-refactor-id ${id} --region ${entry.region}`;
   const list = `aws cloudformation list-stack-resources --stack-name ${entry.stackName} --region ${entry.region}`;
