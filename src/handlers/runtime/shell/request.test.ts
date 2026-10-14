@@ -101,13 +101,15 @@ describe("resolveRuntimeShellBearerToken", () => {
     }
   });
 
-  test("accepts an inline token", async () => {
-    await expect(
-      resolveRuntimeShellBearerToken(
-        "inline-token",
-        new PassThrough() as unknown as NodeJS.ReadStream,
-      ),
-    ).resolves.toBe("inline-token");
+  test("rejects inline tokens without exposing them", async () => {
+    const secret = "inline-token-must-not-leak";
+    const error = await resolveRuntimeShellBearerToken(
+      secret,
+      new PassThrough() as unknown as NodeJS.ReadStream,
+    ).catch((error) => error);
+
+    expect(error.message).toContain("--bearer-token must come from stdin");
+    expect(error.message).not.toContain(secret);
   });
 
   test("rejects stdin because the PTY owns it", async () => {

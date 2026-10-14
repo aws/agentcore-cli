@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { CoreClient } from "../../../core";
@@ -22,6 +22,7 @@ import {
 const ID = "MyPDXHarness-rhkXkAE1IS";
 const ARN = `arn:aws:bedrock-agentcore:us-west-2:501930284170:harness/${ID}`;
 const SESSION_ID = "session-012345678901234567890123456789";
+const TOKEN_SOURCE = `file://${join(import.meta.dir, "../../../testing/data/shell-token.txt")}`;
 
 afterEach(cleanupScreens);
 
@@ -119,12 +120,26 @@ describe("harness shell", () => {
     await expect(value.run("--id", ID, "--qualifier", "DEFAULT")).rejects.toThrow(
       "CUSTOM_JWT Harness requires --bearer-token",
     );
-    await value.run("--id", ID, "--qualifier", "DEFAULT", "--bearer-token", "token");
+    await value.run("--id", ID, "--qualifier", "DEFAULT", "--bearer-token", TOKEN_SOURCE);
     expect(value.request()?.bearerToken).toBe("token");
   });
 
   test("requires --id in headless mode", async () => {
     await expect(subject().run("--json")).rejects.toThrow("--id");
+  });
+
+  test("rejects inline bearer-token flags before looking up the Harness", async () => {
+    const value = subject();
+    const lookup = spyOn(value.core.harness, "getHarness");
+    try {
+      await expect(value.run("--id", ID, "--bearer-token", "inline-token")).rejects.toThrow(
+        "inline secret values are not accepted",
+      );
+      expect(lookup).not.toHaveBeenCalled();
+      expect(value.request()).toBeUndefined();
+    } finally {
+      lookup.mockRestore();
+    }
   });
 });
 
@@ -210,7 +225,7 @@ describe("harness shell navigation", () => {
         "--session-id",
         SESSION_ID,
         "--bearer-token",
-        "token",
+        TOKEN_SOURCE,
         "--region",
         "us-west-2",
       ])

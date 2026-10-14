@@ -48,8 +48,8 @@ export async function resolveGatewayInvokeSources(
 
   const resolver = new SourceResolver({ stdin, signal });
   try {
+    const bearerToken = await resolver.resolveSecret("bearer-token", sources.bearerToken);
     const payload = await resolver.resolveBytes("payload", sources.payload);
-    const bearerToken = await resolver.resolveText("bearer-token", sources.bearerToken);
     return {
       ...(payload !== undefined && { payload }),
       ...(bearerToken !== undefined && { bearerToken }),
@@ -71,7 +71,7 @@ export async function resolveGatewayInvokeTuiBearerToken(
       "stdin bearer tokens are not available when launching the interactive console",
     );
   }
-  return resolver.resolveText("bearer-token", source);
+  return resolver.resolveSecret("bearer-token", source);
 }
 
 export function parseGatewayInvokeHeaders(values: string[] = []): [string, string][] {

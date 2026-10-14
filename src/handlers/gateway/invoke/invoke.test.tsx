@@ -28,6 +28,7 @@ import { GatewayInvokeLaunchContextKey } from "./launchContext";
 const REGION = "us-west-2";
 const GATEWAY_ID = "gateway-123";
 const GATEWAY_URL = "https://gateway-123.gateway.example.test/mcp";
+const TOKEN_SOURCE = `file://${join(import.meta.dir, "../../../testing/data/bearer-token.txt")}`;
 
 function body(...chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return (async function* () {
@@ -206,7 +207,7 @@ describe("gateway invoke", () => {
       "--header",
       "X-Tenant: retail",
       "--bearer-token",
-      "secret-token",
+      TOKEN_SOURCE,
       "--session-id",
       "runtime-session",
       "--mcp-session-id",
@@ -504,7 +505,7 @@ describe("gateway invoke", () => {
         path: "runtime/invocations?trace=true",
         payload: undefined,
         header: ["X-Tenant: retail"],
-        "bearer-token": "secret-token",
+        "bearer-token": TOKEN_SOURCE,
         "session-id": "runtime-session",
         "mcp-session-id": "mcp-session",
         "mcp-protocol-version": "2025-06-18",
@@ -513,6 +514,27 @@ describe("gateway invoke", () => {
     );
 
     expect(renderCount).toBe(1);
+    expect(core.gateway.calls).toEqual([]);
+  });
+
+  test.each<[string, string[]]>([
+    ["interactive launch", []],
+    ["headless invocation", ["--payload", "{}"]],
+  ])("rejects inline bearer-token flags for %s before Core calls", async (_name, flags) => {
+    const core = configuredCore();
+    const output = captureIO();
+
+    await expect(
+      runCommand(core, output.io, [
+        "gateway",
+        "invoke",
+        "--id",
+        GATEWAY_ID,
+        "--bearer-token",
+        "inline-token",
+        ...flags,
+      ]),
+    ).rejects.toThrow("inline secret values are not accepted");
     expect(core.gateway.calls).toEqual([]);
   });
 

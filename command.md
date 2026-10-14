@@ -312,7 +312,7 @@ invoke a Runtime, harness, or Gateway
 - `--session-id <session-id>`: the Runtime session ID
 - `--user-id <user-id>`: the user ID to invoke as
 - `--header <header...>`: an ordered application header
-- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token (file://path or - for stdin; inline values are rejected)
 - `--mcp-session-id <mcp-session-id>`: the MCP session ID
 - `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
 - `--output-file <output-file>`: the response output file
@@ -1106,7 +1106,7 @@ open an interactive shell in a harness
 - `--id <id>`: the ID of the harness (required)
 - `--qualifier <qualifier>`: the harness endpoint qualifier
 - `--session-id <session-id>`: the Runtime session ID to use
-- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token (file://path; inline values are rejected)
 
 #### `agentcore harness logs`
 
@@ -1334,7 +1334,7 @@ invoke a Runtime
 - `--session-id <session-id>`: the Runtime session ID
 - `--user-id <user-id>`: the Runtime user ID (default "default")
 - `--header <header...>`: an ordered application header
-- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token (file://path or - for stdin; inline values are rejected)
 - `--mcp-session-id <mcp-session-id>`: the MCP session ID
 - `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
 - `--mcp-method <mcp-method>`: the MCP method
@@ -1358,7 +1358,7 @@ open an interactive shell in a Runtime
 - `--id <id>`: the ID of the Runtime (required)
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--session-id <session-id>`: the Runtime session ID to use
-- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token (file://path; inline values are rejected)
 
 #### `agentcore runtime exec`
 
@@ -1559,7 +1559,7 @@ invoke an AgentCore Gateway
 - `--content-type <content-type>`: the payload content type
 - `--accept <accept>`: the accepted response content type
 - `--header <header...>`: an ordered application header
-- `--bearer-token <bearer-token>`: the Gateway bearer token
+- `--bearer-token <bearer-token>`: the Gateway bearer token (file://path or - for stdin; inline values are rejected)
 - `--session-id <session-id>`: the Runtime target session ID
 - `--mcp-session-id <mcp-session-id>`: the MCP session ID
 - `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
@@ -2556,7 +2556,7 @@ replay a dataset against a Runtime, then batch-evaluate the resulting sessions
 - `--endpoint <endpoint>`: Runtime endpoint qualifier (default DEFAULT)
 - `--payload-template <payload-template>`: request body per example (JSON object); {input} is replaced with the input (required)
 - `--header <header...>`: an ordered application header (repeatable)
-- `--bearer-token <bearer-token>`: CUSTOM\_JWT bearer token (for JWT-auth Runtimes)
+- `--bearer-token <bearer-token>`: CUSTOM\_JWT bearer token (file://path or - for stdin; inline values are rejected)
 - `--user-id <user-id>`: Runtime user ID
 - `--dataset <dataset>`: dataset source: local JSONL path or a dataset ID (required)
 - `--dataset-version <dataset-version>`: dataset version (with a dataset ID)
@@ -2715,7 +2715,7 @@ replay a dataset against a Runtime, then evaluate the sessions client-side
 - `--endpoint <endpoint>`: Runtime endpoint qualifier (default DEFAULT)
 - `--payload-template <payload-template>`: request body per example (JSON object); {input} is replaced with the input (required)
 - `--header <header...>`: an ordered application header (repeatable)
-- `--bearer-token <bearer-token>`: CUSTOM\_JWT bearer token (for JWT-auth Runtimes)
+- `--bearer-token <bearer-token>`: CUSTOM\_JWT bearer token (file://path or - for stdin; inline values are rejected)
 - `--user-id <user-id>`: Runtime user ID
 - `--dataset <dataset>`: local JSONL path or a dataset ID (required)
 - `--dataset-version <dataset-version>`: dataset version (with a dataset ID)

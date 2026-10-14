@@ -74,6 +74,22 @@ Run `agentcore create` with no flags for a guided setup; for those templates the
 same provider, model id, and API-key-file questions. Either way, run it outside any existing
 project.
 
+## Credential Input
+
+Secret-bearing flags such as `--api-key`, `--client-secret`, and `--bearer-token` accept
+`file://<path>` or `-` for stdin, not literal secret values. Existing Secrets Manager reference
+flags remain available where supported. Interactive TUI workflows are unchanged.
+
+```bash
+agentcore add credentials api-key --name model-key --api-key file://./secrets/api-key.txt
+agentcore add credentials api-key --name model-key --api-key - < ./secrets/api-key.txt
+agentcore runtime invoke --id <runtime-id> --payload '{}' --bearer-token file://./secrets/token.txt
+```
+
+Use a file for tokens when launching an interactive console or shell: stdin belongs to the TUI.
+Only one flag can read stdin per command. Avoid putting a literal secret in an `echo` or `printf`
+command to pipe it in, since that also leaves it in shell history.
+
 ## Projects
 
 `create` makes a directory holding `agentcore/agentcore.json`, the spec that declares the project's

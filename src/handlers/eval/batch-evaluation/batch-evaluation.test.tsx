@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { join } from "node:path";
 import type {
   GetBatchEvaluationResponse,
   ListBatchEvaluationsResponse,
@@ -7,7 +8,9 @@ import { createRootHandler } from "../../index";
 import { createSilentLogger, expectError, TestCoreClient, testIO } from "../../../testing";
 import { TestGlobalConfigAccessor } from "../../../testing/";
 import type { BatchEvaluationResultEntry } from "../types";
-import { InputValidationError } from "../../../errors";
+import { InputValidationError, SourceResolutionError } from "../../../errors";
+
+const TOKEN_SOURCE = `file://${join(import.meta.dir, "../../../testing/data/bearer-token.txt")}`;
 
 // Command-flow tests for `eval batch-evaluation`, driven through the real root
 // handler against a TestCoreClient (no network). These cover the edges that the
@@ -266,19 +269,57 @@ describe("eval batch-evaluation simulate", () => {
     ).rejects.toThrow(/no examples could be invoked \(3 failed\).*first error: e1 — HTTP 500/);
   });
 
-  test("passes --ingestion-wait-ms through to invokeDataset and renders failures", async () => {
-    const { core, stdout } = await run([...BASE, "--ingestion-wait-ms", "0"], (c) =>
-      c.eval.setInvokeDatasetResponse({
-        sessions: [{ exampleId: "ok1", sessionId: "s1" }],
-        invoked: 1,
-        failed: 1,
-        failures: [{ exampleId: "bad", error: "HTTP 500" }],
-      }),
-    );
-    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
-    expect(invoke).toBeDefined();
-    expect((invoke!.args[0] as { waitIngestionMs?: number }).waitIngestionMs).toBe(0);
-    expect(JSON.parse(stdout).failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
+  test("rejects inline bearer tokens before Core calls without exposing them", async () => {
+    let core: TestCoreClient | undefined;
+    const secret = "inline-token-must-not-leak";
+    const error = await run([...BASE, "--bearer-token", secret], (c) => {
+      core = c;
+    }).catch((error) => error);
+
+    expect(error).toBeInstanceOf(SourceResolutionError);
+    expect(error.message).not.toContain(secret);
+    expect(core?.eval.calls).toEqual([]);
+  });
+
+  test.each(["file", "stdin"])(
+    "passes invocation options and a bearer token from %s to invokeDataset",
+    async (source) => {
+      const { core, stdout } = await run(
+        [
+          ...BASE,
+          "--ingestion-wait-ms",
+          "0",
+          "--bearer-token",
+          source === "file" ? TOKEN_SOURCE : "-",
+        ],
+        (c) =>
+          c.eval.setInvokeDatasetResponse({
+            sessions: [{ exampleId: "ok1", sessionId: "s1" }],
+            invoked: 1,
+            failed: 1,
+            failures: [{ exampleId: "bad", error: "HTTP 500" }],
+          }),
+        { stdin: "secret-token\r\n" },
+      );
+      const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+      expect(invoke).toBeDefined();
+      expect(invoke!.args[0]).toMatchObject({ waitIngestionMs: 0, bearerToken: "secret-token" });
+      expect(JSON.parse(stdout).failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
+    },
+  );
+
+  test("rejects competing bearer-token and output-config stdin consumers before Core calls", async () => {
+    let core: TestCoreClient | undefined;
+    await expect(
+      run(
+        [...BASE, "--bearer-token", "-", "--output-config", "-"],
+        (c) => {
+          core = c;
+        },
+        { stdin: "secret-token" },
+      ),
+    ).rejects.toThrow(/only one option may read from stdin.*'--output-config'.*'--bearer-token'/);
+    expect(core?.eval.calls).toEqual([]);
   });
 });
 

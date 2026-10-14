@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { GetGatewayResponse } from "@aws-sdk/client-bedrock-agentcore-control";
-import { SourceResolutionError } from "../../../errors";
+import { InputValidationError, SourceResolutionError } from "../../../errors";
 import { SourceResolver } from "../../../io";
 import {
   normalizeGatewayInvokeRequest,
@@ -11,6 +12,7 @@ import {
 } from "./request";
 
 const GATEWAY_ID = "gateway-123";
+const TOKEN_SOURCE = `file://${join(import.meta.dir, "../../../testing/data/bearer-token.txt")}`;
 
 function stdin(bytes?: Uint8Array): NodeJS.ReadStream {
   const stream = new PassThrough();
@@ -39,12 +41,44 @@ describe("Gateway invoke sources", () => {
     const payload = Uint8Array.from([0, 255, 10]);
 
     const result = await resolveGatewayInvokeSources(
-      { payload: "-", bearerToken: "secret-token" },
+      { payload: "-", bearerToken: TOKEN_SOURCE },
       stdin(payload),
     );
 
     expect(result.payload).toEqual(payload);
     expect(result.bearerToken).toBe("secret-token");
+  });
+
+  test("rejects inline tokens before reading payload stdin without exposing them", async () => {
+    const input = stdin();
+    const secret = "inline-token-must-not-leak";
+    try {
+      const error = await resolveGatewayInvokeSources(
+        {
+          payload: "-",
+          bearerToken: secret,
+        },
+        input,
+      ).catch((error) => error);
+
+      expect(error).toBeInstanceOf(InputValidationError);
+      expect(error.message).toContain("--bearer-token must come from stdin");
+      expect(error.message).not.toContain(secret);
+      expect(error.cause).toBeInstanceOf(SourceResolutionError);
+      expect(input.listenerCount("readable")).toBe(0);
+    } finally {
+      input.destroy();
+    }
+  });
+
+  test("reads a bearer token from stdin and strips a trailing newline", async () => {
+    const result = await resolveGatewayInvokeSources(
+      { payload: "{}", bearerToken: "-" },
+      stdin(Buffer.from("secret-token\n")),
+    );
+
+    expect(result.bearerToken).toBe("secret-token");
+    expect(result.payload).toEqual(new TextEncoder().encode("{}"));
   });
 
   test("preserves an explicitly empty inline payload", async () => {

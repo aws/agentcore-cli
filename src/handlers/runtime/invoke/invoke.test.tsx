@@ -25,6 +25,7 @@ const REGION = "us-west-2";
 const RUNTIME_ID = "runtime-123";
 const ACCOUNT_ID = "123456789012";
 const RUNTIME_ARN = `arn:aws:bedrock-agentcore:${REGION}:${ACCOUNT_ID}:runtime/${RUNTIME_ID}`;
+const TOKEN_SOURCE = `file://${join(import.meta.dir, "../../../testing/data/bearer-token.txt")}`;
 
 function body(...chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return (async function* () {
@@ -213,7 +214,7 @@ describe("runtime invoke", () => {
         "--mcp-method",
         "tools/call",
         "--bearer-token",
-        "secret-token",
+        TOKEN_SOURCE,
       ],
       {
         getResponse: {
@@ -235,6 +236,27 @@ describe("runtime invoke", () => {
       mcpMethod: "tools/call",
       bearerToken: "secret-token",
     });
+  });
+
+  test.each<[string, string[]]>([
+    ["interactive launch", []],
+    ["headless invocation", ["--payload", "{}"]],
+  ])("rejects inline bearer-token flags for %s before Core calls", async (_name, flags) => {
+    const core = new TestCoreClient();
+    const output = captureIO();
+
+    await expect(
+      runCommand(core, output.io, [
+        "runtime",
+        "invoke",
+        "--id",
+        RUNTIME_ID,
+        "--bearer-token",
+        "inline-token",
+        ...flags,
+      ]),
+    ).rejects.toThrow("inline secret values are not accepted");
+    expect(core.runtime.calls).toEqual([]);
   });
 
   test.each([
@@ -635,7 +657,7 @@ describe("runtime invoke", () => {
         "--header",
         "X-Tenant: retail",
         "--bearer-token",
-        "secret-token",
+        TOKEN_SOURCE,
       ]);
 
       expect(render).toHaveBeenCalledTimes(1);

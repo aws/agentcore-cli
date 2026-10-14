@@ -47,7 +47,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       }),
       flag(
         "bearer-token",
-        "CUSTOM_JWT bearer token (for JWT-auth Runtimes)",
+        "CUSTOM_JWT bearer token (file://path or - for stdin; inline values are rejected)",
         z.string().optional(),
         { group: RUNTIME_INVOCATION, sensitive: true },
       ),
@@ -84,6 +84,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
       // Ctrl-C aborts the run (invokes, the ingestion wait, the dataset download).
       // TODO(#1986): swap for the shared SIGINT/abort helper once it merges.
       const resolver = new SourceResolver({ stdin: io.stdin });
+      const bearerToken = await resolver.resolveSecret("bearer-token", flags["bearer-token"]);
       const outputConfig = await BatchOutputConfig.resolve(flags["output-config"], resolver);
 
       const controller = new AbortController();
@@ -98,7 +99,7 @@ export const createSimulateBatchEvaluationHandler = (core: Core, io: AppIO) =>
             qualifier: flags["endpoint"],
             payloadTemplate: flags["payload-template"],
             headers: parseRuntimeInvokeHeaders(flags["header"]),
-            bearerToken: flags["bearer-token"],
+            bearerToken,
             userId: flags["user-id"],
             dataset: flags["dataset"],
             datasetVersion: flags["dataset-version"],

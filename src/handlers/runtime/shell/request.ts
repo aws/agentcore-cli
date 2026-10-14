@@ -15,13 +15,7 @@ export async function resolveRuntimeShellBearerToken(
     );
   }
   try {
-    const value = await new SourceResolver({ stdin }).resolveText("bearer-token", source);
-    if (value === undefined) return undefined;
-    const normalized = value.replace(/\r?\n$/, "");
-    if (normalized.includes("\n")) {
-      throw new InputValidationError("--bearer-token must be a single-line value");
-    }
-    return normalized;
+    return await new SourceResolver({ stdin }).resolveSecret("bearer-token", source);
   } catch (error) {
     if (error instanceof SourceResolutionError) {
       throw new InputValidationError(error.message, { cause: error });

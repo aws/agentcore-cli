@@ -17,9 +17,12 @@ export const createHarnessShellHandler = (core: Core, io: AppIO) =>
       flag("id", "the ID of the harness", z.string().min(1).max(48)),
       flag("qualifier", "the harness endpoint qualifier", z.string().min(1).optional()),
       flag("session-id", "the Runtime session ID to use", z.string().min(33).max(256).optional()),
-      flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
-        sensitive: true,
-      }),
+      flag(
+        "bearer-token",
+        "the CUSTOM_JWT bearer token (file://path; inline values are rejected)",
+        z.string().optional(),
+        { sensitive: true },
+      ),
     ],
     handle: async (ctx, flags) => {
       if (ctx.require(JsonKey)) {

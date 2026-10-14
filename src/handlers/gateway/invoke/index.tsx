@@ -34,9 +34,12 @@ export const invokeGatewayFlags = [
   flag("header", "an ordered application header", z.array(z.string()).optional(), {
     sensitive: true,
   }),
-  flag("bearer-token", "the Gateway bearer token", z.string().optional(), {
-    sensitive: true,
-  }),
+  flag(
+    "bearer-token",
+    "the Gateway bearer token (file://path or - for stdin; inline values are rejected)",
+    z.string().optional(),
+    { sensitive: true },
+  ),
   flag("session-id", "the Runtime target session ID", z.string().optional()),
   flag("mcp-session-id", "the MCP session ID", z.string().optional()),
   flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
