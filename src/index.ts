@@ -2,6 +2,7 @@ import { homedir } from "os";
 import { join } from "path";
 
 import { CoreClient } from "./core";
+import { detectProjectFormat, enclosingProjectRoot } from "./core/project/fsUtils";
 import { createRuntimeShellOpener } from "./core/runtimeShell";
 import {
   createApplicationSignalsClient,
@@ -75,6 +76,12 @@ process.exit(
     const globalConfig = await globalConfigAccessor.get();
     try {
       rootLogger.info(`running CLI`);
+      const projectRoot = enclosingProjectRoot(process.cwd());
+      if (projectRoot) {
+        commandRunMetricEvent.setAttributes({
+          project_format: await detectProjectFormat(projectRoot),
+        });
+      }
 
       // factories (rather than instances) lets CoreClient build one client per
       // region on demand.

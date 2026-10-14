@@ -63,6 +63,7 @@ export const commandRunSchema = safeSchema({
   error_name: errorNameSchema.optional(),
   error_source: z.enum(Object.values(ERROR_SOURCE)).optional(),
   is_tui: z.boolean().default(false),
+  project_format: z.enum(["v0", "v1", "unknown"]).optional(),
   project_runtime_count: z.number().int().nonnegative().optional(),
   project_memory_count: z.number().int().nonnegative().optional(),
   project_knowledge_base_count: z.number().int().nonnegative().optional(),
