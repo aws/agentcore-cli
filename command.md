@@ -531,8 +531,7 @@ add a Runtime to the current project
 **Options**
 
 - `--name <name>`: the name of the Runtime (required)
-- `--type <type>`: create sets up app/&lt;name&gt;/ with docs for the code you write (the default); import translates a Bedrock Agent version into runtime code
-- `--language <language>`: language you will write the Runtime in: python or typescript (required with --type create)
+- `--language <language>`: language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)
 - `--protocol <protocol>`: protocol the Runtime serves: HTTP (default), MCP, A2A, or AGUI
 - `--description <description>`: an optional description of the Runtime
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
@@ -546,9 +545,9 @@ add a Runtime to the current project
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 - `--request-header-allowlist <request-header-allowlist...>`: request headers to pass through to the Runtime
-- `--agent-id <agent-id>`: Bedrock Agent ID to import (requires --type import)
-- `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --type import)
-- `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --type import)
+- `--agent-id <agent-id>`: Bedrock Agent ID to import; translates that agent version into runtime code instead of writing docs
+- `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --agent-id)
+- `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --agent-id)
 
 #### `agentcore add runtime-endpoint`
 

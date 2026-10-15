@@ -163,7 +163,7 @@ function assertCdkLibraryMatches(
 
  * Shown when a runtime template hardwired to an unreachable model provider
  * targets a China (aws-cn) region and takes no --model-provider override
- * (langchain, vercel, `--type import`). Amazon Bedrock, Anthropic, OpenAI, and
+ * (langchain, vercel, a Bedrock Agent import). Amazon Bedrock, Anthropic, OpenAI, and
  * Gemini cannot be called from China regions; LiteLLM can route to a reachable
  * provider and OpenAICompatible points the OpenAI client at a reachable endpoint.
  */

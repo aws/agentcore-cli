@@ -1700,7 +1700,7 @@ describe("chinaModelProviderRestriction", () => {
       MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
     );
     expect(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE).toContain("takes no --model-provider override");
-    // A scaffold without template metadata (e.g. --type import) gets the same generic text.
+    // A scaffold without template metadata (e.g. a Bedrock Agent import) gets the same generic text.
     expect(
       chinaModelProviderRestriction({ ...AGENT_PYTHON_STRANDS, templateProfile: undefined }),
     ).toBe(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);

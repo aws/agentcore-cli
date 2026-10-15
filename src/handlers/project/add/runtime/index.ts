@@ -50,7 +50,7 @@ export type RuntimeInput =
  * toAddRuntimeInput is the one place a runtime is validated and wrapped for
  * {@link ProjectManager.addResource}. Both the flag handler and the wizard call
  * it, so neither can accept a runtime the other would reject. An input with
- * scaffoldRuntimeInput scaffolds code (`--type import`); one with a language
+ * scaffoldRuntimeInput scaffolds code (a Bedrock Agent import); one with a language
  * only gets docs.
  */
 export function toAddRuntimeInput(input: RuntimeInput): AddResourceInput {
@@ -92,15 +92,8 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
     flags: [
       flag("name", "the name of the Runtime", AgentNameSchema, { group: CONFIGURATION }),
       flag(
-        "type",
-        "create sets up app/<name>/ with docs for the code you write (the default); " +
-          "import translates a Bedrock Agent version into runtime code",
-        z.enum(["create", "import"]).optional(),
-        { group: CONFIGURATION },
-      ),
-      flag(
         "language",
-        "language you will write the Runtime in: python or typescript (required with --type create)",
+        "language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)",
         z.enum(["python", "typescript"]).optional(),
         { group: CONFIGURATION },
       ),
@@ -180,20 +173,21 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "agent-id",
-        "Bedrock Agent ID to import (requires --type import)",
+        "Bedrock Agent ID to import; translates that agent version into runtime code " +
+          "instead of writing docs",
         z.string().optional(),
         { group: BEDROCK_AGENT_IMPORT },
       ),
       flag(
         "agent-alias-id",
         "Bedrock Agent Alias ID selecting the version to import; must point at a prepared " +
-          "version, not DRAFT (requires --type import)",
+          "version, not DRAFT (requires --agent-id)",
         z.string().optional(),
         { group: BEDROCK_AGENT_IMPORT },
       ),
       flag(
         "framework",
-        "agent framework for an imported Bedrock Agent: strands or langgraph (requires --type import)",
+        "agent framework for an imported Bedrock Agent: strands or langgraph (requires --agent-id)",
         z.enum(["strands", "langgraph"]).optional(),
         { group: BEDROCK_AGENT_IMPORT },
       ),
@@ -203,13 +197,16 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       const deploymentTargets = await config.projectManager.listTargets(project);
       requireDeployedNameFits("Runtime", project.name, flags.name, "_", 48, deploymentTargets);
 
-      const isImport = flags["type"] === "import";
+      // Passing --agent-id is what selects a Bedrock Agent import.
+      const isImport = flags["agent-id"] !== undefined;
 
-      if (flags.framework !== undefined && !isImport) {
-        throw new InputValidationError("--framework requires --type import");
-      }
-      if (!isImport && (flags["agent-id"] !== undefined || flags["agent-alias-id"] !== undefined)) {
-        throw new InputValidationError("--agent-id and --agent-alias-id require --type import");
+      if (!isImport) {
+        const offending = (["agent-alias-id", "framework"] as const).find(
+          (flagName) => flags[flagName] !== undefined,
+        );
+        if (offending !== undefined) {
+          throw new InputValidationError(`--${offending} requires --agent-id`);
+        }
       }
       if (isImport) {
         const offending = (["language", "protocol"] as const).find(
@@ -217,7 +214,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         );
         if (offending !== undefined) {
           throw new InputValidationError(
-            `--type import translates a Bedrock Agent into Python HTTP runtime code; ` +
+            `--agent-id imports a Bedrock Agent as Python HTTP runtime code; ` +
               `--${offending} cannot be combined with it`,
           );
         }
@@ -241,7 +238,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           isChinaRegion(ctx.require(RegionKey))
         ) {
           throw new RegionUnsupportedFeatureError(
-            "--type import translates a Bedrock Agent, and Amazon Bedrock is not available in " +
+            "--agent-id imports a Bedrock Agent, and Amazon Bedrock is not available in " +
               "China regions (cn-north-1, cn-northwest-1).",
           );
         }
