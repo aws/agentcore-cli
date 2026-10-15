@@ -1,3 +1,4 @@
+import { gatewayIdSchema } from "../../invoke/request";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -9,7 +10,7 @@ export const createListGatewayRulesHandler = (core: Core) =>
     name: "list",
     description: "list Rules for an AgentCore Gateway",
     flags: [
-      flag("gateway-id", "the ID of the Gateway", z.string().min(1)),
+      flag("gateway-id", "the ID of the Gateway", gatewayIdSchema.min(1)),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),
     ],

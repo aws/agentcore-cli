@@ -351,6 +351,18 @@ describe("runtime read-only commands", () => {
     },
   );
 
+  test.each([["runtime get"], ["runtime version list"], ["runtime endpoint list"]] as const)(
+    "rejects a Runtime ARN passed as --id for `%s`",
+    async (label) => {
+      const arn = `arn:aws:bedrock-agentcore:${REGION}:123456789012:runtime/${FIXTURE_RUNTIME_ID}`;
+      await expectError(
+        run([...label.split(" "), "--id", arn, "--json"]),
+        /must be a Runtime ID, not an ARN/,
+        InputValidationError,
+      );
+    },
+  );
+
   test("propagates ResourceNotFoundException from Runtime get", async () => {
     await expect(run(["runtime", "get", "--id", MISSING_RUNTIME_ID])).rejects.toMatchObject({
       name: "ResourceNotFoundException",

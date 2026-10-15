@@ -1,3 +1,4 @@
+import { runtimeIdSchema } from "../../invoke/request";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -9,7 +10,7 @@ export const createListRuntimeEndpointsHandler = (core: Core) =>
     name: "list",
     description: "list a Runtime's endpoints",
     flags: [
-      flag("id", "the ID of the Runtime", z.string().min(1)),
+      flag("id", "the ID of the Runtime", runtimeIdSchema.min(1)),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
       flag("max-results", "maximum number of items to return", z.number().optional()),
     ],

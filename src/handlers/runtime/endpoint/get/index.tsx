@@ -1,3 +1,4 @@
+import { runtimeIdSchema } from "../../invoke/request";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -9,7 +10,7 @@ export const createGetRuntimeEndpointHandler = (core: Core) =>
     name: "get",
     description: "get a Runtime endpoint",
     flags: [
-      flag("id", "the ID of the Runtime", z.string().min(1)),
+      flag("id", "the ID of the Runtime", runtimeIdSchema.min(1)),
       flag("qualifier", "the endpoint name (qualifier)", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {

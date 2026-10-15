@@ -134,6 +134,23 @@ describe("gateway validation", () => {
     },
   );
 
+  test.each([
+    ["Gateway get", ["gateway", "get", "--id"]],
+    ["Target list", ["gateway", "target", "list", "--gateway-id"]],
+    ["Rule list", ["gateway", "rule", "list", "--gateway-id"]],
+    ["Connector list", ["gateway", "connector", "list", "--gateway-id"]],
+  ] as const)("rejects a Gateway ARN for %s before calling Core", async (_name, args) => {
+    const core = new TestCoreClient();
+    const arn = `arn:aws:bedrock-agentcore:${REGION}:123456789012:gateway/${GATEWAY_ID}`;
+
+    await expectError(
+      run([...args, arn], core),
+      /must be a Gateway ID, not an ARN/,
+      InputValidationError,
+    );
+    expect(core.gateway.calls).toEqual([]);
+  });
+
   test("rejects a non-numeric max-results value before calling Core", async () => {
     const core = new TestCoreClient();
 

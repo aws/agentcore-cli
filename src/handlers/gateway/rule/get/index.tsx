@@ -1,3 +1,4 @@
+import { gatewayIdSchema } from "../../invoke/request";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -9,7 +10,7 @@ export const createGetGatewayRuleHandler = (core: Core) =>
     name: "get",
     description: "get a Gateway Rule",
     flags: [
-      flag("gateway-id", "the ID of the Gateway", z.string().min(1)),
+      flag("gateway-id", "the ID of the Gateway", gatewayIdSchema.min(1)),
       flag("rule-id", "the ID of the Gateway Rule", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {
