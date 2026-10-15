@@ -39,7 +39,7 @@ node "$CLI" create --name MyTerraformProject --template empty --iac terraform
 ```text
 agentcore/
   agentcore.json
-  terraform/default/
+  terraform/
     main.tf
     providers.tf
     variables.tf
@@ -66,27 +66,38 @@ node "$CLI" deploy --region "$AWS_REGION" --json
 node "$CLI" status --region "$AWS_REGION" --json
 ```
 
-Build packages the runtime and Lambda and prepares `agentcore/terraform/default/`. Deploy uses that same directory and writes the account, region, and target variables. The default deployment target is recorded in `agentcore/aws-targets.json`.
+Build packages the runtime and Lambda and prepares `agentcore/terraform/`. Every deployment target uses the same editable root HCL and shared artifact manifest. Deploy writes generated inputs, state, plans, and Terraform initialization data under `agentcore/terraform/.targets/<target>/`. The default deployment target is recorded in `agentcore/aws-targets.json`.
 
-Root HCL and the provider lock file can be version-controlled. Generated ZIPs, artifact manifests, deployment variables, plans, and local state are ignored. Preserve state until teardown completes: it can contain sensitive configuration values and is needed to manage resources. This CLI PoC supports default local state for one operator; remote backends, custom state paths, and CDK-to-Terraform migration are outside its scope.
+Root HCL and the provider lock file can be version-controlled. Generated ZIPs, artifact manifests, deployment variables, plans, and local state are ignored. Preserve state until teardown completes: it can contain sensitive configuration values and is needed to manage resources. This CLI PoC supports local state for one operator; remote backends, custom state paths, and CDK-to-Terraform migration are outside its scope.
 
-Named targets have separate `agentcore/terraform/<target>/` directories. On first use they inherit the default root's HCL; subsequent builds preserve their own edits. A directory containing managed state is bound to its account, region, and target, so changing those values requires a separate target or an explicit migration.
+Named targets share the root `.tf` files, so edits apply to whichever target is planned next. Each target has a separate `.targets/<target>/` directory for deployment inputs and state. State is bound to its account, region, and target; changing those values requires a separate target or an explicit migration. Terraform workspaces remain set to `default`; target isolation comes from the backend state path and `TF_DATA_DIR`.
 
 Deploy also follows the existing CLI setting for enabling CloudWatch Transaction Search. That setup is an account-level telemetry prerequisite, runs outside Terraform, and is not reverted when this example is destroyed. A setup warning must be resolved before treating online evaluation as verified.
 
 ## Change configuration with Terraform directly
 
-After building code artifacts, the generated root works without the CLI:
+After building code artifacts, the shared root works without the CLI. Select a target and configure its local backend explicitly:
 
 ```sh
-cd agentcore/terraform/default
-terraform init
-terraform plan -var="account_id=123456789012" -var="region=us-west-2"
+cd agentcore/terraform
+export TF_WORKSPACE=default
+export TF_DATA_DIR="$PWD/.targets/default/.terraform"
+mkdir -p .targets/default
+terraform init -reconfigure -backend-config="path=$PWD/.targets/default/terraform.tfstate"
+terraform plan -var="account_id=123456789012" -var="region=us-west-2" -var="target_name=default"
 ```
 
-Edit a supported value such as memory retention in `agentcore.json`, then run `terraform plan` again. The module receives the updated object immediately. After reviewing the plan, apply it with Terraform. If CLI deploy has already created deployment variables, the `-var` arguments are unnecessary. Changes to application source still require rebuilding the ZIPs and updating their artifact hashes.
+Replace the example account ID with your AWS account. For a named target, replace `default` in both paths and `target_name` with that target's name. Keep each target's account, region, state path, and initialization directory together. The root's backend defaults to `.targets/default/terraform.tfstate` for a direct default-target initialization.
 
-The checked-in [`terraform/`](terraform/) directory is also a standalone root example. It references the same pinned module from the L3 constructs repository. Supply `artifacts.json` with the ZIP paths and hashes described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/d3ce7229610ce0bb56d581c55f710e220b58faa4/terraform/modules/agentcore-application/README.md).
+After CLI deploy has generated the target's inputs, use its explicit variables file instead:
+
+```sh
+terraform plan -var-file=.targets/default/deployment.tfvars.json
+```
+
+Edit a supported value such as memory retention in `agentcore.json`, then run the same `terraform plan` command again. The module receives the updated object immediately. After reviewing the plan, apply it with the same target inputs. Changes to application source still require rebuilding the ZIPs and updating their artifact hashes.
+
+The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/d3ce7229610ce0bb56d581c55f710e220b58faa4/terraform/modules/agentcore-application/README.md).
 
 The root can pass inline HCL instead of JSON. This allows values from customer resources to enter the `spec` directly, for example `envVars = [{ name = "ORDERS_TABLE", value = aws_dynamodb_table.orders.name }]`. Outputs such as `module.application.runtimes["Agent"].role_name` allow a separate IAM policy to grant that runtime access to the table. Terraform follows these references to order changes.
 
@@ -121,4 +132,4 @@ node "$CLI" deploy --yes --region "$AWS_REGION" --json
 
 Keep the generated directory after a failed apply or teardown so the operation can be retried. Do not edit `managedBy` on an existing CDK deployment to attempt a migration.
 
-The earlier flat-resource Terraform PoC used different resource addresses and directories. This implementation refuses that state rather than silently deploying a second copy; migrating it requires an explicit state migration.
+Earlier Terraform PoCs used flat resources or separate editable roots under `terraform/<target>/`. This implementation refuses those layouts instead of moving state or customer edits automatically. Existing deployments require an explicit migration before using the shared root.

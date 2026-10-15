@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { ProjectStateError } from "../../../../errors";
 import { atomicWrite } from "../../../../io";
@@ -10,7 +10,7 @@ const ROOT_FILES: Record<string, string> = {
   "main.tf": `# This root is yours to edit. The CLI refreshes artifacts.json and target inputs.
 module "application" {
   source      = "git::https://github.com/jariy17/agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=d3ce7229610ce0bb56d581c55f710e220b58faa4"
-  spec        = jsondecode(file("\${path.module}/../../agentcore.json"))
+  spec        = jsondecode(file("\${path.module}/../agentcore.json"))
   target_name = var.target_name
   account_id  = var.account_id
   region      = var.region
@@ -19,6 +19,9 @@ module "application" {
 `,
   "providers.tf": `terraform {
   required_version = ">= 1.12.0, < 2.0.0"
+  backend "local" {
+    path = ".targets/default/terraform.tfstate"
+  }
   required_providers {
     awscc = {
       source  = "hashicorp/awscc"
@@ -127,53 +130,6 @@ export class TerraformProjectWriter {
     );
   }
 
-  /** A new named target starts from the customer's default root, without copying its state. */
-  async inheritRoot(directory: string, defaultDirectory: string): Promise<void> {
-    if (directory === defaultDirectory || existsSync(join(directory, "main.tf"))) return;
-    if (!existsSync(join(defaultDirectory, "main.tf"))) await this.scaffold(defaultDirectory);
-    await this.assertCompatible(defaultDirectory);
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    // Only customer-authored modules live here; downloaded modules stay in .terraform.
-    const localModules = join(defaultDirectory, "modules");
-    if (existsSync(localModules) && !existsSync(join(directory, "modules"))) {
-      await cp(localModules, join(directory, "modules"), {
-        recursive: true,
-        filter: async (path) => {
-          const parts = relative(defaultDirectory, path).split(/[\\/]/);
-          if (
-            parts.some(
-              (part) =>
-                part === ".terraform" ||
-                part === ".git" ||
-                /\.tfstate(?:\.|$)/.test(part) ||
-                part.endsWith(".tfplan"),
-            )
-          )
-            return false;
-          if ((await lstat(path)).isSymbolicLink()) {
-            throw new ProjectStateError(
-              "Cannot inherit a symlinked local Terraform module. Copy its source into the new target manually.",
-            );
-          }
-          return true;
-        },
-      });
-    }
-    for (const entry of await readdir(defaultDirectory, { withFileTypes: true })) {
-      if (
-        entry.isFile() &&
-        (entry.name.endsWith(".tf") ||
-          entry.name.endsWith(".tf.json") ||
-          entry.name === ".terraform.lock.hcl")
-      ) {
-        await this.writeIfMissing(
-          join(directory, entry.name),
-          await readFile(join(defaultDirectory, entry.name), "utf8"),
-        );
-      }
-    }
-  }
-
   async assertCompatible(directory: string): Promise<void> {
     if (existsSync(join(directory, "main.tf.json"))) {
       throw new ProjectStateError(
@@ -227,8 +183,10 @@ export class TerraformProjectWriter {
       { mode: 0o600 },
     );
     if (target) {
+      const targetDirectory = join(directory, ".targets", target.name);
+      await mkdir(targetDirectory, { recursive: true, mode: 0o700 });
       await atomicWrite(
-        join(directory, "deployment.auto.tfvars.json"),
+        join(targetDirectory, "deployment.tfvars.json"),
         `${JSON.stringify({ target_name: target.name, account_id: target.account, region: target.region }, null, 2)}\n`,
         { mode: 0o600 },
       );

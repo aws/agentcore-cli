@@ -1,5 +1,4 @@
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan
@@ -7,3 +6,4 @@
 artifacts.json
 assets/
 crash.log
+.targets/

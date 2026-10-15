@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TerraformProjectWriter } from "./project";
@@ -18,9 +18,6 @@ async function directory() {
   return path;
 }
 const emptyAssets = { runtimes: {}, gatewayTargets: {} };
-const modulePath = (root: string, name = "main.tf") =>
-  join(root, "modules", "agentcore-application", name);
-
 test("scaffolds immediately with a required account and no placeholder deployment inputs", async () => {
   const root = await directory();
   await new TerraformProjectWriter().scaffold(root, "eu-west-1");
@@ -35,24 +32,26 @@ test("scaffolds immediately with a required account and no placeholder deploymen
   );
 });
 
-test("a named target inherits customer Terraform source without copying state or target inputs", async () => {
-  const parent = await directory();
-  const original = join(parent, "default");
-  const named = join(parent, "production");
+test("all targets use the same customer source and keep independent explicit inputs", async () => {
+  const root = await directory();
   const writer = new TerraformProjectWriter();
-  await writer.scaffold(original);
-  await writeFile(join(original, "custom.tf"), "# custom resource\n");
-  await writeFile(join(original, "custom.tf.json"), '{"resource":{}}\n');
-  await writeFile(join(original, "terraform.tfstate"), '{"resources":[]}\n');
-  await writeFile(join(original, "deployment.auto.tfvars.json"), '{"account_id":"111122223333"}\n');
-  await writer.inheritRoot(named, original);
-  await writer.write(named, { ...target, name: "production" }, emptyAssets);
-  expect(await readFile(join(named, "custom.tf"), "utf8")).toBe("# custom resource\n");
-  expect(await readFile(join(named, "custom.tf.json"), "utf8")).toBe('{"resource":{}}\n');
-  expect(existsSync(join(named, "terraform.tfstate"))).toBe(false);
-  expect(
-    JSON.parse(await readFile(join(named, "deployment.auto.tfvars.json"), "utf8")).target_name,
-  ).toBe("production");
+  await writer.write(root, target, emptyAssets);
+  await writeFile(join(root, "main.tf"), "# shared application edit\n");
+  await writeFile(join(root, "custom.tf"), "# shared customer resource\n");
+  const production = { ...target, name: "production", region: "us-west-2" } as const;
+  await writer.write(root, production, emptyAssets);
+  expect(await readFile(join(root, "main.tf"), "utf8")).toBe("# shared application edit\n");
+  expect(await readFile(join(root, "custom.tf"), "utf8")).toBe("# shared customer resource\n");
+  for (const selected of [target, production]) {
+    const directory = join(root, ".targets", selected.name);
+    expect(JSON.parse(await readFile(join(directory, "deployment.tfvars.json"), "utf8"))).toEqual({
+      target_name: selected.name,
+      account_id: selected.account,
+      region: selected.region,
+    });
+    expect(existsSync(join(directory, "main.tf"))).toBe(false);
+  }
+  expect(existsSync(join(root, "deployment.auto.tfvars.json"))).toBe(false);
 });
 
 test("scaffolds native HCL with a direct project file reference and portable artifact manifest", async () => {
@@ -67,7 +66,7 @@ test("scaffolds native HCL with a direct project file reference and portable art
   );
   expect(existsSync(join(root, "modules"))).toBe(false);
   expect(existsSync(join(root, ".terraform"))).toBe(false);
-  expect(main).toContain('jsondecode(file("${path.module}/../../agentcore.json"))');
+  expect(main).toContain('jsondecode(file("${path.module}/../agentcore.json"))');
   expect(main).toContain('jsondecode(file("${path.module}/artifacts.json"))');
   expect(existsSync(join(root, "main.tf.json"))).toBe(false);
   expect(JSON.parse(await readFile(join(root, "artifacts.json"), "utf8")).runtimes.Agent.path).toBe(
@@ -80,8 +79,10 @@ test("scaffolds native HCL with a direct project file reference and portable art
     "module.application.project_resources",
   );
   expect((await readdir(root, { recursive: true })).sort()).toEqual([
+    ".targets",
+    ".targets/test",
+    ".targets/test/deployment.tfvars.json",
     "artifacts.json",
-    "deployment.auto.tfvars.json",
     "main.tf",
     "outputs.tf",
     "providers.tf",
@@ -117,8 +118,8 @@ test("preserves customer root configuration and Terraform state, plans, and prov
     "outputs.tf": "# custom outputs\n",
     "custom.tf": "# custom extra resources\n",
     ".terraform.lock.hcl": "# selected provider hashes\n",
-    "deployment.tfplan": "saved plan",
-    "terraform.tfstate": JSON.stringify({
+    ".targets/test/deployment.tfplan": "saved plan",
+    ".targets/test/terraform.tfstate": JSON.stringify({
       resources: [{ mode: "managed", type: "aws_s3_bucket", name: "customer" }],
     }),
   };
@@ -129,31 +130,19 @@ test("preserves customer root configuration and Terraform state, plans, and prov
   }
 });
 
-test("inherits local customer modules without copying Terraform working files", async () => {
-  const parent = await directory();
-  const original = join(parent, "default");
-  const named = join(parent, "production");
+test("local customer modules remain shared without copying source into targets", async () => {
+  const root = await directory();
   const writer = new TerraformProjectWriter();
-  await writer.scaffold(original);
-  await mkdir(modulePath(original, ".terraform"), { recursive: true });
-  await writeFile(modulePath(original), "# customer module\n");
-  await writeFile(modulePath(original, ".terraform/provider"), "binary");
-  await writeFile(modulePath(original, "terraform.tfstate"), "{}");
-  await writer.inheritRoot(named, original);
-  expect(await readdir(modulePath(named, ""))).toEqual(["main.tf"]);
-  expect(await readFile(modulePath(named), "utf8")).toBe("# customer module\n");
-});
-
-test("refuses to follow local module symlinks during target inheritance", async () => {
-  const parent = await directory();
-  const outside = await directory();
-  const original = join(parent, "default");
-  const writer = new TerraformProjectWriter();
-  await writer.scaffold(original);
-  await symlink(outside, join(original, "modules"));
-  await expect(writer.inheritRoot(join(parent, "production"), original)).rejects.toThrow(
-    "symlinked",
+  await writer.scaffold(root);
+  await mkdir(join(root, "modules", "custom"), { recursive: true });
+  await writeFile(join(root, "modules", "custom", "main.tf"), "# custom module\n");
+  await writer.write(root, target, emptyAssets);
+  await writer.write(root, { ...target, name: "production" }, emptyAssets);
+  expect(await readFile(join(root, "modules", "custom", "main.tf"), "utf8")).toBe(
+    "# custom module\n",
   );
+  expect(existsSync(join(root, ".targets", target.name, "modules"))).toBe(false);
+  expect(existsSync(join(root, ".targets", "production", "modules"))).toBe(false);
 });
 
 test.each(["main.tf.json", "terraform.tfstate", "terraform.tfstate.backup"])(

@@ -1,5 +1,4 @@
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import { ProjectStateError } from "../../../errors";
 import type {
   DeployResult,
@@ -17,7 +16,7 @@ import {
   type ReadWriteJson,
 } from "../../../io";
 import type { Logger } from "../../../logging";
-import { DEFAULT_TARGET_NAME, type AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { withOutputEvents } from "../events";
 import type { TransactionSearchEnabler } from "./cdk";
 import { readDeployedState, stackReferenceOf } from "./cdk/deployedState";
@@ -116,10 +115,6 @@ export class TerraformBackend implements ProjectBackend {
     try {
       await state.assertTarget(target);
       await this.writer.assertCompatible(state.directory);
-      await this.writer.inheritRoot(
-        state.directory,
-        new TerraformState(project, DEFAULT_TARGET_NAME).directory,
-      );
       const tearingDown =
         declaredResources(project).length === 0 && (await state.hasApplicationResources());
       if (tearingDown) {
@@ -141,20 +136,30 @@ export class TerraformBackend implements ProjectBackend {
       await state.bind(target);
       const env = this.environment(state, target, await credentials());
       yield { type: "step", message: "Initializing and validating Terraform" };
-      yield* this.execute(["init", "-input=false", "-no-color"], state, env);
+      yield* this.execute(
+        [
+          "init",
+          "-reconfigure",
+          `-backend-config=path=${state.statePath}`,
+          "-input=false",
+          "-no-color",
+        ],
+        state,
+        env,
+      );
       await state.assertLocalBackend();
       yield* this.execute(["validate", "-no-color"], state, env);
       yield { type: "step", message: "Planning Terraform deployment" };
       // Never reuse a plan from a prior operation, particularly after a failed apply.
-      const plan = "deployment.tfplan";
-      await rm(join(state.directory, plan), { force: true });
+      const plan = state.planPath;
+      await rm(plan, { force: true });
       yield* this.execute(
         [
           "plan",
           "-input=false",
           "-no-color",
           "-lock-timeout=60s",
-          "-var-file=deployment.auto.tfvars.json",
+          `-var-file=${state.variablesPath}`,
           `-out=${plan}`,
         ],
         state,
@@ -344,7 +349,7 @@ export class TerraformBackend implements ProjectBackend {
       ...env,
       TF_IN_AUTOMATION: "1",
       TF_INPUT: "0",
-      TF_DATA_DIR: join(state.directory, ".terraform"),
+      TF_DATA_DIR: state.dataDirectory,
       TF_WORKSPACE: "default",
     };
   }

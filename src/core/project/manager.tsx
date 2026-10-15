@@ -539,7 +539,7 @@ export class FsProjectManager implements ProjectManager {
     if (input.managedBy === "Terraform") {
       yield { type: "step", message: "Scaffolding Terraform application module" };
       await new TerraformProjectWriter().scaffold(
-        join(destination, "agentcore", "terraform", DEFAULT_TARGET_NAME),
+        join(destination, "agentcore", "terraform"),
         input.region,
       );
     }

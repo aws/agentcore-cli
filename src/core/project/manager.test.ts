@@ -166,16 +166,17 @@ describe("FsProjectManager.create", () => {
     const gitignore = await readFile(join(project.rootPath, ".gitignore"), "utf8");
     expect(gitignore).not.toContain("\nagentcore/terraform/\n");
     expect(gitignore).toContain("*.tfstate");
-    expect(gitignore).toContain("agentcore/terraform/**/.agentcore-target.json");
-    const terraformRoot = join(project.rootPath, "agentcore", "terraform", "default");
+    expect(gitignore).toContain("agentcore/terraform/.targets/");
+    const terraformRoot = join(project.rootPath, "agentcore", "terraform");
     expect(await readFile(join(terraformRoot, "main.tf"), "utf8")).toContain(
-      'jsondecode(file("${path.module}/../../agentcore.json"))',
+      'jsondecode(file("${path.module}/../agentcore.json"))',
     );
     expect(await readFile(join(terraformRoot, "main.tf"), "utf8")).toContain(
       "agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=",
     );
     expect(existsSync(join(terraformRoot, "modules"))).toBe(false);
-    expect(existsSync(join(terraformRoot, "deployment.auto.tfvars.json"))).toBe(false);
+    expect(existsSync(join(terraformRoot, "default"))).toBe(false);
+    expect(existsSync(join(terraformRoot, ".targets"))).toBe(false);
     expect(JSON.parse(await readFile(join(terraformRoot, "artifacts.json"), "utf8"))).toEqual({
       runtimes: {},
       gatewayTargets: {},

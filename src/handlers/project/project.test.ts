@@ -65,15 +65,21 @@ describe("project create", () => {
       const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
       expect(spec.managedBy).toBe("Terraform");
       expect(existsSync(join(projectRoot, "agentcore", "cdk"))).toBe(false);
-      expect(existsSync(join(projectRoot, "agentcore", "terraform", "default", "main.tf"))).toBe(
-        true,
-      );
-      const terraformRoot = join(projectRoot, "agentcore", "terraform", "default");
+      expect(existsSync(join(projectRoot, "agentcore", "terraform", "main.tf"))).toBe(true);
+      const terraformRoot = join(projectRoot, "agentcore", "terraform");
       expect(await Bun.file(join(terraformRoot, "main.tf")).text()).toContain(
         "agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=",
       );
       expect(existsSync(join(terraformRoot, "modules"))).toBe(false);
       expect(existsSync(join(terraformRoot, ".terraform"))).toBe(false);
+      expect(existsSync(join(terraformRoot, "default"))).toBe(false);
+      expect(existsSync(join(terraformRoot, ".targets"))).toBe(false);
+      expect(await Bun.file(join(terraformRoot, "main.tf")).text()).toContain(
+        'jsondecode(file("${path.module}/../agentcore.json"))',
+      );
+      expect(await Bun.file(join(projectRoot, ".gitignore")).text()).toContain(
+        "agentcore/terraform/.targets/",
+      );
       expect(core.projectCommands).toEqual([]);
       expect(io.stderr()).toContain("agentcore add runtime");
       expect(io.stderr()).not.toContain("agentcore add harness");

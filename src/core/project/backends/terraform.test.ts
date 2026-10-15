@@ -74,7 +74,7 @@ describe("Terraform lifecycle", () => {
     expect(commands.map((command) => command[1])).toEqual(["init", "validate"]);
     expect(commands[0]).toContain("-backend=false");
     const root = new TerraformState(p).directory;
-    expect(root).toBe(join(p.rootPath, "agentcore", "terraform", "default"));
+    expect(root).toBe(join(p.rootPath, "agentcore", "terraform"));
     expect(existsSync(join(root, "main.tf"))).toBe(true);
     expect(existsSync(join(root, "deployment.auto.tfvars.json"))).toBe(false);
     expect(await readFile(join(root, "variables.tf"), "utf8")).not.toContain("000000000000");
@@ -87,7 +87,7 @@ describe("Terraform lifecycle", () => {
       calls.push({ command, options });
       if (command[1] === "apply") {
         await writeFile(
-          join(options.cwd, "terraform.tfstate"),
+          new TerraformState(p, TARGET).statePath,
           JSON.stringify({
             resources: [{ mode: "managed", module: "module.application" }],
             outputs: {
@@ -105,9 +105,16 @@ describe("Terraform lifecycle", () => {
     const b = backend({ runner });
     const result = await drain(b.deploy(p, input));
     expect(calls.map(({ command }) => command[1])).toEqual(["init", "validate", "plan", "apply"]);
-    expect(calls.at(-1)!.command.at(-1)).toBe("deployment.tfplan");
-    expect(calls[2]!.command).toContain("-out=deployment.tfplan");
-    expect(calls[2]!.command).toContain("-var-file=deployment.auto.tfvars.json");
+    const state = new TerraformState(p, TARGET);
+    expect(calls.at(-1)!.command.at(-1)).toBe(state.planPath);
+    expect(calls[2]!.command).toContain(`-out=${state.planPath}`);
+    expect(calls[2]!.command).toContain(`-var-file=${state.variablesPath}`);
+    expect(calls[0]!.command).toContain("-reconfigure");
+    expect(calls[0]!.command).toContain(`-backend-config=path=${state.statePath}`);
+    expect(calls.every(({ options }) => options.env?.TF_DATA_DIR === state.dataDirectory)).toBe(
+      true,
+    );
+    expect(calls.every(({ options }) => options.env?.TF_WORKSPACE === "default")).toBe(true);
     expect(calls.every(({ options }) => options.env?.AWS_SESSION_TOKEN === "test-session")).toBe(
       true,
     );
@@ -138,12 +145,12 @@ describe("Terraform lifecycle", () => {
     async (failure) => {
       const p = await project();
       const state = new TerraformState(p, TARGET);
-      await mkdir(state.directory, { recursive: true });
+      await mkdir(state.targetDirectory, { recursive: true });
       const stateText = JSON.stringify({
         resources: [{ mode: "managed", module: "module.application" }],
         outputs: { deployment_target: { value: TARGET } },
       });
-      await writeFile(join(state.directory, "terraform.tfstate"), stateText);
+      await writeFile(state.statePath, stateText);
       const calls: string[] = [];
       const b = backend({
         runner: async (command) => {
@@ -152,7 +159,7 @@ describe("Terraform lifecycle", () => {
         },
       });
       await expect(drain(b.deploy(p, input))).rejects.toThrow("simulated failure");
-      expect(await readFile(join(state.directory, "terraform.tfstate"), "utf8")).toBe(stateText);
+      expect(await readFile(state.statePath, "utf8")).toBe(stateText);
       expect(existsSync(join(state.directory, ".agentcore-operation.lock"))).toBe(false);
       expect(calls.at(-1)).toBe(failure);
     },
@@ -162,10 +169,10 @@ describe("Terraform lifecycle", () => {
     const p = await project();
     p.spec.memories = [];
     const state = new TerraformState(p, TARGET);
-    await mkdir(state.directory, { recursive: true });
+    await mkdir(state.targetDirectory, { recursive: true });
     await state.bind(TARGET);
     await writeFile(
-      join(state.directory, "terraform.tfstate"),
+      state.statePath,
       JSON.stringify({
         resources: [{ mode: "managed", module: "module.application" }],
         outputs: {},
@@ -208,9 +215,9 @@ describe("Terraform lifecycle", () => {
   test("refuses to reuse target state in another region and excludes removed declarations", async () => {
     const p = await project();
     const state = new TerraformState(p, TARGET);
-    await mkdir(state.directory, { recursive: true });
+    await mkdir(state.targetDirectory, { recursive: true });
     await writeFile(
-      join(state.directory, "terraform.tfstate"),
+      state.statePath,
       JSON.stringify({
         outputs: {
           deployment_target: { value: TARGET },
@@ -226,7 +233,7 @@ describe("Terraform lifecycle", () => {
     expect(await b.resolveProjectResources(p, input)).toEqual([]);
   });
 
-  test("build and deploy share the editable default root without resetting target inputs", async () => {
+  test("build and deploy share the editable root without resetting target inputs", async () => {
     const p = await project();
     const directories: string[] = [];
     const b = backend({
@@ -238,11 +245,66 @@ describe("Terraform lifecycle", () => {
     const root = new TerraformState(p).directory;
     await writeFile(join(root, "custom.tf"), "# customer resources\n");
     await drain(b.deploy(p, input));
-    const targetInputs = await readFile(join(root, "deployment.auto.tfvars.json"), "utf8");
+    const targetInputs = await readFile(new TerraformState(p, TARGET).variablesPath, "utf8");
     await drain(b.build(p));
     expect(new Set(directories)).toEqual(new Set([root]));
-    expect(await readFile(join(root, "deployment.auto.tfvars.json"), "utf8")).toBe(targetInputs);
+    expect(await readFile(new TerraformState(p, TARGET).variablesPath, "utf8")).toBe(targetInputs);
     expect(await readFile(join(root, "custom.tf"), "utf8")).toBe("# customer resources\n");
+  });
+
+  test("deploying different targets reads the latest shared root and keeps both states separate", async () => {
+    const p = await project();
+    const calls: { command: string[]; options: RunProcessOptions; source: string }[] = [];
+    const production = { ...TARGET, name: "production", region: "us-west-2" } as const;
+    const b = backend({
+      runner: async (command, options) => {
+        calls.push({
+          command,
+          options,
+          source: await readFile(join(options.cwd, "custom.tf"), "utf8"),
+        });
+        if (command[1] === "apply") {
+          const name = options.env!.TF_DATA_DIR!.includes("production") ? "production" : "default";
+          const target = name === "production" ? production : TARGET;
+          await writeFile(
+            new TerraformState(p, target).statePath,
+            JSON.stringify({
+              resources: [{ mode: "managed", module: "module.application" }],
+              outputs: {
+                deployment_target: { value: target },
+                project_resources: {
+                  value: [{ resourceType: "memory", name: "memory", id: `${name}-memory` }],
+                },
+              },
+            }),
+          );
+        }
+      },
+    });
+    const root = new TerraformState(p).directory;
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "custom.tf"), "# first shared edit\n");
+    await drain(b.deploy(p, input));
+    const defaultState = await readFile(new TerraformState(p, TARGET).statePath, "utf8");
+    await writeFile(join(root, "custom.tf"), "# latest shared edit\n");
+    await drain(b.deploy(p, { ...input, target: production }));
+    expect(new Set(calls.map(({ options }) => options.cwd))).toEqual(new Set([root]));
+    expect(calls.slice(4).every(({ source }) => source === "# latest shared edit\n")).toBe(true);
+    expect(await readFile(new TerraformState(p, TARGET).statePath, "utf8")).toBe(defaultState);
+    expect((await b.resolveProjectResources(p, input))[0]).toMatchObject({ id: "default-memory" });
+    expect((await b.resolveProjectResources(p, { ...input, target: production }))[0]).toMatchObject(
+      { id: "production-memory" },
+    );
+    for (const target of [TARGET, production]) {
+      const state = new TerraformState(p, target);
+      expect(
+        calls.some(({ command }) => command.includes(`-var-file=${state.variablesPath}`)),
+      ).toBe(true);
+      expect(
+        calls.some(({ command }) => command.includes(`-backend-config=path=${state.statePath}`)),
+      ).toBe(true);
+      expect(existsSync(join(state.targetDirectory, "main.tf"))).toBe(false);
+    }
   });
 
   test("rejects a remote backend after init before planning or applying", async () => {
@@ -251,9 +313,9 @@ describe("Terraform lifecycle", () => {
     const b = backend({
       runner: async (command, options) => {
         calls.push(command[1]!);
-        await mkdir(join(options.cwd, ".terraform"), { recursive: true });
+        await mkdir(options.env!.TF_DATA_DIR!, { recursive: true });
         await writeFile(
-          join(options.cwd, ".terraform", "terraform.tfstate"),
+          join(options.env!.TF_DATA_DIR!, "terraform.tfstate"),
           JSON.stringify({ backend: { type: "s3" } }),
         );
       },
@@ -267,7 +329,9 @@ describe("Terraform lifecycle", () => {
     const state = new TerraformState(p, TARGET);
     const unlock = await state.lock();
     try {
-      await expect(drain(backend().deploy(p, input))).rejects.toThrow("Another operation owns");
+      await expect(
+        drain(backend().deploy(p, { ...input, target: { ...TARGET, name: "production" } })),
+      ).rejects.toThrow("Another operation owns");
     } finally {
       await unlock();
     }
