@@ -1,3 +1,4 @@
+import { memoryIdSchema } from "../idSchema";
 import z from "zod";
 import { createHandler, flag } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
@@ -11,7 +12,7 @@ export const createGetMemoryHandler = (core: Core) =>
     name: "get",
     description: "get an AgentCore Memory",
     flags: [
-      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("id", "the ID of the Memory", memoryIdSchema),
       flag("view", "response view", z.enum(MEMORY_VIEWS).optional()),
     ],
     handle: async (ctx, flags) => {

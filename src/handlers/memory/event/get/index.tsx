@@ -1,3 +1,4 @@
+import { memoryIdSchema } from "../../idSchema";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types";
@@ -9,7 +10,7 @@ export const createGetMemoryEventHandler = (core: Core) =>
     name: "get",
     description: "get an AgentCore Memory Event",
     flags: [
-      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("id", "the ID of the Memory", memoryIdSchema),
       flag("actor-id", "the ID of the actor", z.string().min(1)),
       flag("session-id", "the session ID", z.string().min(1)),
       flag("event-id", "the event ID", z.string().min(1)),

@@ -1,3 +1,4 @@
+import { memoryIdSchema } from "../../idSchema";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -10,7 +11,7 @@ export const createListMemoryRecordsHandler = (core: Core) =>
     name: "list",
     description: "list AgentCore Memory records",
     flags: [
-      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("id", "the ID of the Memory", memoryIdSchema),
       flag("namespace", "filter by namespace prefix", z.string().optional()),
       flag("namespace-path", "filter by namespace hierarchy", z.string().optional()),
       flag("strategy-id", "filter by Memory strategy ID", z.string().optional()),

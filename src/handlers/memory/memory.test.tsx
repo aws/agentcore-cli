@@ -238,6 +238,18 @@ describe("memory read-only commands", () => {
     await expectError(run(["memory", "get", "--json"]), /--id/, InputValidationError);
   });
 
+  test.each([["get"], ["session list"], ["record list"]] as const)(
+    "rejects a Memory ARN passed as --id for `memory %s`",
+    async (sub) => {
+      const arn = `arn:aws:bedrock-agentcore:${REGION}:123456789012:memory/${FIXTURE_MEMORY_ID}`;
+      await expectError(
+        run(["memory", ...sub.split(" "), "--id", arn, "--json"]),
+        /must be a Memory ID, not an ARN/,
+        InputValidationError,
+      );
+    },
+  );
+
   test("rejects an unsupported response view", async () => {
     await expect(
       run(["memory", "get", "--id", FIXTURE_MEMORY_ID, "--view", "summary"]),

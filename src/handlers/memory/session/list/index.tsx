@@ -1,3 +1,4 @@
+import { memoryIdSchema } from "../../idSchema";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
@@ -9,7 +10,7 @@ export const createListMemorySessionsHandler = (core: Core) =>
     name: "list",
     description: "list sessions in an AgentCore Memory",
     flags: [
-      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("id", "the ID of the Memory", memoryIdSchema),
       flag("actor-id", "the ID of the actor", z.string().min(1)),
       flag("max-results", "maximum number of sessions to return", z.number().optional()),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),

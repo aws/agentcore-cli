@@ -1,3 +1,4 @@
+import { memoryIdSchema } from "../../idSchema";
 import z from "zod";
 import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
@@ -11,7 +12,7 @@ export const createListMemoryEventsHandler = (core: Core) =>
     name: "list",
     description: "list AgentCore Memory events",
     flags: [
-      flag("id", "the ID of the Memory", z.string().min(1)),
+      flag("id", "the ID of the Memory", memoryIdSchema),
       flag("actor-id", "the ID of the actor", z.string().min(1)),
       flag("session-id", "the session ID", z.string().min(1)),
       flag("include-payloads", "includes event payloads in the response", z.boolean().optional()),
