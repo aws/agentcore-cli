@@ -44,7 +44,7 @@ export async function createProjectTree(
     FsTreeNode.createFile(".gitignore", async () => {
       const shared = await config.assetSource.read("templates/shared/gitignore.template");
       return managedBy === "Terraform"
-        ? `${shared}\n# Terraform generated configuration, assets, and local state\nagentcore/terraform/\n.terraform/\n*.tfstate\n*.tfstate.*\n*.tfplan\ncrash.log\n`
+        ? `${shared}\n# Terraform local packages, working files, and state (commit the .tf source)\nagentcore/terraform/**/assets/\nagentcore/terraform/**/artifacts.json\nagentcore/terraform/**/deployment.auto.tfvars.json\nagentcore/terraform/**/.agentcore-target.json\n.agentcore-operation.lock\n.terraform/\n*.tfstate\n*.tfstate.*\n*.tfplan\ncrash.log\n`
         : shared;
     }),
     FsTreeNode.createDirectory("agentcore", [

@@ -47,26 +47,38 @@ test("project dev requires an AgentCore project", async () => {
 });
 
 describe("project create", () => {
-  test("creates a Terraform project through --managed-by without CDK installation", async () => {
-    const { path: directory, cleanup } = await inTempDirectory();
-    cleanups.push(cleanup);
-    const { io, core } = await run([
-      "create",
-      "--name",
-      "TerraformProject",
-      "--managed-by",
-      "Terraform",
-      "--skip-git",
-    ]);
+  test.each(["terraform", "Terraform", "TERRAFORM"])(
+    "creates through --iac %s without CDK installation",
+    async (iac) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const { io, core } = await run([
+        "create",
+        "--name",
+        "TerraformProject",
+        "--iac",
+        iac,
+        "--skip-git",
+      ]);
 
-    const projectRoot = join(directory, "TerraformProject");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.managedBy).toBe("Terraform");
-    expect(existsSync(join(projectRoot, "agentcore", "cdk"))).toBe(false);
-    expect(core.projectCommands).toEqual([]);
-    expect(io.stderr()).toContain("agentcore add runtime");
-    expect(io.stderr()).not.toContain("agentcore add harness");
-  });
+      const projectRoot = join(directory, "TerraformProject");
+      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+      expect(spec.managedBy).toBe("Terraform");
+      expect(existsSync(join(projectRoot, "agentcore", "cdk"))).toBe(false);
+      expect(existsSync(join(projectRoot, "agentcore", "terraform", "default", "main.tf"))).toBe(
+        true,
+      );
+      const terraformRoot = join(projectRoot, "agentcore", "terraform", "default");
+      expect(await Bun.file(join(terraformRoot, "main.tf")).text()).toContain(
+        "agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=",
+      );
+      expect(existsSync(join(terraformRoot, "modules"))).toBe(false);
+      expect(existsSync(join(terraformRoot, ".terraform"))).toBe(false);
+      expect(core.projectCommands).toEqual([]);
+      expect(io.stderr()).toContain("agentcore add runtime");
+      expect(io.stderr()).not.toContain("agentcore add harness");
+    },
+  );
 
   test("does not apply the CDK node_modules Windows path limit to Terraform creation", async () => {
     const { path, cleanup } = await inTempDirectory();
@@ -75,11 +87,28 @@ describe("project create", () => {
     await mkdir(deep);
     process.chdir(deep);
 
-    await run(["create", "--name", "Deep", "--managed-by", "Terraform", "--skip-git"], {
+    await run(["create", "--name", "Deep", "--iac", "terraform", "--skip-git"], {
       platform: "win32",
     });
 
     expect(await readdir(deep)).toEqual(["Deep"]);
+  });
+
+  test.each([undefined, "cdk", "CDK"])("keeps CDK as the default backend (%s)", async (iac) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "DefaultProject",
+      "--skip-install",
+      "--skip-git",
+      ...(iac ? ["--iac", iac] : []),
+    ]);
+    const root = join(directory, "DefaultProject", "agentcore");
+    expect(existsSync(join(root, "cdk", "cdk.json"))).toBe(true);
+    expect(existsSync(join(root, "terraform"))).toBe(false);
+    expect((await Bun.file(join(root, "agentcore.json")).json()).managedBy).toBe("CDK");
   });
 
   test("--json returns the created project without human success text", async () => {

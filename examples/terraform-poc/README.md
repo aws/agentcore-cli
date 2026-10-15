@@ -7,7 +7,9 @@ This example exercises an experimental Terraform deployment backend for a small 
 - A policy engine associated with the gateway.
 - Online evaluations using `Builtin.Helpfulness`.
 
-The backend generates Terraform JSON configuration from `agentcore/agentcore.json`. AgentCore resources use AWSCC 1.106.0, except for gateway targets: that release does not expose a gateway target resource, so the example uses AWS provider 6.69.0 for its Lambda target. The AWS provider also manages IAM, S3, Lambda, and logs. Resource creation is owned by Terraform.
+The backend scaffolds HCL root files and references the reusable `agentcore-application` module maintained in the AgentCore L3 constructs repository. The root reads `agentcore/agentcore.json` and passes a typed `spec` object into the module. Terraform reads the JSON on every plan, so changing a supported setting does not require CLI regeneration.
+
+AgentCore resources use AWSCC 1.106.0, except for gateway targets: that release does not expose a gateway target resource, so the example uses AWS provider 6.69.0 for its Lambda target. The AWS provider also manages IAM, S3, Lambda, and logs. Resource creation is owned by Terraform.
 
 The example has been packaged reproducibly, validated against both pinned providers, and planned with Terraform 1.16.6 (25 resources). Live deployment, invocation, policy enforcement, evaluation results, updates, and teardown remain unverified. The steps below describe the experiment to run.
 
@@ -18,9 +20,38 @@ The example has been packaged reproducibly, validated against both pinned provid
 - Configure AWS credentials for a disposable development account and an AgentCore-supported region.
 - Ensure the account can invoke the Bedrock model used by the example, `us.amazon.nova-lite-v1:0`. To select another model, add a `MODEL_ID` entry to the runtime's `envVars`.
 
+Set `CLI` to the absolute path of this branch's `dist/index.js`:
+
+```sh
+export CLI=/absolute/path/to/agentcore-cli/dist/index.js
+```
+
 This example creates billable resources and enables online evaluation at 100% sampling. Use it for a bounded experiment and tear it down afterward. The sample `permit(principal, action, resource);` policy permits all gateway actions to authenticated callers; replace it with your intended policy before using the configuration outside this example.
 
-## Deploy the example
+## Create a project
+
+```sh
+node "$CLI" create --name MyTerraformProject --template empty --iac terraform
+```
+
+`--iac` accepts `cdk` or `terraform`, case-insensitively, and defaults to CDK. Terraform projects immediately contain:
+
+```text
+agentcore/
+  agentcore.json
+  terraform/default/
+    main.tf
+    providers.tf
+    variables.tf
+    outputs.tf
+    artifacts.json
+```
+
+Creation does not require Terraform or AWS credentials. Use the existing `agentcore add` commands to populate the project, or edit its JSON directly. The backend validates its supported subset before deployment and reports unsupported resource types or settings.
+
+The customer owns the root `.tf` files. Build and deploy preserve those edits. The module source is pinned to an immutable commit in the L3 constructs repository; `terraform init` downloads it. During this draft PoC the pin points to the companion PR branch in the contributor fork. Updating the module version is an explicit root HCL change.
+
+## Deploy the connected example
 
 Copy this directory outside the repository before using it so configuration changes and deployment state remain separate from the checked-in fixture. Set `CLI` to the absolute path of this branch's `dist/index.js`.
 
@@ -35,17 +66,31 @@ node "$CLI" deploy --region "$AWS_REGION" --json
 node "$CLI" status --region "$AWS_REGION" --json
 ```
 
-The default deployment target is recorded in `agentcore/aws-targets.json`. Terraform configuration, asset archives, dependency locks, and local state live beneath `agentcore/terraform/`. Keep that directory private and preserve it until teardown completes: Terraform state can contain configuration values and is needed to manage the resources. This PoC uses local state for one operator; shared remote state and CDK-to-Terraform migration are outside its scope.
+Build packages the runtime and Lambda and prepares `agentcore/terraform/default/`. Deploy uses that same directory and writes the account, region, and target variables. The default deployment target is recorded in `agentcore/aws-targets.json`.
+
+Root HCL and the provider lock file can be version-controlled. Generated ZIPs, artifact manifests, deployment variables, plans, and local state are ignored. Preserve state until teardown completes: it can contain sensitive configuration values and is needed to manage resources. This CLI PoC supports default local state for one operator; remote backends, custom state paths, and CDK-to-Terraform migration are outside its scope.
+
+Named targets have separate `agentcore/terraform/<target>/` directories. On first use they inherit the default root's HCL; subsequent builds preserve their own edits. A directory containing managed state is bound to its account, region, and target, so changing those values requires a separate target or an explicit migration.
 
 Deploy also follows the existing CLI setting for enabling CloudWatch Transaction Search. That setup is an account-level telemetry prerequisite, runs outside Terraform, and is not reverted when this example is destroyed. A setup warning must be resolved before treating online evaluation as verified.
 
-To start a new project instead:
+## Change configuration with Terraform directly
+
+After building code artifacts, the generated root works without the CLI:
 
 ```sh
-node "$CLI" create --name MyTerraformProject --template empty --managed-by Terraform
+cd agentcore/terraform/default
+terraform init
+terraform plan -var="account_id=123456789012" -var="region=us-west-2"
 ```
 
-Use the existing `agentcore add` commands to populate the project. The backend validates its supported subset before deployment and reports unsupported resource types or settings. A Terraform project is not a promise of coverage for every `agentcore.json` option.
+Edit a supported value such as memory retention in `agentcore.json`, then run `terraform plan` again. The module receives the updated object immediately. After reviewing the plan, apply it with Terraform. If CLI deploy has already created deployment variables, the `-var` arguments are unnecessary. Changes to application source still require rebuilding the ZIPs and updating their artifact hashes.
+
+The checked-in [`terraform/`](terraform/) directory is also a standalone root example. It references the same pinned module from the L3 constructs repository. Supply `artifacts.json` with the ZIP paths and hashes described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/d3ce7229610ce0bb56d581c55f710e220b58faa4/terraform/modules/agentcore-application/README.md).
+
+The root can pass inline HCL instead of JSON. This allows values from customer resources to enter the `spec` directly, for example `envVars = [{ name = "ORDERS_TABLE", value = aws_dynamodb_table.orders.name }]`. Outputs such as `module.application.runtimes["Agent"].role_name` allow a separate IAM policy to grant that runtime access to the table. Terraform follows these references to order changes.
+
+References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/d3ce7229610ce0bb56d581c55f710e220b58faa4/terraform/modules/agentcore-application/README.md) for the contract and limits.
 
 ## Exercise the deployed resources
 
@@ -61,7 +106,7 @@ The memory operation writes an event and lists session events. Semantic extracti
 
 To examine enforcement, change the sample policy to `forbid(principal, action, resource);`, redeploy, and check that calling the tool is denied. Set the policy's `enforcementMode` to `LOG_ONLY`, redeploy, and check its observed behavior before restoring the original policy. The gateway's policy-engine mode remains `ENFORCE`; it is a separate setting.
 
-The compiler also maps the statement through AWSCC's `definition.policy.statement` input. A valid Dogwood statement can be supplied there, but schema support and a successful deployment of a particular Dogwood policy are separate checks.
+The module maps the statement through AWSCC's `definition.policy.statement` input. A valid Dogwood statement can be supplied there, but schema support and a successful deployment of a particular Dogwood policy are separate checks.
 
 ## Updates and teardown
 
@@ -75,3 +120,5 @@ node "$CLI" deploy --yes --region "$AWS_REGION" --json
 ```
 
 Keep the generated directory after a failed apply or teardown so the operation can be retried. Do not edit `managedBy` on an existing CDK deployment to attempt a migration.
+
+The earlier flat-resource Terraform PoC used different resource addresses and directories. This implementation refuses that state rather than silently deploying a second copy; migrating it requires an explicit state migration.

@@ -73,11 +73,11 @@ describe("Terraform lifecycle", () => {
     await drain(b.build(p));
     expect(commands.map((command) => command[1])).toEqual(["init", "validate"]);
     expect(commands[0]).toContain("-backend=false");
-    const compiled = await readFile(
-      join(new TerraformState(p, "build").directory, "main.tf.json"),
-      "utf8",
-    );
-    expect(compiled).toContain("000000000000");
+    const root = new TerraformState(p).directory;
+    expect(root).toBe(join(p.rootPath, "agentcore", "terraform", "default"));
+    expect(existsSync(join(root, "main.tf"))).toBe(true);
+    expect(existsSync(join(root, "deployment.auto.tfvars.json"))).toBe(false);
+    expect(await readFile(join(root, "variables.tf"), "utf8")).not.toContain("000000000000");
   });
 
   test("applies the saved plan and resolves resources from target state", async () => {
@@ -89,7 +89,7 @@ describe("Terraform lifecycle", () => {
         await writeFile(
           join(options.cwd, "terraform.tfstate"),
           JSON.stringify({
-            resources: [{ mode: "managed" }],
+            resources: [{ mode: "managed", module: "module.application" }],
             outputs: {
               memory_arn: {
                 value: "arn:aws:bedrock-agentcore:us-east-1:111122223333:memory/example-123",
@@ -107,6 +107,7 @@ describe("Terraform lifecycle", () => {
     expect(calls.map(({ command }) => command[1])).toEqual(["init", "validate", "plan", "apply"]);
     expect(calls.at(-1)!.command.at(-1)).toBe("deployment.tfplan");
     expect(calls[2]!.command).toContain("-out=deployment.tfplan");
+    expect(calls[2]!.command).toContain("-var-file=deployment.auto.tfvars.json");
     expect(calls.every(({ options }) => options.env?.AWS_SESSION_TOKEN === "test-session")).toBe(
       true,
     );
@@ -138,7 +139,10 @@ describe("Terraform lifecycle", () => {
       const p = await project();
       const state = new TerraformState(p, TARGET);
       await mkdir(state.directory, { recursive: true });
-      const stateText = JSON.stringify({ resources: [{ mode: "managed" }], outputs: {} });
+      const stateText = JSON.stringify({
+        resources: [{ mode: "managed", module: "module.application" }],
+        outputs: { deployment_target: { value: TARGET } },
+      });
       await writeFile(join(state.directory, "terraform.tfstate"), stateText);
       const calls: string[] = [];
       const b = backend({
@@ -159,10 +163,11 @@ describe("Terraform lifecycle", () => {
     p.spec.memories = [];
     const state = new TerraformState(p, TARGET);
     await mkdir(state.directory, { recursive: true });
+    await state.bind(TARGET);
     await writeFile(
       join(state.directory, "terraform.tfstate"),
       JSON.stringify({
-        resources: [{ mode: "managed" }],
+        resources: [{ mode: "managed", module: "module.application" }],
         outputs: {},
       }),
     );
@@ -200,7 +205,7 @@ describe("Terraform lifecycle", () => {
     expect(packaged).toBe(false);
   });
 
-  test("isolates state by account and region and excludes removed declarations", async () => {
+  test("refuses to reuse target state in another region and excludes removed declarations", async () => {
     const p = await project();
     const state = new TerraformState(p, TARGET);
     await mkdir(state.directory, { recursive: true });
@@ -208,16 +213,53 @@ describe("Terraform lifecycle", () => {
       join(state.directory, "terraform.tfstate"),
       JSON.stringify({
         outputs: {
+          deployment_target: { value: TARGET },
           project_resources: { value: [{ resourceType: "memory", name: "memory", id: "old" }] },
         },
       }),
     );
     const b = backend();
-    expect(
-      await b.resolveProjectResources(p, { target: { ...TARGET, region: "us-west-2" } }),
-    ).toEqual([{ resourceType: "memory", name: "memory", deploymentState: "local-only" }]);
+    await expect(
+      b.resolveProjectResources(p, { target: { ...TARGET, region: "us-west-2" } }),
+    ).rejects.toThrow("different target, account, or region");
     p.spec.memories = [];
     expect(await b.resolveProjectResources(p, input)).toEqual([]);
+  });
+
+  test("build and deploy share the editable default root without resetting target inputs", async () => {
+    const p = await project();
+    const directories: string[] = [];
+    const b = backend({
+      runner: async (_command, options) => {
+        directories.push(options.cwd);
+      },
+    });
+    await drain(b.build(p));
+    const root = new TerraformState(p).directory;
+    await writeFile(join(root, "custom.tf"), "# customer resources\n");
+    await drain(b.deploy(p, input));
+    const targetInputs = await readFile(join(root, "deployment.auto.tfvars.json"), "utf8");
+    await drain(b.build(p));
+    expect(new Set(directories)).toEqual(new Set([root]));
+    expect(await readFile(join(root, "deployment.auto.tfvars.json"), "utf8")).toBe(targetInputs);
+    expect(await readFile(join(root, "custom.tf"), "utf8")).toBe("# customer resources\n");
+  });
+
+  test("rejects a remote backend after init before planning or applying", async () => {
+    const p = await project();
+    const calls: string[] = [];
+    const b = backend({
+      runner: async (command, options) => {
+        calls.push(command[1]!);
+        await mkdir(join(options.cwd, ".terraform"), { recursive: true });
+        await writeFile(
+          join(options.cwd, ".terraform", "terraform.tfstate"),
+          JSON.stringify({ backend: { type: "s3" } }),
+        );
+      },
+    });
+    await expect(drain(b.deploy(p, input))).rejects.toThrow("require local state");
+    expect(calls).toEqual(["init"]);
   });
 
   test("exclusive lock covers the whole operation", async () => {

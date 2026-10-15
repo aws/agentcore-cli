@@ -243,7 +243,7 @@ create a new project
 **Options**
 
 - `--name <name>`: name of the project to create (required)
-- `--managed-by <managed-by>`: infrastructure backend (Terraform is an experimental AWSCC PoC) (default: "CDK")
+- `--iac <iac>`: infrastructure backend: CDK or Terraform (experimental AWSCC PoC) (default: "CDK")
 - `--template <template>`: the template to scaffold the Runtime from (default: "empty")
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)

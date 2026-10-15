@@ -89,6 +89,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { TerraformBackend } from "./backends/terraform";
+import { TerraformProjectWriter } from "./backends/terraform/project";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
@@ -535,6 +536,13 @@ export class FsProjectManager implements ProjectManager {
 
     yield { type: "step", message: "Creating project tree" };
     await projectTree.write(destination);
+    if (input.managedBy === "Terraform") {
+      yield { type: "step", message: "Scaffolding Terraform application module" };
+      await new TerraformProjectWriter().scaffold(
+        join(destination, "agentcore", "terraform", DEFAULT_TARGET_NAME),
+        input.region,
+      );
+    }
 
     if (envEntries.length > 0) {
       yield { type: "step", message: "Writing model provider API key to agentcore/.env.local" };

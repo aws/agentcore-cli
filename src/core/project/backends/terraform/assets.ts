@@ -18,7 +18,7 @@ import { ProjectStateError } from "../../../../errors";
 import type { Project } from "../../../../handlers/project/types";
 import { atomicWrite, requireTool, type ProcessRunner } from "../../../../io";
 import { resolvePathWithinProject } from "../../../dev/path";
-import type { TerraformAssets } from "./compiler";
+import type { TerraformAssets } from "./types";
 
 const EXCLUDED = new Set([
   ".git",

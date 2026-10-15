@@ -116,9 +116,16 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     flags: [
       flag("name", "name of the project to create", ProjectNameSchema),
       flag(
-        "managed-by",
-        "infrastructure backend (Terraform is an experimental AWSCC PoC)",
-        ManagedBySchema,
+        "iac",
+        "infrastructure backend: CDK or Terraform (experimental AWSCC PoC)",
+        z
+          .preprocess((value) => {
+            if (typeof value !== "string") return value;
+            if (value.toLowerCase() === "cdk") return "CDK";
+            if (value.toLowerCase() === "terraform") return "Terraform";
+            return value;
+          }, ManagedBySchema)
+          .default("CDK"),
       ),
       flag(
         "template",
@@ -135,7 +142,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     ],
     handle: async (ctx, flags) => {
       const name = flags["name"];
-      if (!flags["skip-install"] && flags["managed-by"] === "CDK") {
+      if (!flags["skip-install"] && flags.iac === "CDK") {
         assertProjectPathFits(name, ctx.require(PlatformKey), {
           alternative: "pass --skip-install and install the CDK dependencies yourself",
         });
@@ -144,7 +151,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       const template = flags["template"];
       const base = {
         name,
-        managedBy: flags["managed-by"],
+        managedBy: flags.iac,
+        region: ctx.require(RegionKey),
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
       };
@@ -197,7 +205,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
             config.io.stderr.write(
-              emptyProjectCreatedMessage(name, isChinaRegion(region), flags["managed-by"]),
+              emptyProjectCreatedMessage(name, isChinaRegion(region), flags.iac),
             );
             return;
           }

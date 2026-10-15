@@ -24,6 +24,8 @@ type CreateProjectInputBase = {
   name: string;
   /** Infrastructure backend for the new project. Defaults to CDK. */
   managedBy?: ManagedBy;
+  /** Resolved AWS region used to initialize infrastructure configuration defaults. */
+  region?: string;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */

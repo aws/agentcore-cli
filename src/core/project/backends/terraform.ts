@@ -9,7 +9,6 @@ import type {
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
 import {
-  atomicWrite,
   createLineSplitter,
   FsReadWriteJson,
   requireTool,
@@ -18,7 +17,7 @@ import {
   type ReadWriteJson,
 } from "../../../io";
 import type { Logger } from "../../../logging";
-import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import { DEFAULT_TARGET_NAME, type AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { withOutputEvents } from "../events";
 import type { TransactionSearchEnabler } from "./cdk";
 import { readDeployedState, stackReferenceOf } from "./cdk/deployedState";
@@ -29,7 +28,8 @@ import {
   type CdkCredentialResolver,
 } from "./cdk/toolkit";
 import { TerraformAssetPackager, type TerraformAssetBuilder } from "./terraform/assets";
-import { declaredResources, TerraformCompiler } from "./terraform/compiler";
+import { declaredResources, TerraformProjectValidator } from "./terraform/preflight";
+import { TerraformProjectWriter } from "./terraform/project";
 import { TerraformState } from "./terraform/state";
 import type {
   DeployBackendInput,
@@ -57,7 +57,8 @@ export class TerraformBackend implements ProjectBackend {
   private readonly resolveCredentials: CdkCredentialResolver;
   private readonly resolveAccount: AccountResolver;
   private readonly packageAssets: TerraformAssetBuilder;
-  private readonly compiler = new TerraformCompiler();
+  private readonly validator = new TerraformProjectValidator();
+  private readonly writer: TerraformProjectWriter;
 
   constructor(private readonly config: TerraformBackendConfig) {
     this.runner = config.runner ?? runProcess;
@@ -68,30 +69,24 @@ export class TerraformBackend implements ProjectBackend {
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     const packager = new TerraformAssetPackager(this.runner, this.checkTool);
     this.packageAssets = config.packageAssets ?? packager.build.bind(packager);
+    this.writer = new TerraformProjectWriter();
   }
 
   async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
-    this.compiler.preflight(project);
+    this.validator.validate(project);
     await this.checkTool(
       "terraform",
       "Install Terraform: https://developer.hashicorp.com/terraform/install",
     );
-    const state = new TerraformState(project, "build");
+    const state = new TerraformState(project);
     const unlock = await state.lock();
     try {
+      await state.assertNoLegacyState();
       yield {
         type: "step",
-        message: "Building Terraform configuration for validation (placeholder account and region)",
+        message: "Preparing Terraform application module for validation",
       };
-      yield* this.generate(
-        project,
-        {
-          name: "build",
-          account: "000000000000",
-          region: "us-west-2",
-        },
-        state,
-      );
+      yield* this.generate(project, undefined, state);
       const env = this.environment(state);
       yield* this.execute(["init", "-backend=false", "-input=false", "-no-color"], state, env);
       yield* this.execute(["validate", "-no-color"], state, env);
@@ -104,7 +99,7 @@ export class TerraformBackend implements ProjectBackend {
     project: Project,
     input: DeployBackendInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
-    this.compiler.preflight(project);
+    this.validator.validate(project);
     const cdkState = await readDeployedState(this.json, project.rootPath);
     if (Object.values(cdkState.targets).some((target) => stackReferenceOf(target))) {
       throw new ProjectStateError(
@@ -119,31 +114,49 @@ export class TerraformBackend implements ProjectBackend {
     const state = new TerraformState(project, target);
     const unlock = await state.lock();
     try {
+      await state.assertTarget(target);
+      await this.writer.assertCompatible(state.directory);
+      await this.writer.inheritRoot(
+        state.directory,
+        new TerraformState(project, DEFAULT_TARGET_NAME).directory,
+      );
       const tearingDown =
-        declaredResources(project).length === 0 && (await state.hasManagedResources());
+        declaredResources(project).length === 0 && (await state.hasApplicationResources());
       if (tearingDown) {
         const approved = await input.confirmTeardown({
           projectName: project.name,
           targetName: target.name,
           account: target.account,
           region: target.region,
-          resourceDescription: "all Terraform-managed resources for this target",
+          resourceDescription: "all AgentCore application resources for this target",
         });
         if (!approved) throw new ProjectStateError("Terraform teardown was cancelled.");
       }
-      yield { type: "step", message: "Packaging assets and generating Terraform configuration" };
+      yield {
+        type: "step",
+        message: "Packaging assets and preparing Terraform application module",
+      };
       yield* this.generate(project, target, state);
       const credentials = await this.credentialsForTarget(target);
+      await state.bind(target);
       const env = this.environment(state, target, await credentials());
       yield { type: "step", message: "Initializing and validating Terraform" };
       yield* this.execute(["init", "-input=false", "-no-color"], state, env);
+      await state.assertLocalBackend();
       yield* this.execute(["validate", "-no-color"], state, env);
       yield { type: "step", message: "Planning Terraform deployment" };
       // Never reuse a plan from a prior operation, particularly after a failed apply.
       const plan = "deployment.tfplan";
       await rm(join(state.directory, plan), { force: true });
       yield* this.execute(
-        ["plan", "-input=false", "-no-color", "-lock-timeout=60s", `-out=${plan}`],
+        [
+          "plan",
+          "-input=false",
+          "-no-color",
+          "-lock-timeout=60s",
+          "-var-file=deployment.auto.tfvars.json",
+          `-out=${plan}`,
+        ],
         state,
         env,
       );
@@ -172,13 +185,23 @@ export class TerraformBackend implements ProjectBackend {
         this.environment(state, target, await credentials()),
       );
       const outputs = await state.outputs();
+      const namedOutputs: Record<string, string> = {};
+      const flatten = (prefix: string, value: unknown) => {
+        if (typeof value === "string") namedOutputs[prefix] = value;
+        else if (value && typeof value === "object" && !Array.isArray(value)) {
+          for (const [key, entry] of Object.entries(value)) flatten(`${prefix}.${key}`, entry);
+        }
+      };
+      for (const [key, value] of Object.entries(outputs)) {
+        if (key !== "project_resources") flatten(key, value);
+      }
       return {
-        outputs: Object.fromEntries(
-          Object.entries(outputs).filter(
-            (entry): entry is [string, string] => typeof entry[1] === "string",
-          ),
-        ),
-        ...(tearingDown ? { tornDown: true } : {}),
+        outputs: namedOutputs,
+        ...(tearingDown &&
+        (await state.resources()).length === 0 &&
+        !(await state.hasApplicationResources())
+          ? { tornDown: true }
+          : {}),
       };
     } finally {
       // Keep assets, provider lock, plan, and state after failure for retry/cleanup.
@@ -190,7 +213,9 @@ export class TerraformBackend implements ProjectBackend {
     project: Project,
     { target }: ResolveDeployedResourcesBackendInput,
   ): Promise<ResolvedDeployedResource[]> {
-    const resources = await new TerraformState(project, target).resources();
+    const state = new TerraformState(project, target);
+    await state.assertTarget(target);
+    const resources = await state.resources();
     if (resources.length === 0) {
       throw new ProjectStateError(
         `Project '${project.name}' has no Terraform deployment outputs for target '${target.name}'. ` +
@@ -221,7 +246,9 @@ export class TerraformBackend implements ProjectBackend {
     project: Project,
     { target }: ResolveProjectResourcesBackendInput,
   ): Promise<ResolvedProjectResource[]> {
-    const resources = await new TerraformState(project, target).resources();
+    const state = new TerraformState(project, target);
+    await state.assertTarget(target);
+    const resources = await state.resources();
     const declarations = declaredResources(project);
     const resolve = (resource: (typeof declarations)[number]): ResolvedProjectResource => {
       const deployed = resources.find(
@@ -253,16 +280,16 @@ export class TerraformBackend implements ProjectBackend {
     return declarations.filter((resource) => !resource.parentName).map(resolve);
   }
 
-  private async *generate(project: Project, target: AwsDeploymentTarget, state: TerraformState) {
+  private async *generate(
+    project: Project,
+    target: AwsDeploymentTarget | undefined,
+    state: TerraformState,
+  ) {
+    await this.writer.assertCompatible(state.directory);
     const assets = yield* withOutputEvents((emit) =>
       this.packageAssets(project, state.directory, emit),
     );
-    const configuration = this.compiler.compile(project, target, assets);
-    await atomicWrite(
-      join(state.directory, "main.tf.json"),
-      `${JSON.stringify(configuration, null, 2)}\n`,
-      { mode: 0o600 },
-    );
+    await this.writer.write(state.directory, target, assets);
   }
 
   private async *execute(args: string[], state: TerraformState, env: NodeJS.ProcessEnv) {
