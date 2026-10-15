@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -144,194 +144,170 @@ const A2aResponseSchema = z.object({
   error: z.undefined().optional(),
 });
 
+/** The runtime `agentcore create --template` scaffolds (DEFAULT_CREATE_RUNTIME_NAME). */
+const CREATED_RUNTIME_NAME = "agent";
+
+// Each template gets its own project from `agentcore create --template`, the
+// command that scaffolds template code (`add runtime` only writes docs). The
+// projects are independent, so the templates run concurrently; each one's
+// steps run in order inside its test.
 describe(
-  "add, dev, deploy, invoke for runtime templates",
-  { sequential: true, tags: [TAGS.RUNTIME, TAGS.CANARY] },
+  "create, dev, deploy, invoke for runtime templates",
+  { tags: [TAGS.RUNTIME, TAGS.CANARY] },
   () => {
     const cli = new CliRunner();
-    const projectName = `${E2E_PREFIX}${Date.now().toString(36)}`;
-    let projectDir: string;
 
-    beforeAll(async () => {
-      const projectRoot = await mkdtemp(join(tmpdir(), "agentcore-e2e-"));
-      const created = parseResult(
-        ProjectCreatedSchema,
-        await cli.run(
-          ["create", "--name", projectName, "--template", "empty", "--skip-git", "--json"],
-          projectRoot,
-        ),
-      );
-      projectDir = created.project.path;
-    }, TIMEOUT_MS.PROJECT_CREATE);
-
-    test.each(RUNTIME_TEMPLATES)(
-      "$name can be added to a project",
-      { timeout: TIMEOUT_MS.PROJECT_CREATE },
-      async (runtime) => {
-        const added = parseResult(
-          OperationSchema,
-          await cli.run(
-            ["add", "runtime", "--name", runtime.name, "--template", runtime.template, "--json"],
-            projectDir,
-          ),
-        );
-        expect(added.operation).toBe("add");
+    test.concurrent.each(RUNTIME_TEMPLATES)(
+      "$name",
+      {
+        timeout:
+          TIMEOUT_MS.PROJECT_CREATE +
+          TIMEOUT_MS.PROJECT_DEV +
+          2 * TIMEOUT_MS.PROJECT_INVOKE +
+          2 * TIMEOUT_MS.PROJECT_DEPLOY +
+          TIMEOUT_MS.PROJECT_REMOVE,
       },
-    );
+      async (runtime) => {
+        const projectDir = await createTemplateProject(cli, runtime);
+        try {
+          await invokeLocally(cli, runtime, projectDir);
 
-    describe("local invocation", { sequential: true }, () => {
-      const runtimePorts = new Map<string, number>();
-      let dev: ReturnType<CliRunner["start"]> | undefined;
-      let pendingOutput = "";
-      let devOutput = "";
+          const deployment = parseResult(
+            DeployResponseSchema,
+            await cli.run(["deploy", "--yes", "--json"], projectDir),
+          );
+          expect(deployment.message).toContain("Deployed project");
 
-      /** Given dev-process output, records the ports announced by running runtimes. */
-      const captureDevOutput = (chunk: Buffer) => {
-        const text = chunk.toString();
-        devOutput += text;
-        pendingOutput += text;
-        const lines = pendingOutput.split(/\r?\n/);
-        pendingOutput = lines.pop() ?? "";
-
-        // parse the out for the ports each agent is running on
-        for (const line of lines) {
-          const match = line.match(/Agent '([^']+)' is running on port (\d+)\./);
-          if (match?.[1] && match[2]) runtimePorts.set(match[1], Number(match[2]));
-        }
-      };
-
-      beforeAll(() => {
-        dev = cli.start(["dev", "--mode", "headless"], projectDir);
-        dev.stdout?.on("data", captureDevOutput);
-        dev.stderr?.on("data", captureDevOutput);
-        dev.stdout?.resume();
-        dev.stderr?.resume();
-      }, TIMEOUT_MS.PROJECT_DEV);
-
-      afterAll(async () => {
-        if (!dev || dev.exitCode !== null) return;
-        dev.kill("SIGTERM");
-        await new Promise<void>((resolve) => dev?.once("close", resolve));
-      });
-
-      test.each(RUNTIME_TEMPLATES)(
-        "$name runs locally",
-        { concurrent: true, timeout: TIMEOUT_MS.PROJECT_INVOKE },
-        async (runtime) => {
-          const sessionId = getSessionId(`${runtime.name}`);
-
-          // The server may take a bit to get ready, so we retry on a timeout.
-          const response = await retry(async () => {
-            if (!dev) {
-              throw new Error(`agentcore dev did not start. \nstdout/stderr = ${devOutput}`);
-            }
-            if (dev.exitCode !== null) {
-              throw new Error(
-                `agentcore dev exited with code ${dev.exitCode ?? "unknown"}.  \nstdout/stderr = ${devOutput}`,
-              );
-            }
-
-            const port = runtimePorts.get(runtime.name);
-            if (!port) {
-              throw new Error(
-                `Runtime '${runtime.name}' is not ready. \nstdout/stderr = ${devOutput}`,
-              );
-            }
-
-            return parseResult(
-              LocalRuntimeInvokeResponseSchema,
-              await cli.run(
-                [
-                  "invoke",
-                  "--runtime",
-                  runtime.name,
-                  "--local",
-                  "--port",
-                  String(port),
-                  "--session-id",
-                  sessionId,
-                  "--payload",
-                  JSON.stringify(runtime.payload),
-                  "--json",
-                  ...(runtime.invokeFlags ?? []),
-                ],
-                projectDir,
-              ),
-            );
-          }, TIMEOUT_MS.PROJECT_INVOKE * 0.9);
-
+          const response = parseResult(
+            RuntimeInvokeResponseSchema,
+            await cli.run(
+              [
+                "invoke",
+                "--runtime",
+                CREATED_RUNTIME_NAME,
+                "--session-id",
+                getSessionId(runtime.name),
+                "--payload",
+                JSON.stringify(runtime.payload),
+                "--json",
+                ...(runtime.invokeFlags ?? []),
+              ],
+              projectDir,
+            ),
+          );
           expect(response.complete).toBe(true);
           if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
             assertProtocolResponse(runtime, response.body);
           }
-        },
-      );
-    });
 
-    test("deploys all runtimes", { timeout: TIMEOUT_MS.PROJECT_DEPLOY }, async () => {
-      const deployment = parseResult(
-        DeployResponseSchema,
-        await cli.run(["deploy", "--yes", "--json"], projectDir),
-      );
-      expect(deployment.message).toContain("Deployed project");
-    });
-
-    test.each(RUNTIME_TEMPLATES)(
-      "$name can be invoked after deployed",
-      { concurrent: true, timeout: TIMEOUT_MS.PROJECT_INVOKE },
-      async (runtime) => {
-        const sessionId = getSessionId(runtime.name);
-        const response = parseResult(
-          RuntimeInvokeResponseSchema,
-          await cli.run(
-            [
-              "invoke",
-              "--runtime",
-              runtime.name,
-              "--session-id",
-              sessionId,
-              "--payload",
-              JSON.stringify(runtime.payload),
-              "--json",
-              ...(runtime.invokeFlags ?? []),
-            ],
-            projectDir,
-          ),
-        );
-
-        expect(response.complete).toBe(true);
-        if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
-          assertProtocolResponse(runtime, response.body);
+          const removed = parseResult(
+            OperationSchema,
+            await cli.run(
+              ["remove", "runtime", "--name", CREATED_RUNTIME_NAME, "--json"],
+              projectDir,
+            ),
+          );
+          expect(removed.operation).toBe("remove");
+        } finally {
+          // Tear the stack down even when a step above failed.
+          await cli.run(["remove", "all", "--yes", "--json"], projectDir);
+          parseResult(JsonObjectSchema, await cli.run(["deploy", "--yes", "--json"], projectDir));
         }
-      },
-    );
-
-    test.each(RUNTIME_TEMPLATES)(
-      "$name can be removed from the project",
-      { timeout: TIMEOUT_MS.PROJECT_REMOVE },
-      async (runtime) => {
-        const removed = parseResult(
-          OperationSchema,
-          await cli.run(["remove", "runtime", "--name", runtime.name, "--json"], projectDir),
-        );
-        expect(removed.operation).toBe("remove");
-      },
-    );
-
-    test(
-      "deploys the empty project",
-      { timeout: TIMEOUT_MS.PROJECT_REMOVE + TIMEOUT_MS.PROJECT_DEPLOY },
-      async () => {
-        parseResult(
-          JsonObjectSchema,
-          await cli.run(["remove", "all", "--yes", "--json"], projectDir),
-        );
-
-        parseResult(JsonObjectSchema, await cli.run(["deploy", "--yes", "--json"], projectDir));
       },
     );
   },
 );
+
+/** Given a template test case, creates a project scaffolded from it and returns its path. */
+async function createTemplateProject(
+  cli: CliRunner,
+  runtime: RuntimeTemplateTestCase,
+): Promise<string> {
+  const parent = await mkdtemp(join(tmpdir(), "agentcore-e2e-"));
+  // A per-template suffix keeps concurrent projects (and their stacks) apart;
+  // project names are alphanumeric, so it is the template's index.
+  const projectName = `${E2E_PREFIX}${Date.now().toString(36)}t${RUNTIME_TEMPLATES.indexOf(runtime)}`;
+  const created = parseResult(
+    ProjectCreatedSchema,
+    await cli.run(
+      ["create", "--name", projectName, "--template", runtime.template, "--skip-git", "--json"],
+      parent,
+    ),
+  );
+  return created.project.path;
+}
+
+/** Given a template test case, runs `agentcore dev` and invokes the runtime locally. */
+async function invokeLocally(
+  cli: CliRunner,
+  runtime: RuntimeTemplateTestCase,
+  projectDir: string,
+): Promise<void> {
+  let port: number | undefined;
+  let pendingOutput = "";
+  let devOutput = "";
+  /** Given dev-process output, records the port the runtime announces. */
+  const captureDevOutput = (chunk: Buffer) => {
+    const text = chunk.toString();
+    devOutput += text;
+    pendingOutput += text;
+    const lines = pendingOutput.split(/\r?\n/);
+    pendingOutput = lines.pop() ?? "";
+    for (const line of lines) {
+      const match = line.match(/Agent '([^']+)' is running on port (\d+)\./);
+      if (match?.[1] === CREATED_RUNTIME_NAME && match[2]) port = Number(match[2]);
+    }
+  };
+
+  const dev = cli.start(["dev", "--mode", "headless"], projectDir);
+  dev.stdout?.on("data", captureDevOutput);
+  dev.stderr?.on("data", captureDevOutput);
+  dev.stdout?.resume();
+  dev.stderr?.resume();
+  try {
+    // The server may take a bit to get ready, so we retry on a timeout.
+    const response = await retry(async () => {
+      if (dev.exitCode !== null) {
+        throw new Error(
+          `agentcore dev exited with code ${dev.exitCode ?? "unknown"}.  \nstdout/stderr = ${devOutput}`,
+        );
+      }
+      if (!port) {
+        throw new Error(`Runtime '${runtime.name}' is not ready. \nstdout/stderr = ${devOutput}`);
+      }
+      return parseResult(
+        LocalRuntimeInvokeResponseSchema,
+        await cli.run(
+          [
+            "invoke",
+            "--runtime",
+            CREATED_RUNTIME_NAME,
+            "--local",
+            "--port",
+            String(port),
+            "--session-id",
+            getSessionId(runtime.name),
+            "--payload",
+            JSON.stringify(runtime.payload),
+            "--json",
+            ...(runtime.invokeFlags ?? []),
+          ],
+          projectDir,
+        ),
+      );
+    }, TIMEOUT_MS.PROJECT_INVOKE * 0.9);
+
+    expect(response.complete).toBe(true);
+    if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
+      assertProtocolResponse(runtime, response.body);
+    }
+  } finally {
+    if (dev.exitCode === null) {
+      dev.kill("SIGTERM");
+      await new Promise<void>((resolve) => dev.once("close", resolve));
+    }
+  }
+}
 
 /** Given a runtime and response body, validates the protocol response and request identifier. */
 function assertProtocolResponse(runtime: RuntimeTemplateTestCase, body: string): void {

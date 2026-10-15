@@ -114,7 +114,7 @@ describe("project create", () => {
     expect(io.stderr()).toMatch(
       /Next steps:\n  cd MyAgent\n  agentcore add harness +add a config-based agent/,
     );
-    expect(io.stderr()).toMatch(/agentcore add runtime +add a code-based agent from a template/);
+    expect(io.stderr()).toMatch(/agentcore add runtime +add a code-based agent you write yourself/);
     expect(io.stderr()).toContain("agentcore add --help");
   });
 

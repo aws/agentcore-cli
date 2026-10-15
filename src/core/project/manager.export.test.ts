@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import z from "zod";
 import { parse, stringify } from "yaml";
 import { FsProjectManager } from "./manager";
+import { prepareRuntimes } from "./runtimeBuild";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
@@ -338,6 +339,10 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(runtime.build).toBe("CodeZip");
     expect(runtime.runtimeVersion).toBe("PYTHON_3_14");
     expect(runtime.dockerfile).toBeUndefined();
+    // dev/build/deploy re-derive build settings from the code; an export already agrees.
+    const prepared = prepareRuntimes(project.rootPath, spec.runtimes, "dev");
+    expect(prepared.changed).toEqual([]);
+    expect(prepared.messages).toEqual([]);
   });
 
   test("exports a containerUri harness as CodeZip and reports the dropped image", async () => {

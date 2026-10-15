@@ -7,7 +7,11 @@ import { MemorySchema } from "../../projectSchemas/memory";
 import type { EvaluatorSchema, EvaluationLevel } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
-import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
+import type {
+  ImportBedrockAgentInput,
+  RuntimeDocsConfig,
+  RuntimeResourceConfig,
+} from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
@@ -353,6 +357,22 @@ export type AddResourceOptions = {
   region?: string;
 };
 
+export type SyncRuntimeBuildsInput = {
+  /** dev runs a JavaScript entrypoint and installs Node dependencies itself; deploy needs both. */
+  purpose: "dev" | "deploy";
+  /** Only these runtimes; every runtime when omitted. */
+  runtimeNames?: string[];
+};
+
+export type SyncRuntimeBuildsResult = {
+  /** The project with its runtimes as now written to agentcore.json. */
+  project: Project;
+  /** What changed, then any warnings; empty when nothing changed. */
+  messages: string[];
+  /** Whether agentcore.json was rewritten. */
+  written: boolean;
+};
+
 /** Discriminated union input for {@link ProjectManager.addResource}. */
 export type AddResourceInput =
   | {
@@ -367,7 +387,7 @@ export type AddResourceInput =
     }
   | {
       resourceType: "runtime";
-      resourceConfig: RuntimeResourceConfig;
+      resourceConfig: RuntimeResourceConfig | RuntimeDocsConfig;
     }
   | {
       resourceType: "credential";
@@ -529,6 +549,17 @@ export interface ProjectManager {
 
   /** Compile the project's CDK app and synthesize its CloudFormation templates. */
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
+
+  /**
+   * Re-derives runtime build settings (build, dockerfile, runtimeVersion,
+   * entrypoint) from each runtime's code and writes changed fields back to
+   * agentcore.json. Throws when a runtime's folder is missing what its build
+   * needs. build and deploy run it before synth; dev before starting runtimes.
+   */
+  syncRuntimeBuilds(
+    project: Project,
+    input: SyncRuntimeBuildsInput,
+  ): Promise<SyncRuntimeBuildsResult>;
 
   /** Deploy the project to one of its configured AWS targets. */
   deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, DeployResult>;

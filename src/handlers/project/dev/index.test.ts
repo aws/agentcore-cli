@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { writeMigrationState } from "../../../core/project/migrate/journal";
 import {
   InternalServerException,
@@ -19,9 +19,10 @@ import {
 import type { HttpRequestHandler, PortChecker } from "../../../io";
 import { GlobalConfigAccessorKey, ProjectKey, Router, ValueContext } from "../../../router";
 import { TestCoreClient, TestGlobalConfigAccessor, testIO } from "../../../testing";
+import { ProjectStateError } from "../../../errors";
 import { JsonRendererKey } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
-import type { DeployProjectInput, Project } from "../types";
+import type { DeployProjectInput, Project, ProjectManager } from "../types";
 import type { V0DeployInput } from "../../../core/project/legacy/deploy";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import {
@@ -41,6 +42,7 @@ function runtime(name = "orders", build: ProjectRuntime["build"] = "CodeZip"): P
     protocol: "HTTP",
     entrypoint: "main.py",
     codeLocation: `app/${name}`,
+    ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
   } as ProjectRuntime;
 }
 
@@ -123,6 +125,11 @@ type HarnessOptions = {
   loadEnvironment?: DevProjectHandlerConfig["loadDevEnvironment"];
   /** Deploy through the real project manager instead of recording deployments. */
   realDeploy?: boolean;
+  /**
+   * Replaces the build-settings sync. By default it passes the project through,
+   * since most projects here are in-memory; `"real"` uses the project manager's.
+   */
+  syncRuntimeBuilds?: "real" | ProjectManager["syncRuntimeBuilds"];
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -152,6 +159,11 @@ function harness(options: HarnessOptions = {}) {
     };
   }
   projectManager.resolveTarget = async () => undefined;
+  if (options.syncRuntimeBuilds !== "real") {
+    projectManager.syncRuntimeBuilds =
+      options.syncRuntimeBuilds ??
+      (async (configuredProject) => ({ project: configuredProject, messages: [], written: false }));
+  }
   projectManager.resolveDeployedResource = async (_project, input) => {
     resolutions.push(input);
     return {
@@ -256,6 +268,73 @@ async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ n
   const status = JSON.parse(String(response.body)) as { agents: { name: string }[] };
   return status.agents;
 }
+
+describe("project dev build settings sync", () => {
+  async function codeProject(files: Record<string, string>) {
+    const root = await mkdtemp(join(tmpdir(), "dev-sync-"));
+    for (const [path, content] of Object.entries(files)) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), content);
+    }
+    const configured = { ...project(runtime("search")), rootPath: root };
+    await mkdir(join(root, "agentcore"), { recursive: true });
+    await writeFile(join(root, "agentcore", "agentcore.json"), JSON.stringify(configured.spec));
+    return configured;
+  }
+
+  const specOnDisk = async (root: string) =>
+    JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf-8"));
+
+  test("writes the version the code asks for to agentcore.json, prints it, and runs with it", async () => {
+    const configured = await codeProject({
+      "app/search/main.py": "",
+      "app/search/pyproject.toml": '[project]\nrequires-python = ">=3.10,<3.13"\n',
+    });
+    const subject = harness({ project: configured, syncRuntimeBuilds: "real" });
+
+    await subject.run({ agent: "search" });
+
+    expect(subject.io.stderr()).toContain(
+      'search: runtimeVersion PYTHON_3_14 -> PYTHON_3_12 (requires-python ">=3.10,<3.13" in ' +
+        "app/search/pyproject.toml)",
+    );
+    expect(subject.codeZip.inputs[0]?.runtime).toMatchObject({
+      build: "CodeZip",
+      runtimeVersion: "PYTHON_3_12",
+    });
+    expect((await specOnDisk(configured.rootPath)).runtimes[0].runtimeVersion).toBe("PYTHON_3_12");
+  });
+
+  test("a Dockerfile in the code folder switches to the container runner", async () => {
+    const configured = await codeProject({ "app/search/Dockerfile": "FROM scratch\n" });
+    const subject = harness({ project: configured, syncRuntimeBuilds: "real" });
+
+    await subject.run({ agent: "search" });
+
+    expect(subject.io.stderr()).toContain(
+      "search: build CodeZip -> Container (Dockerfile in app/search)",
+    );
+    expect(subject.container.inputs[0]?.runtime).toMatchObject({
+      build: "Container",
+      dockerfile: "Dockerfile",
+    });
+    expect(subject.codeZip.inputs).toEqual([]);
+    const written = (await specOnDisk(configured.rootPath)).runtimes[0];
+    expect(written).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    expect(written.runtimeVersion).toBeUndefined();
+  });
+
+  test("stops before running anything when the folder is missing what the build needs", async () => {
+    const configured = await codeProject({ "app/search/README.md": "" });
+    const subject = harness({ project: configured, syncRuntimeBuilds: "real" });
+
+    await expect(subject.run({ agent: "search" })).rejects.toThrow(
+      'runtime "search": no pyproject.toml in app/search/. See app/search/README.md.',
+    );
+    expect(subject.codeZip.inputs).toEqual([]);
+    expect(subject.collector.starts).toEqual([]);
+  });
+});
 
 describe("project dev selection and dispatch", () => {
   test("loads the environment and dispatches a translated v0 runtime", async () => {
@@ -604,6 +683,84 @@ describe("project dev Inspector UI mode", () => {
       "payments",
     ]);
     expect(subject.io.stderr()).toContain("Reloaded agents from agentcore.json.");
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("a reload that no longer resolves reports why and keeps the current agents", async () => {
+    let calls = 0;
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders"), runtime("payments")],
+      syncRuntimeBuilds: async (configuredProject) => {
+        if (++calls > 1) {
+          throw new ProjectStateError(
+            'runtime "payments": app/payments/ does not exist. See app/payments/README.md.',
+          );
+        }
+        return { project: configuredProject, messages: [], written: false };
+      },
+    });
+    const { pending } = await runUi(subject);
+    const before = (await inspectorStatus(subject)).map((agent) => agent.name);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect(subject.io.stderr()).toContain("Could not reload agents from agentcore.json:");
+    expect(subject.io.stderr()).toContain('runtime "payments": app/payments/ does not exist.');
+    expect(subject.io.stderr()).not.toContain("Reloaded agents from agentcore.json.");
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(before);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("any reload error is reported, not only an unresolvable runtime", async () => {
+    let calls = 0;
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders")],
+      syncRuntimeBuilds: async (configuredProject) => {
+        if (++calls > 1) throw new Error("EACCES: permission denied, open agentcore.json");
+        return { project: configuredProject, messages: [], written: false };
+      },
+    });
+    const { pending } = await runUi(subject);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect(subject.io.stderr()).toContain(
+      "Could not reload agents from agentcore.json:\nEACCES: permission denied",
+    );
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("the reload caused by the CLI's own write-back is quiet", async () => {
+    const results = [
+      { messages: [], written: false },
+      { messages: ["orders: runtimeVersion PYTHON_3_14 -> PYTHON_3_12 (...)"], written: true },
+      { messages: [], written: false },
+    ];
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders")],
+      syncRuntimeBuilds: async (configuredProject) => ({
+        project: configuredProject,
+        ...results.shift()!,
+      }),
+    });
+    const { pending } = await runUi(subject);
+
+    subject.watchers[0]!.onChange(); // the user's edit: rewritten, reported
+    await Bun.sleep(5);
+    subject.watchers[0]!.onChange(); // the CLI's own write: nothing to change
+    await Bun.sleep(5);
+
+    const reloads = subject.io.stderr().split("Reloaded agents from agentcore.json.").length - 1;
+    expect(reloads).toBe(1);
+    expect(subject.io.stderr()).toContain("orders: runtimeVersion PYTHON_3_14 -> PYTHON_3_12");
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);

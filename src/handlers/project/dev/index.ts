@@ -12,6 +12,7 @@ import {
   AgentCoreCLIError,
   ERROR_SOURCE,
   InputValidationError,
+  DeserializationError,
   NotImplementedError,
   ResourceNotFoundError,
   SilentCLIError,
@@ -351,7 +352,6 @@ async function runRuntimeDev({
     uiPort?: number;
   };
 }): Promise<void> {
-  const { runtimes } = input;
   await withUserCancellation(
     async (signal) => {
       const json = ctx.require(JsonKey) ? ctx.require(JsonRendererKey) : undefined;
@@ -359,7 +359,7 @@ async function runRuntimeDev({
       try {
         const project = ctx.require(ProjectKey);
         const region = ctx.require(RegionKey);
-        if (runtimes.length > 1 && input.port !== undefined) {
+        if (input.runtimes.length > 1 && input.port !== undefined) {
           throw new InputValidationError(
             "--port applies to a single runtime. Use --agent to select one.",
           );
@@ -375,6 +375,19 @@ async function runRuntimeDev({
             });
           }
         }
+
+        // Brings agentcore.json up to date with the code (build, runtimeVersion,
+        // entrypoint), and stops before anything runs when a runtime's folder is
+        // missing what its build needs.
+        const runtimeNames = input.runtimes.map(({ name }) => name);
+        const synced = await config.projectManager.syncRuntimeBuilds(project, {
+          purpose: "dev",
+          runtimeNames,
+        });
+        for (const message of synced.messages) renderStatus({ io: config.io, message, json });
+        const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
+          runtimeNames.includes(name),
+        );
 
         collector = input.traces
           ? await startRuntimeTraceCollector({ config, project, runtimes, json })
@@ -455,26 +468,62 @@ async function runRuntimeDev({
             supervisor,
             traces: collector?.traces,
             assets: config.inspectorAssets,
-            project: { ...project, spec: { ...project.spec, harnesses: [] } },
+            project: { ...synced.project, spec: { ...synced.project.spec, harnesses: [] } },
             selectedAgent: input.agent,
           }),
           { port: uiPort, signal },
         );
 
+        // A reload that rewrites agentcore.json triggers one more change event
+        // for the CLI's own write; that pass finds nothing to change and stays quiet.
+        let ownWritePending = false;
         const onConfigChange = async () => {
+          let reloaded: Project | undefined;
           try {
-            const reloaded = await config.projectManager.resolve({ filePath: project.rootPath });
-            if (!reloaded) return;
-            const runtimes = reloaded.spec.runtimes.filter(supportsLocalDev);
-            supervisor.setRuntimes(
-              input.agent ? runtimes.filter((runtime) => runtime.name === input.agent) : runtimes,
-            );
-            renderStatus({ io: config.io, message: "Reloaded agents from agentcore.json.", json });
-          } catch {
+            reloaded = await config.projectManager.resolve({ filePath: project.rootPath });
+          } catch (error) {
             // A half-saved config parses on the next change event.
+            if (error instanceof DeserializationError) return;
+            renderReloadError(error);
+            return;
+          }
+          if (!reloaded) return;
+          const runtimeNames = reloaded.spec.runtimes
+            .filter(supportsLocalDev)
+            .map(({ name }) => name)
+            .filter((name) => !input.agent || name === input.agent);
+          let synced: Awaited<ReturnType<typeof config.projectManager.syncRuntimeBuilds>>;
+          try {
+            synced = await config.projectManager.syncRuntimeBuilds(reloaded, {
+              purpose: "dev",
+              runtimeNames,
+            });
+          } catch (error) {
+            // A runtime that no longer resolves keeps its previous definition; say why.
+            renderReloadError(error);
+            return;
+          }
+          for (const message of synced.messages) renderStatus({ io: config.io, message, json });
+          supervisor.setRuntimes(
+            synced.project.spec.runtimes.filter(({ name }) => runtimeNames.includes(name)),
+          );
+          const quiet = ownWritePending && !synced.written && synced.messages.length === 0;
+          ownWritePending = synced.written;
+          if (!quiet) {
+            renderStatus({ io: config.io, message: "Reloaded agents from agentcore.json.", json });
           }
         };
-        config.watchFile(projectSpecPath(project.rootPath), () => void onConfigChange(), signal);
+        const renderReloadError = (error: unknown) =>
+          renderStatus({
+            io: config.io,
+            message: `Could not reload agents from agentcore.json:\n${AgentCoreCLIError.fromError(error).message}`,
+            json,
+          });
+        config.watchFile(
+          projectSpecPath(project.rootPath),
+          () => void onConfigChange().catch(() => {}),
+          signal,
+        );
 
         const url = `http://127.0.0.1:${server.port}`;
         renderStatus({ io: config.io, message: `Agent Inspector running at ${url}`, json });
