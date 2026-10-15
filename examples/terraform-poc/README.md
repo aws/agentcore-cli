@@ -9,9 +9,9 @@ This example exercises an experimental Terraform deployment backend for a small 
 
 The backend scaffolds HCL root files and references the reusable `agentcore-application` module maintained in the AgentCore L3 constructs repository. The root reads `agentcore/agentcore.json` and passes a typed `spec` object into the module. Terraform reads the JSON on every plan, so changing a supported setting does not require CLI regeneration.
 
-AgentCore resources use AWSCC 1.106.0, except for gateway targets: that release does not expose a gateway target resource, so the example uses AWS provider 6.69.0 for its Lambda target. The AWS provider also manages IAM, S3, Lambda, and logs. Resource creation is owned by Terraform.
+AgentCore resources use AWSCC 1.106.0, except for gateway targets: that release does not expose a gateway target resource, so the example uses AWS provider 6.69.0 for its Lambda target. The AWS provider also manages IAM, S3, and Lambda. As with the CDK constructs, the services create their own log groups.
 
-The example has been packaged reproducibly, validated against both pinned providers, and planned with Terraform 1.16.6 (25 resources). Live deployment, invocation, policy enforcement, evaluation results, updates, and teardown remain unverified. The steps below describe the experiment to run.
+This example has been deployed live with Terraform 1.16.6, both from an empty account state and incrementally. Every step below was exercised: invocation, memory events and semantic extraction, gateway tool discovery and calls, policy permit/forbid/`LOG_ONLY` behavior, online evaluation scores, code updates, a no-change repeat plan, and teardown. These were manual runs in one test account, not automated end-to-end tests.
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ The customer owns the root `.tf` files. Build and deploy preserve those edits. T
 
 ## Deploy the connected example
 
-Copy this directory outside the repository before using it so configuration changes and deployment state remain separate from the checked-in fixture. Set `CLI` to the absolute path of this branch's `dist/index.js`.
+Copy this directory outside the repository before using it so configuration changes and deployment state remain separate from the checked-in fixture. Policy names are unique per account and Region, so a second copy in the same account needs a different project name and policy name. Set `CLI` to the absolute path of this branch's `dist/index.js`.
 
 ```sh
 export CLI=/absolute/path/to/agentcore-cli/dist/index.js
@@ -97,11 +97,11 @@ terraform plan -var-file=.targets/default/deployment.tfvars.json
 
 Edit a supported value such as memory retention in `agentcore.json`, then run the same `terraform plan` command again. The module receives the updated object immediately. After reviewing the plan, apply it with the same target inputs. Changes to application source still require rebuilding the ZIPs and updating their artifact hashes.
 
-The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/ade47fb93664070aff6a23b714691ca7c10d6f7c/terraform/modules/agentcore-application/README.md).
+The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/39b824c1cdbc4926bea745616610e516344537f4/terraform/modules/agentcore-application/README.md).
 
 The root can pass inline HCL instead of JSON. This allows values from customer resources to enter the `spec` directly, for example `envVars = [{ name = "ORDERS_TABLE", value = aws_dynamodb_table.orders.name }]`. Outputs such as `module.application.runtimes["Agent"].role_name` allow a separate IAM policy to grant that runtime access to the table. Terraform follows these references to order changes.
 
-References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/ade47fb93664070aff6a23b714691ca7c10d6f7c/terraform/modules/agentcore-application/README.md) for the contract and limits.
+References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/39b824c1cdbc4926bea745616610e516344537f4/terraform/modules/agentcore-application/README.md) for the contract and limits.
 
 ## Exercise the deployed resources
 
@@ -113,9 +113,9 @@ node "$CLI" invoke --runtime Agent --payload '{"operation":"echo","message":"Hel
 node "$CLI" invoke --runtime Agent --payload '{"prompt":"How can I keep a cup of tea warm?"}'
 ```
 
-The memory operation writes an event and lists session events. Semantic extraction is asynchronous. The gateway operations use the runtime's IAM credentials to discover and invoke the Lambda tool. The final operation invokes a Strands agent and produces model telemetry for online evaluation; an active evaluation configuration alone does not establish that evaluation results are being produced.
+The memory operation writes an event and lists session events. Semantic extraction is asynchronous. The gateway operations use the runtime's IAM credentials to discover and invoke the Lambda tool. The final operation invokes a Strands agent and produces model telemetry for online evaluation; results appear in `/aws/bedrock-agentcore/evaluations/results/<config id>` a few minutes after the session goes idle. Sessions without model spans, such as the probe operations, are recorded as evaluation errors.
 
-To examine enforcement, change the sample policy to `forbid(principal, action, resource is AgentCore::Gateway);`, redeploy, and check that calling the tool is denied. Set the policy's `enforcementMode` to `LOG_ONLY`, redeploy, and check its observed behavior before restoring the original policy. The gateway's policy-engine mode remains `ENFORCE`; it is a separate setting.
+To examine enforcement, change the sample policy to `forbid(principal, action, resource is AgentCore::Gateway);`, redeploy, and check that calling the tool is denied. Set the policy's `enforcementMode` to `LOG_ONLY`, redeploy, and check its observed behavior before restoring the original policy: with the only policy in `LOG_ONLY`, no enforced policy permits the call, so the gateway still denies it by default. The gateway's policy-engine mode remains `ENFORCE`; it is a separate setting.
 
 The module maps the statement through AWSCC's `definition.policy.statement` input. A valid Dogwood statement can be supplied there, but schema support and a successful deployment of a particular Dogwood policy are separate checks.
 
