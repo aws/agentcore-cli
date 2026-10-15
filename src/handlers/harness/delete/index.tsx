@@ -1,3 +1,4 @@
+import { harnessIdSchema } from "../idSchema";
 import z from "zod";
 import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
@@ -9,7 +10,7 @@ export const createDeleteHarnessHandler = (core: Core) =>
     name: "delete",
     description: "delete a harness",
     flags: [
-      flag("id", "the ID of the harness to delete", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness to delete", harnessIdSchema),
       flag(
         "delete-managed-memory",
         "whether to also delete the managed Memory (default true; pass false to keep it)",

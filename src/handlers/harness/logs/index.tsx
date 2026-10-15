@@ -1,3 +1,4 @@
+import { harnessIdSchema } from "../idSchema";
 import z from "zod";
 import { DEFAULT_ENDPOINT_QUALIFIER, runtimeLogGroup } from "../../../core/observability/index";
 import type { AppIO } from "../../../io";
@@ -7,7 +8,7 @@ import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
 const harnessFlags = [
-  flag("id", "the ID of the harness", z.string().min(1).max(48)),
+  flag("id", "the ID of the harness", harnessIdSchema),
   flag("qualifier", "the harness endpoint qualifier", z.string().min(1).optional()),
 ] as const;
 

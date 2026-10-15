@@ -1,3 +1,4 @@
+import { harnessIdSchema } from "../../idSchema";
 import z from "zod";
 import { createHandler, flag } from "../../../../router";
 import type { Core } from "../../../types.tsx";
@@ -9,7 +10,7 @@ export const createListVersionsHandler = (core: Core) =>
     name: "list",
     description: "list a harness's versions",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", harnessIdSchema),
       flag("next-token", "next token to use on paginated", z.string().optional()),
       flag("max-results", "max number of items to return", z.number().optional()),
     ],

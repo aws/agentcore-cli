@@ -1,3 +1,4 @@
+import { harnessIdSchema } from "../idSchema";
 import z from "zod";
 import type {
   AuthorizerConfiguration,
@@ -29,7 +30,7 @@ export const createUpdateHarnessHandler = (core: Core) =>
     name: "update",
     description: "update a harness (creates a new version)",
     flags: [
-      flag("id", "the ID of the harness to update", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness to update", harnessIdSchema),
       flag("execution-role-arn", "IAM role the harness assumes", z.string().optional(), {
         help: parameterHelp.executionRoleArn,
       }),
