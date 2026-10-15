@@ -27,7 +27,7 @@ function project(): Project {
           policies: [
             {
               name: "Allow",
-              statement: "permit(principal, action, resource);",
+              statement: "permit(principal, action, resource is AgentCore::Gateway);",
               enforcementMode: "LOG_ONLY",
             },
           ],
@@ -73,6 +73,11 @@ describe("Terraform project preflight", () => {
     expect(() => new TerraformProjectValidator().validate(project())).not.toThrow();
     expect(declaredResources(project())).toHaveLength(7);
   });
+  test("accepts a Python entrypoint with a handler suffix", () => {
+    const p = project();
+    p.spec.runtimes[0]!.entrypoint = "main.py:app";
+    expect(() => new TerraformProjectValidator().validate(p)).not.toThrow();
+  });
   test.each([
     [
       "migratedFrom",
@@ -107,7 +112,15 @@ describe("Terraform project preflight", () => {
     [
       "runtimes[Agent].entrypoint",
       (p: Project) => {
-        p.spec.runtimes[0]!.entrypoint = "main.py:app";
+        p.spec.runtimes[0]!.entrypoint = "main.js:app";
+      },
+    ],
+    [
+      "envVars.AGENTCORE_GATEWAY_TOOLS_AUTH_TYPE",
+      (p: Project) => {
+        p.spec.runtimes[0]!.envVars = [
+          { name: "AGENTCORE_GATEWAY_TOOLS_AUTH_TYPE", value: "NONE" },
+        ];
       },
     ],
     [

@@ -26,7 +26,7 @@ Set `CLI` to the absolute path of this branch's `dist/index.js`:
 export CLI=/absolute/path/to/agentcore-cli/dist/index.js
 ```
 
-This example creates billable resources and enables online evaluation at 100% sampling. Use it for a bounded experiment and tear it down afterward. The sample `permit(principal, action, resource);` policy permits all gateway actions to authenticated callers; replace it with your intended policy before using the configuration outside this example.
+This example creates billable resources and enables online evaluation at 100% sampling. Use it for a bounded experiment and tear it down afterward. The sample `permit(principal, action, resource is AgentCore::Gateway);` policy permits all gateway actions to authenticated callers; replace it with your intended policy before using the configuration outside this example.
 
 ## Create a project
 
@@ -97,11 +97,11 @@ terraform plan -var-file=.targets/default/deployment.tfvars.json
 
 Edit a supported value such as memory retention in `agentcore.json`, then run the same `terraform plan` command again. The module receives the updated object immediately. After reviewing the plan, apply it with the same target inputs. Changes to application source still require rebuilding the ZIPs and updating their artifact hashes.
 
-The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/d3ce7229610ce0bb56d581c55f710e220b58faa4/terraform/modules/agentcore-application/README.md).
+The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/ade47fb93664070aff6a23b714691ca7c10d6f7c/terraform/modules/agentcore-application/README.md).
 
 The root can pass inline HCL instead of JSON. This allows values from customer resources to enter the `spec` directly, for example `envVars = [{ name = "ORDERS_TABLE", value = aws_dynamodb_table.orders.name }]`. Outputs such as `module.application.runtimes["Agent"].role_name` allow a separate IAM policy to grant that runtime access to the table. Terraform follows these references to order changes.
 
-References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/d3ce7229610ce0bb56d581c55f710e220b58faa4/terraform/modules/agentcore-application/README.md) for the contract and limits.
+References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/ade47fb93664070aff6a23b714691ca7c10d6f7c/terraform/modules/agentcore-application/README.md) for the contract and limits.
 
 ## Exercise the deployed resources
 
@@ -115,7 +115,7 @@ node "$CLI" invoke --runtime Agent --payload '{"prompt":"How can I keep a cup of
 
 The memory operation writes an event and lists session events. Semantic extraction is asynchronous. The gateway operations use the runtime's IAM credentials to discover and invoke the Lambda tool. The final operation invokes a Strands agent and produces model telemetry for online evaluation; an active evaluation configuration alone does not establish that evaluation results are being produced.
 
-To examine enforcement, change the sample policy to `forbid(principal, action, resource);`, redeploy, and check that calling the tool is denied. Set the policy's `enforcementMode` to `LOG_ONLY`, redeploy, and check its observed behavior before restoring the original policy. The gateway's policy-engine mode remains `ENFORCE`; it is a separate setting.
+To examine enforcement, change the sample policy to `forbid(principal, action, resource is AgentCore::Gateway);`, redeploy, and check that calling the tool is denied. Set the policy's `enforcementMode` to `LOG_ONLY`, redeploy, and check its observed behavior before restoring the original policy. The gateway's policy-engine mode remains `ENFORCE`; it is a separate setting.
 
 The module maps the statement through AWSCC's `definition.policy.statement` input. A valid Dogwood statement can be supplied there, but schema support and a successful deployment of a particular Dogwood policy are separate checks.
 

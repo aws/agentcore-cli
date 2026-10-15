@@ -9,7 +9,7 @@ import type { TerraformAssets } from "./types";
 const ROOT_FILES: Record<string, string> = {
   "main.tf": `# This root is yours to edit. The CLI refreshes artifacts.json and target inputs.
 module "application" {
-  source      = "git::https://github.com/jariy17/agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=d3ce7229610ce0bb56d581c55f710e220b58faa4"
+  source      = "git::https://github.com/jariy17/agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=ade47fb93664070aff6a23b714691ca7c10d6f7c"
   spec        = jsondecode(file("\${path.module}/../agentcore.json"))
   target_name = var.target_name
   account_id  = var.account_id

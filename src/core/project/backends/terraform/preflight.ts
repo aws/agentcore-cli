@@ -91,8 +91,11 @@ export class TerraformProjectValidator {
         reject(`${path}.networkMode`, "must be PUBLIC for this PoC");
       if (runtime.authorizerType && runtime.authorizerType !== "AWS_IAM")
         reject(`${path}.authorizerType`, "must be AWS_IAM for this PoC");
-      if (!runtime.entrypoint.endsWith(".py"))
-        reject(`${path}.entrypoint`, "must be a Python script without a handler suffix");
+      if (!runtime.entrypoint.split(":")[0]!.endsWith(".py"))
+        reject(
+          `${path}.entrypoint`,
+          "must be a Python script, optionally followed by a handler suffix",
+        );
       const environment = new Set<string>();
       for (const env of runtime.envVars ?? []) {
         if (environment.has(env.name))
@@ -106,7 +109,7 @@ export class TerraformProjectValidator {
             ].includes(env.name),
           ) ||
           project.spec.agentCoreGateways.some((gateway) =>
-            ["URL", "ARN", "ID"]
+            ["URL", "ARN", "AUTH_TYPE"]
               .map((suffix) => `${this.gatewayPrefix(gateway.name)}_${suffix}`)
               .includes(env.name),
           );

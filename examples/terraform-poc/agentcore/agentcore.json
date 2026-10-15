@@ -31,7 +31,7 @@
       "policies": [
         {
           "name": "AllowEcho",
-          "statement": "permit(principal, action, resource);",
+          "statement": "permit(principal, action, resource is AgentCore::Gateway);",
           "validationMode": "IGNORE_ALL_FINDINGS",
           "enforcementMode": "ACTIVE"
         }
