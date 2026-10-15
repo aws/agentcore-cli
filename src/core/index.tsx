@@ -155,6 +155,7 @@ export class CoreClient implements AwsClients {
       new FsProjectMigrator({
         logger: this.logger.child({ module: "projectMigrator" }),
         createCloudFormationClient: config.createCloudFormationClient,
+        identity: this.identity,
       });
   }
 

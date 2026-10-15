@@ -14,6 +14,7 @@ import { constants, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { ProjectStateError } from "../../../errors";
 import type { FileChange } from "../../../handlers/project/migrate/types";
+import { DEPLOYED_STATE_RELATIVE_PATH } from "../backends/cdk/deployedState";
 import type { AssetSource } from "../source";
 import { PROJECT_SPEC_RELATIVE_PATH } from "../fsUtils";
 import { FsTreeNode } from "../templates/fsTree";
@@ -54,6 +55,8 @@ export type WorkspaceInput = {
   harnesses: { directory: string; yaml: string }[];
   /** Where v1's vended CDK app (`cdk/`) is read from. */
   assetSource: AssetSource;
+  /** Replaces the copied deployed-state.json, when planning filled in what v0 didn't record. */
+  deployedState?: string;
 };
 
 export type MigrationWorkspace = {
@@ -105,6 +108,12 @@ export async function buildMigrationWorkspace(input: WorkspaceInput): Promise<Mi
       await mkdir(harnessDirectory, { recursive: true });
       await rm(await inWorkspace(harnessDirectory, "harness.json"), { force: true });
       await writeFile(await inWorkspace(harnessDirectory, "harness.yaml"), harness.yaml);
+    }
+    if (input.deployedState !== undefined) {
+      await writeFile(
+        await inWorkspace(directory, DEPLOYED_STATE_RELATIVE_PATH),
+        input.deployedState,
+      );
     }
 
     const cdkDirectory = await inWorkspace(directory, "agentcore", "cdk");

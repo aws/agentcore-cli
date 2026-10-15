@@ -63,6 +63,30 @@ describe("buildMigrationWorkspace", () => {
     expect(byPath["app/CompatAAgent/main.py"]).toBeUndefined();
   });
 
+  test("writes the deployed state planning filled in, as a modified file", async () => {
+    const { root, cleanup } = await writeV0Project();
+    cleanups.push(cleanup);
+    const statePath = join("agentcore", ".cli", "deployed-state.json");
+    const deployedState = `${JSON.stringify({ targets: { default: { resources: {} } } }, null, 2)}\n`;
+
+    const workspace = await buildMigrationWorkspace({
+      rootPath: root,
+      spec: { name: "CompatA", version: 2, migratedFrom: "v1" },
+      harnesses: [],
+      assetSource: new FsAssetSource(),
+      deployedState,
+    });
+    cleanups.push(workspace.dispose);
+
+    expect(await readFile(join(workspace.directory, statePath), "utf8")).toBe(deployedState);
+    expect(workspace.changes).toContainEqual({
+      path: "agentcore/.cli/deployed-state.json",
+      kind: "modified",
+    });
+    // The project's own copy isn't written.
+    expect(await readFile(join(root, statePath), "utf8")).not.toBe(deployedState);
+  });
+
   test("copies the deployed state and the vended app as they are", async () => {
     const { root, cleanup } = await writeV0Project();
     cleanups.push(cleanup);
@@ -77,7 +101,8 @@ describe("buildMigrationWorkspace", () => {
     });
     cleanups.push(workspace.dispose);
 
-    // migratedFrom in agentcore.json keeps the names; deployed state isn't touched.
+    // migratedFrom in agentcore.json keeps the names; deployed state isn't touched unless
+    // planning filled in secret ARNs v0 didn't record.
     expect(await readFile(join(workspace.directory, statePath), "utf8")).toBe(originalState);
     expect(workspace.changes).not.toContainEqual(
       expect.objectContaining({ path: "agentcore/.cli/deployed-state.json" }),

@@ -94,7 +94,8 @@ describe("FsProjectMigrator.plan", () => {
       "Dropped fields v1 doesn't use: credentials[compatA-oauth].usage",
       expect.stringContaining("This project has credentials (compatA-key, compatA-oauth)."),
     ]);
-    // The project isn't written; deployed state isn't part of the migration.
+    // The project isn't written, and deployed state isn't changed unless planning filled in
+    // secret ARNs v0 didn't record (this migrator has no Identity client to look them up).
     expect(plan.changes).not.toContainEqual(
       expect.objectContaining({ path: "agentcore/.cli/deployed-state.json" }),
     );
