@@ -84,7 +84,6 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         await delegateV0Deploy(config, {
           projectRoot: project.rootPath,
           target: flags.target,
-          region: ctx.require(RegionKey),
           yes: flags.yes,
           json: jsonOutput,
         });
@@ -196,7 +195,6 @@ function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
         await delegateV0Deploy(config, {
           projectRoot,
           target: flags.target as string,
-          region: ctx.require(RegionKey),
           yes: flags.yes as boolean,
           json: ctx.require(JsonKey),
         });

@@ -268,7 +268,6 @@ describe("project deploy handler", () => {
         {
           projectRoot,
           target: "default",
-          region: "eu-west-2",
           yes: flag === "--yes",
           json: flag === "--json",
         },

@@ -710,7 +710,6 @@ describe("project dev harnesses", () => {
       {
         projectRoot: configuredProject.rootPath,
         target: "staging",
-        region: "us-west-2",
         yes: true,
         json: false,
       },

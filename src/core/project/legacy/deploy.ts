@@ -5,7 +5,6 @@ export const V0_CLI_PACKAGE = "@aws/agentcore@0";
 export type V0DeployInput = {
   projectRoot: string;
   target: string;
-  region: string;
   yes: boolean;
   json: boolean;
 };
@@ -33,7 +32,6 @@ export async function executeV0Deploy(
     env: {
       ...process.env,
       AGENTCORE_SKIP_CONFLICT_CHECK: "1",
-      AWS_REGION: input.region,
     },
   });
 }
