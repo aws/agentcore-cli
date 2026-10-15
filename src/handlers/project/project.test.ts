@@ -47,6 +47,41 @@ test("project dev requires an AgentCore project", async () => {
 });
 
 describe("project create", () => {
+  test("creates a Terraform project through --managed-by without CDK installation", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const { io, core } = await run([
+      "create",
+      "--name",
+      "TerraformProject",
+      "--managed-by",
+      "Terraform",
+      "--skip-git",
+    ]);
+
+    const projectRoot = join(directory, "TerraformProject");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.managedBy).toBe("Terraform");
+    expect(existsSync(join(projectRoot, "agentcore", "cdk"))).toBe(false);
+    expect(core.projectCommands).toEqual([]);
+    expect(io.stderr()).toContain("agentcore add runtime");
+    expect(io.stderr()).not.toContain("agentcore add harness");
+  });
+
+  test("does not apply the CDK node_modules Windows path limit to Terraform creation", async () => {
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const deep = join(path, "n".repeat(120));
+    await mkdir(deep);
+    process.chdir(deep);
+
+    await run(["create", "--name", "Deep", "--managed-by", "Terraform", "--skip-git"], {
+      platform: "win32",
+    });
+
+    expect(await readdir(deep)).toEqual(["Deep"]);
+  });
+
   test("--json returns the created project without human success text", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);

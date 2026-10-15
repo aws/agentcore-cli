@@ -5,7 +5,7 @@ import type { PaymentConnectorSchema, PaymentManagerSchema } from "../../project
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { MemorySchema } from "../../projectSchemas/memory";
 import type { EvaluatorSchema, EvaluationLevel } from "../../projectSchemas/evaluator";
-import type { ProjectSpecSchema } from "../../projectSchemas/project";
+import type { ManagedBy, ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
 import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
@@ -22,6 +22,8 @@ import { RuntimeTemplateProfileSchema } from "./templateProfile";
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
+  /** Infrastructure backend for the new project. Defaults to CDK. */
+  managedBy?: ManagedBy;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
@@ -527,7 +529,7 @@ export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
-  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
+  /** Generate and validate the project's infrastructure configuration. */
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
 
   /** Deploy the project to one of its configured AWS targets. */

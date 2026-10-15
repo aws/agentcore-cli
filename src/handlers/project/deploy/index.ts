@@ -71,7 +71,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       ),
       flag(
         "yes",
-        "confirm removing the target's stack when the project declares nothing to deploy",
+        "confirm removing the target's resources when the project declares nothing to deploy",
         z.boolean().default(false),
       ),
     ],

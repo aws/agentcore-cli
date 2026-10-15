@@ -13,6 +13,14 @@ const runtime = {
 };
 
 describe("project custom validation", () => {
+  test.each([
+    [undefined, "CDK"],
+    ["CDK", "CDK"],
+    ["Terraform", "Terraform"],
+  ] as const)("selects backend %s as %s", (managedBy, expected) => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, managedBy }).managedBy).toBe(expected);
+  });
+
   test.each([1, 3, "2", undefined, null])("rejects project version %j", (version) => {
     const result = ProjectSpecSchema.safeParse({ ...minimalProject, version });
     expect(result.success).toBe(false);

@@ -10,6 +10,7 @@ import { getRuntimeTemplateResolver } from "./runtime";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
+import type { ManagedBy } from "../../../projectSchemas/project";
 
 type CreateProjectConfig = {
   assetSource: AssetSource;
@@ -18,9 +19,10 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; managedBy?: ManagedBy },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
+  const managedBy = input.managedBy ?? "CDK";
   const templates: Template[] = [];
   if (options?.runtime) {
     const runtimeConfig: RuntimeResourceConfig = {
@@ -39,16 +41,26 @@ export async function createProjectTree(
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
 
   const tree = FsTreeNode.createDirectory(".", [
-    FsTreeNode.createFile(".gitignore", () =>
-      config.assetSource.read("templates/shared/gitignore.template"),
-    ),
+    FsTreeNode.createFile(".gitignore", async () => {
+      const shared = await config.assetSource.read("templates/shared/gitignore.template");
+      return managedBy === "Terraform"
+        ? `${shared}\n# Terraform generated configuration, assets, and local state\nagentcore/terraform/\n.terraform/\n*.tfstate\n*.tfstate.*\n*.tfplan\ncrash.log\n`
+        : shared;
+    }),
     FsTreeNode.createDirectory("agentcore", [
-      await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
+      ...(managedBy === "CDK"
+        ? [
+            await FsTreeNode.fromAssetSource(
+              { assetSource: config.assetSource },
+              { assetDir: "cdk" },
+            ),
+          ]
+        : []),
       FsTreeNode.createFile("agentcore.json", async () =>
         json({
           name: input.projectName,
           version: 2,
-          managedBy: "CDK",
+          managedBy,
           ...mergeSpecEntries(templates.map(({ spec }) => spec)),
         }),
       ),
