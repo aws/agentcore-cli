@@ -69,7 +69,7 @@ export function emptyProjectNextSteps(name: string, china: boolean): string[] {
     ...(china
       ? []
       : [["agentcore add harness", "add a config-based agent: pick a model, prompt, and tools"]]),
-    ["agentcore add runtime", "add a code-based agent from a template"],
+    ["agentcore add runtime", "add a code-based agent you write yourself"],
     [
       "agentcore add --help",
       "see everything else you can add (memory, gateways, credentials, ...)",
@@ -152,9 +152,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
           error.message === chinaModelProviderRestriction(createInput.scaffoldRuntimeInput)
         ) {
           throw new RegionUnsupportedFeatureError(
-            `${error.message} 'agentcore create' takes no model flags: create the project with ` +
-              "--template empty and pass them to 'agentcore add runtime --template <template>', " +
-              "or run 'agentcore create' interactively.",
+            `${error.message} 'agentcore create' takes no model flags: run 'agentcore create' ` +
+              "interactively to choose the model provider.",
             { cause: error },
           );
         }

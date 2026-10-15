@@ -13,12 +13,10 @@ import type { ScaffoldRuntimeInput } from "./types";
 
 const theme = darkTheme;
 
-// The model step of the code-based runtime wizards: `agentcore create` with a
-// runtime template and `agentcore add runtime`. Both hand the answer to
-// resolveRuntimeTemplateShortcut as the same overrides the --model-provider,
-// --model-id, --api-key and --api-base flags supply, so the wizard scaffolds
-// exactly what the flag command would. It is only shown for templates whose
-// shortcut has supportsModelProviderOverride; the others stay Bedrock-only.
+// The model step of the `agentcore create` wizard for a runtime template. It
+// hands the answer to resolveRuntimeTemplateShortcut as model-provider, model-id,
+// API-key and API-base overrides. It is only shown for templates whose shortcut
+// has supportsModelProviderOverride; the others stay Bedrock-only.
 
 type TemplateLanguage = ScaffoldRuntimeInput["language"];
 

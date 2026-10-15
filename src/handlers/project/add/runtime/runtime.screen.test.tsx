@@ -1,6 +1,5 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { join } from "node:path";
-import { writeFile } from "node:fs/promises";
 import { QueryClient } from "@tanstack/react-query";
 import {
   renderScreen,
@@ -22,9 +21,6 @@ import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { projectQueryKey } from "../../ProjectGate";
 import type { Project } from "../../types";
-import { DEFAULT_MODEL_IDS } from "../../../../projectSchemas/runtime";
-import { readEnvFile } from "../../../../io/envFile";
-import { RegionKey } from "../../../keys";
 
 const { cleanup, inProject, projectSpec, run } =
   createGatewayProjectTestHarness("add-runtime-wizard");
@@ -32,29 +28,15 @@ const { cleanup, inProject, projectSpec, run } =
 afterEach(cleanup);
 afterEach(cleanupScreens);
 
-// selectTemplate moves the choice list onto a named template rather than
-// pressing a fixed number of arrows, so adding or reordering a template does
-// not silently point this test at a different one.
-async function selectTemplate(r: RenderScreenResult, template: string): Promise<void> {
-  for (let i = 0; i < 20; i++) {
-    // The trailing space keeps a name from matching a longer one that starts
-    // with it — agent-python-strands against agent-python-strands-container.
-    if (flatFrame(r.lastFrame).includes(`● ${template} `)) return;
+// selectChoice moves a choice list onto a named row rather than pressing a
+// fixed number of arrows, so reordering the choices does not silently point a
+// test at a different one.
+async function selectChoice(r: RenderScreenResult, label: string): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    if (flatFrame(r.lastFrame).includes(`● ${label} `)) return;
     await r.press("down");
   }
-  throw new Error(`template ${template} was never selected`);
-}
-
-// templateRows returns the choice list in the order it is drawn.
-function templateRows(frame: string): string[] {
-  return (
-    frame
-      .split("\n")
-      .map((line) => line.replace(/[│┃|]/g, " ").replace(/\s+/g, " ").trim())
-      // A radio row starts with its optional focus pointer and selection marker;
-      // the stepper's markers sit mid-line.
-      .filter((line) => /^(?:❯ )?[●○] /.test(line))
-  );
+  throw new Error(`choice ${label} was never selected`);
 }
 
 async function runtimeInSpec(projectRoot: string, name: string) {
@@ -63,7 +45,7 @@ async function runtimeInSpec(projectRoot: string, name: string) {
 }
 
 describe("project add runtime wizard", () => {
-  test("collects a name and a template, then writes the runtime", async () => {
+  test("collects a name, a language, and a protocol, then writes the runtime docs", async () => {
     const projectRoot = await inProject();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },
@@ -74,31 +56,37 @@ describe("project add runtime wizard", () => {
     await r.write("orders_agent");
     await r.press("return");
 
-    // The default template is the one the flag path scaffolds without
-    // --template, and it is the first row, so the step opens at the top of its
-    // list rather than partway down it.
-    await waitForText(r.lastFrame, "choose a template");
-    expect(templateRows(r.lastFrame()!)[0]).toStartWith("❯ ● agent-python-minimal ");
+    // Python and HTTP are the defaults, so enter twice keeps them.
+    await waitForText(r.lastFrame, "which language will you write it in?");
+    expect(flatFrame(r.lastFrame)).toContain("● python ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "which protocol will it serve?");
+    expect(flatFrame(r.lastFrame)).toContain("● HTTP ");
     await r.press("return");
 
-    // The minimal template takes no model-provider override, so no model step.
     await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
-    expect(r.lastFrame()).not.toContain("choose a model provider");
     const review = flatFrame(r.lastFrame);
     expect(review).toContain("runtime orders_agent");
-    expect(review).toContain("template agent-python-minimal");
+    expect(review).toContain("language Python");
+    expect(review).toContain("protocol HTTP");
+    expect(review).toContain("entrypoint main.py");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "added runtime 'orders_agent' to 'TestProject'");
+    await waitForText(r.lastFrame, 'Added runtime "orders_agent" (Python, HTTP).');
     expect(r.lastFrame()).toContain("[enter] go back");
 
-    expect(await runtimeInSpec(projectRoot, "orders_agent")).toMatchObject({
+    expect(await runtimeInSpec(projectRoot, "orders_agent")).toEqual({
+      name: "orders_agent",
       build: "CodeZip",
+      runtimeVersion: "PYTHON_3_14",
       entrypoint: "main.py",
       codeLocation: "app/orders_agent",
-      runtimeVersion: "PYTHON_3_14",
+      protocol: "HTTP",
     });
-    expect(await Bun.file(join(projectRoot, "app", "orders_agent", "main.py")).exists()).toBe(true);
+    const appDir = join(projectRoot, "app", "orders_agent");
+    expect(await Bun.file(join(appDir, "README.md")).exists()).toBe(true);
+    expect(await Bun.file(join(appDir, "AGENTS.md")).exists()).toBe(true);
+    expect(await Bun.file(join(appDir, "main.py")).exists()).toBe(false);
     expect(
       queryClient
         .getQueryData<Project>(projectQueryKey())
@@ -112,216 +100,37 @@ describe("project add runtime wizard", () => {
     r.unmount();
   });
 
-  test("scaffolds the template the user picks", async () => {
+  test("writes the language and protocol the user picks", async () => {
     const projectRoot = await inProject();
     const r = renderScreen("/agentcore/add/runtime");
 
     await waitForText(r.lastFrame, "what should this runtime be called?");
-    await r.write("packing_agent");
+    await r.write("tools");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "agent-python-strands-container");
+    await waitForText(r.lastFrame, "which language will you write it in?");
+    await selectChoice(r, "typescript");
+    await r.press("return");
+    await waitForText(r.lastFrame, "which protocol will it serve?");
+    await selectChoice(r, "MCP");
     await r.press("return");
 
-    // strands takes a model-provider override, so the model step follows;
-    // Bedrock with the template's default id is preselected.
-    await waitForText(r.lastFrame, "choose a model provider");
-    expect(r.lastFrame()).toContain("● bedrock");
-    await r.press("return"); // focus model id
-    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Bedrock);
-    await r.press("return"); // accept it
-
-    await waitForFlatText(r.lastFrame, "build Container");
-    expect(flatFrame(r.lastFrame)).toContain("model provider bedrock");
+    await waitForFlatText(r.lastFrame, "entrypoint main.js");
+    expect(flatFrame(r.lastFrame)).toContain("protocol MCP");
     await r.press("return");
+    await waitForText(r.lastFrame, 'Added runtime "tools" (TypeScript, MCP).');
 
-    await waitForText(r.lastFrame, "added runtime 'packing_agent' to 'TestProject'");
-
-    const runtime = await runtimeInSpec(projectRoot, "packing_agent");
-    expect(runtime).toMatchObject({
-      build: "Container",
-      codeLocation: "app/packing_agent",
-      modelProvider: "Bedrock",
+    expect(await runtimeInSpec(projectRoot, "tools")).toEqual({
+      name: "tools",
+      build: "CodeZip",
+      runtimeVersion: "NODE_22",
+      entrypoint: "main.js",
+      codeLocation: "app/tools",
+      protocol: "MCP",
     });
-    // The default model id is not an override, so it is not persisted (only
-    // LiteLLM ids are, for the China deploy gate).
-    expect(runtime.modelId).toBeUndefined();
-    // The wizard does not ask for a description; --description still sets one.
-    expect(runtime.description).toBeUndefined();
-    expect(await Bun.file(join(projectRoot, "app", "packing_agent", "Dockerfile")).exists()).toBe(
-      true,
-    );
-    r.unmount();
-  });
-
-  test("an API-key provider reads the key from its file:// source, exactly like the flags", async () => {
-    const projectRoot = await inProject();
-    const keyFile = join(projectRoot, "gemini.key");
-    await writeFile(keyFile, "AIza-test-key\n");
-    const r = renderScreen("/agentcore/add/runtime");
-
-    await waitForText(r.lastFrame, "what should this runtime be called?");
-    await r.write("keyed_agent");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "agent-python-strands");
-    await r.press("return");
-
-    await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // anthropic
-    await r.press("down"); // openai
-    await r.press("down"); // openai-compatible
-    await r.press("down"); // gemini
-    await waitForText(r.lastFrame, "● gemini");
-    await r.press("return"); // model id (Gemini default)
-    await waitForText(r.lastFrame, DEFAULT_MODEL_IDS.Gemini);
-    await r.press("return"); // → API key file
-    await waitForText(r.lastFrame, "API key file");
-    await r.write(`file://${keyFile}`);
-    await r.press("return");
-
-    await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
-    const review = flatFrame(r.lastFrame);
-    expect(review).toContain("model provider gemini");
-    // The row may wrap mid-path at the frame width (CI temp paths are long), so
-    // compare with all whitespace removed.
-    expect(review.replace(/\s/g, "")).toContain(`APIkeyfile://${keyFile}`);
-    expect(review).not.toContain("AIza-test-key");
-    await r.press("return");
-    await waitForText(r.lastFrame, "added runtime 'keyed_agent' to 'TestProject'");
-
-    // Same result as `agentcore add runtime --name keyed_agent --template
-    // agent-python-strands --model-provider gemini --api-key file://…`.
-    expect(await runtimeInSpec(projectRoot, "keyed_agent")).toMatchObject({
-      modelProvider: "Gemini",
-    });
-    const spec = await projectSpec(projectRoot);
-    expect(spec.credentials).toEqual(
-      expect.arrayContaining([
-        { authorizerType: "ApiKeyCredentialProvider", name: "keyed_agentGeminiApiKey" },
-      ]),
-    );
-    expect(
-      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
-        .AGENTCORE_CREDENTIAL_KEYED_AGENTGEMINIAPIKEY,
-    ).toBe("AIza-test-key");
-    r.unmount();
-  });
-
-  test("the model step refuses a missing API key for a provider that needs one", async () => {
-    const projectRoot = await inProject();
-    const r = renderScreen("/agentcore/add/runtime");
-
-    await waitForText(r.lastFrame, "what should this runtime be called?");
-    await r.write("nokey_agent");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "agent-python-strands");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("down"); // anthropic
-    await r.press("return"); // model id
-    await r.press("return"); // → API key file
-    await waitForText(r.lastFrame, "API key file");
-    await r.press("return"); // empty
-    await waitForText(r.lastFrame, "enter the API key file for anthropic");
-    expect(r.lastFrame()).not.toContain("this runtime will be added");
-    expect(await runtimeInSpec(projectRoot, "nokey_agent")).toBeUndefined();
-    r.unmount();
-  });
-
-  test("in a China region the model step starts on LiteLLM with no default model id", async () => {
-    const projectRoot = await inProject();
-    const r = renderScreen("/agentcore/add/runtime", {
-      withContext: (ctx) => ctx.withValue(RegionKey, "cn-north-1"),
-    });
-
-    await waitForText(r.lastFrame, "what should this runtime be called?");
-    await r.write("cn_agent");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "agent-python-strands");
-    await r.press("return");
-
-    await waitForText(r.lastFrame, "choose a model provider");
-    expect(r.lastFrame()).toContain("● litellm");
-    expect(flatFrame(r.lastFrame).match(/not accessible from China[\s│]*regions/g)).toHaveLength(4);
-    await r.press("return"); // model id, empty
-    await r.press("return");
-    await waitForText(r.lastFrame, "enter a model ID for litellm");
-    await r.write("deepseek/deepseek-chat");
-    await r.press("return"); // → optional API key file
-    await r.press("return"); // skip
-    await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
-    expect(flatFrame(r.lastFrame)).toContain("model provider litellm");
-    await r.press("return");
-    await waitForText(r.lastFrame, "added runtime 'cn_agent' to 'TestProject'");
-
-    // No deployment target exists yet, so the wizard's resolved region stands
-    // in for the China gate: the LiteLLM id is persisted and the template's
-    // default memory is dropped, exactly as after a first deploy to cn-north-1.
-    expect(await runtimeInSpec(projectRoot, "cn_agent")).toMatchObject({
-      modelProvider: "LiteLLM",
-      modelId: "deepseek/deepseek-chat",
-    });
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.memories).toEqual([]);
-    r.unmount();
-  });
-
-  test("a China deployment target shapes the model step even when the shell's region is commercial", async () => {
-    const projectRoot = await inProject();
-    await writeFile(
-      join(projectRoot, "agentcore", "aws-targets.json"),
-      JSON.stringify([{ name: "default", account: "111122223333", region: "cn-north-1" }]),
-    );
-    // The base context resolves us-east-1; the project's target decides.
-    const r = renderScreen("/agentcore/add/runtime");
-
-    await waitForText(r.lastFrame, "what should this runtime be called?");
-    await r.write("cn_target_agent");
-    await r.press("return");
-    await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "agent-python-strands");
-    await r.press("return");
-
-    await waitForText(r.lastFrame, "choose a model provider");
-    expect(r.lastFrame()).toContain("● litellm");
-    expect(r.lastFrame()).not.toContain("● bedrock");
-    expect(flatFrame(r.lastFrame).match(/not accessible from China[\s│]*regions/g)).toHaveLength(4);
-    r.unmount();
-  });
-
-  test("scaffolds the Bedrock Managed Agents environment", async () => {
-    const projectRoot = await inProject();
-    const r = renderScreen("/agentcore/add/runtime");
-
-    await waitForText(r.lastFrame, "what should this runtime be called?");
-    await r.write("bma_environment");
-    await r.press("return");
-
-    await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "environment-python-bma");
-    await r.press("return");
-
-    await waitForFlatText(r.lastFrame, "build Container");
-    expect(flatFrame(r.lastFrame)).toContain("template environment-python-bma");
-    await r.press("return");
-    await waitForText(r.lastFrame, "added runtime 'bma_environment' to 'TestProject'");
-
-    expect(await runtimeInSpec(projectRoot, "bma_environment")).toMatchObject({
-      build: "Container",
-      bedrockManagedAgents: true,
-      entrypoint: "lifecycle/server.py",
-      additionalPolicies: ["bma-acr-policy.json"],
-      tags: { "agentcore:template": "BedrockManagedAgents" },
-    });
-    expect(
-      await Bun.file(
-        join(projectRoot, "app", "bma_environment", "lifecycle", "server.py"),
-      ).exists(),
-    ).toBe(true);
+    const readme = await Bun.file(join(projectRoot, "app", "tools", "README.md")).text();
+    expect(readme).toContain("runtime-mcp-protocol-contract.html");
+    expect(readme).toContain("main.ts");
     r.unmount();
   });
 
@@ -333,7 +142,7 @@ describe("project add runtime wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "Name is required");
-    expect(r.lastFrame()).not.toContain("choose a template");
+    expect(r.lastFrame()).not.toContain("which language will you write it in?");
     r.unmount();
   });
 
@@ -358,7 +167,7 @@ describe("project add runtime wizard", () => {
     await r.write("a".repeat(48));
     await r.press("return");
 
-    await waitForText(r.lastFrame, "choose a template");
+    await waitForText(r.lastFrame, "which language will you write it in?");
     r.unmount();
   });
 
@@ -384,7 +193,7 @@ describe("project add runtime wizard", () => {
     // Still on the name step: the value the step would submit is the value it
     // checked, so a padded name cannot reach the project spec.
     await waitForText(r.lastFrame, "Must begin with a letter");
-    expect(r.lastFrame()).not.toContain("choose a template");
+    expect(r.lastFrame()).not.toContain("which language will you write it in?");
     expect(await runtimeInSpec(projectRoot, " orders_agent ")).toBeUndefined();
     r.unmount();
   });
@@ -393,13 +202,15 @@ describe("project add runtime wizard", () => {
     const projectRoot = await inProject();
     // The name is taken, so addResource refuses it — the realistic failure, and
     // one the user can fix without starting over.
-    await run(["add", "runtime", "--name", "orders_agent"]);
+    await run(["add", "runtime", "--name", "orders_agent", "--language", "python"]);
     const r = renderScreen("/agentcore/add/runtime");
 
     await waitForText(r.lastFrame, "what should this runtime be called?");
     await r.write("orders_agent");
     await r.press("return");
-    await waitForText(r.lastFrame, "choose a template");
+    await waitForText(r.lastFrame, "which language will you write it in?");
+    await r.press("return");
+    await waitForText(r.lastFrame, "which protocol will it serve?");
     await r.press("return");
     await waitForText(r.lastFrame, "this runtime will be added to agentcore.json");
     await r.press("return");
@@ -537,6 +348,8 @@ describe("project add runtime dispatch", () => {
       "runtime",
       "--name",
       "flag_agent",
+      "--language",
+      "python",
     ]);
 
     expect(await runtimeInSpec(projectRoot, "flag_agent")).toBeDefined();

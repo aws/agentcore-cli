@@ -6,24 +6,24 @@ import { parseJsonFlag, parseTags } from "../../../utils";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
 import { AgentNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
-import { NetworkModeSchema } from "../../../../projectSchemas/constants";
-import { SourceResolver } from "../../../../io";
 import {
-  RUNTIME_TEMPLATE_SHORTCUTS,
-  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
-  formatTemplateParameterHelp,
-  getDefaultMemorySpec,
-  resolveRuntimeTemplateShortcut,
-} from "../../shortcuts";
-import { ModelProviderSchema, type AddResourceInput, type ScaffoldRuntimeInput } from "../../types";
-import { RuntimeResourceConfigSchema, type ImportBedrockAgentInput } from "./types";
+  NetworkModeSchema,
+  ProtocolModeSchema,
+  type ProtocolMode,
+} from "../../../../projectSchemas/constants";
+import { getDefaultMemorySpec } from "../../shortcuts";
+import type { AddResourceInput } from "../../types";
+import {
+  RuntimeDocsConfigSchema,
+  RuntimeResourceConfigSchema,
+  type ImportBedrockAgentInput,
+} from "./types";
 import {
   importScaffoldRuntimeInput,
   resolveImportBedrockAgentInput,
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
-import { BMA_CUSTOM_EXECUTION_ROLE_WARNING } from "../../bma";
 
 const CONFIGURATION = "Configuration:";
 const ENVIRONMENT = "Environment:";
@@ -39,20 +39,50 @@ type JsonRuntimeField =
   | "lifecycleConfiguration"
   | "filesystemConfigurations";
 
+type WithJsonFields<T> = Omit<T, JsonRuntimeField> & Partial<Record<JsonRuntimeField, unknown>>;
+
 /** A runtime resource as an entry point assembles it, before validation. */
-export type RuntimeInput = Omit<z.input<typeof RuntimeResourceConfigSchema>, JsonRuntimeField> &
-  Partial<Record<JsonRuntimeField, unknown>>;
+export type RuntimeInput =
+  | WithJsonFields<z.input<typeof RuntimeResourceConfigSchema>>
+  | WithJsonFields<z.input<typeof RuntimeDocsConfigSchema>>;
 
 /**
  * toAddRuntimeInput is the one place a runtime is validated and wrapped for
  * {@link ProjectManager.addResource}. Both the flag handler and the wizard call
- * it, so neither can accept a runtime the other would reject.
+ * it, so neither can accept a runtime the other would reject. An input with
+ * scaffoldRuntimeInput scaffolds code (`--type import`); one with a language
+ * only gets docs.
  */
 export function toAddRuntimeInput(input: RuntimeInput): AddResourceInput {
-  const result = RuntimeResourceConfigSchema.safeParse(input);
+  const result =
+    "scaffoldRuntimeInput" in input
+      ? RuntimeResourceConfigSchema.safeParse(input)
+      : RuntimeDocsConfigSchema.safeParse(input);
   if (!result.success)
     throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
   return { resourceType: "runtime", resourceConfig: result.data };
+}
+
+/** The language a `--language` value names, as the spec and templates spell it. */
+export const RUNTIME_LANGUAGES = { python: "Python", typescript: "TypeScript" } as const;
+export type RuntimeLanguageFlag = keyof typeof RUNTIME_LANGUAGES;
+
+/** What `add runtime` prints after adding a docs-only runtime. */
+export function runtimeDocsAddedMessage(
+  name: string,
+  language: "Python" | "TypeScript",
+  protocol: ProtocolMode,
+): string {
+  const folder = `app/${name}`;
+  return [
+    `Added runtime "${name}" (${language}, ${protocol}).`,
+    "",
+    "Next:",
+    `  1. Write your agent in ${folder}/. See ${folder}/README.md for what it needs.`,
+    `     Using a coding agent? Point it at ${folder}/AGENTS.md.`,
+    "  2. Run it locally:  agentcore dev",
+    "  3. Deploy it:       agentcore deploy",
+  ].join("\n");
 }
 
 export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
@@ -63,41 +93,21 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("name", "the name of the Runtime", AgentNameSchema, { group: CONFIGURATION }),
       flag(
         "type",
-        "create generates new agent code (the default); import translates a Bedrock Agent version",
+        "create sets up app/<name>/ with docs for the code you write (the default); " +
+          "import translates a Bedrock Agent version into runtime code",
         z.enum(["create", "import"]).optional(),
         { group: CONFIGURATION },
       ),
       flag(
-        "template",
-        "template for the Runtime code (default: agent-python-minimal); available templates listed below",
-        z.enum(RUNTIME_TEMPLATE_SHORTCUT_NAMES).optional(),
-        { group: CONFIGURATION, help: formatTemplateParameterHelp() },
-      ),
-      flag(
-        "model-provider",
-        "model provider for supported templates: bedrock, anthropic, open_ai (or openai), " +
-          "openai_compatible, gemini, or lite_llm (or litellm)",
-        ModelProviderSchema.optional(),
+        "language",
+        "language you will write the Runtime in: python or typescript (required with --type create)",
+        z.enum(["python", "typescript"]).optional(),
         { group: CONFIGURATION },
       ),
       flag(
-        "model-id",
-        "model id for the scaffolded Runtime code, overriding the provider's default " +
-          "(required with openai_compatible, and with litellm in China regions)",
-        z.string().min(1).optional(),
-        { group: CONFIGURATION },
-      ),
-      flag(
-        "api-key",
-        "API key for non-Bedrock providers on supported templates; '-' for stdin, 'file://path' for file",
-        z.string().optional(),
-        { group: CONFIGURATION, sensitive: true },
-      ),
-      flag(
-        "api-base",
-        "base URL of the endpoint for --model-provider openai_compatible (required with it, " +
-          "not accepted with other providers)",
-        z.string().url().optional(),
+        "protocol",
+        "protocol the Runtime serves: HTTP (default), MCP, A2A, or AGUI",
+        ProtocolModeSchema.optional(),
         { group: CONFIGURATION },
       ),
       flag("description", "an optional description of the Runtime", z.string().optional(), {
@@ -194,48 +204,28 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       requireDeployedNameFits("Runtime", project.name, flags.name, "_", 48, deploymentTargets);
 
       const isImport = flags["type"] === "import";
-      const isTemplate = flags["template"] !== undefined;
-      const modelFlagsPresent =
-        flags["model-provider"] !== undefined ||
-        flags["model-id"] !== undefined ||
-        flags["api-key"] !== undefined ||
-        flags["api-base"] !== undefined;
 
       if (flags.framework !== undefined && !isImport) {
         throw new InputValidationError("--framework requires --type import");
       }
-
-      if (isImport) {
-        const importIncompatibleFlags = (
-          ["model-provider", "model-id", "api-key", "api-base"] as const
-        ).filter((flagName) => flags[flagName] !== undefined);
-        if (isTemplate || importIncompatibleFlags.length > 0) {
-          const offending = isTemplate ? "template" : importIncompatibleFlags[0];
-          throw new InputValidationError(
-            `--type import translates a Bedrock Agent into Python CodeZip runtime code; ` +
-              `--${offending} cannot be combined with it`,
-          );
-        }
-      }
       if (!isImport && (flags["agent-id"] !== undefined || flags["agent-alias-id"] !== undefined)) {
         throw new InputValidationError("--agent-id and --agent-alias-id require --type import");
       }
-
-      if (!isImport && modelFlagsPresent) {
-        if (!isTemplate) {
+      if (isImport) {
+        const offending = (["language", "protocol"] as const).find(
+          (flagName) => flags[flagName] !== undefined,
+        );
+        if (offending !== undefined) {
           throw new InputValidationError(
-            "--model-provider, --model-id, --api-key, and --api-base only apply to templates that support them",
+            `--type import translates a Bedrock Agent into Python HTTP runtime code; ` +
+              `--${offending} cannot be combined with it`,
           );
         }
-        if (!RUNTIME_TEMPLATE_SHORTCUTS[flags.template!].supportsModelProviderOverride) {
-          throw new InputValidationError(
-            `--model-provider, --model-id, --api-key, and --api-base are not valid with the ${flags.template} template`,
-          );
-        }
+      } else if (flags.language === undefined) {
+        throw new InputValidationError(
+          "required option '--language <language>' not specified: pass python or typescript",
+        );
       }
-
-      const source = new SourceResolver({ stdin: config.io.stdin });
-      const apiKey = await source.resolveSecret("api-key", flags["api-key"]);
 
       const runtimeName = flags.name;
       const notes: string[] = [];
@@ -273,28 +263,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         }
       }
 
-      const scaffoldRuntimeInput: ScaffoldRuntimeInput = isImport
-        ? importScaffoldRuntimeInput(runtimeName, getDefaultMemorySpec(runtimeName))
-        : isTemplate
-          ? resolveRuntimeTemplateShortcut(flags.template!, {
-              runtimeName: flags.name,
-              modelProvider: flags["model-provider"],
-              modelId: flags["model-id"],
-              apiKey,
-              apiBase: flags["api-base"],
-            })
-          : resolveRuntimeTemplateShortcut("agent-python-minimal", { runtimeName: flags.name });
-
-      if (scaffoldRuntimeInput.framework === "bma" && flags["role-arn"] !== undefined) {
-        notes.push(BMA_CUSTOM_EXECUTION_ROLE_WARNING);
-      }
-
       const inputEnvironmentVariables = parseJsonFlag<Record<string, string>>(
         "environment-variables",
         flags["environment-variables"],
       );
 
-      const runtimeInput = {
+      const infra = {
         name: flags.name,
         description: flags.description,
         executionRoleArn: flags["role-arn"],
@@ -317,17 +291,35 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           flags["filesystem-configurations"],
         ),
         tags: parseTags(flags["tags"]),
-        scaffoldRuntimeInput,
-        importBedrockAgent,
       };
 
+      if (isImport) {
+        await addProjectResource(
+          ctx,
+          config,
+          project,
+          toAddRuntimeInput({
+            ...infra,
+            scaffoldRuntimeInput: importScaffoldRuntimeInput(
+              runtimeName,
+              getDefaultMemorySpec(runtimeName),
+            ),
+            importBedrockAgent,
+          }),
+          `added runtime '${flags.name}' to '${project.name}'`,
+          { notes },
+        );
+        return;
+      }
+
+      const language = RUNTIME_LANGUAGES[flags.language!];
+      const protocol = flags.protocol ?? "HTTP";
       await addProjectResource(
         ctx,
         config,
         project,
-        toAddRuntimeInput(runtimeInput),
-        `added runtime '${flags.name}' to '${project.name}'`,
-        { notes },
+        toAddRuntimeInput({ ...infra, language, protocol }),
+        runtimeDocsAddedMessage(flags.name, language, protocol),
       );
     },
   });

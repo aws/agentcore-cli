@@ -2690,3 +2690,502 @@ describe("migratedFrom", () => {
     expect(written.migratedFrom).toBe("v1");
   });
 });
+
+describe("docs-only runtimes", () => {
+  const recordingBackend = () => {
+    const builds: Project[] = [];
+    const backend: ProjectBackend = {
+      async *build(project) {
+        builds.push(project);
+        yield { type: "step", message: "Building" };
+      },
+      async *deploy() {
+        yield { type: "step", message: "Deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    return { backend, builds };
+  };
+
+  async function emptyProject(subject: FsProjectManager): Promise<Project> {
+    await inTempDirectory();
+    const { project } = await runCreate(subject, {
+      name: "example",
+      skipInstall: true,
+      skipGit: true,
+    });
+    return project;
+  }
+
+  const docsRuntime = (overrides: Record<string, unknown> = {}): AddResourceInput => ({
+    resourceType: "runtime",
+    resourceConfig: { name: "search", language: "Python", protocol: "HTTP", ...overrides },
+  });
+
+  async function addFails(subject: FsProjectManager, project: Project, input: AddResourceInput) {
+    // networkMode VPC without networkConfig passes the add input but fails the
+    // spec commit, which is what triggers the rollback.
+    await expect(runAdd(subject, project, input)).rejects.toThrow(
+      "networkConfig is required when networkMode is VPC",
+    );
+  }
+
+  test("writes only docs and a complete spec entry with starting values, installing nothing", async () => {
+    const { manager: subject, commands, checkedTools } = manager();
+    const project = await emptyProject(subject);
+    commands.length = 0;
+    checkedTools.length = 0;
+
+    const updated = await runAdd(subject, project, docsRuntime({ protocol: "A2A" }));
+
+    expect(updated.spec.runtimes).toEqual([
+      {
+        name: "search",
+        codeLocation: "app/search" as never,
+        build: "CodeZip",
+        runtimeVersion: "PYTHON_3_14",
+        entrypoint: "main.py",
+        protocol: "A2A",
+      },
+    ]);
+    expect((await readdir(join(project.rootPath, "app", "search"))).sort()).toEqual([
+      "AGENTS.md",
+      "README.md",
+    ]);
+    expect(commands).toEqual([]);
+    expect(checkedTools).toEqual([]);
+  });
+
+  test("a failed commit removes the folder it created", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+
+    await addFails(subject, project, docsRuntime({ networkMode: "VPC" }));
+
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+  });
+
+  test("a failed commit never deletes a folder or files that were already there", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "search");
+    await mkdir(join(appDir, "lib"), { recursive: true });
+    await writeFile(join(appDir, "main.py"), "print('mine')\n");
+    await writeFile(join(appDir, "README.md"), "# mine\n");
+    await writeFile(join(appDir, "lib", "tools.py"), "");
+
+    await addFails(subject, project, docsRuntime({ networkMode: "VPC" }));
+
+    // Only the docs this add wrote are gone; the user's README was never replaced.
+    expect((await readdir(appDir, { recursive: true })).sort()).toEqual([
+      "README.md",
+      "lib",
+      join("lib", "tools.py"),
+      "main.py",
+    ]);
+    expect(await readFile(join(appDir, "README.md"), "utf-8")).toBe("# mine\n");
+  });
+
+  test("a failed commit leaves an existing user README.md and its folder untouched", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "search");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "README.md"), "# my agent\n");
+
+    await addFails(subject, project, docsRuntime({ networkMode: "VPC" }));
+
+    expect(await readdir(appDir)).toEqual(["README.md"]);
+    expect(await readFile(join(appDir, "README.md"), "utf-8")).toBe("# my agent\n");
+  });
+
+  test("a docs write that fails partway removes only what it wrote", async () => {
+    const failing = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      source: {
+        list: async (dir) => [`${dir}/AGENTS.md`, `${dir}/README.md`],
+        read: async (path) => {
+          if (path.endsWith("README.md")) throw new Error("disk full");
+          return "doc\n";
+        },
+      },
+    });
+    const project = await emptyProject(manager().manager);
+
+    await expect(runAdd(failing, project, docsRuntime())).rejects.toThrow("disk full");
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+
+    const appDir = join(project.rootPath, "app", "search");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "main.py"), "");
+    await expect(runAdd(failing, project, docsRuntime())).rejects.toThrow("disk full");
+    expect(await readdir(appDir)).toEqual(["main.py"]);
+  });
+
+  test.each<[string, (spec: Record<string, unknown[]>) => void, string]>([
+    [
+      "a harness",
+      (spec) => (spec.harnesses ??= []).push({ name: "assistant", path: "app/search" }),
+      "harness 'assistant'",
+    ],
+    [
+      "another runtime",
+      (spec) =>
+        (spec.runtimes ??= []).push({
+          name: "other",
+          build: "CodeZip",
+          runtimeVersion: "PYTHON_3_14",
+          entrypoint: "main.py",
+          codeLocation: "app/search/",
+          protocol: "HTTP",
+        }),
+      "runtime 'other'",
+    ],
+    [
+      "a code-based evaluator",
+      (spec) =>
+        (spec.evaluators ??= []).push({
+          name: "grader",
+          level: "SESSION",
+          config: { codeBased: { managed: { codeLocation: "./app/search" } } },
+        }),
+      "evaluator 'grader'",
+    ],
+    [
+      "a harness nested inside it",
+      (spec) => (spec.harnesses ??= []).push({ name: "inner", path: "app/search/sub" }),
+      "harness 'inner'",
+    ],
+    [
+      "a runtime whose folder contains it",
+      (spec) =>
+        (spec.runtimes ??= []).push({
+          name: "everything",
+          build: "CodeZip",
+          runtimeVersion: "PYTHON_3_14",
+          entrypoint: "main.py",
+          codeLocation: "app",
+          protocol: "HTTP",
+        }),
+      "runtime 'everything'",
+    ],
+  ])("refuses a folder that overlaps %s", async (_label, own, owner) => {
+    const { manager: subject } = manager();
+    const created = await emptyProject(subject);
+    const specPath = join(created.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf-8"));
+    own(spec);
+    await writeFile(specPath, JSON.stringify(spec));
+    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+
+    await expect(runAdd(subject, project, docsRuntime())).rejects.toThrow(
+      new InputValidationError(
+        `cannot add runtime 'search': 'app/search' overlaps the files of ${owner}. ` +
+          "Choose a different --name.",
+      ),
+    );
+    expect(existsSync(join(created.rootPath, "app", "search", "AGENTS.md"))).toBe(false);
+  });
+
+  test("a sibling folder with a shared prefix is not an overlap", async () => {
+    const { manager: subject } = manager();
+    const created = await emptyProject(subject);
+    const specPath = join(created.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf-8"));
+    spec.harnesses = [{ name: "searcher", path: "app/searcher" }];
+    await writeFile(specPath, JSON.stringify(spec));
+    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+    await expect(runAdd(subject, project, docsRuntime())).resolves.toBeDefined();
+  });
+
+  test("an import into an existing folder that fails partway removes only what it wrote", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "agent");
+    await mkdir(appDir, { recursive: true });
+    // The translated plan writes main.py first, then collides with the user's pyproject.toml.
+    await writeFile(join(appDir, "pyproject.toml"), "# mine\n");
+
+    await expect(
+      runAdd(subject, project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "agent",
+          scaffoldRuntimeInput: { ...AGENT_PYTHON, runtimeName: "agent" },
+          importBedrockAgent: {
+            framework: "strands",
+            sourceAgentId: "A1B2C3D4E5",
+            sourceAgentAliasId: "TSTALIASID",
+            sourceAgentVersion: "1",
+            files: { "main.py": "print('translated')\n", "pyproject.toml": "[project]\n" },
+            notes: [],
+          },
+        },
+      }),
+    ).rejects.toThrow("File already exists");
+    expect(await readdir(appDir)).toEqual(["pyproject.toml"]);
+    expect(await readFile(join(appDir, "pyproject.toml"), "utf-8")).toBe("# mine\n");
+  });
+
+  test("a scaffold that fails to commit never deletes a folder that was already there", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "agent");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "notes.txt"), "keep me\n");
+
+    await addFails(subject, project, {
+      resourceType: "runtime",
+      resourceConfig: {
+        name: "agent",
+        networkMode: "VPC",
+        scaffoldRuntimeInput: { ...AGENT_PYTHON, runtimeName: "agent" },
+      },
+    });
+
+    expect(await readFile(join(appDir, "notes.txt"), "utf-8")).toBe("keep me\n");
+  });
+
+  test("build writes what the code changed to agentcore.json, then hands off to the backend", async () => {
+    const { backend, builds } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    // A field the schema does not know about must survive the write.
+    const raw = JSON.parse(await readFile(specPath, "utf-8"));
+    raw.runtimes[0].x_note = "kept";
+    await writeFile(specPath, JSON.stringify(raw, null, 2));
+    const appDir = join(project.rootPath, "app", "search");
+    await writeFile(join(appDir, "main.py"), "");
+    await writeFile(
+      join(appDir, "pyproject.toml"),
+      '[project]\nrequires-python = ">=3.10,<3.13"\n\n[tool.agentcore]\nentrypoint = "main.py:app"\n',
+    );
+
+    const events = [];
+    for await (const event of subject.build(project)) events.push(event);
+
+    expect(events).toEqual([
+      {
+        type: "step",
+        message:
+          'search: runtimeVersion PYTHON_3_14 -> PYTHON_3_12 (requires-python ">=3.10,<3.13" in ' +
+          "app/search/pyproject.toml)",
+      },
+      {
+        type: "step",
+        message:
+          "search: entrypoint main.py -> main.py:app ([tool.agentcore] entrypoint in " +
+          "app/search/pyproject.toml)",
+      },
+      { type: "step", message: "Building" },
+    ]);
+    // The backend synthesizes from the updated spec, which is what is on disk.
+    expect(builds[0]?.spec.runtimes[0]).toMatchObject({
+      runtimeVersion: "PYTHON_3_12",
+      entrypoint: "main.py:app",
+    });
+    const onDisk = JSON.parse(await readFile(specPath, "utf-8"));
+    expect(onDisk.runtimes[0]).toEqual({
+      name: "search",
+      codeLocation: "app/search",
+      build: "CodeZip",
+      runtimeVersion: "PYTHON_3_12",
+      entrypoint: "main.py:app",
+      protocol: "HTTP",
+      x_note: "kept",
+    });
+
+    // A second build finds nothing to change and writes nothing.
+    const before = await readFile(specPath, "utf-8");
+    const again = [];
+    for await (const event of subject.build((await subject.resolve({ filePath: appDir }))!)) {
+      again.push(event);
+    }
+    expect(again).toEqual([{ type: "step", message: "Building" }]);
+    expect(await readFile(specPath, "utf-8")).toBe(before);
+  });
+
+  test("deploy switches to a Container build when a Dockerfile appears, before synth", async () => {
+    const deployed: Project[] = [];
+    const { backend } = recordingBackend();
+    backend.deploy = async function* (configured) {
+      deployed.push(configured);
+      yield { type: "step", message: "Deploying" };
+      return { outputs: {} };
+    };
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+      resolveAccount: async () => "111122223333",
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    await writeFile(join(project.rootPath, "app", "search", "Dockerfile"), "FROM scratch\n");
+
+    const events = [];
+    for await (const event of subject.deploy(project, {
+      target: "default",
+      region: "us-east-1",
+      confirmTeardown: async () => false,
+      transactionSearch: false,
+    })) {
+      events.push(event);
+    }
+
+    expect(
+      events.filter((event) => event.type === "step" && event.message.startsWith("search:")),
+    ).toEqual([
+      {
+        type: "step",
+        message: expect.stringContaining(
+          "search: build CodeZip -> Container (Dockerfile in app/search). It now builds",
+        ),
+      },
+      {
+        type: "step",
+        message: "search: dockerfile (unset) -> Dockerfile (Dockerfile in app/search)",
+      },
+      {
+        type: "step",
+        message: "search: runtimeVersion PYTHON_3_14 -> (removed) (Container build)",
+      },
+    ]);
+    expect(deployed[0]?.spec.runtimes[0]).toMatchObject({ build: "Container" });
+    const onDisk = JSON.parse(
+      await readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf-8"),
+    ).runtimes[0];
+    expect(onDisk).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    expect(onDisk.runtimeVersion).toBeUndefined();
+  });
+
+  test("write-back changes only the patched field, keeping unknown runtime keys and key order", async () => {
+    const { manager: subject } = manager();
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const raw = JSON.parse(await readFile(specPath, "utf-8"));
+    // The top level is strict, so its unusual key order is what must survive there.
+    const { name, ...rest } = raw;
+    const edited = { ...rest, name };
+    edited.runtimes[0] = { x_first: 1, ...raw.runtimes[0], x_last: "kept" };
+    await writeFile(specPath, JSON.stringify(edited, null, 2));
+    const appDir = join(project.rootPath, "app", "search");
+    await writeFile(join(appDir, "main.py"), "");
+    await writeFile(join(appDir, "pyproject.toml"), '[project]\nrequires-python = "<3.13"\n');
+
+    const resolved = (await subject.resolve({ filePath: appDir }))!;
+    const result = await subject.syncRuntimeBuilds(resolved, { purpose: "dev" });
+
+    expect(result.written).toBe(true);
+    const expected = structuredClone(edited);
+    expected.runtimes[0].runtimeVersion = "PYTHON_3_12";
+    expect(await readFile(specPath, "utf-8")).toBe(JSON.stringify(expected, null, 2));
+  });
+
+  test("a v0 project is never rewritten", async () => {
+    const { manager: subject } = manager();
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    await writeFile(join(project.rootPath, "app", "search", "Dockerfile"), "FROM scratch\n");
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const before = await readFile(specPath, "utf-8");
+
+    const result = await subject.syncRuntimeBuilds(
+      { ...project, legacy: { format: "v0", v0Spec: {} as never } },
+      { purpose: "deploy" },
+    );
+
+    expect(result).toMatchObject({ messages: [], written: false });
+    expect(await readFile(specPath, "utf-8")).toBe(before);
+  });
+
+  test("a requires-python-free manifest keeps a version pinned in agentcore.json", async () => {
+    const { backend } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const raw = JSON.parse(await readFile(specPath, "utf-8"));
+    raw.runtimes[0].runtimeVersion = "PYTHON_3_11";
+    await writeFile(specPath, JSON.stringify(raw, null, 2));
+    const appDir = join(project.rootPath, "app", "search");
+    await writeFile(join(appDir, "main.py"), "");
+    await writeFile(join(appDir, "pyproject.toml"), '[project]\nname = "search"\n');
+
+    const resolved = (await subject.resolve({ filePath: appDir }))!;
+    for await (const _event of subject.build(resolved));
+
+    expect(JSON.parse(await readFile(specPath, "utf-8")).runtimes[0].runtimeVersion).toBe(
+      "PYTHON_3_11",
+    );
+  });
+
+  test("build and deploy fail before the backend when the runtime has no code yet", async () => {
+    const { backend, builds } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+      resolveAccount: async () => "111122223333",
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+
+    const message =
+      'runtime "search": no pyproject.toml in app/search/. See app/search/README.md.\n' +
+      'runtime "search": no main.py in app/search/. See app/search/README.md.';
+    await expect(subject.build(project).next()).rejects.toThrow(new ProjectStateError(message));
+    const deploy = async () => {
+      for await (const _event of subject.deploy(project, {
+        target: "default",
+        region: "us-east-1",
+        confirmTeardown: async () => false,
+        transactionSearch: false,
+      }));
+    };
+    await expect(deploy()).rejects.toThrow(new ProjectStateError(message));
+    expect(builds).toEqual([]);
+  });
+
+  test("deploy to a target that does not exist leaves agentcore.json alone", async () => {
+    const { backend } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    await writeFile(join(project.rootPath, "app", "search", "Dockerfile"), "FROM scratch\n");
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const before = await readFile(specPath, "utf-8");
+
+    const deploy = async () => {
+      for await (const _event of subject.deploy(project, {
+        target: "typo",
+        region: "us-east-1",
+        confirmTeardown: async () => false,
+        transactionSearch: false,
+      }));
+    };
+    await expect(deploy()).rejects.toThrow("No deployment targets are configured");
+    expect(await readFile(specPath, "utf-8")).toBe(before);
+  });
+});

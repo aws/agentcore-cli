@@ -92,7 +92,7 @@ export async function removeMigrationState(rootPath: string): Promise<void> {
  * resources. A migration stopped while writing the project files blocks every
  * target, since the files are part v0 and part v1. Other targets deploy as usual.
  */
-export async function assertNoPendingMigration(rootPath: string, target: string): Promise<void> {
+export async function assertNoPendingMigration(rootPath: string, target?: string): Promise<void> {
   let state: MigrationState | undefined;
   try {
     state = await readMigrationState(rootPath);
@@ -112,6 +112,8 @@ export async function assertNoPendingMigration(rootPath: string, target: string)
       { meta: { reason: "migration-interrupted" } },
     );
   }
+  // Without a target (build), only half-written project files stop the command.
+  if (target === undefined) return;
   const pending = state.targets.find((entry) => entry.name === target);
   if (!pending) return;
   throw new ProjectStateError(
