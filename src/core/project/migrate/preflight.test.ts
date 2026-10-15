@@ -11,7 +11,6 @@ import {
   checkGit,
   checkProjectFormat,
   checkSupportedResources,
-  knowledgeBaseWarnings,
   OLD_CDK_MESSAGE,
   PRESERVE_RESOURCES_DOCS_URL,
   preflight,
@@ -145,29 +144,32 @@ describe("checkSupportedResources", () => {
     expect(checkSupportedResources(V0AgentCoreProjectSpecSchema.parse(F1_SPEC))).toEqual({
       name: "supported resources",
       ok: true,
-      message: "no capacity providers or online insights",
+      message: "no capacity providers or runtimes on them",
     });
   });
 
-  test("lets knowledge bases and datasets through: one migrates, the other is kept", () => {
+  test("lets knowledge bases, datasets, and online insights through to be retained", () => {
     const spec = without(v0Fixture("baseline.json"), "insights", "capacity");
     expect(spec.knowledgeBases.length).toBeGreaterThan(0);
     expect(checkSupportedResources(spec).ok).toBe(true);
     expect(checkSupportedResources(v0Fixture("top-datasets-nonempty.json")).message).not.toContain(
       "datasets",
     );
+    const insightsOnly = without(v0Fixture("baseline.json"), "capacity");
+    expect(insightsOnly.onlineEvalConfigs.some((config) => config.insights !== undefined)).toBe(
+      true,
+    );
+    expect(checkSupportedResources(insightsOnly).ok).toBe(true);
   });
 
   test("lists what still blocks on one summary line, and says why in the full message", () => {
-    const check = checkSupportedResources(v0Fixture("baseline.json"));
+    const check = checkSupportedResources(v0Fixture("runtime-capacityProvider.json"));
     expect(check.ok).toBe(false);
     expect(check.summary).toStartWith(
       "Migration blocked: This project uses resources that v1 doesn't support yet: ",
     );
-    expect(check.summary).toContain("online insights (oe2)");
-    expect(check.message).toContain(
-      "has no evaluators, and every v1 online eval needs at least one",
-    );
+    expect(check.summary).toContain("capacity providers (");
+    expect(check.summary).not.toContain("online insights");
     expect(check.message).toContain("compatibility mode");
     expect(check.message).toEndWith(`See ${PRESERVE_RESOURCES_DOCS_URL}`);
   });
@@ -187,13 +189,6 @@ describe("checkSupportedResources", () => {
     expect(checkSupportedResources(v0Fixture("runtime-capacityProvider.json")).summary).toContain(
       "capacity providers (",
     );
-  });
-
-  test("warns that v1 no longer starts knowledge base ingestion", () => {
-    const [warning] = knowledgeBaseWarnings(v0Fixture("baseline.json"));
-    expect(warning).toContain("migrate and v1 keeps managing them");
-    expect(warning).toContain("aws bedrock-agent start-ingestion-job");
-    expect(knowledgeBaseWarnings(V0AgentCoreProjectSpecSchema.parse(F1_SPEC))).toEqual([]);
   });
 });
 

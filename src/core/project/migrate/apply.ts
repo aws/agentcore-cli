@@ -34,7 +34,7 @@ import {
   type PollOptions,
   type RefactorAction,
 } from "./refactor";
-import { retainCheckCommands, retainResources } from "./retain";
+import { deleteRetainChangeSet, retainCheckCommands, retainResources } from "./retain";
 import type { CfnTemplate } from "./templates";
 import type { TemplateStore } from "./templateStore";
 
@@ -123,6 +123,9 @@ export async function applyMigration(
   };
   const state: MigrationState = structuredClone(config.state);
   const entry = config.target;
+  const previousRetainChangeSet = entry
+    ? state.targets.find((target) => target.name === entry.target.name)?.changeSetName
+    : undefined;
   const results: StackRefactorResult[] = entry
     ? [
         {
@@ -278,6 +281,14 @@ export async function applyMigration(
         }
       }
       outcome = results[0]!.outcome;
+    }
+    if (
+      entry &&
+      previousRetainChangeSet &&
+      outcome !== undefined &&
+      ["refactored", "unchanged"].includes(outcome)
+    ) {
+      await deleteRetainChangeSet(entry.client, entry.stackName, previousRetainChangeSet);
     }
 
     // 4. Done, undone, or recorded for later.

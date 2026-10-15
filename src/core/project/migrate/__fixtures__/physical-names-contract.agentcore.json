@@ -291,24 +291,7 @@
       "strategies": []
     }
   ],
-  "knowledgeBases": [
-    {
-      "type": "AgentCoreKnowledgeBase",
-      "name": "kb-docs",
-      "description": "kb",
-      "dataSources": [
-        {
-          "type": "S3",
-          "uri": "s3://my-bucket/docs"
-        },
-        {
-          "type": "CONFLUENCE",
-          "connectorConfigFile": "kb/confluence.json"
-        }
-      ],
-      "gateway": "gw1"
-    }
-  ],
+  "knowledgeBases": [],
   "credentials": [
     {
       "authorizerType": "ApiKeyCredentialProvider",
@@ -592,7 +575,7 @@
               "name": "Retrieve",
               "description": "d",
               "parameterValues": {
-                "knowledgeBaseId": "kb-docs"
+                "knowledgeBaseId": "KBDOCS001A"
               },
               "parameterOverrides": [
                 {

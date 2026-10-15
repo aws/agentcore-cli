@@ -634,4 +634,55 @@ describe("applyMigration retaining unsupported resources", () => {
     expect(result.restored).toBe(true);
     expect(events).toEqual(["write", "restore"]);
   });
+
+  test("a successful rerun cleans up the retain change set recorded by the unknown run", async () => {
+    const root = tempRoot();
+    const { entry, sent } = target("default");
+    const state = freshState("default");
+    state.files!.status = "installed";
+    state.targets[0] = {
+      ...state.targets[0]!,
+      status: "retaining",
+      changeSetName: "retain-from-unknown-run",
+    };
+    const { applier } = config(root, state, entry);
+
+    const result = await applyMigration(applier);
+
+    expect(result.migrated).toBe(true);
+    expect(sent).toContainEqual({
+      name: "DeleteChangeSet",
+      input: {
+        StackName: "AgentCore-Proj-default",
+        ChangeSetName: "retain-from-unknown-run",
+      },
+    });
+  });
+
+  test("a successful no-refactor rerun also cleans up the recorded retain change set", async () => {
+    const root = tempRoot();
+    const { entry, sent } = target("default");
+    entry.renames = new Map();
+    entry.retain = undefined;
+    const state = freshState("default");
+    state.files!.status = "installed";
+    state.targets[0] = {
+      ...state.targets[0]!,
+      status: "retaining",
+      changeSetName: "retain-from-unknown-run",
+    };
+    const { applier } = config(root, state, entry);
+
+    const result = await applyMigration(applier);
+
+    expect(result.migrated).toBe(true);
+    expect(result.stacks[0]?.outcome).toBe("unchanged");
+    expect(sent).toContainEqual({
+      name: "DeleteChangeSet",
+      input: {
+        StackName: "AgentCore-Proj-default",
+        ChangeSetName: "retain-from-unknown-run",
+      },
+    });
+  });
 });

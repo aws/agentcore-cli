@@ -53,7 +53,7 @@ import {
 } from "./convertSpec";
 import { planStack, type PlannedStack } from "./plan";
 import { describe as describeRefactor, type PollOptions } from "./refactor";
-import { knowledgeBaseWarnings, preflight } from "./preflight";
+import { preflight } from "./preflight";
 import { RETAINED_GUIDANCE } from "./retain";
 import { saveMigrationReport } from "./reports";
 import { checkStack, cloudFormationStackReader } from "./stacks";
@@ -255,7 +255,6 @@ export class FsProjectMigrator implements ProjectMigrator {
       ...harnesses.flatMap((harness) => harness.warnings),
       ...sharedEnvironmentWarnings(targets.targets),
       ...credentialNameWarnings(v0Spec.credentials.map((credential) => credential.name)),
-      ...knowledgeBaseWarnings(v0Spec),
       ...library.warnings,
       ...overrideWarnings(cdkLibraryOverride),
     ];

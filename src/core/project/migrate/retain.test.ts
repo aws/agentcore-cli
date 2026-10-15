@@ -51,6 +51,61 @@ describe("resourcesToRetain", () => {
     ]);
   });
 
+  test("walks references in both directions around a retained knowledge base", () => {
+    const knowledgeBase: CfnTemplate = {
+      Resources: {
+        KnowledgeBase: {
+          Type: "AWS::Bedrock::KnowledgeBase",
+          Properties: { RoleArn: { "Fn::GetAtt": ["KnowledgeBaseRole", "Arn"] } },
+        },
+        DataSource: {
+          Type: "AWS::Bedrock::DataSource",
+          Properties: { KnowledgeBaseId: { Ref: "KnowledgeBase" } },
+        },
+        KnowledgeBaseRole: { Type: "AWS::IAM::Role", Properties: {} },
+        KnowledgeBasePolicy: {
+          Type: "AWS::IAM::Policy",
+          Properties: { Roles: [{ Ref: "KnowledgeBaseRole" }] },
+        },
+        Memory: {
+          Type: "AWS::BedrockAgentCore::Memory",
+          Properties: { RoleArn: { "Fn::GetAtt": ["KnowledgeBaseRole", "Arn"] } },
+        },
+      },
+    };
+    const retained = resourcesToRetain(
+      knowledgeBase,
+      new Set(["KnowledgeBase", "DataSource", "KnowledgeBaseRole", "KnowledgeBasePolicy"]),
+    );
+    expect(retained.map((resource) => resource.logicalId)).toEqual([
+      "DataSource",
+      "KnowledgeBase",
+      "KnowledgeBasePolicy",
+      "KnowledgeBaseRole",
+    ]);
+  });
+
+  test("retains a dropped insights-only online eval and its dropped support resources", () => {
+    const onlineEval: CfnTemplate = {
+      Resources: {
+        Eval: {
+          Type: "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+          Properties: { ExecutionRoleArn: { "Fn::GetAtt": ["EvalRole", "Arn"] } },
+        },
+        EvalRole: { Type: "AWS::IAM::Role", Properties: {} },
+        EvalPolicy: {
+          Type: "AWS::IAM::Policy",
+          Properties: { Roles: [{ Ref: "EvalRole" }] },
+        },
+      },
+    };
+    expect(
+      resourcesToRetain(onlineEval, new Set(["Eval", "EvalRole", "EvalPolicy"])).map(
+        (resource) => resource.logicalId,
+      ),
+    ).toEqual(["Eval", "EvalPolicy", "EvalRole"]);
+  });
+
   test("retains nothing when v1 drops only other kinds of resources", () => {
     expect(resourcesToRetain(deployed, new Set(["SharedRole", "CDKMetadata"]))).toEqual([]);
   });
@@ -166,6 +221,7 @@ describe("retainResources", () => {
       ],
       ExecuteChangeSet: [{}],
       GetTemplate: [retainedTemplate],
+      DeleteChangeSet: [{}],
     });
 
     await retainResources(retainStack(client), {
@@ -186,6 +242,26 @@ describe("retainResources", () => {
     const body = JSON.parse(create.input.TemplateBody as string) as CfnTemplate;
     expect(body.Resources![DATASET]!.DeletionPolicy).toBe("Retain");
     expect(sent.some((command) => command.name === "ExecuteChangeSet")).toBe(true);
+    expect(sent.some((command) => command.name === "DeleteChangeSet")).toBe(true);
+  });
+
+  test("does not report a change set ID when creating it failed before one existed", async () => {
+    const { client } = fakeCloudFormation({
+      DescribeStacks: [describedStack("CREATE_COMPLETE")],
+      CreateChangeSet: [new Error("network unavailable")],
+    });
+
+    const error = await retainResources(retainStack(client), {
+      ...NO_WAIT,
+      changeSetName: "never-created",
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(StackRefactorError);
+    expect((error as StackRefactorError).details).toEqual({
+      kind: "create-failed",
+      stackName: STACK,
+      region: "us-east-1",
+    });
   });
 
   test("deletes a change set that does more than set retain policies, without executing it", async () => {

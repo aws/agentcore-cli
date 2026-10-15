@@ -111,8 +111,9 @@ export async function planStack(input: StackPlanInput): Promise<PlannedStack> {
     );
   }
 
-  // Resources v1 drops whose data a user would lose (datasets) are kept: the stack
-  // is first updated to retain them, so the refactor and the deploy start from there.
+  // Resources migrate deliberately leaves out of v1 are kept: the stack is first
+  // updated to retain them and their dropped dependencies, so the refactor and
+  // the deploy start from there.
   const retained = resourcesToRetain(
     deployed,
     new Set(mapping.onlyInOld.map((resource) => resource.logicalId)),

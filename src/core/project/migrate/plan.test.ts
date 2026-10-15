@@ -70,6 +70,75 @@ describe("planStack with a dataset v1 has no counterpart for", () => {
   });
 });
 
+describe("planStack with knowledge bases and insights-only online evals", () => {
+  test("retains each resource and the dropped resources connected to it", async () => {
+    const deployed = templateFixture("pinned.v0");
+    Object.assign(deployed.Resources!, {
+      KnowledgeBase: {
+        Type: "AWS::Bedrock::KnowledgeBase",
+        Properties: { RoleArn: { "Fn::GetAtt": ["KnowledgeBaseRole", "Arn"] } },
+      },
+      KnowledgeBaseDataSource: {
+        Type: "AWS::Bedrock::DataSource",
+        Properties: { KnowledgeBaseId: { Ref: "KnowledgeBase" } },
+      },
+      KnowledgeBaseRole: {
+        Type: "AWS::IAM::Role",
+        Properties: { AssumeRolePolicyDocument: { Statement: [] } },
+      },
+      KnowledgeBasePolicy: {
+        Type: "AWS::IAM::Policy",
+        Properties: {
+          Roles: [{ Ref: "KnowledgeBaseRole" }],
+          PolicyDocument: { Statement: [] },
+        },
+      },
+      InsightsEval: {
+        Type: "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+        Properties: { ExecutionRoleArn: { "Fn::GetAtt": ["InsightsRole", "Arn"] } },
+      },
+      InsightsRole: {
+        Type: "AWS::IAM::Role",
+        Properties: { AssumeRolePolicyDocument: { Statement: [] } },
+      },
+      InsightsPolicy: {
+        Type: "AWS::IAM::Policy",
+        Properties: {
+          Roles: [{ Ref: "InsightsRole" }],
+          PolicyDocument: { Statement: [] },
+        },
+      },
+    });
+
+    const { plan: stack, retain } = await planStack({
+      target,
+      stackName: STACK,
+      v1StackName: STACK,
+      deployed,
+      v1: templateFixture("pinned.v1"),
+      pins: [],
+    });
+
+    const expected = [
+      "InsightsEval",
+      "InsightsPolicy",
+      "InsightsRole",
+      "KnowledgeBase",
+      "KnowledgeBaseDataSource",
+      "KnowledgeBasePolicy",
+      "KnowledgeBaseRole",
+    ];
+    expect(stack.ready).toBe(true);
+    expect(stack.retained?.map((resource) => resource.logicalId)).toEqual(expected);
+    expect([...retain!.logicalIds]).toEqual(expected);
+    expect(
+      stack.removed
+        .filter((change) => expected.includes(change.logicalId))
+        .every((change) => change.severity === "info"),
+    ).toBe(true);
+  });
+});
+
 describe("planStack", () => {
   test("the live CompatMig stack with pinned names: 10 moves and 0 replacements", async () => {
     const { plan: stack, bridge, renames } = await plan("pinned.v0", "pinned.v1");

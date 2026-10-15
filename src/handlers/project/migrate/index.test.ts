@@ -431,8 +431,8 @@ describe("agentcore migrate, a not-ready summary", () => {
       added: [],
       removed: [
         {
-          logicalId: "OnlineEvalOe2",
-          type: "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+          logicalId: "CapacityProviderCompute",
+          type: "AWS::BedrockAgentCore::CapacityProvider",
           severity: "blocker",
           reason: "the v1 template has no counterpart, so the v1 deploy would delete it",
         },
@@ -451,13 +451,13 @@ describe("agentcore migrate, a not-ready summary", () => {
           ok: false,
           message: "full",
           summary:
-            "Migration blocked: This project uses resources that v1 doesn't support yet: online insights (oe2).",
+            "Migration blocked: This project uses resources that v1 doesn't support yet: capacity providers (compute).",
         },
       ],
       stacks: [stack],
     });
     expect(blockers).toEqual([
-      "Migration blocked: This project uses resources that v1 doesn't support yet: online insights (oe2).\n    See the full plan for how to fix it.",
+      "Migration blocked: This project uses resources that v1 doesn't support yet: capacity providers (compute).\n    See the full plan for how to fix it.",
     ]);
   });
 

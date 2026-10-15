@@ -40,7 +40,7 @@ describe("migratedFrom contract with @aws/agentcore-cdk", () => {
       "2dac5fc18e6893f04276cddab70ad50cd739968f6af25a314b34e8e5b7d5168c",
     );
     expect(sha256("physical-names-contract.agentcore.json")).toBe(
-      "25e3f3a77da888068fba1709a8507419c33826b429e04b8d600e9e2b7f61db5d",
+      "1bd381c22d9919ecb7e7ee7be6f59dbb4d3013a6c0ce8e8282b2e12d46e3f761",
     );
   });
 

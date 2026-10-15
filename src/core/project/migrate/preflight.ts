@@ -157,7 +157,7 @@ function isLocalSpec(spec: string): boolean {
   return /^(file:|link:|\.{1,2}\/|\/|~\/)/.test(spec.trim()) || /\.tgz$/.test(spec.trim());
 }
 
-/** v0 online eval configs that run insights, which v1 doesn't support. */
+/** v0 online eval configs that run insights, which migrate leaves outside the v1 project. */
 export function onlineInsightConfigs(v0: V0ProjectSpec): V0ProjectSpec["onlineEvalConfigs"] {
   return v0.onlineEvalConfigs.filter((config) => config.insights !== undefined);
 }
@@ -171,11 +171,10 @@ export const PRESERVE_RESOURCES_DOCS_URL =
 
 /**
  * The resources migrating can't carry over, so the user hears about them before
- * anything changes rather than finding them broken after. Knowledge bases migrate
- * (v1 manages them) and datasets are kept in the account outside the stack, so
- * neither is listed. Capacity providers are: runtimes run on them, and v1 can't
- * run a runtime on one yet. So are online eval configs that run insights: they
- * have no evaluators, and every v1 online eval needs one.
+ * anything changes rather than finding them broken after. Knowledge bases,
+ * datasets, and insights-only online evals are retained outside the stack, so
+ * they don't block. Capacity providers do: runtimes run on them, and v1 can't run
+ * a runtime on one yet.
  */
 export function checkSupportedResources(v0: V0ProjectSpec): MigrationCheck {
   const name = "supported resources";
@@ -187,17 +186,15 @@ export function checkSupportedResources(v0: V0ProjectSpec): MigrationCheck {
     )
     .map((runtime) => runtime.name);
   const capacityProviders = (v0.capacityProviders ?? []).map((provider) => provider.name);
-  const insights = onlineInsightConfigs(v0).map((config) => config.name);
 
   const listed = [
     capacityProviders.length > 0 ? `capacity providers (${capacityProviders.join(", ")})` : "",
     runtimesOnCapacityProviders.length > 0
       ? `runtimes on capacity providers (${runtimesOnCapacityProviders.join(", ")})`
       : "",
-    insights.length > 0 ? `online insights (${insights.join(", ")})` : "",
   ].filter(Boolean);
   if (listed.length === 0) {
-    return { name, ok: true, message: "no capacity providers or online insights" };
+    return { name, ok: true, message: "no capacity providers or runtimes on them" };
   }
 
   const summary = `Migration blocked: This project uses resources that v1 doesn't support yet: ${listed.join("; ")}.`;
@@ -206,12 +203,6 @@ export function checkSupportedResources(v0: V0ProjectSpec): MigrationCheck {
     why.push(
       "Capacity providers: runtimes run on them, and v1 can't run a runtime on a capacity " +
         "provider yet, so migrating would leave those runtimes without their compute.",
-    );
-  }
-  if (insights.length > 0) {
-    why.push(
-      "Online insights: an online eval config that runs insights has no evaluators, and every " +
-        "v1 online eval needs at least one, so v1 can't keep the config.",
     );
   }
   return {
@@ -226,22 +217,6 @@ export function checkSupportedResources(v0: V0ProjectSpec): MigrationCheck {
       `See ${PRESERVE_RESOURCES_DOCS_URL}`,
     ].join("\n"),
   };
-}
-
-/**
- * Knowledge bases migrate, and v1 keeps managing them, but v1's deploy doesn't
- * start ingestion the way v0's did: after changing a knowledge base's data, the
- * user starts it.
- */
-export function knowledgeBaseWarnings(v0: V0ProjectSpec): string[] {
-  const names = v0.knowledgeBases.map((kb) => kb.name);
-  if (names.length === 0) return [];
-  return [
-    `Knowledge bases (${names.join(", ")}) migrate and v1 keeps managing them, but ` +
-      "`agentcore deploy` no longer starts ingestion jobs as the v0 CLI did. After changing a " +
-      "knowledge base's data, start one with `aws bedrock-agent start-ingestion-job " +
-      "--knowledge-base-id <id> --data-source-id <id>`.",
-  ];
 }
 
 /** The v0 deployed state, which says which resources already exist in AWS. */

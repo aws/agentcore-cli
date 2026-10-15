@@ -677,6 +677,13 @@ export function maxprojDeployedState(): V0DeployedState {
             memoryId: maxprojId(`maxproj_${name}`),
             memoryArn: `${MAXPROJ_ARN}:memory/${maxprojId(`maxproj_${name}`)}`,
           })),
+          knowledgeBases: {
+            "kb-docs": {
+              knowledgeBaseId: "KBDOCS001A",
+              knowledgeBaseArn: "arn:aws:bedrock:us-east-1:998846730471:knowledge-base/KBDOCS001A",
+              dataSources: [],
+            },
+          },
           evaluators: byName(["evalNum", "evalCat", "evalCode", "evalExt"], (name) => ({
             evaluatorId: maxprojId(`maxproj_${name}`),
             evaluatorArn: `${MAXPROJ_ARN}:evaluator/${maxprojId(`maxproj_${name}`)}`,

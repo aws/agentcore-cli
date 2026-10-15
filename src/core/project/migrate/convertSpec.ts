@@ -61,6 +61,8 @@ type HarnessRecord = Recorded & { roleArn: string; provisioner?: string };
 export type DeployedResources = {
   runtimes: Map<string, Recorded[]>;
   memories: Map<string, Recorded[]>;
+  /** Knowledge base IDs, used to rewrite connector references when KBs leave the project. */
+  knowledgeBases: Map<string, Recorded[]>;
   evaluators: Map<string, Recorded[]>;
   onlineEvalConfigs: Map<string, Recorded[]>;
   policyEngines: Map<string, Recorded[]>;
@@ -87,6 +89,7 @@ export function deployedResources(state: V0DeployedState): DeployedResources {
   const deployed: DeployedResources = {
     runtimes: new Map(),
     memories: new Map(),
+    knowledgeBases: new Map(),
     evaluators: new Map(),
     onlineEvalConfigs: new Map(),
     policyEngines: new Map(),
@@ -111,6 +114,9 @@ export function deployedResources(state: V0DeployedState): DeployedResources {
     };
     add(deployed.runtimes, resources.runtimes, (r) => ({ id: r.runtimeId }));
     add(deployed.memories, resources.memories, (m) => ({ id: m.memoryId }));
+    add(deployed.knowledgeBases, resources.knowledgeBases, (kb) => ({
+      id: kb.knowledgeBaseId,
+    }));
     add(deployed.evaluators, resources.evaluators, (e) => ({ id: e.evaluatorId }));
     add(deployed.onlineEvalConfigs, resources.onlineEvalConfigs, (o) => ({
       id: o.onlineEvaluationConfigId,
@@ -155,15 +161,24 @@ export function convertSpec(
   const { spec } = translateV0Spec(v0);
   const { unassignedTargets, abTests } = v0;
   const candidate: Json = { ...(spec as unknown as Json), migratedFrom: MIGRATED_FROM };
-  // v1 has no online insights. Preflight blocks a project that uses them; dropping
-  // them here lets the rest of the project convert, so one preview reports everything.
+  const warnings: string[] = [];
+  const deployed = deployedResources(state);
+
+  // Knowledge bases and insights-only online evals stay in AWS outside the stack,
+  // so neither collection is carried into the v1 project.
+  delete candidate.knowledgeBases;
   const insights = new Set(onlineInsightConfigs(v0).map((config) => config.name));
   if (insights.size > 0 && Array.isArray(candidate.onlineEvalConfigs)) {
     candidate.onlineEvalConfigs = (candidate.onlineEvalConfigs as Json[]).filter(
       (config) => !insights.has(String(config.name)),
     );
   }
-  const warnings: string[] = [];
+  const knowledgeBaseReferences = rewriteKnowledgeBaseReferences(
+    candidate,
+    new Set(v0.knowledgeBases.map((kb) => kb.name)),
+    deployed,
+  );
+  warnings.push(...knowledgeBaseReferences.warnings);
 
   if (unassignedTargets?.length) {
     warnings.push(
@@ -178,14 +193,18 @@ export function convertSpec(
     );
   }
 
-  const deployed = deployedResources(state);
   const everDeployed = Object.values(state.targets).some(
     ({ resources }) => resources !== undefined,
   );
   const { pins, problems } = pinDeployedNames(v0.name, candidate, deployed, harnesses);
+  problems.unshift(...knowledgeBaseReferences.problems);
   problems.push(...pinCollisions(v0.name, candidate, pins));
 
-  const parsed = ProjectSpecSchema.safeParse(candidate);
+  const validationCandidate = structuredClone(candidate);
+  for (const path of knowledgeBaseReferences.blockedPaths) {
+    setAtPath(validationCandidate, path, "AAAAAAAAAA");
+  }
+  const parsed = ProjectSpecSchema.safeParse(validationCandidate);
   if (!parsed.success) {
     return {
       json: candidate,
@@ -213,7 +232,144 @@ export function convertSpec(
   if (harmless.length > 0 || undeployed.length > 0) {
     warnings.push(`${DROPPED_FIELDS_WARNING}: ${[...harmless, ...undeployed].join(", ")}`);
   }
-  return { json: parsed.data as unknown as Json, pins, warnings, problems, deployedChanges };
+  return {
+    json:
+      knowledgeBaseReferences.problems.length > 0 ? candidate : (parsed.data as unknown as Json),
+    pins,
+    warnings,
+    problems,
+    deployedChanges,
+  };
+}
+
+const REAL_KB_ID_PATTERN = /^[A-Z0-9]{10}$/;
+
+/**
+ * A gateway connector can outlive a project-owned knowledge base, but its v1
+ * config cannot keep referring to the KB by project name once knowledgeBases[]
+ * is removed. Replace that name with the one unambiguous deployed ID; otherwise
+ * report the field as a blocker instead of writing a dangling reference.
+ */
+function rewriteKnowledgeBaseReferences(
+  spec: Json,
+  projectKnowledgeBases: ReadonlySet<string>,
+  deployed: DeployedResources,
+): { warnings: string[]; problems: MigrationProblem[]; blockedPaths: PropertyKey[][] } {
+  const warnings: string[] = [];
+  const problems: MigrationProblem[] = [];
+  const blockedPaths: PropertyKey[][] = [];
+  const gateways = Array.isArray(spec.agentCoreGateways) ? (spec.agentCoreGateways as Json[]) : [];
+
+  const rewrite = (
+    container: Json,
+    key: string,
+    path: PropertyKey[],
+    gatewayName: string,
+    targetName: string,
+  ) => {
+    const name = container[key];
+    if (typeof name !== "string" || !projectKnowledgeBases.has(name)) return;
+    const ids = [
+      ...new Set((deployed.knowledgeBases.get(name) ?? []).map((record) => record.id)),
+    ].sort();
+    const field = describePath(spec, path);
+    if (ids.length === 1 && REAL_KB_ID_PATTERN.test(ids[0]!)) {
+      container[key] = ids[0]!;
+      warnings.push(
+        `Rewrote ${field} from project knowledge base '${name}' to its retained AWS ID ` +
+          `'${ids[0]}', so gateway connector '${gatewayName}/${targetName}' stays wired after ` +
+          "knowledgeBases[] is removed.",
+      );
+      return;
+    }
+    const reason =
+      ids.length === 0
+        ? "no deployed knowledge base ID is recorded"
+        : `the deployed targets record different or invalid IDs (${ids.join(", ")})`;
+    problems.push({
+      file: SPEC_RELATIVE_PATH,
+      path: field,
+      message:
+        `references project knowledge base '${name}', which migrate removes from agentcore.json, ` +
+        `but ${reason}, so the connector can't be rewritten safely. Change this field to the ` +
+        "10-character AWS ID the gateway connector should keep using, then migrate again",
+    });
+    blockedPaths.push(path);
+  };
+
+  for (const [gatewayIndex, gateway] of gateways.entries()) {
+    const targets = Array.isArray(gateway.targets) ? (gateway.targets as Json[]) : [];
+    for (const [targetIndex, target] of targets.entries()) {
+      if (target.targetType !== "connector" || target.connectorId !== "bedrock-knowledge-bases") {
+        continue;
+      }
+      const configurations = Array.isArray(target.configurations)
+        ? (target.configurations as Json[])
+        : [];
+      for (const [configIndex, config] of configurations.entries()) {
+        const parameterValues =
+          typeof config.parameterValues === "object" &&
+          config.parameterValues !== null &&
+          !Array.isArray(config.parameterValues)
+            ? (config.parameterValues as Json)
+            : undefined;
+        if (!parameterValues) continue;
+        const base = [
+          "agentCoreGateways",
+          gatewayIndex,
+          "targets",
+          targetIndex,
+          "configurations",
+          configIndex,
+          "parameterValues",
+        ];
+        if (config.name === "Retrieve") {
+          rewrite(
+            parameterValues,
+            "knowledgeBaseId",
+            [...base, "knowledgeBaseId"],
+            String(gateway.name),
+            String(target.name),
+          );
+        }
+        if (config.name !== "AgenticRetrieveStream") continue;
+        const retrievers = Array.isArray(parameterValues.retrievers)
+          ? (parameterValues.retrievers as Json[])
+          : [];
+        for (const [retrieverIndex, retriever] of retrievers.entries()) {
+          const configuration = retriever.configuration as Json | undefined;
+          const knowledgeBase = configuration?.knowledgeBase as Json | undefined;
+          if (!knowledgeBase) continue;
+          rewrite(
+            knowledgeBase,
+            "knowledgeBaseId",
+            [
+              ...base,
+              "retrievers",
+              retrieverIndex,
+              "configuration",
+              "knowledgeBase",
+              "knowledgeBaseId",
+            ],
+            String(gateway.name),
+            String(target.name),
+          );
+        }
+      }
+    }
+  }
+  return { warnings, problems, blockedPaths };
+}
+
+/** Mutates one value in a JSON-shaped object by a path already discovered in it. */
+function setAtPath(root: Json, path: PropertyKey[], value: unknown): void {
+  let current: unknown = root;
+  for (const segment of path.slice(0, -1)) {
+    if (typeof current !== "object" || current === null) return;
+    current = (current as Record<PropertyKey, unknown>)[segment];
+  }
+  if (typeof current !== "object" || current === null) return;
+  (current as Record<PropertyKey, unknown>)[path.at(-1)!] = value;
 }
 
 /**

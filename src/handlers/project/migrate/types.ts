@@ -132,9 +132,9 @@ export type StackMigrationPlan = {
   updated: StackResourceChange[];
   /**
    * Deployed resources v1 has no counterpart for that the migration keeps in the
-   * account outside the stack, so their data outlives the move: the stack is
-   * updated to retain them before its refactor, and the first v1 deploy then
-   * leaves them in place. v1 doesn't manage them afterwards.
+   * account outside the stack: the stack is updated to retain them before its
+   * refactor, and the first v1 deploy then leaves them in place. v1 doesn't
+   * manage them afterwards.
    */
   retained?: RetainedStackResource[];
   /**

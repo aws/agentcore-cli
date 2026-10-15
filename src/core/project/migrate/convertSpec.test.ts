@@ -10,6 +10,46 @@ type Json = Record<string, unknown>;
 const NEVER_DEPLOYED: V0DeployedState = { targets: {} };
 const f1 = () => V0AgentCoreProjectSpecSchema.parse(structuredClone(F1_SPEC));
 const f1State = () => structuredClone(F1_DEPLOYED_STATE) as V0DeployedState;
+const KB_ID = "KBDOCS001A";
+const KB_STATE = {
+  "kb-docs": {
+    knowledgeBaseId: KB_ID,
+    knowledgeBaseArn: `arn:aws:bedrock:us-east-1:998846730471:knowledge-base/${KB_ID}`,
+    dataSources: [],
+  },
+};
+
+function withDeployedKnowledgeBase(state: V0DeployedState): V0DeployedState {
+  const copy = structuredClone(state);
+  const target = Object.values(copy.targets)[0];
+  if (!target) return copy;
+  target.resources = { ...target.resources, knowledgeBases: KB_STATE };
+  return copy;
+}
+
+/** The audit suite is about v0/v1 schema differences, not the migration's KB-reference blocker. */
+function withExternalKnowledgeBaseReferences(
+  spec: ReturnType<typeof v0Fixture>,
+): ReturnType<typeof v0Fixture> {
+  const copy = structuredClone(spec);
+  const owned = new Set(copy.knowledgeBases.map((kb) => kb.name));
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    for (const [key, child] of Object.entries(value as Json)) {
+      if (key === "knowledgeBaseId" && typeof child === "string" && owned.has(child)) {
+        (value as Json)[key] = KB_ID;
+      } else {
+        visit(child);
+      }
+    }
+  };
+  visit(copy.agentCoreGateways);
+  return copy;
+}
 
 /**
  * The audit fixtures v1 validates more strictly than v0 (the schema audit; see the design doc),
@@ -70,7 +110,10 @@ const EXPECTED_PROBLEMS: Record<string, string[]> = {
 
 describe("convertSpec on the v0 audit fixtures", () => {
   test.each(validV0FixtureNames())("%s converts or names exactly what v1 rejects", (name) => {
-    const result = convertSpec(v0Fixture(name), NEVER_DEPLOYED);
+    const result = convertSpec(
+      withExternalKnowledgeBaseReferences(v0Fixture(name)),
+      NEVER_DEPLOYED,
+    );
     const expected = EXPECTED_PROBLEMS[name];
     if (expected) {
       expect(result.problems.map((problem) => problem.path)).toEqual(expected);
@@ -94,7 +137,10 @@ describe("convertSpec on the v0 audit fixtures", () => {
   });
 
   test("warns about the fields v1 drops, naming the resource", () => {
-    const { warnings } = convertSpec(v0Fixture("baseline.json"), NEVER_DEPLOYED);
+    const { warnings } = convertSpec(
+      withExternalKnowledgeBaseReferences(v0Fixture("baseline.json")),
+      NEVER_DEPLOYED,
+    );
     expect(warnings).toEqual([
       "Dropped fields v1 doesn't use: credentials[my-oauth].usage, credentials[gw1-oauth].usage",
     ]);
@@ -113,6 +159,84 @@ describe("convertSpec on the v0 audit fixtures", () => {
     const { json } = convertSpec(v0Fixture("top-mcpRuntimeTools.json"), NEVER_DEPLOYED);
     expect("mcpRuntimeTools" in json).toBe(false);
     expect((json.toolRuntimes as Json[])[0]?.name).toBe("rtTool");
+  });
+
+  test("drops knowledge bases and rewrites a connector to the retained deployed ID", () => {
+    const result = convertSpec(
+      v0Fixture("baseline.json"),
+      withDeployedKnowledgeBase({
+        targets: { default: { resources: {} } },
+      }),
+    );
+    expect(result.problems).toEqual([]);
+    expect(result.json.knowledgeBases).toEqual([]);
+    expect(JSON.stringify(result.json)).not.toContain('"knowledgeBaseId":"kb-docs"');
+    expect(JSON.stringify(result.json)).toContain(`"knowledgeBaseId":"${KB_ID}"`);
+    expect(result.warnings).toContainEqual(
+      expect.stringContaining(
+        `Rewrote agentCoreGateways[gw1].targets[kbconn].configurations[Retrieve].parameterValues.knowledgeBaseId`,
+      ),
+    );
+  });
+
+  test("blocks a connector whose removed knowledge base has no unique deployed ID", () => {
+    const result = convertSpec(v0Fixture("baseline.json"), NEVER_DEPLOYED);
+    expect("knowledgeBases" in result.json).toBe(false);
+    expect(result.problems).toContainEqual({
+      file: "agentcore/agentcore.json",
+      path: "agentCoreGateways[gw1].targets[kbconn].configurations[Retrieve].parameterValues.knowledgeBaseId",
+      message: expect.stringContaining("no deployed knowledge base ID is recorded"),
+    });
+  });
+
+  test("rewrites project knowledge base names in agentic retrievers too", () => {
+    const v0 = v0Fixture("baseline.json");
+    const connector = v0.agentCoreGateways[0]!.targets.find(
+      (target) =>
+        target.targetType === "connector" && target.connectorId === "bedrock-knowledge-bases",
+    )!;
+    const agentic = connector.configurations!.find(
+      (configuration) => configuration.name === "AgenticRetrieveStream",
+    )!;
+    const retriever = (
+      agentic.parameterValues!.retrievers as Array<{
+        configuration: { knowledgeBase: { knowledgeBaseId: string } };
+      }>
+    )[0]!;
+    retriever.configuration.knowledgeBase.knowledgeBaseId = "kb-docs";
+
+    const result = convertSpec(
+      v0,
+      withDeployedKnowledgeBase({
+        targets: { default: { resources: {} } },
+      }),
+    );
+
+    expect(result.problems).toEqual([]);
+    expect(retriever.configuration.knowledgeBase.knowledgeBaseId).toBe("kb-docs");
+    expect(JSON.stringify(result.json)).not.toContain('"knowledgeBaseId":"kb-docs"');
+    expect(
+      result.warnings.some(
+        (warning) => warning.includes("AgenticRetrieveStream") && warning.includes(KB_ID),
+      ),
+    ).toBe(true);
+  });
+
+  test("drops insights-only online eval configs without blocking the project", () => {
+    const v0 = withExternalKnowledgeBaseReferences(v0Fixture("baseline.json"));
+    v0.capacityProviders = [];
+    v0.runtimes = v0.runtimes.map(
+      ({
+        capacityProviderConfiguration: _capacity,
+        filesystemConfigurations: _mounts,
+        ...runtime
+      }) => runtime,
+    );
+    const result = convertSpec(v0, NEVER_DEPLOYED);
+    expect(result.problems).toEqual([]);
+    expect((result.json.onlineEvalConfigs as Json[]).map((config) => config.name)).not.toContain(
+      "oe2",
+    );
   });
 });
 
@@ -335,7 +459,9 @@ describe("convertTargets", () => {
 
 describe("convertSpec pins for tool runtimes, gateway-target compute, and containers", () => {
   const recorded = (resources: Record<string, unknown>): V0DeployedState =>
-    ({ targets: { default: { resources } } }) as V0DeployedState;
+    ({
+      targets: { default: { resources: { ...resources, knowledgeBases: KB_STATE } } },
+    }) as V0DeployedState;
 
   test("pins deployed tool runtimes, target Lambdas, and Container runtime repositories", () => {
     const state = recorded({
@@ -406,7 +532,10 @@ describe("convertSpec pins for tool runtimes, gateway-target compute, and contai
         },
       },
     };
-    const { problems } = convertSpec(v0Fixture("top-mcpRuntimeTools.json"), state);
+    const { problems } = convertSpec(
+      v0Fixture("top-mcpRuntimeTools.json"),
+      withDeployedKnowledgeBase(state),
+    );
     expect(problems.map((problem) => problem.path)).toEqual([
       expect.stringMatching(/^gateway-target-function .+\/lambdaTs$/),
     ]);
@@ -527,7 +656,7 @@ describe("convertSpec dropped fields", () => {
         },
       },
     };
-    const result = convertSpec(v0, deployed);
+    const result = convertSpec(v0, withDeployedKnowledgeBase(deployed));
     expect(result.deployedChanges).toEqual([
       {
         file: "agentcore/agentcore.json",

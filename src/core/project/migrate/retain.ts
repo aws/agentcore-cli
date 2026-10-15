@@ -21,17 +21,24 @@ import {
 import { templateLocation, type TemplateStore } from "./templateStore";
 
 /**
- * Deployed resource types v1 has no counterpart for that hold user data (a
- * dataset's examples). Without them, the first v1 deploy would delete that data
- * along with the resource, so migrate sets their retain policies before the
- * refactor: the deploy then leaves them in the account outside the stack.
+ * Deployed resource types migrate deliberately leaves out of the v1 project.
+ * Without retain policies, the first v1 deploy would delete them, so migrate
+ * sets the policies before the refactor and leaves them in AWS outside the stack.
  */
-export const RETAINABLE_TYPES: ReadonlySet<string> = new Set(["AWS::BedrockAgentCore::Dataset"]);
+export const RETAINABLE_TYPES: ReadonlySet<string> = new Set([
+  "AWS::Bedrock::KnowledgeBase",
+  "AWS::BedrockAgentCore::Dataset",
+  "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+]);
 
 /** How a retained resource of each type is looked after once v1 no longer manages it. */
 export const RETAINED_GUIDANCE: Readonly<Record<string, string>> = {
+  "AWS::Bedrock::KnowledgeBase":
+    "manage it with the AWS Bedrock knowledge base APIs or AWS CLI, using its ID",
   "AWS::BedrockAgentCore::Dataset":
     "manage it with the `agentcore eval dataset` commands, using its ID",
+  "AWS::BedrockAgentCore::OnlineEvaluationConfig":
+    "manage it with the `agentcore eval online-eval` commands, using its ID",
 };
 
 /** A deployed resource the migration keeps in the account outside the stack. */
@@ -50,34 +57,45 @@ function retains(resource: CfnResource): boolean {
 
 /**
  * The resources a migration has to retain: every deployed resource of a
- * retainable type that the v1 template drops, and, transitively, what those
- * reference that the v1 template drops too (so the kept resource still works).
- * Resources v1 keeps under some logical ID are left alone: they stay managed.
+ * retainable type that the v1 template drops, and the whole connected component
+ * of dropped resources around it. Walking both what a retained resource
+ * references and what references it preserves supporting resources such as an
+ * IAM policy attached to a knowledge base's service role. Resources v1 keeps
+ * under some logical ID are left alone: they stay managed.
  */
 export function resourcesToRetain(
   deployed: CfnTemplate,
   droppedByV1: ReadonlySet<string>,
 ): RetainedResource[] {
   const resources = resourcesOf(deployed);
-  const seeds = [...droppedByV1].filter((id) => RETAINABLE_TYPES.has(resources[id]?.Type ?? ""));
+  const dropped = new Set(
+    [...droppedByV1].filter(
+      (id) => resources[id] !== undefined && resources[id]?.Type !== CDK_METADATA_TYPE,
+    ),
+  );
+  const adjacent = new Map<string, Set<string>>([...dropped].map((id) => [id, new Set()]));
+  const isResource = (id: string) => id in resources;
+  for (const id of dropped) {
+    const resource = resources[id]!;
+    const references = [
+      ...referencesIn(resource.Properties, isResource).map((reference) => reference.target),
+      ...[resource.DependsOn ?? []].flat(),
+    ];
+    for (const target of references) {
+      if (!dropped.has(target)) continue;
+      adjacent.get(id)!.add(target);
+      adjacent.get(target)!.add(id);
+    }
+  }
+
+  const seeds = [...dropped].filter((id) => RETAINABLE_TYPES.has(resources[id]!.Type));
   const keep = new Set<string>();
   const queue = [...seeds];
   while (queue.length > 0) {
     const id = queue.shift()!;
     if (keep.has(id)) continue;
     keep.add(id);
-    const resource = resources[id];
-    if (!resource) continue;
-    const isResource = (other: string) => other in resources;
-    const references = [
-      ...referencesIn(resource.Properties, isResource).map((reference) => reference.target),
-      ...[resource.DependsOn ?? []].flat(),
-    ];
-    for (const target of references) {
-      if (droppedByV1.has(target) && resources[target]?.Type !== CDK_METADATA_TYPE) {
-        queue.push(target);
-      }
-    }
+    queue.push(...(adjacent.get(id) ?? []));
   }
   return [...keep].sort().map((logicalId) => ({
     logicalId,
@@ -171,7 +189,8 @@ export async function retainResources(
 ): Promise<void> {
   const { client, stackName, region } = stack;
   const changeSetName = options.changeSetName ?? retainChangeSetName();
-  const details = { stackName, region, refactorId: changeSetName };
+  const details = { stackName, region };
+  const createdDetails = { ...details, refactorId: changeSetName };
   const deployed = await describeStack(client, stackName);
   const template = await templateLocation(stack.template, `${stackName}-retain`, stack.templates);
   try {
@@ -205,21 +224,21 @@ export async function retainResources(
       options,
     );
     if (created.Status !== "CREATE_COMPLETE") {
-      await deleteChangeSet(client, stackName, changeSetName);
+      await deleteRetainChangeSet(client, stackName, changeSetName);
       throw new StackRefactorError(
         `CloudFormation couldn't prepare the change set that retains resources in stack ` +
           `'${stackName}' (${created.Status ?? "UNKNOWN"}): ${created.StatusReason ?? "no reason given"}. ` +
           "Nothing was changed.",
-        { kind: "create-failed", ...details },
+        { kind: "create-failed", ...createdDetails },
       );
     }
     const mismatch = retainChangesMismatch(created.Changes ?? [], stack.logicalIds);
     if (mismatch) {
-      await deleteChangeSet(client, stackName, changeSetName);
+      await deleteRetainChangeSet(client, stackName, changeSetName);
       throw new StackRefactorError(
         `The change set that retains resources in stack '${stackName}' would do more than set ` +
           `their retain policies (${mismatch}), so it was deleted unexecuted. Nothing was changed.`,
-        { kind: "create-failed", ...details },
+        { kind: "create-failed", ...createdDetails },
       );
     }
     try {
@@ -229,11 +248,11 @@ export async function retainResources(
     } catch (error) {
       // Only CloudFormation's own refusal proves the change set didn't start.
       if (isClientError(error)) {
-        await deleteChangeSet(client, stackName, changeSetName);
+        await deleteRetainChangeSet(client, stackName, changeSetName);
         throw new StackRefactorError(
           `CloudFormation refused to execute the change set that retains resources in stack ` +
             `'${stackName}': ${(error as Error).message}. Nothing was changed.`,
-          { kind: "execute-failed", ...details },
+          { kind: "execute-failed", ...createdDetails },
         );
       }
       throw unknownOutcome(stackName, region, changeSetName, (error as Error).message);
@@ -254,7 +273,7 @@ export async function retainResources(
       throw new StackRefactorError(
         `The update that retains resources in stack '${stackName}' ended ${finished.StackStatus ?? "UNKNOWN"}` +
           (kind === "execute-failed" ? " and rolled back, so the stack is unchanged." : "."),
-        { kind, ...details, ...(finished.StackStatus && { status: finished.StackStatus }) },
+        { kind, ...createdDetails, ...(finished.StackStatus && { status: finished.StackStatus }) },
       );
     }
     const missing = await notRetained(client, stackName, stack.logicalIds);
@@ -266,6 +285,7 @@ export async function retainResources(
         `the update finished, but the deployed template doesn't retain ${missing.join(", ")}`,
       );
     }
+    await deleteRetainChangeSet(client, stackName, changeSetName);
   } finally {
     await template.release();
   }
@@ -315,7 +335,7 @@ async function describeChangeSet(
   return { ...first, Changes: changes };
 }
 
-async function deleteChangeSet(
+export async function deleteRetainChangeSet(
   client: CloudFormationClient,
   stackName: string,
   changeSetName: string,
@@ -325,7 +345,7 @@ async function deleteChangeSet(
       new DeleteChangeSetCommand({ StackName: stackName, ChangeSetName: changeSetName }),
     );
   } catch {
-    // An unexecuted change set changes nothing; one left behind is only clutter.
+    // Cleanup is best effort: leaving any change set behind is only clutter.
   }
 }
 
