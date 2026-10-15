@@ -14,7 +14,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { readEnvFile } from "../../../io/envFile";
 
 // Runtime templates are scaffolded by `agentcore create --template` (and its
-// wizard, which adds model overrides) and by `add runtime --type import`. These
+// wizard, which adds model overrides) and by `add runtime --agent-id` (a Bedrock Agent import). These
 // tests drive the shared addResource path directly with each template.
 
 const cleanups: Array<() => Promise<void>> = [];

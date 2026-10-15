@@ -283,8 +283,14 @@ describe("project add runtime", () => {
       `Runtime deployed name 'TestProject_default_r${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
     ],
     [
-      "--framework requires --type import",
+      "--framework requires --agent-id",
       ["--name", "my_agent", "--language", "python", "--framework", "strands"],
+      "--framework requires --agent-id",
+    ],
+    [
+      "--agent-alias-id requires --agent-id",
+      ["--name", "my_agent", "--language", "python", "--agent-alias-id", "TSTALIASID"],
+      "--agent-alias-id requires --agent-id",
     ],
     [
       "invalid JSON in --network-config",
@@ -302,6 +308,8 @@ describe("project add runtime", () => {
     ["--model-provider", "anthropic"],
     ["--language", "rust"],
     ["--protocol", "GRPC"],
+    ["--type", "create"],
+    ["--type", "import"],
   ])("rejects %s %s and writes nothing", async (flagName, value) => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -313,14 +321,12 @@ describe("project add runtime", () => {
   });
 });
 
-describe("project add runtime --type import", () => {
+describe("project add runtime --agent-id (Bedrock Agent import)", () => {
   const importArgs = [
     "add",
     "runtime",
     "--name",
     "support_proxy",
-    "--type",
-    "import",
     "--agent-id",
     "A1B2C3D4E5",
     "--agent-alias-id",
@@ -476,19 +482,27 @@ describe("project add runtime --type import", () => {
     expect(core.importedBedrockAgents).toEqual([]);
   });
 
-  test("requires --agent-id and --agent-alias-id with --type import", async () => {
+  test("--agent-id alone selects the import and still needs --agent-alias-id", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
+    const core = new TestCoreClient();
     await expect(
-      run(["add", "runtime", "--name", "p", "--type", "import", "--region", "us-east-1"]),
-    ).rejects.toThrow(/requires both --agent-id and --agent-alias-id/);
+      run(["add", "runtime", "--name", "p", "--agent-id", "A1", "--region", "us-east-1"], {
+        core,
+      }),
+    ).rejects.toThrow(
+      new InputValidationError(
+        "importing a Bedrock Agent requires both --agent-id and --agent-alias-id",
+      ),
+    );
+    expect(core.importedBedrockAgents).toEqual([]);
   });
 
-  test("rejects --agent-id without --type import", async () => {
+  test("--type is no longer an option", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
-    await expect(run(["add", "runtime", "--name", "p", "--agent-id", "A1"])).rejects.toThrow(
-      /--agent-id and --agent-alias-id require --type import/,
+    await expect(run([...importArgs, "--type", "import"])).rejects.toThrow(
+      "unknown option '--type'",
     );
   });
 
@@ -499,7 +513,10 @@ describe("project add runtime --type import", () => {
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
     await expect(run([...importArgs, "--framework", "strands"], { core })).resolves.toBeDefined();
     await expect(run([...importArgs, "--language", "python"])).rejects.toThrow(
-      /--language cannot be combined/,
+      new InputValidationError(
+        "--agent-id imports a Bedrock Agent as Python HTTP runtime code; " +
+          "--language cannot be combined with it",
+      ),
     );
     await expect(run([...importArgs, "--protocol", "MCP"])).rejects.toThrow(
       /--protocol cannot be combined/,

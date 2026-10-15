@@ -3,8 +3,8 @@
 `cn-north-1` and `cn-northwest-1` are supported, with three differences:
 
 - **Templates:** Amazon Bedrock, Anthropic, OpenAI, and Gemini are not accessible from China
-  regions, so templates wired to those providers (and `--type import`, which reads from Amazon
-  Bedrock) are rejected when a deployment target is in a China region. Bring your own agent
+  regions, so templates wired to those providers (and `agentcore add runtime --agent-id`, which
+  imports from Amazon Bedrock) are rejected when a deployment target is in a China region. Bring your own agent
   implementation instead: scaffold with `agent-python-minimal` or `mcp-python-fastmcp` and add
   your own model connectivity (or add a runtime for your own code with `agentcore add runtime`),
   or pick one of the two routes to a model that is reachable from China in the
