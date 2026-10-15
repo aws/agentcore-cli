@@ -273,10 +273,13 @@ describe("project deploy handler", () => {
         },
       ]);
       expect(subject.io.stdout()).toBe("");
+      const regionWarning =
+        "--region is ignored for v0 projects; v0 uses the target's region from " +
+        "aws-targets.json, or AWS_REGION / your AWS profile.";
       expect(subject.io.stderr()).toBe(
         flag === "--json"
-          ? ""
-          : "--region is ignored for v0 projects; v0 resolves region from aws-targets.json.\n" +
+          ? regionWarning
+          : `${regionWarning}\n` +
               "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
       );
       expect(
@@ -284,6 +287,31 @@ describe("project deploy handler", () => {
       ).toEqual(before);
     },
   );
+
+  test("does not warn about --region when it was never passed", async () => {
+    const projectRoot = await inProjectWithTargets("[]");
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const manifestPath = join(projectRoot, "agentcore", "cdk", "package.json");
+    await writeFile(specPath, JSON.stringify({ name: "orders", version: 1 }));
+    await writeFile(
+      manifestPath,
+      JSON.stringify({ dependencies: { "@aws/agentcore-cdk": "^0.1.0-alpha.19" } }),
+    );
+    const legacyDeploys: V0DeployInput[] = [];
+    const subject = await testDeployCommand({ outputs: {} }, [], {
+      runV0Deploy: async (input) => {
+        legacyDeploys.push(input);
+        return 0;
+      },
+    });
+
+    await subject.run(["--yes"]);
+
+    expect(legacyDeploys).toHaveLength(1);
+    expect(subject.io.stderr()).toBe(
+      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
+    );
+  });
 
   test("preserves the v0 deployer's non-zero exit code", async () => {
     await inProjectWithTargets();

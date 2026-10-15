@@ -715,7 +715,9 @@ describe("project dev harnesses", () => {
       },
     ]);
     expect(subject.deployments).toEqual([]);
-    expect(subject.io.stderr()).toContain("running the latest v0 AgentCore CLI deploy");
+    expect(subject.io.stderr()).toBe(
+      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
+    );
   });
 
   test("harness dev's deploy refuses a target a migration hasn't finished", async () => {

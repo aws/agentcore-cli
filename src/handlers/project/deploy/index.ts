@@ -17,7 +17,7 @@ import {
 } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
-import { JsonKey, RegionKey } from "../../keys";
+import { JsonKey, RegionExplicitKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
 import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
@@ -81,8 +81,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       recordProjectResourceCounts(ctx, project);
       const jsonOutput = ctx.require(JsonKey);
       if (project.legacy) {
-        warnIfRegionIgnored(config, ctx, jsonOutput);
-        await delegateV0Deploy(config, {
+        await delegateV0Deploy(config, ctx, {
           projectRoot: project.rootPath,
           target: flags.target,
           yes: flags.yes,
@@ -193,13 +192,11 @@ function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
     handle: async (ctx, flags, args) => {
       const projectRoot = enclosingProjectRoot(process.cwd());
       if (projectRoot && (await isV0Project(projectRoot))) {
-        const jsonOutput = ctx.require(JsonKey);
-        warnIfRegionIgnored(config, ctx, jsonOutput);
-        await delegateV0Deploy(config, {
+        await delegateV0Deploy(config, ctx, {
           projectRoot,
           target: flags.target as string,
           yes: flags.yes as boolean,
-          json: jsonOutput,
+          json: ctx.require(JsonKey),
         });
         return;
       }
@@ -208,30 +205,27 @@ function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
   });
 }
 
-// --region is a v1 global flag that still resolves (and defaults) for every
-// command, but v0 deploys have no such flag -- they resolve region entirely
-// from aws-targets.json, with env/profile as a fallback. An explicitly passed
-// --region is otherwise silently discarded on this path, trading what used to
-// be a loud "unknown option" failure for an invisible no-op.
-function warnIfRegionIgnored(
-  config: DeployProjectHandlerConfig,
-  ctx: Context,
-  jsonOutput: boolean,
-): void {
-  if (ctx.value(RegionKey) !== undefined && !jsonOutput) {
-    config.io.stderr.write(
-      "--region is ignored for v0 projects; v0 resolves region from aws-targets.json.\n",
-    );
-  }
-}
-
 async function delegateV0Deploy(
   config: DeployProjectHandlerConfig,
+  ctx: Context,
   input: Parameters<V0DeployRunner>[0],
 ): Promise<void> {
   // A migration stopped while writing the files leaves a v0 spec beside a v1 CDK
   // app; the v0 deployer mustn't deploy that.
   await assertNoPendingMigration(input.projectRoot, input.target);
+  // --region is a v1 global flag that still resolves (and defaults) for every
+  // command, but v0 deploys have no such flag -- they resolve region entirely
+  // from aws-targets.json's saved target, falling back to AWS_REGION or the AWS
+  // profile. An explicitly passed --region is otherwise silently discarded on
+  // this path, trading what used to be a loud "unknown option" failure for an
+  // invisible no-op; warn regardless of --json since stderr is informational,
+  // not part of the JSON contract.
+  if (ctx.value(RegionExplicitKey)) {
+    config.io.stderr.write(
+      "--region is ignored for v0 projects; v0 uses the target's region from " +
+        "aws-targets.json, or AWS_REGION / your AWS profile.\n",
+    );
+  }
   if (!input.json) {
     config.io.stderr.write(
       "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.\n",
