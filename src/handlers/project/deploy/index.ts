@@ -81,6 +81,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       recordProjectResourceCounts(ctx, project);
       const jsonOutput = ctx.require(JsonKey);
       if (project.legacy) {
+        warnIfRegionIgnored(config, ctx, jsonOutput);
         await delegateV0Deploy(config, {
           projectRoot: project.rootPath,
           target: flags.target,
@@ -192,17 +193,36 @@ function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
     handle: async (ctx, flags, args) => {
       const projectRoot = enclosingProjectRoot(process.cwd());
       if (projectRoot && (await isV0Project(projectRoot))) {
+        const jsonOutput = ctx.require(JsonKey);
+        warnIfRegionIgnored(config, ctx, jsonOutput);
         await delegateV0Deploy(config, {
           projectRoot,
           target: flags.target as string,
           yes: flags.yes as boolean,
-          json: ctx.require(JsonKey),
+          json: jsonOutput,
         });
         return;
       }
       await handler.handle(ctx, flags, args);
     },
   });
+}
+
+// --region is a v1 global flag that still resolves (and defaults) for every
+// command, but v0 deploys have no such flag -- they resolve region entirely
+// from aws-targets.json, with env/profile as a fallback. An explicitly passed
+// --region is otherwise silently discarded on this path, trading what used to
+// be a loud "unknown option" failure for an invisible no-op.
+function warnIfRegionIgnored(
+  config: DeployProjectHandlerConfig,
+  ctx: Context,
+  jsonOutput: boolean,
+): void {
+  if (ctx.value(RegionKey) !== undefined && !jsonOutput) {
+    config.io.stderr.write(
+      "--region is ignored for v0 projects; v0 resolves region from aws-targets.json.\n",
+    );
+  }
 }
 
 async function delegateV0Deploy(
