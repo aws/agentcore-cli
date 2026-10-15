@@ -6,6 +6,7 @@ import {
   backfillCredentialSecrets,
   gatewayCredentialNames,
   type CredentialSecretLookups,
+  type TargetAccess,
 } from "./credentialSecrets";
 import { F1_DEPLOYED_STATE, F1_SPEC, writeV0Project } from "./migrate-test-support";
 
@@ -16,7 +17,6 @@ const ARN = "arn:aws:bedrock-agentcore:us-east-1:998846730471";
 const KEY_SECRET = "arn:aws:secretsmanager:us-east-1:998846730471:secret:apikey/compatA-key-AbCdEf";
 const OAUTH_SECRET =
   "arn:aws:secretsmanager:us-east-1:998846730471:secret:oauth2/compatA-oauth-GhIjKl";
-const OPTIONS = { region: "us-east-1" };
 const DENIED = "User is not authorized to perform this action";
 
 /** Identity reads answered from a map of provider name to secret ARN (or the error to throw). */
@@ -47,19 +47,25 @@ async function project(deployedState: unknown = F1_DEPLOYED_STATE): Promise<stri
   return root;
 }
 
+const DEFAULT = { name: "default", account: "998846730471", region: "us-east-1" };
+
 function backfill(
   root: string,
   identity: CredentialSecretLookups,
   gatewayCredentials: string[] = [],
   credentials: { name: string; authorizerType: string }[] = F1_SPEC.credentials,
+  targets: { name: string; account: string; region: string }[] = [DEFAULT],
+  access: (target: { region: string }) => Promise<TargetAccess> = async (target) => ({
+    options: { region: target.region },
+  }),
 ) {
   return backfillCredentialSecrets({
     identity,
     rootPath: root,
     credentials,
     gatewayCredentials: new Set(gatewayCredentials),
-    target: "default",
-    options: OPTIONS,
+    targets,
+    access,
   });
 }
 
@@ -190,6 +196,94 @@ describe("backfillCredentialSecrets", () => {
       `compatA-oauth: GetOauth2CredentialProvider failed (${DENIED})`,
     );
     expect(result.check?.message).not.toContain("GetApiKeyCredentialProvider");
+  });
+});
+
+describe("backfillCredentialSecrets across targets", () => {
+  const PROD = { name: "prod", account: "111111111111", region: "eu-west-1" };
+  const twoTargets = {
+    targets: {
+      default: F1_DEPLOYED_STATE.targets.default,
+      prod: F1_DEPLOYED_STATE.targets.default,
+    },
+  };
+  const otherAccount = async (target: { region: string }): Promise<TargetAccess> =>
+    target.region === "eu-west-1" ? { account: "998846730471" } : { options: target };
+
+  test("fails the check for another account's Gateway credential, saying how to record it", async () => {
+    const root = await project(twoTargets);
+    const identity = fakeIdentity({ "compatA-key": KEY_SECRET, "compatA-oauth": OAUTH_SECRET });
+
+    const result = await backfill(
+      root,
+      identity,
+      ["compatA-key"],
+      F1_SPEC.credentials,
+      [DEFAULT, PROD],
+      otherAccount,
+    );
+
+    // Only the reachable target is looked up.
+    expect(identity.calls).toEqual(["apiKey:compatA-key", "oauth2:compatA-oauth"]);
+    expect(result.check?.ok).toBe(false);
+    expect(result.check?.message).toBe(
+      "Target prod is in account 111111111111 (eu-west-1), but the active credentials are for " +
+        "account 998846730471. v1's CDK app synthesizes every target's stack, so it needs the " +
+        "secret ARNs of compatA-key there too, and migrate reads every target with the one set " +
+        "of credentials it runs with. Record them by hand: with credentials for that account, " +
+        "run `aws bedrock-agentcore-control get-api-key-credential-provider` (or " +
+        "get-oauth2-credential-provider) --name <provider> --region eu-west-1, add the secret " +
+        "ARN as clientSecretArn under targets.prod.resources.credentials.<name> in " +
+        "agentcore/.cli/deployed-state.json, commit it, then run `agentcore migrate` again. " +
+        "The secret ARNs of compatA-key (target default), compatA-oauth (target default) were found.",
+    );
+    expect(result.warnings).toEqual([
+      "v0 didn't record the secret ARN of credential compatA-oauth (target prod), and it " +
+        "couldn't be found: target prod is in account 111111111111, not the active account " +
+        "998846730471. No Gateway target uses it, so migrating doesn't need it.",
+    ]);
+    const state = JSON.parse(result.deployedState!);
+    expect(state.targets.default.resources.credentials["compatA-key"].clientSecretArn).toBe(
+      KEY_SECRET,
+    );
+    expect(state.targets.prod.resources.credentials["compatA-key"].clientSecretArn).toBeUndefined();
+  });
+
+  test("only warns for another account's credentials no Gateway target uses", async () => {
+    const root = await project(twoTargets);
+    const identity = fakeIdentity({ "compatA-key": KEY_SECRET, "compatA-oauth": OAUTH_SECRET });
+
+    const result = await backfill(
+      root,
+      identity,
+      [],
+      F1_SPEC.credentials,
+      [DEFAULT, PROD],
+      otherAccount,
+    );
+
+    expect(result.check?.ok).toBe(true);
+    expect(result.warnings).toHaveLength(2);
+  });
+
+  test("reports a region whose credentials can't be resolved", async () => {
+    const root = await project(twoTargets);
+    const identity = fakeIdentity({ "compatA-key": KEY_SECRET, "compatA-oauth": OAUTH_SECRET });
+
+    const result = await backfill(
+      root,
+      identity,
+      ["compatA-key"],
+      F1_SPEC.credentials,
+      [DEFAULT, { ...PROD, account: DEFAULT.account }],
+      async (target) =>
+        target.region === "eu-west-1" ? { error: "no profile" } : { options: target },
+    );
+
+    expect(result.check?.ok).toBe(false);
+    expect(result.check?.message).toContain(
+      "compatA-key (target prod): no credentials could be resolved for eu-west-1 (no profile)",
+    );
   });
 });
 

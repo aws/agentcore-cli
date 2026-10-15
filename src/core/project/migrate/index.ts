@@ -48,6 +48,7 @@ import {
   backfillCredentialSecrets,
   gatewayCredentialNames,
   type CredentialSecretLookups,
+  type TargetAccess,
 } from "./credentialSecrets";
 import { checkGitGate } from "./gitGate";
 import {
@@ -262,7 +263,7 @@ export class FsProjectMigrator implements ProjectMigrator {
     const secrets =
       problems.length > 0
         ? { warnings: [] }
-        : await this.backfillSecrets(rootPath, v0Spec, selected, checks);
+        : await this.backfillSecrets(rootPath, v0Spec, targets.targets, selected, checks);
 
     const warnings = [
       ...converted.warnings,
@@ -403,13 +404,15 @@ export class FsProjectMigrator implements ProjectMigrator {
   }
 
   /**
-   * Fills in the secret ARNs v0 didn't record for the selected target's credentials,
-   * read with the credentials its stack was read with; returns deployed-state.json's
-   * new contents when any were.
+   * Fills in the secret ARNs v0 didn't record for every deployed target's
+   * credentials, since the v1 app synthesizes every target's stack; returns
+   * deployed-state.json's new contents when any were. Only once the selected
+   * stack was read, so the active credentials are known to work.
    */
   private async backfillSecrets(
     rootPath: string,
     spec: { credentials: { name: string; authorizerType: string }[] },
+    targets: AwsDeploymentTarget[],
     selected: DeployedTarget | undefined,
     checks: MigrationCheck[],
   ): Promise<{ deployedState?: string; warnings: string[] }> {
@@ -419,11 +422,45 @@ export class FsProjectMigrator implements ProjectMigrator {
       rootPath,
       credentials: spec.credentials,
       gatewayCredentials: gatewayCredentialNames(spec),
-      target: selected.target.name,
-      options: { region: selected.target.region, credentials: selected.credentials },
+      targets,
+      access: this.targetAccess(selected),
     });
     if (check) checks.push(check);
     return { ...(deployedState !== undefined && { deployedState }), warnings };
+  }
+
+  /**
+   * Reads a target's providers with the credentials migrate resolves for its
+   * region, which reach any region of their own account. Resolved once per
+   * region, starting from the ones the selected stack was read with.
+   */
+  private targetAccess(
+    selected: DeployedTarget,
+  ): (target: AwsDeploymentTarget) => Promise<TargetAccess> {
+    type Resolved = { credentials: CdkCredentialProvider; account: string };
+    const byRegion = new Map<string, Promise<Resolved>>([
+      [
+        selected.target.region,
+        Promise.resolve({ credentials: selected.credentials!, account: selected.target.account }),
+      ],
+    ]);
+    return async (target) => {
+      let resolved = byRegion.get(target.region);
+      if (!resolved) {
+        resolved = (async () => {
+          const credentials = await this.resolveCredentials(target.region);
+          return { credentials, account: await this.resolveAccount(target.region, credentials) };
+        })();
+        byRegion.set(target.region, resolved);
+      }
+      try {
+        const { credentials, account } = await resolved;
+        if (account !== target.account) return { account };
+        return { options: { region: target.region, credentials } };
+      } catch (error) {
+        return { error: (error as Error).message };
+      }
+    };
   }
 
   /** Reads the selected target's stack, recording why it was skipped when it can't be. */
@@ -609,7 +646,8 @@ export class FsProjectMigrator implements ProjectMigrator {
         const spec = JSON.parse(await readFile(join(rootPath, SPEC_RELATIVE_PATH), "utf8")) as {
           credentials?: unknown;
         };
-        // Only the synth reads it here: a pending migration's files are already written.
+        // Only the synth reads it here: a pending migration's files are already written
+        // (and the run that wrote them recorded every reachable target's ARNs).
         const secrets = await this.backfillSecrets(
           rootPath,
           {
@@ -618,6 +656,7 @@ export class FsProjectMigrator implements ProjectMigrator {
               ? (spec.credentials as { name: string; authorizerType: string }[])
               : [],
           },
+          (await this.readTargets(rootPath)).targets,
           selected,
           checks,
         );
