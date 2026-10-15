@@ -1,0 +1,4 @@
+aws-opentelemetry-distro ~= 0.21.0
+bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0
+botocore[crt] ~= 1.43.0
+strands-agents >= 1.15.0, < 2.0.0

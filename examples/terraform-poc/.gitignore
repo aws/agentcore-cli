@@ -1,0 +1,5 @@
+agentcore/.cli/
+agentcore/aws-targets.json
+.venv/
+__pycache__/
+*.pyc

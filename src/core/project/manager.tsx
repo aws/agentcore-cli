@@ -88,6 +88,8 @@ import {
 import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
+import { TerraformBackend } from "./backends/terraform";
+import { TerraformProjectWriter } from "./backends/terraform/project";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
@@ -428,6 +430,13 @@ export class FsProjectManager implements ProjectManager {
         checkTool: config.checkTool,
         json: config.json,
       }),
+      Terraform: new TerraformBackend({
+        logger: config.logger,
+        enableTransactionSearch: config.enableTransactionSearch,
+        runner: config.runner,
+        checkTool: config.checkTool,
+        json: config.json,
+      }),
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
@@ -438,10 +447,11 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = projectSpecPath(rootPath);
-    const cdkDependency = await this.declaredCdkDependency(rootPath);
     try {
       const spec = await this.json.read(configPath, ProjectSpecSchema);
-      assertCdkLibraryMatches("v1", cdkDependency);
+      if (spec.managedBy === "CDK") {
+        assertCdkLibraryMatches("v1", await this.declaredCdkDependency(rootPath));
+      }
       return {
         name: spec.name,
         rootPath,
@@ -450,16 +460,21 @@ export class FsProjectManager implements ProjectManager {
     } catch (error) {
       if (error instanceof DeserializationError) {
         const header = await this.json
-          .read(configPath, z.object({ version: z.unknown().optional() }))
+          .read(
+            configPath,
+            z.object({ version: z.unknown().optional(), managedBy: z.unknown().optional() }),
+          )
           .catch(() => undefined);
         if (projectFormat(header) === "v0") {
+          const cdkDependency = await this.declaredCdkDependency(rootPath);
           const warning = v0DependencyWarning(cdkDependency);
           if (warning) throw new ProjectStateError(warning, { cause: error });
           assertCdkLibraryMatches("v0", cdkDependency, error);
           return loadLegacyProject(rootPath, this.json);
         }
         // An invalid v1 spec on a v0 CDK app is almost always a hand-bumped version.
-        if (header?.version === 2) assertCdkLibraryMatches("v1", cdkDependency, error);
+        if (header?.version === 2 && header.managedBy !== "Terraform")
+          assertCdkLibraryMatches("v1", await this.declaredCdkDependency(rootPath), error);
       }
       throw error;
     }
@@ -490,6 +505,19 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    if (
+      input.managedBy === "Terraform" &&
+      (input.scaffoldHarnessInput ||
+        (input.scaffoldRuntimeInput &&
+          (input.scaffoldRuntimeInput.language !== "Python" ||
+            input.scaffoldRuntimeInput.build !== "CodeZip")))
+    ) {
+      throw new InputValidationError(
+        "The Terraform PoC supports empty projects and Python CodeZip runtime templates. " +
+          "Use --template empty or --template agent-python-minimal.",
+      );
+    }
+
     if (input.scaffoldHarnessInput) {
       validateHarnessTemplateSource(input.scaffoldHarnessInput);
     }
@@ -499,7 +527,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, managedBy: input.managedBy },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -508,6 +536,13 @@ export class FsProjectManager implements ProjectManager {
 
     yield { type: "step", message: "Creating project tree" };
     await projectTree.write(destination);
+    if (input.managedBy === "Terraform") {
+      yield { type: "step", message: "Scaffolding Terraform application module" };
+      await new TerraformProjectWriter().scaffold(
+        join(destination, "agentcore", "terraform"),
+        input.region,
+      );
+    }
 
     if (envEntries.length > 0) {
       yield { type: "step", message: "Writing model provider API key to agentcore/.env.local" };
@@ -534,8 +569,10 @@ export class FsProjectManager implements ProjectManager {
     // A failed step leaves the scaffolded files in place; the error carries the
     // failing command, its directory, and its output.
     if (!input.skipInstall) {
-      yield { type: "step", message: "Installing CDK dependencies with npm" };
-      yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
+      if ((input.managedBy ?? "CDK") === "CDK") {
+        yield { type: "step", message: "Installing CDK dependencies with npm" };
+        yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
+      }
 
       if (scaffoldRuntimeInput) {
         const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
@@ -1725,7 +1762,9 @@ export class FsProjectManager implements ProjectManager {
 
   private async checkCreateDependencies(input: CreateProjectInput): Promise<void> {
     if (!input.skipInstall) {
-      await this.checkTool("npm", NODE_INSTALL_HINT);
+      if ((input.managedBy ?? "CDK") === "CDK") {
+        await this.checkTool("npm", NODE_INSTALL_HINT);
+      }
       if (
         input.scaffoldRuntimeInput?.language === "Python" &&
         templateManagesDependencies(resolveRuntimeTemplateProfile(input.scaffoldRuntimeInput))
