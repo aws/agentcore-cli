@@ -25,8 +25,6 @@ export async function executeV0Deploy(
     "deploy",
     "--target",
     input.target,
-    "--region",
-    input.region,
     ...(input.yes ? ["--yes"] : []),
     ...(input.json ? ["--json"] : []),
   ];
@@ -35,6 +33,7 @@ export async function executeV0Deploy(
     env: {
       ...process.env,
       AGENTCORE_SKIP_CONFLICT_CHECK: "1",
+      AWS_REGION: input.region,
     },
   });
 }

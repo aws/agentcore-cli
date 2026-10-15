@@ -31,8 +31,6 @@ describe("executeV0Deploy", () => {
           "deploy",
           "--target",
           "staging",
-          "--region",
-          "eu-west-1",
           "--yes",
           "--json",
         ],
@@ -41,6 +39,7 @@ describe("executeV0Deploy", () => {
           env: {
             ...process.env,
             AGENTCORE_SKIP_CONFLICT_CHECK: "1",
+            AWS_REGION: "eu-west-1",
           },
         },
       },
@@ -63,8 +62,6 @@ describe("executeV0Deploy", () => {
       },
     );
 
-    expect(commands).toEqual([
-      ["npx", "--yes", V0_CLI_PACKAGE, "deploy", "--target", "default", "--region", "us-east-1"],
-    ]);
+    expect(commands).toEqual([["npx", "--yes", V0_CLI_PACKAGE, "deploy", "--target", "default"]]);
   });
 });
