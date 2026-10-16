@@ -9,7 +9,7 @@ export const createCreateEndpointHandler = (core: Core) =>
     name: "create",
     description: "create a harness endpoint",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("name", "the name of the endpoint", z.string().min(1)),
       flag(
         "target-version",

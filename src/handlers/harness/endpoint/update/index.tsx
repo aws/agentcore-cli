@@ -9,7 +9,7 @@ export const createUpdateEndpointHandler = (core: Core) =>
     name: "update",
     description: "update a harness endpoint",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("qualifier", "the endpoint name (qualifier)", z.string().min(1)),
       flag("target-version", "the harness version the endpoint points to", z.string().optional()),
     ],
