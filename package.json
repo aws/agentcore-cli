@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0-rc.6",
   "repository": {
     "type": "git",
     "url": "https://github.com/aws/agentcore-cli.git"
