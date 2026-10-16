@@ -13,7 +13,7 @@ export const createExecHarnessHandler = (core: Core, io: AppIO) =>
     name: "exec",
     description: "run a shell command in a harness",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("command", "the shell command to run", z.string().optional()),
       flag(
         "session-id",

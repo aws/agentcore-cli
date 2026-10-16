@@ -9,7 +9,7 @@ export const createListEndpointsHandler = (core: Core) =>
     name: "list",
     description: "list a harness's endpoints",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("next-token", "next token to use on paginated", z.string().optional()),
       flag("max-results", "max number of items to return", z.number().optional()),
     ],

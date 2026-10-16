@@ -11,7 +11,7 @@ import { invokeHarnessTurn } from "./operation.ts";
 import { HarnessInvokeLaunchContextKey } from "./launchContext";
 
 export const invokeHarnessFlags = [
-  flag("id", "the ID of the harness", z.string().min(1).max(48)),
+  flag("id", "the ID of the harness", z.string().min(1).max(51)),
   flag("prompt", "the message to send to the harness", z.string().optional()),
   flag(
     "user-id",

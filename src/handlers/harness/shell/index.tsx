@@ -14,7 +14,7 @@ export const createHarnessShellHandler = (core: Core, io: AppIO) =>
     name: "shell",
     description: "open an interactive shell in a harness",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("qualifier", "the harness endpoint qualifier", z.string().min(1).optional()),
       flag("session-id", "the Runtime session ID to use", z.string().min(33).max(256).optional()),
       flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
