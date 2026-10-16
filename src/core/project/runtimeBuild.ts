@@ -43,11 +43,34 @@ export function describeChange(name: string, change: RuntimeChange): string {
   const line =
     `${name}: ${change.field} ${change.from ?? "(unset)"} -> ${change.to ?? "(removed)"} ` +
     `(${change.reason})`;
-  // Switching to a container changes how the runtime builds and deploys, so say so.
+  // Switching to a container changes how the runtime builds and deploys, so say so,
+  // and spell out every edit going back takes: the schema rejects a CodeZip runtime
+  // that still has a dockerfile or lacks a runtimeVersion, so "build" alone fails.
   return change.field === "build" && change.to === "Container"
     ? `${line}. It now builds and deploys as a container image from that Dockerfile; to go ` +
-        `back, delete the Dockerfile and set "build": "CodeZip" in agentcore.json.`
+        `back, delete the Dockerfile, then in agentcore.json set "build": "CodeZip", remove ` +
+        `"dockerfile", and add back the "runtimeVersion" removed below.`
     : line;
+}
+
+/**
+ * The agentcore.json edits that turn a Container runtime back into CodeZip. The
+ * schema rejects a CodeZip runtime with container-only fields or no runtimeVersion,
+ * and agentcore.json is validated before sync runs, so every edit has to be named.
+ */
+function codeZipRevertEdits(runtime: ProjectRuntime): string {
+  const edits = ['set "build": "CodeZip"'];
+  const containerOnly = (["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const)
+    .filter((field) => runtime[field] !== undefined)
+    .map((field) => `"${field}"`);
+  if (containerOnly.length > 0) edits.push(`remove ${containerOnly.join(", ")}`);
+  if (runtime.runtimeVersion === undefined) {
+    const latest = entrypointLanguage(runtime) === "Python" ? LATEST_PYTHON : LATEST_NODE;
+    edits.push(`add "runtimeVersion" (for example "${latest}")`);
+  }
+  return edits.length <= 2
+    ? edits.join(" and ")
+    : `${edits.slice(0, -1).join(", ")}, and ${edits[edits.length - 1]}`;
 }
 
 /** Re-derives a runtime's build settings. Throws a {@link ProjectStateError} when they cannot be. */
@@ -558,7 +581,8 @@ function runtimeProblems(
           : `no Dockerfile at ${displayPath(projectRoot, join(context, dockerfile))}`;
       problems.push(
         `${prefix} ${missing}, and agentcore.json says this is a Container build. Add the ` +
-          `Dockerfile, or set "build": "CodeZip" in agentcore.json to deploy the code directly.`,
+          `Dockerfile, or deploy the code directly: in agentcore.json, ` +
+          `${codeZipRevertEdits(runtime)}.`,
       );
     }
     if (runtime.networkMode === "VPC" && !runtime.networkConfig?.vpcId) {

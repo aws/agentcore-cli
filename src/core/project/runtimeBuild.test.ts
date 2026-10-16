@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ProjectStateError } from "../../errors";
-import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { ProjectRuntimeSchema, type ProjectRuntime } from "../../projectSchemas/runtime";
 import { describeChange, prepareRuntimes, readTomlString, syncRuntimeBuild } from "./runtimeBuild";
 
 const roots: string[] = [];
@@ -261,8 +261,9 @@ describe("build", () => {
     ]);
     expect(describeChange("search", sync.changes[0]!)).toBe(
       "search: build CodeZip -> Container (Dockerfile in app/search). It now builds and " +
-        "deploys as a container image from that Dockerfile; to go back, delete the Dockerfile " +
-        'and set "build": "CodeZip" in agentcore.json.',
+        "deploys as a container image from that Dockerfile; to go back, delete the Dockerfile, " +
+        'then in agentcore.json set "build": "CodeZip", remove "dockerfile", and add back the ' +
+        '"runtimeVersion" removed below.',
     );
   });
 
@@ -290,10 +291,53 @@ describe("build", () => {
     expect(() => prepareRuntimes(root, [container], "deploy")).toThrow(
       new ProjectStateError(
         'runtime "search": no Dockerfile in app/search/, and agentcore.json says this is a ' +
-          'Container build. Add the Dockerfile, or set "build": "CodeZip" in agentcore.json to ' +
-          "deploy the code directly. See app/search/README.md.",
+          "Container build. Add the Dockerfile, or deploy the code directly: in agentcore.json, " +
+          'set "build": "CodeZip", remove "dockerfile", and add "runtimeVersion" (for example ' +
+          '"PYTHON_3_14"). See app/search/README.md.',
       ),
     );
+  });
+
+  test("the precheck names every container-only field a runtime has to drop to go back", async () => {
+    const root = await project({ "app/search/main.py": "", "docker/": "" });
+    const container = runtime({
+      build: "Container",
+      dockerfile: "Dockerfile",
+      buildContextPath: "docker" as ProjectRuntime["buildContextPath"],
+      customDockerBuildArgs: { FOO: "bar" },
+    });
+    expect(() => prepareRuntimes(root, [container], "deploy")).toThrow(
+      new ProjectStateError(
+        'runtime "search": no Dockerfile in docker/, and agentcore.json says this is a ' +
+          "Container build. Add the Dockerfile, or deploy the code directly: in agentcore.json, " +
+          'set "build": "CodeZip", remove "dockerfile", "buildContextPath", ' +
+          '"customDockerBuildArgs", and add "runtimeVersion" (for example "PYTHON_3_14"). ' +
+          "See app/search/README.md.",
+      ),
+    );
+  });
+
+  test("following the go-back instructions yields a CodeZip runtime that loads", async () => {
+    const root = await project({
+      "app/search/Dockerfile": "FROM scratch\n",
+      "app/search/main.py": "",
+      "app/search/pyproject.toml": pyproject(">=3.10,<3.13"),
+    });
+    const container = syncRuntimeBuild(runtime(), root).runtime;
+    expect(container.build).toBe("Container");
+    await rm(join(root, "app/search/Dockerfile"));
+
+    // "build" alone is what the old message said; the schema rejects it.
+    expect(ProjectRuntimeSchema.safeParse({ ...container, build: "CodeZip" }).success).toBe(false);
+
+    const { dockerfile: _removed, ...rest } = container;
+    const reverted = ProjectRuntimeSchema.parse({
+      ...rest,
+      build: "CodeZip",
+      runtimeVersion: "PYTHON_3_14",
+    });
+    const [prepared] = prepareRuntimes(root, [reverted], "deploy").changed;
+    expect(prepared?.runtime).toMatchObject({ build: "CodeZip", runtimeVersion: "PYTHON_3_12" });
   });
 
   test("only a file named exactly Dockerfile counts", async () => {

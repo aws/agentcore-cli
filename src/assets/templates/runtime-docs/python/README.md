@@ -45,7 +45,9 @@ prints anything it changed:
 - **Build type:** adding a file named exactly `Dockerfile` to this folder
   switches the runtime to a container build, and the CLI says so. It never
   switches back on its own: to return to a direct code deploy, delete the
-  Dockerfile and set `"build": "CodeZip"` in `agentcore.json`.
+  Dockerfile, then in `agentcore.json` set `"build": "CodeZip"`, remove
+  `"dockerfile"`, and add back a `"runtimeVersion"` (the CLI removed it when
+  it switched; the schema requires it for CodeZip).
 - **Python version** (CodeZip only): kept as long as `requires-python` in
   `pyproject.toml` allows it (see below).
 - **Entrypoint:** from `[tool.agentcore]` in `pyproject.toml`, if you want a
