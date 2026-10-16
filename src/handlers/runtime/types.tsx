@@ -49,6 +49,7 @@ export type RuntimeShellRequest = {
   runtimeArn: string;
   qualifier: string;
   runtimeSessionId?: string;
+  shellId?: string;
   bearerToken?: string;
   onReconnect?: (reconnected: boolean) => void | Promise<void>;
 };
@@ -58,6 +59,7 @@ export type RuntimeShellFrame =
 
 export interface RuntimeShellSession extends AsyncIterable<RuntimeShellFrame> {
   readonly runtimeSessionId: string;
+  readonly shellId: string;
   readonly kicked: boolean;
   readonly exitCode: number | null;
   send(data: Uint8Array): Promise<void>;

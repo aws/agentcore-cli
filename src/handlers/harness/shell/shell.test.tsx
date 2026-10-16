@@ -30,6 +30,7 @@ function subject(isTTY = true) {
   let closed = 0;
   const session: RuntimeShellSession = {
     runtimeSessionId: SESSION_ID,
+    shellId: "server-shell",
     kicked: false,
     exitCode: 0,
     send: async () => {},
@@ -69,18 +70,39 @@ function subject(isTTY = true) {
 describe("harness shell", () => {
   test("opens the harness ARN through the real CLI/Core path and closes the terminal session", async () => {
     const value = subject();
-    await value.run("--id", ID, "--qualifier", "prod", "--session-id", SESSION_ID);
+    await value.run(
+      "--id",
+      ID,
+      "--qualifier",
+      "prod",
+      "--session-id",
+      SESSION_ID,
+      "--shell-id",
+      "saved-shell",
+    );
     expect(value.request()).toEqual({
       harnessArn: ARN,
       qualifier: "prod",
       runtimeSessionId: SESSION_ID,
+      shellId: "saved-shell",
       onReconnect: expect.any(Function),
     });
     expect(value.io.stdout()).toContain("harness output");
+    expect(value.io.stderr()).toContain(
+      `agentcore harness shell --id ${ID} --qualifier prod --session-id ${SESSION_ID} --shell-id server-shell --region us-west-2`,
+    );
     expect(value.io.stderr()).toContain("exit 0");
     expect(value.closed()).toBe(1);
     await value.request()?.onReconnect?.(true);
     expect(value.io.stderr()).toContain("Reattached to existing shell.");
+  });
+
+  test("requires a Runtime session ID with --shell-id", async () => {
+    const value = subject();
+
+    await expect(
+      value.run("--id", ID, "--qualifier", "prod", "--shell-id", "saved-shell"),
+    ).rejects.toThrow("--shell-id requires --session-id");
   });
 
   test.each([
@@ -161,6 +183,7 @@ describe("harness shell navigation", () => {
     const failure = new Error("shell failed");
     core.harness.setShellSession({
       runtimeSessionId: SESSION_ID,
+      shellId: "server-shell",
       kicked: false,
       exitCode: null,
       send: async () => {},
@@ -209,6 +232,8 @@ describe("harness shell navigation", () => {
         ID,
         "--session-id",
         SESSION_ID,
+        "--shell-id",
+        "saved-shell",
         "--bearer-token",
         "token",
         "--region",
@@ -227,6 +252,7 @@ describe("harness shell navigation", () => {
       ).toMatchObject({
         harnessArn: ARN,
         runtimeSessionId: SESSION_ID,
+        shellId: "saved-shell",
         bearerToken: "token",
         qualifier: "prod",
       });

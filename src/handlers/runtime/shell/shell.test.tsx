@@ -36,6 +36,7 @@ function runtime(overrides: Partial<GetAgentRuntimeResponse> = {}): GetAgentRunt
 
 class CompletedShell implements RuntimeShellSession {
   readonly runtimeSessionId = "session-012345678901234567890123456789";
+  readonly shellId = "server-shell";
   readonly kicked = false;
   readonly exitCode = 0;
   closed = 0;
@@ -98,7 +99,37 @@ describe("runtime shell command", () => {
     });
     expect(subject.shell.closed).toBe(1);
     expect(subject.io.stderr()).toContain("Connected");
+    expect(subject.io.stderr()).toContain(
+      `agentcore runtime shell --id ${RUNTIME_ID} --qualifier prod --session-id ${subject.shell.runtimeSessionId} --shell-id server-shell --region ${REGION}`,
+    );
     expect(subject.io.stderr()).toContain("exit 0");
+  });
+
+  test("resumes the requested shell ID in the Runtime session", async () => {
+    const subject = harness();
+
+    await subject.run(
+      "--id",
+      RUNTIME_ID,
+      "--qualifier",
+      "prod",
+      "--session-id",
+      subject.shell.runtimeSessionId,
+      "--shell-id",
+      "saved-shell",
+    );
+
+    expect(
+      subject.core.runtime.calls.find((call) => call.method === "openRuntimeShell")?.args[0],
+    ).toMatchObject({ runtimeSessionId: subject.shell.runtimeSessionId, shellId: "saved-shell" });
+  });
+
+  test("requires a Runtime session ID with --shell-id", async () => {
+    const subject = harness();
+
+    await expect(
+      subject.run("--id", RUNTIME_ID, "--qualifier", "prod", "--shell-id", "saved-shell"),
+    ).rejects.toThrow("--shell-id requires --session-id");
   });
 
   test("passes CUSTOM_JWT bearer auth to Core", async () => {
@@ -117,6 +148,13 @@ describe("runtime shell command", () => {
     expect(
       subject.core.runtime.calls.find((call) => call.method === "openRuntimeShell")?.args[0],
     ).toMatchObject({ bearerToken: "token" });
+    expect(subject.io.stderr()).toContain("Provide --bearer-token again when reconnecting.");
+    expect(
+      subject.io
+        .stderr()
+        .split("\n")
+        .find((line) => line.startsWith("To reconnect:")),
+    ).not.toContain("--bearer-token");
   });
 
   test("reports whether reconnect preserved the existing shell", async () => {

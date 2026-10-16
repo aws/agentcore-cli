@@ -412,6 +412,7 @@ export class TestHarnessClient implements CoreHarnessClient {
   private resolvedRuntime: ResolvedHarnessRuntime = DEFAULT_RESOLVED_HARNESS_RUNTIME;
   private shellSession: RuntimeShellSession = {
     runtimeSessionId: "harness-session-012345678901234567890123",
+    shellId: "harness-shell",
     kicked: false,
     exitCode: 0,
     send: async () => {},
@@ -744,6 +745,7 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   private execStreams: AsyncIterable<InvokeAgentRuntimeCommandStreamOutput>[] = [];
   private shellSession: RuntimeShellSession = {
     runtimeSessionId: "runtime-session-012345678901234567890123",
+    shellId: "runtime-shell",
     kicked: false,
     exitCode: 0,
     send: async () => {},
