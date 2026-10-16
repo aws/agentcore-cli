@@ -1106,6 +1106,7 @@ open an interactive shell in a harness
 - `--id <id>`: the ID of the harness (required)
 - `--qualifier <qualifier>`: the harness endpoint qualifier
 - `--session-id <session-id>`: the Runtime session ID to use
+- `--shell-id <shell-id>`: the shell ID to resume (requires --session-id)
 - `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
 
 #### `agentcore harness logs`
@@ -1358,6 +1359,7 @@ open an interactive shell in a Runtime
 - `--id <id>`: the ID of the Runtime (required)
 - `--qualifier <qualifier>`: the Runtime endpoint qualifier
 - `--session-id <session-id>`: the Runtime session ID to use
+- `--shell-id <shell-id>`: the shell ID to resume (requires --session-id)
 - `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
 
 #### `agentcore runtime exec`

@@ -45,6 +45,7 @@ export function createHarnessShellOpener(
           runtimeArn: request.harnessArn,
           endpointName: request.qualifier,
           sessionId: request.runtimeSessionId,
+          shellId: request.shellId,
           auth:
             request.bearerToken === undefined
               ? "sigv4"
@@ -97,6 +98,7 @@ class HarnessShellClient {
     let currentReadiness: Promise<boolean>;
     const session = new ShellSession({
       sessionId: input.sessionId,
+      shellId: input.shellId,
       reconnectConfig: {
         ...input.reconnectConfig,
         onReconnect: () => {

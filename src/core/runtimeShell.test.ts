@@ -19,6 +19,7 @@ function sdkSession(
 ): RuntimeShellSdkSession & { closed: number } {
   return {
     sessionId: "server-session",
+    shellId: "server-shell",
     reconnected: false,
     kicked: false,
     exitCode: 0,
@@ -82,6 +83,23 @@ describe("createRuntimeShellOpener", () => {
       },
     ]);
     expect(result.runtimeSessionId).toBe("server-session");
+    expect(result.shellId).toBe("server-shell");
+  });
+
+  test("a requested shell ID reaches the SDK", async () => {
+    const opens: RuntimeShellSdkOpenInput[] = [];
+    const opener = createRuntimeShellOpener({
+      createClient: () => ({
+        openShell: async (input) => {
+          opens.push(input);
+          return sdkSession();
+        },
+      }),
+    });
+
+    await opener({ ...REQUEST, shellId: "saved-shell" }, { region: "us-west-2" });
+
+    expect(opens[0]?.shellId).toBe("saved-shell");
   });
 
   test("uses OAuth auth for a bearer token", async () => {

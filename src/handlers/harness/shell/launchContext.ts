@@ -3,6 +3,7 @@ import { contextKey } from "../../../router";
 export type HarnessShellLaunchContext = {
   harnessId: string;
   runtimeSessionId?: string;
+  shellId?: string;
   bearerToken?: string;
 };
 
