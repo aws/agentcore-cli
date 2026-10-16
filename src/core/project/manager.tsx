@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import type {
   AddResourceOptions,
@@ -23,6 +23,8 @@ import type {
   ProjectManager,
   ProjectEvent,
   ProjectResource,
+  SyncRuntimeBuildsInput,
+  SyncRuntimeBuildsResult,
   RemoveResourceInput,
   RemoveResourceResult,
   RemoveResourcesResult,
@@ -98,7 +100,11 @@ import {
   type AwsDeploymentTarget,
 } from "../../projectSchemas/aws-targets";
 import { V0AwsDeploymentTargetsSchema } from "../../projectSchemas/v0";
-import type { RuntimeResourceConfig } from "../../handlers/project/add/runtime/types";
+import {
+  isRuntimeDocsConfig,
+  type RuntimeResourceConfig,
+} from "../../handlers/project/add/runtime/types";
+import { buildDocsRuntimeSpec, runtimeDocsTree } from "./templates/runtimeDocs";
 import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
@@ -109,6 +115,7 @@ import { projectFormat, type ProjectFormat } from "./legacy/detect";
 import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
 import { assertNoPendingMigration } from "./migrate/journal";
+import { prepareRuntimes } from "./runtimeBuild";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -156,7 +163,7 @@ function assertCdkLibraryMatches(
 
  * Shown when a runtime template hardwired to an unreachable model provider
  * targets a China (aws-cn) region and takes no --model-provider override
- * (langchain, vercel, `--type import`). Amazon Bedrock, Anthropic, OpenAI, and
+ * (langchain, vercel, a Bedrock Agent import). Amazon Bedrock, Anthropic, OpenAI, and
  * Gemini cannot be called from China regions; LiteLLM can route to a reachable
  * provider and OpenAICompatible points the OpenAI client at a reachable endpoint.
  */
@@ -674,7 +681,8 @@ export class FsProjectManager implements ProjectManager {
             : cnUnsupportedResourceMessage(input.resourceType),
         );
       }
-      if (input.resourceType === "runtime") {
+      // A docs-only runtime has no scaffolded code to gate; its code is the user's.
+      if (input.resourceType === "runtime" && !isRuntimeDocsConfig(input.resourceConfig)) {
         const scaffold = input.resourceConfig.scaffoldRuntimeInput;
         if (scaffold.framework === "bma") {
           throw new RegionUnsupportedFeatureError(BMA_CN_MESSAGE);
@@ -748,7 +756,8 @@ export class FsProjectManager implements ProjectManager {
 
         yield { type: "step", message: `Scaffolding harness in project` };
         const outputPath = join(project.rootPath, "app", harnessName);
-        scaffoldedPaths.push(outputPath);
+        // Rollback removes only what this add created, never a folder the user already had.
+        if (!existsSync(outputPath)) scaffoldedPaths.push(outputPath);
 
         const resolver = getHarnessTemplateResolver({
           assetSource: this.assetSource,
@@ -771,15 +780,63 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
+        const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
+        // The folder may hold the user's own code, but never another resource's.
+        const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
+        if (owner !== undefined) {
+          throw new InputValidationError(
+            `cannot add runtime '${input.resourceConfig.name}': 'app/${input.resourceConfig.name}' ` +
+              `overlaps the files of ${owner}. Choose a different --name.`,
+          );
+        }
+        // Rollback removes only what this add created, never a folder the user already had.
+        const folderExisted = existsSync(outputPath);
+        if (isRuntimeDocsConfig(input.resourceConfig)) {
+          const relativeFolder = `app/${input.resourceConfig.name}`;
+          yield { type: "step", message: `Writing runtime docs to '${relativeFolder}'` };
+          const tree = await runtimeDocsTree(
+            { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
+            input.resourceConfig,
+          );
+          // Tracked as each file is written, so a write that fails partway is
+          // cleaned up too (only what this add created).
+          const written: string[] = [];
+          if (!folderExisted) scaffoldedPaths.push(outputPath);
+          try {
+            await tree.write(dirname(outputPath), { skipExisting: true, written });
+          } catch (err) {
+            await this.discardStaged(folderExisted ? written : [outputPath]);
+            throw err;
+          }
+          if (folderExisted) scaffoldedPaths.push(...written);
+          for (const child of tree.children) {
+            if (!written.includes(join(outputPath, child.name))) {
+              yield {
+                type: "step",
+                message: `'${relativeFolder}/${child.name}' already exists; left unchanged`,
+              };
+            }
+          }
+          projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          break;
+        }
+
         await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
         yield { type: "step", message: "Scaffolding runtime in project" };
-        const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
-        scaffoldedPaths.push(outputPath);
+        if (!folderExisted) scaffoldedPaths.push(outputPath);
 
+        // Tracked as each file is written, so a failed write into an existing
+        // folder removes only what it wrote, and a new folder goes entirely.
+        const scaffoldWritten: string[] = [];
         const { spec, envEntries } = await this.scaffoldRuntimeResources(
           outputPath,
           input.resourceConfig,
-        );
+          scaffoldWritten,
+        ).catch(async (err: unknown) => {
+          await this.discardStaged(folderExisted ? scaffoldWritten : [outputPath]);
+          throw err;
+        });
+        if (folderExisted) scaffoldedPaths.push(...scaffoldWritten);
         if (spec.runtimes) projectSpec.runtimes.push(...spec.runtimes);
         if (spec.memories) projectSpec.memories.push(...spec.memories);
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
@@ -942,14 +999,7 @@ export class FsProjectManager implements ProjectManager {
         `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
       await Promise.all([
-        ...scaffoldedPaths.map((p) =>
-          rm(p, { recursive: true, force: true }).catch((e) => {
-            const error = AgentCoreCLIError.fromError(e);
-            this.logger
-              .child({ errorName: error.name, errorMessage: error.message })
-              .warn(`failed to clean up ${p}`);
-          }),
-        ),
+        this.discardStaged(scaffoldedPaths),
         envFile?.rollback().catch((e) => {
           const error = AgentCoreCLIError.fromError(e);
           this.logger
@@ -964,6 +1014,20 @@ export class FsProjectManager implements ProjectManager {
       ...project,
       spec: newProjectSpec,
     };
+  }
+
+  /** Best-effort removal of paths an add created; failures are logged, not thrown. */
+  private async discardStaged(paths: string[]): Promise<void> {
+    await Promise.all(
+      paths.map((p) =>
+        rm(p, { recursive: true, force: true }).catch((e) => {
+          const error = AgentCoreCLIError.fromError(e);
+          this.logger
+            .child({ errorName: error.name, errorMessage: error.message })
+            .warn(`failed to clean up ${p}`);
+        }),
+      ),
+    );
   }
 
   private getProjectSpecPath(project: Project): string {
@@ -1398,7 +1462,11 @@ export class FsProjectManager implements ProjectManager {
     };
   }
 
-  private async scaffoldRuntimeResources(outputPath: string, input: RuntimeResourceConfig) {
+  private async scaffoldRuntimeResources(
+    outputPath: string,
+    input: RuntimeResourceConfig,
+    written: string[] = [],
+  ) {
     const resolver = getRuntimeTemplateResolver(
       { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
       input,
@@ -1407,13 +1475,62 @@ export class FsProjectManager implements ProjectManager {
       throw new InputValidationError(`unable to find template that matches given parameters`);
 
     const result = await resolver.resolve(input);
-    await result.tree.write(dirname(outputPath));
+    await result.tree.write(dirname(outputPath), { written });
     return { spec: result.spec, envEntries: result.envEntries ?? [] };
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
     assertV1Project(project, "build");
-    yield* this.backendFor(project).build(project);
+    // Half-written project files from an interrupted `agentcore migrate` must not
+    // be synced or synthesized; build has no target, so only that state stops it.
+    await assertNoPendingMigration(project.rootPath);
+    const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
+    for (const message of synced.messages) yield { type: "step", message };
+    yield* this.backendFor(project).build(synced.project);
+  }
+
+  public async syncRuntimeBuilds(
+    project: Project,
+    input: SyncRuntimeBuildsInput,
+  ): Promise<SyncRuntimeBuildsResult> {
+    // A v0 project's agentcore.json has the v0 shape and is never rewritten here.
+    if (project.legacy) return { project, messages: [], written: false };
+    const runtimes = input.runtimeNames
+      ? project.spec.runtimes.filter((runtime) => input.runtimeNames!.includes(runtime.name))
+      : project.spec.runtimes;
+    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose);
+    if (prepared.changed.length === 0) {
+      return { project, messages: prepared.messages, written: false };
+    }
+
+    // Patch the raw file rather than re-serializing the parsed spec, so fields
+    // the schema does not know about, and the order of every key, survive.
+    const specPath = this.getProjectSpecPath(project);
+    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+    const rawRuntimes = Array.isArray(raw.runtimes) ? [...(raw.runtimes as unknown[])] : [];
+    for (const { runtime, changes } of prepared.changed) {
+      const index = rawRuntimes.findIndex(
+        (entry) => (entry as { name?: unknown } | null)?.name === runtime.name,
+      );
+      if (index < 0) continue;
+      const entry: Record<string, unknown> = { ...(rawRuntimes[index] as object) };
+      for (const { field, to } of changes) {
+        if (to === undefined) delete entry[field];
+        else entry[field] = to;
+      }
+      rawRuntimes[index] = entry;
+    }
+    const updated = { ...raw, runtimes: rawRuntimes };
+    const parsed = ProjectSpecSchema.safeParse(updated);
+    if (!parsed.success) {
+      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+    }
+    await this.json.write(specPath, updated);
+    return {
+      project: { ...project, spec: parsed.data },
+      messages: prepared.messages,
+      written: true,
+    };
   }
 
   // Resolves the named target from aws-targets.json before handing off, so the
@@ -1465,6 +1582,12 @@ export class FsProjectManager implements ProjectManager {
           `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
       );
     }
+
+    // Synth reads agentcore.json, so it is brought up to date with the code
+    // first; only once the target is known, so a bad --target rewrites nothing.
+    const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
+    for (const message of synced.messages) yield { type: "step", message };
+    project = synced.project;
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor
@@ -1856,6 +1979,50 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "runtime-endpoint":
       return "runtimes";
   }
+}
+
+/**
+ * The resource whose files live in `folder` (a runtime's codeLocation, a
+ * harness's path, or a managed code-based evaluator's codeLocation), if any.
+ */
+function appFolderOwner(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  rootPath: string,
+  folder: string,
+): string | undefined {
+  const owners: [string, string | undefined][] = [
+    ...spec.runtimes.map((runtime): [string, string] => [
+      `runtime '${runtime.name}'`,
+      runtime.codeLocation,
+    ]),
+    ...spec.harnesses.map((harness): [string, string] => [
+      `harness '${harness.name}'`,
+      harness.path,
+    ]),
+    ...spec.evaluators.map((evaluator): [string, string | undefined] => [
+      `evaluator '${evaluator.name}'`,
+      evaluator.config.codeBased?.managed?.codeLocation,
+    ]),
+  ];
+  // The same folder, one inside the other, or one containing the other (a
+  // codeLocation of `app`) all mean the two resources would share files.
+  const overlaps = (location: string) => {
+    const owned = resolve(rootPath, location);
+    const target = resolve(folder);
+    return owned === target || isInside(owned, target) || isInside(target, owned);
+  };
+  return owners.find(([, location]) => location !== undefined && overlaps(location))?.[0];
+}
+
+/** Whether `path` is strictly inside `dir`. */
+function isInside(path: string, dir: string): boolean {
+  const relativePath = relative(dir, path);
+  return (
+    relativePath !== "" &&
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${sep}`) &&
+    !isAbsolute(relativePath)
+  );
 }
 
 /** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */

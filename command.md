@@ -42,7 +42,6 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
       - [`agentcore add evaluator llm-as-a-judge`](#agentcore-add-evaluator-llm-as-a-judge)
       - [`agentcore add evaluator code-based`](#agentcore-add-evaluator-code-based)
     - [`agentcore add online-eval`](#agentcore-add-online-eval)
-    - [`agentcore add online-insight`](#agentcore-add-online-insight)
     - [`agentcore add config-bundle`](#agentcore-add-config-bundle)
     - [`agentcore add payment-manager`](#agentcore-add-payment-manager)
     - [`agentcore add payment-connector`](#agentcore-add-payment-connector)
@@ -153,14 +152,7 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
       - [`agentcore eval online-eval pause`](#agentcore-eval-online-eval-pause)
       - [`agentcore eval online-eval resume`](#agentcore-eval-online-eval-resume)
       - [`agentcore eval online-eval delete`](#agentcore-eval-online-eval-delete)
-    - [`agentcore eval online-insight`](#agentcore-eval-online-insight)
-      - [`agentcore eval online-insight create`](#agentcore-eval-online-insight-create)
-      - [`agentcore eval online-insight get`](#agentcore-eval-online-insight-get)
-      - [`agentcore eval online-insight list`](#agentcore-eval-online-insight-list)
-      - [`agentcore eval online-insight update`](#agentcore-eval-online-insight-update)
-      - [`agentcore eval online-insight pause`](#agentcore-eval-online-insight-pause)
-      - [`agentcore eval online-insight resume`](#agentcore-eval-online-insight-resume)
-      - [`agentcore eval online-insight delete`](#agentcore-eval-online-insight-delete)
+      - [`agentcore eval online-eval logs`](#agentcore-eval-online-eval-logs)
     - [`agentcore eval dataset`](#agentcore-eval-dataset)
       - [`agentcore eval dataset create`](#agentcore-eval-dataset-create)
       - [`agentcore eval dataset get`](#agentcore-eval-dataset-get)
@@ -174,11 +166,6 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.5`.
       - [`agentcore eval batch-evaluation get`](#agentcore-eval-batch-evaluation-get)
       - [`agentcore eval batch-evaluation list`](#agentcore-eval-batch-evaluation-list)
       - [`agentcore eval batch-evaluation stop`](#agentcore-eval-batch-evaluation-stop)
-    - [`agentcore eval batch-insights`](#agentcore-eval-batch-insights)
-      - [`agentcore eval batch-insights run`](#agentcore-eval-batch-insights-run)
-      - [`agentcore eval batch-insights get`](#agentcore-eval-batch-insights-get)
-      - [`agentcore eval batch-insights list`](#agentcore-eval-batch-insights-list)
-      - [`agentcore eval batch-insights stop`](#agentcore-eval-batch-insights-stop)
     - [`agentcore eval ondemand`](#agentcore-eval-ondemand)
       - [`agentcore eval ondemand evaluate`](#agentcore-eval-ondemand-evaluate)
       - [`agentcore eval ondemand simulate`](#agentcore-eval-ondemand-simulate)
@@ -266,15 +253,18 @@ create a new project
 agentcore dev [options]
 ```
 
-run the project locally for development
+test project changes: run Runtimes locally or deploy for Harnesses; --mode browser opens Agent Inspector.
 
 **Options**
 
-- `--agent <agent>`: Runtime to run
+- `--agent <agent>`: runtime or harness to run
+- `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
+- `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (runtime output or harness invoke guidance) (default: "headless")
 - `--port <port>`: port for the development server
 - `--no-traces`: disable local OTEL trace collection
-- `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (agents stream to the terminal) (default: "headless")
-- `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
+- `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
+- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+- `--skip-deploy`: skip deployment and use the deployed harnesses (default: false)
 
 ### `agentcore deploy`
 
@@ -541,12 +531,8 @@ add a Runtime to the current project
 **Options**
 
 - `--name <name>`: the name of the Runtime (required)
-- `--type <type>`: create generates new agent code (the default); import translates a Bedrock Agent version
-- `--template <template>`: template for the Runtime code (default: agent-python-minimal); available templates listed below
-- `--model-provider <model-provider>`: model provider for supported templates: bedrock, anthropic, open\_ai (or openai), openai\_compatible, gemini, or lite\_llm (or litellm)
-- `--model-id <model-id>`: model id for the scaffolded Runtime code, overriding the provider's default (required with openai\_compatible, and with litellm in China regions)
-- `--api-key <api-key>`: API key for non-Bedrock providers on supported templates; '-' for stdin, 'file://path' for file
-- `--api-base <api-base>`: base URL of the endpoint for --model-provider openai\_compatible (required with it, not accepted with other providers)
+- `--language <language>`: language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)
+- `--protocol <protocol>`: protocol the Runtime serves: HTTP (default), MCP, A2A, or AGUI
 - `--description <description>`: an optional description of the Runtime
 - `--tags <tags...>`: tags as key=value (repeatable) or JSON object
 - `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
@@ -559,9 +545,9 @@ add a Runtime to the current project
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 - `--request-header-allowlist <request-header-allowlist...>`: request headers to pass through to the Runtime
-- `--agent-id <agent-id>`: Bedrock Agent ID to import (requires --type import)
-- `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --type import)
-- `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --type import)
+- `--agent-id <agent-id>`: Bedrock Agent ID to import; translates that agent version into runtime code instead of writing docs
+- `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --agent-id)
+- `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --agent-id)
 
 #### `agentcore add runtime-endpoint`
 
@@ -813,32 +799,10 @@ add an online evaluation config to the current project (not available in China r
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
 - `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
 - `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
-- `--evaluators <evaluators...>`: evaluator name(s), Builtin.\* IDs, or ARNs to apply
+- `--evaluators <evaluators...>`: evaluator name(s), Builtin.\* IDs, or ARNs to apply (required)
 - `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: enable evaluation immediately after deploy (default true; pass false to add it paused)
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
-
-#### `agentcore add online-insight`
-
-```text
-agentcore add online-insight [options]
-```
-
-add an online insight config to the current project (not available in China regions)
-
-**Options**
-
-- `--name <name>`: the name of the online insight config (required)
-- `--agent <agent>`: Runtime name whose traffic to sample (mutually exclusive with --log-group-name)
-- `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (requires --agent)
-- `--log-group-name <log-group-name...>`: CloudWatch log group name(s) for custom data sources (1-5; mutually exclusive with --agent)
-- `--service-name <service-name...>`: service name(s) to filter traces for custom data sources (requires --log-group-name)
-- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs (required)
-- `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s): DAILY, WEEKLY, MONTHLY
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
-- `--description <description>`: a description of the config's monitoring purpose
-- `--enable-on-create <enable-on-create>`: enable insights immediately after deploy (default true; pass false to add it paused)
 - `--tags <tags...>`: tags as repeated key=value entries or a JSON object
 
 #### `agentcore add config-bundle`
@@ -953,7 +917,12 @@ build the project's deployable artifacts
 agentcore migrate [options]
 ```
 
-migrate an AgentCore CLI v0 project to the current project format
+migrate an AgentCore CLI v0 project to the current project format, keeping its deployed resources
+
+**Options**
+
+- `--target <target>`: the deployment target to migrate (required when the project is deployed to several)
+- `--yes`: apply the changes without asking, when they are ready (default: false)
 
 ## Resource commands
 
@@ -2306,119 +2275,23 @@ delete an online evaluation config by ID
 
 - `--id <id>`: the ID of the online evaluation config to delete (required)
 
-#### `agentcore eval online-insight`
+##### `agentcore eval online-eval logs`
 
 ```text
-agentcore eval online-insight [options] [command]
+agentcore eval online-eval logs [options]
 ```
 
-manage AgentCore online insight configs
-
-##### `agentcore eval online-insight create`
-
-```text
-agentcore eval online-insight create [options]
-```
-
-create an online insight config
+stream or search online-eval logs
 
 **Options**
 
-- `--name <name>`: the name of the online insight config (required)
-- `--role-arn <role-arn>`: IAM role the online insight assumes (required)
-- `--agent <agent>`: harness ID or Runtime ID whose traffic to sample
-- `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (default DEFAULT)
-- `--data-source-config <data-source-config>`: the traces to evaluate (JSON DataSourceConfig; inline, file://&lt;path&gt;, or - for stdin), as an alternative to --agent
-- `--insight <insight...>`: insight ID(s) to apply: Builtin.Insight.\* identifiers or full ARNs (required)
-- `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s): DAILY, WEEKLY, MONTHLY
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
-- `--session-timeout-minutes <session-timeout-minutes>`: minutes of inactivity before a session is considered complete (1-1440, default 15)
-- `--filters <filters>`: trace filters (JSON Filter[]; inline, file://&lt;path&gt;, or - for stdin)
-- `--enable-on-create <enable-on-create>`: whether to enable evaluation immediately (default true; pass false to create it paused)
-- `--description <description>`: a description of the config's monitoring purpose
-
-##### `agentcore eval online-insight get`
-
-```text
-agentcore eval online-insight get [options]
-```
-
-get an online insight config by ID
-
-**Options**
-
-- `--id <id>`: the ID of the online insight config (required)
-
-##### `agentcore eval online-insight list`
-
-```text
-agentcore eval online-insight list [options]
-```
-
-list online insight configs
-
-**Options**
-
-- `--next-token <next-token>`: pagination token returned by a previous request
-- `--max-results <max-results>`: maximum number of items to return
-
-##### `agentcore eval online-insight update`
-
-```text
-agentcore eval online-insight update [options]
-```
-
-update an online insight config
-
-**Options**
-
-- `--id <id>`: the ID of the online insight config to update (required)
-- `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100)
-- `--session-timeout-minutes <session-timeout-minutes>`: minutes of inactivity before a session is considered complete (1-1440)
-- `--filters <filters>`: trace filters (JSON Filter[]; inline, file://&lt;path&gt;, or - for stdin)
-- `--insight <insight...>`: insight ID(s) to apply (replaces the existing list): Builtin.Insight.\* or ARN
-- `--clustering-frequency <clustering-frequency...>`: insight clustering cadence(s) (replaces the existing set): DAILY, WEEKLY, MONTHLY
-- `--agent <agent>`: repoint at a different Runtime ID
-- `--endpoint <endpoint>`: re-scope monitoring to a different agent endpoint qualifier
-- `--clear-endpoint <clear-endpoint>`: reset the endpoint scope to the default qualifier (pass true)
-- `--data-source-config <data-source-config>`: replace the traces to evaluate (JSON DataSourceConfig; inline, file://&lt;path&gt;, or - for stdin)
-- `--role-arn <role-arn>`: replace the IAM role the online insight assumes
-
-##### `agentcore eval online-insight pause`
-
-```text
-agentcore eval online-insight pause [options]
-```
-
-pause an online insight config
-
-**Options**
-
-- `--id <id>`: the ID of the online insight config to pause (required)
-
-##### `agentcore eval online-insight resume`
-
-```text
-agentcore eval online-insight resume [options]
-```
-
-resume a paused online insight config
-
-**Options**
-
-- `--id <id>`: the ID of the online insight config to resume (required)
-
-##### `agentcore eval online-insight delete`
-
-```text
-agentcore eval online-insight delete [options]
-```
-
-delete an online insight config by ID
-
-**Options**
-
-- `--id <id>`: the ID of the online insight config to delete (required)
+- `--id <id>`: the ID of the online-eval resource (required)
+- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--tail`: tail new log records (default: false)
+- `--level <level>`: filter by log level (error, warn, info, debug)
+- `--query <query>`: CloudWatch Logs filter pattern
+- `--limit <limit>`: maximum number of log records to return in search mode
 
 #### `agentcore eval dataset`
 
@@ -2573,7 +2446,7 @@ replay a dataset against a Runtime, then batch-evaluate the resulting sessions
 agentcore eval batch-evaluation get [options]
 ```
 
-get a batch evaluation by ID, with CloudWatch-backed results when available
+get a batch evaluation by ID, with CloudWatch-backed results and errors when available
 
 **Options**
 
@@ -2604,74 +2477,6 @@ stop a running batch evaluation
 **Options**
 
 - `--id <id>`: the ID of the batch evaluation to stop (required)
-
-#### `agentcore eval batch-insights`
-
-```text
-agentcore eval batch-insights [options] [command]
-```
-
-run and inspect AgentCore batch insights
-
-##### `agentcore eval batch-insights run`
-
-```text
-agentcore eval batch-insights run [options]
-```
-
-start an asynchronous batch insights run over existing sessions
-
-**Options**
-
-- `--name <name>`: batch insights name (must be unique in the account) (required)
-- `--description <description>`: optional description
-- `--kms-key-arn <kms-key-arn>`: KMS key to encrypt insights data at rest
-- `--agent <agent>`: harness ID or Runtime ID whose sessions to use
-- `--online-eval <online-eval>`: use sessions an online-eval config already sampled
-- `--data-source-config <data-source-config>`: the traces to read (JSON DataSourceConfig); escape hatch
-- `--endpoint <endpoint>`: Runtime endpoint qualifier (default DEFAULT; only with --agent)
-- `--start-time <start-time>`: window start (ISO-8601, with --end-time)
-- `--end-time <end-time>`: window end (ISO-8601, with --start-time)
-- `--session-ids <session-ids...>`: specific session IDs (only with --agent)
-- `--insight <insight...>`: insight ID(s) to run
-- `--evaluators <evaluators...>`: optional evaluator ID(s) to run alongside the insights
-
-##### `agentcore eval batch-insights get`
-
-```text
-agentcore eval batch-insights get [options]
-```
-
-get a batch insights run and its reports by ID
-
-**Options**
-
-- `--id <id>`: the ID of the batch insights run (required)
-
-##### `agentcore eval batch-insights list`
-
-```text
-agentcore eval batch-insights list [options]
-```
-
-list batch insights runs
-
-**Options**
-
-- `--next-token <next-token>`: pagination token returned by a previous request
-- `--max-results <max-results>`: maximum number of batch insights runs to return
-
-##### `agentcore eval batch-insights stop`
-
-```text
-agentcore eval batch-insights stop [options]
-```
-
-stop a running batch insights run
-
-**Options**
-
-- `--id <id>`: the ID of the batch insights run to stop (required)
 
 #### `agentcore eval ondemand`
 

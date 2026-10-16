@@ -43,7 +43,9 @@ export async function resolveImportBedrockAgentInput(
   input: ResolveImportInput,
 ): Promise<Awaited<ReturnType<CoreBedrockAgentImporter["import"]>>> {
   if (!input.agentId || !input.agentAliasId) {
-    throw new InputValidationError("--type import requires both --agent-id and --agent-alias-id");
+    throw new InputValidationError(
+      "importing a Bedrock Agent requires both --agent-id and --agent-alias-id",
+    );
   }
 
   return input.importer.import({

@@ -38,8 +38,6 @@ image build downloads Codex and Python from the internet, so a build in VPC mode
   capacity provider.
 
 To customize these settings after creation, edit the Runtime entry in `agentcore/agentcore.json`.
-When adding this environment to an existing project, `agentcore add runtime` also accepts
-`--lifecycle-configuration` and `--filesystem-configurations`.
 
 If the Runtime has an `executionRoleArn`, AgentCore CDK cannot attach `bma-acr-policy.json` to that imported role.
 Grant the role `bedrock-mantle:RegisterEnvironment` and `bedrock-mantle:ConnectEnvironment` before deploying.

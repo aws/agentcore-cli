@@ -57,22 +57,35 @@ agentcore create --name MyAgent --template agent-python-strands
 ```
 
 `agentcore create --template` scaffolds the template with its default model provider (Amazon
-Bedrock for the model-backed templates). To use another provider, add the runtime with
-`agentcore add runtime --template <template>` instead: templates that take a model provider
-(`agent-python-strands` and its `-container` variant, `a2a-python-strands`, `agui-python-strands`,
-`agent-typescript-strands`) accept `--model-provider` (`bedrock`, `anthropic`, `open_ai`,
-`openai_compatible`, `gemini`, `lite_llm`; `openai` and `litellm` are accepted too; LiteLLM is
-Python-only), `--model-id`, and `--api-key file://<path>` there; the API key is kept in
+Bedrock for the model-backed templates). To use another provider, run `agentcore create` with no
+flags: for templates that take a model provider (`agent-python-strands` and its `-container`
+variant, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) the wizard asks
+for the provider (Amazon Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or
+LiteLLM, which is Python-only), the model id, and an API-key file. The API key is kept in
 `agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy.
-`openai_compatible` is the OpenAI client pointed at any OpenAI-compatible endpoint (DeepSeek, Qwen,
-a self-hosted vLLM, …): it requires `--api-base <url>` and `--model-id <model>`, since nothing is
-known about the endpoint until you name it, while `open_ai` always calls api.openai.com and takes
-neither. A self-hosted endpoint that ignores authentication still needs an `--api-key` file; any
-placeholder value works.
 
-Run `agentcore create` with no flags for a guided setup; for those templates the wizard asks the
-same provider, model id, and API-key-file questions. Either way, run it outside any existing
-project.
+To bring your own code into a project instead, add a runtime for it:
+
+```bash
+agentcore add runtime --name search --language python   # or --language typescript
+```
+
+`add runtime` doesn't generate code. It creates `app/search/` with a `README.md` and an
+`AGENTS.md` describing what the code has to provide for the chosen `--protocol` (`HTTP` by
+default, or `MCP`, `A2A`, `AGUI`), and registers the runtime in `agentcore.json` with starting
+values (a CodeZip build on the latest Python or Node.js, entrypoint `main.py` or `main.js`). If
+`app/search/` already exists, your files are left alone and only the missing docs are added.
+
+`agentcore dev`, `agentcore build`, and `agentcore deploy` then update `agentcore.json` from the
+code and print what changed. Adding a `Dockerfile` to the folder switches the runtime to a
+container build. `requires-python` in `pyproject.toml` or `engines.node` in `package.json`
+constrains the runtime version: it changes only when the range excludes the current one, and then
+to the highest version the range allows. The Python entrypoint comes from `[tool.agentcore]
+entrypoint` in `pyproject.toml`; TypeScript is always bundled from `main.ts` (a `package.json`
+`"main"` of `main.ts` or `main.js` agrees with that, and any other value is ignored with a
+warning). Where the code doesn't say, the value in `agentcore.json` is kept.
+
+Run `agentcore create` outside any existing project.
 
 ## Projects
 

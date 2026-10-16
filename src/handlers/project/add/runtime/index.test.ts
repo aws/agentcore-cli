@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRootHandler } from "../../../index";
 import {
@@ -11,9 +11,7 @@ import {
   testIO,
 } from "../../../../testing";
 import type { BedrockAgentImportPlan } from "../../../../core/project/bedrockAgentImport";
-import { credentialEnvVarName } from "../../../../projectSchemas/credential";
 import { InputValidationError } from "../../../../errors";
-import { readEnvFile } from "../../../../io/envFile";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -58,9 +56,16 @@ function translatedImportPlan(
   };
 }
 
-describe("project add runtime", () => {
-  const template = ["--template", "agent-python-minimal"];
+async function specOf(projectRoot: string) {
+  return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+}
 
+async function runtimeOf(projectRoot: string, name: string) {
+  const spec = await specOf(projectRoot);
+  return spec.runtimes.find((candidate: { name: string }) => candidate.name === name);
+}
+
+describe("project add runtime", () => {
   const allInfrastructureFlags = [
     "--description",
     "Configured runtime",
@@ -88,37 +93,105 @@ describe("project add runtime", () => {
     '{"team":"ml","env":"test"}',
   ];
 
-  const expectedSpecByLabel: Record<string, Record<string, unknown>> = {
-    "strands -container template": {
-      build: "Container",
-      dockerfile: "Dockerfile",
+  test.each<[string, string[], Record<string, unknown>, RegExp, RegExp[]]>([
+    [
+      "python (HTTP by default)",
+      ["--language", "python"],
+      { entrypoint: "main.py", protocol: "HTTP", runtimeVersion: "PYTHON_3_14" },
+      /POST \/invocations/,
+      [/runtime-mcp-/, /runtime-a2a-/, /runtime-agui-/],
+    ],
+    [
+      "python MCP",
+      ["--language", "python", "--protocol", "MCP"],
+      { entrypoint: "main.py", protocol: "MCP", runtimeVersion: "PYTHON_3_14" },
+      /port \*\*8000\*\*/,
+      [/runtime-http-/, /runtime-a2a-/, /runtime-agui-/],
+    ],
+    [
+      "typescript A2A",
+      ["--language", "typescript", "--protocol", "A2A"],
+      { entrypoint: "main.js", protocol: "A2A", runtimeVersion: "NODE_22" },
+      /agent-card\.json/,
+      [/runtime-http-/, /runtime-mcp-/, /runtime-agui-/],
+    ],
+    [
+      "typescript AGUI",
+      ["--language", "typescript", "--protocol", "AGUI"],
+      { entrypoint: "main.js", protocol: "AGUI", runtimeVersion: "NODE_22" },
+      /RunAgentInput/,
+      [/runtime-http-/, /runtime-mcp-/, /runtime-a2a-/],
+    ],
+  ])(
+    "%s writes the runtime docs and a complete spec entry with starting values",
+    async (_label, flags, expected, contract, otherContracts) => {
+      const { projectRoot, cleanup } = await initProject();
+      cleanups.push(cleanup);
+      const { core, io } = await run(["add", "runtime", "--name", "search", ...flags]);
+
+      const runtime = await runtimeOf(projectRoot, "search");
+      expect(runtime).toEqual({
+        name: "search",
+        codeLocation: "app/search",
+        build: "CodeZip",
+        ...expected,
+      });
+      // No code is scaffolded and nothing is installed.
+      expect(core.projectCommands).toEqual([]);
+      const appDir = join(projectRoot, "app", "search");
+      expect((await readdir(appDir)).sort()).toEqual(["AGENTS.md", "README.md"]);
+
+      const readme = await Bun.file(join(appDir, "README.md")).text();
+      const agents = await Bun.file(join(appDir, "AGENTS.md")).text();
+      expect(readme).toMatch(contract);
+      for (const other of otherContracts) expect(readme).not.toMatch(other);
+      expect(readme).not.toContain("{{");
+      // Discovery variables use the names the CDK app sets.
+      expect(readme).toContain("`MEMORY_SEARCHMEMORY_ID`");
+      expect(readme).toContain("`AGENTCORE_GATEWAY_DOCS_GATEWAY_URL`");
+      expect(readme).toContain("`CREDENTIAL_OPENAI_KEY_NAME`");
+      expect(readme + agents).not.toMatch(/AGENTCORE_(MEMORY|CREDENTIAL)_/);
+      expect(agents).toContain("runtime `search`");
+      expect(agents).toContain(
+        `runtime-${String(expected.protocol).toLowerCase()}-protocol-contract.html`,
+      );
+      expect(readme).toContain(expected.entrypoint === "main.py" ? "main.py" : "main.ts");
+      // Points at the SDK and explains how agentcore.json follows the code.
+      expect(readme).toContain(
+        expected.entrypoint === "main.py"
+          ? "https://github.com/aws/bedrock-agentcore-sdk-python"
+          : "https://github.com/aws/bedrock-agentcore-sdk-typescript",
+      );
+      expect(readme).toContain("## How `agentcore.json` follows your code");
+      expect(readme + agents).not.toContain("CLAUDE");
+
+      expect(io.stderr()).toContain(
+        `Added runtime "search" (${flags[1] === "python" ? "Python" : "TypeScript"}, ${expected.protocol}).`,
+      );
+      expect(io.stderr()).toContain("See app/search/README.md for what it needs.");
     },
-    "mcp-python-fastmcp template preset": {
+  );
+
+  test("infrastructure flags are written to the spec entry", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "configured_agent",
+      "--language",
+      "python",
+      ...allInfrastructureFlags,
+    ]);
+
+    expect(await runtimeOf(projectRoot, "configured_agent")).toEqual({
+      name: "configured_agent",
+      codeLocation: "app/configured_agent",
       build: "CodeZip",
-      protocol: "MCP",
-    },
-    "a2a-python-strands template preset": {
-      build: "CodeZip",
-      protocol: "A2A",
-    },
-    "agui-python-strands template preset": {
-      build: "CodeZip",
-      protocol: "AGUI",
-    },
-    "environment-python-bma template preset": {
-      build: "Container",
-      bedrockManagedAgents: true,
-      entrypoint: "lifecycle/server.py",
-      dockerfile: "Dockerfile",
+      runtimeVersion: "PYTHON_3_14",
+      entrypoint: "main.py",
       protocol: "HTTP",
-      additionalPolicies: ["bma-acr-policy.json"],
-      lifecycleConfiguration: {
-        idleRuntimeSessionTimeout: 1800,
-        maxLifetime: 28800,
-      },
-      tags: { "agentcore:template": "BedrockManagedAgents" },
-    },
-    "all infrastructure flags": {
       description: "Configured runtime",
       executionRoleArn: "arn:aws:iam::123456789012:role/MyRole",
       additionalPolicies: ["arn:aws:iam::123456789012:policy/MyPolicy"],
@@ -142,517 +215,86 @@ describe("project add runtime", () => {
       ],
       filesystemConfigurations: [{ sessionStorage: { mountPath: "/mnt/data" } }],
       tags: { team: "ml", env: "test" },
-    },
-  };
-
-  const mounts = [
-    "--network-mode",
-    "VPC",
-    "--network-config",
-    '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
-    "--filesystem-configurations",
-    '[{"sessionStorage":{"mountPath":"/mnt/session"}},{"efsAccessPoint":{"accessPointArn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0","mountPath":"/mnt/efs"}},{"s3FilesAccessPoint":{"accessPointArn":"arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1","mountPath":"/mnt/s3"}}]',
-  ];
-
-  test.each<[string, string[]]>([
-    ["default (no template) scaffolds agent-python-minimal", ["--name", "my_agent"]],
-    ["agent-python-minimal template preset", ["--name", "my_agent", ...template]],
-    [
-      "agent-python-strands template preset",
-      ["--name", "my_agent", "--template", "agent-python-strands"],
-    ],
-    [
-      "strands -container template",
-      ["--name", "my_agent", "--template", "agent-python-strands-container"],
-    ],
-    [
-      "mcp-python-fastmcp template preset",
-      ["--name", "my_mcp", "--template", "mcp-python-fastmcp"],
-    ],
-    [
-      "a2a-python-strands template preset",
-      ["--name", "my_a2a", "--template", "a2a-python-strands"],
-    ],
-    [
-      "agui-python-strands template preset",
-      ["--name", "my_agui", "--template", "agui-python-strands"],
-    ],
-    [
-      "environment-python-bma template preset",
-      ["--name", "my_bma", "--template", "environment-python-bma"],
-    ],
-    [
-      "agent-python-strands with session, EFS, and S3 mounts",
-      ["--name", "fs_agent", "--template", "agent-python-strands", ...mounts],
-    ],
-    [
-      "mcp-python-fastmcp with session, EFS, and S3 mounts",
-      ["--name", "fs_mcp", "--template", "mcp-python-fastmcp", ...mounts],
-    ],
-    [
-      "a2a-python-strands with session, EFS, and S3 mounts",
-      ["--name", "fs_a2a", "--template", "a2a-python-strands", ...mounts],
-    ],
-    ["description", ["--name", "my_agent", ...template, "--description", "A test agent"]],
-    [
-      "role-arn",
-      ["--name", "my_agent", ...template, "--role-arn", "arn:aws:iam::123456789012:role/MyRole"],
-    ],
-    [
-      "network — VPC",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--network-mode",
-        "VPC",
-        "--network-config",
-        '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
-      ],
-    ],
-    ["network — PUBLIC", ["--name", "my_agent", ...template, "--network-mode", "PUBLIC"]],
-    [
-      "authorizer — customJWT",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--authorizer-type",
-        "CUSTOM_JWT",
-        "--authorizer-configuration",
-        '{"customJwtAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["app"]}}',
-      ],
-    ],
-    [
-      "request-header-allowlist",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--request-header-allowlist",
-        "X-Custom-Header",
-        "Authorization",
-      ],
-    ],
-    [
-      "lifecycle-configuration",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--lifecycle-configuration",
-        '{"idleRuntimeSessionTimeout":300,"maxLifetime":3600}',
-      ],
-    ],
-    [
-      "environment-variables",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--environment-variables",
-        '{"LOG_LEVEL":"debug","APP_ENV":"staging"}',
-      ],
-    ],
-    [
-      "filesystem-configurations — sessionStorage",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--filesystem-configurations",
-        '[{"sessionStorage":{"mountPath":"/mnt/data"}}]',
-      ],
-    ],
-    ["tags", ["--name", "my_agent", ...template, "--tags", '{"team":"ml","env":"prod"}']],
-    [
-      "additional-policies",
-      [
-        "--name",
-        "my_agent",
-        ...template,
-        "--additional-policies",
-        "arn:aws:iam::123456789012:policy/MyPolicy",
-      ],
-    ],
-    [
-      "all infrastructure flags",
-      ["--name", "configured_agent", ...template, ...allInfrastructureFlags],
-    ],
-  ])("%s — accepts flags", async (label, flags) => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    await run(["add", "runtime", ...flags]);
-
-    const name = flags[flags.indexOf("--name") + 1]!;
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    const runtime = spec.runtimes.find((candidate: { name: string }) => candidate.name === name);
-    expect(runtime).toMatchObject({ entrypoint: "main.py", ...expectedSpecByLabel[label] });
-    const isBma = flags.includes("environment-python-bma");
-    expect(
-      await Bun.file(
-        join(projectRoot, "app", name, isBma ? "lifecycle/server.py" : "main.py"),
-      ).exists(),
-    ).toBe(true);
-    const isContainer = flags.some(
-      (flag) => flag.endsWith("-container") || flag === "environment-python-bma",
-    );
-    expect(runtime.runtimeVersion).toBe(isContainer ? undefined : "PYTHON_3_14");
-    expect(await Bun.file(join(projectRoot, "app", name, "Dockerfile")).exists()).toBe(isContainer);
-    expect(await Bun.file(join(projectRoot, "app", name, ".dockerignore")).exists()).toBe(
-      isContainer,
-    );
+    });
   });
 
-  test("Bedrock Managed Agents defers local Python dependency setup", async () => {
+  test("an existing folder keeps the user's files; only missing docs are added", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
-    const { core } = await run([
-      "add",
-      "runtime",
-      "--name",
-      "my_bma",
-      "--template",
-      "environment-python-bma",
-    ]);
+    const appDir = join(projectRoot, "app", "search");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "main.py"), "print('mine')\n");
+    await writeFile(join(appDir, "README.md"), "# my readme\n");
 
-    expect(core.projectCommands).toEqual([]);
-    expect(await Bun.file(join(projectRoot, "app", "my_bma", "pyproject.toml")).exists()).toBe(
-      true,
-    );
+    const { io } = await run(["add", "runtime", "--name", "search", "--language", "python"]);
+
+    expect(await Bun.file(join(appDir, "main.py")).text()).toBe("print('mine')\n");
+    expect(await Bun.file(join(appDir, "README.md")).text()).toBe("# my readme\n");
+    expect(await Bun.file(join(appDir, "AGENTS.md")).text()).toContain("runtime `search`");
+    expect(await Bun.file(join(appDir, "CLAUDE.md")).exists()).toBe(false);
+    expect(io.stderr()).toContain("'app/search/README.md' already exists; left unchanged");
+    expect(await runtimeOf(projectRoot, "search")).toMatchObject({ codeLocation: "app/search" });
   });
 
-  test("Bedrock Managed Agents keeps infrastructure overrides and its required policy", async () => {
-    const { projectRoot, cleanup } = await initProject();
+  test("--json reports the added runtime", async () => {
+    const { cleanup } = await initProject();
     cleanups.push(cleanup);
-    await run([
-      "add",
-      "runtime",
-      "--name",
-      "my_bma",
-      "--template",
-      "environment-python-bma",
-      "--lifecycle-configuration",
-      '{"idleRuntimeSessionTimeout":300,"maxLifetime":3600}',
-      "--additional-policies",
-      "custom-policy.json",
-      "--tags",
-      '{"team":"agents"}',
-    ]);
-
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes).toContainEqual(
-      expect.objectContaining({
-        name: "my_bma",
-        bedrockManagedAgents: true,
-        lifecycleConfiguration: {
-          idleRuntimeSessionTimeout: 300,
-          maxLifetime: 3600,
-        },
-        additionalPolicies: ["bma-acr-policy.json", "custom-policy.json"],
-        tags: { "agentcore:template": "BedrockManagedAgents", team: "agents" },
-      }),
-    );
-  });
-
-  test("Bedrock Managed Agents warns when an existing execution role needs its permissions", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    const roleArn = "arn:aws:iam::111122223333:role/ExistingBmaRole";
-
     const { io } = await run([
       "add",
       "runtime",
       "--name",
-      "my_bma",
-      "--template",
-      "environment-python-bma",
-      "--role-arn",
-      roleArn,
+      "search",
+      "--language",
+      "typescript",
       "--json",
     ]);
-
-    expect(JSON.parse(io.stdout()).notes).toEqual([
-      expect.stringContaining("AgentCore CDK cannot attach bma-acr-policy.json"),
-    ]);
-    expect(io.stderr()).not.toContain("bma-acr-policy.json");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes).toContainEqual(
-      expect.objectContaining({
-        name: "my_bma",
-        bedrockManagedAgents: true,
-        executionRoleArn: roleArn,
-        additionalPolicies: ["bma-acr-policy.json"],
-      }),
-    );
+    expect(JSON.parse(io.stdout())).toMatchObject({
+      operation: "add",
+      resource: { type: "runtime", name: "search" },
+    });
   });
 
-  test.each<[string, string[]]>([
-    ["agent-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
-    ["a2a-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
-    ["agent-python-minimal", []],
-    ["agent-python-langchain", []],
-    ["agent-typescript-vercel", []],
-    ["mcp-python-fastmcp", []],
-    ["agui-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
-    ["environment-python-bma", []],
-  ])("%s ships with its pre-configured memory", async (templateName, expectedStrategies) => {
+  test("a China region does not restrict a runtime whose code the user writes", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
-    await run(["add", "runtime", "--name", "my_agent", "--template", templateName]);
-
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    const memory = (spec.memories ?? []).find(
-      (candidate: { name: string }) => candidate.name === "my_agentMemory",
-    );
-
-    if (expectedStrategies.length === 0) {
-      expect(memory).toBeUndefined();
-      return;
-    }
-
-    expect(memory).toMatchObject({ name: "my_agentMemory", eventExpiryDuration: 30 });
-    expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
-  });
-
-  test("escapes quotes in --model-id in the scaffolded model code", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-
     await run([
       "add",
       "runtime",
       "--name",
-      "quoted",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "lite_llm",
-      "--model-id",
-      'openai/we"ird',
+      "cn_agent",
+      "--language",
+      "python",
+      "--region",
+      "cn-north-1",
     ]);
-
-    const loadPy = await Bun.file(join(projectRoot, "app", "quoted", "model", "load.py")).text();
-    expect(loadPy).toContain('model_id="openai/we\\"ird"');
+    expect(await runtimeOf(projectRoot, "cn_agent")).toMatchObject({ entrypoint: "main.py" });
   });
-
-  test("openai_compatible renders the OpenAI client against --api-base", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(projectRoot, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-ds");
-
-    await run([
-      "add",
-      "runtime",
-      "--name",
-      "ds_agent",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "openai_compatible",
-      "--model-id",
-      "deepseek-chat",
-      "--api-key",
-      `file://${apiKeyPath}`,
-      "--api-base",
-      "https://api.deepseek.com/v1",
-    ]);
-
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    const runtime = spec.runtimes.find(
-      (candidate: { name: string }) => candidate.name === "ds_agent",
-    );
-    expect(runtime.modelProvider).toBe("OpenAICompatible");
-    expect(runtime.modelApiBase).toBeUndefined();
-    expect(spec.credentials).toContainEqual({
-      authorizerType: "ApiKeyCredentialProvider",
-      name: "ds_agentOpenAICompatibleApiKey",
-    });
-    const loadModel = await Bun.file(
-      join(projectRoot, "app", "ds_agent", "model", "load.py"),
-    ).text();
-    expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
-  });
-
-  test("--api-base is refused with a provider other than openai_compatible", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(projectRoot, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-g");
-    await expect(
-      run([
-        "add",
-        "runtime",
-        "--name",
-        "g_agent",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "gemini",
-        "--api-key",
-        `file://${apiKeyPath}`,
-        "--api-base",
-        "https://example.com/v1",
-      ]),
-    ).rejects.toThrow(/only supported with the openai_compatible model provider/);
-  });
-
-  test("openai_compatible without --api-base or --model-id is refused", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    const apiKeyPath = join(projectRoot, "api-key.txt");
-    await Bun.write(apiKeyPath, "sk-ds");
-    const base = [
-      "add",
-      "runtime",
-      "--name",
-      "ds_agent",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "openai_compatible",
-      "--api-key",
-      `file://${apiKeyPath}`,
-    ];
-    await expect(run([...base, "--model-id", "deepseek-chat"])).rejects.toThrow(
-      /openai_compatible requires --api-base/,
-    );
-    await expect(run([...base, "--api-base", "https://api.deepseek.com/v1"])).rejects.toThrow(
-      /openai_compatible requires --model-id/,
-    );
-  });
-
-  test("agent-typescript-strands scaffolds a TypeScript agent", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    await run(["add", "runtime", "--name", "my_agent", "--template", "agent-typescript-strands"]);
-
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    const runtime = spec.runtimes.find(
-      (candidate: { name: string }) => candidate.name === "my_agent",
-    );
-    expect(runtime).toMatchObject({
-      entrypoint: "main.js",
-      build: "CodeZip",
-      runtimeVersion: "NODE_22",
-    });
-    expect(await Bun.file(join(projectRoot, "app", "my_agent", "main.ts")).exists()).toBe(true);
-
-    const memory = (spec.memories ?? []).find(
-      (candidate: { name: string }) => candidate.name === "my_agentMemory",
-    );
-    expect(memory?.strategies.map(({ type }: { type: string }) => type)).toEqual([
-      "SEMANTIC",
-      "USER_PREFERENCE",
-      "SUMMARIZATION",
-      "EPISODIC",
-    ]);
-  });
-
-  test("agent-typescript-vercel scaffolds a memory-free TypeScript runtime", async () => {
-    const { projectRoot, cleanup } = await initProject();
-    cleanups.push(cleanup);
-    await run(["add", "runtime", "--name", "my_agent", "--template", "agent-typescript-vercel"]);
-
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes).toContainEqual(
-      expect.objectContaining({
-        name: "my_agent",
-        entrypoint: "main.js",
-        build: "CodeZip",
-        runtimeVersion: "NODE_22",
-        protocol: "HTTP",
-      }),
-    );
-    expect(spec.memories ?? []).toEqual([]);
-  });
-
-  test.each<[string, string]>([
-    ["anthropic", "Anthropic"],
-    ["OpenAI", "OpenAI"],
-    ["gemini", "Gemini"],
-  ])(
-    "scaffolds agent-python-strands for --model-provider %s with an API-key credential",
-    async (flagValue, provider) => {
-      const { projectRoot, cleanup } = await initProject();
-      cleanups.push(cleanup);
-      const apiKeyPath = join(projectRoot, "api-key.txt");
-      await Bun.write(apiKeyPath, "test-api-key");
-
-      await run([
-        "add",
-        "runtime",
-        "--name",
-        "my_agent",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        flagValue,
-        "--api-key",
-        `file://${apiKeyPath}`,
-      ]);
-
-      const credentialName = `my_agent${provider}ApiKey`;
-      const envVarName = credentialEnvVarName(credentialName);
-
-      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-      expect(spec.credentials).toContainEqual({
-        authorizerType: "ApiKeyCredentialProvider",
-        name: credentialName,
-      });
-
-      const envLocal = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-      expect(envLocal).not.toContain("test-api-key");
-      expect((await readEnvFile(join(projectRoot, "agentcore", ".env.local")))[envVarName]).toBe(
-        "test-api-key",
-      );
-    },
-  );
 
   test.each<[string, string[], string?]>([
+    ["missing --name", ["--language", "python"], "required option '--name' not specified"],
     [
-      "missing --name",
-      ["--template", "agent-python-minimal"],
-      "required option '--name' not specified",
+      "missing --language",
+      ["--name", "my_agent"],
+      "required option '--language <language>' not specified",
     ],
     [
       "deployed name over the 48-character service limit",
-      ["--name", `r${"x".repeat(28)}`],
+      ["--name", `r${"x".repeat(28)}`, "--language", "python"],
       `Runtime deployed name 'TestProject_default_r${"x".repeat(28)}' is 49 characters. The maximum is 48.`,
     ],
     [
-      "--model-provider is not valid with the a2a-python-strands template",
-      ["--name", "my_agent", "--template", "a2a-python-strands", "--model-provider", "Anthropic"],
+      "--framework requires --agent-id",
+      ["--name", "my_agent", "--language", "python", "--framework", "strands"],
+      "--framework requires --agent-id",
     ],
     [
-      "--api-key is not valid with the agent-python-minimal template",
-      ["--name", "my_agent", "--template", "agent-python-minimal", "--api-key", "secret-key"],
+      "--agent-alias-id requires --agent-id",
+      ["--name", "my_agent", "--language", "python", "--agent-alias-id", "TSTALIASID"],
+      "--agent-alias-id requires --agent-id",
     ],
-    [
-      "--model-provider is not valid with the agent-typescript-vercel template",
-      [
-        "--name",
-        "my_agent",
-        "--template",
-        "agent-typescript-vercel",
-        "--model-provider",
-        "Anthropic",
-      ],
-    ],
-    [
-      "--model-provider is not valid with the environment-python-bma template",
-      ["--name", "my_bma", "--template", "environment-python-bma", "--model-provider", "Anthropic"],
-      "--model-provider, --model-id, --api-key, and --api-base are not valid with the environment-python-bma template",
-    ],
-    [
-      "--model-provider without a template requires agent-python-strands",
-      ["--name", "my_agent", "--model-provider", "Anthropic"],
-    ],
-    ["--framework requires --type import", ["--name", "my_agent", "--framework", "strands"]],
     [
       "invalid JSON in --network-config",
-      ["--name", "my_agent", ...template, "--network-config", "{bad}"],
+      ["--name", "my_agent", "--language", "python", "--network-config", "{bad}"],
     ],
   ])("%s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject();
@@ -661,31 +303,30 @@ describe("project add runtime", () => {
     await expectError(promise, requiredMessage ?? /./, InputValidationError);
   });
 
-  test.each(["nonsense", "bedrock-managed-agents"])(
-    "rejects the unknown --template value %s",
-    async (template) => {
-      const { projectRoot, cleanup } = await initProject();
-      cleanups.push(cleanup);
-      await expect(
-        run(["add", "runtime", "--name", "my_agent", "--template", template]),
-      ).rejects.toThrow();
-      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-      expect(spec.runtimes ?? []).toEqual([]);
-      expect(
-        await Bun.file(join(projectRoot, "app", "my_agent", "lifecycle", "server.py")).exists(),
-      ).toBe(false);
-    },
-  );
+  test.each([
+    ["--template", "agent-python-minimal"],
+    ["--model-provider", "anthropic"],
+    ["--language", "rust"],
+    ["--protocol", "GRPC"],
+    ["--type", "create"],
+    ["--type", "import"],
+  ])("rejects %s %s and writes nothing", async (flagName, value) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run(["add", "runtime", "--name", "my_agent", "--language", "python", flagName, value]),
+    ).rejects.toThrow();
+    expect((await specOf(projectRoot)).runtimes ?? []).toEqual([]);
+    expect(await Bun.file(join(projectRoot, "app", "my_agent", "README.md")).exists()).toBe(false);
+  });
 });
 
-describe("project add runtime --type import", () => {
+describe("project add runtime --agent-id (Bedrock Agent import)", () => {
   const importArgs = [
     "add",
     "runtime",
     "--name",
     "support_proxy",
-    "--type",
-    "import",
     "--agent-id",
     "A1B2C3D4E5",
     "--agent-alias-id",
@@ -828,58 +469,6 @@ describe("project add runtime --type import", () => {
     expect(core.importedBedrockAgents).toEqual([]);
   });
 
-  test("with no target yet, --region cn-north-1 drops the default memory and refuses blocked providers", async () => {
-    const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-    const keyFile = join(projectRoot, "key.txt");
-    await writeFile(keyFile, "sk-test");
-
-    // Blocked provider: refused before anything is written, as it is once a China target exists.
-    await expect(
-      run([
-        "add",
-        "runtime",
-        "--name",
-        "claude",
-        "--template",
-        "agent-python-strands",
-        "--model-provider",
-        "anthropic",
-        "--api-key",
-        `file://${keyFile}`,
-        "--region",
-        "cn-north-1",
-      ]),
-    ).rejects.toThrow(/not accessible from China regions/);
-
-    // Allowed provider: added, with the template's default memory dropped and the notice shown.
-    const { io } = await run([
-      "add",
-      "runtime",
-      "--name",
-      "cn_mem",
-      "--template",
-      "agent-python-strands",
-      "--model-provider",
-      "litellm",
-      "--model-id",
-      "deepseek/deepseek-chat",
-      "--api-key",
-      `file://${keyFile}`,
-      "--region",
-      "cn-north-1",
-    ]);
-    expect(io.stderr()).toContain("AgentCore Memory is not available in China regions");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.memories).toEqual([]);
-    expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual([
-      "agent",
-      "cn_mem",
-    ]);
-  });
-
   test("rejects the import when --region is a China region even without a China target", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -893,30 +482,44 @@ describe("project add runtime --type import", () => {
     expect(core.importedBedrockAgents).toEqual([]);
   });
 
-  test("requires --agent-id and --agent-alias-id with --type import", async () => {
+  test("--agent-id alone selects the import and still needs --agent-alias-id", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
+    const core = new TestCoreClient();
     await expect(
-      run(["add", "runtime", "--name", "p", "--type", "import", "--region", "us-east-1"]),
-    ).rejects.toThrow(/requires both --agent-id and --agent-alias-id/);
+      run(["add", "runtime", "--name", "p", "--agent-id", "A1", "--region", "us-east-1"], {
+        core,
+      }),
+    ).rejects.toThrow(
+      new InputValidationError(
+        "importing a Bedrock Agent requires both --agent-id and --agent-alias-id",
+      ),
+    );
+    expect(core.importedBedrockAgents).toEqual([]);
   });
 
-  test("rejects --agent-id without --type import", async () => {
+  test("--type is no longer an option", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
-    await expect(run(["add", "runtime", "--name", "p", "--agent-id", "A1"])).rejects.toThrow(
-      /--agent-id and --agent-alias-id require --type import/,
+    await expect(run([...importArgs, "--type", "import"])).rejects.toThrow(
+      "unknown option '--type'",
     );
   });
 
-  test("accepts translation flags and rejects a template", async () => {
+  test("accepts translation flags and rejects --language and --protocol", async () => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
     const core = new TestCoreClient();
     core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
     await expect(run([...importArgs, "--framework", "strands"], { core })).resolves.toBeDefined();
-    await expect(run([...importArgs, "--template", "agent-python-minimal"])).rejects.toThrow(
-      /--template cannot be combined/,
+    await expect(run([...importArgs, "--language", "python"])).rejects.toThrow(
+      new InputValidationError(
+        "--agent-id imports a Bedrock Agent as Python HTTP runtime code; " +
+          "--language cannot be combined with it",
+      ),
+    );
+    await expect(run([...importArgs, "--protocol", "MCP"])).rejects.toThrow(
+      /--protocol cannot be combined/,
     );
   });
 });
