@@ -568,7 +568,7 @@ describe("deployImpact", () => {
         logicalId: "Mem",
         type: "AWS::BedrockAgentCore::Memory",
         severity: "warning",
-        reason: "the v1 deploy updates it in place: Description changes",
+        reason: "Description changes",
       },
     ]);
   });
