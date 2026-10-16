@@ -36,7 +36,7 @@ export class ShellOperation {
 
   async run(session: RuntimeShellSession, target: ShellResumeTarget): Promise<void> {
     this.io.stderr.write(
-      `Connected - session ${session.runtimeSessionId} - shell ${session.shellId} - Ctrl+D or 'exit' to quit\n`,
+      `Connected\nSession ID: ${session.runtimeSessionId}\nShell ID: ${session.shellId}\nCtrl+D or 'exit' to close · Ctrl+] to detach\n`,
     );
     this.io.stderr.write(
       `To reconnect: agentcore ${target.resource} shell --id ${target.id} --qualifier ${target.qualifier} --session-id ${session.runtimeSessionId} --shell-id ${session.shellId} --region ${target.region}\n`,
@@ -44,10 +44,19 @@ export class ShellOperation {
     if (target.requiresBearerToken) {
       this.io.stderr.write("Provide --bearer-token again when reconnecting.\n");
     }
+    let outcome: "completed" | "detached" | undefined;
     try {
-      await new InteractiveTerminal({ io: this.io }).run(session);
+      outcome = await new InteractiveTerminal({
+        io: this.io,
+        // The SDK closes the connection without terminating the remote shell.
+        onDetach: () => session.close(),
+      }).run(session);
     } finally {
-      await session.close();
+      if (outcome !== "detached") await session.close();
+    }
+    if (outcome === "detached") {
+      this.io.stderr.write("\nDetached. The remote shell is still running.\n");
+      return;
     }
     if (session.kicked) {
       this.io.stderr.write("\nShell attached from another client.\n");

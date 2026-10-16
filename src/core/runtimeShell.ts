@@ -17,7 +17,7 @@ export type RuntimeShellSdkFrame = Pick<ShellFrame, "channel" | "payload">;
 
 export type RuntimeShellSdkSession = Pick<
   ShellSession,
-  "sessionId" | "shellId" | "reconnected" | "kicked" | "exitCode" | "send" | "resize" | "close"
+  "sessionId" | "shellId" | "kicked" | "exitCode" | "send" | "resize" | "close"
 > &
   AsyncIterable<RuntimeShellSdkFrame>;
 
