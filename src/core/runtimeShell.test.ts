@@ -20,7 +20,6 @@ function sdkSession(
   return {
     sessionId: "server-session",
     shellId: "server-shell",
-    reconnected: false,
     kicked: false,
     exitCode: 0,
     closed: 0,
