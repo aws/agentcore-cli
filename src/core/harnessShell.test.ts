@@ -126,7 +126,7 @@ describe("Harness shell connection", () => {
     const value = subject();
     const credentials = { accessKeyId: "access", secretAccessKey: "secret" };
     const session = await value.open(
-      { harnessArn: ARN, qualifier: "prod", runtimeSessionId: SESSION },
+      { harnessArn: ARN, qualifier: "prod", runtimeSessionId: SESSION, shellId: "saved-shell" },
       {
         region: "us-west-2",
         credentials,
@@ -137,6 +137,7 @@ describe("Harness shell connection", () => {
       const url = new URL(connection.url);
       expect(decodeURIComponent(url.pathname)).toBe(`/runtimes/${ARN}/ws/shells`);
       expect(url.searchParams.get("qualifier")).toBe("prod");
+      expect(url.searchParams.get("shellId")).toBe("saved-shell");
       expect(value.configs).toEqual([{ region: "us-west-2", credentials }]);
       expect(connection.protocols).toBeUndefined();
       expect(connection.options?.handshakeTimeout).toBe(330_000);
@@ -145,6 +146,7 @@ describe("Harness shell connection", () => {
       );
       expect(connection.options?.headers?.authorization).toBe("signed");
       expect(session.runtimeSessionId).toBe(SESSION);
+      expect(session.shellId).toBe("server-shell");
       await session.send(Buffer.from("echo hello\n"));
       await session.resize(100, 40);
       expect(connection.socket.sent[0]![0]).toBe(0);

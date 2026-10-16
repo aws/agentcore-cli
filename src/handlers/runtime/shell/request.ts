@@ -59,6 +59,7 @@ export function normalizeRuntimeShellRequest(
     ...(input.runtimeSessionId !== undefined && {
       runtimeSessionId: input.runtimeSessionId,
     }),
+    ...(input.shellId !== undefined && { shellId: input.shellId }),
     ...(input.bearerToken !== undefined && { bearerToken: input.bearerToken }),
   };
 }

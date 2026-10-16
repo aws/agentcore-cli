@@ -28,9 +28,16 @@ export async function runHarnessShell(input: RunHarnessShellInput): Promise<void
   const request = normalizeHarnessShellRequest(detail, {
     qualifier,
     runtimeSessionId: launchContext?.runtimeSessionId,
+    shellId: launchContext?.shellId,
     bearerToken: launchContext?.bearerToken,
   });
   request.onReconnect = shell.onReconnect;
   io.stderr.write(`Connecting to Harness ${harnessId} (${qualifier})...\n`);
-  await shell.run(await core.harness.openHarnessShell(request, options));
+  await shell.run(await core.harness.openHarnessShell(request, options), {
+    resource: "harness",
+    id: harnessId,
+    qualifier,
+    region: options.region,
+    requiresBearerToken: request.bearerToken !== undefined,
+  });
 }

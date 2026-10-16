@@ -30,6 +30,7 @@ export async function runRuntimeShell(input: RunRuntimeShellInput): Promise<void
   const request = normalizeRuntimeShellRequest(detail, {
     qualifier,
     runtimeSessionId: launchContext?.runtimeSessionId,
+    shellId: launchContext?.shellId,
     bearerToken: launchContext?.bearerToken,
   });
   request.onReconnect = shell.onReconnect;
@@ -44,5 +45,11 @@ export async function runRuntimeShell(input: RunRuntimeShellInput): Promise<void
     }
     throw error;
   });
-  await shell.run(session);
+  await shell.run(session, {
+    resource: "runtime",
+    id: runtimeId,
+    qualifier,
+    region: options.region,
+    requiresBearerToken: request.bearerToken !== undefined,
+  });
 }

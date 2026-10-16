@@ -1,6 +1,19 @@
+import z from "zod";
 import { ExitCode, InvalidEnvironmentError, SilentCLIError } from "../errors";
 import { InteractiveTerminal, type AppIO } from "../io";
 import type { RuntimeShellSession } from "./runtime/types";
+
+export const shellIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/, "invalid shell ID");
+
+export type ShellResumeTarget = {
+  resource: "runtime" | "harness";
+  id: string;
+  qualifier: string;
+  region: string;
+  requiresBearerToken: boolean;
+};
 
 export class ShellOperation {
   constructor(private readonly io: AppIO) {}
@@ -21,10 +34,16 @@ export class ShellOperation {
     );
   };
 
-  async run(session: RuntimeShellSession): Promise<void> {
+  async run(session: RuntimeShellSession, target: ShellResumeTarget): Promise<void> {
     this.io.stderr.write(
-      `Connected \u00b7 session ${session.runtimeSessionId} \u00b7 Ctrl+D or 'exit' to quit\n`,
+      `Connected - session ${session.runtimeSessionId} - shell ${session.shellId} - Ctrl+D or 'exit' to quit\n`,
     );
+    this.io.stderr.write(
+      `To reconnect: agentcore ${target.resource} shell --id ${target.id} --qualifier ${target.qualifier} --session-id ${session.runtimeSessionId} --shell-id ${session.shellId} --region ${target.region}\n`,
+    );
+    if (target.requiresBearerToken) {
+      this.io.stderr.write("Provide --bearer-token again when reconnecting.\n");
+    }
     try {
       await new InteractiveTerminal({ io: this.io }).run(session);
     } finally {

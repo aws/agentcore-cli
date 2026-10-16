@@ -30,6 +30,7 @@ export type HarnessShellRequest = {
   harnessArn: string;
   qualifier: string;
   runtimeSessionId?: string;
+  shellId?: string;
   bearerToken?: string;
   onReconnect?: (reconnected: boolean) => void | Promise<void>;
 };

@@ -3,11 +3,14 @@ import { renderTuiAt } from "../../../tui";
 import { createRuntimeShellOpener } from "../../../core/runtimeShell";
 import { DebugKey, EndpointKey, JsonKey, RegionKey } from "../../keys";
 import { ValueContext } from "../../../router";
+import { createRootHandler } from "../../index";
 import type { RuntimeShellSession } from "../types";
 import {
   cleanupScreens,
+  createSilentLogger,
   renderScreen,
   TestCoreClient,
+  TestGlobalConfigAccessor,
   tick,
   type TtyInput,
   ttyTestIO,
@@ -89,10 +92,51 @@ describe("RuntimeShellScreen", () => {
     expect(screen.core.runtime.calls.some((call) => call.method === "listRuntimes")).toBe(false);
   });
 
+  test("CLI resume IDs survive endpoint selection", async () => {
+    const value = core();
+    const { streams, stdin } = ttyTestIO();
+    const root = createRootHandler(value, {
+      io: streams.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    const sessionId = "session-012345678901234567890123456789";
+    const rendering = root.route([
+      "node",
+      "agentcore",
+      "runtime",
+      "shell",
+      "--id",
+      "checkout-AbCdEf1234",
+      "--session-id",
+      sessionId,
+      "--shell-id",
+      "saved-shell",
+      "--region",
+      "us-east-1",
+    ]);
+    void rendering.catch(() => {});
+    try {
+      await waitFor(() => streams.stdout().includes("prod"));
+      stdin.write("\r");
+      await waitFor(() => value.runtime.calls.some((call) => call.method === "openRuntimeShell"));
+      expect(
+        value.runtime.calls.find((call) => call.method === "openRuntimeShell")?.args[0],
+      ).toMatchObject({
+        runtimeSessionId: sessionId,
+        shellId: "saved-shell",
+        qualifier: "prod",
+      });
+    } finally {
+      await interruptUntilExit(rendering, stdin);
+    }
+  });
+
   test("renderTuiAt returns to Runtime details after a nonzero shell exit", async () => {
     const value = core();
     const failedSession: RuntimeShellSession = {
       runtimeSessionId: "session-012345678901234567890123456789",
+      shellId: "server-shell",
       kicked: false,
       exitCode: 42,
       send: async () => {},
