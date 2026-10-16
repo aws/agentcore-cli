@@ -311,7 +311,7 @@ function update(logicalId: string, type: string, updates: PropertyUpdate[]): Sta
     logicalId,
     type,
     severity: "warning",
-    reason: `the v1 deploy updates it in place: ${changes(updates.map((property) => property.name))}`,
+    reason: changes(updates.map((property) => property.name)),
   };
 }
 

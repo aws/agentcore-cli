@@ -134,8 +134,9 @@ describe("agentcore migrate, planning", () => {
     await subject.run();
 
     const out = subject.io.stdout();
+    // A blank line separates the summary from the progress lines on stderr.
     expect(out).toStartWith(
-      "Migration plan: CompatA → v1 (target default, 998846730471/us-east-1)\n",
+      "\nMigration plan: CompatA → v1 (target default, 998846730471/us-east-1)\n",
     );
     expect(out).toMatch(/\n {2}Keeps the names of \d+ deployed resources \(runtime CompatAAgent, /);
     expect(out).toContain(
@@ -261,8 +262,11 @@ describe("agentcore migrate, planning", () => {
       const subject = cli();
       await subject.run();
       const out = subject.io.stdout();
-      expect(out).toContain(`  ! ${CDK_LIBRARY_OVERRIDE_ENV} is set (testing only)`);
-      expect(out).toContain(`    ${overrideInstallCommand(`file:${resolve("/tmp/lib.tgz")}`)}\n`);
+      // The preview notes the override after the plan; installing it is an after-migrating step.
+      expect(out).toMatch(
+        new RegExp(`\nFull plan: \\S+\n\n! ${CDK_LIBRARY_OVERRIDE_ENV} is set \\(testing only\\)`),
+      );
+      expect(out).not.toContain("npm install");
       // The override's own long warnings stay in the report.
       expect(out).not.toContain("Synthesized with @aws/agentcore-cdk from");
     } finally {
@@ -707,11 +711,11 @@ describe("agentcore migrate, reports", () => {
 
     const out = subject.io.stdout();
     expect(out).toContain(
-      "Migrated. Review the changes with `git diff`, then:\n" +
-        `  ! ${CDK_LIBRARY_OVERRIDE_ENV} is set (testing only): the migrated app uses the released\n` +
-        "    library, so before `agentcore deploy` install the one this plan was made with:\n" +
-        "      cd agentcore/cdk && npm install /tmp/lib.tgz --no-save\n" +
-        "    agentcore deploy\n",
+      `Migrated. Review the changes with \`git diff\`. ${CDK_LIBRARY_OVERRIDE_ENV} is set ` +
+        "(testing only), and the migrated app uses the released CDK library, so install the one " +
+        "this plan was made with, then deploy, from the project root:\n" +
+        "  npm install --prefix agentcore/cdk /tmp/lib.tgz --no-save\n" +
+        "  agentcore deploy\n",
     );
   });
 
@@ -877,13 +881,13 @@ describe("report helpers", () => {
 
   test("overrideInstallCommand uses a file override's path, quoting when needed", () => {
     expect(overrideInstallCommand("file:/tmp/lib.tgz")).toBe(
-      "cd agentcore/cdk && npm install /tmp/lib.tgz --no-save",
+      "npm install --prefix agentcore/cdk /tmp/lib.tgz --no-save",
     );
     expect(overrideInstallCommand("@aws/agentcore-cdk@1.0.0-rc.4")).toBe(
-      "cd agentcore/cdk && npm install @aws/agentcore-cdk@1.0.0-rc.4 --no-save",
+      "npm install --prefix agentcore/cdk @aws/agentcore-cdk@1.0.0-rc.4 --no-save",
     );
     expect(overrideInstallCommand("file:/tmp/my lib.tgz")).toBe(
-      "cd agentcore/cdk && npm install '/tmp/my lib.tgz' --no-save",
+      "npm install --prefix agentcore/cdk '/tmp/my lib.tgz' --no-save",
     );
   });
 
@@ -1109,26 +1113,47 @@ describe("formatStackPlan", () => {
     ready: false,
   };
 
-  test("lists moves, the first v1 deploy's changes, and the verdict", () => {
+  test("lists moves, then a row per change the first v1 deploy makes", () => {
     expect(formatStackPlan(stack)).toEqual([
       "Stack AgentCore-P-default (target 'default', 123456789012/us-east-1)",
-      "  Refactor: move 1 resource to new logical IDs",
+      "  Stack refactor: moves 1 resource to new logical IDs; 1 resource keeps its logical ID",
       "    TYPE                           FROM    TO",
       "    AWS::BedrockAgentCore::Memory  OldMem  NewMem",
-      "  1 resource keep their logical IDs",
-      "  Then the first v1 deploy:",
-      "    creates",
-      "      AWS::CloudFormation::CustomResource Trigger2",
-      "    deletes",
-      "      AWS::CloudFormation::CustomResource Trigger1: recreated",
-      "    replaces",
-      "      warning AWS::ECR::Repository Repo: rebuilt",
-      "      BLOCKER AWS::BedrockAgentCore::ConfigurationBundle Bundle: lost",
-      "    updates in place",
-      "      BLOCKER AWS::BedrockAgentCore::Gateway Gw: ProtocolType changes",
-      "  Replacements: 1 resource that must be kept would be replaced or deleted",
+      "    The new IDs are the ones the v1 CDK app gives these resources (CDK derives them from the",
+      "    construct path). The refactor only renames them in the stack: each resource, its name,",
+      "    and its data stay as they are.",
+      "",
+      "  First v1 deploy: replaces 2 resources, deletes 1 resource (1 resource that must be kept); " +
+        "updates 1 resource in place; creates 1 resource",
+      "    creates   AWS::CloudFormation::CustomResource Trigger2",
+      "    deletes   AWS::CloudFormation::CustomResource Trigger1: recreated",
+      "    replaces  warning AWS::ECR::Repository Repo: rebuilt",
+      "    replaces  BLOCKER AWS::BedrockAgentCore::ConfigurationBundle Bundle: lost",
+      "    updates   BLOCKER AWS::BedrockAgentCore::Gateway Gw: ProtocolType changes",
       "  BLOCKER: the stack name changes",
     ]);
+  });
+
+  test("an expected in-place update has no warning label", () => {
+    const lines = formatStackPlan({
+      ...stack,
+      added: [],
+      removed: [],
+      replaced: [],
+      blockers: [],
+      updated: [
+        {
+          type: "AWS::BedrockAgentCore::Runtime",
+          logicalId: "Rt",
+          severity: "warning",
+          reason: "EnvironmentVariables changes",
+        },
+      ],
+    });
+    expect(lines).toContain("  First v1 deploy: replaces nothing; updates 1 resource in place");
+    expect(lines).toContain(
+      "    updates   AWS::BedrockAgentCore::Runtime Rt: EnvironmentVariables changes",
+    );
   });
 
   test("says when the deploy changes nothing", () => {
@@ -1141,10 +1166,9 @@ describe("formatStackPlan", () => {
       updated: [],
       blockers: [],
     });
-    expect(quiet).toContain("  Refactor: move 0 resources to new logical IDs");
-    expect(quiet).toContain("    creates, deletes, and replaces nothing");
-    expect(quiet.at(-1)).toBe(
-      "  Replacements: 0 replacements; no resource that must be kept is replaced or deleted",
+    expect(quiet).toContain(
+      "  Stack refactor: moves 0 resources to new logical IDs; 1 resource keeps its logical ID",
     );
+    expect(quiet.at(-1)).toBe("  First v1 deploy: replaces nothing");
   });
 });

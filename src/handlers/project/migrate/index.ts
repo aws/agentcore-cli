@@ -23,6 +23,7 @@ import {
   type ProjectMigrator,
   type StackMigrationPlan,
   type StackRefactorResult,
+  type StackResource,
   type StackResourceChange,
   type RetainedStackResource,
 } from "./types";
@@ -139,7 +140,8 @@ export const createMigrateProjectHandler = (config: MigrateProjectHandlerConfig)
               ? formatMigrationSummary(plan, planFile.path)
               : // Without the report the summary would point nowhere: show everything.
                 `${formatMigrationPlan(plan)}\nWarning: couldn't save the full plan (${planFile.error})\n`;
-            io.stdout.write(`${summary}${footer ? `\n${footer}\n` : ""}`);
+            // A blank line sets the summary apart from the progress lines above it.
+            io.stdout.write(`\n${summary}${footer ? `\n${footer}\n` : ""}`);
           };
 
           if (!plan.ready) {
@@ -162,6 +164,8 @@ export const createMigrateProjectHandler = (config: MigrateProjectHandlerConfig)
             return;
           }
 
+          // Without the prompt's answer line, a blank line sets apply's progress apart from the plan.
+          if (flags.yes && !json) io.stderr.write("\n");
           const result = await runWithProgress(
             progressFrom((emit) =>
               prepared.apply({
@@ -279,24 +283,22 @@ function listed(items: string[], limit = 5): string {
 
 /**
  * The command that installs the CDK library a plan was made with, run from the
- * project root: the migrated app vends the released library, which a plan made
- * with AGENTCORE_MIGRATE_CDK_LIBRARY doesn't match.
+ * project root (so `agentcore deploy` follows without changing directory): the
+ * migrated app vends the released library, which a plan made with
+ * AGENTCORE_MIGRATE_CDK_LIBRARY doesn't match.
  */
 export function overrideInstallCommand(cdkLibraryOverride: string): string {
   const spec = cdkLibraryOverride.startsWith("file:")
     ? cdkLibraryOverride.slice("file:".length)
     : cdkLibraryOverride;
   const quoted = /^[A-Za-z0-9@%+=:,./_-]+$/.test(spec) ? spec : `'${spec.replace(/'/g, "'\\''")}'`;
-  return `cd agentcore/cdk && npm install ${quoted} --no-save`;
+  return `npm install --prefix agentcore/cdk ${quoted} --no-save`;
 }
 
-function overrideWarningLines(cdkLibraryOverride: string, indent: string): string[] {
-  return [
-    `${indent}! ${CDK_LIBRARY_OVERRIDE_ENV} is set (testing only): the migrated app uses the released`,
-    `${indent}  library, so before \`agentcore deploy\` install the one this plan was made with:`,
-    `${indent}    ${overrideInstallCommand(cdkLibraryOverride)}`,
-  ];
-}
+/** The preview's note on the override: installing the library comes after migrating. */
+const OVERRIDE_PREVIEW_NOTE =
+  `! ${CDK_LIBRARY_OVERRIDE_ENV} is set (testing only): this plan uses that CDK library. ` +
+  "After migrating, you'll be shown how to install it before `agentcore deploy`.";
 
 /** One line per thing that keeps the plan from being ready. */
 export function planBlockers(plan: MigrationPlan): string[] {
@@ -355,8 +357,13 @@ function deployImpact(stack: StackMigrationPlan): string {
     stack.replaced.length > 0 ? `replaces ${count(stack.replaced.length, "resource")}` : "",
     deleted.length > 0 ? `deletes ${count(deleted.length, "resource")}` : "",
   ].filter(Boolean);
+  const mustKeep = [...stack.removed, ...stack.replaced].filter(
+    (change) => change.severity === "blocker",
+  ).length;
   const parts = [
-    lost.length === 0 ? "replaces nothing" : `${lost.join(", ")} (none that must be kept)`,
+    lost.length === 0
+      ? "replaces nothing"
+      : `${lost.join(", ")} (${mustKeep === 0 ? "none" : count(mustKeep, "resource")} that must be kept)`,
     stack.updated.length > 0 ? `updates ${count(stack.updated.length, "resource")} in place` : "",
     stack.added.length > 0 ? `creates ${count(stack.added.length, "resource")}` : "",
   ].filter(Boolean);
@@ -449,8 +456,8 @@ export function formatMigrationSummary(plan: MigrationPlan, planPath: string): s
     if (override !== undefined && warning.includes(CDK_LIBRARY_OVERRIDE_ENV)) continue;
     lines.push(`  ! ${brief(warning)}`);
   }
-  if (override !== undefined) lines.push(...overrideWarningLines(override, "  "));
   lines.push("", `Full plan: ${planPath}`);
+  if (override !== undefined) lines.push("", OVERRIDE_PREVIEW_NOTE);
   return `${lines.join("\n")}\n`;
 }
 
@@ -460,9 +467,11 @@ function nextSteps(outcome: string, cdkLibraryOverride: string | undefined): str
     return [`${outcome} Review the changes with \`git diff\`, then run \`agentcore deploy\`.`];
   }
   return [
-    `${outcome} Review the changes with \`git diff\`, then:`,
-    ...overrideWarningLines(cdkLibraryOverride, "").map((line) => `  ${line}`),
-    "    agentcore deploy",
+    `${outcome} Review the changes with \`git diff\`. ${CDK_LIBRARY_OVERRIDE_ENV} is set ` +
+      "(testing only), and the migrated app uses the released CDK library, so install the one " +
+      "this plan was made with, then deploy, from the project root:",
+    `  ${overrideInstallCommand(cdkLibraryOverride)}`,
+    "  agentcore deploy",
   ];
 }
 
@@ -698,19 +707,22 @@ export function formatMigrationPlan(plan: MigrationPlan): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** One stack's refactor: what moves, then what the first v1 deploy changes, then the verdict. */
 /** A retained resource for the summary: its kind and the ID to find it by. */
 function retainedLabel(resource: RetainedStackResource): string {
   return `${resource.type} ${resource.physicalId ?? resource.logicalId}`;
 }
 
+/** One stack's refactor: what moves, what stays outside the stack, then what the first v1 deploy does. */
 export function formatStackPlan(stack: StackMigrationPlan): string[] {
   const lines = [
     `Stack ${stack.stackName} (target '${stack.target}', ${stack.account}/${stack.region})`,
   ];
   const indent = (rows: string[]) => rows.map((row) => `    ${row}`);
 
-  lines.push(`  Refactor: move ${count(stack.moves.length, "resource")} to new logical IDs`);
+  lines.push(
+    `  Stack refactor: moves ${count(stack.moves.length, "resource")} to new logical IDs; ` +
+      `${count(stack.unchanged, "resource")} keep${stack.unchanged === 1 ? "s its" : " their"} logical ID${stack.unchanged === 1 ? "" : "s"}`,
+  );
   if (stack.moves.length > 0) {
     lines.push(
       ...indent(
@@ -719,12 +731,15 @@ export function formatStackPlan(stack: StackMigrationPlan): string[] {
           stack.moves.map((move) => [move.type, move.from, move.to]),
         ),
       ),
+      "    The new IDs are the ones the v1 CDK app gives these resources (CDK derives them from the",
+      "    construct path). The refactor only renames them in the stack: each resource, its name,",
+      "    and its data stay as they are.",
     );
   }
-  lines.push(`  ${count(stack.unchanged, "resource")} keep their logical IDs`);
   const retained = stack.retained ?? [];
   if (retained.length > 0) {
     lines.push(
+      "",
       "  Kept in AWS outside the stack: set to retain before the refactor, so the first v1 " +
         "deploy leaves them, and their data, in place. v1 doesn't manage them afterwards.",
       ...indent(
@@ -747,47 +762,33 @@ export function formatStackPlan(stack: StackMigrationPlan): string[] {
     );
   }
 
-  lines.push("  Then the first v1 deploy:");
-  const changes = (label: string, entries: StackResourceChange[]) => {
-    if (entries.length === 0) return;
-    lines.push(`    ${label}`);
+  // One row per change, the action first. An in-place update is expected, so it
+  // carries a label only when it blocks the migration.
+  lines.push("", `  First v1 deploy: ${deployImpact(stack)}`);
+  const rows = (
+    action: string,
+    entries: (StackResource & Partial<StackResourceChange>)[],
+    labelWarnings = true,
+  ) => {
     for (const entry of entries) {
-      lines.push(`      ${severityLabel(entry)}${entry.type} ${entry.logicalId}: ${entry.reason}`);
+      const label =
+        entry.severity === "blocker" || (labelWarnings && entry.severity === "warning")
+          ? severityLabel(entry.severity)
+          : "";
+      const reason = entry.reason ? `: ${entry.reason}` : "";
+      lines.push(`    ${action.padEnd(8)}  ${label}${entry.type} ${entry.logicalId}${reason}`);
     }
   };
-  if (stack.added.length > 0) {
-    lines.push("    creates");
-    for (const entry of stack.added) lines.push(`      ${entry.type} ${entry.logicalId}`);
-  }
-  changes("deletes", stack.removed);
-  changes("replaces", stack.replaced);
-  changes("updates in place", stack.updated);
-  if (stack.added.length + stack.removed.length + stack.replaced.length === 0) {
-    lines.push(
-      stack.updated.length === 0
-        ? "    creates, deletes, and replaces nothing"
-        : "    creates, deletes, and replaces nothing else",
-    );
-  }
-
-  const lost = [...stack.removed, ...stack.replaced].filter(
-    (change) => change.severity === "blocker",
-  ).length;
-  lines.push(
-    lost === 0
-      ? `  Replacements: ${count(stack.replaced.length, "replacement")}; no resource that must be kept is replaced or deleted`
-      : `  Replacements: ${count(lost, "resource")} that must be kept would be replaced or deleted`,
-  );
+  rows("creates", stack.added);
+  rows("deletes", stack.removed);
+  rows("replaces", stack.replaced);
+  rows("updates", stack.updated, false);
   for (const blocker of stack.blockers) lines.push(`  BLOCKER: ${blocker}`);
   return lines;
 }
 
-function severityLabel(change: StackResourceChange): string {
-  return change.severity === "blocker"
-    ? "BLOCKER "
-    : change.severity === "warning"
-      ? "warning "
-      : "";
+function severityLabel(severity: StackResourceChange["severity"]): string {
+  return severity === "blocker" ? "BLOCKER " : severity === "warning" ? "warning " : "";
 }
 
 function count(n: number, noun: string): string {
