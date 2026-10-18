@@ -294,6 +294,7 @@ export const abTestHandler: ABTestHandler = {
 
   async promote(record: ABTestJobRecord, _configIO: ConfigIO): Promise<Result<{ record: ABTestJobRecord }>> {
     const region = regionFromArn(record.arn) ?? (await detectRegion()).region;
+    let testStopped = false;
     try {
       // Validate the winning variant is applicable to agentcore.json BEFORE stopping the test
       // (dry run, no writes). This avoids the trap where promote stops a running test and only
@@ -312,7 +313,15 @@ export const abTestHandler: ABTestHandler = {
 
       // Promotion stops the test first (running tests apply continuously), then mutates config.
       await waitForRunningThenStop(region, record.id);
-      const promotion = await promoteABTestConfig(record);
+      testStopped = true;
+      // Config-bundle preflight fetched and validated the payload. Do not fetch a different
+      // payload after stopping; apply exactly the winner that passed the size check.
+      let promotion = preflight;
+      if (preflight.apply) {
+        await preflight.apply();
+      } else {
+        promotion = await promoteABTestConfig(record);
+      }
       if (!promotion.promoted) {
         // The test was stopped, but applying the winning variant to agentcore.json failed.
         // Surface the failure so the user knows config wasn't updated (test is already STOPPED).
@@ -325,7 +334,10 @@ export const abTestHandler: ABTestHandler = {
       }
       return { success: true, record: { ...record, lifecycleStatus: 'STOPPED' } };
     } catch (err) {
-      return { success: false, error: toError(err) };
+      const error = toError(err);
+      if (testStopped)
+        error.message = `A/B test "${record.id}" is stopped, but promotion could not complete: ${error.message}`;
+      return { success: false, error };
     }
   },
 
