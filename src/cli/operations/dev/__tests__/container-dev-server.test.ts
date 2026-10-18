@@ -276,6 +276,64 @@ describe('ContainerDevServer', () => {
   }
 
   describe('getSpawnConfig() — verified via spawn args', () => {
+    it.each(['docker', 'podman', 'finch'])('points aws login at the mounted cache with %s', async runtime => {
+      delete process.env.AWS_ACCESS_KEY_ID;
+      delete process.env.AWS_SECRET_ACCESS_KEY;
+      delete process.env.AWS_SESSION_TOKEN;
+      process.env.AWS_PROFILE = 'login-profile';
+      mockSuccessfulPrepare();
+      mockDetectContainerRuntime.mockResolvedValue({ runtime: { runtime, binary: runtime, version: 'test' } });
+      mockSpawnSync.mockImplementation((command: string) =>
+        command === 'aws' ? { status: 1, stdout: '', stderr: '' } : { status: 0, stdout: '', stderr: '' }
+      );
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(mockSpawn.mock.calls[1]![0]).toBe(runtime);
+      expect(spawnArgs).toContain('/home/testuser/.aws:/aws-config:ro');
+      expect(spawnArgs).toContain('AWS_PROFILE=login-profile');
+      expect(spawnArgs).toContain('AWS_LOGIN_CACHE_DIRECTORY=/aws-config/login/cache');
+    });
+
+    it('preserves a caller-provided container login cache directory', async () => {
+      delete process.env.AWS_ACCESS_KEY_ID;
+      mockSuccessfulPrepare();
+      const server = new ContainerDevServer(defaultConfig, {
+        ...defaultOptions,
+        envVars: { AWS_LOGIN_CACHE_DIRECTORY: '/container/cache' },
+      });
+      await server.start();
+      const cacheArgs = getSpawnArgs().filter(arg => arg.startsWith('AWS_LOGIN_CACHE_DIRECTORY='));
+      expect(cacheArgs).toEqual(['AWS_LOGIN_CACHE_DIRECTORY=/container/cache']);
+    });
+
+    it('does not add a cache path when host credentials resolve successfully', async () => {
+      delete process.env.AWS_ACCESS_KEY_ID;
+      process.env.AWS_PROFILE = 'login-profile';
+      mockSuccessfulPrepare();
+      mockSpawnSync.mockImplementation((command: string) => ({
+        status: 0,
+        stdout:
+          command === 'aws'
+            ? 'export AWS_ACCESS_KEY_ID=test-key\nexport AWS_SECRET_ACCESS_KEY=test-secret\nexport AWS_SESSION_TOKEN=test-token'
+            : '',
+        stderr: '',
+      }));
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      const spawnArgs = getSpawnArgs();
+      expect(spawnArgs).toContain('AWS_ACCESS_KEY_ID=test-key');
+      expect(spawnArgs).toContain('AWS_SECRET_ACCESS_KEY=test-secret');
+      expect(spawnArgs).toContain('AWS_SESSION_TOKEN=test-token');
+      expect(spawnArgs).not.toContain('AWS_PROFILE=login-profile');
+      expect(spawnArgs).not.toContain('/home/testuser/.aws:/aws-config:ro');
+      expect(spawnArgs.some(arg => arg.startsWith('AWS_LOGIN_CACHE_DIRECTORY='))).toBe(false);
+    });
+
     it('uses lowercased image name', async () => {
       mockSuccessfulPrepare();
 
@@ -441,6 +499,8 @@ describe('ContainerDevServer', () => {
       expect(spawnArgs).toContain('AWS_REGION=us-east-1');
       expect(spawnArgs).toContain('AWS_DEFAULT_REGION=us-west-2');
       expect(spawnArgs).not.toContain('AWS_PROFILE=dev-profile');
+      expect(spawnArgs.some(arg => arg.startsWith('AWS_LOGIN_CACHE_DIRECTORY='))).toBe(false);
+      expect(spawnArgs).not.toContain('/home/testuser/.aws:/aws-config:ro');
     });
 
     it('forwards AWS_PROFILE when no explicit credentials are set', async () => {
@@ -474,8 +534,10 @@ describe('ContainerDevServer', () => {
       await server.start();
 
       const spawnArgs = getSpawnArgs();
-      // Filter only forwarded AWS cred env vars, not AWS_CONFIG_FILE/CREDENTIALS_FILE
-      const awsArgs = spawnArgs.filter((arg: string) => arg.startsWith('AWS_') && !arg.includes('_FILE='));
+      // Mounted config/cache paths are not forwarded credential values.
+      const awsArgs = spawnArgs.filter((arg: string) =>
+        /^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN|REGION|DEFAULT_REGION|PROFILE)=/.test(arg)
+      );
       expect(awsArgs).toHaveLength(0);
     });
 
@@ -520,6 +582,7 @@ describe('ContainerDevServer', () => {
       const spawnArgs = getSpawnArgs();
       const awsMountArg = spawnArgs.find((arg: string) => arg.includes('.aws'));
       expect(awsMountArg).toBeUndefined();
+      expect(spawnArgs.some(arg => arg.startsWith('AWS_LOGIN_CACHE_DIRECTORY='))).toBe(false);
     });
 
     it('does not include uvicorn or reload args', async () => {

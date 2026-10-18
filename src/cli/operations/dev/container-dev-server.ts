@@ -228,6 +228,7 @@ export class ContainerDevServer extends DevServer {
         ? {
             AWS_CONFIG_FILE: `${awsContainerPath}/config`,
             AWS_SHARED_CREDENTIALS_FILE: `${awsContainerPath}/credentials`,
+            AWS_LOGIN_CACHE_DIRECTORY: `${awsContainerPath}/login/cache`,
           }
         : {};
 
