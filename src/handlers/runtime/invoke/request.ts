@@ -46,8 +46,8 @@ export async function resolveRuntimeInvokeSources(
 
   const resolver = new SourceResolver({ stdin, signal });
   try {
+    const bearerToken = await resolver.resolveSecret("bearer-token", sources.bearerToken);
     const payload = await resolver.resolveBytes("payload", sources.payload);
-    const bearerToken = await resolver.resolveText("bearer-token", sources.bearerToken);
     return {
       payload: payload!,
       ...(bearerToken !== undefined && { bearerToken }),
@@ -70,7 +70,7 @@ export async function resolveRuntimeInvokeTuiBearerToken(
     );
   }
   try {
-    return await new SourceResolver({ stdin }).resolveText("bearer-token", source);
+    return await new SourceResolver({ stdin }).resolveSecret("bearer-token", source);
   } catch (error) {
     if (error instanceof SourceResolutionError) {
       throw new InputValidationError(error.message, { cause: error });

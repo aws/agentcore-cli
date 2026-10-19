@@ -3,7 +3,7 @@ import type { EvaluationReferenceInput } from "@aws-sdk/client-bedrock-agentcore
 import { createHandler, flag } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
-import type { AppIO } from "../../../../io";
+import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import type { InvokedSession } from "../../types";
 import { coreOptsFromCtx } from "../../../utils";
@@ -25,7 +25,7 @@ Example:
 
   --payload-template '{"messages":[{"role":"user","content":"{input}"}],"stream":false}'`;
 
-export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
+export const createSimulateOnDemandHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "simulate",
     description: "replay a dataset against a Runtime, then evaluate the sessions client-side",
@@ -48,7 +48,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
       }),
       flag(
         "bearer-token",
-        "CUSTOM_JWT bearer token (for JWT-auth Runtimes)",
+        "CUSTOM_JWT bearer token (file://path or - for stdin; inline values are rejected)",
         z.string().optional(),
         { sensitive: true, group: INVOCATION },
       ),
@@ -77,6 +77,8 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
 
       await withUserCancellation(async (signal) => {
         const opts = coreOptsFromCtx(ctx);
+        const resolver = new SourceResolver({ stdin: io.stdin, signal });
+        const bearerToken = await resolver.resolveSecret("bearer-token", flags["bearer-token"]);
 
         const replay = await core.eval.invokeDataset(
           {
@@ -84,7 +86,7 @@ export const createSimulateOnDemandHandler = (core: Core, _io: AppIO) =>
             qualifier: flags["endpoint"],
             payloadTemplate,
             headers: parseRuntimeInvokeHeaders(flags["header"]),
-            bearerToken: flags["bearer-token"],
+            bearerToken,
             userId: flags["user-id"],
             dataset,
             datasetVersion: flags["dataset-version"],

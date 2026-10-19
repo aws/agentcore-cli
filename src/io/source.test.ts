@@ -136,6 +136,39 @@ describe("SourceResolver text", () => {
   });
 });
 
+describe("SourceResolver secrets", () => {
+  test("rejects inline values without exposing them", async () => {
+    const secret = "must-not-appear-in-errors";
+    const error = await new SourceResolver({})
+      .resolveSecret("bearer-token", secret)
+      .catch((error) => error);
+
+    expect(error).toBeInstanceOf(SourceResolutionError);
+    expect(error.message).toContain("--bearer-token must come from stdin");
+    expect(error.message).not.toContain(secret);
+  });
+
+  test("normalizes file and stdin newlines without trimming other whitespace", async () => {
+    const path = await tempFile(" secret value \n");
+    const resolver = new SourceResolver({
+      stdin: stdin(new TextEncoder().encode(" secret value \r\n")),
+    });
+
+    expect(await resolver.resolveSecret("bearer-token", `file://${path}`)).toBe(" secret value ");
+    expect(await resolver.resolveSecret("bearer-token", "-")).toBe(" secret value ");
+  });
+
+  test("rejects multiline secrets", async () => {
+    const resolver = new SourceResolver({
+      stdin: stdin(new TextEncoder().encode("first-line\nsecond-line\n")),
+    });
+
+    await expect(resolver.resolveSecret("bearer-token", "-")).rejects.toThrow(
+      "--bearer-token must be a single-line value",
+    );
+  });
+});
+
 describe("SourceResolver cancellation", () => {
   test("rejects an already-aborted inline resolution", async () => {
     const controller = new AbortController();

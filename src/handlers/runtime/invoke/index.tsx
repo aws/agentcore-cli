@@ -31,9 +31,12 @@ export const invokeRuntimeFlags = [
   flag("header", "an ordered application header", z.array(z.string()).optional(), {
     sensitive: true,
   }),
-  flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
-    sensitive: true,
-  }),
+  flag(
+    "bearer-token",
+    "the CUSTOM_JWT bearer token (file://path or - for stdin; inline values are rejected)",
+    z.string().optional(),
+    { sensitive: true },
+  ),
   flag("mcp-session-id", "the MCP session ID", z.string().optional()),
   flag("mcp-protocol-version", "the MCP protocol version", z.string().optional()),
   flag("mcp-method", "the MCP method", z.string().optional()),

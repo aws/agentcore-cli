@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { join } from "node:path";
 import {
   GetAgentRuntimeCommand,
   GetEvaluatorCommand,
@@ -14,7 +15,12 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import type { IAMClient } from "@aws-sdk/client-iam";
 import { CoreClient } from "../../../core";
-import { CloudWatchQueryError, ResourceNotFoundError, InputValidationError } from "../../../errors";
+import {
+  CloudWatchQueryError,
+  ResourceNotFoundError,
+  InputValidationError,
+  SourceResolutionError,
+} from "../../../errors";
 import type { Logger } from "../../../logging";
 import { createRootHandler } from "../../index";
 import {
@@ -49,6 +55,7 @@ const RESULT: EvaluateResult = {
 
 const RUNTIME_ID = "runtime-1";
 const RUNTIME_LOG_GROUP = "/aws/bedrock-agentcore/runtimes/runtime-1-DEFAULT";
+const TOKEN_SOURCE = `file://${join(import.meta.dir, "../../../testing/data/bearer-token.txt")}`;
 
 type QueryFailureStatus = "Failed" | "Cancelled" | "Timeout";
 
@@ -58,11 +65,15 @@ type LogsOptions = {
   status?: QueryFailureStatus;
 };
 
-async function run(args: string[], configure?: (core: TestCoreClient) => void) {
+async function run(
+  args: string[],
+  configure?: (core: TestCoreClient) => void,
+  ioOptions?: { stdin?: string },
+) {
   const core = new TestCoreClient();
   core.eval.setGetTracesResponse([TRACE]).setEvaluateResponse(RESULT);
   configure?.(core);
-  const io = testIO();
+  const io = testIO(ioOptions);
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
@@ -244,22 +255,46 @@ describe("eval ondemand simulate", () => {
     ).rejects.toThrow(/no examples could be invoked \(2 failed\).*first error: e1 — HTTP 500/);
   });
 
-  test("passes --ingestion-wait-ms through to invokeDataset and renders failures", async () => {
-    const { core, stdout } = await run([...BASE, "--ingestion-wait-ms", "0"], (c) =>
-      c.eval.setInvokeDatasetResponse({
-        sessions: [{ exampleId: "ok1", sessionId: "s1" }],
-        invoked: 1,
-        failed: 1,
-        failures: [{ exampleId: "bad", error: "HTTP 500" }],
-      }),
-    );
-    const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
-    expect(invoke).toBeDefined();
-    expect((invoke!.args[0] as { waitIngestionMs?: number }).waitIngestionMs).toBe(0);
-    const out = JSON.parse(stdout);
-    expect(out.failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
-    expect(out.sessions).toEqual([{ exampleId: "ok1", sessionId: "s1" }]);
+  test("rejects inline bearer tokens before Core calls without exposing them", async () => {
+    let core: TestCoreClient | undefined;
+    const secret = "inline-token-must-not-leak";
+    const error = await run([...BASE, "--bearer-token", secret], (c) => {
+      core = c;
+    }).catch((error) => error);
+
+    expect(error).toBeInstanceOf(SourceResolutionError);
+    expect(error.message).not.toContain(secret);
+    expect(core?.eval.calls).toEqual([]);
   });
+
+  test.each(["file", "stdin"])(
+    "passes invocation options and a bearer token from %s to invokeDataset",
+    async (source) => {
+      const { core, stdout } = await run(
+        [
+          ...BASE,
+          "--ingestion-wait-ms",
+          "0",
+          "--bearer-token",
+          source === "file" ? TOKEN_SOURCE : "-",
+        ],
+        (c) =>
+          c.eval.setInvokeDatasetResponse({
+            sessions: [{ exampleId: "ok1", sessionId: "s1" }],
+            invoked: 1,
+            failed: 1,
+            failures: [{ exampleId: "bad", error: "HTTP 500" }],
+          }),
+        { stdin: "secret-token\r\n" },
+      );
+      const invoke = core.eval.calls.find((c) => c.method === "invokeDataset");
+      expect(invoke).toBeDefined();
+      expect(invoke!.args[0]).toMatchObject({ waitIngestionMs: 0, bearerToken: "secret-token" });
+      const out = JSON.parse(stdout);
+      expect(out.failures).toEqual([{ exampleId: "bad", error: "HTTP 500" }]);
+      expect(out.sessions).toEqual([{ exampleId: "ok1", sessionId: "s1" }]);
+    },
+  );
 
   test("forwards a turn's expectedResponse as a reference input", async () => {
     const { core } = await run(BASE, (c) =>
