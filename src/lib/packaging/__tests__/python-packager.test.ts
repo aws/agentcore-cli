@@ -17,7 +17,6 @@ const mockEnforceZipSizeLimit = vi.fn();
 const mockEnforceZipSizeLimitSync = vi.fn();
 const mockConvertWindowsScriptsToLinux = vi.fn();
 const mockConvertWindowsScriptsToLinuxSync = vi.fn();
-const mockDetectUnavailablePlatform = vi.fn();
 
 vi.mock('../../utils/subprocess', () => ({
   runSubprocessCapture: (...args: unknown[]) => mockRunSubprocessCapture(...args),
@@ -42,10 +41,6 @@ vi.mock('../helpers', () => ({
   isPythonRuntime: (v: string) => v.startsWith('PYTHON_'),
 }));
 
-vi.mock('../uv', () => ({
-  detectUnavailablePlatform: (...args: unknown[]) => mockDetectUnavailablePlatform(...args),
-}));
-
 const defaultPaths = {
   projectRoot: '/project',
   srcDir: '/project/src',
@@ -55,9 +50,31 @@ const defaultPaths = {
 };
 
 describe('PythonCodeZipPackager', () => {
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => vi.resetAllMocks());
 
   const packager = new PythonCodeZipPackager();
+
+  it.each([
+    'have no usable wheels',
+    'have no wheels with a matching Python ABI tag',
+    'have no wheels with a matching platform tag',
+  ])('retries the next platform for plural uv errors: %s', async message => {
+    mockResolveProjectPaths.mockResolvedValue(defaultPaths);
+    mockRunSubprocessCapture
+      .mockResolvedValueOnce({ code: 1, stdout: '', stderr: `numpy>=2.4.0 ${message}`, signal: null })
+      .mockResolvedValueOnce({ code: 0, stdout: '', stderr: '', signal: null });
+    mockEnforceZipSizeLimit.mockResolvedValue(2048);
+
+    const result = await packager.pack({ build: 'CodeZip', runtimeVersion: 'PYTHON_3_14', name: 'agent' } as any);
+
+    expect(result.sizeBytes).toBe(2048);
+    expect(mockRunSubprocessCapture).toHaveBeenCalledTimes(2);
+    expect(mockRunSubprocessCapture.mock.calls.map(call => call[1][call[1].indexOf('--python-platform') + 1])).toEqual([
+      'aarch64-manylinux2014',
+      'aarch64-manylinux_2_28',
+    ]);
+    expect(mockCopySourceTree).toHaveBeenCalledTimes(1);
+  });
 
   it('throws for non-CodeZip build type', async () => {
     await expect(packager.pack({ build: 'Docker', runtimeVersion: 'PYTHON_3_12', name: 'a' } as any)).rejects.toThrow(
@@ -97,9 +114,8 @@ describe('PythonCodeZipPackager', () => {
     mockEnsureDirClean.mockResolvedValue(undefined);
     // First platform fails with platform issue, second succeeds
     mockRunSubprocessCapture
-      .mockResolvedValueOnce({ code: 1, stdout: '', stderr: 'platform error', signal: null })
+      .mockResolvedValueOnce({ code: 1, stdout: '', stderr: 'has no usable wheels', signal: null })
       .mockResolvedValueOnce({ code: 0, stdout: '', stderr: '', signal: null });
-    mockDetectUnavailablePlatform.mockReturnValueOnce(true).mockReturnValueOnce(false);
     mockCopySourceTree.mockResolvedValue(undefined);
     mockConvertWindowsScriptsToLinux.mockResolvedValue(undefined);
     mockCreateZipFromDir.mockResolvedValue(undefined);
@@ -116,7 +132,6 @@ describe('PythonCodeZipPackager', () => {
     mockEnsureBinaryAvailable.mockResolvedValue(undefined);
     mockEnsureDirClean.mockResolvedValue(undefined);
     mockRunSubprocessCapture.mockResolvedValue({ code: 1, stdout: '', stderr: 'fatal error', signal: null });
-    mockDetectUnavailablePlatform.mockReturnValue(false);
 
     await expect(packager.pack({ build: 'CodeZip', runtimeVersion: 'PYTHON_3_12', name: 'a' } as any)).rejects.toThrow(
       'fatal error'
@@ -127,8 +142,7 @@ describe('PythonCodeZipPackager', () => {
     mockResolveProjectPaths.mockResolvedValue(defaultPaths);
     mockEnsureBinaryAvailable.mockResolvedValue(undefined);
     mockEnsureDirClean.mockResolvedValue(undefined);
-    mockRunSubprocessCapture.mockResolvedValue({ code: 1, stdout: '', stderr: 'platform err', signal: null });
-    mockDetectUnavailablePlatform.mockReturnValue(true);
+    mockRunSubprocessCapture.mockResolvedValue({ code: 1, stdout: '', stderr: 'has no usable wheels', signal: null });
 
     await expect(packager.pack({ build: 'CodeZip', runtimeVersion: 'PYTHON_3_12', name: 'a' } as any)).rejects.toThrow(
       'all platform candidates'
@@ -137,9 +151,30 @@ describe('PythonCodeZipPackager', () => {
 });
 
 describe('PythonCodeZipPackagerSync', () => {
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => vi.resetAllMocks());
 
   const packager = new PythonCodeZipPackagerSync();
+
+  it.each([
+    'have no usable wheels',
+    'have no wheels with a matching Python ABI tag',
+    'have no wheels with a matching platform tag',
+  ])('retries the next platform for plural uv errors: %s', message => {
+    mockResolveProjectPathsSync.mockReturnValue(defaultPaths);
+    mockRunSubprocessCaptureSync
+      .mockReturnValueOnce({ code: 1, stdout: '', stderr: `numpy>=2.4.0 ${message}`, signal: null })
+      .mockReturnValueOnce({ code: 0, stdout: '', stderr: '', signal: null });
+    mockEnforceZipSizeLimitSync.mockReturnValue(2048);
+
+    const result = packager.packCodeZip({ build: 'CodeZip', runtimeVersion: 'PYTHON_3_14', name: 'agent' } as any);
+
+    expect(result.sizeBytes).toBe(2048);
+    expect(mockRunSubprocessCaptureSync).toHaveBeenCalledTimes(2);
+    expect(
+      mockRunSubprocessCaptureSync.mock.calls.map(call => call[1][call[1].indexOf('--python-platform') + 1])
+    ).toEqual(['aarch64-manylinux2014', 'aarch64-manylinux_2_28']);
+    expect(mockCopySourceTreeSync).toHaveBeenCalledTimes(1);
+  });
 
   it('throws for non-Python runtime', () => {
     expect(() => packager.packCodeZip({ build: 'CodeZip', runtimeVersion: 'NODE_20', name: 'a' } as any)).toThrow(
@@ -167,7 +202,6 @@ describe('PythonCodeZipPackagerSync', () => {
     mockEnsureBinaryAvailableSync.mockReturnValue(undefined);
     mockEnsureDirCleanSync.mockReturnValue(undefined);
     mockRunSubprocessCaptureSync.mockReturnValue({ code: 1, stdout: '', stderr: 'sync fail', signal: null });
-    mockDetectUnavailablePlatform.mockReturnValue(false);
 
     expect(() => packager.packCodeZip({ build: 'CodeZip', runtimeVersion: 'PYTHON_3_12', name: 'a' } as any)).toThrow(
       'sync fail'

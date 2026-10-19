@@ -6,6 +6,15 @@ function result(stdout: string, stderr = '') {
 }
 
 describe('detectUnavailablePlatform', () => {
+  it.each([
+    'have no usable wheels',
+    'have no wheels with a matching Python ABI tag',
+    'have no wheels with a matching platform tag',
+  ])('detects plural uv errors: %s', message => {
+    const stderr = `Because all versions of numpy>=2.4.0 ${message},\nwe can conclude that your requirements are unsatisfiable.`;
+    expect(detectUnavailablePlatform(result('', stderr))).toEqual({ message: stderr });
+  });
+
   it('returns null when output has no platform hints', () => {
     expect(detectUnavailablePlatform(result('Some generic error'))).toBeNull();
   });
