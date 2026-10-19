@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { readEnvFile } from "../../../io/envFile";
 
-const RESERVED_ENV_KEYS = ["PORT", "FASTMCP_PORT", "LOCAL_DEV"] as const;
+const RESERVED_ENV_KEYS = ["PORT", "FASTMCP_PORT", "A2A_PORT", "LOCAL_DEV"] as const;
 
 export type DevEnvironmentInput = {
   projectRoot: string;

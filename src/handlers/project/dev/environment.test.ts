@@ -33,6 +33,7 @@ SHARED="local value"
 AWS_REGION=local-region
 PORT=enc:v1:ignored
 FASTMCP_PORT=enc:v1:ignored
+A2A_PORT=enc:v1:ignored
 LOCAL_DEV=enc:v1:ignored
 MULTILINE="first
 second"
@@ -45,6 +46,7 @@ second"
           { name: "SHARED", value: "runtime" },
           { name: "RUNTIME_ONLY", value: "yes" },
           { name: "PORT", value: "1234" },
+          { name: "A2A_PORT", value: "9000" },
         ]),
       ),
     ).resolves.toEqual({
