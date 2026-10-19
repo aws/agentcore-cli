@@ -38,8 +38,8 @@ export function deployedMessage(
   result: DeployResult,
 ): string {
   return result.tornDown
-    ? `Removed project '${project.name}' from target '${targetName}'`
-    : `Deployed project '${project.name}' to target '${targetName}'`;
+    ? `removed project '${project.name}' from target '${targetName}'`
+    : `deployed project '${project.name}' to target '${targetName}'`;
 }
 
 /**
@@ -60,7 +60,7 @@ export function teardownQuestion(
 export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =>
   createHandler({
     name: "deploy",
-    description: "deploy the project to AWS",
+    description: "build and deploy project resources to an AWS target",
     middlewares: [withV0Deploy(config), ...(config.middlewares ?? [])],
     flags: [
       flag(
@@ -133,7 +133,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         ctx.require(JsonRendererKey).renderJson({ message, ...result });
         return;
       }
-      if (!result.tornDown) config.io.stderr.write(`Next step:\n  ${DEPLOY_NEXT_STEP}\n`);
+      if (!result.tornDown) config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
 

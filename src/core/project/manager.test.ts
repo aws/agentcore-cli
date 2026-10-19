@@ -604,10 +604,10 @@ describe("FsProjectManager.create", () => {
     });
 
     expect(events.flatMap((event) => (event.type === "step" ? [event.message] : []))).toEqual([
-      "Creating project tree",
-      "Installing CDK dependencies with npm",
-      "Syncing Python dependencies with uv",
-      "Initializing git repository",
+      "creating project tree",
+      "installing CDK dependencies with npm",
+      "syncing Python dependencies with uv",
+      "initializing git repository",
     ]);
     expect(project.name).toBe("example");
     expect(project.rootPath).toContain("example");
@@ -1776,7 +1776,7 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    expect(events).toEqual([{ type: "step", message: "Synthesizing CloudFormation templates" }]);
+    expect(events).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
@@ -2023,7 +2023,7 @@ describe("FsProjectManager.deploy", () => {
     region: "us-east-2",
   };
   const CREATED_MESSAGE =
-    `Created default deployment target: account ${STS_ACCOUNT}, ` +
+    `created default deployment target: account ${STS_ACCOUNT}, ` +
     `region us-east-2 (${join("agentcore", "aws-targets.json")})`;
 
   test.each([

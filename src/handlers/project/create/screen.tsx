@@ -244,7 +244,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         ctx.value(TuiExitMessageKey)?.(
           isEmptyProject
             ? emptyProjectCreatedMessage(values.name, china).trimEnd()
-            : `Next step:\n  cd ${values.name}/ && agentcore`,
+            : `next step:\n  cd ${values.name}/ && agentcore`,
         );
         exit();
       }}

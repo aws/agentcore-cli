@@ -64,7 +64,7 @@ describe("project create", () => {
       operation: "create",
       project: { name: "JsonProject", path: projectRoot },
     });
-    expect(io.stderr()).not.toContain("Created project");
+    expect(io.stderr()).not.toContain("created project");
     expect(io.stderr()).not.toContain("Next steps");
   });
 
@@ -110,9 +110,9 @@ describe("project create", () => {
       { command: ["git", "init"], cwd: projectRoot },
     ]);
     // An empty project has nothing to run or deploy yet, so the next steps point at `add`.
-    expect(io.stderr()).toContain("Created empty project 'MyAgent' in ./MyAgent.");
+    expect(io.stderr()).toContain("created empty project 'MyAgent' in ./MyAgent.");
     expect(io.stderr()).toMatch(
-      /Next steps:\n  cd MyAgent\n  agentcore add harness +add a config-based agent/,
+      /next steps:\n  cd MyAgent\n  agentcore add harness +add a config-based agent/,
     );
     expect(io.stderr()).toMatch(/agentcore add runtime +add a code-based agent you write yourself/);
     expect(io.stderr()).toContain("agentcore add --help");
@@ -136,7 +136,7 @@ describe("project create", () => {
     expect(spec.runtimes ?? []).toEqual([]);
     expect(spec.harnesses ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app"))).toBe(true);
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore add harness");
+    expect(io.stderr()).toContain("next steps:\n  cd MyAgent\n  agentcore add harness");
   });
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
@@ -171,12 +171,12 @@ describe("project create", () => {
       { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent") },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
-    expect(io.stderr()).toContain("Creating project tree");
-    expect(io.stderr()).toContain("Installing CDK dependencies with npm");
-    expect(io.stderr()).toContain("Syncing Python dependencies with uv");
-    expect(io.stderr()).toContain("Initializing git repository");
-    expect(io.stderr()).toContain("Created project 'MyAgent' in ./MyAgent");
-    expect(io.stderr()).toContain("Next steps:\n  cd MyAgent\n  agentcore dev");
+    expect(io.stderr()).toContain("creating project tree");
+    expect(io.stderr()).toContain("installing CDK dependencies with npm");
+    expect(io.stderr()).toContain("syncing Python dependencies with uv");
+    expect(io.stderr()).toContain("initializing git repository");
+    expect(io.stderr()).toContain("created project 'MyAgent' in ./MyAgent");
+    expect(io.stderr()).toContain("next steps:\n  cd MyAgent\n  agentcore dev");
   });
 
   test("--skip-install and --skip-git run no commands", async () => {
@@ -1114,7 +1114,7 @@ describe("project build", () => {
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
     ]);
-    expect(io.stderr()).toContain("Synthesizing CloudFormation templates");
+    expect(io.stderr()).toContain("synthesizing CloudFormation templates");
     expect(io.stderr()).toContain("Built project 'MyAgent'");
   });
 
@@ -1241,7 +1241,7 @@ describe("create in China regions", () => {
     cleanups.push((await inTempDirectory()).cleanup);
     const { io } = await run(["create", "--name", "CnDefault", ...skips, "--region", "cn-north-1"]);
     // Harnesses are not available in China, so the next steps skip `add harness`.
-    expect(io.stderr()).toContain("Next steps:\n  cd CnDefault\n  agentcore add runtime");
+    expect(io.stderr()).toContain("next steps:\n  cd CnDefault\n  agentcore add runtime");
     expect(io.stderr()).not.toContain("add harness");
   });
 

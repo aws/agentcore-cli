@@ -919,7 +919,7 @@ describe("project dev harnesses", () => {
     expect(subject.ui.starts).toEqual([]);
     expect(subject.ui.opened).toEqual([]);
     expect(subject.codeZip.inputs).toEqual([]);
-    expect(subject.io.stderr()).toContain("Next step:\n  agentcore invoke");
+    expect(subject.io.stderr()).toContain("next step:\n  agentcore invoke");
   });
 
   test.each([

@@ -1406,7 +1406,7 @@ describe("project create dispatch", () => {
     stdin.write("\r");
     await outcome;
 
-    expect(streams.stdout()).toContain("Next step:\n  cd DemoApp/ && agentcore");
+    expect(streams.stdout()).toContain("next step:\n  cd DemoApp/ && agentcore");
   }, 10000);
 
   test("bare create without a TTY stays headless and reports the missing --name", async () => {
@@ -1465,6 +1465,6 @@ describe("project create dispatch", () => {
     ]);
 
     expect(existsSync(join(directory, "FlagApp", "agentcore", "agentcore.json"))).toBe(true);
-    expect(streams.stderr()).toContain("Created empty project 'FlagApp'");
+    expect(streams.stderr()).toContain("created empty project 'FlagApp'");
   }, 10000);
 });

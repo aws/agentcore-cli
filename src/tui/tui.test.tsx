@@ -233,7 +233,7 @@ describe("TUI resize", () => {
 
 describe("TUI launch", () => {
   const CREATE_ROW = "create a new project";
-  const BANNER = "No project detected - create a new project to get started";
+  const BANNER = "no project detected - create a new project to get started";
 
   test("an unrelated TUI command does not resolve the current project", async () => {
     const core = new TestCoreClient();
@@ -279,7 +279,10 @@ describe("TUI launch", () => {
     const out = await launchRootMenu(undefined);
     expect(out.indexOf(BANNER)).toBeGreaterThan(-1);
     expect(out.indexOf(BANNER)).toBeLessThan(out.indexOf(CREATE_ROW));
-    for (const hidden of ["add project resources", "deploy the project to AWS"]) {
+    for (const hidden of [
+      "add project resources",
+      "build and deploy project resources to an AWS target",
+    ]) {
       expect(out).not.toContain(hidden);
     }
     expect(out).toContain("evaluate and optimize");
@@ -291,7 +294,10 @@ describe("TUI launch", () => {
     expect(out).not.toContain(BANNER);
     for (const shown of [
       "add project resources",
-      "deploy the project to AWS",
+      "develop and test project agents",
+      "build and deploy project resources to an AWS target",
+      "inspect deployed project resources for an AWS target",
+      "manage config-defined agents and their versions",
       "evaluate and optimize",
     ]) {
       expect(out).toContain(shown);

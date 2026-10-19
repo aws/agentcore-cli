@@ -132,7 +132,7 @@ describe("menu rendering", () => {
 
   test("lists the current command's subcommands with their descriptions", async () => {
     const r = renderScreen("/agentcore");
-    await waitForText(r.lastFrame, "No project detected");
+    await waitForText(r.lastFrame, "no project detected");
 
     const frame = r.lastFrame()!;
     const entries = menuEntries(frame);
@@ -302,7 +302,7 @@ describe("menu rendering", () => {
   });
 
   test("shows the no-project banner only when no enclosing project is detected", async () => {
-    const banner = "No project detected - create a new project to get started";
+    const banner = "no project detected - create a new project to get started";
 
     const noProjectCore = new TestCoreClient();
     noProjectCore.projectManager.resolve = async () => undefined;

@@ -83,14 +83,14 @@ export function emptyProjectNextSteps(name: string, china: boolean): string[] {
   ];
 }
 
-export const EMPTY_PROJECT_SUMMARY = "It has no agents or other resources yet.";
+export const EMPTY_PROJECT_SUMMARY = "it has no agents or other resources yet.";
 
 /** The full message printed after creating an empty project. */
 export function emptyProjectCreatedMessage(name: string, china: boolean): string {
   return [
-    `Created empty project '${name}' in ./${name}. ${EMPTY_PROJECT_SUMMARY}`,
+    `created empty project '${name}' in ./${name}. ${EMPTY_PROJECT_SUMMARY}`,
     "",
-    "Next steps:",
+    "next steps:",
     ...emptyProjectNextSteps(name, china).map((step) => `  ${step}`),
     "",
   ].join("\n");
@@ -180,9 +180,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
             config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
             return;
           }
-          config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
+          config.io.stderr.write(`created project '${name}' in ./${name}\n`);
           config.io.stderr.write(
-            `Next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+            `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
           );
         },
       );

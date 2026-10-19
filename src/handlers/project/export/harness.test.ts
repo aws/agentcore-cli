@@ -173,12 +173,12 @@ describe("project export harness handler", () => {
     });
 
     expect(subject.io.stderr()).toContain(
-      `Next steps:\n  Review the generated code in ${join("app", "exportmeAgent")}\n  agentcore build\n  agentcore deploy`,
+      `next steps:\n  review the generated code in ${join("app", "exportmeAgent")}\n  agentcore build\n  agentcore deploy`,
     );
     expect(subject.io.stderr()).toContain(
-      `Exported harness 'exportme' to runtime agent 'exportmeAgent' (${join("app", "exportmeAgent")})\nNext steps:`,
+      `exported harness 'exportme' to runtime agent 'exportmeAgent' (${join("app", "exportmeAgent")})\nnext steps:`,
     );
-    expect(subject.io.stderr()).toContain("✓ Writing EXPORT_NOTES.md");
+    expect(subject.io.stderr()).toContain("✓ writing EXPORT_NOTES.md");
     expect(subject.io.stdout()).toBe("");
   });
 
@@ -240,9 +240,9 @@ describe("project export harness handler", () => {
       notesPath: join(projectRoot, "app", "exportmeAgent", "EXPORT_NOTES.md"),
       notes: [],
     });
-    expect(subject.io.stderr()).not.toContain("Next steps:");
-    expect(subject.io.stderr()).not.toContain("Exported harness");
-    expect(subject.io.stderr()).toContain("Writing EXPORT_NOTES.md");
+    expect(subject.io.stderr()).not.toContain("next steps:");
+    expect(subject.io.stderr()).not.toContain("exported harness");
+    expect(subject.io.stderr()).toContain("writing EXPORT_NOTES.md");
     expect(subject.io.stderr()).not.toContain(String.fromCharCode(0x1b));
     expect(subject.io.stderr()).not.toContain("✓");
   });
@@ -282,7 +282,7 @@ describe("project export harness handler", () => {
       "exported_arn",
     );
     expect(subject.io.stderr()).toContain(
-      `Exported harness 'remote_harness' to runtime agent 'exported_arn' (${join("app", "exported_arn")})`,
+      `exported harness 'remote_harness' to runtime agent 'exported_arn' (${join("app", "exported_arn")})`,
     );
   });
 
@@ -402,7 +402,7 @@ describe("project export harness handler", () => {
       agentName: "RemoteHarnessAgent",
       agentPath,
     });
-    expect(subject.io.stderr()).not.toContain("Next steps:");
+    expect(subject.io.stderr()).not.toContain("next steps:");
     expect(process.cwd()).toBe(path);
   });
 

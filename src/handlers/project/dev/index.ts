@@ -114,8 +114,7 @@ function renderStatus({
 export const createDevProjectHandler = (config: DevProjectHandlerConfig) =>
   createHandler({
     name: "dev",
-    description:
-      "test project changes: run Runtimes locally or deploy for Harnesses; --mode browser opens Agent Inspector.",
+    description: "develop and test project agents",
     middlewares: config.middlewares,
     flags: [
       flag("agent", "runtime or harness to run", z.string().min(1).optional()),
@@ -265,7 +264,7 @@ async function runHarnessDev({
     );
   }
   if (input.mode === "headless" && (input.skipDeploy || ctx.require(JsonKey))) {
-    config.io.stderr.write(`Next step:\n  ${DEPLOY_NEXT_STEP}\n`);
+    config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);
   }
   if (input.mode === "headless") return;
   const project = ctx.require(ProjectKey);

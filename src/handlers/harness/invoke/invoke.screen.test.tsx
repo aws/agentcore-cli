@@ -121,7 +121,7 @@ describe("invoke picker screen", () => {
 
     await waitForText(r.lastFrame, "MyHarness");
     await r.press("escape");
-    await waitForText(r.lastFrame, "manage config-defined agents: model, prompt, and tools");
+    await waitForText(r.lastFrame, "manage config-defined agents and their versions");
     r.unmount();
   });
 });

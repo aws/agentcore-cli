@@ -221,7 +221,7 @@ export class CdkBackend implements ProjectBackend {
       yield { type: "warning", message: compatibilityWarning };
     }
 
-    yield { type: "step", message: "Synthesizing CloudFormation templates" };
+    yield { type: "step", message: "synthesizing CloudFormation templates" };
     try {
       yield* withOutputEvents((emit) => {
         // Chunks still go to the debug log whole; the splitter reassembles them
@@ -259,7 +259,7 @@ export class CdkBackend implements ProjectBackend {
     input: DeployBackendInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
-    yield { type: "step", message: `Verifying AWS account ${target.account}` };
+    yield { type: "step", message: `verifying AWS account ${target.account}` };
     const credentials = await this.credentialsForTarget(target);
 
     // Fail on local setup errors (missing toolchain/deps) and malformed state
@@ -305,12 +305,12 @@ export class CdkBackend implements ProjectBackend {
     // deploy on it either — spans are best-effort, so any setup error just skips.
     // Opt out entirely via the spec.
     if (input.transactionSearch !== false) {
-      yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
+      yield { type: "step", message: "enabling CloudWatch Transaction Search" };
       try {
         await this.enableTransactionSearch(target, credentials);
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
-        yield { type: "step", message: `Skipping Transaction Search: ${detail}` };
+        yield { type: "step", message: `skipping Transaction Search: ${detail}` };
       }
     }
 
@@ -326,7 +326,7 @@ export class CdkBackend implements ProjectBackend {
 
     if (bootstrap.kind !== "current") {
       const environment = `aws://${target.account}/${target.region}`;
-      yield { type: "step", message: `Bootstrapping ${environment}` };
+      yield { type: "step", message: `bootstrapping ${environment}` };
       const template = await this.loadBootstrapTemplate();
       try {
         yield* this.runCdk(
@@ -342,7 +342,7 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    yield { type: "step", message: `Deploying ${artifact.id} (usually takes a few minutes)` };
+    yield { type: "step", message: `deploying ${artifact.id} (usually takes a few minutes)` };
     const { outputs, stackArn } = yield* this.runCdk(
       { kind: "deploy", stackArtifactId: artifact.id },
       options,
@@ -458,7 +458,7 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
-    yield { type: "step", message: `Removing stack ${artifact.stackName}` };
+    yield { type: "step", message: `removing stack ${artifact.stackName}` };
     yield* this.runCdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
     // After the stack, since a resource in it may still be using the provider. The
     // declared credentials are included because `agentcore remove all` empties the spec

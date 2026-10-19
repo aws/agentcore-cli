@@ -112,7 +112,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
 
       const agentPath = relative(process.cwd(), result.agentPath);
       config.io.stderr.write(
-        `Exported harness '${result.harnessName}' to runtime agent '${result.agentName}' (${agentPath})\n`,
+        `exported harness '${result.harnessName}' to runtime agent '${result.agentName}' (${agentPath})\n`,
       );
       const reviewNotes =
         result.notes.length > 0
@@ -122,7 +122,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
         ? ""
         : `  cd ${relative(process.cwd(), dirname(dirname(result.agentPath)))}\n`;
       config.io.stderr.write(
-        `Next steps:\n  Review the generated code in ${agentPath}${reviewNotes}\n${changeDirectory}  agentcore build\n  agentcore deploy\n`,
+        `next steps:\n  review the generated code in ${agentPath}${reviewNotes}\n${changeDirectory}  agentcore build\n  agentcore deploy\n`,
       );
     },
   });

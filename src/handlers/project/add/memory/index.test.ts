@@ -59,8 +59,8 @@ describe("project add memory", () => {
     const { io } = await run(["add", "memory", "--name", "customer_memory"], { isTTY: true });
 
     const frames = stripAnsi(io.stderr());
-    expect(frames).toContain("✓ Reading project spec file");
-    expect(frames).toContain("✓ Updating project spec file");
+    expect(frames).toContain("✓ reading project spec file");
+    expect(frames).toContain("✓ updating project spec file");
     expect(frames).toContain("added memory 'customer_memory' to 'TestProject'");
     expect(io.stdout()).toBe("");
   });
@@ -73,7 +73,7 @@ describe("project add memory", () => {
     });
 
     expect(io.stderr()).not.toContain(String.fromCharCode(0x1b));
-    expect(io.stderr()).toContain("Reading project spec file");
+    expect(io.stderr()).toContain("reading project spec file");
     expect(JSON.parse(io.stdout())).toMatchObject({
       operation: "add",
       resource: { type: "memory", name: "customer_memory" },

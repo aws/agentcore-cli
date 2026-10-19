@@ -513,11 +513,11 @@ export class FsProjectManager implements ProjectManager {
     // Validate required tools exist before starting creation flow
     await this.checkCreateDependencies(input);
 
-    yield { type: "step", message: "Creating project tree" };
+    yield { type: "step", message: "creating project tree" };
     await projectTree.write(destination);
 
     if (envEntries.length > 0) {
-      yield { type: "step", message: "Writing model provider API key to agentcore/.env.local" };
+      yield { type: "step", message: "writing model provider API key to agentcore/.env.local" };
       await new EnvLocalFile(destination).insertIfNew(envEntries);
     }
 
@@ -541,7 +541,7 @@ export class FsProjectManager implements ProjectManager {
     // A failed step leaves the scaffolded files in place; the error carries the
     // failing command, its directory, and its output.
     if (!input.skipInstall) {
-      yield { type: "step", message: "Installing CDK dependencies with npm" };
+      yield { type: "step", message: "installing CDK dependencies with npm" };
       yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
 
       if (scaffoldRuntimeInput) {
@@ -558,7 +558,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     if (!input.skipGit) {
-      yield { type: "step", message: "Initializing git repository" };
+      yield { type: "step", message: "initializing git repository" };
       yield* this.run(["git", "init"], destination);
     }
 
@@ -594,7 +594,7 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const projectSpecKey = toProjectSpecKey(input.resourceType);
 
-    yield { type: "step", message: `Reading project spec file at '${agentCoreSpecPath}'` };
+    yield { type: "step", message: `reading project spec file at '${agentCoreSpecPath}'` };
     const projectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
     const existingResources = projectSpec[projectSpecKey] ?? [];
@@ -754,7 +754,7 @@ export class FsProjectManager implements ProjectManager {
           }
         }
 
-        yield { type: "step", message: `Scaffolding harness in project` };
+        yield { type: "step", message: `scaffolding harness in project` };
         const outputPath = join(project.rootPath, "app", harnessName);
         // Rollback removes only what this add created, never a folder the user already had.
         if (!existsSync(outputPath)) scaffoldedPaths.push(outputPath);
@@ -768,7 +768,7 @@ export class FsProjectManager implements ProjectManager {
         if (result.spec.harnesses) projectSpec.harnesses.push(...result.spec.harnesses);
         if (harnessEnvEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
-          yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+          yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
           const { skipped } = await envFile.insertIfNew(harnessEnvEntries);
           for (const key of skipped) {
             yield {
@@ -793,7 +793,7 @@ export class FsProjectManager implements ProjectManager {
         const folderExisted = existsSync(outputPath);
         if (isRuntimeDocsConfig(input.resourceConfig)) {
           const relativeFolder = `app/${input.resourceConfig.name}`;
-          yield { type: "step", message: `Writing runtime docs to '${relativeFolder}'` };
+          yield { type: "step", message: `writing runtime docs to '${relativeFolder}'` };
           const tree = await runtimeDocsTree(
             { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
             input.resourceConfig,
@@ -822,7 +822,7 @@ export class FsProjectManager implements ProjectManager {
         }
 
         await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
-        yield { type: "step", message: "Scaffolding runtime in project" };
+        yield { type: "step", message: "scaffolding runtime in project" };
         if (!folderExisted) scaffoldedPaths.push(outputPath);
 
         // Tracked as each file is written, so a failed write into an existing
@@ -842,7 +842,7 @@ export class FsProjectManager implements ProjectManager {
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
         if (envEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
-          yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+          yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
           const { skipped } = await envFile.insertIfNew(envEntries);
           for (const key of skipped) {
             yield {
@@ -863,7 +863,7 @@ export class FsProjectManager implements ProjectManager {
         projectSpec.credentials.push(credential);
         if (input.envEntries?.length) {
           envFile = new EnvLocalFile(project.rootPath);
-          yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+          yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
           const { skipped } = await envFile.insertIfNew(input.envEntries);
           for (const key of skipped) {
             yield {
@@ -890,7 +890,7 @@ export class FsProjectManager implements ProjectManager {
       }
       case "evaluator": {
         if (input.scaffold) {
-          yield { type: "step", message: "Scaffolding evaluator in project" };
+          yield { type: "step", message: "scaffolding evaluator in project" };
           const outputPath = join(project.rootPath, "app", input.scaffold.name);
           if (existsSync(outputPath))
             throw new InputValidationError(
@@ -984,7 +984,7 @@ export class FsProjectManager implements ProjectManager {
       }
     }
 
-    yield { type: "step", message: `Updating project spec file at '${agentCoreSpecPath}'` };
+    yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
 
     let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
     try {
@@ -1272,7 +1272,7 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const { targetAgentName } = input;
 
-    yield { type: "step", message: `Reading project spec file at '${agentCoreSpecPath}'` };
+    yield { type: "step", message: `reading project spec file at '${agentCoreSpecPath}'` };
     const projectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
     // Resolve the harness spec + system prompt: from the prefetched service
@@ -1300,7 +1300,7 @@ export class FsProjectManager implements ProjectManager {
       harnessDir = join(project.rootPath, entry.path);
       yield {
         type: "step",
-        message: `Reading harness configuration from '${join(entry.path, "harness.yaml")}'`,
+        message: `reading harness configuration from '${join(entry.path, "harness.yaml")}'`,
       };
       const harnessPath = join(harnessDir, "harness.yaml");
       const parsed = HarnessYamlSchema.safeParse(await readYamlFile(harnessPath));
@@ -1354,7 +1354,7 @@ export class FsProjectManager implements ProjectManager {
 
     yield {
       type: "step",
-      message: `Mapping harness '${harnessName}' to the Strands runtime template`,
+      message: `mapping harness '${harnessName}' to the Strands runtime template`,
     };
     const plan = mapHarnessToExportPlan({
       harnessName,
@@ -1366,7 +1366,7 @@ export class FsProjectManager implements ProjectManager {
       modelAdditionalParams: input.prefetched?.modelAdditionalParams,
     });
 
-    yield { type: "step", message: `Rendering agent code at 'app/${targetAgentName}'` };
+    yield { type: "step", message: `rendering agent code at 'app/${targetAgentName}'` };
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource: this.assetSource },
       { assetDir: "templates/export-harness-python" },
@@ -1396,7 +1396,7 @@ export class FsProjectManager implements ProjectManager {
         await writeFile(join(agentDir, fileName), `${JSON.stringify(policyDoc, null, 2)}\n`);
       }
 
-      yield { type: "step", message: `Writing ${EXPORT_NOTES_FILENAME}` };
+      yield { type: "step", message: `writing ${EXPORT_NOTES_FILENAME}` };
       const notesPath = join(agentDir, EXPORT_NOTES_FILENAME);
       await writeFile(
         notesPath,
@@ -1410,7 +1410,7 @@ export class FsProjectManager implements ProjectManager {
 
       if (plan.envEntries.length > 0) {
         envFile = new EnvLocalFile(project.rootPath);
-        yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+        yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
         const { skipped } = await envFile.insertIfNew(plan.envEntries);
         for (const key of skipped) {
           yield {
@@ -1420,7 +1420,7 @@ export class FsProjectManager implements ProjectManager {
         }
       }
 
-      yield { type: "step", message: `Updating project spec file at '${agentCoreSpecPath}'` };
+      yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
       projectSpec.runtimes.push(plan.runtime);
       for (const credential of plan.credentials) {
         if (!projectSpec.credentials.some((candidate) => candidate.name === credential.name)) {
@@ -1559,7 +1559,7 @@ export class FsProjectManager implements ProjectManager {
       yield {
         type: "step",
         message:
-          `Created default deployment target: account ${target.account}, ` +
+          `created default deployment target: account ${target.account}, ` +
           `region ${target.region} (${join("agentcore", "aws-targets.json")})`,
       };
     }
@@ -1883,11 +1883,11 @@ export class FsProjectManager implements ProjectManager {
     if (input && !templateManagesDependencies(resolveRuntimeTemplateProfile(input))) return;
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
-      yield { type: "step", message: "Syncing Python dependencies with uv" };
+      yield { type: "step", message: "syncing Python dependencies with uv" };
       yield* this.run(["uv", "sync"], appDir);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
-      yield { type: "step", message: "Installing Node dependencies with npm" };
+      yield { type: "step", message: "installing Node dependencies with npm" };
       yield* this.run(NPM_INSTALL, appDir, npmProgressLine);
     }
   }
@@ -1906,7 +1906,7 @@ export class FsProjectManager implements ProjectManager {
       if (!existsSync(join(appDir, manifest)) || existsSync(join(appDir, lockfile))) {
         continue;
       }
-      yield { type: "step", message: `Generating ${lockfile} for container build` };
+      yield { type: "step", message: `generating ${lockfile} for container build` };
       try {
         yield* this.run(command, appDir);
       } catch {

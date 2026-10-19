@@ -60,7 +60,7 @@ describe("project build handler", () => {
   test("writes step lines and the success line to stderr, nothing to stdout", async () => {
     const subject = testBuildCommand({
       events: [
-        { type: "step", message: "Synthesizing CloudFormation templates" },
+        { type: "step", message: "synthesizing CloudFormation templates" },
         { type: "output", line: "synth chatter" },
       ],
     });
@@ -68,7 +68,7 @@ describe("project build handler", () => {
 
     await subject.run();
 
-    expect(subject.io.stderr()).toContain("Synthesizing CloudFormation templates");
+    expect(subject.io.stderr()).toContain("synthesizing CloudFormation templates");
     expect(subject.io.stderr()).toContain("Built project 'orders'");
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("synth chatter");

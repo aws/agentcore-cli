@@ -19,7 +19,7 @@ import {
 } from "./index";
 
 const BREADCRUMB = ["agentcore", "deploy"];
-const DESCRIPTION = "deploy the project to AWS";
+const DESCRIPTION = "build and deploy project resources to an AWS target";
 const PROJECT_MENU = "/agentcore";
 
 // DeployProjectScreen runs the same projectManager.deploy generator the command

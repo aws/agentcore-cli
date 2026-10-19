@@ -351,8 +351,8 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).toContain("Preparing deployment\nDeploying stack");
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("CREATE_IN_PROGRESS");
-    expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
-    expect(subject.io.stderr()).toContain("Next step:\n  agentcore invoke");
+    expect(subject.io.stderr()).toContain("deployed project 'orders' to target 'default'");
+    expect(subject.io.stderr()).toContain("next step:\n  agentcore invoke");
     // Stack outputs are rendered only with --json; without it stdout stays empty.
     expect(subject.io.stdout()).toBe("");
   });
@@ -379,7 +379,7 @@ describe("project deploy handler", () => {
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(STAGING_TARGET);
     expect(JSON.parse(subject.io.stdout())).toEqual({
-      message: "Deployed project 'orders' to target 'staging'",
+      message: "deployed project 'orders' to target 'staging'",
       ...result,
     });
     expect(subject.io.stderr()).not.toContain("Next step");
@@ -392,7 +392,7 @@ describe("project deploy handler", () => {
     await subject.run(["--yes", "--json"]);
 
     expect(JSON.parse(subject.io.stdout())).toEqual({
-      message: "Removed project 'orders' from target 'default'",
+      message: "removed project 'orders' from target 'default'",
       outputs: {},
       tornDown: true,
     });
@@ -460,7 +460,7 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).toContain("Project 'orders' declares no resources to deploy.");
     expect(subject.io.stderr()).toContain(TEARDOWN_PROMPT);
     expect(subject.confirmations).toEqual([true]);
-    expect(subject.io.stderr()).toContain("Removed project 'orders' from target 'default'");
+    expect(subject.io.stderr()).toContain("removed project 'orders' from target 'default'");
   });
 
   test.each([
@@ -485,7 +485,7 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).toContain("(y/N)");
     // Declined before the generator started: the backend never ran.
     expect(subject.calls).toEqual([]);
-    expect(subject.io.stderr()).not.toContain("Removed project");
+    expect(subject.io.stderr()).not.toContain("removed project");
   });
 
   test("cancels when interactive input closes without an answer", async () => {
@@ -505,7 +505,7 @@ describe("project deploy handler", () => {
       project_harness_count: 0,
     });
     expect(subject.calls).toEqual([]);
-    expect(subject.io.stderr()).not.toContain("Removed project");
+    expect(subject.io.stderr()).not.toContain("removed project");
   });
 
   // The spec-level check can miss (a hand-edited CDK app can synthesize an
@@ -570,16 +570,16 @@ describe("project deploy handler", () => {
 
   test("says the project was removed when the deploy tore the stack down", async () => {
     const subject = await testDeployCommand({ outputs: {}, tornDown: true }, [
-      { type: "step", message: "Removing stack AgentCore-orders-default" },
+      { type: "step", message: "removing stack AgentCore-orders-default" },
     ]);
     await inProjectWithTargets();
 
     await subject.run(["--yes"]);
 
-    expect(subject.io.stderr()).toContain("Removing stack AgentCore-orders-default");
-    expect(subject.io.stderr()).toContain("Removed project 'orders' from target 'default'");
+    expect(subject.io.stderr()).toContain("removing stack AgentCore-orders-default");
+    expect(subject.io.stderr()).toContain("removed project 'orders' from target 'default'");
     // "Deployed" would be the wrong word for a stack that no longer exists.
-    expect(subject.io.stderr()).not.toContain("Deployed project");
+    expect(subject.io.stderr()).not.toContain("deployed project");
     // There is nothing left to invoke.
     expect(subject.io.stderr()).not.toContain("agentcore invoke");
   });
@@ -619,9 +619,9 @@ describe("project deploy handler", () => {
       region: "us-west-2",
     });
     expect(subject.io.stderr()).toContain(
-      "Created default deployment target: account 111122223333, region us-west-2",
+      "created default deployment target: account 111122223333, region us-west-2",
     );
-    expect(subject.io.stderr()).toContain("Deployed project 'orders' to target 'default'");
+    expect(subject.io.stderr()).toContain("deployed project 'orders' to target 'default'");
     expect(await Bun.file(join(projectRoot, "agentcore", "aws-targets.json")).json()).toEqual([
       { name: "default", account: "111122223333", region: "us-west-2" },
     ]);

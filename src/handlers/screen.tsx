@@ -10,7 +10,7 @@ import { LoadingFrame, useProjectDetected } from "./project/ProjectGate";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const ROOT_CLI_SECTION_COMMANDS = ["update"];
-const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
+const NO_PROJECT_ALERT = "no project detected - create a new project to get started";
 // migrate is a one-off command-line upgrade of a v0 project; it is never a menu entry.
 const ALWAYS_HIDDEN_OPTIONS = ["migrate"];
 // build is a step deploy already runs; it stays a command but not a menu entry.
