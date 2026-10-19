@@ -73,7 +73,6 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <Box width={columns} height={rows} flexDirection="column">
-      {showV0ProjectBanner ? <V0ProjectBanner /> : null}
       {bannerVisible ? banner : null}
       <Box ref={headerRef} flexShrink={0}>
         <Header breadcrumb={breadcrumb} description={description} />
@@ -81,6 +80,7 @@ export const Layout: React.FC<LayoutProps> = ({
       <Box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="column">
         {content}
       </Box>
+      {showV0ProjectBanner ? <V0ProjectBanner /> : null}
       <Footer keys={keyHints} />
     </Box>
   );

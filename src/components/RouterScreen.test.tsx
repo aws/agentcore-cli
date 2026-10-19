@@ -15,6 +15,8 @@ import {
 import { glyphs } from "./ui/_core";
 import { createProjectHandlers } from "../handlers/project";
 import type { Project } from "../handlers/project/types";
+import { ProjectDetectedKey, V0ProjectDetectedKey } from "../handlers/project/context";
+import { V0_PROJECT_TUI_BANNER } from "../handlers/project/v0Notice";
 
 afterEach(cleanupScreens);
 
@@ -52,6 +54,23 @@ function menuGroups(frame: string): { title: string | undefined; names: string[]
 // rendered frames — behavior a user would see, not internal state.
 
 describe("menu rendering", () => {
+  test("places the v0 compatibility banner immediately above the footer", async () => {
+    const screen = renderScreen("/agentcore", {
+      withContext: (ctx) =>
+        ctx.withValue(ProjectDetectedKey, true).withValue(V0ProjectDetectedKey, true),
+    });
+    await waitForText(screen.lastFrame, V0_PROJECT_TUI_BANNER);
+
+    const lines = (screen.lastFrame() ?? "").split("\n");
+    const bannerRow = lines.findIndex((line) => line.includes(V0_PROJECT_TUI_BANNER));
+    const footerHintRow = lines.findIndex(
+      (line) => line.includes("ctrl+c") && line.includes("quit"),
+    );
+
+    expect(bannerRow).toBe(footerHintRow - 2);
+    expect(lines[bannerRow + 1]?.trim()).toMatch(/^─+$/);
+  });
+
   test.each([
     {
       path: "/agentcore/gateway",
