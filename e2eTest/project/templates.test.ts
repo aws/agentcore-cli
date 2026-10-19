@@ -146,6 +146,8 @@ const A2aResponseSchema = z.object({
 
 /** The runtime `agentcore create --template` scaffolds (DEFAULT_CREATE_RUNTIME_NAME). */
 const CREATED_RUNTIME_NAME = "agent";
+/** Keep concurrent local-dev processes off protocol defaults and one another. */
+const LOCAL_DEV_PORT_BASE = 18080;
 
 // Each template gets its own project from `agentcore create --template`, the
 // command that scaffolds template code (`add runtime` only writes docs). The
@@ -169,8 +171,14 @@ describe(
       },
       async (runtime) => {
         const projectDir = await createTemplateProject(cli, runtime);
+        let scenarioCompleted = false;
         try {
-          await invokeLocally(cli, runtime, projectDir);
+          await invokeLocally(
+            cli,
+            runtime,
+            projectDir,
+            LOCAL_DEV_PORT_BASE + RUNTIME_TEMPLATES.indexOf(runtime),
+          );
 
           const deployment = parseResult(
             DeployResponseSchema,
@@ -208,10 +216,13 @@ describe(
             ),
           );
           expect(removed.operation).toBe("remove");
+          scenarioCompleted = true;
         } finally {
           // Tear the stack down even when a step above failed.
           await cli.run(["remove", "all", "--yes", "--json"], projectDir);
-          parseResult(JsonObjectSchema, await cli.run(["deploy", "--yes", "--json"], projectDir));
+          const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
+          // A cleanup error must not replace the scenario's primary diagnostic.
+          if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
         }
       },
     );
@@ -242,6 +253,7 @@ async function invokeLocally(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
   projectDir: string,
+  devPort: number,
 ): Promise<void> {
   let port: number | undefined;
   let pendingOutput = "";
@@ -259,7 +271,7 @@ async function invokeLocally(
     }
   };
 
-  const dev = cli.start(["dev", "--mode", "headless"], projectDir);
+  const dev = cli.start(["dev", "--mode", "headless", "--port", String(devPort)], projectDir);
   dev.stdout?.on("data", captureDevOutput);
   dev.stderr?.on("data", captureDevOutput);
   dev.stdout?.resume();
