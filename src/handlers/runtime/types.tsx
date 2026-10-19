@@ -51,7 +51,7 @@ export type RuntimeShellRequest = {
   runtimeSessionId?: string;
   shellId?: string;
   bearerToken?: string;
-  onReconnect?: (reconnected: boolean) => void | Promise<void>;
+  onReconnect?: () => void | Promise<void>;
 };
 
 export type RuntimeShellFrame =

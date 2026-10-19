@@ -157,17 +157,15 @@ describe("runtime shell command", () => {
     ).not.toContain("--bearer-token");
   });
 
-  test("reports whether reconnect preserved the existing shell", async () => {
+  test("reports a restored shell connection", async () => {
     const subject = harness();
 
     await subject.run("--id", RUNTIME_ID, "--qualifier", "prod");
     const request = subject.core.runtime.calls.find((call) => call.method === "openRuntimeShell")
       ?.args[0] as RuntimeShellRequest;
-    await request.onReconnect?.(true);
-    await request.onReconnect?.(false);
+    await request.onReconnect?.();
 
-    expect(subject.io.stderr()).toContain("Reattached to existing shell.");
-    expect(subject.io.stderr()).toContain("Previous shell unavailable; started a new shell.");
+    expect(subject.io.stderr()).toContain("Shell connection restored.");
   });
 
   test.each([400, 403])(

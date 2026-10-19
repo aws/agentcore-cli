@@ -120,12 +120,9 @@ describe("createRuntimeShellOpener", () => {
     ]);
   });
 
-  test("preserves the SDK reconnect outcome callback", async () => {
+  test("passes the reconnect callback through to the SDK", async () => {
     const opens: RuntimeShellSdkOpenInput[] = [];
-    const outcomes: boolean[] = [];
-    const onReconnect = async (reconnected: boolean) => {
-      outcomes.push(reconnected);
-    };
+    const onReconnect = async () => {};
     const opener = createRuntimeShellOpener({
       createClient: () => ({
         openShell: async (input) => {
@@ -137,10 +134,8 @@ describe("createRuntimeShellOpener", () => {
     });
 
     await opener({ ...REQUEST, onReconnect }, { region: "us-west-2" });
-    await opens[0]?.reconnectConfig?.onReconnect?.(false);
 
     expect(opens[0]?.reconnectConfig?.onReconnect).toBe(onReconnect);
-    expect(outcomes).toEqual([false]);
   });
 
   test("translates stdout and stderr frames and delegates writes", async () => {

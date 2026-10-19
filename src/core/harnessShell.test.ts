@@ -266,7 +266,7 @@ describe("Harness shell connection", () => {
           }
         }
       }, 20);
-      const outcomes: boolean[] = [];
+      let reconnects = 0;
       let session: Awaited<ReturnType<typeof value.open>> | undefined;
       try {
         session = await value.open(
@@ -274,8 +274,8 @@ describe("Harness shell connection", () => {
             harnessArn: ARN,
             qualifier: "DEFAULT",
             runtimeSessionId: SESSION,
-            onReconnect: (reconnected) => {
-              outcomes.push(reconnected);
+            onReconnect: () => {
+              reconnects += 1;
             },
           },
           { region: "us-west-2" },
@@ -288,7 +288,7 @@ describe("Harness shell connection", () => {
           })
           .catch(() => {});
         value.connections[0]!.socket.terminate();
-        await waitFor(() => outcomes.includes(true), 3000);
+        await waitFor(() => reconnects === 1, 3000);
         expect(value.connections.length).toBeGreaterThanOrEqual(3);
         expect(value.connections[1]!.socket.readyState).toBe(WebSocket.CLOSED);
         await waitFor(() => received);

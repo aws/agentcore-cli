@@ -93,8 +93,8 @@ describe("harness shell", () => {
     );
     expect(value.io.stderr()).toContain("exit 0");
     expect(value.closed()).toBe(1);
-    await value.request()?.onReconnect?.(true);
-    expect(value.io.stderr()).toContain("Reattached to existing shell.");
+    await value.request()?.onReconnect?.();
+    expect(value.io.stderr()).toContain("Shell connection restored.");
   });
 
   test("requires a Runtime session ID with --shell-id", async () => {

@@ -41,17 +41,19 @@ export function createHarnessShellOpener(
     let delay = 250;
     for (let attempt = 1; ; attempt += 1) {
       try {
-        const session = await client.openShell({
-          runtimeArn: request.harnessArn,
-          endpointName: request.qualifier,
-          sessionId: request.runtimeSessionId,
-          shellId: request.shellId,
-          auth:
-            request.bearerToken === undefined
-              ? "sigv4"
-              : { type: "oauth", bearerToken: request.bearerToken },
-          reconnectConfig: { onReconnect: request.onReconnect },
-        });
+        const session = await client.openShell(
+          {
+            runtimeArn: request.harnessArn,
+            endpointName: request.qualifier,
+            sessionId: request.runtimeSessionId,
+            shellId: request.shellId,
+            auth:
+              request.bearerToken === undefined
+                ? "sigv4"
+                : { type: "oauth", bearerToken: request.bearerToken },
+          },
+          request.onReconnect,
+        );
         return new RuntimeShellSessionAdapter(session);
       } catch (error) {
         if (
@@ -76,7 +78,10 @@ class HarnessShellClient {
     private readonly config: HarnessShellOpenerConfig,
   ) {}
 
-  async openShell(input: OpenShellParams): Promise<ShellSession> {
+  async openShell(
+    input: OpenShellParams,
+    onReconnect?: () => void | Promise<void>,
+  ): Promise<ShellSession> {
     const arn = parseArn(input.runtimeArn);
     if (
       arn?.service !== "bedrock-agentcore" ||
@@ -95,17 +100,13 @@ class HarnessShellClient {
       initializationFailed = reject;
     });
     let connected = false;
-    let currentReadiness: Promise<boolean>;
+    let currentReadiness: Promise<void>;
     const session = new ShellSession({
       sessionId: input.sessionId,
       shellId: input.shellId,
       reconnectConfig: {
-        ...input.reconnectConfig,
         onReconnect: () => {
-          // Waiting here would hold the SDK's reconnect loop past its metadata timeout.
-          void currentReadiness
-            .then((reconnected) => input.reconnectConfig?.onReconnect?.(reconnected))
-            .catch(() => {});
+          void currentReadiness.then(() => onReconnect?.()).catch(() => {});
         },
       },
       connectFn: (shellId, sessionId) => this.connection(input, shellId, sessionId),
@@ -192,18 +193,18 @@ class HarnessShellClient {
     };
   }
 
-  private waitForInitialization(socket: WebSocket): Promise<boolean> {
+  private waitForInitialization(socket: WebSocket): Promise<void> {
     return new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let opened = false;
-      const finish = (error?: Error, reconnected = false) => {
+      const finish = (error?: Error) => {
         clearTimeout(timer);
         socket.off("open", onOpen);
         socket.off("message", onMessage);
         socket.off("close", onClose);
         socket.off("error", onError);
         if (error) reject(error);
-        else resolve(reconnected);
+        else resolve();
       };
       const onOpen = () => {
         opened = true;
@@ -233,7 +234,7 @@ class HarnessShellClient {
             typeof metadata.shellId === "string" &&
             metadata.shellId.length > 0
           ) {
-            finish(undefined, "reconnected" in metadata && metadata.reconnected === true);
+            finish();
           } else {
             finish(new NetworkingError("Harness shell exited before initialization completed"));
           }

@@ -32,7 +32,7 @@ export type HarnessShellRequest = {
   runtimeSessionId?: string;
   shellId?: string;
   bearerToken?: string;
-  onReconnect?: (reconnected: boolean) => void | Promise<void>;
+  onReconnect?: () => void | Promise<void>;
 };
 
 // CreateHarnessInput is CreateHarnessRequest with the execution role made

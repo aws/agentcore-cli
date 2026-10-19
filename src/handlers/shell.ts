@@ -26,12 +26,8 @@ export class ShellOperation {
     }
   }
 
-  readonly onReconnect = (reconnected: boolean): void => {
-    this.io.stderr.write(
-      reconnected
-        ? "\r\nReattached to existing shell.\r\n"
-        : "\r\nPrevious shell unavailable; started a new shell.\r\n",
-    );
+  readonly onReconnect = (): void => {
+    this.io.stderr.write("\r\nShell connection restored.\r\n");
   };
 
   async run(session: RuntimeShellSession, target: ShellResumeTarget): Promise<void> {
