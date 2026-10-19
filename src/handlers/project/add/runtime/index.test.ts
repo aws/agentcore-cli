@@ -163,6 +163,10 @@ describe("project add runtime", () => {
           : "https://github.com/aws/bedrock-agentcore-sdk-typescript",
       );
       expect(readme).toContain("## How `agentcore.json` follows your code");
+      if (expected.entrypoint === "main.js") {
+        expect(readme).toContain("--format=esm");
+        expect(readme).toContain("--packages=external");
+      }
       expect(readme + agents).not.toContain("CLAUDE");
 
       expect(io.stderr()).toContain(

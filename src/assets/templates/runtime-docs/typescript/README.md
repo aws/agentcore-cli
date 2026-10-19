@@ -284,7 +284,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npx esbuild main.ts --bundle --platform=node --target=node22 --outfile=dist/main.js \
+RUN npx esbuild main.ts --bundle --platform=node --target=node22 --format=esm \
+    --packages=external --outfile=dist/main.js \
     && npm prune --omit=dev
 
 USER node
