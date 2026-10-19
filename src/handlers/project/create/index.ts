@@ -16,7 +16,11 @@ import {
   type ProjectManager,
   type ScaffoldHarnessInput,
 } from "../types";
-import { ProjectNameSchema } from "../../../projectSchemas/project";
+import {
+  ManagedBySchema,
+  ProjectNameSchema,
+  type ManagedBy,
+} from "../../../projectSchemas/project";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
   HARNESS_DEFAULT_MODEL_IDS,
@@ -64,9 +68,13 @@ export function createNextStep(scaffoldsRuntime: boolean): string {
  * `agentcore add`. Harnesses are left out in China regions, where they are not
  * available.
  */
-export function emptyProjectNextSteps(name: string, china: boolean): string[] {
+export function emptyProjectNextSteps(
+  name: string,
+  china: boolean,
+  managedBy: ManagedBy = "CDK",
+): string[] {
   const steps: [string, string][] = [
-    ...(china
+    ...(china || managedBy === "Terraform"
       ? []
       : [["agentcore add harness", "add a config-based agent: pick a model, prompt, and tools"]]),
     ["agentcore add runtime", "add a code-based agent you write yourself"],
@@ -86,12 +94,16 @@ export function emptyProjectNextSteps(name: string, china: boolean): string[] {
 export const EMPTY_PROJECT_SUMMARY = "It has no agents or other resources yet.";
 
 /** The full message printed after creating an empty project. */
-export function emptyProjectCreatedMessage(name: string, china: boolean): string {
+export function emptyProjectCreatedMessage(
+  name: string,
+  china: boolean,
+  managedBy: ManagedBy = "CDK",
+): string {
   return [
     `Created empty project '${name}' in ./${name}. ${EMPTY_PROJECT_SUMMARY}`,
     "",
     "Next steps:",
-    ...emptyProjectNextSteps(name, china).map((step) => `  ${step}`),
+    ...emptyProjectNextSteps(name, china, managedBy).map((step) => `  ${step}`),
     "",
   ].join("\n");
 }
@@ -103,6 +115,18 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     middlewares: config.middlewares,
     flags: [
       flag("name", "name of the project to create", ProjectNameSchema),
+      flag(
+        "iac",
+        "infrastructure backend: CDK or Terraform (experimental AWSCC PoC)",
+        z
+          .preprocess((value) => {
+            if (typeof value !== "string") return value;
+            if (value.toLowerCase() === "cdk") return "CDK";
+            if (value.toLowerCase() === "terraform") return "Terraform";
+            return value;
+          }, ManagedBySchema)
+          .default("CDK"),
+      ),
       flag(
         "template",
         "the template to scaffold the Runtime from",
@@ -118,7 +142,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     ],
     handle: async (ctx, flags) => {
       const name = flags["name"];
-      if (!flags["skip-install"]) {
+      if (!flags["skip-install"] && flags.iac === "CDK") {
         assertProjectPathFits(name, ctx.require(PlatformKey), {
           alternative: "pass --skip-install and install the CDK dependencies yourself",
         });
@@ -127,6 +151,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       const template = flags["template"];
       const base = {
         name,
+        managedBy: flags.iac,
+        region: ctx.require(RegionKey),
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
       };
@@ -177,7 +203,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         },
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
-            config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
+            config.io.stderr.write(
+              emptyProjectCreatedMessage(name, isChinaRegion(region), flags.iac),
+            );
             return;
           }
           config.io.stderr.write(`Created project '${name}' in ./${name}\n`);

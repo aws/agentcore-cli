@@ -148,6 +148,91 @@ async function projectManifest(projectRoot: string): Promise<string[]> {
 }
 
 describe("FsProjectManager.create", () => {
+  test("creates an empty Terraform project without requiring or scaffolding CDK", async () => {
+    await inTempDirectory();
+    const { manager: subject, commands, checkedTools } = manager();
+
+    const { project } = await runCreate(subject, {
+      name: "example",
+      managedBy: "Terraform",
+      skipGit: true,
+    });
+
+    expect(project.spec.managedBy).toBe("Terraform");
+    expect(project.spec.runtimes).toEqual([]);
+    expect(existsSync(join(project.rootPath, "agentcore", "cdk"))).toBe(false);
+    expect(commands).toEqual([]);
+    expect(checkedTools).toEqual([]);
+    const gitignore = await readFile(join(project.rootPath, ".gitignore"), "utf8");
+    expect(gitignore).not.toContain("\nagentcore/terraform/\n");
+    expect(gitignore).toContain("*.tfstate");
+    expect(gitignore).toContain("agentcore/terraform/.targets/");
+    const terraformRoot = join(project.rootPath, "agentcore", "terraform");
+    expect(await readFile(join(terraformRoot, "main.tf"), "utf8")).toContain(
+      'jsondecode(file("${path.module}/../agentcore.json"))',
+    );
+    expect(await readFile(join(terraformRoot, "main.tf"), "utf8")).toContain(
+      "agentcore-l3-cdk-constructs.git//terraform/modules/agentcore-application?ref=",
+    );
+    expect(existsSync(join(terraformRoot, "modules"))).toBe(false);
+    expect(existsSync(join(terraformRoot, "default"))).toBe(false);
+    expect(existsSync(join(terraformRoot, ".targets"))).toBe(false);
+    expect(JSON.parse(await readFile(join(terraformRoot, "artifacts.json"), "utf8"))).toEqual({
+      runtimes: {},
+      gatewayTargets: {},
+    });
+    expect((await subject.resolve({ filePath: project.rootPath }))?.spec.managedBy).toBe(
+      "Terraform",
+    );
+  });
+
+  test("installs Python runtime dependencies for Terraform without installing CDK", async () => {
+    await inTempDirectory();
+    const { manager: subject, commands, checkedTools } = manager();
+
+    const { project } = await runCreate(subject, {
+      name: "example",
+      managedBy: "Terraform",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+      skipGit: true,
+    });
+
+    expect(project.spec.managedBy).toBe("Terraform");
+    expect(project.spec.runtimes).toHaveLength(1);
+    expect(project.spec.memories).toHaveLength(1);
+    expect(commands).toEqual([
+      {
+        command: ["uv", "sync"],
+        cwd: join(project.rootPath, "app", AGENT_PYTHON_STRANDS.runtimeName),
+      },
+    ]);
+    expect(checkedTools).not.toContain("npm");
+    expect(checkedTools).toContain("uv");
+  });
+
+  test.each([
+    { scaffoldRuntimeInput: AGENT_TYPESCRIPT_STRANDS },
+    { scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER },
+    {
+      scaffoldHarnessInput: {
+        name: "agent",
+        model: { provider: "bedrock", modelId: "model" },
+      },
+    },
+  ] as const)(
+    "rejects unsupported Terraform scaffolding before writing files: %j",
+    async (scaffold) => {
+      const directory = await inTempDirectory();
+      const { manager: subject, commands } = manager();
+
+      await expect(
+        runCreate(subject, { name: "example", managedBy: "Terraform", ...scaffold }),
+      ).rejects.toThrow("The Terraform PoC supports empty projects and Python CodeZip");
+      expect(existsSync(join(directory, "example"))).toBe(false);
+      expect(commands).toEqual([]);
+    },
+  );
+
   test("scaffolds the expected file tree into a fresh directory", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
@@ -1795,12 +1880,12 @@ describe("FsProjectManager.build", () => {
     const project = await scaffolded(subject, directory);
     commands.length = 0;
 
-    // CDK is the only backend today; the cast stands in for a future one.
+    // The cast stands in for a backend that is not registered.
     const foreign = {
       ...project,
-      spec: { ...project.spec, managedBy: "Terraform" as Project["spec"]["managedBy"] },
+      spec: { ...project.spec, managedBy: "Other" as Project["spec"]["managedBy"] },
     };
-    await expect(drain(subject.build(foreign))).rejects.toThrow(/unsupported backend: Terraform/);
+    await expect(drain(subject.build(foreign))).rejects.toThrow(/unsupported backend: Other/);
     expect(commands).toEqual([]);
   });
 
@@ -1820,6 +1905,98 @@ describe("FsProjectManager.build", () => {
 
     await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");
   });
+});
+
+test("Terraform projects keep add/remove and route build, deploy, and discovery to their backend", async () => {
+  await inTempDirectory();
+  const calls: string[] = [];
+  const target: AwsDeploymentTarget = {
+    name: "default",
+    account: "111122223333",
+    region: "us-west-2",
+  };
+  const backend: ProjectBackend = {
+    async *build(project) {
+      calls.push(`build:${project.spec.managedBy}`);
+      yield { type: "step", message: "Building Terraform configuration" };
+    },
+    async *deploy(project, input) {
+      expect(input.target).toEqual(target);
+      calls.push(`deploy:${project.spec.memories[0]?.name}`);
+      yield { type: "step", message: "Deploying Terraform configuration" };
+      return { outputs: {} };
+    },
+    async resolveDeployedResources(_project, input) {
+      expect(input.target).toEqual(target);
+      calls.push("invoke");
+      return [
+        {
+          resourceType: "runtime",
+          name: "agent",
+          id: "agent-runtime-id",
+          target,
+          credentialProvider: async () => ({
+            accessKeyId: "test-key",
+            secretAccessKey: "test-secret",
+          }),
+        },
+      ];
+    },
+    async resolveProjectResources() {
+      calls.push("status");
+      return [{ resourceType: "memory", name: "recall", deploymentState: "local-only" }];
+    },
+  };
+  const subject = new FsProjectManager({
+    logger: createSilentLogger(),
+    identity: new TestIdentityClient(),
+    enableTransactionSearch: async () => {},
+    backends: { Terraform: backend },
+  });
+  const { project } = await runCreate(subject, {
+    name: "example",
+    managedBy: "Terraform",
+    scaffoldRuntimeInput: { ...AGENT_PYTHON, runtimeName: "agent" },
+    skipInstall: true,
+    skipGit: true,
+  });
+  await writeFile(
+    join(project.rootPath, "agentcore", "aws-targets.json"),
+    JSON.stringify([target]),
+  );
+  const updated = await runAdd(subject, project, {
+    resourceType: "memory",
+    resourceConfig: { name: "recall", eventExpiryDuration: 30, strategies: [] },
+  });
+  for await (const _event of subject.build(updated)) {
+    // Drain the backend operation.
+  }
+  for await (const _event of subject.deploy(updated, {
+    target: "default",
+    region: "us-east-1",
+    confirmTeardown: async () => false,
+  })) {
+    // Drain the backend operation.
+  }
+  expect(
+    (
+      await subject.resolveDeployedResource(updated, {
+        target: "default",
+        resourceType: "runtime",
+        name: "agent",
+      })
+    ).id,
+  ).toBe("agent-runtime-id");
+  expect((await subject.resolveProjectResources(updated, { target: "default" })).resources).toEqual(
+    [{ resourceType: "memory", name: "recall", deploymentState: "local-only" }],
+  );
+  const removed = await subject.removeResource(updated, {
+    resourceType: "memory",
+    name: "recall",
+  });
+  expect(removed.project.spec.managedBy).toBe("Terraform");
+  expect(removed.project.spec.memories).toEqual([]);
+  expect(calls).toEqual(["build:Terraform", "deploy:recall", "invoke", "status"]);
 });
 
 describe("FsProjectManager.deploy", () => {
@@ -2446,6 +2623,28 @@ describe("FsProjectManager.resolve", () => {
       expect(project?.legacy).toBeUndefined();
     },
   );
+
+  test("ignores a stale CDK dependency when resolving a Terraform project", async () => {
+    const { root, configPath } = await v1Project("^0.1.0-alpha.19");
+    await writeFile(
+      configPath,
+      JSON.stringify({ name: "example", version: 2, managedBy: "Terraform" }),
+    );
+
+    expect((await manager().manager.resolve({ filePath: root }))?.spec.managedBy).toBe("Terraform");
+  });
+
+  test("reports invalid Terraform configuration instead of a stale CDK dependency", async () => {
+    const { root, configPath } = await v1Project("^0.1.0-alpha.19");
+    await writeFile(
+      configPath,
+      JSON.stringify({ name: "invalid!", version: 2, managedBy: "Terraform" }),
+    );
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toBeInstanceOf(
+      DeserializationError,
+    );
+  });
 
   test.each([
     undefined,

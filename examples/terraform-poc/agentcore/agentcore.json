@@ -1,0 +1,87 @@
+{
+  "name": "TerraformPoc",
+  "version": 2,
+  "managedBy": "Terraform",
+  "runtimes": [
+    {
+      "name": "Agent",
+      "build": "CodeZip",
+      "runtimeVersion": "PYTHON_3_12",
+      "entrypoint": "main.py",
+      "codeLocation": "src/agent",
+      "instrumentation": { "enableOtel": true }
+    }
+  ],
+  "memories": [
+    {
+      "name": "Memory",
+      "eventExpiryDuration": 7,
+      "strategies": [
+        {
+          "type": "SEMANTIC",
+          "name": "Facts",
+          "namespaceTemplates": ["/users/{actorId}/facts"]
+        }
+      ]
+    }
+  ],
+  "policyEngines": [
+    {
+      "name": "Rules",
+      "policies": [
+        {
+          "name": "AllowEcho",
+          "statement": "permit(principal, action, resource is AgentCore::Gateway);",
+          "validationMode": "IGNORE_ALL_FINDINGS",
+          "enforcementMode": "ACTIVE"
+        }
+      ]
+    }
+  ],
+  "agentCoreGateways": [
+    {
+      "name": "tools",
+      "authorizerType": "AWS_IAM",
+      "enableSemanticSearch": false,
+      "policyEngineConfiguration": {
+        "policyEngineName": "Rules",
+        "mode": "ENFORCE"
+      },
+      "targets": [
+        {
+          "name": "echo",
+          "targetType": "lambda",
+          "compute": {
+            "host": "Lambda",
+            "pythonVersion": "PYTHON_3_12",
+            "implementation": {
+              "language": "Python",
+              "path": "src/tool",
+              "handler": "main.handler"
+            }
+          },
+          "toolDefinitions": [
+            {
+              "name": "echo",
+              "description": "Return the supplied message.",
+              "inputSchema": {
+                "type": "object",
+                "properties": { "message": { "type": "string" } },
+                "required": ["message"]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "onlineEvalConfigs": [
+    {
+      "name": "Quality",
+      "agent": "Agent",
+      "evaluators": ["Builtin.Helpfulness"],
+      "samplingRate": 100,
+      "enableOnCreate": true
+    }
+  ]
+}

@@ -243,6 +243,7 @@ create a new project
 **Options**
 
 - `--name <name>`: name of the project to create (required)
+- `--iac <iac>`: infrastructure backend: CDK or Terraform (experimental AWSCC PoC) (default: "CDK")
 - `--template <template>`: the template to scaffold the Runtime from (default: "empty")
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)
@@ -277,7 +278,7 @@ deploy the project to AWS
 **Options**
 
 - `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
-- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+- `--yes`: confirm removing the target's resources when the project declares nothing to deploy (default: false)
 
 ### `agentcore invoke`
 

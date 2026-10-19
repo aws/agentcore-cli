@@ -94,6 +94,13 @@ resources, and `agentcore/cdk/`, the AWS CDK app that deploys them. Deployment t
 and region each — live in `agentcore/aws-targets.json`. Project commands find the project by walking
 up from the current directory.
 
+This branch also includes an experimental Terraform backend, selected with
+`agentcore create --iac terraform`. CDK remains the default. Terraform projects have one editable
+root in `agentcore/terraform/`, shared by every deployment target. The root passes the project
+spec to an application module in the L3 constructs repository; target-specific inputs and local
+state live under `.targets/<target>/`. See the [Terraform PoC example](examples/terraform-poc/)
+for supported resources, direct Terraform commands, and current limitations.
+
 `agentcore dev` runs runtimes locally or deploys harnesses and prints invoke guidance.
 Use `--mode browser` for Agent Inspector, `--skip-deploy` to reuse deployed harnesses,
 and `--agent <name>` to choose an agent in mixed projects.
