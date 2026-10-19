@@ -422,6 +422,7 @@ describe("project create", () => {
     const runtimeRoot = join(projectRoot, "app", "agent");
     const mainPy = await Bun.file(join(runtimeRoot, "main.py")).text();
     expect(mainPy).toContain("FastMCP");
+    expect(mainPy).toContain('port=int(os.environ.get("FASTMCP_PORT", "8000"))');
     expect(mainPy).toContain('mcp.run(transport="streamable-http")');
     expect(await Bun.file(join(runtimeRoot, "Dockerfile")).exists()).toBe(false);
     expect(spec.memories ?? []).toEqual([]);

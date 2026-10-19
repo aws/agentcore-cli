@@ -30,14 +30,16 @@ in more detail.
 - Accept the platform-provided `Mcp-Session-Id` header. Stay stateless unless
   the user needs elicitation or sampling with MCP protocol version 2025-11-25
   or earlier, which requires stateful mode.
-- Add `mcp` to the dependencies. Do not hardcode a port other than 8000;
-  `agentcore dev` sets `FASTMCP_PORT`.
+- Add `mcp` to the dependencies. Pass
+  `port=int(os.environ.get("FASTMCP_PORT", "8000"))` to `FastMCP`, so
+  `agentcore dev` can move the server when port 8000 is busy.
 {{/if}}
 {{#if (eq protocol "A2A")}}
 - Serve A2A on `0.0.0.0` port 9000: JSON-RPC 2.0 at `POST /` (for example
   `message/send`), the agent card at `GET /.well-known/agent-card.json`, and
   `GET /ping`. Use `serve_a2a(executor)` from `bedrock_agentcore.runtime`
-  under `if __name__ == "__main__":`; it implements all three.
+  under `if __name__ == "__main__":`; it implements all three and reads the
+  `A2A_PORT` override that `agentcore dev` sets for local development.
 - Add `bedrock-agentcore[a2a] ~= 1.24.0` and `a2a-sdk` to the dependencies.
 {{/if}}
 {{#if (eq protocol "AGUI")}}

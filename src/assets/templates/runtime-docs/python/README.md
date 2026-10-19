@@ -110,9 +110,15 @@ with MCP protocol version 2025-11-25 and earlier; from 2026-07-28 those use
 multi-round-trip requests, which work in stateless mode.
 
 ```python
+import os
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("{{name}}", host="0.0.0.0", stateless_http=True)
+mcp = FastMCP(
+    "{{name}}",
+    host="0.0.0.0",
+    port=int(os.environ.get("FASTMCP_PORT", "8000")),
+    stateless_http=True,
+)
 
 
 @mcp.tool()
@@ -125,8 +131,8 @@ if __name__ == "__main__":
     mcp.run(transport="streamable-http")
 ```
 
-Add `mcp` to your dependencies. `agentcore dev` sets `FASTMCP_PORT`, so
-don't hardcode a different port.
+Add `mcp` to your dependencies. Read `FASTMCP_PORT` as above so
+`agentcore dev` can move the server when port 8000 is busy.
 
 Full contract: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-mcp-protocol-contract.html
 {{/if}}
@@ -146,6 +152,8 @@ if __name__ == "__main__":
 
 Add `bedrock-agentcore[a2a] ~= 1.24.0` (the version line with `serve_a2a`) and
 `a2a-sdk` to your dependencies, as in the `pyproject.toml` example below.
+`agentcore dev` sets `A2A_PORT` when it needs a local port other than the
+deployed service-contract default of 9000; `serve_a2a` reads it automatically.
 
 Full contract: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-a2a-protocol-contract.html
 {{/if}}

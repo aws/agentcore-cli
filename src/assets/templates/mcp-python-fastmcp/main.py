@@ -1,9 +1,12 @@
-{{#if needsOs}}
 import os
-{{/if}}
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("{{ name }}", host="0.0.0.0", stateless_http=True)
+mcp = FastMCP(
+    "{{ name }}",
+    host="0.0.0.0",
+    port=int(os.environ.get("FASTMCP_PORT", "8000")),
+    stateless_http=True,
+)
 
 {{#if needsOs}}
 _MOUNT_PATHS = [
