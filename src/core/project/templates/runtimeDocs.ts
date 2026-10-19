@@ -65,6 +65,8 @@ export function runtimeDocsTree(
     versions: {
       latestPython: versionNumber(LATEST_PYTHON),
       latestNode: versionNumber(LATEST_NODE),
+      latestPythonRuntime: LATEST_PYTHON,
+      latestNodeRuntime: LATEST_NODE,
       python: listVersions(PythonRuntimeSchema.options.map(versionNumber)),
       node: listVersions(NodeRuntimeSchema.options.map(versionNumber)),
     },

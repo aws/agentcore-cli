@@ -21,6 +21,7 @@ import { writeMigrationState } from "../../../core/project/migrate/journal";
 import { ProjectStateError } from "../../../errors";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { DeployResult, Project, ProjectEvent, TeardownConfirmationRequest } from "../types";
+import { V0_PROJECT_MIGRATION_MESSAGE } from "../v0Notice";
 
 const DEFAULT_TARGET: AwsDeploymentTarget = {
   name: "default",
@@ -277,10 +278,11 @@ describe("project deploy handler", () => {
         "--region is ignored for v0 projects; v0 uses the target's region from " +
         "aws-targets.json, or AWS_REGION / your AWS profile.";
       expect(subject.io.stderr()).toBe(
-        flag === "--json"
-          ? regionWarning
-          : `${regionWarning}\n` +
-              "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
+        `${regionWarning}\n` +
+          (flag === "--json"
+            ? V0_PROJECT_MIGRATION_MESSAGE
+            : "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode." +
+              `\n${V0_PROJECT_MIGRATION_MESSAGE}`),
       );
       expect(
         await Promise.all([readFile(specPath, "utf8"), readFile(manifestPath, "utf8")]),
@@ -309,7 +311,8 @@ describe("project deploy handler", () => {
 
     expect(legacyDeploys).toHaveLength(1);
     expect(subject.io.stderr()).toBe(
-      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
+      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode." +
+        `\n${V0_PROJECT_MIGRATION_MESSAGE}`,
     );
   });
 

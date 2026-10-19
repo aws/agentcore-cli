@@ -14,7 +14,13 @@ import {
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
-import { ProjectDetectedKey } from "../handlers/project/context";
+import {
+  ProjectDetectedKey,
+  V0ProjectDetectedKey,
+  V0ProjectNoticeStateKey,
+} from "../handlers/project/context";
+import { V0_PROJECT_MIGRATION_MESSAGE } from "../handlers/project/v0Notice";
+import { enclosingProjectRoot, isV0Project } from "../core/project/fsUtils";
 import { ExitCode, InvalidEnvironmentError } from "../errors";
 import { TuiExitMessageKey } from "./exitMessage";
 import { TuiExitErrorKey } from "./exitError";
@@ -69,8 +75,15 @@ export async function renderTuiAt(
   let exitError: Error | undefined;
   let handoff: string[] | undefined;
   let tuiContext = ctx;
+  let v0Project = ctx.value(V0ProjectDetectedKey);
+  if (v0Project === undefined) {
+    const rootPath = enclosingProjectRoot(process.cwd());
+    v0Project = rootPath !== undefined && (await isV0Project(rootPath));
+  }
+  tuiContext = tuiContext.withValue(V0ProjectDetectedKey, v0Project);
   if (isRootMenuPath(path)) {
     const projectDetected =
+      v0Project ||
       ctx.value(ProjectKey) !== undefined ||
       (await core.projectManager.resolve({
         filePath: process.cwd(),
@@ -92,6 +105,9 @@ export async function renderTuiAt(
   // takes over the screen and the prior scrollback is restored on exit (like Vim).
   const queryClient = new QueryClient();
 
+  const noticeState = ctx.value(V0ProjectNoticeStateKey);
+  if (noticeState) noticeState.enteredTui = true;
+
   const resizeGate = createResizeGate(io.stdout);
   const { waitUntilExit } = render(
     <Root path={path} ctx={tuiContext} core={core} queryClient={queryClient} />,
@@ -108,6 +124,9 @@ export async function renderTuiAt(
     await waitUntilExit();
   } finally {
     resizeGate.dispose();
+    if (v0Project) {
+      io.stderr.write(`${V0_PROJECT_MIGRATION_MESSAGE}\n`);
+    }
   }
   // Ink handles Ctrl+C before invoking screen input handlers.
   if (exitError !== undefined) throw exitError;

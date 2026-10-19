@@ -1,4 +1,6 @@
 import { test, expect, describe } from "bun:test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Command } from "commander";
 import { createRootHandler } from "../handlers";
 import { ExitCode, InputValidationError, InvalidEnvironmentError } from "../errors";
@@ -14,7 +16,9 @@ import {
   ttyTestIO,
   tick,
   waitFor,
+  inTempDirectory,
 } from "../testing";
+import { V0_PROJECT_MIGRATION_MESSAGE, V0_PROJECT_TUI_BANNER } from "../handlers/project/v0Notice";
 
 describe("renderJson", () => {
   test("pretty-prints a value as indented JSON to the given writer", () => {
@@ -234,6 +238,31 @@ describe("TUI resize", () => {
 describe("TUI launch", () => {
   const CREATE_ROW = "create a new project";
   const BANNER = "No project detected - create a new project to get started";
+
+  test("a v0 project shows compatibility mode and repeats migration guidance after exit", async () => {
+    const { path, cleanup } = await inTempDirectory("agentcore-v0-tui-");
+    try {
+      await mkdir(join(path, "agentcore"));
+      await writeFile(join(path, "agentcore", "agentcore.json"), '{"name":"Legacy","version":1}\n');
+      const core = new TestCoreClient();
+      const { streams, stdin } = ttyTestIO();
+      const root = createRootHandler(core, {
+        io: streams.io,
+        logger: createSilentLogger(),
+        globalConfigAccessor: new TestGlobalConfigAccessor(),
+      });
+
+      const routePromise = root.route(["node", "agentcore"]);
+      await waitFor(() => streams.stdout().includes(V0_PROJECT_TUI_BANNER));
+      stdin.write(String.fromCharCode(3));
+      await routePromise;
+
+      expect(streams.stderr()).toContain(V0_PROJECT_MIGRATION_MESSAGE);
+      expect(streams.stderr().match(new RegExp(V0_PROJECT_MIGRATION_MESSAGE, "g"))).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
 
   test("an unrelated TUI command does not resolve the current project", async () => {
     const core = new TestCoreClient();

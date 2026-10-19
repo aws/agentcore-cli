@@ -140,13 +140,14 @@ import { AddOauthCredentialScreen } from "../handlers/project/add/credentials/oa
 import { AddPaymentCredentialScreen } from "../handlers/project/add/credentials/payment/screen.tsx";
 import { ProjectStatusScreen } from "../handlers/project/status/screen.tsx";
 import { ProjectRemoveScreen } from "../handlers/project/remove/screen.tsx";
-import { ProjectDetectedKey } from "../handlers/project/context.ts";
+import { ProjectDetectedKey, V0ProjectDetectedKey } from "../handlers/project/context.ts";
 import { HelpScreen, RootScreen } from "../handlers/screen.tsx";
 import { CliVersionManagerKey, RegionKey } from "../handlers/keys.tsx";
 import { RegionPinContext } from "../handlers/utils.tsx";
 import { ProjectKey, type Context } from "../router";
 import { TuiUpdateProvider } from "./TuiUpdateContext";
 import { CliUpdateScreen } from "../handlers/update/screen";
+import { V0ProjectNoticeContext } from "./V0ProjectNotice";
 
 export interface RootProps {
   // path is the command path to the executing node (e.g. "/agentcore").
@@ -166,26 +167,29 @@ export function Root({ path, ctx, core, queryClient }: RootProps) {
   const [launchSessionConsumed, setLaunchSessionConsumed] = useState(false);
   const versionManager = ctx.value(CliVersionManagerKey);
   const content = <PinnedRegion ctx={ctx} core={core} />;
+  const v0Project = ctx.value(V0ProjectDetectedKey) === true;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RuntimeInvokeLaunchSessionContext.Provider
-        value={{
-          consumed: launchSessionConsumed,
-          consume: () => setLaunchSessionConsumed(true),
-        }}
-      >
-        {/* initialEntries seeds the in-memory history with the CLI command path,
-            then leaves navigation to the router so screens can useNavigate. */}
-        <MemoryRouter initialEntries={[path]}>
-          {versionManager ? (
-            <TuiUpdateProvider versionManager={versionManager}>{content}</TuiUpdateProvider>
-          ) : (
-            content
-          )}
-        </MemoryRouter>
-      </RuntimeInvokeLaunchSessionContext.Provider>
-    </QueryClientProvider>
+    <V0ProjectNoticeContext.Provider value={v0Project}>
+      <QueryClientProvider client={queryClient}>
+        <RuntimeInvokeLaunchSessionContext.Provider
+          value={{
+            consumed: launchSessionConsumed,
+            consume: () => setLaunchSessionConsumed(true),
+          }}
+        >
+          {/* initialEntries seeds the in-memory history with the CLI command path,
+              then leaves navigation to the router so screens can useNavigate. */}
+          <MemoryRouter initialEntries={[path]}>
+            {versionManager ? (
+              <TuiUpdateProvider versionManager={versionManager}>{content}</TuiUpdateProvider>
+            ) : (
+              content
+            )}
+          </MemoryRouter>
+        </RuntimeInvokeLaunchSessionContext.Provider>
+      </QueryClientProvider>
+    </V0ProjectNoticeContext.Provider>
   );
 }
 

@@ -5,7 +5,7 @@ import type { Middleware } from "../router";
 export const V0_PROJECT_ADD_REMOVE_MESSAGE =
   "This project uses the v0 format (agentcore.json version 1). " +
   "The v1 CLI cannot add or remove resources in it. " +
-  "Migrate the project to v1 in order to add/remove its resources.";
+  "Use 'agentcore migrate' to migrate the project fully before adding or removing resources.";
 
 /** Blocks project add/remove before withProject attempts to parse the v1 schema. */
 export function withV0ProjectGuard(): Middleware {

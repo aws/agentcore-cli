@@ -18,6 +18,7 @@ import {
   withLogging,
   withGlobalConfigAccessor,
   withPlatform,
+  withV0ProjectNotice,
 } from "../middleware";
 import type { AppIO } from "../io";
 import type { V0DeployRunner } from "../core/project/legacy/deploy";
@@ -85,6 +86,10 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
 
   // Pin the host platform so Windows-specific behavior is decided from the context.
   root.use(withPlatform(config.platform ?? process.platform));
+
+  // Make v0 compatibility mode visible for every command and TUI session
+  // launched from a legacy project.
+  root.use(withV0ProjectNotice(io));
 
   // Install sub handlers. Registration order is menu/help order; project is
   // the primary workflow, so it goes first.

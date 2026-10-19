@@ -163,6 +163,10 @@ describe("project add runtime", () => {
           : "https://github.com/aws/bedrock-agentcore-sdk-typescript",
       );
       expect(readme).toContain("## How `agentcore.json` follows your code");
+      expect(readme).toContain('find the object whose `"name"` is `"search"`');
+      expect(readme).toContain(`"runtimeVersion": "${expected.runtimeVersion as string}"`);
+      expect(readme).toContain('"buildContextPath"');
+      expect(readme).toContain('"customDockerBuildArgs"');
       if (expected.entrypoint === "main.js") {
         expect(readme).toContain("--format=esm");
         expect(readme).toContain("--packages=external");
