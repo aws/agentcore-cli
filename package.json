@@ -98,6 +98,7 @@
     "react-devtools-core": "^7.0.1",
     "react-router": "^8.3.0",
     "semver": "^7.8.5",
+    "smol-toml": "^1.9.1",
     "string-width": "^8.2.2",
     "terminal-size": "^4.0.1",
     "winston": "^3.19.0",

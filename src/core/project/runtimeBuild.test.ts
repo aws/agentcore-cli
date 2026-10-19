@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ProjectStateError } from "../../errors";
 import { ProjectRuntimeSchema, type ProjectRuntime } from "../../projectSchemas/runtime";
-import { describeChange, prepareRuntimes, readTomlString, syncRuntimeBuild } from "./runtimeBuild";
+import { describeChange, prepareRuntimes, syncRuntimeBuild } from "./runtimeBuild";
 
 const roots: string[] = [];
 afterEach(() => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true }))));
@@ -145,7 +145,7 @@ describe("runtimeVersion from requires-python", () => {
       "app/search/pyproject.toml": "[project]\nrequires-python = >=3.12\n",
     });
     expect(() => syncRuntimeBuild(runtime(), root)).toThrow(
-      "cannot parse requires-python >=3.12 in app/search/pyproject.toml",
+      "cannot parse app/search/pyproject.toml as TOML",
     );
   });
 
@@ -157,24 +157,29 @@ describe("runtimeVersion from requires-python", () => {
   });
 
   test.each([
-    ['requires-python = ">=3.12"', ">=3.12"],
-    ["requires-python = '>=3.11'", ">=3.11"],
-    ['  requires-python="==3.13.*"   # pinned', "==3.13.*"],
-    ['"requires-python" = ">=3.10"', ">=3.10"],
-  ])("reads %s", (line, expected) => {
-    expect(readTomlString(`[project]\n${line}\n`, "project", "requires-python")?.value).toBe(
-      expected,
-    );
+    ['["project"]\nrequires-python = """>=3.12,<3.13"""\n', "PYTHON_3_12"],
+    ["['project']\n'requires-python' = '''<3.12'''\n", "PYTHON_3_11"],
+  ])("reads valid TOML forms: %p", async (manifest, expected) => {
+    const root = await project({ "app/search/pyproject.toml": manifest });
+    expect(syncRuntimeBuild(runtime(), root).runtime.runtimeVersion).toBe(expected as never);
   });
 
-  test("reads a key only from its own table", () => {
-    const text =
-      '[tool.other]\nrequires-python = ">=3.10"\n\n[project]\nname = "x"\n\n[tool.uv]\n' +
-      'requires-python = ">=3.11"\n';
-    expect(readTomlString(text, "project", "requires-python")).toBeUndefined();
-    expect(
-      readTomlString(`[project]\nrequires-python = [">=3"]\n`, "project", "requires-python"),
-    ).toEqual({ raw: '[">=3"]' });
+  test("reads requires-python only from the project table", async () => {
+    const root = await project({
+      "app/search/pyproject.toml":
+        '[tool.other]\nrequires-python = ">=3.10"\n\n[project]\nname = "x"\n\n[tool.uv]\n' +
+        'requires-python = ">=3.11"\n',
+    });
+    expect(syncRuntimeBuild(runtime(), root).changes).toEqual([]);
+  });
+
+  test("a non-string requires-python is an error", async () => {
+    const root = await project({
+      "app/search/pyproject.toml": '[project]\nrequires-python = [">=3"]\n',
+    });
+    expect(() => syncRuntimeBuild(runtime(), root)).toThrow(
+      'cannot parse requires-python [">=3"] in app/search/pyproject.toml',
+    );
   });
 });
 
@@ -465,15 +470,20 @@ describe("entrypoint", () => {
     '[tool]\nagentcore.entrypoint = "server.py"\n',
     'tool.agentcore.entrypoint = "server.py"\n',
     '[tool]\nagentcore = { entrypoint = "server.py" }\n',
-  ])("warns about an agentcore entrypoint form it does not read: %p", async (toml) => {
+    '["tool"."agentcore"]\nentrypoint = """server.py"""\n',
+  ])("reads valid TOML forms for the agentcore entrypoint: %p", async (toml) => {
     const root = await project({ "app/search/pyproject.toml": toml });
     const sync = syncRuntimeBuild(runtime(), root);
-    expect(sync.runtime.entrypoint).toBe("main.py");
-    expect(sync.warnings).toEqual([
-      'runtime "search": app/search/pyproject.toml sets the agentcore entrypoint in a form the ' +
-        "CLI does not read; it is ignored. Use a [tool.agentcore] table with " +
-        'entrypoint = "main.py" on one line.',
+    expect(sync.runtime.entrypoint).toBe("server.py");
+    expect(sync.changes).toEqual([
+      {
+        field: "entrypoint",
+        from: "main.py",
+        to: "server.py",
+        reason: "[tool.agentcore] entrypoint in app/search/pyproject.toml",
+      },
     ]);
+    expect(sync.warnings).toEqual([]);
   });
 });
 

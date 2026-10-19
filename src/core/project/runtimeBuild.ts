@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
+import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { ProjectStateError } from "../../errors";
 import {
   NodeRuntimeSchema,
@@ -97,9 +98,10 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
   // entrypoint, from the manifest for the runtime's language. package.json
   // `main` only names the CodeZip bundle; a Container image decides its own.
   const language = entrypointLanguage(runtime);
+  const pyproject = language === "Python" ? readPyproject(runtime, projectRoot) : undefined;
   const entrypoint =
     language === "Python"
-      ? pythonEntrypoint(runtime, projectRoot, warnings)
+      ? pythonEntrypoint(runtime, pyproject)
       : next.build === "CodeZip"
         ? nodeEntrypoint(runtime, projectRoot, warnings)
         : undefined;
@@ -119,7 +121,7 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
     // the constraint excludes (or none at all) is replaced, with the highest match.
     const allowed =
       language === "Python"
-        ? allowedPythonVersions(runtime, projectRoot)
+        ? allowedPythonVersions(runtime, pyproject)
         : allowedNodeVersions(runtime, projectRoot);
     if (allowed !== undefined) {
       if (next.runtimeVersion === undefined || !allowed.versions.includes(next.runtimeVersion)) {
@@ -174,42 +176,67 @@ function entrypointLanguage(runtime: ProjectRuntime): Language {
   );
 }
 
-/** `[tool.agentcore] entrypoint` from pyproject.toml, when set. */
-function pythonEntrypoint(
-  runtime: ProjectRuntime,
-  projectRoot: string,
-  warnings: string[],
-): { value: string; reason: string } | undefined {
+type ParsedPyproject = {
+  file: string;
+  toml: TomlTableWithoutBigInt;
+};
+
+function readPyproject(runtime: ProjectRuntime, projectRoot: string): ParsedPyproject | undefined {
   const manifest = findManifest("pyproject.toml", runtime, projectRoot);
   if (manifest === undefined) return undefined;
-  const text = readFileSync(manifest, "utf-8");
   const file = displayPath(projectRoot, manifest);
-  const read = readTomlString(text, "tool.agentcore", "entrypoint");
-  if (read === undefined) {
-    // Only the `[tool.agentcore]` table form is read; say so rather than ignore
-    // `tool.agentcore.entrypoint = ...` or `agentcore = { entrypoint = ... }`.
-    if (/^\s*(?:tool\s*\.\s*)?agentcore\s*(?:\.\s*entrypoint\s*=|=\s*\{)/m.test(text)) {
-      warnings.push(
-        `runtime "${runtime.name}": ${file} sets the agentcore entrypoint in a form the CLI ` +
-          `does not read; it is ignored. Use a [tool.agentcore] table with ` +
-          `entrypoint = "main.py" on one line.`,
-      );
-    }
-    return undefined;
+  try {
+    return {
+      file,
+      toml: parseToml(readFileSync(manifest, "utf-8"), { integersAsBigInt: false }),
+    };
+  } catch (error) {
+    throw new ProjectStateError(`runtime "${runtime.name}": cannot parse ${file} as TOML.`, {
+      cause: error,
+    });
   }
-  if (read.value === "") return undefined;
-  const value = read.value;
+}
+
+function tomlValue(toml: TomlTableWithoutBigInt, path: string[]): unknown {
+  let current: unknown = toml;
+  for (const key of path) {
+    if (
+      current === null ||
+      typeof current !== "object" ||
+      Array.isArray(current) ||
+      !Object.hasOwn(current, key)
+    ) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function displayManifestValue(value: unknown): string {
+  return JSON.stringify(value) ?? String(value);
+}
+
+/** `tool.agentcore.entrypoint` from pyproject.toml, when set. */
+function pythonEntrypoint(
+  runtime: ProjectRuntime,
+  manifest: ParsedPyproject | undefined,
+): { value: string; reason: string } | undefined {
+  if (manifest === undefined) return undefined;
+  const value = tomlValue(manifest.toml, ["tool", "agentcore", "entrypoint"]);
+  if (value === undefined || value === "") return undefined;
   if (
-    value === undefined ||
+    typeof value !== "string" ||
     !EntrypointSchema.safeParse(value).success ||
     !/\.py(:|$)/.test(value)
   ) {
     throw new ProjectStateError(
-      `runtime "${runtime.name}": [tool.agentcore] entrypoint ${read.raw} in ${file} is not a ` +
-        `Python file path relative to the runtime folder (for example "main.py" or "main.py:app").`,
+      `runtime "${runtime.name}": [tool.agentcore] entrypoint ${displayManifestValue(value)} in ` +
+        `${manifest.file} is not a Python file path relative to the runtime folder ` +
+        `(for example "main.py" or "main.py:app").`,
     );
   }
-  return { value, reason: `[tool.agentcore] entrypoint in ${file}` };
+  return { value, reason: `[tool.agentcore] entrypoint in ${manifest.file}` };
 }
 
 /**
@@ -277,25 +304,20 @@ export const LATEST_NODE = NODE_VERSIONS[NODE_VERSIONS.length - 1]!.option;
 /** The highest supported Python matching requires-python, or undefined when it is not set. */
 function allowedPythonVersions(
   runtime: ProjectRuntime,
-  projectRoot: string,
+  manifest: ParsedPyproject | undefined,
 ): AllowedVersions | undefined {
-  const manifest = findManifest("pyproject.toml", runtime, projectRoot);
   if (manifest === undefined) return undefined;
-  const requiresPython = readTomlString(
-    readFileSync(manifest, "utf-8"),
-    "project",
-    "requires-python",
-  );
+  const requiresPython = tomlValue(manifest.toml, ["project", "requires-python"]);
   // An empty value says nothing, so it counts as missing.
-  if (requiresPython === undefined || requiresPython.value === "") return undefined;
+  if (requiresPython === undefined || requiresPython === "") return undefined;
 
-  const file = displayPath(projectRoot, manifest);
-  const value = requiresPython.value;
-  const clauses = value === undefined ? undefined : parseSpecifierSet(value);
-  if (value === undefined || clauses === undefined) {
+  const value = requiresPython;
+  const clauses = typeof value === "string" ? parseSpecifierSet(value) : undefined;
+  if (clauses === undefined) {
     throw new ProjectStateError(
-      `runtime "${runtime.name}": cannot parse requires-python ${requiresPython.raw} in ${file}. ` +
-        `Use a PEP 440 specifier such as ">=3.12", or set runtimeVersion in agentcore.json.`,
+      `runtime "${runtime.name}": cannot parse requires-python ${displayManifestValue(value)} in ` +
+        `${manifest.file}. Use a PEP 440 specifier such as ">=3.12", or set runtimeVersion in ` +
+        `agentcore.json.`,
     );
   }
   const versions = [...PYTHON_VERSIONS]
@@ -304,11 +326,11 @@ function allowedPythonVersions(
     .map(({ option }) => option);
   if (versions.length === 0) {
     throw new ProjectStateError(
-      `runtime "${runtime.name}": requires-python "${value}" in ${file} matches no supported ` +
-        `Python version (supported: ${PYTHON_VERSIONS.map(({ minor }) => `3.${minor}`).join(", ")}).`,
+      `runtime "${runtime.name}": requires-python "${value}" in ${manifest.file} matches no ` +
+        `supported Python version (supported: ${PYTHON_VERSIONS.map(({ minor }) => `3.${minor}`).join(", ")}).`,
     );
   }
-  return { versions, source: `requires-python "${value}" in ${file}` };
+  return { versions, source: `requires-python "${value}" in ${manifest.file}` };
 }
 
 /** The supported Node.js majors engines.node allows, or undefined when it is not set. */
@@ -414,35 +436,6 @@ export function isDirectory(path: string): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * Reads a single-line string `key` from a TOML `[table]` with a line-based parse
- * (no TOML dependency); the key may be quoted. Returns undefined when the key
- * is absent, and no `value` (only the raw text) when it is not a string.
- */
-export function readTomlString(
-  text: string,
-  table: string,
-  key: string,
-): { value?: string; raw: string } | undefined {
-  let inTable = false;
-  // Keys here are plain identifiers ("requires-python", "entrypoint"), so no escaping.
-  const keyPattern = new RegExp(`^\\s*(?:${key}|"${key}"|'${key}')\\s*=\\s*(.*?)\\s*$`);
-  for (const line of text.split(/\r?\n/)) {
-    const header = /^\s*(\[\[?)\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
-    if (header) {
-      inTable = header[1] === "[" && header[2]?.replace(/\s*\.\s*/g, ".") === table;
-      continue;
-    }
-    if (!inTable) continue;
-    const field = keyPattern.exec(line);
-    if (!field) continue;
-    const rest = field[1]!;
-    const value = /^(["'])(.*?)\1\s*(?:#.*)?$/.exec(rest);
-    return value ? { value: value[2]!.trim(), raw: `"${value[2]}"` } : { raw: rest };
-  }
-  return undefined;
 }
 
 type Clause = { operator: string; release: number[]; wildcard: boolean };
