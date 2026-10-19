@@ -2448,7 +2448,7 @@ replay a dataset against a Runtime, then batch-evaluate the resulting sessions
 agentcore eval batch-evaluation get [options]
 ```
 
-get a batch evaluation by ID, with CloudWatch-backed results and errors when available
+get a batch evaluation by ID, with CloudWatch-backed results, insights, and errors when available
 
 **Options**
 

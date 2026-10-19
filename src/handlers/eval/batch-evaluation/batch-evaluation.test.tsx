@@ -35,6 +35,55 @@ const RESULTS: BatchEvaluationResultEntry[] = [
   { evaluatorId: "Builtin.Helpfulness", level: "Session", sessionId: "s1", score: 5 },
 ];
 
+// Trimmed from a real GetBatchEvaluation response for a job that ran
+// Builtin.FailureAnalysis, so the nesting matches what the service returns.
+const INSIGHT_RESULTS = [
+  {
+    type: "FAILURE",
+    name: "IAM Permission Denial Failures",
+    description: "The agent could not complete operations it lacked permission for.",
+    createdAt: new Date("2026-10-15T21:21:11.000Z"),
+    affectedSessionCount: 1,
+    rootCauses: [
+      {
+        name: "IAM Permission Gaps Blocking Critical Operations",
+        explanation: "The execution role is missing the actions the tool calls require.",
+        suggestedFix: "Grant the execution role the actions the restart tool calls.",
+        affectedSessionCount: 1,
+        sampleSessions: [
+          {
+            sessionId: "ops-restart-denied-1",
+            lastSeenAt: new Date("2026-10-12T17:10:35.000Z"),
+            findings: [
+              {
+                targetId: "1a027c6a3f598862",
+                targetType: "SPAN_ID",
+                description: "restart_service failed with PermissionError.",
+                category: "execution-error-authentication",
+                confidence: 0.9,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const WITH_INSIGHTS = {
+  batchEvaluationId: "batch-eval-insights",
+  status: "COMPLETED",
+  insightResults: INSIGHT_RESULTS,
+  ...CW,
+} as unknown as GetBatchEvaluationResponse;
+
+const EMPTY_INSIGHTS = {
+  batchEvaluationId: "batch-eval-no-failures",
+  status: "COMPLETED",
+  insightResults: [],
+  ...CW,
+} as unknown as GetBatchEvaluationResponse;
+
 async function run(
   args: string[],
   configure?: (core: TestCoreClient) => void,
@@ -107,6 +156,46 @@ describe("eval batch-evaluation get", () => {
     // requested by default.
     const call = core.eval.calls.find((c) => c.method === "getBatchEvaluation");
     expect(call?.args[2]).toEqual({ includeResults: true });
+  });
+
+  test("returns insightResults verbatim, down to the findings", async () => {
+    const { stdout } = await run(
+      ["eval", "batch-evaluation", "get", "--id", "batch-eval-insights", "--json"],
+      (c) => c.eval.setBatchEvalGetResponse(WITH_INSIGHTS),
+    );
+    const out = JSON.parse(stdout);
+    expect(out.insightResults).toHaveLength(1);
+
+    const insight = out.insightResults[0];
+    expect(insight.type).toBe("FAILURE");
+    expect(insight.name).toBe("IAM Permission Denial Failures");
+    expect(insight.affectedSessionCount).toBe(1);
+
+    const rootCause = insight.rootCauses[0];
+    expect(rootCause.suggestedFix).toBe(
+      "Grant the execution role the actions the restart tool calls.",
+    );
+
+    const finding = rootCause.sampleSessions[0].findings[0];
+    expect(finding.targetType).toBe("SPAN_ID");
+    expect(finding.targetId).toBe("1a027c6a3f598862");
+    expect(finding.confidence).toBe(0.9);
+  });
+
+  test("keeps an empty insightResults distinct from an absent one", async () => {
+    // Empty means the analysis ran and found no failures, while absent means no
+    // analysis evaluator ran. The command must not collapse the two.
+    const empty = await run(
+      ["eval", "batch-evaluation", "get", "--id", "batch-eval-no-failures", "--json"],
+      (c) => c.eval.setBatchEvalGetResponse(EMPTY_INSIGHTS),
+    );
+    expect(JSON.parse(empty.stdout).insightResults).toEqual([]);
+
+    const absent = await run(
+      ["eval", "batch-evaluation", "get", "--id", "batch-eval-abc123", "--json"],
+      (c) => c.eval.setBatchEvalGetResponse(COMPLETED),
+    );
+    expect(JSON.parse(absent.stdout)).not.toHaveProperty("insightResults");
   });
 
   test("passes includeResults:false to Core for --disable-cw-results", async () => {

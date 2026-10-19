@@ -11,7 +11,7 @@ export const createGetBatchEvaluationHandler = (core: Core, io: AppIO) =>
   createHandler({
     name: "get",
     description:
-      "get a batch evaluation by ID, with CloudWatch-backed results and errors when available",
+      "get a batch evaluation by ID, with CloudWatch-backed results, insights, and errors when available",
     flags: [
       flag("id", "the ID of the batch evaluation", z.string().min(1)),
       flag(
