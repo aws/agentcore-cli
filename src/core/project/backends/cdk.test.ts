@@ -596,7 +596,7 @@ describe("CdkBackend.deploy", () => {
     const handed: CredentialProvisionInput[] = [];
     const provisionCredentials: CredentialProvisioner = async function* (_project, provisionInput) {
       handed.push(provisionInput);
-      yield { type: "step", message: "Preparing credential provider 'openai-key'" };
+      yield { type: "step", message: "preparing credential provider 'openai-key'" };
       return { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
     };
     const subject = harness({
@@ -614,7 +614,7 @@ describe("CdkBackend.deploy", () => {
     // The credential step runs (and its ARNs are recorded) before synthesis, so
     // the assembly is synthesized against a state file that already describes them.
     const messages = stepMessages(deployed.events);
-    expect(messages.indexOf("Preparing credential provider 'openai-key'")).toBeLessThan(
+    expect(messages.indexOf("preparing credential provider 'openai-key'")).toBeLessThan(
       messages.indexOf("synthesizing CloudFormation templates"),
     );
 
@@ -820,7 +820,7 @@ describe("CdkBackend.deploy", () => {
     const removals: string[] = [];
     const removeCredentials: CredentialRemover = async function* (project) {
       removals.push(project.name);
-      yield { type: "step", message: "Removing credential provider 'wallet'" };
+      yield { type: "step", message: "removing credential provider 'wallet'" };
     };
     const subject = harness({ removeCredentials });
 
@@ -832,7 +832,7 @@ describe("CdkBackend.deploy", () => {
     // After the destroy, since a resource in the stack may still be using it.
     const messages = stepMessages(deployed.events);
     expect(messages.indexOf("removing stack AgentCore-example-default-0")).toBeLessThan(
-      messages.indexOf("Removing credential provider 'wallet'"),
+      messages.indexOf("removing credential provider 'wallet'"),
     );
   });
 
@@ -864,7 +864,7 @@ describe("CdkBackend.deploy", () => {
     const handed: CredentialRemovalInput[] = [];
     const removeCredentials: CredentialRemover = async function* (_project, removalInput) {
       handed.push(removalInput);
-      yield { type: "step", message: "Removing credential provider 'wallet'" };
+      yield { type: "step", message: "removing credential provider 'wallet'" };
     };
     const subject = harness({ removeCredentials });
 
@@ -915,13 +915,13 @@ describe("CdkBackend.deploy", () => {
       }),
     );
     const provisionCredentials: CredentialProvisioner = async function* () {
-      yield { type: "step", message: "Preparing credential provider 'example_default_openai-key'" };
+      yield { type: "step", message: "preparing credential provider 'example_default_openai-key'" };
       return { "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } };
     };
     const handed: CredentialRemovalInput[] = [];
     const removeCredentials: CredentialRemover = async function* (_project, removalInput) {
       handed.push(removalInput);
-      yield { type: "step", message: "Removing credential provider 'example_default_wallet'" };
+      yield { type: "step", message: "removing credential provider 'example_default_wallet'" };
     };
     const subject = harness({ provisionCredentials, removeCredentials });
 
@@ -941,7 +941,7 @@ describe("CdkBackend.deploy", () => {
     const messages = stepMessages(deployed.events);
     expect(
       messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
-    ).toBeLessThan(messages.indexOf("Removing credential provider 'example_default_wallet'"));
+    ).toBeLessThan(messages.indexOf("removing credential provider 'example_default_wallet'"));
     expect(deployed.result).toEqual({ outputs: {} });
   });
 

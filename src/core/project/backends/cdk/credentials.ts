@@ -167,7 +167,7 @@ export function createCredentialRemover(identity: ProviderDeletes): CredentialRe
         };
         continue;
       }
-      yield { type: "step", message: `Removing credential provider '${provider}'` };
+      yield { type: "step", message: `removing credential provider '${provider}'` };
       try {
         await deleteProvider(identity, authorizerType, provider, options);
       } catch (error) {
@@ -264,7 +264,7 @@ export function createCredentialProvisioner(
     const created: NamedCredential[] = [];
     try {
       for (const { credential, provider, provision } of plans) {
-        yield { type: "step", message: `Preparing credential provider '${provider}'` };
+        yield { type: "step", message: `preparing credential provider '${provider}'` };
         if ("reuse" in provision) {
           provisioned[credential.name] = provision.reuse;
           continue;
@@ -302,7 +302,7 @@ async function* rollback(
   for (const { credential, provider } of [...created].reverse()) {
     yield {
       type: "step",
-      message: `Removing credential provider '${provider}' this deploy created`,
+      message: `removing credential provider '${provider}' this deploy created`,
     };
     try {
       await deleteProvider(identity, credential.authorizerType, provider, options);

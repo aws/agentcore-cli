@@ -144,7 +144,7 @@ describe("project build screen", () => {
 
     // Both steps settle to ✓, as the inline TaskList leaves them on the
     // command line; the finished steps' output tails collapse.
-    await waitForText(r.lastFrame, "✔ Built project 'orders'");
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
     const frame = r.lastFrame()!;
     expect(frame).toContain("agentcore → build");
     // No frame — not even the first — advertised a question.

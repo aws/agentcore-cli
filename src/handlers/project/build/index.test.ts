@@ -69,7 +69,7 @@ describe("project build handler", () => {
     await subject.run();
 
     expect(subject.io.stderr()).toContain("synthesizing CloudFormation templates");
-    expect(subject.io.stderr()).toContain("Built project 'orders'");
+    expect(subject.io.stderr()).toContain("built project 'orders'");
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("synth chatter");
     expect(subject.io.stdout()).toBe("");
@@ -81,7 +81,7 @@ describe("project build handler", () => {
 
     await subject.run(["--json"]);
 
-    expect(JSON.parse(subject.io.stdout())).toEqual({ message: "Built project 'orders'" });
+    expect(JSON.parse(subject.io.stdout())).toEqual({ message: "built project 'orders'" });
   });
 
   test("renders a build failure as JSON without changing the thrown error", async () => {
@@ -92,7 +92,7 @@ describe("project build handler", () => {
     await expect(subject.run(["--json"])).rejects.toThrow("cdk synth exploded");
 
     expect(JSON.parse(subject.io.stdout())).toEqual({ error: "cdk synth exploded" });
-    expect(subject.io.stderr()).not.toContain("Built project");
+    expect(subject.io.stderr()).not.toContain("built project");
   });
 
   test("keeps stdout empty on failure without --json", async () => {

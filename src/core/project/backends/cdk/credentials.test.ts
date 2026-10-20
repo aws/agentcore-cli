@@ -370,7 +370,7 @@ describe("createCredentialProvisioner", () => {
     const { events, result } = await run(subject.provision, input);
 
     expect(events).toEqual([
-      { type: "step", message: `Preparing credential provider '${OPENAI_PROVIDER}'` },
+      { type: "step", message: `preparing credential provider '${OPENAI_PROVIDER}'` },
     ]);
     expect(subject.contents()).toEqual({
       [OPENAI_PROVIDER]: {
@@ -910,7 +910,7 @@ describe("createCredentialProvisioner rollback", () => {
     expect(error.message).toBe(`create ${OTHER_PROVIDER} failed`);
     const messages = stepMessages(events);
     expect(messages).toContain(
-      `Removing credential provider '${OPENAI_PROVIDER}' this deploy created`,
+      `removing credential provider '${OPENAI_PROVIDER}' this deploy created`,
     );
     expect(messages[messages.length - 1]).toMatch(
       new RegExp(
@@ -966,9 +966,9 @@ describe("createCredentialRemover", () => {
     ]);
     expect(subject.contents()).toEqual({});
     expect(stepMessages(events)).toEqual([
-      `Removing credential provider '${OPENAI_PROVIDER}'`,
-      `Removing credential provider '${OAUTH_PROVIDER}'`,
-      `Removing credential provider '${WALLET_PROVIDER}'`,
+      `removing credential provider '${OPENAI_PROVIDER}'`,
+      `removing credential provider '${OAUTH_PROVIDER}'`,
+      `removing credential provider '${WALLET_PROVIDER}'`,
     ]);
     expect(subject.optionsSeen).toEqual([OPTIONS, OPTIONS, OPTIONS]);
   });
@@ -980,7 +980,7 @@ describe("createCredentialRemover", () => {
     const { events } = await remove(subject, [COINBASE]);
 
     expect(events).toEqual([
-      { type: "step", message: `Removing credential provider '${WALLET_PROVIDER}'` },
+      { type: "step", message: `removing credential provider '${WALLET_PROVIDER}'` },
     ]);
   });
 
@@ -1051,8 +1051,8 @@ describe("v0 projects", () => {
     const { events, result } = await run(subject.provision, input);
 
     expect(stepMessages(events)).toEqual([
-      "Preparing credential provider 'openai-key'",
-      "Preparing credential provider 'wallet'",
+      "preparing credential provider 'openai-key'",
+      "preparing credential provider 'wallet'",
     ]);
     expect(Object.keys(subject.contents())).toEqual(["openai-key", "wallet"]);
     expect(subject.configFor("openai-key")).toEqual({ name: "openai-key", apiKey: "sk-live" });
@@ -1124,7 +1124,7 @@ describe("v0 projects", () => {
     expect(stepMessages(events)).toEqual([
       "Leaving credential provider 'openai-key' in place: v0 projects can share it",
       "Leaving credential provider 'my-oauth' in place: v0 projects can share it",
-      "Removing credential provider 'wallet'",
+      "removing credential provider 'wallet'",
     ]);
   });
 });

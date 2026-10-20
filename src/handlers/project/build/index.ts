@@ -13,7 +13,7 @@ type BuildProjectHandlerConfig = {
 
 /** The line both entry points print once a build finishes. */
 export function builtMessage(project: Project): string {
-  return `Built project '${project.name}'`;
+  return `built project '${project.name}'`;
 }
 
 export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>

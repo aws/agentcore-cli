@@ -1115,7 +1115,7 @@ describe("project build", () => {
       },
     ]);
     expect(io.stderr()).toContain("synthesizing CloudFormation templates");
-    expect(io.stderr()).toContain("Built project 'MyAgent'");
+    expect(io.stderr()).toContain("built project 'MyAgent'");
   });
 
   test("resolves the project from a nested directory", async () => {
