@@ -59,6 +59,18 @@ export const APPLY_HINT =
 export const MIGRATION_FAILURE_GUIDANCE =
   "Please use `agentcore feedback` or raise a GitHub issue at https://github.com/aws/agentcore-cli.";
 
+function migrationFailureWithGuidance(error: unknown): AgentCoreCLIError {
+  const cliError = AgentCoreCLIError.fromError(error);
+  if (cliError instanceof SilentCLIError) return cliError;
+  return new AgentCoreCLIError(`${cliError.message}\n${MIGRATION_FAILURE_GUIDANCE}`, {
+    cause: cliError,
+    source: cliError.source,
+    name: cliError.name,
+    meta: cliError.meta,
+    exitCode: cliError.exitCode,
+  });
+}
+
 /** The apply hint for a run that needs its other flags repeated to apply. */
 export function applyHint(flags: string[] = []): string {
   if (flags.length === 0) return APPLY_HINT;
@@ -203,10 +215,7 @@ export const createMigrateProjectHandler = (config: MigrateProjectHandlerConfig)
           await prepared.dispose();
         }
       } catch (error) {
-        const cliError = AgentCoreCLIError.fromError(error);
-        if (!(cliError instanceof SilentCLIError)) {
-          cliError.message = `${cliError.message}\n${MIGRATION_FAILURE_GUIDANCE}`;
-        }
+        const cliError = migrationFailureWithGuidance(error);
         // A not-ready plan or an incomplete migration is already on stdout.
         if (json && !(cliError instanceof SilentCLIError)) renderJsonError(ctx, cliError);
         throw cliError;
