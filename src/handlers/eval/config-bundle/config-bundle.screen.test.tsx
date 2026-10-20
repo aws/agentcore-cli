@@ -257,8 +257,8 @@ describe("configuration bundle picker", () => {
       args: ["bundle-1", undefined, "foo/blue", { region: "us-east-1" }],
     });
     await screen.press("escape");
-    await waitForText(screen.lastFrame, "foo/blue");
-    expect(screen.lastFrame()).toContain("latest version");
+    await waitForText(screen.lastFrame, "latest version");
+    expect(screen.lastFrame()).toContain("foo/blue");
   });
 
   test("selection opens a branch picker when the bundle has a single non-mainline branch", async () => {
