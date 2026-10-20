@@ -554,6 +554,29 @@ describe("agentcore migrate, keeping unsupported resources", () => {
 });
 
 describe("agentcore migrate, applying", () => {
+  test("a failed v1 synth includes feedback guidance after the not-ready plan", async () => {
+    await inCommittedV0Project();
+    const subject = scriptedCli({
+      ready: false,
+      plan: {
+        checks: [
+          {
+            name: "v1 synth",
+            ok: false,
+            message:
+              'AgentCore CDK synthesis failed: Credential "OrdersApi" has no clientSecretArn in deployed state.',
+          },
+        ],
+      },
+    });
+
+    await expect(subject.run()).rejects.toBeInstanceOf(SilentCLIError);
+    expect(subject.io.stdout()).toContain(
+      'v1 synth: AgentCore CDK synthesis failed: Credential "OrdersApi" has no clientSecretArn',
+    );
+    expect(subject.io.stderr()).toContain(MIGRATION_FAILURE_GUIDANCE);
+  });
+
   test.each([
     ["internal", new Error("unexpected migration failure")],
     [
@@ -668,6 +691,7 @@ describe("agentcore migrate, applying", () => {
 
     await expect(subject.run("--yes")).rejects.toBeInstanceOf(SilentCLIError);
     expect(subject.calls.apply).toBe(0);
+    expect(subject.io.stderr()).toContain(MIGRATION_FAILURE_GUIDANCE);
   });
 
   test("on a terminal, asks first and applies on yes", async () => {
@@ -695,6 +719,7 @@ describe("agentcore migrate, applying", () => {
 
     expect(subject.calls.apply).toBe(0);
     expect(subject.io.stdout()).toContain("Migration cancelled. Nothing was changed.");
+    expect(subject.io.stderr()).not.toContain(MIGRATION_FAILURE_GUIDANCE);
   });
 
   test("--json without --yes only renders the plan", async () => {
@@ -733,6 +758,7 @@ describe("agentcore migrate, applying", () => {
 
     await expect(subject.run("--yes")).rejects.toBeInstanceOf(SilentCLIError);
     expect(subject.io.stdout()).toContain("the project's files were put back: it's v0 again");
+    expect(subject.io.stderr()).toContain(MIGRATION_FAILURE_GUIDANCE);
   });
 });
 

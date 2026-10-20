@@ -216,7 +216,11 @@ export const createMigrateProjectHandler = (config: MigrateProjectHandlerConfig)
         }
       } catch (error) {
         const cliError = migrationFailureWithGuidance(error);
-        // A not-ready plan or an incomplete migration is already on stdout.
+        // A not-ready plan or an incomplete migration is already on stdout, so
+        // keep its error silent while still showing the reporting guidance.
+        if (cliError instanceof SilentCLIError && !(cliError instanceof UserCancellationError)) {
+          config.io.stderr.write(`${MIGRATION_FAILURE_GUIDANCE}\n`);
+        }
         if (json && !(cliError instanceof SilentCLIError)) renderJsonError(ctx, cliError);
         throw cliError;
       }
