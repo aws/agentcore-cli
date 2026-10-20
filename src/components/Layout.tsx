@@ -1,10 +1,9 @@
-import React, { useContext } from "react";
+import React from "react";
 import { Box, useBoxMetrics, type DOMElement } from "ink";
 import { useWindowSize } from "./ui/useWindowSize";
 import { Header, type HeaderProps } from "./Header";
 import { Footer } from "./Footer";
 import type { KeyHintProps } from "./ui/key-hint";
-import { V0ProjectBanner, V0ProjectNoticeContext } from "./V0ProjectNotice";
 
 export interface LayoutProps {
   // banner is content rendered above the standard breadcrumb header.
@@ -35,7 +34,6 @@ export interface LayoutProps {
 
 const DEFAULT_HEADER_ROWS = 2;
 const FOOTER_ROWS = 2;
-const V0_PROJECT_BANNER_ROWS = 1;
 
 // Layout is the standard full-screen frame: a breadcrumb Header at the top, a
 // KeyHint Footer at the bottom, and a flexible content area in between that grows
@@ -52,7 +50,6 @@ export const Layout: React.FC<LayoutProps> = ({
   children,
 }) => {
   const { columns, rows } = useWindowSize();
-  const showV0ProjectBanner = useContext(V0ProjectNoticeContext);
   const headerRef = React.useRef<DOMElement>(null);
   const { height: measuredHeaderRows, hasMeasured: hasMeasuredHeader } = useBoxMetrics(headerRef);
   const bannerVisible =
@@ -60,11 +57,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const headerRows = hasMeasuredHeader ? measuredHeaderRows : DEFAULT_HEADER_ROWS;
   const contentRows = Math.max(
     0,
-    rows -
-      headerRows -
-      FOOTER_ROWS -
-      (showV0ProjectBanner ? V0_PROJECT_BANNER_ROWS : 0) -
-      (bannerVisible ? bannerHeight : 0),
+    rows - headerRows - FOOTER_ROWS - (bannerVisible ? bannerHeight : 0),
   );
   const content =
     typeof children === "function"
@@ -80,7 +73,6 @@ export const Layout: React.FC<LayoutProps> = ({
       <Box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="column">
         {content}
       </Box>
-      {showV0ProjectBanner ? <V0ProjectBanner /> : null}
       <Footer keys={keyHints} />
     </Box>
   );

@@ -16,7 +16,7 @@ import {
   shouldHideBrandBanner,
 } from "./BrandBanner";
 import { Layout } from "./Layout";
-import { Alert } from "./ui/alert";
+import { Alert, type AlertProps } from "./ui/alert";
 import { Divider } from "./ui/divider";
 import { TextInput } from "./ui/text-input";
 import { darkTheme, glyphs } from "./ui/_core.js";
@@ -84,6 +84,7 @@ export interface RouterScreenProps extends ScreenProps {
   cliSectionCommands?: readonly string[];
   // alert is optional guidance rendered between the filter and menu options.
   alert?: string;
+  alertVariant?: AlertProps["variant"];
   hiddenOptions?: readonly string[];
 }
 
@@ -108,6 +109,7 @@ function CommandMenu({
   optionNotices,
   cliSectionCommands = [],
   alert,
+  alertVariant,
   hiddenOptions,
   command,
 }: RouterScreenProps & { command: Command }) {
@@ -226,6 +228,7 @@ function CommandMenu({
       {({ columns, contentRows }) => (
         <CommandMenuBody
           alert={alert}
+          alertVariant={alertVariant}
           columns={columns}
           contentRows={contentRows}
           filtered={filtered}
@@ -245,6 +248,7 @@ function CommandMenu({
 
 interface CommandMenuBodyProps {
   alert?: string;
+  alertVariant?: AlertProps["variant"];
   columns: number;
   contentRows: number;
   filtered: Option[];
@@ -264,6 +268,7 @@ function alertRows(alert: string | undefined, columns: number): number {
 
 function CommandMenuBody({
   alert,
+  alertVariant,
   columns,
   contentRows,
   filtered,
@@ -301,7 +306,7 @@ function CommandMenuBody({
 
       <Divider />
 
-      {alert && <Alert>{alert}</Alert>}
+      {alert && <Alert variant={alertVariant}>{alert}</Alert>}
 
       <Box flexDirection="column" height={menuHeight} overflow="hidden">
         {filtered.length === 0 ? (
