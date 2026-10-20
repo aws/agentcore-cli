@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
 import {
+  AgentCoreCLIError,
   ERROR_SOURCE,
   ProjectStateError,
   SilentCLIError,
@@ -54,6 +55,9 @@ export const CONFIRM_QUESTION = "Apply these changes? (y/N) ";
 /** Printed after a ready plan when nothing can confirm applying it. */
 export const APPLY_HINT =
   "Nothing was changed. Run `agentcore migrate --yes` to apply these changes.";
+
+export const MIGRATION_FAILURE_GUIDANCE =
+  "Please use `agentcore feedback` or raise a GitHub issue at https://github.com/aws/agentcore-cli.";
 
 /** The apply hint for a run that needs its other flags repeated to apply. */
 export function applyHint(flags: string[] = []): string {
@@ -199,9 +203,13 @@ export const createMigrateProjectHandler = (config: MigrateProjectHandlerConfig)
           await prepared.dispose();
         }
       } catch (error) {
+        const cliError = AgentCoreCLIError.fromError(error);
+        if (!(cliError instanceof SilentCLIError)) {
+          cliError.message = `${cliError.message}\n${MIGRATION_FAILURE_GUIDANCE}`;
+        }
         // A not-ready plan or an incomplete migration is already on stdout.
-        if (json && !(error instanceof SilentCLIError)) renderJsonError(ctx, error);
-        throw error;
+        if (json && !(cliError instanceof SilentCLIError)) renderJsonError(ctx, cliError);
+        throw cliError;
       }
     },
   });

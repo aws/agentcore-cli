@@ -39,6 +39,7 @@ import {
   formatResultSummary,
   formatStackPlan,
   MIGRATION_DOCS_URL,
+  MIGRATION_FAILURE_GUIDANCE,
   overrideInstallCommand,
   reportStamp,
 } from "./index";
@@ -293,14 +294,18 @@ describe("agentcore migrate, planning", () => {
 
   test("refuses a project that is already v1", async () => {
     await inV1Project();
-    await expect(cli().run()).rejects.toThrow(ALREADY_V1_MESSAGE);
+    await expect(cli().run()).rejects.toThrow(
+      `${ALREADY_V1_MESSAGE}\n${MIGRATION_FAILURE_GUIDANCE}`,
+    );
   });
 
   test("--json writes the already-v1 error to stdout", async () => {
     await inV1Project();
     const subject = cli();
     await expect(subject.run("--json")).rejects.toThrow(ProjectStateError);
-    expect(JSON.parse(subject.io.stdout())).toEqual({ error: ALREADY_V1_MESSAGE });
+    expect(JSON.parse(subject.io.stdout())).toEqual({
+      error: `${ALREADY_V1_MESSAGE}\n${MIGRATION_FAILURE_GUIDANCE}`,
+    });
   });
 });
 
