@@ -14,7 +14,8 @@ defines an HTTP server that streams tokens from your chosen Agent framework SDK.
 `model/load.ts` instantiates your chosen model provider. For API-key providers (Anthropic, OpenAI,
 OpenAI-compatible, Gemini) `model/apiKey.ts` fetches the key from AgentCore Identity at runtime, or
 from `.env.local` under `agentcore dev`; the `openai_compatible` provider is the OpenAI client
-pointed at the `--api-base` endpoint.
+pointed at the base URL you gave the `agentcore create` wizard, baked into `load.ts` as
+`clientConfig.baseURL`.
 
 ## Input Validation
 

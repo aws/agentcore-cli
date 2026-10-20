@@ -100,14 +100,14 @@ and `--agent <name>` to choose an agent in mixed projects.
 
 ## Commands
 
-| Command                                                          | Purpose                                                                  |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `create`, `add`, `remove`, `export`                              | Create a project, add or remove its resources, export a resource to code |
-| `dev`, `build`, `deploy`, `status`                               | Run locally, build, deploy, and check what is deployed                   |
-| `invoke`, `log`, `traces`                                        | Talk to deployed agents and inspect their logs and traces                |
-| `runtime`, `harness`, `gateway`, `memory`, `identity`, `payment` | Inspect and manage deployed resources, with or without a project         |
-| `eval`                                                           | Evaluate agents, manage datasets and configurations, and run experiments |
-| `feedback`, `config`, `update`                                   | Send feedback, read and write CLI settings, update the CLI               |
+| Command                                                          | Purpose                                                                                        |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `create`, `add`, `remove`, `export`, `migrate`                   | Create a project, add or remove its resources, export a resource to code, migrate a v0 project |
+| `dev`, `build`, `deploy`, `status`                               | Run locally, build, deploy, and check what is deployed                                         |
+| `invoke`, `logs`, `traces`                                       | Talk to deployed agents and inspect their logs and traces                                      |
+| `runtime`, `harness`, `gateway`, `memory`, `identity`, `payment` | Inspect and manage deployed resources, with or without a project                               |
+| `eval`                                                           | Evaluate agents, manage datasets and configurations, and run experiments                       |
+| `feedback`, `config`, `update`                                   | Send feedback, read and write CLI settings, update the CLI                                     |
 
 In a terminal, a command run without flags opens its interactive flow; pass flags and it runs
 non-interactively. `--help` on any command lists its subcommands and flags, and the

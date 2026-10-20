@@ -6,7 +6,7 @@ custom Router/Handler framework, AWS SDK v3, zod. Developed with Bun, **shipped 
 
 **Read `CONTRIBUTING.md` first** for architecture (Router/Handler tree, Context, middleware,
 Core + dependency inversion, TUI, testing strategy, repo layout). This file only adds what is not
-obvious from there or from the code. `CLAUDE.md` is a symlink to this file.
+obvious from there or from the code.
 
 ## Commands
 

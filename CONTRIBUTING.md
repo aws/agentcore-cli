@@ -146,7 +146,8 @@ bun run format        # write changes
 bun run format:check  # check only
 ```
 
-A Husky pre-commit hook runs Prettier (via lint-staged) on staged files automatically. It installs on `bun install`.
+A Husky pre-commit hook runs `oxlint --fix` and then Prettier (via lint-staged) on staged files
+automatically. It installs on `bun install`.
 
 ## Architecture & patterns
 
@@ -447,6 +448,8 @@ src/
   logging/        # structured file logging
   telemetry/      # CLI usage metrics
   errors/         # typed CLI errors and exit-code handling
+  secrets/        # at-rest encryption and sensitive-key redaction for project state
+  cliVersionManager/ # update checks against the npm registry + the update notice
   assets/         # generated project, runtime, harness, and CDK assets
   middleware/     # cross-cutting middleware (withRegion, withJsonRenderer, ...)
   tui/            # Ink renderer entry (renderTui / renderTuiAt) + JSON renderer

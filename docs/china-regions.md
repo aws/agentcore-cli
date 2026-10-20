@@ -10,7 +10,8 @@
   or pick one of the two routes to a model that is reachable from China in the
   `agentcore create` wizard (`agentcore create --template` always scaffolds the template's
   Bedrock default): LiteLLM with a model id on a Python strands template
-  (`agent-python-strands`, `a2a-python-strands`, `agui-python-strands`) with a
+  (`agent-python-strands`, `agent-python-strands-container`, `a2a-python-strands`,
+  `agui-python-strands`) with a
   [LiteLLM model](https://docs.litellm.ai/docs/providers) — no default model id is applied
   there, and the `bedrock/` LiteLLM prefix (which routes to Amazon Bedrock) is rejected — or
   an OpenAI-compatible endpoint with a base URL and model id on any strands template

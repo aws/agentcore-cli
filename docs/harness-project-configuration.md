@@ -11,6 +11,7 @@
 - [Conversation context and invocation limits](#conversation-context-and-invocation-limits)
 - [Environment and containers](#environment-and-containers)
 - [Networking and authentication](#networking-and-authentication)
+- [Connections](#connections)
 - [Session lifetime and storage](#session-lifetime-and-storage)
 - [Tags](#tags)
 - [Validation](#validation)
@@ -672,6 +673,66 @@ executionRoleArn: arn:aws:iam::123456789012:role/MyHarnessRole
 CDK cannot modify a supplied role. Add the required model, tool, skill-source,
 and storage permissions to that role yourself. Loading a skill or adding a tool
 does not bypass IAM permissions or network restrictions.
+
+## Connections
+
+`connections` declares that this Harness reaches an AgentCore resource that is
+**not** part of this project. Deployment adds least-privilege IAM for each target
+to the Harness execution role. Access between resources declared in the same
+`agentcore.json` is already implicit, so a connection is only needed for an
+external ARN.
+
+```yaml
+connections:
+  - id: shared-memory
+    to:
+      type: memory
+      arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/SharedMemory-abc123
+      namespaces:
+        - /users/{actorId}/facts
+    access: read
+    description: Facts curated by the platform team.
+```
+
+Each entry needs `to`. `id` is optional and matches
+`[a-zA-Z][a-zA-Z0-9_-]{0,63}`. `access` is `read` or `readwrite`. `description`
+is at most 200 characters. There is no `from` field: the enclosing Harness is
+always the source.
+
+`to.type` selects the target, and each type takes its own fields:
+
+| `to.type`         | ARN                            | Target options                                            |
+| ----------------- | ------------------------------ | --------------------------------------------------------- |
+| `memory`          | required, `:memory/`           | `namespaces`: namespaces to retrieve from                 |
+| `gateway`         | required, `:gateway/`          | `outboundAuth`: `awsIam`, `none`, or `oauth`              |
+| `runtime`         | required, `:runtime/`          | `exec`: boolean, also allow exec/code execution           |
+| `browser`         | optional, `:browser/`          | omit the ARN to use the service-provided browser          |
+| `codeInterpreter` | optional, `:code-interpreter/` | omit the ARN to use the service-provided code interpreter |
+
+For an external Gateway, `outboundAuth` is how this Harness authenticates
+**outbound** to that Gateway. It is not the Gateway's own inbound authorizer:
+
+```yaml
+connections:
+  - to:
+      type: gateway
+      arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway/partner-tools-abc123
+      outboundAuth:
+        oauth:
+          providerArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/oauth2credentialprovider/partner
+          scopes: [tools.read]
+          grantType: CLIENT_CREDENTIALS
+```
+
+Connection `grantType` accepts `CLIENT_CREDENTIALS`, `AUTHORIZATION_CODE`, or
+`TOKEN_EXCHANGE`, and `oauth` also takes a string map of `customParameters`.
+These are not the same values as a `agentcore_gateway` tool's `outboundAuth`,
+which takes `CLIENT_CREDENTIALS` or `USER_FEDERATION`. A tool entry makes a
+Gateway's tools available to the model; a connection only grants access to an
+external resource. Declaring a connection does not add a tool.
+
+See the [connection schema](../src/projectSchemas/connections.ts) for the exact
+ARN patterns and field constraints.
 
 ## Session Lifetime and Storage
 
