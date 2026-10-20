@@ -269,7 +269,7 @@ add a harness to the current project (not available in China regions)
 - `--model <model>`: model configuration (JSON)
 - `--api-key <api-key>`: API key for a non-Bedrock --model; '-' for stdin, 'file://path' for file
 - `--system-prompt <system-prompt>`: the agent's system prompt
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 - `--tools <tools>`: tools available to the agent (JSON)
 - `--allowed-tools <allowed-tools...>`: tool allowlist patterns (e.g. \* or @serverName/toolName)
 - `--skills <skills>`: skills available to the agent (JSON)
@@ -305,7 +305,7 @@ add a Runtime to the current project
 - `--language <language>`: language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)
 - `--protocol <protocol>`: protocol the Runtime serves: HTTP (default), MCP, A2A, or AGUI
 - `--description <description>`: an optional description of the Runtime
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 - `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
 - `--network-mode <network-mode>`: network mode for the Runtime environment (PUBLIC or VPC)
 - `--network-config <network-config>`: VPC network configuration (JSON)
@@ -355,7 +355,7 @@ add a Gateway to the current project
 - `--policy-engine-name <policy-engine-name>`: name of a Policy Engine declared in this project
 - `--policy-engine-mode <policy-engine-mode>`: Policy Engine mode: log-only or enforce
 - `--exception-level <exception-level>`: exception detail level: debug
-- `--tags <tags...>`: tags as repeated key=value or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 #### `agentcore add gateway-target`
 
@@ -406,7 +406,7 @@ add a Policy Engine to the current project (not available in China regions)
 - `--name <name>`: the Policy Engine name (required)
 - `--description <description>`: Policy Engine description
 - `--encryption-key-arn <encryption-key-arn>`: KMS encryption key ARN
-- `--tags <tags...>`: tags as repeated key=value or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 - `--attach-to-gateways <attach-to-gateways...>`: names of project Gateways to attach this engine to
 - `--attach-mode <attach-mode>`: attached Gateway enforcement mode: log-only or enforce (default enforce)
 
@@ -507,7 +507,7 @@ add a Memory to the current project (not available in China regions)
 - `--stream-delivery-resources <stream-delivery-resources>`: destinations Memory records are streamed to (JSON StreamDeliveryResources)
 - `--encryption-key-arn <encryption-key-arn>`: customer managed KMS key ARN used to encrypt the Memory
 - `--execution-role-arn <execution-role-arn>`: IAM role the Memory assumes; a default role is created when omitted
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 #### `agentcore add evaluator`
 
@@ -535,7 +535,7 @@ add an LLM-as-a-Judge evaluator to the current project
 - `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale (required)
 - `--description <description>`: a description of what this evaluator measures
 - `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ##### `agentcore add evaluator code-based`
 
@@ -553,7 +553,7 @@ add a code-based evaluator to the current project
 - `--timeout-seconds <timeout-seconds>`: evaluator timeout in seconds (1-300)
 - `--description <description>`: a description of what this evaluator measures
 - `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 #### `agentcore add online-eval`
 
@@ -574,7 +574,7 @@ add an online evaluation config to the current project (not available in China r
 - `--sampling-rate <sampling-rate>`: percentage of sessions to sample (0.01-100) (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: enable evaluation immediately after deploy (default true; pass false to add it paused)
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 #### `agentcore add config-bundle`
 
@@ -960,7 +960,7 @@ create a harness
 - `--max-iterations <max-iterations>`: max agent loop iterations per invocation
 - `--max-tokens <max-tokens>`: max total output tokens per invocation
 - `--timeout-seconds <timeout-seconds>`: max duration in seconds per invocation
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 #### `agentcore harness get`
 
@@ -1162,7 +1162,7 @@ create a harness endpoint
 - `--id <id>`: the ID of the harness (required)
 - `--name <name>`: the name of the endpoint (required)
 - `--target-version <target-version>`: the harness version the endpoint points to (default latest)
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ##### `agentcore harness endpoint get`
 
@@ -1693,7 +1693,7 @@ create an API key credential provider
 - `--name <name>`: the name of the API key credential provider (required)
 - `--api-key <api-key>`: the API key (file://path or - for stdin; inline values are rejected)
 - `--api-key-secret-reference <api-key-secret-reference>`: external secret reference JSON: {"secretId":"&lt;arn&gt;","jsonKey":"&lt;key&gt;"}
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ##### `agentcore identity api-key-credential-provider get`
 
@@ -1772,7 +1772,7 @@ create an OAuth2 credential provider
 - `--discovery-url <discovery-url>`: OAuth2 discovery URL (guided custom OAuth2)
 - `--authorization-server-metadata <authorization-server-metadata>`: authorization server metadata JSON (guided custom OAuth2)
 - `--provider-configuration <provider-configuration>`: complete OAuth2 provider configuration JSON (alternative to guided flags)
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ##### `agentcore identity oauth2-credential-provider get`
 
@@ -2102,7 +2102,7 @@ create an LLM-as-a-Judge evaluator
 - `--instructions <instructions>`: evaluation instructions (inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--rating-scale <rating-scale>`: rating scale: a preset (1-5-quality | 1-3-simple | pass-fail | good-neutral-bad) or a custom RatingScale (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ###### `agentcore eval evaluator llm-as-a-judge update`
 
@@ -2144,7 +2144,7 @@ create a code-based (Lambda-backed) evaluator
 - `--lambda-arn <lambda-arn>`: ARN of the Lambda function that scores a session (required)
 - `--timeout <timeout>`: Lambda timeout in seconds (1-300)
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for evaluator data
-- `--tags <tags...>`: tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ###### `agentcore eval evaluator code-based update`
 
@@ -2182,7 +2182,7 @@ create an online evaluation config
 - `--name <name>`: the name of the online evaluation config (required)
 - `--description <description>`: a description of the config's monitoring purpose
 - `--enable-on-create <enable-on-create>`: whether to enable evaluation immediately (default true; pass false to create it paused)
-- `--tags <tags...>`: resource tags as repeated key=value entries or a JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 - `--agent <agent>`: harness ID or Runtime ID whose traffic to sample
 - `--data-source-config <data-source-config>`: the traces to sample (JSON DataSourceConfig), as an alternative to --agent
 - `--endpoint <endpoint>`: the agent endpoint qualifier to scope monitoring to (default DEFAULT)
@@ -2318,7 +2318,7 @@ create a dataset from JSONL examples
 - `--schema-type <schema-type>`: the structure of the dataset's examples, immutable after creation (predefined | simulated) (required)
 - `--description <description>`: a description of the dataset
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for dataset data
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ##### `agentcore eval dataset get`
 
@@ -2789,7 +2789,7 @@ start an asynchronous recommendation
 - `--recommendation-config <recommendation-config>`: recommendation configuration (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--description <description>`: a description of the recommendation
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for recommendation data
-- `--tags <tags...>`: tags as key=value (repeatable) or JSON object
+- `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 
 ##### `agentcore eval recommendation get`
 

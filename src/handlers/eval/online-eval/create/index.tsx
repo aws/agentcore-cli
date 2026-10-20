@@ -10,17 +10,11 @@ import {
   coreOptsFromCtx,
   parseJsonFlag,
   parseTags,
+  tagsFlag,
 } from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 import { OnlineEvalOutputConfigFlag } from "../outputConfig";
-
-const tagsHelp = `(repeated key=value or JSON: map of string to string)
-Tags applied to the online evaluation configuration. Repeat --tags for multiple key=value pairs.
-
-Example:
-  --tags team=ml-platform --tags env=prod
-  --tags '{"team":"ml-platform","env":"prod"}'`;
 
 const CONFIGURATION = "Configuration:";
 const SESSION_SOURCE = "Session source (choose exactly one):";
@@ -48,15 +42,7 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
         z.enum(["true", "false"]).optional(),
         { group: CONFIGURATION },
       ),
-      flag(
-        "tags",
-        "resource tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-        {
-          group: CONFIGURATION,
-          help: tagsHelp,
-        },
-      ),
+      tagsFlag({ group: CONFIGURATION }),
       flag("agent", "harness ID or Runtime ID whose traffic to sample", z.string().optional(), {
         group: SESSION_SOURCE,
       }),

@@ -2,7 +2,7 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
-import { parseJsonFlag, parseTags } from "../../../utils";
+import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import {
@@ -100,14 +100,7 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       flag("system-prompt", "the agent's system prompt", z.string().optional(), {
         group: CONFIGURATION,
       }),
-      flag(
-        "tags",
-        "tags as key=value (repeatable) or JSON object",
-        z.array(z.string()).optional(),
-        {
-          group: CONFIGURATION,
-        },
-      ),
+      tagsFlag({ group: CONFIGURATION }),
       flag("tools", "tools available to the agent (JSON)", z.string().optional(), {
         group: TOOLS_AND_SKILLS,
       }),

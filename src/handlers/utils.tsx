@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect } from "react";
-import { ProjectKey, type Context } from "../router";
-import type z from "zod";
+import { ProjectKey, flag, type Context } from "../router";
+import { z } from "zod";
 import type { AwsCredentialProvider, CoreOptions } from "../core/types";
 import type { AppIO } from "../io";
 import { regionFromArn, serviceIdFromArn } from "../core/arn";
 import { AgentCoreCLIError, InputValidationError, SilentCLIError } from "../errors";
 import { formatZodError } from "../router/schema";
+import { TagsSchema, type Tags } from "../projectSchemas/tags";
 import { AwsCredentialProviderKey, EndpointKey, JsonKey, RegionKey } from "./keys";
 import { JsonRendererKey } from "../tui";
 import { projectResourceNames } from "./project/selection";
@@ -164,6 +165,22 @@ export function assertMutuallyExclusiveFlags(
   }
 }
 
+const TAGS_DESCRIPTION = "tags as repeated key=value entries or one JSON object";
+const TAGS_HELP = `(repeated key=value or JSON: map of string to string)
+Tags to apply to the resource. Repeat --tags for key=value entries, or provide
+one JSON object. Up to 50 entries; keys up to 128 characters, values up to 256.
+
+Examples:
+  --tags team=ml-platform --tags env=dev
+  --tags '{"team":"ml-platform","env":"dev"}'`;
+
+export function tagsFlag(options: { group?: string } = {}) {
+  return flag("tags", TAGS_DESCRIPTION, z.array(z.string()).optional(), {
+    group: options.group,
+    help: TAGS_HELP,
+  });
+}
+
 /**
  * Given tag values, parses either repeated `key=value` entries (for example,
  * `["env=prod", "team=foo"]`) or a single JSON object (for example,
@@ -173,12 +190,13 @@ export function assertMutuallyExclusiveFlags(
  * or empty.
  *
  * @param values - Tag values supplied through `--tags`.
- * @returns Parsed tags, or `undefined` when no tags were provided.
- * @throws {InputValidationError} If an entry is malformed or a JSON value is not a string.
+ * @returns Parsed and validated tags, or `undefined` when no tags were provided.
+ * @throws {InputValidationError} If an entry is malformed or violates the tag schema.
  */
-export function parseTags(values: string[] | undefined): Record<string, string> | undefined {
+export function parseTags(values: string[] | undefined): Tags | undefined {
   if (!values || values.length === 0) return undefined;
 
+  let tags: Record<string, string>;
   const jsonIndex = values.findIndex((value) => {
     const trimmed = value.trimStart();
     return trimmed.startsWith("{") || trimmed.startsWith("[");
@@ -205,20 +223,28 @@ export function parseTags(values: string[] | undefined): Record<string, string> 
         );
       }
     }
-    return parsed as Record<string, string>;
+    tags = parsed as Record<string, string>;
+  } else {
+    tags = {};
+    for (const entry of values) {
+      const eqIndex = entry.indexOf("=");
+      if (eqIndex < 1) {
+        throw new InputValidationError(
+          `Invalid tag '${entry}': expected key=value format or a single JSON object`,
+        );
+      }
+      tags[entry.slice(0, eqIndex)] = entry.slice(eqIndex + 1);
+    }
   }
 
-  const result: Record<string, string> = {};
-  for (const entry of values) {
-    const eqIndex = entry.indexOf("=");
-    if (eqIndex < 1) {
-      throw new InputValidationError(
-        `Invalid tag '${entry}': expected key=value format or a single JSON object`,
-      );
-    }
-    result[entry.slice(0, eqIndex)] = entry.slice(eqIndex + 1);
+  const result = TagsSchema.safeParse(tags);
+  if (!result.success) {
+    throw new InputValidationError(
+      `Invalid value for option '--tags': ${formatZodError(result.error)}`,
+      { cause: result.error },
+    );
   }
-  return result;
+  return result.data;
 }
 
 // renderJsonError reports a command failure as a JSON document in --json mode,

@@ -2,7 +2,7 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { InputValidationError } from "../../../../errors";
 import { OnlineEvalConfigSchema } from "../../../../projectSchemas/online-eval-config";
-import { parseTags } from "../../../utils";
+import { parseTags, tagsFlag } from "../../../utils";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
@@ -124,11 +124,7 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
         "enable evaluation immediately after deploy (default true; pass false to add it paused)",
         z.enum(["true", "false"]).optional(),
       ),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);

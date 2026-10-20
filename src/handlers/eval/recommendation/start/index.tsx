@@ -4,7 +4,7 @@ import { SourceResolver, type AppIO } from "../../../../io";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseJsonObjectFlag, parseTags } from "../../../utils";
+import { coreOptsFromCtx, parseJsonObjectFlag, parseTags, tagsFlag } from "../../../utils";
 
 const RECOMMENDATION_TYPES = [
   "SYSTEM_PROMPT_RECOMMENDATION",
@@ -34,7 +34,7 @@ export const createStartRecommendationHandler = (core: Core, io: AppIO) =>
         "customer managed KMS key ARN for recommendation data",
         z.string().optional(),
       ),
-      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const source = new SourceResolver({ stdin: io.stdin });

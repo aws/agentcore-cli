@@ -3,7 +3,7 @@ import { InputValidationError } from "../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
 import type { PolicyEngineSchema } from "../../../../projectSchemas/policy";
 import { createHandler, flag, ProjectKey } from "../../../../router";
-import { parseTags } from "../../../utils";
+import { parseTags, tagsFlag } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
@@ -69,7 +69,7 @@ export const createAddPolicyEngineHandler = (config: AddProjectResourceConfig) =
       flag("name", "the Policy Engine name", z.string().min(1)),
       flag("description", "Policy Engine description", z.string().optional()),
       flag("encryption-key-arn", "KMS encryption key ARN", z.string().optional()),
-      flag("tags", "tags as repeated key=value or a JSON object", z.array(z.string()).optional()),
+      tagsFlag(),
       flag(
         "attach-to-gateways",
         "names of project Gateways to attach this engine to",

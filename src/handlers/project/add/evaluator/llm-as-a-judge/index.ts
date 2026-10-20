@@ -11,7 +11,7 @@ import {
   type RatingScale,
 } from "../../../../../projectSchemas/evaluator";
 import type { AddResourceInput } from "../../../types";
-import { parseJsonFlagWithSchema, parseTags } from "../../../../utils";
+import { parseJsonFlagWithSchema, parseTags, tagsFlag } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
 import {
@@ -94,11 +94,7 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
         "customer-managed KMS key ARN to encrypt the evaluator",
         z.string().optional(),
       ),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);

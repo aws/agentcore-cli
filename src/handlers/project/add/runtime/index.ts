@@ -2,7 +2,7 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { isChinaRegion } from "../../../../core/partition";
 import type { AddProjectResourceConfig } from "../types";
-import { parseJsonFlag, parseTags } from "../../../utils";
+import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
 import { AgentNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
@@ -107,14 +107,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("description", "an optional description of the Runtime", z.string().optional(), {
         group: CONFIGURATION,
       }),
-      flag(
-        "tags",
-        "tags as key=value (repeatable) or JSON object",
-        z.array(z.string()).optional(),
-        {
-          group: CONFIGURATION,
-        },
-      ),
+      tagsFlag({ group: CONFIGURATION }),
       flag(
         "environment-variables",
         "environment variables (JSON object of key/value strings)",

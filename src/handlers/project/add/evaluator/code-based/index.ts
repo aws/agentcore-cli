@@ -4,7 +4,7 @@ import { InputValidationError } from "../../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../../projectSchemas/aws-targets";
 import { EvaluatorSchema } from "../../../../../projectSchemas/evaluator";
 import type { AddResourceInput, Project } from "../../../types";
-import { parseTags } from "../../../../utils";
+import { parseTags, tagsFlag } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
 
@@ -75,11 +75,7 @@ export const createAddCodeBasedEvaluatorHandler = (config: AddProjectResourceCon
         "customer-managed KMS key ARN to encrypt the evaluator",
         z.string().optional(),
       ),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
