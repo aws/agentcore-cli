@@ -18,6 +18,7 @@ import type {
   GetOnlineEvaluationConfigResponse,
   ListConfigurationBundlesResponse,
   ListConfigurationBundleVersionsResponse,
+  VersionFilter,
   ListDatasetsResponse,
   ListEvaluatorsResponse,
   ListOnlineEvaluationConfigsResponse,
@@ -504,6 +505,7 @@ export interface CoreEvalClient {
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
+    filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse>;
 
   // createDataset seeds a new dataset's DRAFT from `source`, which is required.

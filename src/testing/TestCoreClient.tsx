@@ -59,6 +59,7 @@ import type {
   GetDatasetResponse,
   ListConfigurationBundlesResponse,
   ListConfigurationBundleVersionsResponse,
+  VersionFilter,
   ListDatasetsResponse,
   GetEvaluatorResponse,
   GetOnlineEvaluationConfigResponse,
@@ -2333,10 +2334,13 @@ export class TestEvalClient implements CoreEvalClient {
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
+    filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse> {
     this.calls.push({
       method: "listConfigurationBundleVersions",
-      args: [id, nextToken, maxResults, options],
+      args: filter
+        ? [id, nextToken, maxResults, options, filter]
+        : [id, nextToken, maxResults, options],
     });
     if (this.error) throw this.error;
     return (

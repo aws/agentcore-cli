@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   GetConfigurationBundleCommand,
   GetConfigurationBundleVersionCommand,
+  ListConfigurationBundleVersionsCommand,
   UpdateConfigurationBundleCommand,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
@@ -32,6 +33,26 @@ function subject(respond: (command: unknown) => Promise<unknown>): {
 }
 
 describe("EvalClient configuration bundles", () => {
+  test("lists only the latest version per branch when requested", async () => {
+    const sent: unknown[] = [];
+    const { client } = subject(async (command) => {
+      sent.push(command);
+      return { versions: [] };
+    });
+
+    await client.listConfigurationBundleVersions("b-1", undefined, 10, OPTIONS, {
+      latestPerBranch: true,
+    });
+
+    expect(sent[0]).toBeInstanceOf(ListConfigurationBundleVersionsCommand);
+    expect((sent[0] as ListConfigurationBundleVersionsCommand).input).toEqual({
+      bundleId: "b-1",
+      nextToken: undefined,
+      maxResults: 10,
+      filter: { latestPerBranch: true },
+    });
+  });
+
   test("get passes an explicit branch or selects the immutable-version operation", async () => {
     const sent: unknown[] = [];
     const { client } = subject(async (command) => {

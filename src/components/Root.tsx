@@ -71,6 +71,7 @@ import { DatasetGetScreen, DatasetGetJsonScreen } from "../handlers/eval/dataset
 import { ConfigBundleScreen } from "../handlers/eval/config-bundle/screen.tsx";
 import { ConfigBundleListScreen } from "../handlers/eval/config-bundle/list/screen.tsx";
 import { ConfigBundleGetScreen } from "../handlers/eval/config-bundle/get/screen.tsx";
+import { ConfigBundleBranchScreen } from "../handlers/eval/config-bundle/get/branch-screen.tsx";
 import { ConfigBundleVersionScreen } from "../handlers/eval/config-bundle/version/screen.tsx";
 import { ConfigBundleVersionListScreen } from "../handlers/eval/config-bundle/version/list/screen.tsx";
 import { AbTestScreen } from "../handlers/eval/ab-test/screen.tsx";
@@ -686,6 +687,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
       />
       <Route
         path="agentcore/eval/config-bundle/get/:bundleId"
+        element={<ConfigBundleBranchScreen ctx={ctx} core={core} />}
+      />
+      <Route
+        path="agentcore/eval/config-bundle/get/:bundleId/branch/:branchName"
         element={<ConfigBundleGetScreen ctx={ctx} core={core} />}
       />
       <Route

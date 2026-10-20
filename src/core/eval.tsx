@@ -49,6 +49,7 @@ import {
   type GetOnlineEvaluationConfigResponse,
   type ListConfigurationBundlesResponse,
   type ListConfigurationBundleVersionsResponse,
+  type VersionFilter,
   type ListDatasetsResponse,
   type ListEvaluatorsResponse,
   type DataSourceConfig,
@@ -1245,10 +1246,13 @@ export class EvalClient implements CoreEvalClient {
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
+    filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse> {
     return this.clients
       .control(toClientConfig(options))
-      .send(new ListConfigurationBundleVersionsCommand({ bundleId: id, nextToken, maxResults }));
+      .send(
+        new ListConfigurationBundleVersionsCommand({ bundleId: id, nextToken, maxResults, filter }),
+      );
   }
 
   async createDataset(

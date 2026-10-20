@@ -175,8 +175,11 @@ describe("configuration bundle picker", () => {
     expect(core.eval.calls[0]?.method).toBe("listConfigurationBundles");
   });
 
-  test("selection opens the latest mainline bundle JSON", async () => {
+  test("mainline-only bundle requires selecting a branch", async () => {
     const core = coreWithBundles([bundleSummary()]);
+    core.eval.setListConfigurationBundleVersionsResponse({
+      versions: [bundleVersionSummary()],
+    });
     core.eval.setGetConfigurationBundleResponse(latestBundleResponse());
     const screen = renderScreen("/agentcore/eval/config-bundle/list", {
       core,
@@ -185,8 +188,27 @@ describe("configuration bundle picker", () => {
 
     await waitForText(screen.lastFrame, "orders-prompt");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "agentcore → eval → config-bundle → get → bundle-1");
+    await waitForText(screen.lastFrame, "latest version");
+    expect(screen.lastFrame()).toContain("mainline");
+    expect(core.eval.calls.some((call) => call.method === "getConfigurationBundle")).toBe(false);
+    await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      "agentcore → eval → config-bundle → get → bundle-1 → mainline",
+    );
     await waitForText(screen.lastFrame, '"system_prompt"');
+    expect(
+      core.eval.calls.find((call) => call.method === "listConfigurationBundleVersions"),
+    ).toEqual({
+      method: "listConfigurationBundleVersions",
+      args: [
+        "bundle-1",
+        undefined,
+        expect.any(Number),
+        { region: "us-east-1", endpointUrl: evalEndpointUrl },
+        { latestPerBranch: true },
+      ],
+    });
     expect(core.eval.calls.find((call) => call.method === "getConfigurationBundle")).toEqual({
       method: "getConfigurationBundle",
       args: [
@@ -196,6 +218,76 @@ describe("configuration bundle picker", () => {
         { region: "us-east-1", endpointUrl: evalEndpointUrl },
       ],
     });
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "latest version");
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "orders-prompt");
+    expect(screen.lastFrame()).toContain("list configuration bundles");
+  });
+
+  test("selection opens a branch picker when the bundle has multiple branches", async () => {
+    const core = coreWithBundles([bundleSummary()]);
+    core.eval.setListConfigurationBundleVersionsResponse({
+      versions: [
+        bundleVersionSummary(),
+        bundleVersionSummary({
+          versionId: "foo-version",
+          lineageMetadata: { branchName: "foo/blue", commitMessage: "Experiment" },
+        }),
+      ],
+    });
+    core.eval.setGetConfigurationBundleResponse(
+      latestBundleResponse({ lineageMetadata: { branchName: "foo/blue" } }),
+    );
+    const screen = renderScreen("/agentcore/eval/config-bundle/list", { core });
+
+    await waitForText(screen.lastFrame, "orders-prompt");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "foo/blue");
+    expect(core.eval.calls.some((call) => call.method === "getConfigurationBundle")).toBe(false);
+    await screen.press("down");
+    await screen.press("return");
+    await waitForText(
+      screen.lastFrame,
+      "agentcore → eval → config-bundle → get → bundle-1 → foo/blue",
+    );
+    await waitFor(() => core.eval.calls.some((call) => call.method === "getConfigurationBundle"));
+    expect(core.eval.calls.find((call) => call.method === "getConfigurationBundle")).toEqual({
+      method: "getConfigurationBundle",
+      args: ["bundle-1", undefined, "foo/blue", { region: "us-east-1" }],
+    });
+    await screen.press("escape");
+    await waitForText(screen.lastFrame, "foo/blue");
+    expect(screen.lastFrame()).toContain("latest version");
+  });
+
+  test("selection opens a branch picker when the bundle has a single non-mainline branch", async () => {
+    const core = coreWithBundles([bundleSummary()]);
+    core.eval.setListConfigurationBundleVersionsResponse({
+      versions: [
+        bundleVersionSummary({
+          lineageMetadata: { branchName: "foo", commitMessage: "Only branch" },
+        }),
+      ],
+    });
+    core.eval.setGetConfigurationBundleResponse(
+      latestBundleResponse({ lineageMetadata: { branchName: "foo" } }),
+    );
+    const screen = renderScreen("/agentcore/eval/config-bundle/get/bundle-1", { core });
+
+    await waitForText(screen.lastFrame, "foo");
+    expect(core.eval.calls.some((call) => call.method === "getConfigurationBundle")).toBe(false);
+    expect(screen.lastFrame()).toContain("latest version");
+    await screen.press("return");
+    await waitFor(() => core.eval.calls.some((call) => call.method === "getConfigurationBundle"));
+    expect(core.eval.calls.find((call) => call.method === "getConfigurationBundle")?.args[2]).toBe(
+      "foo",
+    );
+  });
+
+  test("shows an empty state when a bundle has no branches", async () => {
+    const screen = renderScreen("/agentcore/eval/config-bundle/get/bundle-1");
+    await waitForText(screen.lastFrame, "No branches found for configuration bundle bundle-1.");
   });
 
   test("shows the empty state", async () => {
@@ -351,7 +443,9 @@ describe("configuration bundle detail", () => {
   test("retries a failed query", async () => {
     const core = new TestCoreClient();
     core.eval.setError(new Error("configuration bundle unavailable"));
-    const screen = renderScreen("/agentcore/eval/config-bundle/get/bundle-1", { core });
+    const screen = renderScreen("/agentcore/eval/config-bundle/get/bundle-1/branch/mainline", {
+      core,
+    });
 
     await waitForText(screen.lastFrame, "configuration bundle unavailable");
     expect(screen.lastFrame()).toContain("[r] retry");
