@@ -129,7 +129,7 @@ describe("project status screen", () => {
     const frame = flatFrame(screen.lastFrame);
     expect(frame).toContain("checkout agent");
     expect(frame).toMatch(/runtime\s+checkout deployed/);
-    expect(frame).toMatch(/memory\s+recall deployed/);
+    expect(frame).toContain("memory recall deployed");
     // Both resources are attributed to the agent — no shared group appears.
     expect(frame).not.toContain("project shared resources");
   });
@@ -207,11 +207,36 @@ describe("project status screen", () => {
       project({ harnesses: [{ name: "support", path: "app/support" }] }),
     );
 
-    await waitForGroup(screen, "support");
+    await waitForFlatText(screen.lastFrame, "harness support deployed");
     await screen.press("down");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "agentcore → harness → get → " + HARNESS_ID);
+  });
+
+  // The harness is one of the project's resources, so it nests under the project
+  // group. It used to get a top-level group of its own whose only child was the
+  // harness, which restated the name and read as a peer of the project.
+  test("nests a harness under the project group rather than beside it", async () => {
+    const screen = renderStatus(
+      core([
+        deployed("harness", "support", { arn: `${ARN}:harness/${HARNESS_ID}` }),
+        deployed("memory", "recall", { arn: `${ARN}:memory/${MEMORY_ID}` }),
+      ]),
+      project({
+        harnesses: [{ name: "support", path: "app/support" }],
+        memories: [{ name: "recall", eventExpiryDuration: 30 }],
+      }),
+    );
+
+    await waitForFlatText(screen.lastFrame, "harness support deployed");
+    const frame = flatFrame(screen.lastFrame);
+    expect(frame).toContain("project resources ├─ harness support deployed");
+    expect(frame).toMatch(/memory\s+recall deployed/);
+    // No agent group: the harness no longer sits beside the project, and the
+    // project group drops "shared" when it holds everything.
+    expect(frame).not.toContain("support agent");
+    expect(frame).not.toContain("shared resources");
   });
 
   test("escape from a detail page returns to the status screen", async () => {

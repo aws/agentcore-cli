@@ -66,19 +66,21 @@ function routeFor(
 }
 
 // buildStatusNodes groups the resolved resources by agent. Each entry in
-// spec.runtimes (code agents) and spec.harnesses (managed harness agents) is a
-// top-level group holding the agent's own deployed resource; everything not
-// attributable to an agent lands in a shared "project" group so nothing the
-// project declares is dropped.
+// spec.runtimes is a top-level group holding that code agent's own resources;
+// everything not attributable to one lands in the "project" group so nothing
+// the project declares is dropped.
 //
 // Memories group under runtime agents: the CDK L3 injects a MEMORY_<NAME>_ID
 // env var for every declared memory into every runtime (see
 // src/core/project/templates/runtime.ts), so each declared memory is reachable
-// from each runtime agent. A harness's memory binding lives in its own
-// harness.yaml (HarnessMemoryRefSchema), not in the project spec this report is
-// built from — a managed one is provisioned inside the harness and never
-// appears here — so harness groups list just the harness itself and memories a
-// harness may reference by name stay visible under the project group.
+// from each runtime agent.
+//
+// Harnesses deliberately get no group of their own. A harness's memory binding
+// lives in its own harness.yaml (HarnessMemoryRefSchema), not in the project
+// spec this report is built from — a managed one is provisioned inside the
+// harness and never appears here — so a harness group could only ever hold the
+// harness itself, which restated its name one indent up and read as though the
+// harness were a peer of the project rather than one of its resources.
 export function buildStatusNodes(
   spec: Project["spec"],
   resources: ResolvedProjectResource[],
@@ -119,33 +121,20 @@ export function buildStatusNodes(
     };
   };
 
-  const agentGroups: StatusNode[] = [
-    ...spec.runtimes.map(({ name }): StatusNode => {
-      const id = `agent:${name}`;
-      const children = [
-        claim("runtime", name),
-        ...spec.memories.map(({ name: memoryName }) => claim("memory", memoryName)),
-      ].filter((resource) => resource !== undefined);
-      return {
-        id,
-        label: name,
-        annotation: "agent",
-        defaultExpanded: true,
-        children: children.map((resource) => resourceNode(resource, id, 1)),
-      };
-    }),
-    ...spec.harnesses.map(({ name }): StatusNode => {
-      const id = `agent:${name}`;
-      const children = [claim("harness", name)].filter((resource) => resource !== undefined);
-      return {
-        id,
-        label: name,
-        annotation: "agent",
-        defaultExpanded: true,
-        children: children.map((resource) => resourceNode(resource, id, 1)),
-      };
-    }),
-  ];
+  const agentGroups: StatusNode[] = spec.runtimes.map(({ name }): StatusNode => {
+    const id = `agent:${name}`;
+    const children = [
+      claim("runtime", name),
+      ...spec.memories.map(({ name: memoryName }) => claim("memory", memoryName)),
+    ].filter((resource) => resource !== undefined);
+    return {
+      id,
+      label: name,
+      annotation: "agent",
+      defaultExpanded: true,
+      children: children.map((resource) => resourceNode(resource, id, 1)),
+    };
+  });
 
   const shared = resources.filter((r) => !claimed.has(`${r.resourceType}:${r.name}`));
   const sharedGroup: StatusNode[] = shared.length
@@ -153,7 +142,9 @@ export function buildStatusNodes(
         {
           id: "project",
           label: "project",
-          annotation: "shared resources",
+          // "shared" only means something next to an agent group; on a project
+          // whose resources all live here it would just misname them.
+          annotation: agentGroups.length ? "shared resources" : "resources",
           defaultExpanded: true,
           children: shared.map((resource) => resourceNode(resource, "project", 1)),
         },
