@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from aws_bedrock_token_generator import provide_token
 from openai import NotFoundError, OpenAI
@@ -13,6 +14,14 @@ WORKSPACE_DIRECTORY = "/home/app/workspace"
 CAPABILITY_DIRECTORIES = ["/opt/bma/plugins"]
 TURN_END = ("completed", "failed", "cancelled")
 TOOL_CALLS = ("mcp_call", "function_call", "web_search_call")
+
+
+def mcp_server_url(gateway_url: str) -> str:
+    """Turn a bare Gateway origin into its MCP endpoint."""
+    parsed = urlsplit(gateway_url)
+    if parsed.path not in ("", "/"):
+        return gateway_url
+    return urlunsplit(parsed._replace(path="/mcp"))
 
 
 def deployed_session_role(runtime_arn: str) -> str:
@@ -67,7 +76,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--gateway",
-        help="The Gateway URL from the output of `agentcore deploy`.",
+        help="The Gateway URL from `agentcore deploy`; a bare origin uses its /mcp endpoint.",
     )
     parser.add_argument(
         "--role-arn",
@@ -125,7 +134,7 @@ def main() -> None:
                         "server_label": "team_tools",
                         "required": True,
                         "connection_origin": "service",
-                        "transport": {"type": "http", "server_url": args.gateway},
+                        "transport": {"type": "http", "server_url": mcp_server_url(args.gateway)},
                     }
                 ]
                 args.input += (

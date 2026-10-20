@@ -287,6 +287,10 @@ variables named after the resource:
   provider name (not the secret), where `<NAME>` is the credential name in
   upper case with `.` and `-` turned into `_`.
 
+An MCP Gateway's URL is already its complete MCP endpoint. A Gateway with
+`protocolType: "None"` provides a bare origin instead: append `/mcp` when
+using its MCP interface, or append the route required by the HTTP target.
+
 For example, a memory named `{{memoryExample.name}}` shows up as
 `{{memoryExample.env}}`, a gateway named `{{gatewayExample.name}}` as
 `{{gatewayExample.env}}`, and a credential named `{{credentialExample.name}}` as

@@ -159,6 +159,9 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(client).toContain('"runtime_qualifier": "DEFAULT"');
   expect(client).toContain('"workspace_directory": WORKSPACE_DIRECTORY');
   expect(client).toContain('"capability_directories": CAPABILITY_DIRECTORIES');
+  expect(client).toContain('if parsed.path not in ("", "/"):');
+  expect(client).toContain('parsed._replace(path="/mcp")');
+  expect(client).toContain('"server_url": mcp_server_url(args.gateway)');
   expect(client).toContain("stream=True");
   expect(client).toContain('extra_query={"stream": "true"}');
 

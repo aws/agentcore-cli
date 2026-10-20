@@ -49,6 +49,9 @@ in more detail.
 - Read resource IDs from environment variables (`MEMORY_<NAME>_ID`,
   `AGENTCORE_GATEWAY_<NAME>_URL`, `CREDENTIAL_<NAME>_NAME`, ...) and handle
   them being missing.
+- Treat a Gateway URL according to its protocol: an MCP Gateway URL is already
+  an MCP endpoint; a `protocolType: "None"` URL is a bare origin, so append
+  `/mcp` for MCP or the route required by the HTTP target.
 - Use the `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header to tell
   conversations apart. Custom headers only arrive if they are named
   `X-Amzn-Bedrock-AgentCore-Runtime-Custom-*` and listed in
