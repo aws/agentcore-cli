@@ -72,7 +72,7 @@ describe("project add runtime wizard", () => {
     expect(review).toContain("entrypoint main.py");
     await r.press("return");
 
-    await waitForText(r.lastFrame, 'Added runtime "orders_agent" (Python, HTTP).');
+    await waitForText(r.lastFrame, 'added runtime "orders_agent" (Python, HTTP)');
     expect(r.lastFrame()).toContain("[enter] go back");
 
     expect(await runtimeInSpec(projectRoot, "orders_agent")).toEqual({
@@ -118,7 +118,7 @@ describe("project add runtime wizard", () => {
     await waitForFlatText(r.lastFrame, "entrypoint main.js");
     expect(flatFrame(r.lastFrame)).toContain("protocol MCP");
     await r.press("return");
-    await waitForText(r.lastFrame, 'Added runtime "tools" (TypeScript, MCP).');
+    await waitForText(r.lastFrame, 'added runtime "tools" (TypeScript, MCP)');
 
     expect(await runtimeInSpec(projectRoot, "tools")).toEqual({
       name: "tools",

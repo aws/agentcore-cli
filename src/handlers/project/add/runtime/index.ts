@@ -75,13 +75,14 @@ export function runtimeDocsAddedMessage(
 ): string {
   const folder = `app/${name}`;
   return [
-    `Added runtime "${name}" (${language}, ${protocol}).`,
+    `added runtime "${name}" (${language}, ${protocol})`,
     "",
-    "Next:",
-    `  1. Write your agent in ${folder}/. See ${folder}/README.md for what it needs.`,
-    `     Using a coding agent? Point it at ${folder}/AGENTS.md.`,
-    "  2. Run it locally:  agentcore dev",
-    "  3. Deploy it:       agentcore deploy",
+    "next steps:",
+    `  1. write your agent in ${folder}/`,
+    `     read ${folder}/README.md for requirements`,
+    `     using a coding agent? point it at ${folder}/AGENTS.md`,
+    "  2. run it locally with agentcore dev",
+    "  3. deploy it with agentcore deploy",
   ].join("\n");
 }
 

@@ -380,12 +380,18 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
     return this;
   }
 
+  // helpSection starts a command group in --help without changing the TUI menu.
+  // Children stay in this help group until another helpSection is declared.
+  helpSection(title: string): this {
+    this.activeHelpGroup = `${title.charAt(0).toUpperCase()}${title.slice(1)}:`;
+    return this;
+  }
+
   // commandSection starts a section in both the TUI menu and --help.
   // Children stay in this help group until another commandSection is declared.
   commandSection(title: string): this {
     this.menuSection(title);
-    this.activeHelpGroup = `${title.charAt(0).toUpperCase()}${title.slice(1)}:`;
-    return this;
+    return this.helpSection(title);
   }
 
   menuSectionStartOf(commandName: string): string | undefined {

@@ -122,7 +122,7 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
         ? ""
         : `  cd ${relative(process.cwd(), dirname(dirname(result.agentPath)))}\n`;
       config.io.stderr.write(
-        `next steps:\n  review the generated code in ${agentPath}${reviewNotes}\n${changeDirectory}  agentcore build\n  agentcore deploy\n`,
+        `next steps:\n  review the generated code in ${agentPath}${reviewNotes}\n${changeDirectory}  agentcore deploy\n`,
       );
     },
   });

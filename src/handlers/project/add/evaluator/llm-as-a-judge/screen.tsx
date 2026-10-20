@@ -268,11 +268,10 @@ function AddLlmAsAJudgeEvaluatorWizard({
         />
       </Step>
 
-      <Step stepKey="instructions" prompt="how should the judge score it?">
+      <Step stepKey="instructions" prompt="how should the judge score responses?">
         <TextAreaField
           label="Instructions"
-          help="enter for a new line, ctrl+d to continue"
-          example="Rate how well the agent resolved the user's request. Conversation: {context}"
+          example={"Rate how well the agent resolved the user's request.\nConversation: {context}"}
           value={values.instructions}
           onChange={(instructions) => set({ instructions })}
           required

@@ -20,7 +20,7 @@ import { V0_PROJECT_TUI_BANNER } from "../handlers/project/v0Notice";
 
 afterEach(cleanupScreens);
 
-const PROJECT_WORKFLOW = ["create", "dev", "deploy", "invoke", "status", "add", "remove", "build"];
+const PROJECT_WORKFLOW = ["create", "add", "dev", "deploy", "invoke", "status", "remove", "build"];
 
 // menuGroups reads a RouterScreen frame's option names in display order,
 // grouped under the divider each follows (untitled for the leading group). The
@@ -54,7 +54,7 @@ function menuGroups(frame: string): { title: string | undefined; names: string[]
 // rendered frames — behavior a user would see, not internal state.
 
 describe("menu rendering", () => {
-  test("places the v0 compatibility warning below the command input and above dev", async () => {
+  test("places the v0 compatibility warning below the command input and above add", async () => {
     const screen = renderScreen("/agentcore", {
       withContext: (ctx) =>
         ctx.withValue(ProjectDetectedKey, true).withValue(V0ProjectDetectedKey, true),
@@ -66,11 +66,11 @@ describe("menu rendering", () => {
     const warningRow = lines.findIndex((line) =>
       line.includes(`${glyphs.warning} ${V0_PROJECT_TUI_BANNER}`),
     );
-    const devRow = lines.findIndex((line) => line.includes("❯ dev"));
+    const addRow = lines.findIndex((line) => line.includes("❯ add"));
 
     expect(inputRow).toBeGreaterThanOrEqual(0);
     expect(warningRow).toBeGreaterThan(inputRow);
-    expect(devRow).toBeGreaterThan(warningRow);
+    expect(addRow).toBeGreaterThan(warningRow);
   });
 
   test.each([
@@ -201,7 +201,7 @@ describe("menu rendering", () => {
 
   test("lists the resources under a resources divider, harness first, after the project commands", async () => {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
 
     expect(menuGroups(r.lastFrame()!)).toEqual([
       // create and build are hidden inside a project; build stays in --help.
@@ -316,7 +316,7 @@ describe("menu rendering", () => {
     withoutProject.unmount();
 
     const withProject = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(withProject.lastFrame, "❯ dev");
+    await waitForText(withProject.lastFrame, "❯ add");
     expect(menuEntries(withProject.lastFrame()!).screens).not.toContain("create");
     expect(menuEntries(withProject.lastFrame()!).screens).not.toContain("build");
     withProject.unmount();
@@ -413,10 +413,10 @@ describe("filtering", () => {
 describe("navigation", () => {
   test("down arrow moves the highlight to the next option", async () => {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
 
     await r.press("down");
-    await waitForText(r.lastFrame, "❯ deploy");
+    await waitForText(r.lastFrame, "❯ dev");
     r.unmount();
   });
 
@@ -463,7 +463,7 @@ describe("navigation", () => {
     expect(resolveCalls).toBe(0);
 
     await r.press("escape");
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
     expect(resolveCalls).toBe(1);
     r.unmount();
   });
@@ -497,7 +497,7 @@ describe("short terminals", () => {
   // fullMenu renders the root menu at the default height, where every option fits.
   async function fullMenu() {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
     const frame = r.lastFrame()!;
     r.unmount();
     const titles = new Map<string, string | undefined>();
@@ -524,7 +524,7 @@ describe("short terminals", () => {
 
   async function shortMenu() {
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
     await r.resize(100, ROWS);
     return r;
   }
@@ -585,7 +585,7 @@ describe("short terminals", () => {
       await r.press("up");
       expectConsistentWindow(r.lastFrame()!, full);
     }
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
     frame = r.lastFrame()!;
     expect(more(frame, "↑")).toBeUndefined();
     expect(more(frame, "↓")).toBeGreaterThan(0);
@@ -635,7 +635,7 @@ describe("short terminals", () => {
   test("resizing shorter keeps the highlight visible", async () => {
     const full = await fullMenu();
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
 
     const target = full.names.indexOf("harness");
     for (let i = 0; i < target; i++) await r.press("down");
@@ -653,7 +653,7 @@ describe("short terminals", () => {
   test("accounts for a wrapped header when scrolling a narrow terminal", async () => {
     const full = await fullMenu();
     const r = renderScreen("/agentcore", { withContext: inProjectContext });
-    await waitForText(r.lastFrame, "❯ dev");
+    await waitForText(r.lastFrame, "❯ add");
     await r.resize(40, ROWS);
 
     for (let i = 0; i < full.names.length; i++) {

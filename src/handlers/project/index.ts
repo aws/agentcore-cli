@@ -51,10 +51,10 @@ export function createProjectHandlers(
   const withProjectMiddleware = withProject({ projectManager });
   const config = { projectManager, io, bedrockAgentImporter: core.bedrockAgentImporter };
   // Returned in workflow order, which is the order `--help` and the TUI menu list them in:
-  // the inner loop (dev, deploy, invoke), then observing it, then changing the project.
+  // create/configure, run/deploy, observe, then one-off project maintenance.
   // build is a step deploy already runs, so it goes last and the TUI menu hides it.
-  // migrate is a one-off upgrade from a v0 project, so it follows build.
   const projectBoundHandlers = [
+    createAddProjectResourceHandler(config, core),
     createDevProjectHandler({
       projectManager,
       runV0Deploy: runLegacyDeploy,
@@ -87,19 +87,18 @@ export function createProjectHandlers(
     }),
     createProjectLogsHandler(core, io),
     createProjectTracesHandler(core, io),
-    createAddProjectResourceHandler(config, core),
+    createExportProjectResourceHandler({ projectManager, core, io }),
+    createMigrateProjectHandler({ projectManager, migrator: core.projectMigrator, io }),
     createRemoveProjectHandler({
       projectManager,
       io,
       middlewares: [withV0ProjectGuard(), withProjectMiddleware, withTuiWhenInteractive(core, io)],
     }),
-    createExportProjectResourceHandler({ projectManager, core, io }),
     createBuildProjectHandler({
       projectManager,
       io,
       middlewares: [withProjectMiddleware],
     }),
-    createMigrateProjectHandler({ projectManager, migrator: core.projectMigrator, io }),
   ];
 
   return [createHandler, ...projectBoundHandlers];

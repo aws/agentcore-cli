@@ -207,7 +207,11 @@ export function TextAreaField({
 
   return (
     <Box flexDirection="column">
-      {example !== undefined && <Text color={theme.colors.muted}>{`for example  ${example}`}</Text>}
+      {example !== undefined && (
+        <Text
+          color={theme.colors.muted}
+        >{`for example:\n  ${example.replaceAll("\n", "\n  ")}`}</Text>
+      )}
       <FormTextArea
         name=""
         helpText={help}

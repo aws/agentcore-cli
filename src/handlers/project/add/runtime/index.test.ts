@@ -174,9 +174,9 @@ describe("project add runtime", () => {
       expect(readme + agents).not.toContain("CLAUDE");
 
       expect(io.stderr()).toContain(
-        `Added runtime "search" (${flags[1] === "python" ? "Python" : "TypeScript"}, ${expected.protocol}).`,
+        `added runtime "search" (${flags[1] === "python" ? "Python" : "TypeScript"}, ${expected.protocol})`,
       );
-      expect(io.stderr()).toContain("See app/search/README.md for what it needs.");
+      expect(io.stderr()).toContain("read app/search/README.md for requirements");
     },
   );
 

@@ -126,6 +126,21 @@ test("commandSection groups subsequent children in both menus and help", () => {
   expect(help).toMatch(/Resources:\n  target\n  policy\n/);
 });
 
+test("helpSection groups subsequent children only in help", () => {
+  const root = new Router("app")
+    .handler(leaf("get", () => {}))
+    .helpSection("resources")
+    .handler(leaf("target", () => {}))
+    .handler(leaf("policy", () => {}));
+
+  const command = compile(root, ValueContext.EmptyContext());
+  expect(command.commands.map((child) => child.name())).toEqual(["get", "target", "policy"]);
+  expect(command.commands.map(commandMenuSectionStart)).toEqual([undefined, undefined, undefined]);
+  const help = command.helpInformation();
+  expect(help).toMatch(/Commands:\n  get\s+\n/);
+  expect(help).toMatch(/Resources:\n  target\n  policy\n/);
+});
+
 test("a trailing commandSection has no effect", () => {
   const root = new Router("app").handler(leaf("get", () => {})).commandSection("resources");
   const command = compile(root, ValueContext.EmptyContext());

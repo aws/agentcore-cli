@@ -11,24 +11,24 @@ import {
 // The order `agentcore --help` and the TUI root menu list the commands in.
 const WORKFLOW_ORDER = [
   "create",
+  "add",
   "dev",
   "deploy",
   "invoke",
   "status",
   "logs",
   "traces",
-  "add",
-  "remove",
   "export",
-  "build",
   "migrate",
+  "remove",
+  "build",
 ];
 const RESOURCES_ORDER = ["harness", "runtime", "gateway", "identity", "memory", "eval", "payment"];
 const SETTINGS_ORDER = ["feedback", "config", "update"];
 
-// helpCommandNames reads the command names off the "Commands:" section of help.
-function helpCommandNames(help: string): string[] {
-  const section = help.split("Commands:\n")[1] ?? "";
+// helpCommandNames reads the command names under one command group.
+function helpCommandNames(help: string, group: string): string[] {
+  const section = help.split(`${group}:\n`)[1]?.split(/\n[A-Z][^:\n]*:\n/)[0] ?? "";
   return [...section.matchAll(/^ {2}([a-z][a-z0-9-]*)\s/gm)].map((match) => match[1]!);
 }
 
@@ -62,7 +62,7 @@ describe("createRootHandler", () => {
 
   test("add lists resources grouped in the top-level resource order", () => {
     const add = compiledRootCommand().commands.find((child) => child.name() === "add")!;
-    expect(helpCommandNames(add.helpInformation())).toEqual([
+    expect(helpCommandNames(add.helpInformation(), "Commands")).toEqual([
       "harness",
       "runtime",
       "runtime-endpoint",
@@ -81,12 +81,13 @@ describe("createRootHandler", () => {
     ]);
   });
 
-  test("--help lists commands in the root menu order", () => {
+  test("--help groups commands in the root menu order", () => {
     const command = compiledRootCommand();
-    expect(helpCommandNames(command.helpInformation())).toEqual([
-      ...WORKFLOW_ORDER,
-      ...RESOURCES_ORDER,
-      ...SETTINGS_ORDER,
-    ]);
+    const help = command.helpInformation();
+    expect(helpCommandNames(help, "Project")).toEqual(WORKFLOW_ORDER);
+    expect(helpCommandNames(help, "Resources")).toEqual(RESOURCES_ORDER);
+    expect(helpCommandNames(help, "Settings")).toEqual(SETTINGS_ORDER);
+    expect(help.indexOf("Project:")).toBeLessThan(help.indexOf("Resources:"));
+    expect(help.indexOf("Resources:")).toBeLessThan(help.indexOf("Settings:"));
   });
 });

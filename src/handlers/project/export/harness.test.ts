@@ -173,8 +173,9 @@ describe("project export harness handler", () => {
     });
 
     expect(subject.io.stderr()).toContain(
-      `next steps:\n  review the generated code in ${join("app", "exportmeAgent")}\n  agentcore build\n  agentcore deploy`,
+      `next steps:\n  review the generated code in ${join("app", "exportmeAgent")}\n  agentcore deploy`,
     );
+    expect(subject.io.stderr()).not.toContain("agentcore build");
     expect(subject.io.stderr()).toContain(
       `exported harness 'exportme' to runtime agent 'exportmeAgent' (${join("app", "exportmeAgent")})\nnext steps:`,
     );

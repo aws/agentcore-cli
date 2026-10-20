@@ -14,17 +14,17 @@ const DEFAULT_GROUPS = [
     title: "Project commands",
     commands: [
       "create",
+      "add",
       "dev",
       "deploy",
       "invoke",
       "status",
       "logs",
       "traces",
-      "add",
-      "remove",
       "export",
-      "build",
       "migrate",
+      "remove",
+      "build",
     ],
   },
   {
@@ -78,10 +78,16 @@ function isOptionSection(section) {
   return (
     section !== "global options" &&
     section !== "commands" &&
+    section !== "project" &&
     section !== "resources" &&
+    section !== "settings" &&
     section !== "parameter details" &&
     section !== "description"
   );
+}
+
+function isCommandSection(section) {
+  return ["commands", "project", "resources", "settings"].includes(section);
 }
 
 function parseHelp(text) {
@@ -133,9 +139,13 @@ function parseHelp(text) {
       continue;
     }
 
-    if (section === "commands" || section === "resources") {
-      const match = line.match(/^ {2}([a-z][a-z0-9-]*)\b(?:\s{2,}.*)?$/);
-      if (match) parsed.commands.push(match[1]);
+    if (isCommandSection(section)) {
+      const command = line.match(/^ {2}([a-z][a-z0-9-]*)(?: {2,}.*)?$/);
+      if (command) {
+        parsed.commands.push(command[1]);
+        currentItem = undefined;
+        continue;
+      }
       continue;
     }
 

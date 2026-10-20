@@ -10,20 +10,6 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.7`.
   - [`agentcore`](#agentcore)
 - [Project commands](#project-commands)
   - [`agentcore create`](#agentcore-create)
-  - [`agentcore dev`](#agentcore-dev)
-  - [`agentcore deploy`](#agentcore-deploy)
-  - [`agentcore invoke`](#agentcore-invoke)
-  - [`agentcore status`](#agentcore-status)
-  - [`agentcore logs`](#agentcore-logs)
-    - [`agentcore logs runtime`](#agentcore-logs-runtime)
-    - [`agentcore logs harness`](#agentcore-logs-harness)
-  - [`agentcore traces`](#agentcore-traces)
-    - [`agentcore traces runtime`](#agentcore-traces-runtime)
-      - [`agentcore traces runtime list`](#agentcore-traces-runtime-list)
-      - [`agentcore traces runtime get`](#agentcore-traces-runtime-get)
-    - [`agentcore traces harness`](#agentcore-traces-harness)
-      - [`agentcore traces harness list`](#agentcore-traces-harness-list)
-      - [`agentcore traces harness get`](#agentcore-traces-harness-get)
   - [`agentcore add`](#agentcore-add)
     - [`agentcore add harness`](#agentcore-add-harness)
     - [`agentcore add runtime`](#agentcore-add-runtime)
@@ -45,11 +31,25 @@ This reference was generated from `agentcore --help` for version `1.0.0-rc.7`.
     - [`agentcore add config-bundle`](#agentcore-add-config-bundle)
     - [`agentcore add payment-manager`](#agentcore-add-payment-manager)
     - [`agentcore add payment-connector`](#agentcore-add-payment-connector)
-  - [`agentcore remove`](#agentcore-remove)
+  - [`agentcore dev`](#agentcore-dev)
+  - [`agentcore deploy`](#agentcore-deploy)
+  - [`agentcore invoke`](#agentcore-invoke)
+  - [`agentcore status`](#agentcore-status)
+  - [`agentcore logs`](#agentcore-logs)
+    - [`agentcore logs runtime`](#agentcore-logs-runtime)
+    - [`agentcore logs harness`](#agentcore-logs-harness)
+  - [`agentcore traces`](#agentcore-traces)
+    - [`agentcore traces runtime`](#agentcore-traces-runtime)
+      - [`agentcore traces runtime list`](#agentcore-traces-runtime-list)
+      - [`agentcore traces runtime get`](#agentcore-traces-runtime-get)
+    - [`agentcore traces harness`](#agentcore-traces-harness)
+      - [`agentcore traces harness list`](#agentcore-traces-harness-list)
+      - [`agentcore traces harness get`](#agentcore-traces-harness-get)
   - [`agentcore export`](#agentcore-export)
     - [`agentcore export harness`](#agentcore-export-harness)
-  - [`agentcore build`](#agentcore-build)
   - [`agentcore migrate`](#agentcore-migrate)
+  - [`agentcore remove`](#agentcore-remove)
+  - [`agentcore build`](#agentcore-build)
 - [Resource commands](#resource-commands)
   - [`agentcore harness`](#agentcore-harness)
     - [`agentcore harness create`](#agentcore-harness-create)
@@ -246,235 +246,6 @@ create a new project
 - `--template <template>`: the template to scaffold the Runtime from (default: "empty")
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)
-
-### `agentcore dev`
-
-```text
-agentcore dev [options]
-```
-
-develop and test project agents
-
-**Options**
-
-- `--agent <agent>`: runtime or harness to run
-- `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
-- `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (runtime output or harness invoke guidance) (default: "headless")
-- `--port <port>`: port for the development server
-- `--no-traces`: disable local OTEL trace collection
-- `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
-- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
-- `--skip-deploy`: skip deployment and use the deployed harnesses (default: false)
-
-### `agentcore deploy`
-
-```text
-agentcore deploy [options]
-```
-
-build and deploy project resources to an AWS target
-
-**Options**
-
-- `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
-- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
-
-### `agentcore invoke`
-
-```text
-agentcore invoke [options]
-```
-
-invoke a Runtime, harness, or Gateway
-
-**Options**
-
-- `--runtime <runtime>`: the Runtime to invoke: its name in this project, its ID, or its ARN
-- `--harness <harness>`: the harness to invoke: its name in this project, its ID, or its ARN
-- `--gateway <gateway>`: the Gateway to invoke: its name in this project, its ID, or its ARN
-- `--target <target>`: project deployment target (default: "default")
-- `--local`: invoke the local development server (project Runtime only) (default: false)
-- `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)
-- `--payload <payload>`: the inline payload to send
-- `--qualifier <qualifier>`: the Runtime endpoint qualifier
-- `--content-type <content-type>`: the payload content type
-- `--accept <accept>`: the accepted response content type
-- `--session-id <session-id>`: the Runtime session ID
-- `--user-id <user-id>`: the user ID to invoke as
-- `--header <header...>`: an ordered application header
-- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
-- `--mcp-session-id <mcp-session-id>`: the MCP session ID
-- `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
-- `--output-file <output-file>`: the response output file
-- `--mcp-method <mcp-method>`: the MCP method
-- `--mcp-name <mcp-name>`: the MCP tool, resource, or prompt name
-- `--trace-id <trace-id>`: the X-Ray trace ID
-- `--trace-parent <trace-parent>`: the W3C trace parent
-- `--trace-state <trace-state>`: the W3C trace state
-- `--baggage <baggage>`: the W3C baggage
-- `--prompt <prompt>`: the message to send to the harness
-- `--path <path>`: the path relative to the Gateway origin
-- `--method <method>`: the HTTP request method
-
-### `agentcore status`
-
-```text
-agentcore status [options]
-```
-
-inspect deployed project resources for an AWS target
-
-**Options**
-
-- `--target <target>`: name of the aws-targets.json entry to report on (default: "default")
-
-### `agentcore logs`
-
-```text
-agentcore logs [options] [command]
-```
-
-stream or search logs for resources in the current project
-
-#### `agentcore logs runtime`
-
-```text
-agentcore logs runtime [options]
-```
-
-stream or search logs for a Runtime in the current project
-
-**Options**
-
-- `--name <name>`: the logical project Runtime name
-- `--target <target>`: project deployment target (default: "default")
-- `--qualifier <qualifier>`: the Runtime endpoint qualifier
-- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
-- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
-- `--tail`: tail new log records (default: false)
-- `--level <level>`: filter by log level (error, warn, info, debug)
-- `--query <query>`: CloudWatch Logs filter pattern
-- `--limit <limit>`: maximum number of log records to return in search mode
-
-#### `agentcore logs harness`
-
-```text
-agentcore logs harness [options]
-```
-
-stream or search logs for a Harness in the current project
-
-**Options**
-
-- `--name <name>`: the logical project Harness name
-- `--target <target>`: project deployment target (default: "default")
-- `--qualifier <qualifier>`: the Harness endpoint qualifier
-- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
-- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
-- `--tail`: tail new log records (default: false)
-- `--level <level>`: filter by log level (error, warn, info, debug)
-- `--query <query>`: CloudWatch Logs filter pattern
-- `--limit <limit>`: maximum number of log records to return in search mode
-
-### `agentcore traces`
-
-```text
-agentcore traces [options] [command]
-```
-
-inspect traces for resources in the current project
-
-#### `agentcore traces runtime`
-
-```text
-agentcore traces runtime [options] [command]
-```
-
-inspect a Runtime's traces
-
-##### `agentcore traces runtime list`
-
-```text
-agentcore traces runtime list [options]
-```
-
-list a Runtime's recent traces
-
-**Options**
-
-- `--name <name>`: the logical project Runtime name
-- `--target <target>`: project deployment target (default: "default")
-- `--qualifier <qualifier>`: the Runtime endpoint qualifier
-- `--limit <limit>`: maximum number of traces to display (default: 20)
-- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
-- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
-
-##### `agentcore traces runtime get`
-
-```text
-agentcore traces runtime get [options] <trace-id>
-```
-
-download a trace's log records to a JSON file
-
-**Arguments**
-
-- `trace-id` (required): the trace ID to download
-
-**Options**
-
-- `--name <name>`: the logical project Runtime name
-- `--target <target>`: project deployment target (default: "default")
-- `--qualifier <qualifier>`: the Runtime endpoint qualifier
-- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
-- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
-- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
-
-#### `agentcore traces harness`
-
-```text
-agentcore traces harness [options] [command]
-```
-
-inspect a Harness's traces
-
-##### `agentcore traces harness list`
-
-```text
-agentcore traces harness list [options]
-```
-
-list a Harness's recent traces
-
-**Options**
-
-- `--name <name>`: the logical project Harness name
-- `--target <target>`: project deployment target (default: "default")
-- `--qualifier <qualifier>`: the Harness endpoint qualifier
-- `--limit <limit>`: maximum number of traces to display (default: 20)
-- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
-- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
-
-##### `agentcore traces harness get`
-
-```text
-agentcore traces harness get [options] <trace-id>
-```
-
-download a Harness trace's log records to a JSON file
-
-**Arguments**
-
-- `trace-id` (required): the trace ID to download
-
-**Options**
-
-- `--name <name>`: the logical project Harness name
-- `--target <target>`: project deployment target (default: "default")
-- `--qualifier <qualifier>`: the Harness endpoint qualifier
-- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
-- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
-- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
 
 ### `agentcore add`
 
@@ -859,26 +630,234 @@ add a connector to a project payment manager (not available in China regions)
 - `--credential <credential>`: an existing payment credential to reuse
 - `--quick-create`: create a CoinbaseCDP connector through Quick Create (default: false)
 
-### `agentcore remove`
+### `agentcore dev`
 
 ```text
-agentcore remove [options] [resource]
+agentcore dev [options]
 ```
 
-remove a resource from the project
-
-**Arguments**
-
-- `resource` (optional): type of resource to remove ('all' empties every resource collection)
+develop and test project agents
 
 **Options**
 
-- `--name <name>`: name of the resource to remove
-- `--gateway <gateway>`: name of the parent Gateway for a Target
-- `--engine <engine>`: name of the parent Policy Engine for a Policy
-- `--manager <manager>`: name of the parent payment manager for a connector
-- `--runtime <runtime>`: name of the parent runtime for a runtime-endpoint
-- `--yes`: skip the confirmation prompt when removing all resources (default: false)
+- `--agent <agent>`: runtime or harness to run
+- `--ui-port <ui-port>`: port for the Agent Inspector web UI (browser mode)
+- `--mode <mode>`: how to run: browser (Agent Inspector web UI) or headless (runtime output or harness invoke guidance) (default: "headless")
+- `--port <port>`: port for the development server
+- `--no-traces`: disable local OTEL trace collection
+- `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
+- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+- `--skip-deploy`: skip deployment and use the deployed harnesses (default: false)
+
+### `agentcore deploy`
+
+```text
+agentcore deploy [options]
+```
+
+build and deploy project resources to an AWS target
+
+**Options**
+
+- `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
+- `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+
+### `agentcore invoke`
+
+```text
+agentcore invoke [options]
+```
+
+invoke a Runtime, harness, or Gateway
+
+**Options**
+
+- `--runtime <runtime>`: the Runtime to invoke: its name in this project, its ID, or its ARN
+- `--harness <harness>`: the harness to invoke: its name in this project, its ID, or its ARN
+- `--gateway <gateway>`: the Gateway to invoke: its name in this project, its ID, or its ARN
+- `--target <target>`: project deployment target (default: "default")
+- `--local`: invoke the local development server (project Runtime only) (default: false)
+- `--port <port>`: local development server port (defaults: HTTP/AG-UI 8080, MCP 8000, A2A 9000)
+- `--payload <payload>`: the inline payload to send
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--content-type <content-type>`: the payload content type
+- `--accept <accept>`: the accepted response content type
+- `--session-id <session-id>`: the Runtime session ID
+- `--user-id <user-id>`: the user ID to invoke as
+- `--header <header...>`: an ordered application header
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
+- `--mcp-session-id <mcp-session-id>`: the MCP session ID
+- `--mcp-protocol-version <mcp-protocol-version>`: the MCP protocol version
+- `--output-file <output-file>`: the response output file
+- `--mcp-method <mcp-method>`: the MCP method
+- `--mcp-name <mcp-name>`: the MCP tool, resource, or prompt name
+- `--trace-id <trace-id>`: the X-Ray trace ID
+- `--trace-parent <trace-parent>`: the W3C trace parent
+- `--trace-state <trace-state>`: the W3C trace state
+- `--baggage <baggage>`: the W3C baggage
+- `--prompt <prompt>`: the message to send to the harness
+- `--path <path>`: the path relative to the Gateway origin
+- `--method <method>`: the HTTP request method
+
+### `agentcore status`
+
+```text
+agentcore status [options]
+```
+
+inspect deployed project resources for an AWS target
+
+**Options**
+
+- `--target <target>`: name of the aws-targets.json entry to report on (default: "default")
+
+### `agentcore logs`
+
+```text
+agentcore logs [options] [command]
+```
+
+stream or search logs for resources in the current project
+
+#### `agentcore logs runtime`
+
+```text
+agentcore logs runtime [options]
+```
+
+stream or search logs for a Runtime in the current project
+
+**Options**
+
+- `--name <name>`: the logical project Runtime name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--tail`: tail new log records (default: false)
+- `--level <level>`: filter by log level (error, warn, info, debug)
+- `--query <query>`: CloudWatch Logs filter pattern
+- `--limit <limit>`: maximum number of log records to return in search mode
+
+#### `agentcore logs harness`
+
+```text
+agentcore logs harness [options]
+```
+
+stream or search logs for a Harness in the current project
+
+**Options**
+
+- `--name <name>`: the logical project Harness name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Harness endpoint qualifier
+- `--since <since>`: search window start: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--until <until>`: search window end: "5m", "1h", ISO 8601, epoch ms, or "now"
+- `--tail`: tail new log records (default: false)
+- `--level <level>`: filter by log level (error, warn, info, debug)
+- `--query <query>`: CloudWatch Logs filter pattern
+- `--limit <limit>`: maximum number of log records to return in search mode
+
+### `agentcore traces`
+
+```text
+agentcore traces [options] [command]
+```
+
+inspect traces for resources in the current project
+
+#### `agentcore traces runtime`
+
+```text
+agentcore traces runtime [options] [command]
+```
+
+inspect a Runtime's traces
+
+##### `agentcore traces runtime list`
+
+```text
+agentcore traces runtime list [options]
+```
+
+list a Runtime's recent traces
+
+**Options**
+
+- `--name <name>`: the logical project Runtime name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--limit <limit>`: maximum number of traces to display (default: 20)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+##### `agentcore traces runtime get`
+
+```text
+agentcore traces runtime get [options] <trace-id>
+```
+
+download a trace's log records to a JSON file
+
+**Arguments**
+
+- `trace-id` (required): the trace ID to download
+
+**Options**
+
+- `--name <name>`: the logical project Runtime name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Runtime endpoint qualifier
+- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+#### `agentcore traces harness`
+
+```text
+agentcore traces harness [options] [command]
+```
+
+inspect a Harness's traces
+
+##### `agentcore traces harness list`
+
+```text
+agentcore traces harness list [options]
+```
+
+list a Harness's recent traces
+
+**Options**
+
+- `--name <name>`: the logical project Harness name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Harness endpoint qualifier
+- `--limit <limit>`: maximum number of traces to display (default: 20)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
+
+##### `agentcore traces harness get`
+
+```text
+agentcore traces harness get [options] <trace-id>
+```
+
+download a Harness trace's log records to a JSON file
+
+**Arguments**
+
+- `trace-id` (required): the trace ID to download
+
+**Options**
+
+- `--name <name>`: the logical project Harness name
+- `--target <target>`: project deployment target (default: "default")
+- `--qualifier <qualifier>`: the Harness endpoint qualifier
+- `--output <output>`: the output file path (default: &lt;traceId&gt;.json in the current directory)
+- `--since <since>`: window start: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default 12h ago)
+- `--until <until>`: window end: "5m", "1h", "2d", ISO 8601, epoch ms, or "now" (default now)
 
 ### `agentcore export`
 
@@ -903,14 +882,6 @@ convert a managed harness into a code-defined harness with the Strands Harness S
 - `--arn <arn>`: the ARN of a deployed harness to fetch from the service and export
 - `--target-agent-name <target-agent-name>`: the name of the generated Runtime agent (default &lt;harnessName&gt;Agent)
 
-### `agentcore build`
-
-```text
-agentcore build [options]
-```
-
-build the project's deployable artifacts
-
 ### `agentcore migrate`
 
 ```text
@@ -923,6 +894,35 @@ migrate an AgentCore CLI v0 project to the current project format, keeping its d
 
 - `--target <target>`: the deployment target to migrate (required when the project is deployed to several)
 - `--yes`: apply the changes without asking, when they are ready (default: false)
+
+### `agentcore remove`
+
+```text
+agentcore remove [options] [resource]
+```
+
+remove a resource from the project
+
+**Arguments**
+
+- `resource` (optional): type of resource to remove ('all' empties every resource collection)
+
+**Options**
+
+- `--name <name>`: name of the resource to remove
+- `--gateway <gateway>`: name of the parent Gateway for a Target
+- `--engine <engine>`: name of the parent Policy Engine for a Policy
+- `--manager <manager>`: name of the parent payment manager for a connector
+- `--runtime <runtime>`: name of the parent runtime for a runtime-endpoint
+- `--yes`: skip the confirmation prompt when removing all resources (default: false)
+
+### `agentcore build`
+
+```text
+agentcore build [options]
+```
+
+build the project's deployable artifacts
 
 ## Resource commands
 

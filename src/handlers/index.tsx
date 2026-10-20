@@ -91,13 +91,14 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // launched from a legacy project.
   root.use(withV0ProjectNotice(io));
 
-  // Install sub handlers. Registration order is menu/help order; project is
-  // the primary workflow, so it goes first.
+  // Install sub handlers. Registration order is menu/help order.
+  root.helpSection("project");
   createProjectHandlers(core, io, { runV0Deploy: config.runV0Deploy }).forEach((handler) => {
     root.handler(handler);
   });
 
   root.menuSection("resources");
+  root.helpSection("resources");
   // Ordered from the agent outward: what runs it, what it calls, what it
   // remembers, then how it is measured.
   root.handler(createHarnessHandler(core, io));
@@ -108,6 +109,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createEvalHandler(core, io));
   root.handler(createPaymentHandler(core, io));
 
+  root.helpSection("settings");
   root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
   root.handler(createUpdateHandler(io));

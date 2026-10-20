@@ -40,7 +40,7 @@ test.each(
 
 test("the root menu retains the dev handoff", async () => {
   const screen = renderScreen("/agentcore", { withContext: inProjectContext });
-  await waitForText(screen.lastFrame, "❯ dev");
+  await waitForText(screen.lastFrame, "❯ add");
   expect(menuEntries(screen.lastFrame()!).screens).toContain("dev");
   screen.unmount();
 });
