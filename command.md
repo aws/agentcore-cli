@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.0.0-rc.6`.
+This reference was generated from `agentcore --help` for version `1.0.0-rc.7`.
 
 ## Table of contents
 
@@ -253,7 +253,7 @@ create a new project
 agentcore dev [options]
 ```
 
-test project changes: run Runtimes locally or deploy for Harnesses; --mode browser opens Agent Inspector.
+develop and test project agents
 
 **Options**
 
@@ -272,7 +272,7 @@ test project changes: run Runtimes locally or deploy for Harnesses; --mode brows
 agentcore deploy [options]
 ```
 
-deploy the project to AWS
+build and deploy project resources to an AWS target
 
 **Options**
 
@@ -322,7 +322,7 @@ invoke a Runtime, harness, or Gateway
 agentcore status [options]
 ```
 
-show the status of the project's deployed resources
+inspect deployed project resources for an AWS target
 
 **Options**
 
@@ -932,7 +932,7 @@ migrate an AgentCore CLI v0 project to the current project format, keeping its d
 agentcore harness [options] [command]
 ```
 
-manage config-defined agents: model, prompt, and tools
+manage config-defined agents and their versions
 
 #### `agentcore harness create`
 
