@@ -221,10 +221,12 @@ describe("project create", () => {
   // The A2A and AG-UI strands templates scaffold the same Bedrock model module
   // as agent-python-strands — only the protocol differs.
   // The third column is each template's strands-agents version range: the A2A
-  // template is pinned (upstream #2511), AG-UI still carries the open range.
+  // template is pinned (upstream #2511) to a 1.57.x whose litellm extra already
+  // caps litellm at 1.96.0, so it stays put; AG-UI's floor is 1.62.0, the first
+  // release whose litellm extra excludes the compromised litellm 1.107.0.
   const PROTOCOL_STRANDS_TEMPLATES: [string, string, string][] = [
     ["a2a-python-strands", "A2A", "~= 1.57.2"],
-    ["agui-python-strands", "AGUI", ">= 1.15.0, < 2.0.0"],
+    ["agui-python-strands", "AGUI", ">= 1.62.0, < 2.0.0"],
   ];
 
   test.each(PROTOCOL_STRANDS_TEMPLATES)(
