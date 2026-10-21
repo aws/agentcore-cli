@@ -1,4 +1,6 @@
 import { runCLI } from '../../../../test-utils/index.js';
+import { harnessOnlyDevLogsMessage } from '../command.js';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('dev command', () => {
@@ -76,6 +78,16 @@ describe('dev command', () => {
       const result = await runCLI(['dev', '--port', '-1'], process.cwd());
 
       expect(result.exitCode).toBe(1);
+    });
+  });
+
+  describe('harness-only projects', () => {
+    it('fails --logs instead of reporting a successful local server', async () => {
+      const projectDir = join(process.cwd(), 'examples', 'AgentCoreCliReviewer');
+      const result = await runCLI(['dev', '--logs', '--skip-deploy', '--no-traces'], projectDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(harnessOnlyDevLogsMessage());
     });
   });
 });
