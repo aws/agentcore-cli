@@ -109,6 +109,11 @@ export interface AddGatewayTargetOptions {
   signingService?: string;
   signingRegion?: string;
   /**
+   * Comma-separated list of domains to restrict web search results to.
+   * Only applies to --type web-search.
+   */
+  includeDomains?: string;
+  /**
    * Comma-separated list of domains to exclude from web search results.
    * Only applies to --type web-search.
    */

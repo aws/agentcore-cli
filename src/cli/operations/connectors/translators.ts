@@ -20,6 +20,7 @@ export interface ParameterOverride {
 }
 
 export interface WebSearchTranslatorInput {
+  includeDomains?: string[];
   excludeDomains?: string[];
 }
 
@@ -33,9 +34,20 @@ export type ConnectorTranslatorInput =
 
 function translateWebSearch(input: WebSearchTranslatorInput): ConfigurationEntry[] {
   const parameterValues: Record<string, unknown> = {};
-  if (input.excludeDomains && input.excludeDomains.length > 0) {
-    parameterValues.domainFilter = { exclude: input.excludeDomains };
+
+  // Both lists go in one domainFilter, since that is how the connector reads them.
+  // An empty list is not the same request as an absent one, so empty is left out.
+  const domainFilter: { include?: string[]; exclude?: string[] } = {};
+  if (input.includeDomains && input.includeDomains.length > 0) {
+    domainFilter.include = input.includeDomains;
   }
+  if (input.excludeDomains && input.excludeDomains.length > 0) {
+    domainFilter.exclude = input.excludeDomains;
+  }
+  if (Object.keys(domainFilter).length > 0) {
+    parameterValues.domainFilter = domainFilter;
+  }
+
   return [{ name: 'WebSearch', description: '', parameterValues, parameterOverrides: [] }];
 }
 
