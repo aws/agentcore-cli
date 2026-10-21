@@ -253,6 +253,7 @@ describe("ContainerDevRunner", () => {
       AWS_REGION: "us-east-1",
       AWS_CONFIG_FILE: "/aws-config/config",
       AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
+      AWS_LOGIN_CACHE_DIRECTORY: "/aws-config/login/cache",
     });
     expect(run.command.join(" ")).not.toContain("sandbox");
 
@@ -266,6 +267,55 @@ describe("ContainerDevRunner", () => {
       "Unable to resolve AWS credentials for the container",
     );
     expect(missing.calls).toHaveLength(0);
+  });
+
+  test.each(["docker", "podman", "finch"])(
+    "uses the mounted aws login cache with %s",
+    async (tool) => {
+      const projectRuntime = runtime();
+      const root = await projectRoot(projectRuntime);
+      const awsDirectory = join(root, ".aws");
+      await mkdir(join(awsDirectory, "login", "cache"), { recursive: true });
+      await writeFile(
+        join(awsDirectory, "config"),
+        "[profile sandbox]\nlogin_session=sample-user\nregion=us-east-1\n",
+      );
+      const { calls, runner } = harness({
+        awsDirectory,
+        processEnv: { AWS_PROFILE: "sandbox" },
+        available: async (candidate) => candidate === tool,
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      expect(run.command[0]).toBe(tool);
+      expect(run.command).toContain(`${awsDirectory}:/aws-config:ro`);
+      expect(parseEnv(run.envFile!.contents)).toMatchObject({
+        AWS_PROFILE: "sandbox",
+        AWS_CONFIG_FILE: "/aws-config/config",
+        AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
+        AWS_LOGIN_CACHE_DIRECTORY: "/aws-config/login/cache",
+      });
+      expect(run.command.join(" ")).not.toContain("AWS_LOGIN_CACHE_DIRECTORY");
+      await expect(readFile(run.envFile!.path, "utf8")).rejects.toThrow();
+    },
+  );
+
+  test("preserves an explicit container login cache directory", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const awsDirectory = join(root, ".aws");
+    await mkdir(awsDirectory);
+    const { calls, runner } = harness({ awsDirectory, processEnv: { AWS_PROFILE: "sandbox" } });
+    const runInput = input(root, projectRuntime);
+    runInput.env = { ...runInput.env, AWS_LOGIN_CACHE_DIRECTORY: "/container/cache" };
+
+    await collect(runner.run(runInput));
+
+    const run = commandCall(calls, "run");
+    expect(parseEnv(run.envFile!.contents).AWS_LOGIN_CACHE_DIRECTORY).toBe("/container/cache");
+    expect(run.command).toContain(`${awsDirectory}:/aws-config:ro`);
   });
 
   test("preserves an existing build context .dockerignore", async () => {

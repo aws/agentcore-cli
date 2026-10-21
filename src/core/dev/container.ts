@@ -164,6 +164,7 @@ export class ContainerDevRunner implements DevRunner {
     if (awsMount.length) {
       forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
       forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
+      forwardedEnv.AWS_LOGIN_CACHE_DIRECTORY ??= "/aws-config/login/cache";
     }
     const envFile = join(tmpdir(), `agentcore-dev-${randomUUID()}.env`);
     try {
