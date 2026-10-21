@@ -188,7 +188,8 @@ export const registerStatus = (program: Command) => {
         const knowledgeBases = filtered.filter(r => r.resourceType === 'knowledge-base');
         const harnesses = filtered.filter(r => r.resourceType === 'harness');
         const payments = filtered.filter(r => r.resourceType === 'payment');
-        // TODO: Add http-gateway resource type when diffResourceSet for HTTP gateways is added to action.ts
+        const capacityProviders = filtered.filter(r => r.resourceType === 'capacity-provider');
+        // TODO: Add HTTP Gateways render section when diffResourceSet for added to action.ts
 
         // Fetch enriched dataset info when --type dataset is specified
         let datasetDetails: DatasetStatusResult[] = [];
@@ -416,6 +417,15 @@ export const registerStatus = (program: Command) => {
                     </Box>
                   );
                 })}
+              </Box>
+            )}
+
+            {capacityProviders.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Capacity Providers</Text>
+                {capacityProviders.map(entry => (
+                  <ResourceEntry key={`${entry.resourceType}-${entry.name}`} entry={entry} />
+                ))}
               </Box>
             )}
 

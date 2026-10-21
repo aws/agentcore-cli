@@ -2,7 +2,7 @@ import { NoProjectError } from '../../../errors';
 import { ConfigNotFoundError, ConfigParseError, ConfigValidationError } from '../../../errors/types.js';
 import { ConfigIO } from '../config-io.js';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -244,6 +244,54 @@ describe('ConfigIO', () => {
       const result = await first.readProjectSpec();
       expect(result.evaluators.map(evaluator => evaluator.name).sort()).toEqual(['First', 'Second']);
       expect(existsSync(`${join(agentcoreDir, 'agentcore.json')}.lock`)).toBe(false);
+    });
+
+    it('strips empty default arrays from agentcore.json to avoid clutter', async () => {
+      const projectDir = join(testDir, `empty-array-cleanup-${randomUUID()}`);
+      const agentcoreDir = join(projectDir, 'agentcore');
+      mkdirSync(agentcoreDir, { recursive: true });
+
+      const configIO = new ConfigIO({ baseDir: agentcoreDir });
+
+      const fullSpec = {
+        name: 'CleanProject',
+        version: 1,
+        managedBy: 'CDK' as const,
+        runtimes: [],
+        memories: [],
+        knowledgeBases: [],
+        credentials: [],
+        evaluators: [],
+        onlineEvalConfigs: [],
+        agentCoreGateways: [],
+        configBundles: [],
+        abTests: [],
+        harnesses: [],
+        datasets: [],
+        capacityProviders: [],
+        payments: [],
+      } as any;
+
+      await configIO.writeProjectSpec(fullSpec);
+
+      const raw = JSON.parse(readFileSync(join(agentcoreDir, 'agentcore.json'), 'utf-8'));
+
+      // All default-empty arrays should be absent from the written file
+      const absent = [
+        'runtimes',
+        'memories',
+        'knowledgeBases',
+        'credentials',
+        'evaluators',
+        'onlineEvalConfigs',
+        'agentCoreGateways',
+        'configBundles',
+        'abTests',
+        'harnesses',
+      ];
+      for (const key of absent) {
+        expect(raw).not.toHaveProperty(key, `Empty default array "${key}" should be stripped from agentcore.json`);
+      }
     });
   });
 

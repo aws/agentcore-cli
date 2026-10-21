@@ -138,10 +138,28 @@ export class ConfigIO {
    */
   async writeProjectSpec(data: AgentCoreProjectSpec): Promise<void> {
     const filePath = this.pathResolver.getAgentConfigPath();
-    // TODO: extend this to all resource arrays so empty defaults never pollute agentcore.json
     const cleaned = { ...data };
-    if (cleaned.configBundles?.length === 0) delete (cleaned as Record<string, unknown>).configBundles;
-    if (cleaned.abTests?.length === 0) delete (cleaned as Record<string, unknown>).abTests;
+    // Strip empty default arrays so agentcore.json only contains populated resources.
+    // Arrays that use .default([]) in the schema: runtimes, memories, knowledgeBases,
+    // credentials, evaluators, onlineEvalConfigs, agentCoreGateways, configBundles,
+    // abTests, harnesses.  Other fields (datasets, capacityProviders, payments, …) are
+    // optional and do not default to [] — they are left untouched.
+    const EMPTY_ARRAY_FIELDS: (keyof AgentCoreProjectSpec)[] = [
+      'runtimes',
+      'memories',
+      'knowledgeBases',
+      'credentials',
+      'evaluators',
+      'onlineEvalConfigs',
+      'agentCoreGateways',
+      'configBundles',
+      'abTests',
+      'harnesses',
+    ];
+    for (const key of EMPTY_ARRAY_FIELDS) {
+      if ((cleaned[key] as { length: number } | undefined)?.length === 0)
+        delete (cleaned as Record<string, unknown>)[key];
+    }
     await this.validateAndWrite(filePath, 'AgentCore Project Config', AgentCoreProjectSpecSchema, cleaned);
   }
 
