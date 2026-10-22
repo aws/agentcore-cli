@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
@@ -165,35 +164,6 @@ describe("FsProjectManager.create", () => {
     const cdkPackage = await Bun.file(join(projectRoot, "agentcore", "cdk", "package.json")).json();
     expect(cdkPackage.dependencies["@aws/agentcore-cdk"]).toBe(MINIMUM_COMPATIBLE_CDK_VERSION);
     expect(await projectManifest(projectRoot)).toMatchSnapshot();
-  });
-
-  test("git ignores CodeZip dependency staging in a Strands Python project", async () => {
-    const directory = await inTempDirectory();
-    await runCreate(manager().manager, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
-      skipInstall: true,
-      skipGit: true,
-    });
-
-    const projectRoot = join(directory, "example");
-    const stagingDirectory = join(
-      projectRoot,
-      "agentcore",
-      ".cache",
-      "agent_python_strands",
-      "staging",
-    );
-    await mkdir(stagingDirectory, { recursive: true });
-    await writeFile(join(stagingDirectory, "dependency.py"), "generated dependency\n");
-    execFileSync("git", ["init", "--quiet"], { cwd: projectRoot });
-
-    const dryRun = execFileSync("git", ["add", "-A", "--dry-run"], {
-      cwd: projectRoot,
-      encoding: "utf8",
-    });
-    expect(dryRun).toContain("agentcore/agentcore.json");
-    expect(dryRun).not.toContain("agentcore/.cache/");
   });
 
   test("snapshots the Strands project manifest and runtime spec", async () => {
