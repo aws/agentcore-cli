@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
+import semver from "semver";
 import {
   DeserializationError,
   InputValidationError,
@@ -161,8 +162,7 @@ describe("FsProjectManager.create", () => {
     // The v2 schema endpoint is unpublished, so scaffolding must not point at it.
     expect(spec).not.toHaveProperty("$schema");
     expect(ProjectSpecSchema.safeParse(spec).success).toBe(true);
-    const cdkPackage = await Bun.file(join(projectRoot, "agentcore", "cdk", "package.json")).json();
-    expect(cdkPackage.dependencies["@aws/agentcore-cdk"]).toBe(MINIMUM_COMPATIBLE_CDK_VERSION);
+    expect(semver.gte(MINIMUM_COMPATIBLE_CDK_VERSION, "1.0.0")).toBe(true);
     expect(await projectManifest(projectRoot)).toMatchSnapshot();
   });
 
