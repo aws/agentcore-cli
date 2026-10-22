@@ -64,11 +64,11 @@ and `release-main-and-preview.yml` with the `npm-publish` environment as a trust
 job exchanges its GitHub OIDC token for a short-lived npm token. There is no npm secret in the repository.
 npm checks the filename of the top-level workflow and the environment, so the publish step must stay in
 `release-main-and-preview.yml` under `npm-publish` rather than move into a reusable workflow. The name is
-shared with main's release workflow on purpose: each branch runs its own copy.
+shared with the v0 release workflow on `main` (later `v0.x`): each branch runs its own copy.
 
 The prepare job uses `aws-release-4-core`, the check-release and publish jobs use `ubuntu-latest`. The `release-main-and-preview.yml`
-allowlist currently covers `refactor` only. After the workflow lands on `main`, have a
-runner-group administrator add its `main` entry before switching the publish branch filter.
+allowlist currently covers `refactor` only. Have a runner-group administrator allowlist `v1.x`
+before renaming `refactor`.
 The allowlist is scoped to workflow paths and branches; renaming a workflow also requires an
 update. Keep PR-triggered workflows and the verification matrix off this release-only pool.
 

@@ -2,7 +2,7 @@ name: PR Automation
 
 on:
   pull_request_target:
-    branches: [main, refactor, "feat/**"]
+    branches: [main, refactor, v0.x, v1.x, "feat/**"]
     types: [opened, reopened, edited, synchronize, labeled]
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ jobs:
     with:
       runner: codebuild
       pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
-      allowed_base_branches: '["main","refactor"]'
+      allowed_base_branches: '["main","refactor","v0.x","v1.x"]'
     secrets: inherit
 
   harness-review:
@@ -113,7 +113,7 @@ jobs:
           fi
 
           case "$base_ref" in
-            main|refactor|feat/*) ;;
+            main|refactor|v0.x|v1.x|feat/*) ;;
             *)
               echo "::error::Unsupported base branch: $base_ref"
               exit 1
@@ -162,15 +162,49 @@ jobs:
           ref: ${{ needs.tarball-authorize.outputs.head_sha }}
           persist-credentials: false
           allow-unsafe-pr-checkout: true
+      - name: Detect package manager
+        id: package-manager
+        run: |
+          if [[ -f bun.lock ]]; then
+            echo "name=bun" >> "$GITHUB_OUTPUT"
+          elif [[ -f npm-shrinkwrap.json || -f package-lock.json ]]; then
+            echo "name=npm" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::PR has no supported package lockfile"
+            exit 1
+          fi
       - uses: oven-sh/setup-bun@v2
+        if: steps.package-manager.outputs.name == 'bun'
+      - uses: actions/setup-node@v7
+        if: steps.package-manager.outputs.name == 'npm'
+        with:
+          node-version: "20.x"
+          cache: npm
+      - uses: astral-sh/setup-uv@v7
+        if: steps.package-manager.outputs.name == 'npm'
+      - name: Configure git
+        if: steps.package-manager.outputs.name == 'npm'
+        run: |
+          git config --global user.email "bedrock-agentcore-npm+ci@amazon.com"
+          git config --global user.name "CI"
 
       - run: bun install --frozen-lockfile
+        if: steps.package-manager.outputs.name == 'bun'
       - run: bun run build
+        if: steps.package-manager.outputs.name == 'bun'
+      - run: npm ci
+        if: steps.package-manager.outputs.name == 'npm'
+      - run: npm run build --if-present
+        if: steps.package-manager.outputs.name == 'npm'
 
       - name: Pack CLI
         id: tarball
         run: |
-          bun pm pack --destination "$RUNNER_TEMP"
+          if [[ "${{ steps.package-manager.outputs.name }}" == "bun" ]]; then
+            bun pm pack --destination "$RUNNER_TEMP"
+          else
+            npm pack --pack-destination "$RUNNER_TEMP"
+          fi
           tarball="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name 'aws-agentcore-*.tgz' -print -quit)"
           test -f "$tarball"
           echo "name=$(basename "$tarball")" >> "$GITHUB_OUTPUT"
@@ -218,5 +252,5 @@ jobs:
 
             ```bash
             gh release download pr-${{ needs.tarball-authorize.outputs.pr_number }}-tarball --repo ${{ github.repository }} --pattern "*.tgz" --dir /tmp/pr-tarball
-            bun add --global /tmp/pr-tarball/${{ steps.tarball.outputs.name }}
+            npm install -g /tmp/pr-tarball/${{ steps.tarball.outputs.name }}
             ```
