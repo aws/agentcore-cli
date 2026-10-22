@@ -1,37 +1,17 @@
-name: Release Main and Preview
+name: Release v0
 
 on:
   workflow_dispatch:
     inputs:
-      release_target:
-        description: 'What to release'
-        required: true
-        type: choice
-        options:
-          - both
-          - main-only
-          - preview-only
-      main_bump_type:
-        description: 'Main version bump (ignored for preview-only)'
+      bump_type:
+        description: 'v0 version bump'
         required: true
         type: choice
         options:
           - patch
           - minor
-      preview_bump_type:
-        description: 'Preview version bump (ignored for main-only)'
-        required: true
-        type: choice
-        options:
-          - prerelease
-          - minor
-          - major
-      main_changelog:
-        description: 'Main changelog entry (optional)'
-        required: false
-        type: string
-      preview_changelog:
-        description: 'Preview changelog entry (optional)'
+      changelog:
+        description: 'Changelog entry (optional)'
         required: false
         type: string
       dry_run:
@@ -54,19 +34,17 @@ env:
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════
-  # Step 1 — Prepare release (bump both versions, single PR)
+  # Step 1 — Prepare v0 release PR
   # ═══════════════════════════════════════════════════════════════════
   prepare-release:
     name: Prepare Release
     runs-on: aws-release-4-core
     outputs:
-      main_version: ${{ steps.bump-main.outputs.version || steps.current-main.outputs.version }}
-      preview_version: ${{ steps.bump-preview.outputs.version }}
+      version: ${{ steps.bump.outputs.version }}
       branch: ${{ steps.create-pr.outputs.branch }}
-      release_target: ${{ github.event.inputs.release_target }}
 
     steps:
-      - name: Checkout main
+      - name: Checkout v0 branch
         uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
@@ -75,6 +53,25 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 20.x
+
+      - name: Verify v0 release branch and version
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          BUMP_TYPE: ${{ github.event.inputs.bump_type }}
+        run: |
+          if [[ "$BUMP_TYPE" != "patch" && "$BUMP_TYPE" != "minor" ]]; then
+            echo "❌ v0 releases only support patch or minor bumps, not $BUMP_TYPE."
+            exit 1
+          fi
+          if [[ "$BRANCH_NAME" != "main" && "$BRANCH_NAME" != "v0.x" ]]; then
+            echo "❌ v0 releases must run from main or v0.x, not $BRANCH_NAME."
+            exit 1
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" != 0.* ]]; then
+            echo "❌ Expected a v0 package version, found $VERSION."
+            exit 1
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -86,12 +83,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Bump main version
-        id: bump-main
-        if: inputs.release_target != 'preview-only'
+      - name: Bump v0 version
+        id: bump
         env:
-          BUMP_TYPE: ${{ github.event.inputs.main_bump_type }}
-          CHANGELOG_INPUT: ${{ github.event.inputs.main_changelog }}
+          BUMP_TYPE: ${{ github.event.inputs.bump_type }}
+          CHANGELOG_INPUT: ${{ github.event.inputs.changelog }}
         run: |
           BUMP_CMD="npx tsx scripts/bump-version.ts $BUMP_TYPE"
           if [ -n "$CHANGELOG_INPUT" ]; then
@@ -101,43 +97,7 @@ jobs:
 
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Main version: $NEW_VERSION"
-
-      - name: Output current main version (preview-only)
-        id: current-main
-        if: inputs.release_target == 'preview-only'
-        run: |
-          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: Bump preview version
-        id: bump-preview
-        if: inputs.release_target != 'main-only'
-        env:
-          BUMP_TYPE: ${{ github.event.inputs.preview_bump_type }}
-        run: |
-          CURRENT_VERSION=$(node -p "require('./preview-version.json').version")
-          echo "Current preview version: $CURRENT_VERSION"
-
-          NEW_VERSION=$(node -e "
-            const current = require('./preview-version.json').version;
-            const bumpType = process.env.BUMP_TYPE;
-            const parts = current.match(/^(\d+)\.(\d+)\.(\d+)(?:-preview\.(\d+))?$/);
-            if (!parts) { console.error('Cannot parse version:', current); process.exit(1); }
-            let [, major, minor, patch, pre] = parts.map((v, i) => i > 0 && i < 5 ? parseInt(v || '0') : v);
-            if (bumpType === 'major') { major++; minor = 0; patch = 0; pre = 1; }
-            else if (bumpType === 'minor') { minor++; patch = 0; pre = 1; }
-            else { pre = (pre || 0) + 1; }
-            console.log(major + '.' + minor + '.' + patch + '-preview.' + pre);
-          ")
-
-          node -e "
-            const fs = require('fs');
-            const data = { version: '$NEW_VERSION' };
-            fs.writeFileSync('preview-version.json', JSON.stringify(data, null, 2) + '\n');
-          "
-
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Preview version: $NEW_VERSION"
+          echo "📦 v0 version: $NEW_VERSION"
 
       - name: Sync vended CDK version
         env:
@@ -166,24 +126,11 @@ jobs:
         id: create-pr
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          MAIN_VERSION: ${{ steps.bump-main.outputs.version || steps.current-main.outputs.version }}
-          PREVIEW_VERSION: ${{ steps.bump-preview.outputs.version }}
-          RELEASE_TARGET: ${{ github.event.inputs.release_target }}
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
-          # Build branch name based on what we're releasing
-          if [ "$RELEASE_TARGET" = "main-only" ]; then
-            BRANCH_NAME="release/v${MAIN_VERSION}"
-            TITLE="Release v$MAIN_VERSION"
-            COMMIT_MSG="chore: bump main to $MAIN_VERSION"
-          elif [ "$RELEASE_TARGET" = "preview-only" ]; then
-            BRANCH_NAME="release/preview-v${PREVIEW_VERSION}"
-            TITLE="Release preview v$PREVIEW_VERSION"
-            COMMIT_MSG="chore: bump preview to $PREVIEW_VERSION"
-          else
-            BRANCH_NAME="release/v${MAIN_VERSION}+preview.${PREVIEW_VERSION}"
-            TITLE="Release v$MAIN_VERSION + preview v$PREVIEW_VERSION"
-            COMMIT_MSG="chore: bump main to $MAIN_VERSION, preview to $PREVIEW_VERSION"
-          fi
+          BRANCH_NAME="release/v${VERSION}"
+          TITLE="Release v$VERSION"
+          COMMIT_MSG="chore: bump v0 to $VERSION"
           echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
           git ls-remote --exit-code --heads origin "$BRANCH_NAME" && git push origin --delete "$BRANCH_NAME" || true
@@ -199,15 +146,8 @@ jobs:
 
           | Package | Version | npm Tag |
           |---------|---------|---------|"
-          if [ "$RELEASE_TARGET" != "preview-only" ]; then
-            BODY="$BODY
-          | @aws/agentcore | $MAIN_VERSION | v0-latest |"
-          fi
-          if [ "$RELEASE_TARGET" != "main-only" ]; then
-            BODY="$BODY
-          | @aws/agentcore | $PREVIEW_VERSION | preview |"
-          fi
           BODY="$BODY
+          | @aws/agentcore | $VERSION | v0-latest |
 
           ### Checklist
           - [ ] Review CHANGELOG.md
@@ -233,17 +173,15 @@ jobs:
     steps:
       - name: Approval checkpoint
         env:
-          MAIN_VERSION: ${{ needs.prepare-release.outputs.main_version }}
-          PREVIEW_VERSION: ${{ needs.prepare-release.outputs.preview_version }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          echo "📦 Main version:    $MAIN_VERSION (npm tag: v0-latest)"
-          echo "📦 Preview version: $PREVIEW_VERSION (npm tag: preview)"
+          echo "📦 v0 version: $VERSION (npm tag: v0-latest)"
           echo ""
           echo "⚠️  MANUAL APPROVAL REQUIRED"
           echo ""
           echo "Before approving:"
           echo "1. Verify PR CI checks are passing"
-          echo "2. Merge the release PR to main"
+          echo "2. Merge the release PR to the selected v0 branch"
           echo "3. Verify the PR is merged"
 
   # ═══════════════════════════════════════════════════════════════════
@@ -261,40 +199,25 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Verify main version
-        if: needs.prepare-release.outputs.release_target != 'preview-only'
+      - name: Verify v0 version
         env:
-          EXPECTED: ${{ needs.prepare-release.outputs.main_version }}
+          EXPECTED: ${{ needs.prepare-release.outputs.version }}
         run: |
           git fetch origin ${{ github.ref_name }}
           ACTUAL=$(git show origin/${{ github.ref_name }}:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "❌ Release PR not merged yet!"
-            echo "Expected main version: $EXPECTED, Got: $ACTUAL"
+            echo "Expected v0 version: $EXPECTED, Got: $ACTUAL"
             exit 1
           fi
-          echo "✅ Main version verified: $ACTUAL"
-
-      - name: Verify preview version
-        if: needs.prepare-release.outputs.release_target != 'main-only'
-        env:
-          EXPECTED: ${{ needs.prepare-release.outputs.preview_version }}
-        run: |
-          ACTUAL=$(git show origin/${{ github.ref_name }}:preview-version.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "❌ Release PR not merged yet!"
-            echo "Expected preview version: $EXPECTED, Got: $ACTUAL"
-            exit 1
-          fi
-          echo "✅ Preview version verified: $ACTUAL"
+          echo "✅ v0 version verified: $ACTUAL"
 
   # ═══════════════════════════════════════════════════════════════════
-  # Step 4a — Publish main to npm (tag: v0-latest)
+  # Step 4 — Publish v0 to npm (tag: v0-latest)
   # ═══════════════════════════════════════════════════════════════════
   publish-main:
-    name: Publish Main (@v0-latest)
+    name: Publish v0 (@v0-latest)
     needs: [prepare-release, verify-merge]
-    if: inputs.release_target != 'preview-only'
     runs-on: aws-release-4-core
     environment:
       name: npm-publish
@@ -304,7 +227,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout main
+      - name: Checkout v0 branch
         uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
@@ -324,7 +247,7 @@ jobs:
 
       - name: Tag and release
         env:
-          VERSION: ${{ needs.prepare-release.outputs.main_version }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -334,86 +257,16 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ needs.prepare-release.outputs.main_version }}
-          name: AgentCore CLI v${{ needs.prepare-release.outputs.main_version }}
+          tag_name: v${{ needs.prepare-release.outputs.version }}
+          name: AgentCore CLI v${{ needs.prepare-release.outputs.version }}
           generate_release_notes: true
           prerelease: false
+          make_latest: false
           body: |
             ## Installation
 
             ```bash
-            npm install -g @aws/agentcore@${{ needs.prepare-release.outputs.main_version }}
-            ```
-
-  # ═══════════════════════════════════════════════════════════════════
-  # Step 4b — Publish preview to npm (tag: preview)
-  # ═══════════════════════════════════════════════════════════════════
-  publish-preview:
-    name: Publish Preview (@preview)
-    needs: [prepare-release, verify-merge]
-    if: inputs.release_target != 'main-only'
-    runs-on: aws-release-4-core
-    environment:
-      name: npm-publish
-      url: https://www.npmjs.com/package/@aws/agentcore
-    permissions:
-      id-token: write
-      contents: write
-
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22.x
-          registry-url: 'https://registry.npmjs.org'
-
-      - run: npm install -g npm@11.5.1
-      - run: npm ci
-
-      - name: Set preview version in package.json
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.preview_version }}
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = process.env.VERSION;
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          echo "Set package.json version to $VERSION for preview publish"
-
-      - name: Build package
-        run: npm run build
-
-      - name: Publish to npm
-        run: npm publish --access public --provenance --tag preview
-
-      - name: Tag and release
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.preview_version }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION (preview)"
-          git push origin "v$VERSION"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ needs.prepare-release.outputs.preview_version }}
-          name: AgentCore CLI v${{ needs.prepare-release.outputs.preview_version }} (Preview)
-          generate_release_notes: true
-          prerelease: true
-          body: |
-            ## Installation (Preview)
-
-            ```bash
-            npm install -g @aws/agentcore@preview
+            npm install -g @aws/agentcore@${{ needs.prepare-release.outputs.version }}
             ```
 
   # ═══════════════════════════════════════════════════════════════════
@@ -421,20 +274,17 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════
   summary:
     name: Release Summary
-    needs: [prepare-release, publish-main, publish-preview]
+    needs: [prepare-release, publish-main]
     if: always() && !cancelled()
     runs-on: aws-release-4-core
     steps:
       - name: Summary
         env:
-          MAIN_VERSION: ${{ needs.prepare-release.outputs.main_version }}
-          PREVIEW_VERSION: ${{ needs.prepare-release.outputs.preview_version }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
           MAIN_STATUS: ${{ needs.publish-main.result }}
-          PREVIEW_STATUS: ${{ needs.publish-preview.result }}
         run: |
           echo "## Release Summary"
           echo ""
           echo "| Package | Version | npm Tag | Status |"
           echo "|---------|---------|---------|--------|"
-          echo "| @aws/agentcore | $MAIN_VERSION | v0-latest | $MAIN_STATUS |"
-          echo "| @aws/agentcore | $PREVIEW_VERSION | preview | $PREVIEW_STATUS |"
+          echo "| @aws/agentcore | $VERSION | v0-latest | $MAIN_STATUS |"

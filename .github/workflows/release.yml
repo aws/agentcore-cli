@@ -10,16 +10,10 @@ on:
         options:
           - patch
           - minor
-          - prerelease
       changelog:
         description: 'Custom changelog entry (optional - leave empty to auto-generate)'
         required: false
         type: string
-      prerelease_tag:
-        description: 'Prerelease tag (e.g., alpha, beta, rc) - only used with "prerelease" bump type'
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: write
@@ -40,20 +34,18 @@ jobs:
         id: release-meta
         env:
           BRANCH_NAME: ${{ github.ref_name }}
-          VERSION_BUMP: ${{ github.event.inputs.bump_type }}
+          BUMP_TYPE: ${{ github.event.inputs.bump_type }}
         run: |
+          if [[ "$BUMP_TYPE" != "patch" && "$BUMP_TYPE" != "minor" ]]; then
+            echo "❌ ERROR: v0 releases only support patch or minor bumps, not $BUMP_TYPE."
+            exit 1
+          fi
           if [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "v0.x" ]]; then
             echo "dist_tag=v0-latest" >> $GITHUB_OUTPUT
             echo "base_branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
           else
-            if [[ "$VERSION_BUMP" != "prerelease" ]]; then
-              echo "❌ ERROR: Only the prerelease bump type is allowed outside the v0 release branch."
-              echo "Current branch: $BRANCH_NAME, bump type: $VERSION_BUMP"
-              exit 1
-            fi
-            echo "dist_tag=preview" >> $GITHUB_OUTPUT
-            echo "base_branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
-            echo "ℹ️  Publishing preview release from branch: $BRANCH_NAME"
+            echo "❌ ERROR: v0 releases must run from main or v0.x, not $BRANCH_NAME."
+            exit 1
           fi
 
       - name: Checkout code
@@ -80,13 +72,16 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION"
+          if [[ "$VERSION" != 0.* ]]; then
+            echo "❌ ERROR: Expected a v0 package version, found $VERSION."
+            exit 1
+          fi
 
       - name: Bump version
         id: bump
         env:
           CHANGELOG_INPUT: ${{ github.event.inputs.changelog }}
           BUMP_TYPE: ${{ github.event.inputs.bump_type }}
-          PRERELEASE_TAG: ${{ github.event.inputs.prerelease_tag }}
         run: |
           # If no custom changelog, provide guidance
           if [ -z "$CHANGELOG_INPUT" ]; then
@@ -100,16 +95,6 @@ jobs:
           # Add changelog if provided
           if [ -n "$CHANGELOG_INPUT" ]; then
             BUMP_CMD="$BUMP_CMD --changelog \"$CHANGELOG_INPUT\""
-          fi
-
-          # Add prerelease-tag if provided and bump_type is prerelease
-          if [ "$BUMP_TYPE" = "prerelease" ]; then
-            if [ -n "$PRERELEASE_TAG" ]; then
-              BUMP_CMD="$BUMP_CMD --prerelease-tag \"$PRERELEASE_TAG\""
-            else
-              # Default to beta if prerelease but no tag specified
-              BUMP_CMD="$BUMP_CMD --prerelease-tag \"beta\""
-            fi
           fi
 
           # Run the bump command
@@ -176,10 +161,7 @@ jobs:
         run: |
           BRANCH_NAME="release/v$NEW_VERSION"
 
-          RELEASE_TYPE="Production (npm tag: $DIST_TAG)"
-          if [ "$DIST_TAG" = "preview" ]; then
-            RELEASE_TYPE="Preview (npm tag: $DIST_TAG)"
-          fi
+          RELEASE_TYPE="v0 maintenance (npm tag: $DIST_TAG)"
 
           gh pr create \
             --base "$BASE_BRANCH" \
@@ -405,7 +387,8 @@ jobs:
           name: AgentCore CLI v${{ steps.version.outputs.version }}
           files: '*.tgz'
           generate_release_notes: true
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          prerelease: false
+          make_latest: false
           body: |
             ## Installation
 
