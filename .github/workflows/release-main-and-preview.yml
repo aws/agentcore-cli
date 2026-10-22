@@ -51,8 +51,17 @@ jobs:
       ref: ${{ github.sha }}
       macos: false
 
+  generated-artifact-security:
+    needs: check-release
+    if: needs.check-release.outputs.is_release == 'true'
+    uses: ./.github/workflows/generated-artifact-security.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.sha }}
+
   publish:
-    needs: verify
+    needs: [verify, generated-artifact-security]
     # npm provenance is only issued from GitHub-hosted runners.
     runs-on: ubuntu-latest
     environment:

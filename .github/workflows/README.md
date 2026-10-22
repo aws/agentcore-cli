@@ -8,7 +8,7 @@ Workflows are organized into two roles:
 Orchestrators (ci.yml, canary.yml, prerelease.yml, release-prepare.yml,
                release-main-and-preview.yml, pr-automation.yml, codeql.yml,
                slack-pr-review-notification.yml, workflow-metrics.yml)
-Jobs          (verify.yml, e2e-test.yml)
+Jobs          (verify.yml, e2e-test.yml, generated-artifact-security.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
@@ -27,6 +27,7 @@ An orchestrator calls jobs via `workflow_call`.
 ci.yml
   |-- verify.yml     (one job per platform: static checks on Linux, then bundle,
   |                   package, compile, smoke test and unit tests)
+  |-- generated-artifact-security.yml (fresh Python lockfiles and ARM64 image scans)
   `-- e2e-test.yml   (deploys and invokes real AgentCore resources)
 
 canary.yml (scheduled)
@@ -35,7 +36,8 @@ canary.yml (scheduled)
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
 release-main-and-preview.yml (npm publish and GitHub release when a release PR merges)
-  `-- verify.yml
+  |-- verify.yml
+  `-- generated-artifact-security.yml
 ```
 
 `verify.yml` and `e2e-test.yml` each appear in two orchestrators. This is the
