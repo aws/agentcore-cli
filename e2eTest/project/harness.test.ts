@@ -97,7 +97,7 @@ describe("add, dev, deploy, and invoke harnesses", { sequential: true, tags: har
         DeployResponseSchema,
         await cli.run([command, "--yes", "--json"], projectDir),
       );
-      expect(deployment.message).toContain("Deployed project");
+      expect(deployment.message).toContain("deployed project");
     });
 
     test.each(HARNESS_TEST_CASES)(
@@ -136,7 +136,7 @@ describe("add, dev, deploy, and invoke harnesses", { sequential: true, tags: har
         DeployResponseSchema,
         await cli.run(["deploy", "--yes", "--json"], projectDir),
       );
-      expect(deployment.message).toContain("Removed project");
+      expect(deployment.message).toContain("removed project");
     },
   );
 });

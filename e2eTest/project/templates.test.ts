@@ -184,7 +184,7 @@ describe(
             DeployResponseSchema,
             await cli.run(["deploy", "--yes", "--json"], projectDir),
           );
-          expect(deployment.message).toContain("Deployed project");
+          expect(deployment.message).toContain("deployed project");
 
           const response = parseResult(
             RuntimeInvokeResponseSchema,
