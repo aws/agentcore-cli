@@ -2,10 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  cmdSpawnArgs,
   MissingToolError,
   ProcessFailedError,
   requireTool,
@@ -13,12 +12,10 @@ import {
   runProcess,
   streamProcess,
   toolAvailable,
-  windowsCommandScript,
   type ProcessEvent,
 } from "./exec";
 
-// Scripts run from files rather than `node -e` one-liners: on win32 runProcess
-// spawns through cmd.exe (for PATHEXT resolution), which mangles quoted args.
+// Run Node scripts from files so these tests work with both Node and Bun.
 const scriptsDir = await mkdtemp(join(tmpdir(), "agentcore-exec-"));
 async function script(name: string, source: string): Promise<string> {
   const path = join(scriptsDir, name);
@@ -273,56 +270,3 @@ function processRunning(pid: number): boolean {
     return false;
   }
 }
-
-describe("windowsCommandScript", () => {
-  const PATHEXT = ".COM;.EXE;.BAT;.CMD";
-
-  test.each([
-    ["npm", "npm.CMD", "npm.CMD"],
-    ["npm.cmd", "npm.cmd", "npm.cmd"],
-    ["uv", "uv.EXE", undefined],
-    ["missing", "other.CMD", undefined],
-  ])("resolves %s on PATH", async (executable, present, expected) => {
-    const dir = await mkdtemp(join(scriptsDir, "path-"));
-    await writeFile(join(dir, present), "");
-    const found = windowsCommandScript(executable, { PATH: dir, PATHEXT });
-    expect(found).toBe(expected === undefined ? undefined : join(dir, expected));
-  });
-
-  test("takes the first PATH entry that matches", async () => {
-    const first = await mkdtemp(join(scriptsDir, "first-"));
-    const second = await mkdtemp(join(scriptsDir, "second-"));
-    await writeFile(join(first, "tool.EXE"), "");
-    await writeFile(join(second, "tool.CMD"), "");
-    const PATH = [first, second].join(delimiter);
-    expect(windowsCommandScript("tool", { PATH, PATHEXT })).toBeUndefined();
-  });
-});
-
-describe("cmdSpawnArgs", () => {
-  test("quotes each argument and escapes cmd.exe metacharacters", () => {
-    const { file, args } = cmdSpawnArgs("C:\\Program Files\\nodejs\\npm.cmd", [
-      "run",
-      "cdk",
-      "--",
-      "synth",
-      "--output",
-      "C:\\Users\\a\\My Agents (x)\\cdk.out",
-      'import m; print("A=" + m.x)',
-    ]);
-    expect(file).toMatch(/cmd\.exe$/i);
-    expect(args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
-    expect(args[3]).toBe(
-      '"C:\\Program^ Files\\nodejs\\npm.cmd ^"run^" ^"cdk^" ^"--^" ^"synth^" ^"--output^" ' +
-        '^"C:\\Users\\a\\My^ Agents^ ^(x^)\\cdk.out^" ' +
-        '^"import^ m^;^ print^(\\^"A=\\^"^ +^ m.x^)^""',
-    );
-  });
-
-  test.each([
-    [['a\\"b', "trail\\"], '"x.cmd ^"a\\\\\\^"b^" ^"trail\\\\^""'],
-    [['a\\\\"b', "trail\\\\"], '"x.cmd ^"a\\\\\\\\\\^"b^" ^"trail\\\\\\\\^""'],
-  ])("doubles every backslash run before a quote and at the end: %j", (input, expected) => {
-    expect(cmdSpawnArgs("x.cmd", input).args[3]).toBe(expected);
-  });
-});

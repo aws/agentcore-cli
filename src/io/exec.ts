@@ -1,18 +1,14 @@
 // Local subprocess execution. Uses node:child_process (not Bun.$/Bun.spawn)
 // because the npm bundle targets Node — Bun APIs are unavailable there.
-import { type ChildProcess, execFileSync, spawn, type SpawnOptions } from "node:child_process";
-import { existsSync } from "node:fs";
+import { type ChildProcess, execFileSync, type SpawnOptions } from "node:child_process";
 import { constants as osConstants } from "node:os";
-import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
+import crossSpawn from "cross-spawn";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
 
 const isWindows = process.platform === "win32";
 const KILL_GRACE_MS = 2000;
 const MAX_ERROR_OUTPUT_LINES = 20;
-
-const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
-const COMMAND_SCRIPT = /\.(cmd|bat)$/i;
 
 /** Error raised when a required executable is not found on PATH. */
 export class MissingToolError extends AgentCoreCLIError {
@@ -34,50 +30,10 @@ export class ProcessFailedError extends AgentCoreCLIError {
   }
 }
 
-/**
- Windows cannot spawn .cmd/.bat wrappers such as npm.cmd directly. This finds the
- script cmd.exe would run for a bare name (PATH then PATHEXT order), or undefined
- when the match is a real executable that spawns on its own.
-**/
-export function windowsCommandScript(
-  executable: string,
-  env: NodeJS.ProcessEnv,
-): string | undefined {
-  const extensions = (env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
-  const lower = executable.toLowerCase();
-  const names = extensions.some((ext) => lower.endsWith(ext.toLowerCase()))
-    ? [executable]
-    : extensions.map((ext) => executable + ext);
-  for (const dir of (env.PATH || "").split(delimiter)) {
-    if (!dir) continue;
-    for (const name of names) {
-      const candidate = join(dir, name);
-      if (existsSync(candidate)) return COMMAND_SCRIPT.test(candidate) ? candidate : undefined;
-    }
-  }
-  return undefined;
-}
-
-// Quoting follows https://qntm.org/cmd: C runtime rules for the argument, then
-// every cmd.exe metacharacter escaped with ^ because /s strips the outer quotes.
-function escapeArgument(arg: string): string {
-  const quoted = `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
-  return quoted.replace(CMD_META, "^$1");
-}
-
-// Single escape: a % inside an argument would still be expanded by the batch file.
-export function cmdSpawnArgs(script: string, args: string[]): { file: string; args: string[] } {
-  const commandLine = [script.replace(CMD_META, "^$1"), ...args.map(escapeArgument)].join(" ");
-  return { file: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", `"${commandLine}"`] };
-}
-
 function spawnCommand(executable: string, args: string[], options: SpawnOptions): ChildProcess {
-  const script = isWindows
-    ? windowsCommandScript(executable, options.env ?? process.env)
-    : undefined;
-  if (!script) return spawn(executable, args, options);
-  const resolved = cmdSpawnArgs(script, args);
-  return spawn(resolved.file, resolved.args, { ...options, windowsVerbatimArguments: true });
+  // Keep arguments separate. cross-spawn resolves Windows wrappers and applies
+  // the extra escaping required when a node_modules/.bin shim forwards them.
+  return crossSpawn(executable, args, options);
 }
 
 /** Returns true if running `tool` with probeArgs (`--version` by default) exits 0. */
