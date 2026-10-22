@@ -1,5 +1,6 @@
 import { PollExhaustedError, PollTimeoutError } from '../../../lib/errors/types';
 import { isThrottlingError, poll } from '../../../lib/utils/polling';
+import { runSubprocess } from '../../../lib/utils/subprocess';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
 import { buildImportTemplate } from './template-utils';
@@ -14,7 +15,6 @@ import {
 } from '@aws-sdk/client-cloudformation';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
-import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -250,8 +250,8 @@ export async function publishCdkAssets(
       if (stat.isDirectory()) {
         if (asset.source.packaging === 'zip') {
           // Zip the directory contents
-          const zipPath = `${sourcePath}.zip`;
-          execSync(`cd "${sourcePath}" && zip -rq "${zipPath}" .`);
+          const zipPath = path.resolve(`${sourcePath}.zip`);
+          await runSubprocess('zip', ['-rq', zipPath, '.'], { cwd: sourcePath, stdio: 'pipe' });
           body = fs.readFileSync(zipPath);
           fs.unlinkSync(zipPath);
         } else {
