@@ -1,5 +1,6 @@
 import { ResourceNotFoundError, TimeoutError, toError } from '../../../lib';
 import type { Result } from '../../../lib/result';
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../../aws';
 import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
 
@@ -49,6 +50,7 @@ export async function runInsightsQuery(options: InsightsQueryOptions): Promise<I
   const client = new CloudWatchLogsClient({
     credentials: getCredentialProvider(),
     region,
+    requestHandler: getProxyRequestHandler(),
   });
 
   const now = Date.now();

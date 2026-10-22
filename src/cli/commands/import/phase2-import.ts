@@ -1,4 +1,5 @@
 import { PollExhaustedError, PollTimeoutError } from '../../../lib/errors/types';
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { isThrottlingError, poll } from '../../../lib/utils/polling';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
@@ -54,7 +55,7 @@ export async function executePhase2(options: Phase2Options): Promise<Phase2Resul
   }
 
   const credentials = getCredentialProvider();
-  const cfn = new CloudFormationClient({ region, credentials });
+  const cfn = new CloudFormationClient({ region, credentials, requestHandler: getProxyRequestHandler() });
 
   // Publish CDK assets to S3 before creating the import change set
   onProgress?.('Publishing CDK assets to S3...');
@@ -270,7 +271,11 @@ export async function publishCdkAssets(
         let s3Credentials = getCredentialProvider();
         if (dest.assumeRoleArn && !dest.assumeRoleArn.includes('${')) {
           try {
-            const sts = new STSClient({ region: destRegion, credentials: getCredentialProvider() });
+            const sts = new STSClient({
+              region: destRegion,
+              credentials: getCredentialProvider(),
+              requestHandler: getProxyRequestHandler(),
+            });
             const assumed = await sts.send(
               new AssumeRoleCommand({
                 RoleArn: dest.assumeRoleArn,
@@ -291,7 +296,11 @@ export async function publishCdkAssets(
           }
         }
 
-        const s3 = new S3Client({ region: destRegion, credentials: s3Credentials });
+        const s3 = new S3Client({
+          region: destRegion,
+          credentials: s3Credentials,
+          requestHandler: getProxyRequestHandler(),
+        });
 
         onProgress?.(`Uploading ${asset.source.path} → s3://${dest.bucketName}/${dest.objectKey}`);
         await s3.send(

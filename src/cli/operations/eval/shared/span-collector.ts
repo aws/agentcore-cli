@@ -4,6 +4,7 @@
  * Waits for an ingestion delay, then polls for spans
  * for each session. Retries on transient errors.
  */
+import { getProxyRequestHandler } from '../../../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../../../aws';
 import { CloudWatchLogsClient, GetQueryResultsCommand, StartQueryCommand } from '@aws-sdk/client-cloudwatch-logs';
 import type { ResultField } from '@aws-sdk/client-cloudwatch-logs';
@@ -284,6 +285,7 @@ export async function fetchSessionSpans(opts: FetchSpansOptions): Promise<Sessio
   const client = new CloudWatchLogsClient({
     credentials: getCredentialProvider(),
     region,
+    requestHandler: getProxyRequestHandler(),
   });
 
   // 1. Query proper OTel spans from both log groups

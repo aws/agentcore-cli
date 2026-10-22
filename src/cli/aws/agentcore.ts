@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { parseJsonRpcResponse } from '../../lib/utils/json-rpc';
 import { getCredentialProvider } from './account';
 import { parseAguiSSEStream } from './agui-parser';
@@ -30,6 +31,7 @@ function createAgentCoreClient(region: string, headers?: Record<string, string>)
     region,
     credentials: getCredentialProvider(),
     endpoint: dataPlaneEndpoint(region),
+    requestHandler: getProxyRequestHandler(),
   });
 
   if (headers && Object.keys(headers).length > 0) {
@@ -533,6 +535,7 @@ export async function evaluate(options: EvaluateOptions): Promise<EvaluateResult
   const client = new BedrockAgentCoreClient({
     region: options.region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   const evaluationTarget = options.targetSpanIds
@@ -1147,6 +1150,7 @@ export async function stopRuntimeSession(options: StopRuntimeSessionOptions): Pr
   const client = new BedrockAgentCoreClient({
     region: options.region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   const command = new StopRuntimeSessionCommand({

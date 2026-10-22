@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../../aws/account';
 import type { CfnTemplate } from './template-utils';
 import { filterCompanionOnlyTemplate } from './template-utils';
@@ -34,7 +35,11 @@ export interface Phase1Result {
 export async function executePhase1(options: Phase1Options): Promise<Phase1Result> {
   const { region, stackName, synthTemplate, onProgress } = options;
 
-  const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
+  const cfn = new CloudFormationClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
 
   // Filter template to companion-only
   const companionTemplate = filterCompanionOnlyTemplate(synthTemplate);
@@ -125,7 +130,11 @@ export async function executePhase1(options: Phase1Options): Promise<Phase1Resul
  * Get the currently deployed CloudFormation template.
  */
 export async function getDeployedTemplate(region: string, stackName: string): Promise<CfnTemplate | null> {
-  const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
+  const cfn = new CloudFormationClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
 
   try {
     const response = await cfn.send(

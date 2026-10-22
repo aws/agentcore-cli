@@ -1,5 +1,6 @@
 import { ConfigIO, ResourceNotFoundError, ValidationError } from '../../../lib';
 import type { Result } from '../../../lib/result';
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../../aws';
 import type { EvaluationReferenceInput } from '../../aws/agentcore';
 import { getEvaluator } from '../../aws/agentcore-control';
@@ -239,6 +240,7 @@ export async function discoverSessions(opts: DiscoverSessionsOptions): Promise<S
   const client = new CloudWatchLogsClient({
     credentials: getCredentialProvider(),
     region: opts.region,
+    requestHandler: getProxyRequestHandler(),
   });
 
   const query = `fields attributes.session.id as sessionId
