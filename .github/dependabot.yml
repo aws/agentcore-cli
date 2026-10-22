@@ -41,7 +41,9 @@ updates:
     commit-message:
       prefix: "ci"
 
-  # Preserve v0 version updates after refactor becomes the default branch.
+  # Dependabot reads this file from the repository default branch. These entries
+  # keep v0 version updates running after v1.x becomes default; target-branch
+  # makes Dependabot read v0's manifests and open PRs against v0.
   # Change target-branch to v0.x when main is renamed.
   - package-ecosystem: "npm"
     directory: "/"

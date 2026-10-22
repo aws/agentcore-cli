@@ -2,7 +2,7 @@ name: prerelease
 
 on:
   push:
-    branches: [main, refactor]
+    branches: [main, refactor, v1.x]
   workflow_dispatch:
 
 permissions:

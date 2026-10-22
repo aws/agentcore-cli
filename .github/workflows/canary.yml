@@ -1,7 +1,7 @@
 name: canary
 on:
   schedule:
-    # Run hourly while the v1 canary takes longer than the former 15-minute cadence.
+    # Run hourly while the v1 canary takes longer than the former cadence.
     # Update the AgentCoreCLI/Canary alarm's missing-data window with this change.
     - cron: "15 * * * *"
   workflow_dispatch:
@@ -53,10 +53,13 @@ jobs:
 
   heartbeat:
     needs: [resolve_release, e2e]
-    if: ${{ always() }}
+    # A cancelled run emits no failure sample; the alarm may still breach on missing data.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Fetch E2E role from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
         with:

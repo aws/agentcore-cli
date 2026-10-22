@@ -25,7 +25,7 @@ on:
       ref:
         description: git reference (commit, branch, or tag) to build and test
         type: string
-        default: refactor
+        default: ""
       tags:
         description: Vitest tag expression, for example runtime || canary
         type: string

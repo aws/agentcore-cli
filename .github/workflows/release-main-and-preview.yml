@@ -8,8 +8,8 @@ on:
   # for a release whose merge push never ran.
   workflow_dispatch:
   push:
-    # TODO: switch to main once the refactor lands and this workflow is allowlisted there.
-    branches: [refactor]
+    # Keep both names until the v1.x runner allowlisting and refactor renaming are completed.
+    branches: [refactor, v1.x]
 
 jobs:
   check-release:

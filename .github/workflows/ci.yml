@@ -1,11 +1,10 @@
-# Orchestrates all CI checks on PRs and pushes to main.
+# Orchestrates all CI checks on PRs and pushes to the v1 release branch.
 name: CI
 on:
-  # TODO: remove refactor from below once this makes it to main.
   push:
-    branches: [main, refactor]
+    branches: [main, refactor, v1.x]
   pull_request:
-    branches: [main, refactor]
+    branches: [main, refactor, v1.x]
   workflow_dispatch:
 
 concurrency:

@@ -7,6 +7,8 @@ Workflows are organized into two roles:
 ```
 Orchestrators (ci.yml, canary.yml, prerelease.yml, release-prepare.yml,
                release-main-and-preview.yml, pr-automation.yml, codeql.yml,
+               release.yml, slack-issue-notification.yml,
+               slack-open-prs-notification.yml, slack-pr-review-notification.yml,
                workflow-metrics.yml)
 Jobs          (verify.yml, e2e-test.yml)
 ```
@@ -30,7 +32,8 @@ ci.yml
   `-- e2e-test.yml   (deploys and invokes real AgentCore resources)
 
 canary.yml (scheduled)
-  `-- e2e-test.yml
+  |-- e2e-test.yml
+  `-- emit-canary-heartbeat.sh
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
@@ -52,8 +55,8 @@ point — write once, compose freely.
 Dispatch `release-prepare` with a bump and a channel, review the release PR it opens, merge it.
 `release-publish` then publishes the merged package.json version.
 
-Publishing listens for pushes to `refactor`, not PR events. It looks up the pushed commit's
-associated PRs and proceeds only when that exact commit
+Publishing listens for pushes to `refactor` and `v1.x`, not PR events. It looks up the pushed
+commit's associated PRs and proceeds only when that exact commit
 is the merge of a `release/v*` PR opened by `agentcore-devx-automation[bot]` (account ID
 `282717993`) from this repository into the target branch. Manually opened release PRs,
 ordinary merges, fork PRs, and pushes without a matching release PR skip verification and
@@ -101,7 +104,8 @@ leakage in downstream steps.
 Every job declares the least privilege it needs. Most only require
 `permissions: { contents: read }`.
 
-### Bun throughout
+### Package managers
 
-All jobs use `oven-sh/setup-bun@v2` and `bun install --frozen-lockfile`. The
-lockfile is enforced to keep CI deterministic.
+V1 builds use `oven-sh/setup-bun@v2` and `bun install --frozen-lockfile`.
+The PR tarball job uses npm for v0 PRs and Bun for v1 PRs, based on the
+checked-out branch's lockfile. Both install paths enforce their lockfile.

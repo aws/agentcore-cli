@@ -6,6 +6,8 @@ name: Release
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   refuse:
     runs-on: ubuntu-latest
