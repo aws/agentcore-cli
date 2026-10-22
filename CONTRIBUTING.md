@@ -11,7 +11,7 @@ Run development commands from the repository root.
 - **Link an issue.** Every PR needs a related [GitHub issue](https://github.com/aws/agentcore-cli/issues).
   Open one if none exists, and discuss larger changes with the maintainers before implementing them.
 - **Use the PR template.** Complete the repository's
-  [pull request template](https://github.com/aws/agentcore-cli/blob/main/.github/pull_request_template.md),
+  [pull request template](.github/pull_request_template.md),
   including the issue, a description of the change, and your test results.
 - **Keep the change focused.** Work on a feature branch in your fork and keep unrelated fixes
   out of the PR. Use conventional commit messages such as `fix:`, `feat:`, or `docs:`.
