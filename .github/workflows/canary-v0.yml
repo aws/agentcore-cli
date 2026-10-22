@@ -1,0 +1,23 @@
+name: canary-v0
+
+on:
+  # Scheduled workflows run from the default branch; tests come from v0.x.
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: canary-v0
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  canary:
+    uses: ./.github/workflows/canary-release.yml
+    with:
+      major: 0
+    secrets:
+      WORKFLOW_SECRETS_READER_ROLE_ARN: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}

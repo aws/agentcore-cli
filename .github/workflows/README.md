@@ -5,10 +5,10 @@
 Workflows are organized into two roles:
 
 ```
-Orchestrators (ci.yml, canary.yml, prerelease.yml, release-prepare.yml,
+Orchestrators (ci.yml, canary-v0.yml, canary-v1.yml, prerelease.yml, release-prepare.yml,
                release-main-and-preview.yml, pr-automation.yml, codeql.yml,
                slack-pr-review-notification.yml, workflow-metrics.yml)
-Jobs          (verify.yml, e2e-test.yml)
+Jobs          (verify.yml, e2e-test.yml, canary-release.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
@@ -29,8 +29,8 @@ ci.yml
   |                   package, compile, smoke test and unit tests)
   `-- e2e-test.yml   (deploys and invokes real AgentCore resources)
 
-canary.yml (scheduled)
-  `-- e2e-test.yml
+canary-v0.yml / canary-v1.yml (scheduled)
+  `-- canary-release.yml (tests each major's published npm package)
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
@@ -38,8 +38,8 @@ release-main-and-preview.yml (npm publish and GitHub release when a release PR m
   `-- verify.yml
 ```
 
-`verify.yml` and `e2e-test.yml` each appear in two orchestrators. This is the
-point — write once, compose freely.
+Both canary orchestrators share `canary-release.yml`. See [Release canaries](CANARIES.md)
+for schedules, branch setup, and heartbeat metrics.
 
 ## Naming Convention
 
