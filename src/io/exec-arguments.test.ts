@@ -52,7 +52,7 @@ beforeAll(async () => {
   echoScript = join(directory, "echo.cjs");
   await writeFile(
     echoScript,
-    'require("node:fs").writeFileSync(process.argv[2], JSON.stringify(process.argv.slice(3)));',
+    'require("fs").writeFileSync(process.argv[2], JSON.stringify(process.argv.slice(3)));',
   );
   if (process.platform === "win32") {
     const binDirectory = join(directory, "node_modules", ".bin");
