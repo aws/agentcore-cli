@@ -13,19 +13,30 @@ permissions:
   contents: read
 
 jobs:
-  # Resolve the commit hash for the latest published @rc version.
+  # Run the v1 canary once the latest published version is stable v1.
   resolve_release:
     runs-on: ubuntu-latest
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
+      run_e2e: ${{ steps.resolve.outputs.run_e2e }}
     steps:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Resolve latest RC release commit
+      - name: Resolve latest stable v1 release commit
         id: resolve
         run: |
-          version="$(npm view @aws/agentcore@rc version)"
+          version="$(npm view @aws/agentcore@latest version)"
+          if [[ "$version" =~ ^0\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::Skipping v1 E2E tests while npm latest is v${version}"
+            echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$version" =~ ^1\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected npm latest version: ${version}"
+            exit 1
+          fi
+
           tag_ref="refs/tags/v${version}"
           # Resolve annotated tags to their commit hash when needed.
           ref="$(git ls-remote https://github.com/aws/agentcore-cli.git "${tag_ref}" "${tag_ref}^{}" | awk -v tag_ref="${tag_ref}" '
@@ -34,18 +45,19 @@ jobs:
             END { if (!found && tag_sha != "") print tag_sha }
           ')"
           if [[ -z "${ref}" ]]; then
-            echo "::error::No upstream tag found for @aws/agentcore@rc version ${version}"
+            echo "::error::No upstream tag found for @aws/agentcore@latest version ${version}"
             exit 1
           fi
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "run_e2e=true" >> "$GITHUB_OUTPUT"
 
   e2e:
     needs: resolve_release
+    if: needs.resolve_release.outputs.run_e2e == 'true'
     uses: ./.github/workflows/refactor-e2e.yml
     with:
       artifactRef: ${{ needs.resolve_release.outputs.ref }}
       testRef: refactor
-      tags: canary
       linuxOnly: true
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
