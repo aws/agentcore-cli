@@ -61,7 +61,7 @@
         "@eslint/js": "^9.39.2",
         "@modelcontextprotocol/sdk": "^1.0.0",
         "@playwright/test": "^1.59.1",
-        "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
+        "@secretlint/secretlint-rule-preset-recommend": "^13.0.7",
         "@trivago/prettier-plugin-sort-imports": "^6.0.2",
         "@types/cross-spawn": "^6.0.6",
         "@types/js-yaml": "^4.0.9",
@@ -5046,9 +5046,9 @@
       "license": "MIT"
     },
     "node_modules/@secretlint/secretlint-rule-preset-recommend": {
-      "version": "12.2.0",
-      "resolved": "https://registry.npmjs.org/@secretlint/secretlint-rule-preset-recommend/-/secretlint-rule-preset-recommend-12.2.0.tgz",
-      "integrity": "sha512-n4qknL6vYRelmyrAyV/Z8I85c6jS6yF/ZxpgcqebjJuECIiel8OT2wIVIq9vk0MwlQN35skaQu0KvfM8uuGeyA==",
+      "version": "13.0.7",
+      "resolved": "https://registry.npmjs.org/@secretlint/secretlint-rule-preset-recommend/-/secretlint-rule-preset-recommend-13.0.7.tgz",
+      "integrity": "sha512-hfdYra+ZB6RmviEApxeL/YCx4ovBtpj0d9c+uhlCZaCikObjb8Sb8yqBN6g8/9tt7qD7LXGE3k9RtVvGK1fNVw==",
       "dev": true,
       "license": "MIT",
       "engines": {
