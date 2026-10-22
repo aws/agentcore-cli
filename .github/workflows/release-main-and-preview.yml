@@ -202,7 +202,7 @@ jobs:
           |---------|---------|---------|"
           if [ "$RELEASE_TARGET" != "preview-only" ]; then
             BODY="$BODY
-          | @aws/agentcore | $MAIN_VERSION | latest |"
+          | @aws/agentcore | $MAIN_VERSION | v0-latest |"
           fi
           if [ "$RELEASE_TARGET" != "main-only" ]; then
             BODY="$BODY
@@ -237,7 +237,7 @@ jobs:
           MAIN_VERSION: ${{ needs.prepare-release.outputs.main_version }}
           PREVIEW_VERSION: ${{ needs.prepare-release.outputs.preview_version }}
         run: |
-          echo "📦 Main version:    $MAIN_VERSION (npm tag: latest)"
+          echo "📦 Main version:    $MAIN_VERSION (npm tag: v0-latest)"
           echo "📦 Preview version: $PREVIEW_VERSION (npm tag: preview)"
           echo ""
           echo "⚠️  MANUAL APPROVAL REQUIRED"
@@ -290,10 +290,10 @@ jobs:
           echo "✅ Preview version verified: $ACTUAL"
 
   # ═══════════════════════════════════════════════════════════════════
-  # Step 4a — Publish main to npm (tag: latest)
+  # Step 4a — Publish main to npm (tag: v0-latest)
   # ═══════════════════════════════════════════════════════════════════
   publish-main:
-    name: Publish Main (@latest)
+    name: Publish Main (@v0-latest)
     needs: [prepare-release, verify-merge]
     if: inputs.release_target != 'preview-only'
     runs-on: aws-release-4-core
@@ -321,7 +321,7 @@ jobs:
       - run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public --provenance --tag latest
+        run: npm publish --access public --provenance --tag v0-latest
 
       - name: Tag and release
         env:
@@ -437,5 +437,5 @@ jobs:
           echo ""
           echo "| Package | Version | npm Tag | Status |"
           echo "|---------|---------|---------|--------|"
-          echo "| @aws/agentcore | $MAIN_VERSION | latest | $MAIN_STATUS |"
+          echo "| @aws/agentcore | $MAIN_VERSION | v0-latest | $MAIN_STATUS |"
           echo "| @aws/agentcore | $PREVIEW_VERSION | preview | $PREVIEW_STATUS |"
