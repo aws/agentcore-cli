@@ -58,6 +58,7 @@ jobs:
     with:
       artifactRef: ${{ needs.resolve_release.outputs.ref }}
       testRef: refactor
+      tags: canary
       linuxOnly: true
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
