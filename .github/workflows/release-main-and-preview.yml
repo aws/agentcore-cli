@@ -18,7 +18,6 @@ on:
         options:
           - patch
           - minor
-          - major
       preview_bump_type:
         description: 'Preview version bump (ignored for main-only)'
         required: true

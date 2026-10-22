@@ -10,7 +10,6 @@ on:
         options:
           - patch
           - minor
-          - major
           - prerelease
       changelog:
         description: 'Custom changelog entry (optional - leave empty to auto-generate)'
