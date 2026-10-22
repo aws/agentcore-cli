@@ -29,6 +29,7 @@
         "bedrock-agentcore": "0.4.6",
         "cli-truncate": "^6.1.1",
         "commander": "^15.0.0",
+        "cross-spawn": "^7.0.6",
         "handlebars": "^4.7.10",
         "ink": "^7.1.0",
         "ink-scroll-view": "^0.3.7",
@@ -49,6 +50,7 @@
       "devDependencies": {
         "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
         "@types/bun": "latest",
+        "@types/cross-spawn": "^6.0.6",
         "@types/react": "^19.2.17",
         "@types/semver": "^7.8.0",
         "@types/ws": "^8.18.1",
@@ -540,6 +542,8 @@
     "@types/bun": ["@types/bun@1.4.0", "", { "dependencies": { "bun-types": "1.4.0" } }, "sha512-K+lZULY23vRgK/CfTjFIV+tyifaNdSMlPh9j+6mQ/cLfpOznLyAuzgV/JQysyECpkBQLVMSyvjlr2fBUSA9wFQ=="],
 
     "@types/chai": ["@types/chai@5.2.3", "", { "dependencies": { "@types/deep-eql": "*", "assertion-error": "^2.0.1" } }, "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA=="],
+
+    "@types/cross-spawn": ["@types/cross-spawn@6.0.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA=="],
 
     "@types/debug": ["@types/debug@4.1.13", "", { "dependencies": { "@types/ms": "*" } }, "sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw=="],
 
