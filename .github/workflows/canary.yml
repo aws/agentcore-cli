@@ -1,8 +1,9 @@
 name: canary
 on:
   schedule:
-    # Match the cadence expected by the existing AgentCoreCLI/Canary alarm.
-    - cron: "*/15 * * * *"
+    # Run hourly while the v1 canary takes longer than the former 15-minute cadence.
+    # Update the AgentCoreCLI/Canary alarm's missing-data window with this change.
+    - cron: "15 * * * *"
   workflow_dispatch:
 
 concurrency:
