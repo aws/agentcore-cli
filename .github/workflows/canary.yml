@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  # Resolve the commit hash for the latest published @rc version.
+  # Resolve the commit hash for npm's latest published version.
   resolve_release:
     runs-on: ubuntu-latest
     outputs:
@@ -22,10 +22,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Resolve latest RC release commit
+      - name: Resolve latest stable release commit
         id: resolve
         run: |
-          version="$(npm view @aws/agentcore@rc version)"
+          version="$(npm view @aws/agentcore@latest version)"
           tag_ref="refs/tags/v${version}"
           # Resolve annotated tags to their commit hash when needed.
           ref="$(git ls-remote https://github.com/aws/agentcore-cli.git "${tag_ref}" "${tag_ref}^{}" | awk -v tag_ref="${tag_ref}" '
@@ -34,7 +34,7 @@ jobs:
             END { if (!found && tag_sha != "") print tag_sha }
           ')"
           if [[ -z "${ref}" ]]; then
-            echo "::error::No upstream tag found for @aws/agentcore@rc version ${version}"
+            echo "::error::No upstream tag found for @aws/agentcore@latest version ${version}"
             exit 1
           fi
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
