@@ -110,7 +110,7 @@
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "@napi-rs/keyring": "2.1.1"
+    "@napi-rs/keyring": "2.1.2"
   },
   "overrides": {
     "@opentelemetry/core": "^2.10.0",
