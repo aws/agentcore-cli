@@ -79,7 +79,7 @@ jobs:
         id: install
         run: |
           case "${{ matrix.variant }}/${{ matrix.build }}" in
-            "Released/GA")        SPEC="@aws/agentcore" ;;
+            "Released/GA")        SPEC="@aws/agentcore@0" ;;
             "Released/Preview")   SPEC="@aws/agentcore@preview" ;;
             "Prerelease/GA")      SPEC="${PRERELEASE_BASE_URL}/agentcore-cli-prerelease.tgz" ;;
             *) echo "Unknown variant/build combination" >&2; exit 1 ;;
