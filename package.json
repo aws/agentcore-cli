@@ -101,7 +101,7 @@
     "react-router": "^8.3.0",
     "semver": "^7.8.5",
     "smol-toml": "^1.9.1",
-    "string-width": "^8.2.2",
+    "string-width": "^8.3.0",
     "terminal-size": "^4.0.1",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
