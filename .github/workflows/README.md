@@ -7,7 +7,7 @@ Workflows are organized into two roles:
 ```
 Orchestrators (ci.yml, canary.yml, prerelease.yml, release-prepare.yml,
                release-main-and-preview.yml, pr-automation.yml, codeql.yml,
-               slack-pr-review-notification.yml, workflow-metrics.yml)
+               workflow-metrics.yml)
 Jobs          (verify.yml, e2e-test.yml)
 ```
 
