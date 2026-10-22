@@ -38,7 +38,7 @@
         "@smithy/shared-ini-file-loader": "^4.4.2",
         "commander": "^14.0.2",
         "cross-spawn": "^7.0.6",
-        "dotenv": "^17.2.3",
+        "dotenv": "^18.0.8",
         "esbuild": "^0.28.0",
         "fast-json-stable-stringify": "^2.1.0",
         "fflate": "^0.8.2",
@@ -8332,10 +8332,13 @@
       }
     },
     "node_modules/dotenv": {
-      "version": "17.4.0",
-      "resolved": "https://registry.npmjs.org/dotenv/-/dotenv-17.4.0.tgz",
-      "integrity": "sha512-kCKF62fwtzwYm0IGBNjRUjtJgMfGapII+FslMHIjMR5KTnwEmBmWLDRSnc3XSNP8bNy34tekgQyDT0hr7pERRQ==",
+      "version": "18.0.8",
+      "resolved": "https://registry.npmjs.org/dotenv/-/dotenv-18.0.8.tgz",
+      "integrity": "sha512-2KDeoFoK/zRtcnbunCDlLG5VWVMcyqeQc6iK65o231nfNAcuGrKoqUQfJFUtBI+QlShk5HKIHxwebBtUl3rEfA==",
       "license": "BSD-2-Clause",
+      "bin": {
+        "dotenv": "dist/index.cjs"
+      },
       "engines": {
         "node": ">=12"
       },
