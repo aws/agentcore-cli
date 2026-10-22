@@ -1,0 +1,126 @@
+name: Canary release test
+
+on:
+  workflow_call:
+    inputs:
+      major:
+        description: Stable CLI major version (0 or 1)
+        required: true
+        type: number
+    secrets:
+      WORKFLOW_SECRETS_READER_ROLE_ARN:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: '1'
+
+jobs:
+  canary:
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    environment: e2e-testing
+    timeout-minutes: ${{ inputs.major == 0 && 30 || 90 }}
+    steps:
+      - name: Validate major version
+        env:
+          MAJOR: ${{ inputs.major }}
+        run: |
+          case "$MAJOR" in
+            0|1) ;;
+            *) echo "::error::Unsupported canary major: $MAJOR"; exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Resolve latest stable release of this major
+        id: release
+        env:
+          MAJOR: ${{ inputs.major }}
+        run: |
+          version="$(bash .github/scripts/resolve-canary-release.sh "$MAJOR")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Check out version branch tests
+        uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.major }}.x
+          path: tests
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        if: inputs.major == 1
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ inputs.major == 1 && '3.14' || '' }}
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - name: Install v0 test dependencies
+        if: inputs.major == 0
+        working-directory: tests
+        run: npm ci
+      - name: Install v1 test dependencies
+        if: inputs.major == 1
+        working-directory: tests
+        run: bun install --frozen-lockfile
+      - name: Install published CLI
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          npm install -g "@aws/agentcore@$VERSION"
+          agentcore --version
+          echo "AGENTCORE_CLI_PATH=$(command -v agentcore)" >> "$GITHUB_ENV"
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          unset-current-credentials: true
+      - name: Set AWS test environment
+        run: |
+          echo "AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_ENV"
+      - name: Run v0 canary
+        if: inputs.major == 0
+        working-directory: tests
+        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts --retry 3
+      - name: Run v1 canary
+        if: inputs.major == 1
+        working-directory: tests
+        run: bun run test:e2e -- --tagsFilter=canary
+
+  heartbeat:
+    needs: canary
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    environment: e2e-testing
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          unset-current-credentials: true
+      - name: Emit canary heartbeat
+        env:
+          CANARY_RESULT: ${{ needs.canary.result }}
+          CANARY_BRANCH: v${{ inputs.major }}.x
+        run: bash .github/scripts/emit-canary-heartbeat.sh "$CANARY_RESULT" "$CANARY_BRANCH"

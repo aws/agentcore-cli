@@ -60,7 +60,7 @@ jobs:
       id-token: write
       contents: read
     outputs:
-      is-authorized: ${{ github.workflow == 'canary(refactor)' || steps.check.outputs.is_authorized == 'true' }}
+      is-authorized: ${{ steps.check.outputs.is_authorized == 'true' }}
     steps:
       - name: Fetch secrets from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2

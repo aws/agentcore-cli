@@ -1,7 +1,7 @@
 name: Workflow Metrics
 on:
   workflow_run:
-    workflows: ['canary(refactor)']
+    workflows: ['canary-v0', 'canary-v1']
     types: [completed]
 
 permissions:
