@@ -487,10 +487,11 @@ export async function handleDeploy(options: ValidatedDeployOptions): Promise<Dep
     const synthResult = await synthesizeCdk(context.cdkProject, {
       ...(switchableIoHost && { ioHost: switchableIoHost.ioHost }),
       region: target.region,
+      targetNames: [target.name],
     });
     toolkitWrapper = synthResult.toolkitWrapper;
-    // The assembly holds one stack per target in aws-targets.json. Select the deployed target's
-    // stack so every downstream step (deployability check, deploy, Persist/describe) acts on it
+    // Select the deployed target's stack explicitly (older vended apps may still synthesize all
+    // configured targets) so every downstream step (deployability check, deploy, Persist/describe) acts on it
     // rather than blindly on stackNames[0] — see selectTargetStack.
     const stackSelection = selectTargetStack(synthResult.stackNames, context.projectSpec.name, target.name);
     if (!stackSelection.success) {

@@ -115,7 +115,25 @@ async function main() {
 
   const app = new App();
 
-  for (const target of targets) {
+  // Deployment provisions credentials only for its selected target. Filter before
+  // constructing stacks so an unselected target cannot require undeployed credentials.
+  // A standalone CDK invocation without this variable still synthesizes every target.
+  const selectedTargets = process.env.AGENTCORE_SYNTH_TARGETS;
+  let synthTargets = targets;
+  if (selectedTargets !== undefined) {
+    const targetNames: unknown = JSON.parse(selectedTargets);
+    if (!Array.isArray(targetNames) || targetNames.length === 0 || targetNames.some(name => typeof name !== 'string')) {
+      throw new Error('AGENTCORE_SYNTH_TARGETS must be a non-empty JSON array of target names');
+    }
+    for (const name of targetNames) {
+      if (!targets.some(target => target.name === name)) {
+        throw new Error(`Deployment target "${name}" not found in agentcore/aws-targets.json`);
+      }
+    }
+    synthTargets = targets.filter(target => targetNames.includes(target.name));
+  }
+
+  for (const target of synthTargets) {
     const env = toEnvironment(target);
     const stackName = toStackName(spec.name, target.name);
 

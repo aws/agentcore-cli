@@ -169,6 +169,7 @@ describe('useDeployFlow target scoping (issue #1267)', () => {
     await flush();
     unmount();
 
+    expect(useCdkPreflightSpy).toHaveBeenCalledWith(expect.objectContaining({ targetNames: [TARGET_B.name] }));
     expect(deploySpy).toHaveBeenCalledTimes(1);
     const arg = deploySpy.mock.calls[0]![0];
 
@@ -261,6 +262,9 @@ describe('useDeployFlow target scoping (issue #1267)', () => {
     await flush();
     unmount();
 
+    expect(useCdkPreflightSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ targetNames: [TARGET_A.name, TARGET_B.name] })
+    );
     expect(deploySpy).toHaveBeenCalledTimes(1);
     const arg = deploySpy.mock.calls[0]![0];
     expect(arg.stacks.strategy).toBe(StackSelectionStrategy.PATTERN_MUST_MATCH);
