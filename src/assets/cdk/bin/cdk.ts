@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { AgentCoreStack, type HarnessConfig } from '../lib/cdk-stack';
+import { parseProjectSpec } from '../lib/project-spec';
 import { ConfigIO, HarnessSpecSchema, type AwsDeploymentTarget } from '@aws/agentcore-cdk';
 import { App, type Environment } from 'aws-cdk-lib';
 import * as path from 'path';
@@ -25,7 +26,9 @@ async function main() {
   const configRoot = path.resolve(process.cwd(), '..');
   const configIO = new ConfigIO({ baseDir: configRoot });
 
-  const spec = await configIO.readProjectSpec();
+  const { spec, knowledgeBaseKmsKeys } = parseProjectSpec(
+    JSON.parse(await fs.promises.readFile(path.join(configRoot, 'agentcore.json'), 'utf8'))
+  );
   const targets = await configIO.readAWSDeploymentTargets();
 
   // The vended CDK project compiles against the published @aws/agentcore-cdk
@@ -193,6 +196,7 @@ async function main() {
 
     new AgentCoreStack(app, stackName, {
       spec,
+      knowledgeBaseKmsKeys,
       mcpSpec,
       credentials,
       connectorParametersByFile,
