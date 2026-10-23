@@ -5,7 +5,7 @@
 Workflows are organized into two roles:
 
 ```
-Orchestrators (ci.yml, canary.yml, prerelease.yml, release-prepare.yml,
+Orchestrators (ci.yml, canary.yml, canary-v0.yml, prerelease.yml, release-prepare.yml,
                release-main-and-preview.yml, pr-automation.yml, codeql.yml,
                release.yml, slack-issue-notification.yml,
                slack-open-prs-notification.yml,
@@ -33,6 +33,10 @@ ci.yml
 
 canary.yml (scheduled)
   |-- e2e-test.yml
+  `-- emit-canary-heartbeat.sh
+
+canary-v0.yml (scheduled)
+  |-- runs legacy v0 smoke test
   `-- emit-canary-heartbeat.sh
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
