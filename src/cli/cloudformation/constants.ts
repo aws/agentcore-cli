@@ -1,0 +1,4 @@
+export const MAX_FAILURE_EVENT_PAGES = 5;
+export const MAX_FAILURE_EVENT_REASONS = 10;
+export const FAILURE_EVENT_TIMEOUT_MS = 10_000;
+export const MAX_FAILURE_REASON_LENGTH = 1000;
