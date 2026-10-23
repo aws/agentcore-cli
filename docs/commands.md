@@ -346,6 +346,7 @@ agentcore add memory \
 | `--data-stream-arn <arn>`            | Kinesis data stream ARN for memory record streaming                         |
 | `--stream-content-level <level>`     | `FULL_CONTENT` (default) or `METADATA_ONLY`                                 |
 | `--stream-delivery-resources <json>` | Stream delivery config as JSON (advanced, overrides flat flags)             |
+| `--kms-key-arn <arn>`                | KMS key ARN for memory encryption (optional)                                |
 | `--json`                             | JSON output                                                                 |
 
 ### add gateway

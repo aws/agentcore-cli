@@ -79,6 +79,7 @@ const AddMemoryAttrs = safeSchema({
   strategy_episodic: z.boolean(),
   indexed_key_count: Count,
   has_indexed_keys: z.boolean(),
+  has_kms_key: z.boolean(),
 });
 
 const AddCredentialAttrs = safeSchema({ credential_type: CredentialType });

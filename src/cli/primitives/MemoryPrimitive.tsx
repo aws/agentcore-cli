@@ -43,6 +43,8 @@ export interface AddMemoryOptions {
   streamDeliveryResources?: string;
   // Repeatable flag values as "key:TYPE" strings
   indexedKey?: string[];
+  // Customer-managed KMS key used to encrypt the memory at rest
+  kmsKeyArn?: string;
 }
 
 /**
@@ -87,6 +89,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
         strategies,
         streamDeliveryResources,
         indexedKeys,
+        encryptionKeyArn: options.kmsKeyArn,
       });
 
       return { success: true, memoryName: memory.name };
@@ -185,6 +188,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
         (val: string, acc: string[]) => [...acc, val],
         [] as string[]
       )
+      .option('--kms-key-arn <arn>', 'KMS key ARN for memory encryption (optional) [non-interactive]')
       .option('--json', 'Output as JSON [non-interactive]')
       .action(
         async (cliOptions: {
@@ -196,6 +200,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
           streamContentLevel?: string;
           streamDeliveryResources?: string;
           indexedKey?: string[];
+          kmsKeyArn?: string;
           json?: boolean;
         }) => {
           if (!findConfigRoot()) {
@@ -219,6 +224,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 contentLevel: cliOptions.streamContentLevel,
                 streamDeliveryResources: cliOptions.streamDeliveryResources,
                 indexedKey,
+                kmsKeyArn: cliOptions.kmsKeyArn,
               });
 
               if (!validation.valid) {
@@ -234,6 +240,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 contentLevel: cliOptions.streamContentLevel,
                 streamDeliveryResources: cliOptions.streamDeliveryResources,
                 indexedKey,
+                kmsKeyArn: cliOptions.kmsKeyArn,
               });
 
               if (!result.success) {
@@ -259,6 +266,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
                 strategy_episodic: strategyList.includes('EPISODIC'),
                 indexed_key_count: indexedKeyCount,
                 has_indexed_keys: indexedKeyCount > 0,
+                has_kms_key: !!cliOptions.kmsKeyArn,
               };
             });
           } else {
@@ -305,6 +313,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
     strategies: { type: MemoryStrategyType }[];
     streamDeliveryResources?: StreamDeliveryResources;
     indexedKeys?: IndexedKey[];
+    encryptionKeyArn?: string;
   }): Promise<Memory> {
     const project = await this.readProjectSpec();
 
@@ -326,6 +335,7 @@ export class MemoryPrimitive extends BasePrimitive<AddMemoryOptions, RemovableMe
       strategies,
       ...(config.indexedKeys && config.indexedKeys.length > 0 && { indexedKeys: config.indexedKeys }),
       ...(config.streamDeliveryResources && { streamDeliveryResources: config.streamDeliveryResources }),
+      ...(config.encryptionKeyArn && { encryptionKeyArn: config.encryptionKeyArn }),
     };
 
     project.memories.push(memory);

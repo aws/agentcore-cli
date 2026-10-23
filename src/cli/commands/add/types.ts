@@ -186,6 +186,7 @@ export interface AddMemoryOptions {
   contentLevel?: string;
   streamDeliveryResources?: string;
   indexedKey?: string[];
+  kmsKeyArn?: string;
   json?: boolean;
 }
 
