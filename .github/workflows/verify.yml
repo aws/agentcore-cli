@@ -71,7 +71,7 @@ jobs:
       - name: Upload to CodeCov
         # only upload on linux to avoid duplicates.
         if: always() && runner.os == 'Linux'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false

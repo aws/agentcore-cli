@@ -70,7 +70,7 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
           registry-url: https://registry.npmjs.org
