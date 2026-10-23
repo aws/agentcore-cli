@@ -17,7 +17,7 @@ const bedrock = createAmazonBedrock({
 });
 
 export function loadModel() {
-  return bedrock('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+  return bedrock('global.anthropic.claude-sonnet-4-5-20250929-v1:0');
 }
 {{/if}}
 {{#if (eq modelProvider "Anthropic")}}

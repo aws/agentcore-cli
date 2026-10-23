@@ -24,9 +24,9 @@
     {{#if (eq modelProvider "Gemini")}}
     "@ai-sdk/google": "^3.0.0",
     {{/if}}
-    "bedrock-agentcore": "^0.2.4",
+    "bedrock-agentcore": "^0.3.0",
     "tsx": "^4.19.0",
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
