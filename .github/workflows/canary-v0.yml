@@ -1,0 +1,96 @@
+name: canary(v0)
+
+on:
+  schedule:
+    - cron: "25,55 * * * *"
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region for deployment
+        default: us-east-1
+
+concurrency:
+  group: canary-v0
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: "1"
+
+jobs:
+  canary:
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    environment: e2e-testing
+    timeout-minutes: 30
+    steps:
+      # The v0 test imports helpers and Vitest config from the v0 codebase.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20.x"
+          cache: npm
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - uses: astral-sh/setup-uv@v7
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+          unset-current-credentials: true
+      - name: Get AWS account ID
+        id: aws
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - name: Install latest v0 CLI
+        run: |
+          npm install -g @aws/agentcore@0
+          agentcore --version
+      - name: Run v0 canary smoke test
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
+          AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts --retry 3
+
+  heartbeat:
+    needs: canary
+    if: ${{ !cancelled() }}
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      # Use the emitter from this branch; the canary job checks out v0 main.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          unset-current-credentials: true
+      - name: Emit v0 canary heartbeat
+        env:
+          CANARY_RESULT: ${{ needs.canary.result }}
+        run: |
+          status=failure
+          if [[ "$CANARY_RESULT" == "success" ]]; then
+            status=success
+          fi
+          bash .github/scripts/emit-canary-heartbeat.sh "$status" AgentCoreCLI/Canary-v0

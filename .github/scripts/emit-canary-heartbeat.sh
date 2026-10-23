@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This is the existing v0 alarm's metric. Missing data also breaches that alarm.
+# The v1 canary uses the default namespace; the v0 canary supplies its own.
 readonly MONITOR_REGION=us-east-1
-readonly NAMESPACE=AgentCoreCLI/Canary
+readonly NAMESPACE="${2:-AgentCoreCLI/Canary}"
 readonly METRIC_NAME=Success
 
-STATUS="${1:?usage: emit-canary-heartbeat.sh <job-status>}"
+STATUS="${1:?usage: emit-canary-heartbeat.sh <job-status> [namespace]}"
 
 if [[ "$STATUS" == "success" ]]; then
   VALUE=1
