@@ -1,12 +1,21 @@
 import { CONFIG_DIR } from '../../../lib';
+import { permissionsBoundaryCdkContext } from '../../aws/permissions-boundary';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
 import { isChangesetInProgressError } from '../../errors';
+import {
+  isPermissionsBoundaryDenial,
+  readPermissionsBoundary,
+  rewriteIfPermissionsBoundaryRequired,
+} from '../permissions-boundary';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
 import {
   BaseCredentials,
   BootstrapEnvironments,
   BootstrapStackParameters,
+  CdkAppMultiContext,
   type ICloudAssemblySource,
+  type IIoHost,
+  type IoMessage,
   Toolkit,
 } from '@aws-cdk/toolkit-lib';
 import * as path from 'node:path';
@@ -67,6 +76,10 @@ export class CdkToolkitWrapper {
   private synthResult: SynthResult | null = null;
   private synthesizedAssembly: DisposableAssembly | null = null;
   private synthesizedAssemblyDir: string | null = null;
+  /** Boundary resolved during initialize(), kept so deploy failures can report a mismatch. */
+  private appliedPermissionsBoundary: string | undefined;
+  /** Boundary denial seen on a progress message; see wrapIoHostForBoundaryDenials. */
+  private observedPermissionsBoundaryDenial: string | undefined;
 
   constructor(options: CdkToolkitWrapperOptions = {}) {
     this.projectDir = options.projectDir ?? path.join(process.cwd(), CONFIG_DIR, CDK_PROJECT_DIR);
@@ -103,9 +116,22 @@ export class CdkToolkitWrapper {
           : undefined;
 
       this.toolkit = new Toolkit({
-        ioHost: this.options.ioHost,
+        ioHost: this.wrapIoHostForBoundaryDenials(this.options.ioHost),
         sdkConfig,
       });
+
+      // Attach the project's permissions boundary through CDK context. aws-cdk-lib turns this
+      // into a stack-wide aspect over AWS::IAM::Role / AWS::IAM::User, which reaches roles
+      // created inside the @aws/agentcore-cdk L3 constructs without those constructs needing
+      // to expose a prop. Only supplied when configured, so the default context store
+      // (cdk.json + cdk.context.json) is left untouched otherwise.
+      this.appliedPermissionsBoundary = await readPermissionsBoundary(
+        this.projectDir,
+        this.options.permissionsBoundary
+      );
+      const permissionsBoundaryContext = this.appliedPermissionsBoundary
+        ? permissionsBoundaryCdkContext(this.appliedPermissionsBoundary)
+        : undefined;
 
       // The vended CDK app (dist/bin/cdk.js) runs as a child process. Forward the region
       // override through the child env when present. The toolkit overlays this on top of
@@ -115,8 +141,39 @@ export class CdkToolkitWrapper {
         env: {
           ...(region && { AWS_REGION: region, AWS_DEFAULT_REGION: region }),
         },
+        // CdkAppMultiContext is what toolkit-lib installs by default for fromCdkApp; passing it
+        // explicitly is the only way to layer extra context on top of the app's own sources.
+        ...(permissionsBoundaryContext && {
+          contextStore: new CdkAppMultiContext(this.projectDir, permissionsBoundaryContext),
+        }),
       });
     });
+  }
+
+  /**
+   * Pass messages through untouched while watching for a permissions-boundary denial.
+   *
+   * When a role create is denied, CloudFormation rolls the stack back and the toolkit throws
+   * `NoStack: CloudFormationStack object does not hold a stack` with no cause — the actual
+   * reason only ever appears on a `CDK_TOOLKIT_I5502` progress message. Capturing it here is
+   * what lets deploy() report something actionable instead of that opaque error.
+   *
+   * Returns the host unchanged when none was supplied, so the toolkit keeps its own default.
+   */
+  private wrapIoHostForBoundaryDenials(ioHost: IIoHost | undefined): IIoHost | undefined {
+    if (!ioHost) {
+      return undefined;
+    }
+    return {
+      notify: async (msg: IoMessage<unknown>) => {
+        const text = typeof msg.message === 'string' ? msg.message : '';
+        if (!this.observedPermissionsBoundaryDenial && isPermissionsBoundaryDenial(text)) {
+          this.observedPermissionsBoundaryDenial = text;
+        }
+        return ioHost.notify(msg);
+      },
+      requestResponse: msg => ioHost.requestResponse(msg),
+    };
   }
 
   /**
@@ -242,6 +299,10 @@ export class CdkToolkitWrapper {
     const { toolkit } = this.ensureInitialized();
     const source = await this.getSourceForOperation();
 
+    // Scope the captured denial to this call, so a denial from an earlier deploy on the same
+    // wrapper cannot be pinned on an unrelated later failure.
+    this.observedPermissionsBoundaryDenial = undefined;
+
     const maxRetries = 3;
     const baseDelayMs = 5000; // 5 seconds base delay
     let lastError: Error | null = null;
@@ -250,7 +311,13 @@ export class CdkToolkitWrapper {
       try {
         return await withErrorContext('deploy', () => toolkit.deploy(source, { stacks: options.stacks }));
       } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
+        // Rewrite here rather than at the CLI/TUI call sites: both funnel through this method.
+        // The denial may be on the thrown error or only on a progress message we captured.
+        const rewritten = rewriteIfPermissionsBoundaryRequired(err, {
+          appliedBoundary: this.appliedPermissionsBoundary,
+          observedDenial: this.observedPermissionsBoundaryDenial,
+        });
+        lastError = rewritten instanceof Error ? rewritten : new Error(String(rewritten));
 
         // Only retry on changeset-in-progress errors
         if (isChangesetInProgressError(err) && attempt < maxRetries - 1) {
