@@ -32,7 +32,8 @@ ci.yml
   `-- e2e-test.yml   (deploys and invokes real AgentCore resources)
 
 canary.yml (scheduled)
-  |-- e2e-test.yml
+  |-- resolves @aws/agentcore@latest and its matching Git tag
+  |-- e2e-test.yml (tests the installed npm package with the tagged test suite)
   `-- emit-canary-heartbeat.sh
 
 canary-v0.yml (scheduled)
@@ -45,8 +46,9 @@ release-main-and-preview.yml (npm publish and GitHub release when a release PR m
   `-- verify.yml
 ```
 
-`verify.yml` and `e2e-test.yml` each appear in two orchestrators. This is the
-point — write once, compose freely.
+`verify.yml` and `e2e-test.yml` each appear in two orchestrators. Push CI builds
+the CLI from source for E2E, while the canary installs the resolved npm version.
+Both use the same E2E test runner.
 
 ## Naming Convention
 

@@ -3,7 +3,12 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: git reference (commit, branch, or tag) to build and test
+        description: git reference (commit, branch, or tag) for the E2E test suite
+        required: false
+        type: string
+        default: ""
+      npmVersion:
+        description: install this exact published npm version instead of building the CLI from source
         required: false
         type: string
         default: ""
@@ -121,16 +126,24 @@ jobs:
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
       - name: Build CLI
+        if: inputs.npmVersion == ''
         run: bun run build
+      - name: Install published CLI
+        if: inputs.npmVersion != ''
+        env:
+          NPM_VERSION: ${{ inputs.npmVersion }}
+        run: |
+          npm install --global "@aws/agentcore@${NPM_VERSION}"
+          agentcore --version
       - name: Run all E2E tests
         if: inputs.tags == ''
         env:
-          AGENTCORE_CLI_PATH: node ${{ github.workspace }}/dist/index.js
+          AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
           AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e
       - name: Run tagged E2E tests
         if: inputs.tags != ''
         env:
-          AGENTCORE_CLI_PATH: node ${{ github.workspace }}/dist/index.js
+          AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
           AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e -- --tagsFilter="${{ inputs.tags }}"

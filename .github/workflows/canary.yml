@@ -18,6 +18,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -38,12 +39,14 @@ jobs:
             exit 1
           fi
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
   e2e:
     needs: resolve_release
     uses: ./.github/workflows/e2e-test.yml
     with:
       ref: ${{ needs.resolve_release.outputs.ref }}
+      npmVersion: ${{ needs.resolve_release.outputs.version }}
       tags: canary
       linuxOnly: true
     secrets:
