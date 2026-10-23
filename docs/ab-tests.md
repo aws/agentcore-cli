@@ -105,6 +105,13 @@ agentcore archive ab-test -i <id>
 
 `promote` writes the winning (treatment) variant into `agentcore.json`:
 
+For config-bundle promotion, the CLI fetches and validates the winner **before** stopping the test. The pinned CDK
+construct returns components through a `CfnJson` custom resource, whose entire response is limited to 4096 bytes.
+Promotion conservatively budgets 3072 UTF-8 bytes for serialized `Data.Value`, reserving 1024 bytes for the response
+envelope and identifiers. This is a deployment guard, not a ConfigurationBundle API limit. If the winner exceeds the
+budget or cannot be fetched, the CLI does not stop the test or write the project. Reduce the winning configuration
+before retrying. The successful write uses the same payload that passed preflight, without fetching it again.
+
 - **config-bundle mode** — control and treatment must be two **versions of the same bundle**; promote adopts the
   treatment version's components into that bundle. Promoting across two _different_ bundles is rejected.
 - **target-based mode** — control adopts the treatment endpoint: when both are named endpoints of the same runtime,
