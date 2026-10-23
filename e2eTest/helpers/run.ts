@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import spawn from "cross-spawn";
 import z from "zod";
 
 /** Given a CLI process, captures its standard output, error output, and exit code. */
@@ -32,8 +32,8 @@ export class CliRunner {
       const child = this.start(args, cwd);
       let stdout = "";
       let stderr = "";
-      child.stdout.on("data", (chunk) => (stdout += chunk));
-      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.stdout!.on("data", (chunk) => (stdout += chunk));
+      child.stderr!.on("data", (chunk) => (stderr += chunk));
       child.on("error", reject);
       child.on("close", (exitCode) => resolve({ stdout, stderr, exitCode: exitCode ?? -1 }));
     });
