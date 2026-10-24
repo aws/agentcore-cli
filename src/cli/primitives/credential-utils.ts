@@ -17,6 +17,14 @@ export function computeManagedOAuthCredentialName(gatewayName: string): string {
 }
 
 /**
+ * Payment connectors reference their credential provider by ARN, and the ARN's name segment only allows
+ * letters, digits, hyphens and periods.
+ */
+export function isPaymentCredentialNameValid(credentialName: string): boolean {
+  return /^[a-zA-Z0-9.-]+$/.test(credentialName);
+}
+
+/**
  * Compute the env var names for a CoinbaseCDP payment credential.
  * CoinbaseCDP credentials require 3 env vars.
  */

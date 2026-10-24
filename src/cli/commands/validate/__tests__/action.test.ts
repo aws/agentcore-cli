@@ -352,6 +352,30 @@ describe('payment validation', () => {
     expect(result.error.message).toContain('"my-connector"');
   });
 
+  it('fails with a rename hint when the credential name contains an underscore', async () => {
+    mockFindConfigRoot.mockReturnValue(CONFIG_ROOT);
+    mockReadProjectSpec.mockResolvedValue({
+      ...baseSpec,
+      credentials: [{ ...coinbaseCredential, name: 'PayMgr-my_cdp-cdp' }],
+      payments: [
+        {
+          name: 'PayMgr',
+          connectors: [{ name: 'my_cdp', credentialName: 'PayMgr-my_cdp-cdp', provider: 'CoinbaseCDP' }],
+        },
+      ],
+    });
+    mockReadAWSDeploymentTargets.mockResolvedValue([]);
+    mockConfigExists.mockReturnValue(false);
+
+    const result = await handleValidate({});
+
+    expect(result.success).toBe(false);
+    assert(!result.success);
+    expect(result.error.message).toContain('"my_cdp"');
+    expect(result.error.message).toContain('"PayMgr-my_cdp-cdp"');
+    expect(result.error.message).toContain('Rename it to "PayMgr-my-cdp-cdp"');
+  });
+
   it('fails when connector provider does not match credential provider', async () => {
     mockFindConfigRoot.mockReturnValue(CONFIG_ROOT);
     mockReadProjectSpec.mockResolvedValue({

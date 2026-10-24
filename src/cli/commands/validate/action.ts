@@ -14,6 +14,7 @@ import { validateHarnessSpecs } from '../../operations/deploy/preflight';
 import {
   computePaymentCredentialEnvVarNames,
   computeStripePrivyCredentialEnvVarNames,
+  isPaymentCredentialNameValid,
 } from '../../primitives/credential-utils';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -85,6 +86,14 @@ export async function handleValidate(options: ValidateOptions): Promise<Result> 
             success: false,
             error: new Error(
               `Payment connector "${connector.name}" uses provider "${connectorProvider}" but credential "${connector.credentialName}" is configured for "${credentialProvider}".`
+            ),
+          };
+        }
+        if (!isPaymentCredentialNameValid(connector.credentialName)) {
+          return {
+            success: false,
+            error: new Error(
+              `Payment connector "${connector.name}" (manager "${payment.name}") uses credential "${connector.credentialName}", but payment connectors can only reference credential names with letters, numbers, hyphens, and periods. Rename it to "${connector.credentialName.replace(/_/g, '-')}" in both \`credentials\` and the connector's \`credentialName\` in agentcore.json; the .env.local variable names stay the same.`
             ),
           };
         }

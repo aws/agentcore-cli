@@ -2,6 +2,7 @@ import {
   computeDefaultCredentialEnvVarName,
   computePaymentCredentialEnvVarNames,
   computeStripePrivyCredentialEnvVarNames,
+  isPaymentCredentialNameValid,
 } from '../credential-utils';
 import { describe, expect, it } from 'vitest';
 
@@ -20,6 +21,17 @@ describe('computeDefaultCredentialEnvVarName', () => {
 
   it('handles mixed hyphens and underscores', () => {
     expect(computeDefaultCredentialEnvVarName('my-cred_name')).toBe('AGENTCORE_CREDENTIAL_MY_CRED_NAME');
+  });
+});
+
+describe('isPaymentCredentialNameValid', () => {
+  it('accepts letters, digits, hyphens and periods', () => {
+    expect(isPaymentCredentialNameValid('PayMgr-my-cdp-cdp')).toBe(true);
+    expect(isPaymentCredentialNameValid('mgr1.v2-conn1-stripe-privy')).toBe(true);
+  });
+
+  it('rejects underscores', () => {
+    expect(isPaymentCredentialNameValid('PayMgr-my_cdp-cdp')).toBe(false);
   });
 });
 
