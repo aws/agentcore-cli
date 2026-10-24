@@ -1054,6 +1054,93 @@ agentcore traces get abc123 --runtime MyAgent --json
 | `--until <time>`   | End time (defaults to now)       |
 | `--json`           | Output as JSON                   |
 
+#### traces compare
+
+Compare latency and token metrics of two traces from the same runtime.
+
+```bash
+agentcore traces compare <baselineTraceId> <candidateTraceId>
+agentcore traces compare abc123 def456 --runtime MyAgent
+agentcore traces compare abc123 def456 --since 2h --json
+```
+
+| Flag                 | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `<baselineTraceId>`  | Baseline trace ID (required)                                                |
+| `<candidateTraceId>` | Candidate trace ID (required)                                               |
+| `--runtime <name>`   | Select specific runtime                                                     |
+| `--since <time>`     | Start time (defaults to 12h ago; e.g. `5m`, `1h`, `2d`, ISO 8601, epoch ms) |
+| `--until <time>`     | End time (defaults to now; e.g. `now`, `1h`, ISO 8601, epoch ms)            |
+| `--json`             | Output as JSON                                                              |
+
+Reports end-to-end, LLM, and tool latency, LLM/tool call counts, and token usage for each trace, with absolute and
+percentage deltas. Nested provider spans (e.g. a framework LLM span wrapping a Bedrock client span) are counted once.
+
+Behavior details:
+
+- LLM and tool spans are recognized via OTel GenAI attributes (`gen_ai.operation.name`), Traceloop/OpenLLMetry
+  (`traceloop.span.kind`, used by LangGraph), OpenInference (`openinference.span.kind`), and span-name fallbacks
+  (`chat …`, `execute_tool …`, `….tool`).
+- Both traces must belong to the selected runtime — spans are matched via `aws.agent.id` / `cloud.resource_id`, other
+  runtimes' spans in a distributed trace are excluded, and a trace whose identified spans all belong to a different
+  runtime is rejected.
+- Application spans are fetched from the endpoint-specific runtime log group, detected per trace from this runtime's
+  span `aws.endpoint.name` attribute. Baseline and candidate may come from different endpoints (e.g. `DEFAULT` vs a
+  named test endpoint).
+- End-to-end latency comes from the `POST /invocations` server span; when that span is missing, the earliest/latest
+  span times are used instead and a warning is shown.
+- When only service-side spans are found for a trace, LLM/tool/token metrics are reported as unavailable (omitted from
+  JSON, shown as `-` in the table) with a warning — never as zero.
+- The distinct LLM models used in each trace are reported (from `gen_ai.response.model`, falling back to
+  `gen_ai.request.model`).
+- Comparability warnings flag differing models, differing LLM/tool call counts, and input/output/total token usage that
+  differs by more than 20% relative to the baseline (or changes from zero). The CLI cannot prove the two invocations ran
+  equivalent workloads.
+
+`--json` returns stable structured output suitable for CI benchmarking:
+
+```json
+{
+  "success": true,
+  "agentName": "MyAgent",
+  "targetName": "default",
+  "consoleUrl": "https://...",
+  "baseline": {
+    "traceId": "abc123",
+    "spanCount": 12,
+    "endToEndMs": 6600,
+    "timingSource": "invocation-span",
+    "llmMs": 3620,
+    "llmCalls": 2,
+    "toolMs": 2850,
+    "toolCalls": 1,
+    "inputTokens": 2849,
+    "outputTokens": 315,
+    "totalTokens": 3164,
+    "models": ["claude-3-5-sonnet-20241022-v2:0"]
+  },
+  "candidate": { "traceId": "def456", "...": "same shape as baseline" },
+  "deltas": {
+    "endToEndMs": { "baseline": 6600, "candidate": 5120, "delta": -1480, "deltaPercent": -22.4 },
+    "llmMs": { "...": "same shape" },
+    "toolMs": { "...": "same shape" },
+    "llmCalls": { "...": "same shape" },
+    "toolCalls": { "...": "same shape" },
+    "inputTokens": { "...": "same shape" },
+    "outputTokens": { "...": "same shape" },
+    "totalTokens": { "...": "same shape" }
+  },
+  "warnings": []
+}
+```
+
+Field notes: latency fields (`endToEndMs`, `llmMs`, `toolMs`, and each delta's `delta`) and all `deltaPercent` values
+are rounded to one decimal place, so runs diff cleanly in CI; token and call-count fields are integers.
+`timingSource` is `invocation-span` or `span-envelope` (labeled fallback). `models` is the sorted list of distinct LLM
+models used, omitted when none are reported. `deltaPercent` is `null` when the baseline value is zero. Unavailable
+metrics are omitted from `baseline`/`candidate`, and the corresponding delta entries carry only the sides that exist. On failure the output is `{ "success": false, "error": "<message>" }` with
+`errorName`/`errorSource` for typed errors.
+
 ---
 
 ## Evaluations
