@@ -4,7 +4,7 @@ import { ContainerDevServer } from '../container-dev-server';
 import type { DevServerCallbacks, DevServerOptions } from '../dev-server';
 import { EventEmitter } from 'events';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSpawnSync = vi.fn();
 const mockSpawn = vi.fn();
@@ -97,16 +97,20 @@ const defaultOptions: DevServerOptions = { port: 9000, envVars: { MY_VAR: 'val' 
 
 describe('ContainerDevServer', () => {
   let savedEnv: NodeJS.ProcessEnv;
+  let onceSpy: MockInstance<typeof process.once>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     savedEnv = { ...process.env };
     // Default: container server becomes ready immediately
     mockWaitForServerReady.mockResolvedValue(true);
+    // start() registers a process 'exit' cleanup; keep it off the real test process
+    onceSpy = vi.spyOn(process, 'once').mockReturnValue(process);
   });
 
   afterEach(() => {
     process.env = savedEnv;
+    vi.restoreAllMocks();
   });
 
   describe('prepare()', () => {
@@ -559,6 +563,63 @@ describe('ContainerDevServer', () => {
       server.kill();
 
       expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('exit cleanup', () => {
+    function getExitHandlers(): (() => void)[] {
+      return onceSpy.mock.calls.filter(([event]) => event === 'exit').map(([, handler]) => handler as () => void);
+    }
+
+    it('removes the container synchronously when the CLI process exits', async () => {
+      vi.spyOn(process, 'kill').mockReturnValue(true);
+      const child = mockSuccessfulPrepare();
+      child.pid = 4242;
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+      mockSpawnSync.mockClear();
+
+      for (const handler of getExitHandlers()) handler();
+
+      expect(mockSpawnSync).toHaveBeenCalledWith('docker', ['rm', '-f', 'agentcore-dev-testagent'], {
+        stdio: 'ignore',
+        timeout: 10_000,
+      });
+    });
+
+    it('removes the container even when the run client has no pid (e.g. Windows, where the base reaper is skipped)', async () => {
+      mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+      mockSpawnSync.mockClear();
+
+      for (const handler of getExitHandlers()) handler();
+
+      expect(mockSpawnSync).toHaveBeenCalledWith('docker', ['rm', '-f', 'agentcore-dev-testagent'], expect.anything());
+    });
+
+    it('drops the exit cleanup once the run client exits on its own', async () => {
+      const removeListenerSpy = vi.spyOn(process, 'removeListener').mockReturnValue(process);
+      const child = mockSuccessfulPrepare();
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+      const [removeContainer] = getExitHandlers();
+
+      child.emit('exit', 0);
+
+      expect(removeListenerSpy).toHaveBeenCalledWith('exit', removeContainer);
+    });
+
+    it('does not register exit cleanup when prepare fails', async () => {
+      mockDetectContainerRuntime.mockResolvedValue({ runtime: null });
+
+      const server = new ContainerDevServer(defaultConfig, defaultOptions);
+      await server.start();
+
+      expect(getExitHandlers()).toHaveLength(0);
     });
   });
 });

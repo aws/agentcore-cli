@@ -31,6 +31,7 @@ export class ContainerDevServer extends DevServer {
   override async start(): Promise<ChildProcess | null> {
     const child = await super.start();
     if (child) {
+      this.registerContainerExitCleanup(child);
       const { onLog } = this.options.callbacks;
       onLog('system', `Container ${this.containerName} started, waiting for server to be ready...`);
 
@@ -44,6 +45,19 @@ export class ContainerDevServer extends DevServer {
       }
     }
     return child;
+  }
+
+  /** Remove the container when this process exits. The base exit reaper only kills the `run` client's
+   *  process group, but the container is owned by the runtime daemon and keeps running (holding the host
+   *  port) after the client dies. This also covers Windows, where the base reaper is skipped. 'exit'
+   *  handlers must be synchronous, and `rm -f` avoids the stop grace period that would delay exit. */
+  private registerContainerExitCleanup(child: ChildProcess): void {
+    const { runtimeBinary, containerName } = this;
+    const removeContainer = () => {
+      spawnSync(runtimeBinary, ['rm', '-f', containerName], { stdio: 'ignore', timeout: 10_000 });
+    };
+    process.once('exit', removeContainer);
+    child.once('exit', () => process.removeListener('exit', removeContainer));
   }
 
   /** Override kill to stop the container properly, cleaning up the port proxy.
