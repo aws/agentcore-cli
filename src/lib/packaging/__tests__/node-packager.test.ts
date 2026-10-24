@@ -1,4 +1,5 @@
 import { NodeCodeZipPackager, NodeCodeZipPackagerSync } from '../node.js';
+import { cpSync, existsSync } from 'fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('fs', async () => {
@@ -8,6 +9,8 @@ vi.mock('fs', async () => {
     writeFileSync: vi.fn(),
     existsSync: vi.fn(() => false),
     cpSync: vi.fn(),
+    realpathSync: vi.fn(path => path),
+    readFileSync: vi.fn(() => '{"dependencies":{}}'),
   };
 });
 
@@ -67,7 +70,7 @@ describe('NodeCodeZipPackager', () => {
   it('packs successfully using esbuild', async () => {
     mockResolveNodeProjectPaths.mockResolvedValue(defaultPaths);
     mockEnsureDirClean.mockResolvedValue(undefined);
-    mockBuild.mockResolvedValue(undefined);
+    mockBuild.mockResolvedValue({});
     mockCreateZipFromDir.mockResolvedValue(undefined);
     mockEnforceZipSizeLimit.mockResolvedValue(1024);
 
@@ -82,8 +85,36 @@ describe('NodeCodeZipPackager', () => {
         platform: 'node',
         format: 'cjs',
         target: 'node20',
+        metafile: true,
       })
     );
+  });
+
+  it('copies external packages from the metafile and skips Node builtins', async () => {
+    mockResolveNodeProjectPaths.mockResolvedValue(defaultPaths);
+    mockBuild.mockResolvedValue({
+      metafile: {
+        outputs: {
+          'main.js': {
+            imports: [
+              { path: '@example/external/subpath', external: true },
+              { path: 'node:fs', external: true },
+            ],
+          },
+        },
+      },
+    });
+    vi.mocked(existsSync).mockImplementation(
+      path => path === '/project/src/node_modules/@example/external/package.json'
+    );
+    await packager.pack({ build: 'CodeZip', runtimeVersion: 'NODE_22', name: 'myAgent' } as any);
+    expect(cpSync).toHaveBeenCalledTimes(1);
+    expect(cpSync).toHaveBeenCalledWith(
+      '/project/src/node_modules/@example/external',
+      '/project/.staging/node_modules/@example/external',
+      expect.objectContaining({ recursive: true, dereference: true })
+    );
+    vi.mocked(existsSync).mockReturnValue(false);
   });
 
   it('throws when esbuild fails', async () => {
@@ -111,7 +142,7 @@ describe('NodeCodeZipPackagerSync', () => {
   it('packs successfully using esbuild', () => {
     mockResolveNodeProjectPathsSync.mockReturnValue(defaultPaths);
     mockEnsureDirCleanSync.mockReturnValue(undefined);
-    mockBuildSync.mockReturnValue(undefined);
+    mockBuildSync.mockReturnValue({});
     mockCreateZipFromDirSync.mockReturnValue(undefined);
     mockEnforceZipSizeLimitSync.mockReturnValue(2048);
 
@@ -125,6 +156,7 @@ describe('NodeCodeZipPackagerSync', () => {
         platform: 'node',
         format: 'cjs',
         target: 'node20',
+        metafile: true,
       })
     );
   });

@@ -1,6 +1,7 @@
 import type { AgentEnvSpec, NodeRuntime, RuntimeVersion } from '../../schema';
 import { getArtifactZipName } from '../constants';
 import { PackagingError } from '../errors/types';
+import { DYNAMIC_REQUIRE_PACKAGES, NODE_CJS_BANNER, NODE_RUNTIME_REGEX } from './constants';
 import {
   createZipFromDir,
   createZipFromDirSync,
@@ -13,11 +14,11 @@ import {
   resolveNodeProjectPathsSync,
 } from './helpers';
 import type { ArtifactResult, CodeZipPackager, PackageOptions, RuntimePackager } from './types/packaging';
+import type { Metafile } from 'esbuild';
 import { build, buildSync } from 'esbuild';
-import { cpSync, existsSync, writeFileSync } from 'fs';
-import { join } from 'path';
-
-const NODE_RUNTIME_REGEX = /NODE_(\d+)/;
+import { cpSync, existsSync, readFileSync, realpathSync, writeFileSync } from 'fs';
+import { createRequire, isBuiltin } from 'module';
+import { basename, join } from 'path';
 
 /**
  * Type guard to check if runtime version is a Node runtime
@@ -42,35 +43,78 @@ export function extractNodeVersion(runtime: NodeRuntime): string {
   return major;
 }
 
-const DYNAMIC_REQUIRE_PACKAGES = [
-  '@fastify/sse',
-  '@fastify/websocket',
-  'duplexify',
-  'end-of-stream',
-  'fastify-plugin',
-  'inherits',
-  'once',
-  'readable-stream',
-  'safe-buffer',
-  'stream-shift',
-  'string_decoder',
-  'util-deprecate',
-  'wrappy',
-  'ws',
-];
+interface DependencyManifest {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+}
 
-const DEPS_DIR = '_deps';
+function resolvePackageDirectory(name: string, fromDir: string): string | undefined {
+  const resolver = createRequire(join(fromDir, 'package.json'));
+  // Search package directories, not exported entry points: exports can hide package.json
+  // or expose only subpaths. realpath also resolves pnpm's workspace/store links.
+  for (const directory of resolver.resolve.paths(name) ?? []) {
+    const candidate = join(directory, name);
+    if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
+  }
+  return undefined;
+}
 
-function copyDynamicDeps(srcDir: string, stagingDir: string): void {
-  const srcNodeModules = join(srcDir, 'node_modules');
-  if (!existsSync(srcNodeModules)) return;
-
-  for (const pkg of DYNAMIC_REQUIRE_PACKAGES) {
-    const pkgPath = join(srcNodeModules, pkg);
-    if (existsSync(pkgPath)) {
-      cpSync(pkgPath, join(stagingDir, DEPS_DIR, pkg), { recursive: true });
+function copyDynamicDeps(srcDir: string, stagingDir: string, metafile?: Metafile): void {
+  const roots = new Set(DYNAMIC_REQUIRE_PACKAGES);
+  for (const output of Object.values(metafile?.outputs ?? {})) {
+    for (const imported of output.imports) {
+      if (!imported.external || isBuiltin(imported.path) || imported.path.startsWith('.')) continue;
+      roots.add(
+        imported.path
+          .split('/')
+          .slice(0, imported.path.startsWith('@') ? 2 : 1)
+          .join('/')
+      );
     }
   }
+
+  const copyPackage = (
+    name: string,
+    fromDir: string,
+    destinationModules: string,
+    ancestors: Map<string, string>,
+    required = false
+  ): void => {
+    if (isBuiltin(name)) return;
+    const source = resolvePackageDirectory(name, fromDir);
+    if (!source) {
+      if (required) throw new PackagingError('Cannot package dependency "' + name + '" required by ' + fromDir);
+      return; // Optional packages and dynamic-require fallbacks may not be installed.
+    }
+    if (ancestors.get(name) === source) return; // Node resolves cycles through ancestor node_modules.
+    const destination = join(destinationModules, name);
+    cpSync(source, destination, {
+      recursive: true,
+      dereference: true,
+      filter: path => {
+        const entry = basename(path);
+        return entry !== 'node_modules' && entry !== '.git' && entry !== '.env' && !entry.startsWith('.env.');
+      },
+    });
+    const manifest = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')) as DependencyManifest;
+    const chain = new Map(ancestors).set(name, source);
+    const dependencies = new Set([
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.optionalDependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+    ]);
+    for (const dependency of dependencies) {
+      copyPackage(
+        dependency,
+        source,
+        join(destination, 'node_modules'),
+        chain,
+        dependency in (manifest.dependencies ?? {}) && !(dependency in (manifest.optionalDependencies ?? {}))
+      );
+    }
+  };
+  for (const name of roots) copyPackage(name, srcDir, join(stagingDir, 'node_modules'), new Map());
 }
 
 /**
@@ -95,14 +139,7 @@ export class NodeCodeZipPackager implements RuntimePackager {
     const entryFile = join(srcDir, 'main.ts');
     const runtimeVersion = spec.runtimeVersion;
     const nodeTarget = `node${extractNodeVersion(runtimeVersion)}`;
-    const cjsBanner =
-      'const importMetaUrl = require("url").pathToFileURL(__filename).href;' +
-      '(function(){var M=require("module"),p=require("path"),f=require("fs"),d=p.join(__dirname,"_deps"),o=M._resolveFilename;' +
-      'M._resolveFilename=function(r,P,i,O){try{return o.call(this,r,P,i,O)}catch(e){' +
-      'var dp=p.join(d,r);if(f.existsSync(dp)){var pk=p.join(dp,"package.json");' +
-      'if(f.existsSync(pk)){var m=JSON.parse(f.readFileSync(pk,"utf8")).main||"index.js";return p.resolve(dp,m)}' +
-      'return p.resolve(dp,"index.js")}throw e}};})();';
-    await build({
+    const result = await build({
       entryPoints: [entryFile],
       outfile: join(stagingDir, 'main.js'),
       bundle: true,
@@ -110,15 +147,16 @@ export class NodeCodeZipPackager implements RuntimePackager {
       format: 'cjs',
       minify: true,
       target: nodeTarget,
-      banner: { js: cjsBanner },
+      metafile: true,
+      banner: { js: NODE_CJS_BANNER },
       define: { 'import.meta.url': 'importMetaUrl' },
     });
 
     writeFileSync(join(stagingDir, 'package.json'), '{"type":"commonjs"}');
-    copyDynamicDeps(srcDir, stagingDir);
+    copyDynamicDeps(srcDir, stagingDir, result.metafile);
 
     const artifactPath = options.outputPath ?? join(artifactsDir, getArtifactZipName(agentName));
-    await createZipFromDir(stagingDir, artifactPath);
+    await createZipFromDir(stagingDir, artifactPath, true);
     const sizeBytes = await enforceZipSizeLimit(artifactPath);
 
     return {
@@ -148,14 +186,7 @@ export class NodeCodeZipPackagerSync implements CodeZipPackager {
 
     const entryFile = join(srcDir, 'main.ts');
     const nodeTarget = `node${extractNodeVersion(runtimeVersion)}`;
-    const cjsBanner =
-      'const importMetaUrl = require("url").pathToFileURL(__filename).href;' +
-      '(function(){var M=require("module"),p=require("path"),f=require("fs"),d=p.join(__dirname,"_deps"),o=M._resolveFilename;' +
-      'M._resolveFilename=function(r,P,i,O){try{return o.call(this,r,P,i,O)}catch(e){' +
-      'var dp=p.join(d,r);if(f.existsSync(dp)){var pk=p.join(dp,"package.json");' +
-      'if(f.existsSync(pk)){var m=JSON.parse(f.readFileSync(pk,"utf8")).main||"index.js";return p.resolve(dp,m)}' +
-      'return p.resolve(dp,"index.js")}throw e}};})();';
-    buildSync({
+    const result = buildSync({
       entryPoints: [entryFile],
       outfile: join(stagingDir, 'main.js'),
       bundle: true,
@@ -163,15 +194,16 @@ export class NodeCodeZipPackagerSync implements CodeZipPackager {
       format: 'cjs',
       minify: true,
       target: nodeTarget,
-      banner: { js: cjsBanner },
+      metafile: true,
+      banner: { js: NODE_CJS_BANNER },
       define: { 'import.meta.url': 'importMetaUrl' },
     });
 
     writeFileSync(join(stagingDir, 'package.json'), '{"type":"commonjs"}');
-    copyDynamicDeps(srcDir, stagingDir);
+    copyDynamicDeps(srcDir, stagingDir, result.metafile);
 
     const artifactPath = options.outputPath ?? join(artifactsDir, getArtifactZipName(agentName));
-    createZipFromDirSync(stagingDir, artifactPath);
+    createZipFromDirSync(stagingDir, artifactPath, true);
     const sizeBytes = enforceZipSizeLimitSync(artifactPath);
 
     return {

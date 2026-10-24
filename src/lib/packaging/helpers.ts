@@ -90,8 +90,11 @@ function shouldExcludeEntry(entryName: string, source: string, rootDir: string):
  * and MUST be included (issue #1408 / PR #1424). Unlike the copy stage, we
  * therefore do NOT skip CONFIG_DIR; we only drop build artefacts and .env
  * secret files.
+ * Node packaging opts in to including its deliberately staged node_modules;
+ * Python callers retain the default exclusion.
  */
-function isZipExcludedEntry(entryName: string): boolean {
+function isZipExcludedEntry(entryName: string, includeNodeModules = false): boolean {
+  if (entryName === 'node_modules' && includeNodeModules) return false;
   if (EXCLUDED_ENTRIES.has(entryName)) return true;
   if (isEnvSecretEntry(entryName)) return true;
   return false;
@@ -229,27 +232,31 @@ export async function runCommand(command: string, args: string[], cwd?: string):
   await runSubprocess(command, args, { cwd });
 }
 
-export async function createZipFromDir(sourceDir: string, outputZip: string): Promise<void> {
+export async function createZipFromDir(
+  sourceDir: string,
+  outputZip: string,
+  includeNodeModules = false
+): Promise<void> {
   await rm(outputZip, { force: true });
   await mkdir(dirname(outputZip), { recursive: true });
 
-  const files = await collectFiles(sourceDir);
+  const files = await collectFiles(sourceDir, '', includeNodeModules);
   const zipped = zipSync(files);
   await writeFile(outputZip, zipped);
 }
 
-async function collectFiles(directory: string, basePath = ''): Promise<Zippable> {
+async function collectFiles(directory: string, basePath = '', includeNodeModules = false): Promise<Zippable> {
   const result: Zippable = {};
   const entries = await readdir(directory, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (isZipExcludedEntry(entry.name)) continue;
+    if (isZipExcludedEntry(entry.name, includeNodeModules)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, await collectFiles(fullPath, zipPath));
+      Object.assign(result, await collectFiles(fullPath, zipPath, includeNodeModules));
     } else if (entry.isFile()) {
       result[zipPath] = [await readFile(fullPath), { level: 6 }];
     }
@@ -435,18 +442,18 @@ export function ensureBinaryAvailableSync(binary: string, installHint?: string):
   throw new MissingDependencyError(binary, installHint);
 }
 
-function collectFilesSync(directory: string, basePath = ''): Zippable {
+function collectFilesSync(directory: string, basePath = '', includeNodeModules = false): Zippable {
   const result: Zippable = {};
   const entries = readdirSync(directory, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (isZipExcludedEntry(entry.name)) continue;
+    if (isZipExcludedEntry(entry.name, includeNodeModules)) continue;
 
     const fullPath = join(directory, entry.name);
     const zipPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      Object.assign(result, collectFilesSync(fullPath, zipPath));
+      Object.assign(result, collectFilesSync(fullPath, zipPath, includeNodeModules));
     } else if (entry.isFile()) {
       result[zipPath] = [readFileSync(fullPath), { level: 6 }];
     }
@@ -454,11 +461,11 @@ function collectFilesSync(directory: string, basePath = ''): Zippable {
   return result;
 }
 
-export function createZipFromDirSync(sourceDir: string, outputZip: string): void {
+export function createZipFromDirSync(sourceDir: string, outputZip: string, includeNodeModules = false): void {
   rmSync(outputZip, { force: true });
   mkdirSync(dirname(outputZip), { recursive: true });
 
-  const files = collectFilesSync(sourceDir);
+  const files = collectFilesSync(sourceDir, '', includeNodeModules);
   const zipped = zipSync(files);
   writeFileSync(outputZip, zipped);
 }
