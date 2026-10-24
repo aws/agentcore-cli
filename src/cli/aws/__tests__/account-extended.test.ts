@@ -1,14 +1,18 @@
-import { AwsCredentialsError, ValidationError } from '../../../lib/errors/types.js';
-import { detectAccount, getCredentialProvider, validateAwsCredentials } from '../account.js';
+import { AwsCredentialsError, TimeoutError, ValidationError } from '../../../lib/errors/types.js';
+import { detectAccount, getCredentialProvider, hasEnvCredentials, validateAwsCredentials } from '../account.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockSend } = vi.hoisted(() => ({
+const { mockSend, mockStsConfig } = vi.hoisted(() => ({
   mockSend: vi.fn(),
+  mockStsConfig: vi.fn(),
 }));
 
 vi.mock('@aws-sdk/client-sts', () => ({
   STSClient: class {
     send = mockSend;
+    constructor(config: unknown) {
+      mockStsConfig(config);
+    }
   },
   GetCallerIdentityCommand: class {
     constructor(public input: unknown) {}
@@ -39,6 +43,23 @@ describe('getCredentialProvider', () => {
   });
 });
 
+describe('hasEnvCredentials', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('is true only when both access key variables are set', () => {
+    process.env.AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret';
+    expect(hasEnvCredentials()).toBe(true);
+
+    delete process.env.AWS_SECRET_ACCESS_KEY;
+    expect(hasEnvCredentials()).toBe(false);
+  });
+});
+
 describe('detectAccount', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,6 +70,41 @@ describe('detectAccount', () => {
 
     const account = await detectAccount();
     expect(account).toBe('123456789012');
+  });
+
+  it('calls STS in the given region instead of the environment region', async () => {
+    mockSend.mockResolvedValue({ Account: '123456789012' });
+
+    await detectAccount({ region: 'us-gov-west-1' });
+    expect(mockStsConfig).toHaveBeenCalledWith(expect.objectContaining({ region: 'us-gov-west-1' }));
+  });
+
+  it('keeps the SDK retry and timeout defaults when no timeout is given', async () => {
+    mockSend.mockResolvedValue({ Account: '123456789012' });
+
+    await detectAccount();
+    const config = mockStsConfig.mock.calls[0]![0] as Record<string, unknown>;
+    expect(config).not.toHaveProperty('maxAttempts');
+    expect(config).not.toHaveProperty('requestHandler');
+  });
+
+  it('makes a single bounded attempt when a timeout is given', async () => {
+    mockSend.mockResolvedValue({ Account: '123456789012' });
+
+    await detectAccount({ timeoutMs: 3000 });
+    expect(mockStsConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxAttempts: 1,
+        requestHandler: { connectionTimeout: 3000, requestTimeout: 3000, throwOnRequestTimeout: true },
+      })
+    );
+  });
+
+  it('throws TimeoutError when the bounded attempt times out', async () => {
+    mockSend.mockRejectedValue(makeNamedError('socket timed out', 'TimeoutError'));
+
+    await expect(detectAccount({ timeoutMs: 3000 })).rejects.toThrow(TimeoutError);
+    await expect(detectAccount({ timeoutMs: 3000 })).rejects.toThrow('Timed out resolving the AWS account after 3s.');
   });
 
   it('returns null when Account is undefined', async () => {

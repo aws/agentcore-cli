@@ -1,3 +1,4 @@
+import { withCommandRunTelemetry } from '../../../telemetry/cli-command-run.js';
 import { handleProjectStatus, loadStatusConfig } from '../action.js';
 import { registerStatus } from '../command.js';
 import { Command } from '@commander-js/extra-typings';
@@ -73,5 +74,40 @@ describe('status command validation', () => {
     await program.parseAsync(['status', '--type', 'agent'], { from: 'user' });
 
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('records AWS identity telemetry when the credentials do not match the target account', async () => {
+    const recorder = { set: vi.fn(), get: vi.fn() };
+    vi.mocked(withCommandRunTelemetry).mockImplementationOnce(async (_command, _attrs, run) => run(recorder as never));
+    vi.mocked(loadStatusConfig).mockResolvedValue({} as never);
+    vi.mocked(handleProjectStatus).mockResolvedValue({
+      success: true,
+      resources: [],
+      targetAccount: '222222222222',
+      awsIdentity: { success: true, account: '111111111111', fromEnvironment: false },
+    } as never);
+
+    await program.parseAsync(['status'], { from: 'user' });
+
+    expect(handleProjectStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ includeAwsIdentity: true })
+    );
+    expect(recorder.set).toHaveBeenCalledWith({ aws_identity_resolved: true, aws_account_mismatch: true });
+  });
+
+  it('records missing AWS credentials in telemetry', async () => {
+    const recorder = { set: vi.fn(), get: vi.fn() };
+    vi.mocked(withCommandRunTelemetry).mockImplementationOnce(async (_command, _attrs, run) => run(recorder as never));
+    vi.mocked(loadStatusConfig).mockResolvedValue({} as never);
+    vi.mocked(handleProjectStatus).mockResolvedValue({
+      success: true,
+      resources: [],
+      awsIdentity: { success: false, fromEnvironment: false, error: 'No AWS credentials found.' },
+    } as never);
+
+    await program.parseAsync(['status'], { from: 'user' });
+
+    expect(recorder.set).toHaveBeenCalledWith({ aws_identity_resolved: false, aws_account_mismatch: false });
   });
 });
