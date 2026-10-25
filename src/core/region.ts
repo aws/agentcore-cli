@@ -7,11 +7,11 @@ export const DEFAULT_REGION = "us-east-1";
 
 /**
  * Reads the `region` setting for the active profile from the shared AWS config
- * file (~/.aws/config, or $AWS_CONFIG_FILE). The active profile is $AWS_PROFILE,
- * else "default". Returns undefined if the file, profile, or setting is absent —
+ * file (~/.aws/config, or $AWS_CONFIG_FILE). An explicit profile takes precedence
+ * over $AWS_PROFILE, then "default". Returns undefined if the file, profile, or setting is absent —
  * never throws.
  */
-export async function regionFromConfigFile(): Promise<string | undefined> {
+export async function regionFromConfigFile(selectedProfile?: string): Promise<string | undefined> {
   const path = process.env.AWS_CONFIG_FILE || join(homedir(), ".aws", "config");
   let text: string;
   try {
@@ -22,7 +22,7 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
 
   // In ~/.aws/config the default profile is "[default]" and named profiles are
   // "[profile name]".
-  const profile = process.env.AWS_PROFILE || "default";
+  const profile = selectedProfile ?? (process.env.AWS_PROFILE || "default");
   const wanted = profile === "default" ? "default" : `profile ${profile}`;
 
   let inSection = false;
@@ -45,12 +45,15 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
  * AWS_REGION / AWS_DEFAULT_REGION, then the shared config file, finally
  * DEFAULT_REGION. It always resolves to a value.
  */
-export async function resolveRegion(flagRegion: string | undefined): Promise<string> {
+export async function resolveRegion(
+  flagRegion: string | undefined,
+  profile?: string,
+): Promise<string> {
   return (
     flagRegion ||
     process.env.AWS_REGION ||
     process.env.AWS_DEFAULT_REGION ||
-    (await regionFromConfigFile()) ||
+    (await regionFromConfigFile(profile)) ||
     DEFAULT_REGION
   );
 }
@@ -70,4 +73,16 @@ export function regionFlagFromArgv(argv: readonly string[]): string | undefined 
     if (arg.startsWith("--region=")) return arg.slice("--region=".length);
   }
   return undefined;
+}
+
+/** Profile selection for region-dependent work that happens before command routing. */
+export function profileFlagFromArgv(argv: readonly string[]): string | undefined {
+  let profile: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === "--") break;
+    if (arg === "--profile") profile = argv[++i];
+    else if (arg.startsWith("--profile=")) profile = arg.slice("--profile=".length);
+  }
+  return profile;
 }

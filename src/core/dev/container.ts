@@ -14,6 +14,7 @@ import {
 } from "../../io";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
+import { awsProfileEnvironment, selectedAwsProfile } from "../../awsProfile";
 
 const CONTAINER_TOOLS = ["docker", "podman", "finch"] as const;
 const AWS_ENV_KEYS = [
@@ -91,12 +92,28 @@ export class ContainerDevRunner implements DevRunner {
       throw new ResourceNotFoundError(`no container Dockerfile exists at ${dockerfilePath}`);
     }
 
+    const effectiveEnv = awsProfileEnvironment({ ...this.processEnv, ...input.env });
     const hasAwsCredentials = Boolean(
-      (input.env?.AWS_ACCESS_KEY_ID ?? this.processEnv.AWS_ACCESS_KEY_ID) &&
-      (input.env?.AWS_SECRET_ACCESS_KEY ?? this.processEnv.AWS_SECRET_ACCESS_KEY),
+      effectiveEnv.AWS_ACCESS_KEY_ID && effectiveEnv.AWS_SECRET_ACCESS_KEY,
     );
     const hasAwsConfig = existsSync(this.awsDirectory);
-    if (!hasAwsCredentials && !hasAwsConfig) {
+    const profileFiles: { key: string; path: string; containerPath: string }[] = [];
+    if (selectedAwsProfile()) {
+      for (const [key, name] of [
+        ["AWS_CONFIG_FILE", "config"],
+        ["AWS_SHARED_CREDENTIALS_FILE", "credentials"],
+      ] as const) {
+        const file = effectiveEnv[key];
+        if (!file) continue;
+        if (!isFile(file)) {
+          throw new InvalidEnvironmentError(
+            `${key} does not reference a readable AWS configuration file: ${file}`,
+          );
+        }
+        profileFiles.push({ key, path: resolve(file), containerPath: `/aws-profile/${name}` });
+      }
+    }
+    if (!hasAwsCredentials && !hasAwsConfig && profileFiles.length === 0) {
       throw new InvalidEnvironmentError(
         "Unable to resolve AWS credentials for the container. Configure AWS credentials " +
           "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then retry.",
@@ -157,6 +174,13 @@ export class ContainerDevRunner implements DevRunner {
       PORT: String(containerPort),
       LOCAL_DEV: "1",
     });
+    const selectedEnv = awsProfileEnvironment(forwardedEnv);
+    if (selectedEnv !== forwardedEnv) {
+      for (const key of Object.keys(forwardedEnv)) delete forwardedEnv[key];
+      for (const [key, value] of Object.entries(selectedEnv)) {
+        if (value !== undefined) forwardedEnv[key] = value;
+      }
+    }
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }
@@ -164,6 +188,10 @@ export class ContainerDevRunner implements DevRunner {
     if (awsMount.length) {
       forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
       forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
+    }
+    for (const file of profileFiles) {
+      awsMount.push("-v", `${file.path}:${file.containerPath}:ro`);
+      forwardedEnv[file.key] = file.containerPath;
     }
     const envFile = join(tmpdir(), `agentcore-dev-${randomUUID()}.env`);
     try {

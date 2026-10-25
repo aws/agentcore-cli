@@ -10,6 +10,7 @@ import type {
 } from "@aws-cdk/toolkit-lib";
 import { AgentCoreCLIError } from "../../../../errors";
 import type { Logger } from "../../../../logging";
+import { selectedAwsProfile } from "../../../../awsProfile";
 
 export type CdkOperation =
   | { kind: "bootstrap"; environments: string[]; templateFile?: string }
@@ -160,6 +161,8 @@ export async function resolveCdkCredentials(
   ioHost: IIoHost,
   region: string,
 ): Promise<CdkCredentialProvider> {
+  const profile = selectedAwsProfile();
+  if (profile) return profile.credentials;
   const { BaseCredentials } = await import("@aws-cdk/toolkit-lib");
   const config = await BaseCredentials.awsCliCompatible({
     defaultRegion: region,

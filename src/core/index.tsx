@@ -33,6 +33,7 @@ import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
 import { BedrockAgentImporter, type CoreBedrockAgentImporter } from "./project/bedrockAgentImport";
 import { FsProjectMigrator } from "./project/migrate";
+import { selectedAwsProfile } from "../awsProfile";
 import type { ProjectMigrator } from "../handlers/project/migrate/types";
 
 export type {
@@ -209,6 +210,8 @@ class ClientCache<T> {
   private readonly byCredentials = new WeakMap<object, Map<string, T>>();
 
   get(config: ClientConfig, create: (config: ClientConfig) => T): T {
+    const profile = selectedAwsProfile();
+    if (!config.credentials && profile) config = { ...config, credentials: profile.credentials };
     const clients = this.forCredentials(config.credentials);
     const key = configKey(config);
     let client = clients.get(key);

@@ -1,4 +1,5 @@
 export { withRegion } from "./withRegion";
+export { withProfile } from "./withProfile";
 export { withTuiOnEmptyFlagsAndArgs, withTuiWhenInteractive } from "./withTuiOnEmptyFlagsAndArgs";
 export { withJsonRenderer } from "./withJsonRenderer";
 export { withLogging } from "./withLogging";

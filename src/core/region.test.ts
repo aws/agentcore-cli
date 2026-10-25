@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { regionFlagFromArgv } from "./region";
+import { profileFlagFromArgv, regionFlagFromArgv } from "./region";
+
+test.each([
+  { argv: ["--profile", "development"], expected: "development" },
+  { argv: ["--profile=development"], expected: "development" },
+  { argv: ["--profile=first", "--profile", "last"], expected: "last" },
+  { argv: ["--", "--profile", "argument"], expected: undefined },
+  { argv: ["--profile"], expected: undefined },
+  { argv: [], expected: undefined },
+])("extracts the effective profile before command routing: %j", ({ argv, expected }) => {
+  expect(profileFlagFromArgv(["node", "agentcore", ...argv])).toBe(expected);
+});
 
 describe("regionFlagFromArgv", () => {
   test("extracts --region <value>", () => {
