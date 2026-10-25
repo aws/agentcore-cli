@@ -310,6 +310,45 @@ function stepMessages(events: ProjectEvent[]): string[] {
 }
 
 describe("CdkBackend.build", () => {
+  test.each(["build", "deploy"])(
+    "%s rejects unsupported build roles before synthesis or credential provisioning",
+    async (operation) => {
+      const input = await project();
+      input.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "worker",
+          build: "Container",
+          codeLocation: "app/worker",
+          entrypoint: "main.py",
+          containerBuildRoleArn: "arn:aws:iam::111122223333:role/Build",
+        }),
+      );
+      const packageDirectory = join(cdkDirectory(input), "node_modules", "@aws", "agentcore-cdk");
+      await mkdir(packageDirectory, { recursive: true });
+      await writeFile(
+        join(packageDirectory, "index.js"),
+        "exports.AgentEnvSpecSchema = { shape: {} };",
+      );
+      let provisioned = false;
+      // eslint-disable-next-line require-yield -- deployment must fail before this spy runs
+      const provisionCredentials: CredentialProvisioner = async function* () {
+        provisioned = true;
+        return {};
+      };
+      const subject = harness({ provisionCredentials });
+      const result =
+        operation === "build"
+          ? collect(subject.backend.build(input))
+          : collectDeploy(subject.backend.deploy(input, deployInput()));
+      await expect(result).rejects.toThrow(
+        "does not support externally managed container-build roles",
+      );
+      expect(provisioned).toBe(false);
+      expect(subject.commands).toEqual([]);
+      expect(subject.runs).toEqual([]);
+    },
+  );
+
   test("synthesizes into the assembly directory deploy reads", async () => {
     const input = await project();
     const subject = harness();

@@ -57,6 +57,7 @@ export function runtimeDocsTree(
   const protocol = input.protocol ?? "HTTP";
   const context = {
     name: input.name,
+    containerBuildRoles: Boolean(input.containerBuildRoleArn || input.containerBuildHandlerRoleArn),
     protocol,
     port: PROTOCOL_PORTS[protocol],
     entrypoint: docsRuntimeEntrypoint(input.language),
@@ -96,20 +97,30 @@ export function runtimeDocsTree(
 
 /**
  * The agentcore.json entry for a docs-only runtime, with starting values: a
- * CodeZip build on the latest runtime for the language. dev, build, and deploy
- * update build, runtimeVersion, and entrypoint from the code once it exists.
+ * CodeZip build on the latest runtime for the language, or a Container build
+ * when container-build roles are supplied. dev, build, and deploy update the
+ * build settings from the code once it exists.
  */
 export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
   const { name, language, ...infra } = input;
+  const container = Boolean(infra.containerBuildRoleArn || infra.containerBuildHandlerRoleArn);
   return {
     name,
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
-    build: "CodeZip",
-    runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
+    ...(container
+      ? { build: "Container" as const, dockerfile: "Dockerfile" }
+      : {
+          build: "CodeZip" as const,
+          runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
+        }),
     entrypoint: docsRuntimeEntrypoint(language),
     protocol: infra.protocol ?? "HTTP",
     ...(infra.description && { description: infra.description }),
     ...(infra.executionRoleArn && { executionRoleArn: infra.executionRoleArn }),
+    ...(infra.containerBuildRoleArn && { containerBuildRoleArn: infra.containerBuildRoleArn }),
+    ...(infra.containerBuildHandlerRoleArn && {
+      containerBuildHandlerRoleArn: infra.containerBuildHandlerRoleArn,
+    }),
     ...(infra.additionalPolicies?.length && { additionalPolicies: infra.additionalPolicies }),
     ...(infra.envVars?.length && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),

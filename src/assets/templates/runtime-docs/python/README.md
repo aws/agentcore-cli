@@ -24,6 +24,11 @@ modules can live anywhere inside it and be imported normally.
 
 ## Direct code deploy or container?
 
+{{#if containerBuildRoles}}
+This runtime uses externally managed container-build roles and requires a
+`Dockerfile`. Add it to this folder before running `dev`, `build`, or `deploy`.
+The role owner must provision the CodeBuild and build-handler permissions.
+{{else}}
 The CLI decides when you run `dev`, `build`, or `deploy`:
 
 - **No `Dockerfile` in this folder:** direct code deploy (CodeZip). The CLI
@@ -34,21 +39,29 @@ The CLI decides when you run `dev`, `build`, or `deploy`:
 - **A `Dockerfile` in this folder:** container deploy. The CLI builds your
   image and AgentCore runs it. See "Container builds" below.
 
+{{/if}}
+
 ## How `agentcore.json` follows your code
 
+{{#if containerBuildRoles}}
+`agentcore add runtime` registered this runtime as a Container build with
+externally managed build roles. Its `Dockerfile` controls the runtime version.
+The CLI preserves those roles when it updates build settings from your code.
+{{else}}
 `agentcore add runtime` registered this runtime with starting values: a
 direct code (CodeZip) build on Python {{versions.latestPython}} with entrypoint `main.py`. Each
 time you run `agentcore dev`, `agentcore build`, or `agentcore deploy`, the
 CLI reads your code, updates the runtime in `agentcore/agentcore.json`, and
 prints anything it changed:
+{{/if}}
 
 - **Build type:** adding a file named exactly `Dockerfile` to this folder
   switches the runtime to a container build, and the CLI says so. It never
   switches back on its own. To return to a direct code deploy, delete the
   `Dockerfile`, then open `agentcore/agentcore.json`. In the `runtimes` array,
   find the object whose `"name"` is `"{{name}}"`, set `"build": "CodeZip"`,
-  remove `"dockerfile"` (and `"buildContextPath"` or
-  `"customDockerBuildArgs"` if present), and add
+  remove `"dockerfile"`, `"buildContextPath"`, `"customDockerBuildArgs"`,
+  `"containerBuildRoleArn"`, and `"containerBuildHandlerRoleArn"` if present, and add
   `"runtimeVersion": "{{versions.latestPythonRuntime}}"` to that same object.
   The CLI removed `runtimeVersion` when it switched to a container build, and
   CodeZip requires it.

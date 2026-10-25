@@ -61,7 +61,15 @@ export function describeChange(name: string, change: RuntimeChange): string {
  */
 function codeZipRevertEdits(runtime: ProjectRuntime): string {
   const edits = ['set "build": "CodeZip"'];
-  const containerOnly = (["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const)
+  const containerOnly = (
+    [
+      "dockerfile",
+      "buildContextPath",
+      "customDockerBuildArgs",
+      "containerBuildRoleArn",
+      "containerBuildHandlerRoleArn",
+    ] as const
+  )
     .filter((field) => runtime[field] !== undefined)
     .map((field) => `"${field}"`);
   if (containerOnly.length > 0) edits.push(`remove ${containerOnly.join(", ")}`);

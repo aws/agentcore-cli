@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { cdkCompatibilityWarning, MINIMUM_COMPATIBLE_CDK_VERSION } from "./compatibility";
+import {
+  assertContainerBuildRoleSupport,
+  cdkCompatibilityWarning,
+  MINIMUM_COMPATIBLE_CDK_VERSION,
+} from "./compatibility";
+import { ProjectSpecSchema } from "../../../../projectSchemas/project";
 
 const tempDirectories: string[] = [];
 
@@ -22,6 +27,43 @@ async function cdkDirectoryWith(version: unknown): Promise<string> {
 }
 
 describe("cdkCompatibilityWarning", () => {
+  test("skips the build-role capability check for existing projects", () => {
+    const spec = ProjectSpecSchema.parse({ name: "example", version: 2 });
+    expect(() => assertContainerBuildRoleSupport("/missing/cdk", spec)).not.toThrow();
+  });
+
+  test.each([
+    ["neither role", [], false],
+    ["build role only", ["containerBuildRoleArn"], false],
+    ["handler role only", ["containerBuildHandlerRoleArn"], false],
+    ["both roles", ["containerBuildRoleArn", "containerBuildHandlerRoleArn"], true],
+  ] as const)("checks installed CDK support for %s", async (_label, fields, supported) => {
+    const directory = await cdkDirectoryWith("1.0.0");
+    await writeFile(
+      join(directory, "node_modules", "@aws", "agentcore-cdk", "index.js"),
+      `exports.AgentEnvSpecSchema = { shape: ${JSON.stringify(Object.fromEntries(fields.map((field) => [field, {}])))} };`,
+    );
+    const spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      runtimes: [
+        {
+          name: "example",
+          build: "Container",
+          codeLocation: "app",
+          entrypoint: "main.py",
+          containerBuildRoleArn: "arn:aws:iam::111122223333:role/Build",
+          containerBuildHandlerRoleArn: "arn:aws:iam::111122223333:role/Handler",
+        },
+      ],
+    });
+    if (supported) {
+      expect(() => assertContainerBuildRoleSupport(directory, spec)).not.toThrow();
+    } else {
+      expect(() => assertContainerBuildRoleSupport(directory, spec)).toThrow("does not support");
+    }
+  });
+
   test.each(["0.0.0-0", "1.0.0-rc.1", "1.0.0-rc.2"])(
     "warns for incompatible version %s",
     async (version) => {

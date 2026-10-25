@@ -112,6 +112,10 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     }),
     ...(infra.description && { description: infra.description }),
     ...(infra.executionRoleArn && { executionRoleArn: infra.executionRoleArn }),
+    ...(infra.containerBuildRoleArn && { containerBuildRoleArn: infra.containerBuildRoleArn }),
+    ...(infra.containerBuildHandlerRoleArn && {
+      containerBuildHandlerRoleArn: infra.containerBuildHandlerRoleArn,
+    }),
     ...(additionalPolicies.length > 0 && { additionalPolicies }),
     ...(scaffoldRuntimeInput.framework === "bma" && {
       bedrockManagedAgents: true,
