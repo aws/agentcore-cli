@@ -24,6 +24,28 @@ const networkConfig = {
   securityGroups: ["sg-0123456789abcdef0"],
 };
 describe("runtime custom validation", () => {
+  it("retains valid externally managed build roles across AWS partitions", () => {
+    for (const partition of ["aws", "aws-cn", "aws-us-gov"]) {
+      const roles = {
+        containerBuildRoleArn: `arn:${partition}:iam::111122223333:role/build/CodeBuild`,
+        containerBuildHandlerRoleArn: `arn:${partition}:iam::111122223333:role/build/Handler`,
+      };
+      expect(ProjectRuntimeSchema.parse({ ...containerAgent, ...roles })).toMatchObject(roles);
+    }
+  });
+  it("rejects invalid build role ARNs and build roles on CodeZip runtimes", () => {
+    for (const field of ["containerBuildRoleArn", "containerBuildHandlerRoleArn"]) {
+      expect(
+        ProjectRuntimeSchema.safeParse({ ...containerAgent, [field]: "not-an-arn" }).success,
+      ).toBe(false);
+      expect(
+        ProjectRuntimeSchema.safeParse({
+          ...codeZipAgent,
+          [field]: "arn:aws:iam::111122223333:role/Build",
+        }).success,
+      ).toBe(false);
+    }
+  });
   it("validates Dockerfile paths through the shared guard", () => {
     expect(isValidDockerfilePath(".docker/Dockerfile")).toBe(true);
     for (const path of ["../Dockerfile", "/Dockerfile", "docker/", "a//Dockerfile", "a;rm"]) {

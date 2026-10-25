@@ -4,7 +4,11 @@ import { isChinaRegion } from "../../../../core/partition";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
-import { AgentNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
+import {
+  AgentNameSchema,
+  ContainerBuildRoleArnSchema,
+  type EnvVar,
+} from "../../../../projectSchemas/runtime";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
   NetworkModeSchema,
@@ -148,6 +152,18 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         { group: ACCESS_AND_PERMISSIONS },
       ),
       flag(
+        "container-build-role-arn",
+        "existing CodeBuild execution role; selects a Container build (permissions managed externally)",
+        ContainerBuildRoleArnSchema.optional(),
+        { group: ACCESS_AND_PERMISSIONS },
+      ),
+      flag(
+        "container-build-handler-role-arn",
+        "existing build-handler Lambda role; selects a Container build (permissions managed externally)",
+        ContainerBuildRoleArnSchema.optional(),
+        { group: ACCESS_AND_PERMISSIONS },
+      ),
+      flag(
         "authorizer-type",
         "inbound authorizer type (AWS_IAM or CUSTOM_JWT)",
         RuntimeAuthorizerTypeSchema.optional(),
@@ -263,6 +279,8 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         name: flags.name,
         description: flags.description,
         executionRoleArn: flags["role-arn"],
+        containerBuildRoleArn: flags["container-build-role-arn"],
+        containerBuildHandlerRoleArn: flags["container-build-handler-role-arn"],
         additionalPolicies: flags["additional-policies"],
         envVars: toEnvironmentVariables(inputEnvironmentVariables),
         networkMode: flags["network-mode"],

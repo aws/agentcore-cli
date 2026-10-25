@@ -43,6 +43,10 @@ export const AgentTypeSchema = z.literal("AgentCoreRuntime");
 export type AgentType = z.infer<typeof AgentTypeSchema>;
 export const BuildTypeSchema = z.enum(["CodeZip", "Container"]);
 export type BuildType = z.infer<typeof BuildTypeSchema>;
+export const ContainerBuildRoleArnSchema = z
+  .string()
+  .max(2048)
+  .regex(/^arn:[^:]+:iam::[0-9]{12}:role\/[^\s]+$/, "Must be an IAM role ARN");
 export const EntrypointSchema = z
   .string()
   .min(1)
@@ -319,6 +323,8 @@ export const ProjectRuntimeSchema = z
     protocol: ProtocolModeSchema.optional(),
     requestHeaderAllowlist: RequestHeaderAllowlistSchema.optional(),
     executionRoleArn: z.string().optional(),
+    containerBuildRoleArn: ContainerBuildRoleArnSchema.optional(),
+    containerBuildHandlerRoleArn: ContainerBuildRoleArnSchema.optional(),
     additionalPolicies: z.array(z.string().min(1)).optional(),
     /** Enables the CDK-managed Bedrock Managed Agents session role for this runtime. */
     bedrockManagedAgents: z.boolean().optional(),
@@ -396,7 +402,13 @@ export const ProjectRuntimeSchema = z
         path: ["runtimeVersion"],
       });
     }
-    for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+    for (const field of [
+      "dockerfile",
+      "buildContextPath",
+      "customDockerBuildArgs",
+      "containerBuildRoleArn",
+      "containerBuildHandlerRoleArn",
+    ] as const) {
       if (data.build !== "Container" && data[field]) {
         ctx.addIssue({
           code: "custom",

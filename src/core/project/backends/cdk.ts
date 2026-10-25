@@ -10,7 +10,7 @@ import type {
   ResolvedDeployedResource,
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
-import { cdkCompatibilityWarning } from "./cdk/compatibility";
+import { assertContainerBuildRoleSupport, cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
   FsReadWriteJson,
@@ -208,6 +208,7 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    assertContainerBuildRoleSupport(cdkDir, project.spec);
   }
 
   private async *synthesize(
