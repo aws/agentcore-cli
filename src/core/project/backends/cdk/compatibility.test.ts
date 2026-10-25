@@ -32,18 +32,16 @@ describe("cdkCompatibilityWarning", () => {
     expect(() => assertContainerBuildRoleSupport("/missing/cdk", spec)).not.toThrow();
   });
 
-  test.each([false, true])("checks installed CDK build-role support: %s", async (supported) => {
-    const directory = await cdkDirectoryWith("1.0.0-rc.4");
+  test.each([
+    ["neither role", [], false],
+    ["build role only", ["containerBuildRoleArn"], false],
+    ["handler role only", ["containerBuildHandlerRoleArn"], false],
+    ["both roles", ["containerBuildRoleArn", "containerBuildHandlerRoleArn"], true],
+  ] as const)("checks installed CDK support for %s", async (_label, fields, supported) => {
+    const directory = await cdkDirectoryWith("1.0.0");
     await writeFile(
       join(directory, "node_modules", "@aws", "agentcore-cdk", "index.js"),
-      `exports.AgentEnvSpecSchema = { shape: ${JSON.stringify(
-        supported
-          ? {
-              containerBuildRoleArn: {},
-              containerBuildHandlerRoleArn: {},
-            }
-          : {},
-      )} };`,
+      `exports.AgentEnvSpecSchema = { shape: ${JSON.stringify(Object.fromEntries(fields.map((field) => [field, {}])))} };`,
     );
     const spec = ProjectSpecSchema.parse({
       name: "example",

@@ -42,9 +42,11 @@ node docs/patches/verify-container-build-roles.cjs original patched
 
 The script performs local synthesis and validation. It checks unchanged default
 templates, role ARNs, absence of generated IAM roles and policies when all roles
-are supplied, partial configuration, shared-project conflicts in both creation
-orders, separate VPC projects, and rejection of build roles on CodeZip runtimes.
-It does not deploy resources.
+are supplied, every partial role combination, shared-project conflicts in both
+creation orders, independent handler roles, separate VPC projects, and rejection
+of build roles on CodeZip runtimes. Partition checks verify ARN preservation;
+service availability still determines which regions can deploy a runtime. The
+script does not deploy resources.
 
 ## Permissions supplied by the role owner
 

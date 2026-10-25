@@ -35,9 +35,19 @@ describe("runtime custom validation", () => {
   });
   it("rejects invalid build role ARNs and build roles on CodeZip runtimes", () => {
     for (const field of ["containerBuildRoleArn", "containerBuildHandlerRoleArn"]) {
-      expect(
-        ProjectRuntimeSchema.safeParse({ ...containerAgent, [field]: "not-an-arn" }).success,
-      ).toBe(false);
+      for (const arn of [
+        "not-an-arn",
+        "arn:aws:iam::111122223333:user/Build",
+        "arn:aws:iam:us-east-1:111122223333:role/Build",
+        "arn:aws:iam::123:role/Build",
+        "arn:aws:iam::111122223333:role/Bad Role",
+        "arn:aws:iam::111122223333:role/",
+        `arn:aws:iam::111122223333:role/${"x".repeat(2048)}`,
+      ]) {
+        expect(ProjectRuntimeSchema.safeParse({ ...containerAgent, [field]: arn }).success).toBe(
+          false,
+        );
+      }
       expect(
         ProjectRuntimeSchema.safeParse({
           ...codeZipAgent,

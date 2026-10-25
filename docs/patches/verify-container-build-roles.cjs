@@ -30,14 +30,14 @@ const runtime = (name, overrides = {}) => ({
   codeLocation: "app",
   ...overrides,
 });
-function synth(library, runtimes) {
+function synth(library, runtimes, region = "us-east-1") {
   const props = library.transformAgentCoreJson(
     { name: "RoleTest", version: 2, runtimes },
     { projectRoot },
   );
   const app = new App();
   const stack = new Stack(app, "RoleTest", {
-    env: { account: "111122223333", region: "us-east-1" },
+    env: { account: "111122223333", region },
   });
   new library.AgentCoreApplication(stack, "Application", props);
   return Template.fromStack(stack).toJSON();
@@ -68,6 +68,21 @@ try {
   const shared = synth(patched, [runtime("first", roles), runtime("second", roles)]);
   assertNoIam(shared);
   assert.equal(resources(shared, "AWS::CodeBuild::Project").length, 1);
+  const differentHandlers = synth(patched, [
+    runtime("first", roles),
+    runtime("second", {
+      ...roles,
+      containerBuildHandlerRoleArn: "arn:aws:iam::111122223333:role/OtherHandler",
+    }),
+  ]);
+  assertNoIam(differentHandlers);
+  assert.equal(resources(differentHandlers, "AWS::CodeBuild::Project").length, 1);
+  assert.deepEqual(
+    resources(differentHandlers, "AWS::Lambda::Function")
+      .map((resource) => resource.Properties.Role)
+      .sort(),
+    [roles.containerBuildHandlerRoleArn, "arn:aws:iam::111122223333:role/OtherHandler"].sort(),
+  );
   for (const runtimes of [
     [
       runtime("first", roles),
@@ -81,13 +96,36 @@ try {
   ]) {
     assert.throws(() => synth(patched, runtimes), /Conflicting containerBuildRoleArn/);
   }
-  for (const partial of [
-    { containerBuildRoleArn: roles.containerBuildRoleArn },
-    { containerBuildHandlerRoleArn: roles.containerBuildHandlerRoleArn },
-  ]) {
+  const roleEntries = Object.entries(roles);
+  for (let mask = 1; mask < 7; mask++) {
+    const supplied = roleEntries.filter((_entry, index) => mask & (1 << index));
+    const partial = Object.fromEntries(supplied);
     assert.equal(
       resources(synth(patched, [runtime("partial", partial)]), "AWS::IAM::Role").length,
-      2,
+      3 - supplied.length,
+    );
+  }
+  // Check ARN preservation only. CDK may warn that a resource is unavailable in a region.
+  for (const [partition, region] of [
+    ["aws-cn", "cn-north-1"],
+    ["aws-us-gov", "us-gov-west-1"],
+  ]) {
+    const partitionRoles = Object.fromEntries(
+      roleEntries.map(([key, arn]) => [key, arn.replace("arn:aws:", `arn:${partition}:`)]),
+    );
+    const template = synth(patched, [runtime("partition", partitionRoles)], region);
+    assertNoIam(template);
+    assert.equal(
+      resources(template, "AWS::CodeBuild::Project")[0].Properties.ServiceRole,
+      partitionRoles.containerBuildRoleArn,
+    );
+    assert.equal(
+      resources(template, "AWS::Lambda::Function")[0].Properties.Role,
+      partitionRoles.containerBuildHandlerRoleArn,
+    );
+    assert.equal(
+      resources(template, "AWS::BedrockAgentCore::Runtime")[0].Properties.RoleArn,
+      partitionRoles.executionRoleArn,
     );
   }
   const vpc = {
