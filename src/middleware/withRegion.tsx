@@ -1,4 +1,4 @@
-import { RegionExplicitKey, RegionKey } from "../handlers/keys";
+import { ProfileKey, RegionExplicitKey, RegionKey } from "../handlers/keys";
 import { resolveRegion } from "../core/region";
 import { type Middleware } from "../router";
 
@@ -17,7 +17,7 @@ export function withRegion(): Middleware {
     children: () => h.children(),
     handle: async (ctx, flags, args) => {
       const explicit = ctx.value(RegionKey) !== undefined;
-      const region = await resolveRegion(ctx.value(RegionKey));
+      const region = await resolveRegion(ctx.value(RegionKey), ctx.value(ProfileKey));
       await h.handle(
         ctx.withValue(RegionKey, region).withValue(RegionExplicitKey, explicit),
         flags,

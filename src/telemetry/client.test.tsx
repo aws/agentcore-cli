@@ -1,6 +1,6 @@
 import { test, describe, beforeEach, afterEach, expect } from "bun:test";
 import { join } from "node:path";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os, { tmpdir } from "node:os";
 import { DefaultTelemetryClient } from "./client";
 import { createFileLogger, type Logger } from "../logging";
@@ -477,6 +477,52 @@ describe("OtelHistogramSink", () => {
     expect(receivedBodies).toHaveLength(0);
     expect(await readFile(auditFilePath, "utf8")).toContain("cli.command_run");
     await rm(auditFilePath, { force: true });
+  });
+
+  test.each([
+    { flags: ["--profile", "china"] },
+    { flags: ["--profile=china"] },
+    { flags: ["--profile=ambient", "--profile", "china"] },
+  ])("a selected China profile suppresses network export: %j", async ({ flags }) => {
+    const directory = await mkdtemp(join(tmpdir(), "telemetry-profile-"));
+    const keys = ["AWS_CONFIG_FILE", "AWS_REGION", "AWS_DEFAULT_REGION"] as const;
+    const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    process.env.AWS_CONFIG_FILE = join(directory, "config");
+    delete process.env.AWS_REGION;
+    delete process.env.AWS_DEFAULT_REGION;
+    await writeFile(process.env.AWS_CONFIG_FILE, "[profile china]\nregion = cn-northwest-1\n");
+    const client = new DefaultTelemetryClient({
+      logger,
+      sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      globalConfigAccessor: new TestGlobalConfigAccessor({
+        initialConfigData: {
+          ...DEFAULT_GLOBAL_CONFIG,
+          telemetry: {
+            enabled: true,
+            audit: false,
+            endpoint: `http://localhost:${testCollector.port}`,
+          },
+        },
+      }),
+      argv: ["node", "agentcore", "status", ...flags],
+      currentVersion: PACKAGE_VERSION,
+    });
+    try {
+      await client
+        .createMetricEvent("cli.command_run", {
+          exit_reason: "success",
+          command_path: "/agentcore",
+        })
+        .emit(100);
+      await client.shutdown();
+      expect(receivedBodies).toHaveLength(0);
+    } finally {
+      for (const key of keys) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("a China region suppresses network export even when telemetry is enabled", async () => {

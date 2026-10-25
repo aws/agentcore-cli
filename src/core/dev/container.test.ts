@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { withAwsProfile } from "../../awsProfile";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -265,6 +266,69 @@ describe("ContainerDevRunner", () => {
     await expect(missingCredentials).rejects.toThrow(
       "Unable to resolve AWS credentials for the container",
     );
+    expect(missing.calls).toHaveLength(0);
+  });
+
+  test("an explicit profile mounts custom shared files outside the AWS directory", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const config = join(root, "custom-config");
+    const credentials = join(root, "custom-credentials");
+    await writeFile(config, "[profile selected]\nregion = eu-west-1\n");
+    await writeFile(
+      credentials,
+      "[selected]\naws_access_key_id = selected-key\naws_secret_access_key = selected-secret\n",
+    );
+    const { calls, runner } = harness({
+      processEnv: { AWS_CONFIG_FILE: config, AWS_SHARED_CREDENTIALS_FILE: credentials },
+    });
+    await withAwsProfile("selected", () => collect(runner.run(input(root, projectRuntime))));
+    const run = calls.find((call) => call.command[1] === "run")!;
+    expect(run.command).toContain(`${config}:/aws-profile/config:ro`);
+    expect(run.command).toContain(`${credentials}:/aws-profile/credentials:ro`);
+    expect(parseEnv(run.envFile!.contents)).toMatchObject({
+      AWS_PROFILE: "selected",
+      AWS_CONFIG_FILE: "/aws-profile/config",
+      AWS_SHARED_CREDENTIALS_FILE: "/aws-profile/credentials",
+    });
+    await expect(
+      withAwsProfile("selected", () =>
+        collect(
+          harness({ processEnv: { AWS_CONFIG_FILE: join(root, "missing") } }).runner.run(
+            input(root, projectRuntime),
+          ),
+        ),
+      ),
+    ).rejects.toThrow("AWS_CONFIG_FILE does not reference");
+  });
+
+  test("an explicit profile overrides ambient keys and profile in the container", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const awsDirectory = join(root, ".aws");
+    await mkdir(awsDirectory);
+    const { calls, runner } = harness({
+      awsDirectory,
+      processEnv: {
+        AWS_PROFILE: "ambient",
+        AWS_ACCESS_KEY_ID: "ambient-key",
+        AWS_SECRET_ACCESS_KEY: "ambient-secret",
+      },
+    });
+    await withAwsProfile("selected", () => collect(runner.run(input(root, projectRuntime))));
+    expect(parseEnv(commandCall(calls, "run").envFile!.contents)).toMatchObject({
+      AWS_PROFILE: "selected",
+    });
+    expect(parseEnv(commandCall(calls, "run").envFile!.contents)).not.toHaveProperty(
+      "AWS_ACCESS_KEY_ID",
+    );
+    expect(parseEnv(commandCall(calls, "run").envFile!.contents)).not.toHaveProperty(
+      "AWS_SECRET_ACCESS_KEY",
+    );
+    const missing = harness({ awsDirectory: join(root, "missing") });
+    await expect(
+      withAwsProfile("selected", () => collect(missing.runner.run(input(root, projectRuntime)))),
+    ).rejects.toBeInstanceOf(InvalidEnvironmentError);
     expect(missing.calls).toHaveLength(0);
   });
 

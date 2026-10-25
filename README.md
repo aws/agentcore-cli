@@ -115,11 +115,18 @@ non-interactively. `--help` on any command lists its subcommands and flags, and 
 
 Global flags, available on every command:
 
-| Flag       | Purpose                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| `--region` | AWS region. Resolved from this flag, then `AWS_REGION`, `AWS_DEFAULT_REGION`, the active profile, then `us-east-1`. |
-| `--json`   | Emit JSON instead of opening the TUI.                                                                               |
-| `--debug`  | Debug logging.                                                                                                      |
+| Flag        | Purpose                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `--region`  | AWS region. Resolved from this flag, then `AWS_REGION`, `AWS_DEFAULT_REGION`, the active profile, then `us-east-1`. |
+| `--profile` | Named AWS shared configuration profile. Overrides `AWS_PROFILE` and ambient static credentials for this command.    |
+| `--json`    | Emit JSON instead of opening the TUI.                                                                               |
+| `--debug`   | Debug logging.                                                                                                      |
+
+For example, `agentcore --profile development harness list --json` uses the `development`
+profile's credentials and region. `--region` and the region environment variables still take
+precedence over the profile's region. Profile selection also applies to deployment and child
+tools; it does not modify your shell environment. Without `--profile`, the usual AWS credential
+chain is unchanged. Configure and sign in to SSO profiles with the AWS CLI before using them.
 
 ## Extending the CDK app
 

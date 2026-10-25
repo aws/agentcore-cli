@@ -6,6 +6,7 @@ import {
 import { MalformedServiceResponseError, ProjectStateError } from "../../../../errors/errors";
 import type { CreateCloudFormationClient } from "../../../types";
 import type { CdkCredentialProvider } from "./toolkit";
+import { selectedAwsProfile } from "../../../../awsProfile";
 
 const BOOTSTRAP_STACK_NAME = "CDKToolkit";
 const BOOTSTRAP_VERSION_OUTPUT = "BootstrapVersion";
@@ -122,13 +123,16 @@ export async function probeBootstrap(
   }
 }
 
-/** Omitting `credentials` resolves through the default AWS SDK provider chain. */
+/** Use explicit target credentials, the selected profile, or the default AWS SDK chain. */
 export const resolveAwsAccount = async (
   region: string,
   credentials?: CdkCredentialProvider,
 ): Promise<string> => {
   const { GetCallerIdentityCommand, STSClient } = await import("@aws-sdk/client-sts");
-  const client = new STSClient({ credentials, region });
+  const client = new STSClient({
+    credentials: credentials ?? selectedAwsProfile()?.credentials,
+    region,
+  });
   try {
     const { Account } = await client.send(new GetCallerIdentityCommand({}));
     if (!Account) {

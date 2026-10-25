@@ -226,6 +226,7 @@ the platform for production AI agents
 **Options**
 
 - `--region <region>`: AWS region
+- `--profile <profile>`: AWS shared configuration profile
 - `--debug`: debug logging (default: false)
 - `--json`: JSON output (default: false)
 - `-V, --version`: display the CLI version

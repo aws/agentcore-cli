@@ -7,13 +7,14 @@ import { createIdentityHandler } from "./identity/index.tsx";
 import { createMemoryHandler } from "./memory/index.tsx";
 import { createPaymentHandler } from "./payment/index.tsx";
 import { createRuntimeHandler } from "./runtime/index.tsx";
-import { DebugKey, JsonKey, RegionKey } from "./keys.tsx";
+import { DebugKey, JsonKey, ProfileKey, RegionKey } from "./keys.tsx";
 import { createConfigHandler } from "./config/";
 import { createProjectHandlers } from "./project/index.ts";
 import { createUpdateHandler } from "./update/index.tsx";
 import { renderTui } from "../tui";
 import {
   withRegion,
+  withProfile,
   withJsonRenderer,
   withLogging,
   withGlobalConfigAccessor,
@@ -68,11 +69,14 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // --endpoint-url intentionally omitted: temporarily disabled (inconsistent
   // override behavior). EndpointKey + its plumbing stay defined so re-enabling
   // is adding it back here.
-  root.groupFlags(RegionKey, DebugKey, JsonKey);
+  root.groupFlags(RegionKey, ProfileKey, DebugKey, JsonKey);
 
   // Resolve the effective AWS region (flag -> env -> config file) and pin it on
   // the context for every command beneath the root.
   root.use(withRegion());
+
+  // Credential providers such as STS assume-role also use the effective region.
+  root.use(withProfile());
 
   // Pin a JSON renderer wired to the configured stdout so leaf handlers can emit
   // machine-readable output without touching the process streams directly.

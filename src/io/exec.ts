@@ -5,6 +5,7 @@ import { constants as osConstants } from "node:os";
 import { createInterface } from "node:readline";
 import crossSpawn from "cross-spawn";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
+import { awsProfileEnvironment, selectedAwsProfile } from "../awsProfile";
 
 const isWindows = process.platform === "win32";
 const KILL_GRACE_MS = 2000;
@@ -33,7 +34,10 @@ export class ProcessFailedError extends AgentCoreCLIError {
 function spawnCommand(executable: string, args: string[], options: SpawnOptions): ChildProcess {
   // Keep arguments separate. cross-spawn resolves Windows wrappers and applies
   // the extra escaping required when a node_modules/.bin shim forwards them.
-  return crossSpawn(executable, args, options);
+  return crossSpawn(executable, args, {
+    ...options,
+    env: selectedAwsProfile() ? awsProfileEnvironment(options.env) : options.env,
+  });
 }
 
 /** Returns true if running `tool` with probeArgs (`--version` by default) exits 0. */

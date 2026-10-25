@@ -10,6 +10,7 @@ import {
   type AgentActionGroup,
   type AgentVersion,
 } from "@aws-sdk/client-bedrock-agent";
+import { selectedAwsProfile } from "../../../awsProfile";
 import {
   InputValidationError,
   MalformedServiceResponseError,
@@ -31,7 +32,7 @@ const ALIAS_ARN_PATTERN = /^arn:[^:]+:bedrock:[^:]+:[^:]+:agent-alias\/([^/]+)\/
 export class BedrockAgentSnapshotLoader {
   constructor(
     private readonly createClient: CreateBedrockAgentClient = (region) =>
-      new BedrockAgentClient({ region }),
+      new BedrockAgentClient({ region, credentials: selectedAwsProfile()?.credentials }),
   ) {}
 
   async load(input: {

@@ -15,7 +15,7 @@ import { FileSystemSink } from "./fileSystemSink";
 import path from "path";
 import { OtelHistogramSink } from "./otelSink";
 import { isChinaContext } from "../core/partition";
-import { regionFlagFromArgv, resolveRegion } from "../core/region";
+import { profileFlagFromArgv, regionFlagFromArgv, resolveRegion } from "../core/region";
 
 export type DefaultTelemetryClientConfig = {
   logger: Logger;
@@ -101,7 +101,10 @@ export class DefaultTelemetryClient implements TelemetryClient {
     // resolved through the same chain the CLI itself uses (--region flag, env
     // vars, shared config file). The audit file sink above is unaffected (it
     // only writes locally).
-    const resolvedRegion = await resolveRegion(regionFlagFromArgv(this.argv));
+    const resolvedRegion = await resolveRegion(
+      regionFlagFromArgv(this.argv),
+      profileFlagFromArgv(this.argv),
+    );
     if (
       globalConfig.telemetry.enabled &&
       !telemetryDisabledByEnv() &&
