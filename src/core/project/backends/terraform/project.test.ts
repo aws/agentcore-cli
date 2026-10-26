@@ -78,7 +78,11 @@ test("scaffolds native HCL with a direct project file reference and portable art
   expect(await readFile(join(root, "outputs.tf"), "utf8")).toContain(
     "module.application.project_resources",
   );
-  expect((await readdir(root, { recursive: true })).sort()).toEqual([
+  // readdir reports the platform's separator; the assertion is about the tree.
+  const tree = (await readdir(root, { recursive: true })).map((entry) =>
+    entry.replaceAll("\\", "/"),
+  );
+  expect(tree.sort()).toEqual([
     ".targets",
     ".targets/test",
     ".targets/test/deployment.tfvars.json",
