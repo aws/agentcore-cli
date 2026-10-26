@@ -12,7 +12,7 @@ const mockExistsSync = vi.fn();
 const mockDetectContainerRuntime = vi.fn();
 const mockWaitForServerReady = vi.fn();
 
-vi.mock('child_process', () => ({
+vi.mock('../../../../lib/utils/subprocess', () => ({
   spawnSync: (...args: unknown[]) => mockSpawnSync(...args),
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));

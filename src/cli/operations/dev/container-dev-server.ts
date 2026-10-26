@@ -1,11 +1,12 @@
 import { CONTAINER_INTERNAL_PORT, DOCKERFILE_NAME, getDockerfilePath } from '../../../lib';
 import { getCustomBuildArgs, getUvBuildArgs } from '../../../lib/packaging/build-args';
 import { ensureBuildContextDockerignore } from '../../../lib/packaging/build-context-dockerignore';
+import { spawn, spawnSync } from '../../../lib/utils/subprocess';
 import { detectContainerRuntime } from '../../external-requirements/detect';
 import { A2A_DEFAULT_PORT, A2A_PORT_ENV, MCP_DEFAULT_PORT } from './constants';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { waitForServerReady } from './utils';
-import { type ChildProcess, spawn, spawnSync } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';

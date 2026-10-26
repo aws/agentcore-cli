@@ -3,7 +3,7 @@
  * Detects Docker, Podman, or Finch for container operations.
  */
 import { CONTAINER_RUNTIMES, type ContainerRuntime } from '../../lib';
-import { checkSubprocess, isWindows, runSubprocessCapture } from '../../lib';
+import { resolveExecutable, runSubprocessCapture } from '../../lib';
 
 export type { ContainerRuntime } from '../../lib';
 
@@ -26,8 +26,7 @@ export interface DetectionResult {
 export async function detectContainerRuntime(): Promise<DetectionResult> {
   for (const runtime of CONTAINER_RUNTIMES) {
     // Check if binary exists
-    const exists = isWindows ? await checkSubprocess('where', [runtime]) : await checkSubprocess('which', [runtime]);
-    if (!exists) continue;
+    if (resolveExecutable(runtime) === null) continue;
 
     // Verify with --version
     const result = await runSubprocessCapture(runtime, ['--version']);

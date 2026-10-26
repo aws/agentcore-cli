@@ -44,13 +44,6 @@ async function withErrorContext<T>(context: string, operation: () => Promise<T>)
 }
 
 /**
- * Command to execute the CDK app.
- * Matches the "app" command in cdk.json.
- * Requires the CDK project to be built first (tsc).
- */
-const CDK_APP_COMMAND = 'node';
-
-/**
  * Thin wrapper around @aws-cdk/toolkit-lib for AgentCore CLI.
  *
  * Provides a simplified interface to the CDK Toolkit, pre-configured
@@ -85,7 +78,9 @@ export class CdkToolkitWrapper {
    * Points to the compiled JS file in dist/ (requires tsc build first).
    */
   getCdkAppCommand(): string {
-    return `${CDK_APP_COMMAND} ${CDK_APP_ENTRY}`;
+    // The toolkit runs this command through a shell in the project directory. Use the
+    // absolute path of the Node binary running the CLI for consistent Windows lookup.
+    return `"${process.execPath}" ${CDK_APP_ENTRY}`;
   }
 
   /**

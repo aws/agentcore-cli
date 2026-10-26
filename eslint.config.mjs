@@ -141,6 +141,24 @@ export default tseslint.config(
     },
   },
   prettier,
+  // Spawn only through src/lib/utils/subprocess.ts so bare command lookup stays consistent
+  // across platforms and uses explicit PATH entries on Windows.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/utils/subprocess.ts', 'src/assets/**', '**/*.test.ts', '**/*.test.tsx', '**/test-utils/**'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: ['child_process', 'node:child_process', 'cross-spawn'].map(name => ({
+            name,
+            allowTypeImports: true,
+            message: 'Use spawn/spawnSync or the run*/check* helpers from src/lib/utils/subprocess.ts.',
+          })),
+        },
+      ],
+    },
+  },
   // Relaxed rules for test files
   {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/test-utils/**', 'integ-tests/**', 'browser-tests/**'],

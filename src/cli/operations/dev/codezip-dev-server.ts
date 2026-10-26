@@ -1,10 +1,9 @@
-import { getShellArgs, getShellCommand, getVenvExecutable, isWindows } from '../../../lib/utils/platform';
-import { runSubprocessCapture } from '../../../lib/utils/subprocess';
+import { getVenvExecutable } from '../../../lib/utils/platform';
+import { runSubprocessCapture, spawnSync } from '../../../lib/utils/subprocess';
 import type { ProtocolMode } from '../../../schema';
 import { A2A_PORT_ENV } from './constants';
 import { DevServer, type LogLevel, type SpawnConfig } from './dev-server';
 import { convertEntrypointToModule } from './utils';
-import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { delimiter, join } from 'path';
 
@@ -156,14 +155,6 @@ export class CodeZipDevServer extends DevServer {
     if (!isPython) {
       // TS entrypoint is already a file path like "main.ts" — pass it straight to tsx.
       const entryFile = module.split(':')[0] ?? module;
-      if (isWindows) {
-        return {
-          cmd: getShellCommand(),
-          args: getShellArgs(`npx tsx watch ${entryFile}`),
-          cwd: directory,
-          env,
-        };
-      }
       return {
         cmd: 'npx',
         args: ['tsx', 'watch', entryFile],

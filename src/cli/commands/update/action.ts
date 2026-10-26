@@ -1,5 +1,5 @@
+import { runSubprocess } from '../../../lib/utils/subprocess';
 import { PACKAGE_VERSION, getDistroConfig } from '../../constants';
-import { execSync } from 'child_process';
 
 const distroConfig = getDistroConfig();
 
@@ -88,7 +88,8 @@ export async function handleUpdate(checkOnly: boolean): Promise<UpdateResult> {
   }
 
   try {
-    execSync(distroConfig.installCommand, { stdio: 'inherit' });
+    const [installBinary, ...installArgs] = distroConfig.installCommand.trim().split(/\s+/);
+    await runSubprocess(installBinary!, installArgs, { stdio: 'inherit' });
     return { status: 'updated', currentVersion: PACKAGE_VERSION, latestVersion };
   } catch {
     return { status: 'update-failed', currentVersion: PACKAGE_VERSION, latestVersion };

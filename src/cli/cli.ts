@@ -1,4 +1,5 @@
 import { getOrCreateInstallationId } from '../lib/schemas/io/global-config';
+import { disableCwdExecutableSearch } from '../lib/utils/subprocess';
 import { registerAdd } from './commands/add';
 import { registerAddSkill } from './commands/add/skill-command';
 import { registerAddTool } from './commands/add/tool-command';
@@ -139,6 +140,10 @@ export function registerCommands(program: Command) {
 }
 
 export const main = async (argv: string[]) => {
+  // Keep Windows executable lookup on explicit PATH entries, including for child processes
+  // spawned by third-party libraries.
+  disableCwdExecutableSearch();
+
   // Register global cleanup handlers once at startup
   setupAltScreenCleanup();
 

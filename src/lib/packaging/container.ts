@@ -1,12 +1,12 @@
 import type { AgentEnvSpec } from '../../schema';
 import { CONTAINER_RUNTIMES, DOCKERFILE_NAME, ONE_GB } from '../constants';
 import { PackagingError } from '../errors/types';
+import { resolveExecutable, spawnSync } from '../utils/subprocess';
 import { getCustomBuildArgs, getUvBuildArgs } from './build-args';
 import { resolveBuildContext } from './build-context';
 import { ensureBuildContextDockerignore } from './build-context-dockerignore';
 import { resolveCodeLocation } from './helpers';
 import type { ArtifactResult, PackageOptions, RuntimePackager } from './types/packaging';
-import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 
 /**
@@ -15,8 +15,7 @@ import { existsSync } from 'fs';
  */
 function detectContainerRuntimeSync(): string | null {
   for (const runtime of CONTAINER_RUNTIMES) {
-    const result = spawnSync('which', [runtime], { stdio: 'pipe' });
-    if (result.status === 0) {
+    if (resolveExecutable(runtime) !== null) {
       const versionResult = spawnSync(runtime, ['--version'], { stdio: 'pipe' });
       if (versionResult.status === 0) return runtime;
     }

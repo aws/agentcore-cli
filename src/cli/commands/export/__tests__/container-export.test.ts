@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('node:child_process', async importOriginal => ({
+vi.mock('../../../../lib/utils/subprocess', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  execSync: vi.fn(),
+  runSubprocessCaptureSync: vi.fn(() => ({ stdout: '', stderr: '', code: 0, signal: null })),
 }));
 
 describe('exported container Dockerfiles', () => {

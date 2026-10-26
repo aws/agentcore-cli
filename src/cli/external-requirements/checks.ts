@@ -1,7 +1,7 @@
 /**
  * External dependency version checks.
  */
-import { checkSubprocess, isWindows, runSubprocessCapture } from '../../lib';
+import { checkSubprocess, isWindows, resolveExecutable, runSubprocessCapture } from '../../lib';
 import type { AgentCoreProjectSpec, TargetLanguage } from '../../schema';
 import { detectContainerRuntime } from './detect';
 import { AWS_CLI_MIN_VERSION, NODE_MIN_VERSION, formatSemVer, parseSemVer, semVerGte } from './versions';
@@ -399,8 +399,8 @@ export async function checkCreateDependencies(
 async function checkBinaryAvailable(binary: string): Promise<boolean> {
   // Try multiple detection strategies
   const checks = [
-    // Primary: use 'where' on Windows, 'which' on Unix
-    () => (isWindows ? checkSubprocess('where', [binary]) : checkSubprocess('which', [binary])),
+    // Primary: look it up on PATH (never the current directory)
+    () => Promise.resolve(resolveExecutable(binary) !== null),
     // Fallback: try running with --version
     () => checkSubprocess(binary, ['--version']),
     // Fallback: try running with -v

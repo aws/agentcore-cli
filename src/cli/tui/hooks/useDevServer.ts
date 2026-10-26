@@ -1,5 +1,6 @@
 import { findConfigRoot } from '../../../lib';
 import { DevServerConnectionError, DevServerError } from '../../../lib/errors/types';
+import { spawn } from '../../../lib/utils/subprocess';
 import type { AgentCoreProjectSpec, ProtocolMode } from '../../../schema';
 import { detectContainerRuntime } from '../../external-requirements';
 import { DevLogger } from '../../logging/dev-logger';
@@ -26,7 +27,6 @@ import {
   waitForPort,
 } from '../../operations/dev';
 import { formatMcpToolList } from '../../operations/dev/utils';
-import { spawn } from 'child_process';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type ServerStatus = 'starting' | 'running' | 'error' | 'stopped';

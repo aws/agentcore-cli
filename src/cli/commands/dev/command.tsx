@@ -7,6 +7,7 @@ import {
   getWorkingDirectory,
 } from '../../../lib';
 import { failureResult } from '../../../lib/result.js';
+import { spawn } from '../../../lib/utils/subprocess';
 import { COMMAND_DESCRIPTIONS } from '../../constants';
 import { getErrorMessage } from '../../errors';
 import { detectContainerRuntime } from '../../external-requirements';
@@ -38,7 +39,6 @@ import { runCliDeploy } from '../deploy/progress';
 import { parseHeaderFlags } from '../shared/header-utils';
 import { launchTuiDevScreenWithPicker, runBrowserMode } from './browser-mode';
 import type { Command } from '@commander-js/extra-typings';
-import { spawn } from 'child_process';
 import { render } from 'ink';
 import path from 'node:path';
 import React from 'react';

@@ -1,6 +1,7 @@
 import { isWindows } from '../../../lib/utils/platform';
+import { spawn, spawnSync } from '../../../lib/utils/subprocess';
 import type { DevConfig } from './config';
-import { type ChildProcess, execSync, spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'system';
 
@@ -128,7 +129,7 @@ export abstract class DevServer {
     }
     try {
       if (isWindows) {
-        execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+        spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
       } else {
         process.kill(-pid, signal);
       }

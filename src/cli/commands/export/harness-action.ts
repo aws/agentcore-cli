@@ -1,5 +1,6 @@
 import { AgentAlreadyExistsError, ConfigIO, setEnvVar } from '../../../lib';
 import { ExportHarnessError, ValidationError } from '../../../lib/errors/types';
+import { runSubprocessCaptureSync } from '../../../lib/utils/subprocess';
 import { AgentNameSchema } from '../../../schema';
 import type { AgentEnvSpec, BuildType, Credential, HarnessSpec } from '../../../schema';
 import { getErrorMessage } from '../../errors';
@@ -23,7 +24,6 @@ import { fetchHarnessSpecByArn } from './fetch-harness-spec';
 import { isPathSkill, mapHarnessToExportConfig } from './harness-mapper';
 import { resolveHarnessContext } from './harness-resolver';
 import type { ExportHarnessOptions, ExportNote, ResolvedHarnessContext } from './types';
-import { execSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve, sep } from 'node:path';
 
@@ -208,9 +208,7 @@ export async function handleExportHarness(
       // 5b. Generate uv.lock for Container builds (required by the Dockerfile's uv sync step)
       if (renderConfig.buildType === 'Container') {
         log('Generating uv.lock for container build');
-        try {
-          execSync('uv lock', { cwd: agentDir, stdio: 'pipe' });
-        } catch {
+        if (runSubprocessCaptureSync('uv', ['lock'], { cwd: agentDir }).code !== 0) {
           // uv not installed or failed — add a note and continue; user can run manually
           context.exportNotes.push({
             category: 'uv.lock missing — run `uv lock` before deploying',

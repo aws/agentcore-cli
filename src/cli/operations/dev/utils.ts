@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from '../../../lib/utils/subprocess';
 import { createConnection, createServer } from 'net';
 
 /** Check if a port is available on a specific host */

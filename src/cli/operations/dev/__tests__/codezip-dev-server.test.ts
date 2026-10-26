@@ -1,7 +1,7 @@
+import { spawnSync } from '../../../../lib/utils/subprocess';
 import { CodeZipDevServer } from '../codezip-dev-server';
 import type { DevConfig } from '../config';
 import type { DevServerCallbacks, DevServerOptions } from '../dev-server';
-import { spawnSync } from 'child_process';
 import { EventEmitter } from 'events';
 import { existsSync } from 'fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,11 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockSpawn = vi.fn();
 const mockRunSubprocessCapture = vi.fn();
 const platformState = vi.hoisted(() => ({ isWindows: false }));
-vi.mock('child_process', () => ({
+vi.mock('../../../../lib/utils/subprocess', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
   spawnSync: vi.fn(() => ({ status: 0, stdout: Buffer.from(''), stderr: Buffer.from('') })),
-}));
-vi.mock('../../../../lib/utils/subprocess', () => ({
   runSubprocessCapture: (...args: unknown[]) => mockRunSubprocessCapture(...args),
 }));
 
@@ -169,7 +167,7 @@ describe('CodeZipDevServer spawn config', () => {
     expect(env.LOCAL_DEV).toBe('1');
   });
 
-  it('TypeScript HTTP: runs npx through cmd on Windows', async () => {
+  it('TypeScript HTTP: spawns npx directly on Windows (no cmd.exe, no cwd lookup)', async () => {
     platformState.isWindows = true;
     const config: DevConfig = {
       agentName: 'TsAgent',
@@ -185,8 +183,8 @@ describe('CodeZipDevServer spawn config', () => {
     await server.start();
 
     expect(mockSpawn).toHaveBeenCalledWith(
-      'cmd',
-      ['/c', 'npx tsx watch src/main.ts'],
+      'npx',
+      ['tsx', 'watch', 'src/main.ts'],
       expect.objectContaining({ cwd: 'C:\\project\\app', detached: false })
     );
   });

@@ -6,6 +6,8 @@ export {
   runSubprocess,
   checkSubprocess,
   runSubprocessCapture,
+  resolveExecutable,
+  disableCwdExecutableSearch,
   type SubprocessOptions,
   type SubprocessResult,
 } from './subprocess';

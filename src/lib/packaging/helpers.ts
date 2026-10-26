@@ -2,7 +2,7 @@ import type { RuntimeVersion } from '../../schema';
 import { CONFIG_DIR } from '../constants';
 import { ArtifactSizeError, MissingDependencyError, MissingProjectFileError } from '../errors/types';
 import { isWindows } from '../utils/platform';
-import { checkSubprocess, checkSubprocessSync, runSubprocess } from '../utils/subprocess';
+import { checkSubprocess, checkSubprocessSync, resolveExecutable, runSubprocess } from '../utils/subprocess';
 import type { PackageOptions } from './types/packaging';
 import type { Zippable } from 'fflate';
 import { zipSync } from 'fflate';
@@ -211,7 +211,7 @@ export async function copySourceTree(srcDir: string, destination: string): Promi
 
 export async function ensureBinaryAvailable(binary: string, installHint?: string): Promise<void> {
   const checks: (() => Promise<boolean>)[] = [
-    () => (isWindows ? checkSubprocess('where', [binary]) : checkSubprocess('which', [binary])),
+    () => Promise.resolve(resolveExecutable(binary) !== null),
     () => checkSubprocess(binary, ['--version']),
     () => checkSubprocess(binary, ['-v']),
   ];
@@ -421,7 +421,7 @@ export function copySourceTreeSync(srcDir: string, destination: string): void {
 
 export function ensureBinaryAvailableSync(binary: string, installHint?: string): void {
   const checks: (() => boolean)[] = [
-    () => (isWindows ? checkSubprocessSync('where', [binary]) : checkSubprocessSync('which', [binary])),
+    () => resolveExecutable(binary) !== null,
     () => checkSubprocessSync(binary, ['--version']),
     () => checkSubprocessSync(binary, ['-v']),
   ];

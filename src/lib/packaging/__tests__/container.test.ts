@@ -5,8 +5,11 @@ const mockSpawnSync = vi.fn();
 const mockExistsSync = vi.fn();
 const mockResolveCodeLocation = vi.fn();
 
-vi.mock('child_process', () => ({
+vi.mock('../../utils/subprocess', () => ({
   spawnSync: (...args: unknown[]) => mockSpawnSync(...args),
+  // Detection no longer shells out to `which`; derive PATH lookup from the same mock.
+  resolveExecutable: (cmd: string) =>
+    (mockSpawnSync('which', [cmd]) as { status: number }).status === 0 ? `/usr/bin/${cmd}` : null,
 }));
 
 vi.mock('fs', () => ({

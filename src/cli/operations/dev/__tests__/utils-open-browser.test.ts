@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockUnref = vi.fn();
 const mockSpawn = vi.fn().mockReturnValue({ unref: mockUnref });
 
-vi.mock('child_process', () => ({
+vi.mock('../../../../lib/utils/subprocess', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 

@@ -1,4 +1,5 @@
 import { isMacOS, isWindows } from '../../../../lib/utils/platform';
+import { spawn } from '../../../../lib/utils/subprocess';
 import { getErrorMessage } from '../../../errors';
 import type { OAuthTokenResult, ResourceInfo, TokenFetchResult } from '../../../operations/fetch-access';
 import {
@@ -9,7 +10,6 @@ import {
   listGateways,
   listHarnesses,
 } from '../../../operations/fetch-access';
-import { spawn } from 'node:child_process';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -199,8 +199,8 @@ export function useFetchAccessFlow() {
     const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     child.on('error', () => {});
-    child.stdin.write(token);
-    child.stdin.end();
+    child.stdin?.write(token);
+    child.stdin?.end();
 
     setCopied(true);
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);

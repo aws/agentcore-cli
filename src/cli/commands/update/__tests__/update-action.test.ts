@@ -1,12 +1,12 @@
 import { compareVersions, fetchLatestVersion, handleUpdate } from '../action.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockExecSync } = vi.hoisted(() => ({
-  mockExecSync: vi.fn(),
+const { mockRunSubprocess } = vi.hoisted(() => ({
+  mockRunSubprocess: vi.fn(),
 }));
 
-vi.mock('child_process', () => ({
-  execSync: mockExecSync,
+vi.mock('../../../../lib/utils/subprocess', () => ({
+  runSubprocess: mockRunSubprocess,
 }));
 
 vi.mock('../../../constants.js', () => ({
@@ -104,7 +104,7 @@ describe('fetchLatestVersion', () => {
 describe('handleUpdate', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    mockExecSync.mockReset();
+    mockRunSubprocess.mockReset();
   });
 
   it('returns up-to-date when versions match', async () => {
@@ -140,7 +140,7 @@ describe('handleUpdate', () => {
     const result = await handleUpdate(true);
 
     expect(result.status).toBe('update-available');
-    expect(mockExecSync).not.toHaveBeenCalled();
+    expect(mockRunSubprocess).not.toHaveBeenCalled();
   });
 
   it('returns updated after successful install', async () => {
@@ -148,12 +148,14 @@ describe('handleUpdate', () => {
       ok: true,
       json: () => Promise.resolve({ version: '2.0.0' }),
     } as Response);
-    mockExecSync.mockReturnValue(undefined);
+    mockRunSubprocess.mockResolvedValue(undefined);
 
     const result = await handleUpdate(false);
 
     expect(result.status).toBe('updated');
-    expect(mockExecSync).toHaveBeenCalledWith('npm install -g @aws/agentcore@latest', { stdio: 'inherit' });
+    expect(mockRunSubprocess).toHaveBeenCalledWith('npm', ['install', '-g', '@aws/agentcore@latest'], {
+      stdio: 'inherit',
+    });
   });
 
   it('returns update-failed when install throws', async () => {
@@ -161,9 +163,7 @@ describe('handleUpdate', () => {
       ok: true,
       json: () => Promise.resolve({ version: '2.0.0' }),
     } as Response);
-    mockExecSync.mockImplementation(() => {
-      throw new Error('install failed');
-    });
+    mockRunSubprocess.mockRejectedValue(new Error('install failed'));
 
     const result = await handleUpdate(false);
 

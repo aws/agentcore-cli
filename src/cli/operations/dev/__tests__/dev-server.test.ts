@@ -4,8 +4,9 @@ import { EventEmitter } from 'events';
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSpawn = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('../../../../lib/utils/subprocess', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
+  spawnSync: vi.fn(),
   execSync: vi.fn(),
 }));
 vi.mock('../../../../lib/utils/platform', () => ({
