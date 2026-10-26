@@ -1999,6 +1999,38 @@ test("Terraform projects keep add/remove and route build, deploy, and discovery 
   expect(calls).toEqual(["build:Terraform", "deploy:recall", "invoke", "status"]);
 });
 
+test("refuses to add a resource the Terraform PoC cannot deploy", async () => {
+  await inTempDirectory();
+  const subject = new FsProjectManager({
+    logger: createSilentLogger(),
+    identity: new TestIdentityClient(),
+    enableTransactionSearch: async () => {},
+  });
+  const { project } = await runCreate(subject, {
+    name: "example",
+    managedBy: "Terraform",
+    skipInstall: true,
+    skipGit: true,
+  });
+  await expect(
+    runAdd(subject, project, {
+      resourceType: "memory",
+      resourceConfig: {
+        name: "recall",
+        eventExpiryDuration: 30,
+        strategies: [],
+        encryptionKeyArn: "arn:aws:kms:us-west-2:111122223333:key/abc",
+      },
+    }),
+  ).rejects.toThrow("memories[recall].encryptionKeyArn");
+  // The rejected resource must not reach agentcore.json: a committed one fails every
+  // later build and deploy.
+  const spec = JSON.parse(
+    await readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf8"),
+  );
+  expect(spec.memories ?? []).toEqual([]);
+});
+
 describe("FsProjectManager.deploy", () => {
   type DeployCall = { project: Project; input: DeployBackendInput };
 

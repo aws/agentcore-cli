@@ -125,7 +125,11 @@ export class TerraformBackend implements ProjectBackend {
           region: target.region,
           resourceDescription: "all AgentCore application resources for this target",
         });
-        if (!approved) throw new ProjectStateError("Terraform teardown was cancelled.");
+        // --json cannot prompt, so the refusal has to name the flag that proceeds.
+        if (!approved)
+          throw new ProjectStateError(
+            "Terraform teardown was cancelled. Pass --yes to remove this target's resources.",
+          );
       }
       yield {
         type: "step",

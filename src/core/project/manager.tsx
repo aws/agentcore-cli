@@ -89,6 +89,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { TerraformBackend } from "./backends/terraform";
+import { TerraformProjectValidator } from "./backends/terraform/preflight";
 import { TerraformProjectWriter } from "./backends/terraform/project";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
@@ -973,6 +974,13 @@ export class FsProjectManager implements ProjectManager {
         throw new ProjectStateError(z.prettifyError(newSpecParseResult.error), {
           cause: newSpecParseResult.error,
         });
+      // Reject before the spec lands on disk: the Terraform PoC covers a subset of
+      // resources, and a committed unsupported one makes every later build and deploy
+      // fail until the customer hand-edits agentcore.json. Throwing here reuses the
+      // cleanup below, so the scaffolded files go too. `remove` stays unvalidated so a
+      // project that already holds an unsupported resource can still drop it.
+      if (newSpecParseResult.data.managedBy === "Terraform")
+        new TerraformProjectValidator().validate({ ...project, spec: newSpecParseResult.data });
       newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(

@@ -191,7 +191,7 @@ export class TerraformState {
   async lock(): Promise<() => Promise<void>> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const path = join(this.directory, ".agentcore-operation.lock");
-    try {
+    const claim = async () => {
       const handle = await open(path, "wx", 0o600);
       try {
         await handle.writeFile(
@@ -200,13 +200,42 @@ export class TerraformState {
       } finally {
         await handle.close();
       }
+    };
+    try {
+      await claim();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      throw new ProjectStateError(
-        `Another operation owns ${path}. If its process has stopped, remove the lock file and retry.`,
-      );
+      // A killed CLI never runs its own release, so without a takeover a single crash
+      // leaves the project unable to build or deploy until the customer finds this file.
+      // The local backend keeps state on one host, so an owner pid that no longer exists
+      // can only be a dead operation. Terraform's own state lock still guards the state.
+      if (await this.lockOwnerRunning(path))
+        throw new ProjectStateError(
+          `Another operation owns ${path}. Wait for it to finish, then retry.`,
+        );
+      await rm(path, { force: true });
+      await claim().catch(() => {
+        throw new ProjectStateError(
+          `Another operation claimed ${path} while this one recovered a stale lock. Retry.`,
+        );
+      });
     }
     return () => rm(path, { force: true });
+  }
+
+  /** Whether the process that wrote the lock file is still alive on this host. */
+  private async lockOwnerRunning(path: string): Promise<boolean> {
+    const owner = await readFile(path, "utf8")
+      .then((text) => z.object({ pid: z.number().int().positive() }).safeParse(JSON.parse(text)))
+      .catch(() => undefined);
+    // An unreadable or pid-less lock predates this check; leave it to the operator.
+    if (!owner?.success) return true;
+    try {
+      process.kill(owner.data.pid, 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    }
   }
 
   private async read() {

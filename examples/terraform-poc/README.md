@@ -133,3 +133,9 @@ node "$CLI" deploy --yes --region "$AWS_REGION" --json
 Keep the generated directory after a failed apply or teardown so the operation can be retried. Do not edit `managedBy` on an existing CDK deployment to attempt a migration.
 
 Earlier Terraform PoCs used flat resources or separate editable roots under `terraform/<target>/`. This implementation refuses those layouts instead of moving state or customer edits automatically. Existing deployments require an explicit migration before using the shared root.
+
+## Known limitations
+
+- A project that declares a Cedar policy deploys to one target per account. Policy names are account-unique in the service, and both this module and the CDK L3 construct send the policy name from `agentcore.json` without the project and target prefix that every other resource gets. A second target reports `CreatePolicy ... Policy with the same name already exists` after creating everything else, leaving that target partially deployed. Give each target its own project name, or drop `policyEngines[].policies` from the second target's project.
+- Teardown leaves the CloudWatch log groups the service and Lambda create for a runtime and a gateway target. Terraform never owned them, so removing the resources keeps their logs; delete the groups yourself when the logs are no longer wanted.
+- `backend "local"` in the generated `providers.tf` points at `.targets/default/terraform.tfstate`. The CLI overrides that per target, so running `terraform` directly in the root reads and writes the **default** target's state whatever target you deployed last. Pass `-backend-config=path=...` and `TF_DATA_DIR` for another target, or run the commands through `agentcore deploy --target`.

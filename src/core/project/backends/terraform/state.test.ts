@@ -155,6 +155,34 @@ test("one source operation lock excludes every target", async () => {
   await unlockProduction();
 });
 
+test("recovers the lock a crashed operation left behind", async () => {
+  const { state } = await fixture();
+  const lockPath = join(state.directory, ".agentcore-operation.lock");
+  await mkdir(state.directory, { recursive: true });
+  // Max int32: a valid pid argument that no platform's pid_max can reach.
+  await writeFile(lockPath, JSON.stringify({ pid: 2147483647, startedAt: "2026-01-01T00:00:00Z" }));
+  const unlock = await state.lock();
+  expect(JSON.parse(await readFile(lockPath, "utf8")).pid).toBe(process.pid);
+  await unlock();
+});
+
+test("keeps a lock whose owner is still running", async () => {
+  const { state } = await fixture();
+  await mkdir(state.directory, { recursive: true });
+  await writeFile(
+    join(state.directory, ".agentcore-operation.lock"),
+    JSON.stringify({ pid: process.pid, startedAt: "2026-01-01T00:00:00Z" }),
+  );
+  await expect(state.lock()).rejects.toThrow("Wait for it to finish");
+});
+
+test("leaves an unreadable lock to the operator", async () => {
+  const { state } = await fixture();
+  await mkdir(state.directory, { recursive: true });
+  await writeFile(join(state.directory, ".agentcore-operation.lock"), "not json");
+  await expect(state.lock()).rejects.toThrow("Wait for it to finish");
+});
+
 test.each(["default", "production", "modules", "assets"])(
   "refuses an earlier editable root at %s even without state",
   async (name) => {
