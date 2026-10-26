@@ -499,6 +499,7 @@ export class Router implements Handler, MiddlewareProvider, DefaultHandlerProvid
       commandArgs.length === 1 &&
       (commandArgs[0] === "--version" || commandArgs[0] === "-V")
     ) {
+      recordCommandPath(ctx.withValue(PathKey, `/${this.cmdName}/version`));
       process.stdout.write(`${this.cliVersion}\n`);
       // The same exit shape Commander's own version option produces, so the
       // error layer maps it to a silent exit 0.

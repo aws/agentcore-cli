@@ -951,28 +951,61 @@ test.each([
   });
 });
 
-test("--version on a versioned router prints the version and maps to exit 0", async () => {
-  const root = new Router("agentcore").version("9.9.9");
-  root.handler(
-    createHandler({
-      name: "noop",
-      description: "",
-      flags: [],
-      handle: async () => {},
-    }),
-  );
+test.each(["--version", "-V"])(
+  "$flag on a versioned router records its command path and maps to exit 0",
+  async (flag) => {
+    const recordedMetrics: { attributes: Record<string, any> }[] = [];
+    const telemetryClient = new DefaultTelemetryClient({
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      currentVersion: "1.0.0",
+      metricSinks: [
+        {
+          getName: () => "InMemorySink",
+          send: (_metricName, _value, attributes) => {
+            recordedMetrics.push({ attributes });
+          },
+          shutdown: async () => {},
+        },
+      ],
+    });
 
-  // Commander surfaces the version exit through exitOverride as a
-  // CommanderError; the error layer maps its exitCode 0 through unchanged.
-  const error = await root.route(["node", "agentcore", "--version"]).then(
-    () => {
-      throw new Error("expected --version to exit via CommanderError");
-    },
-    (e: unknown) => e,
-  );
-  expect(error).toMatchObject({ code: "commander.version", message: "9.9.9" });
-  expect(AgentCoreCLIError.fromError(error).exitCode).toBe(0);
-});
+    const root = new Router("agentcore").version("9.9.9");
+    root.handler(
+      createHandler({
+        name: "noop",
+        description: "",
+        flags: [],
+        handle: async () => {},
+      }),
+    );
+    const commandRunMetricEvent = telemetryClient.createMetricEvent("cli.command_run", {
+      exit_reason: "success",
+    });
+    const ctx = ValueContext.EmptyContext().withValue(
+      CommandRunMetricEventKey,
+      commandRunMetricEvent,
+    );
+
+    // Commander surfaces the version exit through exitOverride as a
+    // CommanderError; the error layer maps its exitCode 0 through unchanged.
+    const error = await root.route(["node", "agentcore", flag], ctx).then(
+      () => {
+        throw new Error("expected --version to exit via CommanderError");
+      },
+      (e: unknown) => e,
+    );
+    expect(error).toMatchObject({ code: "commander.version", message: "9.9.9" });
+    expect(AgentCoreCLIError.fromError(error).exitCode).toBe(0);
+    await commandRunMetricEvent.emit(100);
+    expect(recordedMetrics).toHaveLength(1);
+    expect(recordedMetrics[0]!.attributes).toMatchObject({
+      command_path: "/agentcore/version",
+      exit_reason: "success",
+    });
+  },
+);
 
 test("a versioned router declares --version in root help and still lists subcommands by name", async () => {
   const root = new Router("agentcore").version("9.9.9");
