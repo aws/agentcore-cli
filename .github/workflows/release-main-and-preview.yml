@@ -1,290 +1,150 @@
-name: Release v0
+# Publish v0.x releases to @aws/agentcore to npm under the v0-latest dist tag
+name: release-publish
 
 on:
   workflow_dispatch:
-    inputs:
-      bump_type:
-        description: 'v0 version bump'
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-      changelog:
-        description: 'Changelog entry (optional)'
-        required: false
-        type: string
-      dry_run:
-        description: 'Dry run — create PR but skip npm publish'
-        required: false
-        type: boolean
-        default: false
-      cdk_dist_tag:
-        description: '@aws/agentcore-cdk npm dist-tag to pin the vended CDK template to (default: latest)'
-        required: false
-        type: string
-        default: 'latest'
-
-permissions:
-  contents: write
-  pull-requests: write
-
-env:
-  AGENTCORE_TELEMETRY_DISABLED: '1'
+  push:
+    branches: [main, v0.x]
 
 jobs:
-  # ═══════════════════════════════════════════════════════════════════
-  # Step 1 — Prepare v0 release PR
-  # ═══════════════════════════════════════════════════════════════════
-  prepare-release:
-    name: Prepare Release
-    runs-on: aws-release-4-core
+  check-release:
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      pull-requests: read
     outputs:
-      version: ${{ steps.bump.outputs.version }}
-      branch: ${{ steps.create-pr.outputs.branch }}
-
+      is_release: ${{ steps.check.outputs.is_release }}
     steps:
-      - name: Checkout v0 branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0
+      - name: Check for a merged v0 release PR
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" != main && "$GITHUB_REF_NAME" != v0.x ]]; then
+            echo "::error::v0 releases must run from main or v0.x, not $GITHUB_REF_NAME"
+            exit 1
+          fi
+          IS_RELEASE=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            | jq -r --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF_NAME" --arg sha "$GITHUB_SHA" '
+                any(.[][];
+                  .user.id == 282717993 and
+                  .merged_at != null and
+                  .merge_commit_sha == $sha and
+                  .head.repo.full_name == $repository and
+                  .base.ref == $ref and
+                  (.head.ref | startswith("release/v"))
+                )')
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$IS_RELEASE" != true ]]; then
+            echo "::error::Manual recovery must select the v0 branch while its tip is a merged automation-created release PR"
+            exit 1
+          fi
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
 
+  verify:
+    needs: check-release
+    if: needs.check-release.outputs.is_release == 'true'
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    env:
+      AGENTCORE_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 20.x
-
-      - name: Verify v0 release branch and version
-        env:
-          BRANCH_NAME: ${{ github.ref_name }}
-          BUMP_TYPE: ${{ github.event.inputs.bump_type }}
+          node-version: 22.x
+          cache: npm
+      - uses: astral-sh/setup-uv@v7
+      - name: Configure git for tests
         run: |
-          if [[ "$BUMP_TYPE" != "patch" && "$BUMP_TYPE" != "minor" ]]; then
-            echo "❌ v0 releases only support patch or minor bumps, not $BUMP_TYPE."
-            exit 1
-          fi
-          if [[ "$BRANCH_NAME" != "main" && "$BRANCH_NAME" != "v0.x" ]]; then
-            echo "❌ v0 releases must run from main or v0.x, not $BRANCH_NAME."
-            exit 1
-          fi
-          VERSION=$(node -p "require('./package.json').version")
-          if [[ "$VERSION" != 0.* ]]; then
-            echo "❌ Expected a v0 package version, found $VERSION."
-            exit 1
-          fi
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Configure git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
       - run: npm ci
-
-      - name: Bump v0 version
-        id: bump
-        env:
-          BUMP_TYPE: ${{ github.event.inputs.bump_type }}
-          CHANGELOG_INPUT: ${{ github.event.inputs.changelog }}
+      - name: Validate v0 version and CDK pin
         run: |
-          BUMP_CMD="npx tsx scripts/bump-version.ts $BUMP_TYPE"
-          if [ -n "$CHANGELOG_INPUT" ]; then
-            BUMP_CMD="$BUMP_CMD --changelog \"$CHANGELOG_INPUT\""
+          node - <<'NODE'
+          const semver = require("semver");
+          const cliVersion = require("./package.json").version;
+          const cdkVersion = require("./src/assets/cdk/package.json").dependencies["@aws/agentcore-cdk"];
+          if (!semver.valid(cliVersion) || semver.major(cliVersion) !== 0 || semver.prerelease(cliVersion)) {
+            throw new Error(`Expected a stable v0 CLI version, found ${cliVersion}`);
+          }
+          if (!semver.valid(cdkVersion) || semver.major(cdkVersion) !== 0) {
+            throw new Error(`Expected an exact v0 CDK pin, found ${cdkVersion}`);
+          }
+          NODE
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:unit
+      - name: Resolve v0 release
+        id: release
+        env:
+          REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            TAG_SHA=$(git rev-list -n 1 "v$VERSION")
+            if [[ "$TAG_SHA" != "$REF" ]]; then
+              echo "::error::v$VERSION already points to $TAG_SHA, not $REF"
+              exit 1
+            fi
           fi
-          eval $BUMP_CMD
-
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "📦 v0 version: $NEW_VERSION"
-
-      - name: Sync vended CDK version
-        env:
-          CDK_DIST_TAG: ${{ github.event.inputs.cdk_dist_tag }}
-        run: |
-          npx tsx scripts/sync-vended-cdk.ts --tag "${CDK_DIST_TAG:-latest}"
-          npx prettier --write src/assets/cdk/package.json
-
-      - name: Regenerate JSON schema
-        run: |
-          npm run build
-          node scripts/generate-schema.mjs
-          npx prettier --write schemas/
-
-      - name: Update snapshots
-        run: npm run test:update-snapshots
-
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v3
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Pack CLI
+        run: npm pack --ignore-scripts --silent
+      - uses: actions/upload-artifact@v7
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          name: release-tarball
+          path: aws-agentcore-*.tgz
+          if-no-files-found: error
 
-      - name: Create release branch and PR
-        id: create-pr
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: |
-          BRANCH_NAME="release/v${VERSION}"
-          TITLE="Release v$VERSION"
-          COMMIT_MSG="chore: bump v0 to $VERSION"
-          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
-          git ls-remote --exit-code --heads origin "$BRANCH_NAME" && git push origin --delete "$BRANCH_NAME" || true
-          git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" && git branch -D "$BRANCH_NAME" || true
-
-          git checkout -b "$BRANCH_NAME"
-          git add -A
-          git commit -m "$COMMIT_MSG"
-          git push origin "$BRANCH_NAME"
-
-          # Build PR body
-          BODY="## $TITLE
-
-          | Package | Version | npm Tag |
-          |---------|---------|---------|"
-          BODY="$BODY
-          | @aws/agentcore | $VERSION | v0-latest |
-
-          ### Checklist
-          - [ ] Review CHANGELOG.md
-          - [ ] All CI checks passing
-          - [ ] Merge this PR before approving the publish step"
-
-          gh pr create \
-            --base "${{ github.ref_name }}" \
-            --head "$BRANCH_NAME" \
-            --label release \
-            --title "$TITLE" \
-            --body "$BODY"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # Step 2 — Manual approval gate
-  # ═══════════════════════════════════════════════════════════════════
-  release-approval:
-    name: Release Approval
-    needs: [prepare-release]
-    runs-on: aws-release-4-core
-    environment:
-      name: npm-publish-approval
-    steps:
-      - name: Approval checkpoint
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          echo "📦 v0 version: $VERSION (npm tag: v0-latest)"
-          echo ""
-          echo "⚠️  MANUAL APPROVAL REQUIRED"
-          echo ""
-          echo "Before approving:"
-          echo "1. Verify PR CI checks are passing"
-          echo "2. Merge the release PR to the selected v0 branch"
-          echo "3. Verify the PR is merged"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # Step 3 — Verify PR merged
-  # ═══════════════════════════════════════════════════════════════════
-  verify-merge:
-    name: Verify PR Merged
-    needs: [prepare-release, release-approval]
-    if: ${{ !inputs.dry_run }}
-    runs-on: aws-release-4-core
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0
-
-      - name: Verify v0 version
-        env:
-          EXPECTED: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          git fetch origin ${{ github.ref_name }}
-          ACTUAL=$(git show origin/${{ github.ref_name }}:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "❌ Release PR not merged yet!"
-            echo "Expected v0 version: $EXPECTED, Got: $ACTUAL"
-            exit 1
-          fi
-          echo "✅ v0 version verified: $ACTUAL"
-
-  # ═══════════════════════════════════════════════════════════════════
-  # Step 4 — Publish v0 to npm (tag: v0-latest)
-  # ═══════════════════════════════════════════════════════════════════
-  publish-main:
-    name: Publish v0 (@v0-latest)
-    needs: [prepare-release, verify-merge]
-    runs-on: aws-release-4-core
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
     environment:
       name: npm-publish
       url: https://www.npmjs.com/package/@aws/agentcore
     permissions:
-      id-token: write
       contents: write
-
+      id-token: write
     steps:
-      - name: Checkout v0 branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0
-
       - uses: actions/setup-node@v7
         with:
           node-version: 22.x
-          registry-url: 'https://registry.npmjs.org'
-
-      - run: npm install -g npm@11.5.1
-      - run: npm ci
-      - run: npm run build
-
-      - name: Publish to npm
-        run: npm publish --access public --provenance --tag v0-latest
-
-      - name: Tag and release
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - uses: actions/download-artifact@v8
         with:
-          tag_name: v${{ needs.prepare-release.outputs.version }}
-          name: AgentCore CLI v${{ needs.prepare-release.outputs.version }}
-          generate_release_notes: true
-          prerelease: false
-          make_latest: false
-          body: |
-            ## Installation
-
-            ```bash
-            npm install -g @aws/agentcore@${{ needs.prepare-release.outputs.version }}
-            ```
-
-  # ═══════════════════════════════════════════════════════════════════
-  # Summary
-  # ═══════════════════════════════════════════════════════════════════
-  summary:
-    name: Release Summary
-    needs: [prepare-release, publish-main]
-    if: always() && !cancelled()
-    runs-on: aws-release-4-core
-    steps:
-      - name: Summary
+          name: release-tarball
+      - name: Publish to npm
         env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          MAIN_STATUS: ${{ needs.publish-main.result }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
-          echo "## Release Summary"
-          echo ""
-          echo "| Package | Version | npm Tag | Status |"
-          echo "|---------|---------|---------|--------|"
-          echo "| @aws/agentcore | $VERSION | v0-latest | $MAIN_STATUS |"
+          set -euo pipefail
+          if npm view "@aws/agentcore@$VERSION" version >/dev/null 2>&1; then
+            echo "@aws/agentcore@$VERSION is already on npm, skipping publish"
+          else
+            npm publish "aws-agentcore-$VERSION.tgz" --provenance --access public --tag v0-latest
+          fi
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" --clobber "aws-agentcore-$VERSION.tgz"
+          else
+            gh release create "v$VERSION" --target "$REF" --title "v$VERSION" \
+              --generate-notes --latest=false "aws-agentcore-$VERSION.tgz"
+          fi

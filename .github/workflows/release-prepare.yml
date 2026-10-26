@@ -1,19 +1,123 @@
-# Placeholder. The real release-prepare workflow lives on the refactor branch.
-#
-# GitHub only lists a workflow in the Actions UI and the dispatch API if a file with its name exists on
-# the default branch. Selecting "refactor" in the branch picker runs refactor's release-prepare.yml with
-# refactor's inputs. Selecting "main" runs this file, which refuses so nothing happens to main.
-#
-# Delete this file when refactor lands on main and brings the real workflow with it.
+# Opens a v0 maintenance release PR. Merging the PR triggers release-main-and-preview.yml.
 name: release-prepare
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: v0 version bump
+        required: true
+        type: choice
+        options: [patch, minor]
+      changelog:
+        description: Changelog entry (optional; otherwise generated from commits)
+        required: false
+        type: string
 
 jobs:
-  refuse:
-    runs-on: ubuntu-latest
+  prepare:
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      contents: read
     steps:
-      - run: |
-          echo "::error::release-prepare only exists on the refactor branch. Re-run with 'refactor' selected in the branch picker."
-          exit 1
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20.x
+      - uses: astral-sh/setup-uv@v7
+      - name: Validate v0 release
+        env:
+          BRANCH: ${{ github.ref_name }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          if [[ "$BRANCH" != main && "$BRANCH" != v0.x ]]; then
+            echo "::error::v0 releases must run from main or v0.x, not $BRANCH"
+            exit 1
+          fi
+          if [[ "$BUMP" != patch && "$BUMP" != minor ]]; then
+            echo "::error::v0 releases only support patch or minor bumps"
+            exit 1
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ ! "$VERSION" =~ ^0\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Expected a stable v0 package version, found $VERSION"
+            exit 1
+          fi
+      - run: npm ci
+      - name: Pin v0 CDK
+        id: cdk
+        run: |
+          set -euo pipefail
+          if ! CDK_VERSION=$(npm view '@aws/agentcore-cdk@alpha' version); then
+            echo "::error::Publish a v0 CDK version under @aws/agentcore-cdk@alpha before preparing this release"
+            exit 1
+          fi
+          if [[ ! "$CDK_VERSION" =~ ^0\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::@aws/agentcore-cdk@alpha must resolve to a v0 version, found $CDK_VERSION"
+            exit 1
+          fi
+          npx tsx scripts/sync-vended-cdk.ts --to "$CDK_VERSION"
+          npx prettier --write src/assets/cdk/package.json
+          echo "version=$CDK_VERSION" >> "$GITHUB_OUTPUT"
+      - name: Bump v0 version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$CHANGELOG" ]]; then
+            npx tsx scripts/bump-version.ts "$BUMP" --changelog "$CHANGELOG"
+          else
+            npx tsx scripts/bump-version.ts "$BUMP"
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ ! "$VERSION" =~ ^0\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Expected a stable v0 release version, found $VERSION"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION is already released"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Regenerate JSON schema
+        run: |
+          npm run build
+          node scripts/generate-schema.mjs
+          npx prettier --write schemas/
+      - name: Update snapshots
+        run: npm run test:update-snapshots
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          CDK_VERSION: ${{ steps.cdk.outputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$VERSION"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            echo "::error::$BRANCH already exists; review that release branch before preparing another"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): v$VERSION"
+          git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          gh pr create --base "$GITHUB_REF_NAME" --head "$BRANCH" --label release \
+            --title "chore(release): v$VERSION" \
+            --body "Merging publishes \`@aws/agentcore@$VERSION\` under npm \`v0-latest\` and creates the \`v$VERSION\` GitHub release.
+
+          Vended CDK version: \`@aws/agentcore-cdk@$CDK_VERSION\` (resolved from \`alpha\`).
+
+          Review the changelog, generated files, and CI results before merging."
