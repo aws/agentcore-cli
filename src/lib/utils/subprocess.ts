@@ -12,6 +12,12 @@ import { accessSync, constants as fsConstants, statSync } from 'fs';
 import path from 'path';
 import { PassThrough } from 'stream';
 
+type WithoutShell<T> = Omit<T, 'shell'> & { shell?: false };
+type SafeSpawnOptions = WithoutShell<SpawnOptions>;
+type SafeSpawnSyncOptions = WithoutShell<SpawnSyncOptions>;
+type SafeSpawnSyncOptionsWithBufferEncoding = WithoutShell<SpawnSyncOptionsWithBufferEncoding>;
+type SafeSpawnSyncOptionsWithStringEncoding = WithoutShell<SpawnSyncOptionsWithStringEncoding>;
+
 /**
  * Subprocess utilities for AgentCore.
  *
@@ -22,9 +28,9 @@ import { PassThrough } from 'stream';
  * and are ONLY safe in CDK bundling contexts (which run in a subprocess). They are
  * intentionally NOT exported from the public API to prevent accidental UI freezes.
  *
- * Nothing spawns through a shell. cross-spawn resolves Windows .cmd/.bat wrappers and
- * escapes arguments so a metacharacter in an argument (an `&` in a path, say) reaches
- * the child intact instead of being interpreted by cmd.exe.
+ * Callers pass argument arrays and cannot request shell execution. On Windows, cross-spawn
+ * invokes cmd.exe only when required for .cmd/.bat wrappers and escapes the command and each
+ * argument before doing so.
  *
  * All spawning in the CLI must go through {@link spawn} / {@link spawnSync} (or the helpers
  * built on them). Windows searches the current directory before PATH when resolving a bare
@@ -123,6 +129,12 @@ function withSafeEnv(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv | un
   return { ...(env ?? process.env), [NO_CWD_EXE_SEARCH_ENV]: '1' };
 }
 
+function assertShellDisabled(options: { shell?: unknown }): void {
+  if (options.shell !== undefined && options.shell !== false) {
+    throw new TypeError('Shell execution is not supported by the subprocess wrapper.');
+  }
+}
+
 /**
  * Disable current-directory executable search for this process and everything it spawns
  * (including third-party libraries such as the CDK toolkit, which spawn through a shell).
@@ -173,12 +185,17 @@ function notFoundChildProcess(command: string, args: readonly string[]): ChildPr
  * Drop-in replacement for `child_process.spawn` that never runs an executable from the
  * current directory. See the module comment.
  */
-export function spawn(command: string, args: readonly string[] = [], options: SpawnOptions = {}): ChildProcess {
+export function spawn(command: string, args: readonly string[] = [], options: SafeSpawnOptions = {}): ChildProcess {
+  assertShellDisabled(options);
   const resolved = resolveExecutable(command, { env: options.env });
   if (resolved === null && process.platform === 'win32') {
     return notFoundChildProcess(command, args);
   }
-  return crossSpawn(resolved ?? command, args, { ...options, env: withSafeEnv(options.env) });
+  return crossSpawn(resolved ?? command, args, {
+    ...options,
+    shell: false,
+    env: withSafeEnv(options.env),
+  });
 }
 
 /**
@@ -188,18 +205,19 @@ export function spawn(command: string, args: readonly string[] = [], options: Sp
 export function spawnSync(
   command: string,
   args: readonly string[],
-  options: SpawnSyncOptionsWithStringEncoding
+  options: SafeSpawnSyncOptionsWithStringEncoding
 ): SpawnSyncReturns<string>;
 export function spawnSync(
   command: string,
   args?: readonly string[],
-  options?: SpawnSyncOptionsWithBufferEncoding | SpawnSyncOptions
+  options?: SafeSpawnSyncOptionsWithBufferEncoding | SafeSpawnSyncOptions
 ): SpawnSyncReturns<Buffer>;
 export function spawnSync(
   command: string,
   args: readonly string[] = [],
-  options: SpawnSyncOptions = {}
+  options: SafeSpawnSyncOptions = {}
 ): SpawnSyncReturns<string | Buffer> {
+  assertShellDisabled(options);
   const resolved = resolveExecutable(command, { env: options.env });
   if (resolved === null && process.platform === 'win32') {
     const empty = options.encoding && options.encoding !== 'buffer' ? '' : Buffer.alloc(0);
@@ -215,6 +233,7 @@ export function spawnSync(
   }
   return crossSpawn.sync(resolved ?? command, args, {
     ...options,
+    shell: false,
     env: withSafeEnv(options.env),
   }) as SpawnSyncReturns<string | Buffer>;
 }

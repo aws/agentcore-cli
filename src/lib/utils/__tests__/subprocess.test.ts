@@ -304,3 +304,14 @@ describe('disableCwdExecutableSearch', () => {
     expect(process.env[NO_CWD_EXE_SEARCH_ENV]).toBeUndefined();
   });
 });
+
+describe('shell option', () => {
+  it('rejects shell execution for asynchronous and synchronous wrappers', () => {
+    expect(() => Reflect.apply(spawn, undefined, ['node', [], { shell: true }])).toThrow(
+      'Shell execution is not supported'
+    );
+    expect(() => Reflect.apply(spawnSync, undefined, ['node', [], { shell: true }])).toThrow(
+      'Shell execution is not supported'
+    );
+  });
+});
