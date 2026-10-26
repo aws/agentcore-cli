@@ -58,7 +58,7 @@ export function useAddGatewayTargetWizard(
           break;
         case 'connector':
           if (config.connectorId === 'web-search') {
-            baseSteps.push('gateway', 'exclude-domains');
+            baseSteps.push('gateway', 'include-domains', 'exclude-domains');
           } else {
             baseSteps.push('kb-select', 'gateway');
           }
@@ -129,7 +129,7 @@ export function useAddGatewayTargetWizard(
       ...c,
       targetType,
       connectorId: resolvedConnectorId,
-      ...(resolvedConnectorId !== 'web-search' ? { excludeDomains: undefined } : {}),
+      ...(resolvedConnectorId !== 'web-search' ? { includeDomains: undefined, excludeDomains: undefined } : {}),
     }));
     switch (targetType) {
       case 'apiGateway':
@@ -350,6 +350,21 @@ export function useAddGatewayTargetWizard(
   );
 
   /**
+   * Set the optional list of domains to restrict results to (web-search connector
+   * only) and advance. An empty submission clears the field.
+   */
+  const setIncludeDomains = useCallback(
+    (includeDomains: string[] | undefined) => {
+      setConfig(c => ({
+        ...c,
+        includeDomains: includeDomains && includeDomains.length > 0 ? includeDomains : undefined,
+      }));
+      goToNextStep();
+    },
+    [goToNextStep]
+  );
+
+  /**
    * Set the optional list of domains to exclude (web-search connector only)
    * and advance to confirm. An empty submission clears the field.
    */
@@ -392,6 +407,7 @@ export function useAddGatewayTargetWizard(
     setStickinessConfig,
     setSigningService,
     setSigningRegion,
+    setIncludeDomains,
     setExcludeDomains,
     reset,
   };
