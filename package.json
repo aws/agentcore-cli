@@ -118,7 +118,7 @@
     "semver": "^7.8.5",
     "ws": "^8.21.0",
     "yaml": "^2.8.3",
-    "zod": "^4.3.5"
+    "zod": "^4.6.6"
   },
   "optionalDependencies": {
     "@napi-rs/keyring": "^1.3.0"
@@ -174,7 +174,9 @@
     "@aws-sdk/xml-builder": "aws/aws-sdk-js-v3#7867: @aws-sdk/xml-builder <3.972.14 does not configure maxTotalExpansions on fast-xml-parser, causing 'Entity expansion limit exceeded' on large CloudFormation responses. Remove once @aws-sdk/client-* deps are bumped past 3.972.14.",
     "@opentelemetry/core": "GHSA-8988-4f7v-96qf: @opentelemetry/core <2.8.0 has unbounded memory allocation in W3C Baggage propagation. Transitive via @opentelemetry/otlp-transformer. Remove once @opentelemetry/otlp-transformer is upgraded past 0.219.0.",
     "@opentelemetry/otlp-transformer": "Pinned to 0.213.0 — the last version that ships generated protobuf types for trace, logs, and metrics (used by the dev-mode OTLP collector). Versions 0.214–0.217 drop logs/trace protos; 0.218+ removes the generated root entirely. Remove this pin once the collector is refactored to not depend on the internal generated/root path.",
-    "protobufjs": "Multiple high-severity CVEs in protobufjs <8.7.0 (code injection, DoS, prototype pollution). Transitive via @opentelemetry/otlp-transformer@0.213.0. Remove once @opentelemetry/otlp-transformer is upgraded past 0.217.0."
+    "protobufjs": "Multiple high-severity CVEs in protobufjs <8.7.0 (code injection, DoS, prototype pollution). Transitive via @opentelemetry/otlp-transformer@0.213.0. Remove once @opentelemetry/otlp-transformer is upgraded past 0.217.0.",
+    "fast-uri": "GHSA-w74x-v6f9-j3xg, GHSA-xhq7-xmqj-769h, GHSA-wjr9-j795-jxcr, GHSA-333x-w4r6-6crp: fast-uri <3.1.9 has URI scheme spoofing, host confusion, and path normalization vulnerabilities. Transitive via ajv. Remove once ajv requires fast-uri >=3.1.9.",
+    "zod": "GHSA-mrhx-c7xc-m3w5: zod <4.6.6 can exhaust memory validating oversized constrained collections, and zod 3 has no patched release. @aws/agent-inspector depends on @ag-ui/core@^0.0.52, which pins zod@^3, but agent-inspector only ships a prebuilt browser bundle, so that copy is never loaded at runtime. Remove once @aws/agent-inspector depends on an @ag-ui/core release that accepts zod 4."
   },
   "overrides": {
     "minimatch": "10.2.4",
@@ -183,7 +185,8 @@
     "@aws-sdk/xml-builder": "3.972.15",
     "@opentelemetry/core": ">=2.8.0",
     "protobufjs": ">=8.7.0",
-    "fast-uri": "^3.1.8",
+    "fast-uri": "^3.1.9",
+    "zod": "$zod",
     "brace-expansion": "^5.0.12",
     "@humanfs/node": "^0.16.8"
   },

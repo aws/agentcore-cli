@@ -9,13 +9,7 @@ const SEVERITY_RANK = {
   critical: 4,
 };
 
-export const TEMPORARY_AUDIT_EXCEPTIONS = {
-  'GHSA-vfj7-8cjw-p6xm': {
-    expiresAt: '2026-11-05T00:00:00.000Z',
-    reason:
-      'braces@3.0.3 is the latest release and has no patched version; it is pulled in through @aws-cdk/toolkit-lib.',
-  },
-};
+export const TEMPORARY_AUDIT_EXCEPTIONS = {};
 
 function advisoryId(url) {
   return url?.match(/GHSA-[\w-]+$/)?.[0];
@@ -67,14 +61,14 @@ export function auditAdvisories(report) {
   );
 }
 
-export function evaluateAuditReport(report, { status, now = new Date() }) {
+export function evaluateAuditReport(report, { status, now = new Date(), exceptions = TEMPORARY_AUDIT_EXCEPTIONS }) {
   const advisories = auditAdvisories(report);
   const blockingSeverityAdvisories = advisories.filter(advisory => isBlockingSeverity(advisory.severity));
   const allowed = uniqueAdvisories(
-    blockingSeverityAdvisories.filter(advisory => advisory.id && advisory.id in TEMPORARY_AUDIT_EXCEPTIONS)
+    blockingSeverityAdvisories.filter(advisory => advisory.id && advisory.id in exceptions)
   );
   const blocked = uniqueAdvisories(
-    blockingSeverityAdvisories.filter(advisory => !advisory.id || !(advisory.id in TEMPORARY_AUDIT_EXCEPTIONS))
+    blockingSeverityAdvisories.filter(advisory => !advisory.id || !(advisory.id in exceptions))
   );
   const errors = [];
 
@@ -96,7 +90,7 @@ export function evaluateAuditReport(report, { status, now = new Date() }) {
   }
 
   const allowedIds = new Set(allowed.map(advisory => advisory.id));
-  const unusedExceptions = Object.keys(TEMPORARY_AUDIT_EXCEPTIONS).filter(id => !allowedIds.has(id));
+  const unusedExceptions = Object.keys(exceptions).filter(id => !allowedIds.has(id));
   if (unusedExceptions.length > 0) {
     errors.push(
       `Temporary npm audit exception(s) are no longer required: ${unusedExceptions.join(', ')}. Remove them.`
@@ -104,7 +98,7 @@ export function evaluateAuditReport(report, { status, now = new Date() }) {
   }
 
   for (const advisory of allowed) {
-    const exception = TEMPORARY_AUDIT_EXCEPTIONS[advisory.id];
+    const exception = exceptions[advisory.id];
     if (now >= new Date(exception.expiresAt)) {
       errors.push(
         `Temporary npm audit exception expired: ${advisory.id}. Recheck for patched releases and remove the exception.`
