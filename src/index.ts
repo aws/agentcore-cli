@@ -24,7 +24,9 @@ import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
 import { NpmCliVersionManager, printUpdateNotice } from "./cliVersionManager";
 import { CliVersionManagerKey } from "./handlers/keys";
+import { disableCwdExecutableSearch } from "./io/exec";
 
+disableCwdExecutableSearch();
 // Suppress only the AWS SDK's Node.js version support warning before constructing clients.
 process.env.AWS_SDK_JS_NODE_VERSION_SUPPORT_WARNING_DISABLED = "true";
 

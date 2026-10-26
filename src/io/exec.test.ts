@@ -8,12 +8,67 @@ import {
   MissingToolError,
   ProcessFailedError,
   requireTool,
+  resolveExecutable,
   runInheritedProcess,
   runProcess,
   streamProcess,
   toolAvailable,
   type ProcessEvent,
 } from "./exec";
+
+describe("resolveExecutable", () => {
+  const files = new Set(
+    [
+      "C:\\Program Files\\nodejs\\npm.cmd",
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Windows\\System32\\where.exe",
+    ].map((path) => path.toLowerCase()),
+  );
+  const isExecutableFile = (path: string) => files.has(path.toLowerCase());
+  const resolve = (command: string, env: NodeJS.ProcessEnv) =>
+    resolveExecutable(command, { env, platform: "win32", isExecutableFile });
+
+  test("resolves bare commands from PATH with PATHEXT", () => {
+    const env = {
+      Path: "C:\\Program Files\\nodejs;C:\\Windows\\System32",
+      PATHEXT: ".COM;.EXE;.BAT;.CMD",
+    };
+
+    expect(resolve("npm", env)?.toLowerCase()).toBe("c:\\program files\\nodejs\\npm.cmd");
+    expect(resolve("node", env)?.toLowerCase()).toBe("c:\\program files\\nodejs\\node.exe");
+    expect(resolve("where", env)?.toLowerCase()).toBe("c:\\windows\\system32\\where.exe");
+  });
+
+  test("does not add the current directory to PATH lookup", () => {
+    expect(resolve("npm", { Path: "C:\\Windows\\System32", PATHEXT: ".CMD" })).toBeNull();
+  });
+
+  test("skips empty and relative PATH entries", () => {
+    const cwdFiles = new Set(["npm.cmd", ".\\npm.cmd", "bin\\npm.cmd"]);
+    expect(
+      resolveExecutable("npm", {
+        env: { Path: ";.;bin;", PATHEXT: ".CMD" },
+        platform: "win32",
+        isExecutableFile: (path) => cwdFiles.has(path),
+      }),
+    ).toBeNull();
+  });
+
+  test("handles quoted and duplicate-case PATH keys consistently", () => {
+    expect(
+      resolve("npm", {
+        Path: "C:\\Windows\\System32",
+        PATH: '"C:\\Program Files\\nodejs"',
+        PATHEXT: ".CMD",
+      })?.toLowerCase(),
+    ).toBe("c:\\program files\\nodejs\\npm.cmd");
+  });
+
+  test("leaves explicit paths unchanged", () => {
+    expect(resolve(".\\tools\\npm.cmd", {})).toBe(".\\tools\\npm.cmd");
+    expect(resolve("C:\\tools\\npm.cmd", {})).toBe("C:\\tools\\npm.cmd");
+  });
+});
 
 // Run Node scripts from files so these tests work with both Node and Bun.
 const scriptsDir = await mkdtemp(join(tmpdir(), "agentcore-exec-"));

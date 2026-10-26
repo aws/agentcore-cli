@@ -1,14 +1,21 @@
 // Local subprocess execution. Uses node:child_process (not Bun.$/Bun.spawn)
 // because the npm bundle targets Node — Bun APIs are unavailable there.
-import { type ChildProcess, execFileSync, type SpawnOptions } from "node:child_process";
+import { ChildProcess, type SpawnOptions, type SpawnSyncOptions } from "node:child_process";
+import { accessSync, constants as fsConstants, statSync } from "node:fs";
 import { constants as osConstants } from "node:os";
+import { posix as posixPath, win32 as win32Path } from "node:path";
 import { createInterface } from "node:readline";
+import { PassThrough } from "node:stream";
 import crossSpawn from "cross-spawn";
 import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
 
 const isWindows = process.platform === "win32";
 const KILL_GRACE_MS = 2000;
 const MAX_ERROR_OUTPUT_LINES = 20;
+const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+const WINDOWS_ENOENT_ERRNO = -4058;
+
+export const NO_CWD_EXE_SEARCH_ENV = "NoDefaultCurrentDirectoryInExePath";
 
 /** Error raised when a required executable is not found on PATH. */
 export class MissingToolError extends AgentCoreCLIError {
@@ -30,10 +37,150 @@ export class ProcessFailedError extends AgentCoreCLIError {
   }
 }
 
-function spawnCommand(executable: string, args: string[], options: SpawnOptions): ChildProcess {
-  // Keep arguments separate. cross-spawn resolves Windows wrappers and applies
-  // the extra escaping required when a node_modules/.bin shim forwards them.
-  return crossSpawn(executable, args, options);
+export type ResolveExecutableOptions = {
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  isExecutableFile?: (path: string, platform: NodeJS.Platform) => boolean;
+};
+
+function defaultIsExecutableFile(path: string, platform: NodeJS.Platform): boolean {
+  try {
+    if (!statSync(path).isFile()) return false;
+    if (platform !== "win32") accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function environmentValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  platform: NodeJS.Platform,
+): string | undefined {
+  if (platform !== "win32") return env[name];
+  const key = Object.keys(env)
+    .filter((candidate) => candidate.toUpperCase() === name.toUpperCase())
+    .sort()[0];
+  return key === undefined ? undefined : env[key];
+}
+
+/**
+ * Resolves a bare command using absolute PATH entries without an implicit
+ * current-directory candidate. Commands containing a path separator are
+ * explicit and remain unchanged.
+ */
+export function resolveExecutable(
+  command: string,
+  options: ResolveExecutableOptions = {},
+): string | null {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  const isExecutableFile = options.isExecutableFile ?? defaultIsExecutableFile;
+  const pathImpl = platform === "win32" ? win32Path : posixPath;
+
+  if (!command) return null;
+  if (command.includes("/") || (platform === "win32" && command.includes("\\"))) {
+    return command;
+  }
+
+  const directories = (environmentValue(env, "PATH", platform) ?? "")
+    .split(platform === "win32" ? ";" : ":")
+    .map((directory) => (platform === "win32" ? directory.replace(/^"(.*)"$/, "$1") : directory))
+    .filter((directory) => directory.length > 0 && pathImpl.isAbsolute(directory));
+
+  let candidates = [command];
+  if (platform === "win32") {
+    const extensions = (environmentValue(env, "PATHEXT", platform) ?? DEFAULT_WINDOWS_PATHEXT)
+      .split(";")
+      .map((extension) => extension.trim())
+      .filter(Boolean);
+    const hasKnownExtension = extensions.some((extension) =>
+      command.toLowerCase().endsWith(extension.toLowerCase()),
+    );
+    candidates = hasKnownExtension
+      ? [command]
+      : [
+          ...(pathImpl.extname(command) ? [command] : []),
+          ...extensions.map((extension) => command + extension),
+        ];
+  }
+
+  for (const directory of directories) {
+    for (const candidate of candidates) {
+      const resolved = pathImpl.join(directory, candidate);
+      if (isExecutableFile(resolved, platform)) return resolved;
+    }
+  }
+  return null;
+}
+
+function childEnvironment(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv | undefined {
+  if (!isWindows) return env;
+  return { ...(env ?? process.env), [NO_CWD_EXE_SEARCH_ENV]: "1" };
+}
+
+/** Applies the Windows process lookup setting inherited by third-party child processes. */
+export function disableCwdExecutableSearch(): void {
+  if (isWindows) process.env[NO_CWD_EXE_SEARCH_ENV] = "1";
+}
+
+function missingExecutableError(command: string, args: readonly string[]) {
+  return Object.assign(new Error(`spawn ${command} ENOENT`), {
+    code: "ENOENT",
+    errno: WINDOWS_ENOENT_ERRNO,
+    syscall: `spawn ${command}`,
+    path: command,
+    spawnargs: [...args],
+  });
+}
+
+function missingChildProcess(command: string, args: readonly string[]): ChildProcess {
+  const child = new ChildProcess();
+  (child as unknown as { _handle: unknown })._handle = null;
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  Object.defineProperties(child, {
+    stdin: { value: stdin },
+    stdout: { value: stdout },
+    stderr: { value: stderr },
+    stdio: { value: [stdin, stdout, stderr] },
+  });
+  const error = missingExecutableError(command, args);
+  process.nextTick(() => {
+    child.emit("error", error);
+    stdout.end();
+    stderr.end();
+    child.emit("close", error.errno, null);
+  });
+  return child;
+}
+
+/**
+ * Spawns a command while preserving argument boundaries and Windows command-shim support.
+ */
+export function spawnCommand(
+  executable: string,
+  args: string[],
+  options: SpawnOptions,
+): ChildProcess {
+  const resolved = isWindows ? resolveExecutable(executable, { env: options.env }) : executable;
+  if (resolved === null) return missingChildProcess(executable, args);
+  return crossSpawn(resolved, args, { ...options, env: childEnvironment(options.env) });
+}
+
+function spawnCommandSync(
+  executable: string,
+  args: string[],
+  options: SpawnSyncOptions,
+): ReturnType<typeof crossSpawn.sync> {
+  const resolved = isWindows ? resolveExecutable(executable, { env: options.env }) : executable;
+  if (resolved === null) throw missingExecutableError(executable, args);
+  return crossSpawn.sync(resolved, args, {
+    ...options,
+    env: childEnvironment(options.env),
+  });
 }
 
 /** Returns true if running `tool` with probeArgs (`--version` by default) exits 0. */
@@ -304,7 +451,11 @@ function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (!child.pid) return;
   try {
     if (isWindows) {
-      execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      const result = spawnCommandSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(`taskkill exited with code ${result.status}`);
     } else {
       process.kill(-child.pid, signal);
     }

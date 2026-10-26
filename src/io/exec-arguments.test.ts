@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { runInheritedProcess, runProcess, streamProcess, toolAvailable } from "./exec";
+import {
+  ProcessFailedError,
+  runInheritedProcess,
+  runProcess,
+  streamProcess,
+  toolAvailable,
+} from "./exec";
 
 const runners = [
   {
@@ -86,5 +92,15 @@ describe.skipIf(process.platform !== "win32")("Windows npm command shims", () =>
     const output = join(directory, "relative-shim.json");
     await runProcess([relative(directory, shimPath), output, ...literalArgs], { cwd: directory });
     expect(JSON.parse(await readFile(output, "utf8"))).toEqual(literalArgs);
+  });
+
+  test("does not resolve a bare command from the child working directory", async () => {
+    await writeFile(join(directory, "cwd-only.cmd"), "@exit /b 0\r\n");
+    await expect(
+      runProcess(["cwd-only"], {
+        cwd: directory,
+        env: { ...process.env, PATH: "", Path: "", PATHEXT: ".CMD" },
+      }),
+    ).rejects.toBeInstanceOf(ProcessFailedError);
   });
 });
