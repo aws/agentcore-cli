@@ -20,7 +20,7 @@
     "!dist/bin"
   ],
   "scripts": {
-    "audit": "bun audit --ignore GHSA-vfj7-8cjw-p6xm",
+    "audit": "bun audit",
     "build": "bun scripts/build.ts bundle",
     "compile": "bun run compile:darwin-x64 && bun run compile:darwin-arm64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64 && bun run compile:windows-arm64",
     "compile:darwin-x64": "bun scripts/build.ts compile bun-darwin-x64",
@@ -116,6 +116,9 @@
     "@opentelemetry/core": "^2.10.0",
     "@aws-cdk/toolkit-lib": {
       "yaml": "^1"
+    },
+    "@ag-ui/core": {
+      "zod": "^4.6.6"
     }
   }
 }
