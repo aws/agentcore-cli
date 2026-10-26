@@ -13,7 +13,8 @@ on:
         description: rc publishes under the rc dist-tag and pins the vended CDK to the library's rc dist-tag, stable publishes under latest and pins latest
         required: true
         type: choice
-        options: [rc, stable]
+        default: stable
+        options: [stable, rc]
 
 jobs:
   prepare:
