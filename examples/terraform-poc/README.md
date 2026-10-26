@@ -97,11 +97,11 @@ terraform plan -var-file=.targets/default/deployment.tfvars.json
 
 Edit a supported value such as memory retention in `agentcore.json`, then run the same `terraform plan` command again. The module receives the updated object immediately. After reviewing the plan, apply it with the same target inputs. Changes to application source still require rebuilding the ZIPs and updating their artifact hashes.
 
-The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/39b824c1cdbc4926bea745616610e516344537f4/terraform/modules/agentcore-application/README.md).
+The checked-in [`agentcore/terraform/`](agentcore/terraform/) directory is the shared root example. It references the same pinned module from the L3 constructs repository. `agentcore build` writes the artifact manifest; callers supplying their own ZIPs can use the manifest contract described in the [module README](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/e9c53da25f7cde41b72ec0101dea482d507bd479/terraform/modules/agentcore-application/README.md).
 
 The root can pass inline HCL instead of JSON. This allows values from customer resources to enter the `spec` directly, for example `envVars = [{ name = "ORDERS_TABLE", value = aws_dynamodb_table.orders.name }]`. Outputs such as `module.application.runtimes["Agent"].role_name` allow a separate IAM policy to grant that runtime access to the table. Terraform follows these references to order changes.
 
-References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/39b824c1cdbc4926bea745616610e516344537f4/terraform/modules/agentcore-application/README.md) for the contract and limits.
+References between the project's resources are resolved inside the module: policy engine to gateway, Lambda and gateway to target, memories/gateways to runtime, and runtime logs to online evaluation. Circular references are rejected by Terraform. See the [module's inputs and outputs](https://github.com/jariy17/agentcore-l3-cdk-constructs/blob/e9c53da25f7cde41b72ec0101dea482d507bd479/terraform/modules/agentcore-application/README.md) for the contract and limits.
 
 ## Exercise the deployed resources
 
