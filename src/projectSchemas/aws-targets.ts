@@ -3,7 +3,7 @@ import { uniqueBy } from "./zod-util";
 
 // Accepts any region: AgentCore availability changes faster than CLI releases, so a
 // region without AgentCore is left for CloudFormation to reject at deploy time.
-export const AgentCoreRegionSchema = z.string();
+export const AgentCoreRegionSchema = z.string().trim().min(1, "Region must not be empty");
 
 /**
  * The target `agentcore deploy` uses when --target is omitted. Only this target

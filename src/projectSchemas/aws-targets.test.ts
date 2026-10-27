@@ -55,6 +55,12 @@ describe("AWS deployment targets", () => {
     expect(AgentCoreRegionSchema.safeParse("ap-northeast-3").success).toBe(true);
   });
 
+  test("trims whitespace and rejects an empty region", () => {
+    expect(AgentCoreRegionSchema.parse(" us-east-1 ")).toBe("us-east-1");
+    expect(AgentCoreRegionSchema.safeParse("").success).toBe(false);
+    expect(AgentCoreRegionSchema.safeParse("   ").success).toBe(false);
+  });
+
   test.each([
     ["the same name", target],
     ["a name that differs only by case", { ...target, name: "Default" }],

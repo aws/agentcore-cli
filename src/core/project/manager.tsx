@@ -1795,9 +1795,12 @@ export class FsProjectManager implements ProjectManager {
       const cause = AgentCoreCLIError.fromError(error);
       throw new InvalidEnvironmentError(
         `Cannot create the default deployment target for project '${project.name}' because ` +
-          `the AWS account could not be resolved: ${cause.message}\n` +
-          `Sign in with 'aws login' (or set AWS_PROFILE or credential environment variables) ` +
-          `and re-run 'agentcore deploy'.`,
+          `the AWS account could not be resolved in region '${region}': ${cause.message}\n` +
+          // With no region allowlist, a mistyped or not-enabled region surfaces here as an STS
+          // failure, so the hint names the region before suggesting credentials.
+          `Check that '${region}' is a region enabled for your account (--region or AWS_REGION), ` +
+          `and sign in with 'aws login' (or set AWS_PROFILE or credential environment variables), ` +
+          `then re-run 'agentcore deploy'.`,
         { cause: error },
       );
     }
