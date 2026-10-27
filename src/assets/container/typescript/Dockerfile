@@ -22,4 +22,12 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
+{{#if enableOtel}}
+# Node has no `opentelemetry-instrument` equivalent, so the ADOT distro is
+# preloaded instead. This registers the global tracer/meter providers before
+# agent code runs, so spans from any third-party instrumentation library are
+# exported rather than silently dropped.
+ENV NODE_OPTIONS="--require @aws/aws-distro-opentelemetry-node-autoinstrumentation/register"
+
+{{/if}}
 CMD ["npx", "tsx", "main.ts"]
