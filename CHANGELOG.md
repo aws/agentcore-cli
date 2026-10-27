@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.31.2] - 2026-10-27
+
+### Fixed
+- fix(ci): set git identity before snapshot tests (#2714) (c20c6269)
+- fix(security): remediate zod and fast-uri audit findings (#2708) (826c17ce)
+- fix(cli): resolve Windows commands from explicit PATH entries (#2705) (7f92b5ab)
+- fix(import): pass CDK asset zip paths as subprocess arguments (#2661) (b02f72ee)
+- fix(security): remediate npm audit findings (#2660) (480ef024)
+- fix(ci): bump commit pin of workflow metrics (#2527) (dd6304ee)
+
+### Other Changes
+- refactor(ci): split v0 release workflow and lock CDK version to alpha (#2710) (8af92655)
+- ci: bump the github-actions group with 2 updates (#2684) (7c6b1a6d)
+- chore(deps): bump the aws-sdk group with 18 updates (#2685) (2cc71dcb)
+- chore(deps-dev): bump @secretlint/secretlint-rule-preset-recommend (#2691) (92f16deb)
+- chore(deps): bump dotenv from 17.4.0 to 18.0.8 (#2692) (d0f81f2d)
+- chore(deps-dev): bump @modelcontextprotocol/sdk from 1.30.0 to 1.32.1 (#2693) (8e39db6f)
+- chore(deps): bump react and @types/react (#2694) (77ca1174)
+- chore(deps): bump @opentelemetry/resources from 2.10.0 to 2.12.0 (#2689) (d670e279)
+- chore(ci): remove Slack PR review notifications (#2669) (7625b077)
+- chore(ci): update v0 release workflow to publish under legacy tag (#2659) (a0f870e3)
+- chore(canary): run refactor e2e canary only on v1 (#2648) (7b908c88)
+- chore(canary): pin e2e canary to v0 (#2645) (d525f951)
+- ci: port refactor canary to main (#2519) (bd0e7fac)
+
 ## [0.31.1] - 2026-10-01
 
 ### Fixed

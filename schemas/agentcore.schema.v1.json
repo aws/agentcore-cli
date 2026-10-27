@@ -1729,6 +1729,7 @@
                             "uri": {
                               "type": "string",
                               "minLength": 1,
+                              "format": "starts_with",
                               "pattern": "^s3:\\/\\/.*"
                             },
                             "bucketOwnerAccountId": {
@@ -2658,6 +2659,7 @@
                       "uri": {
                         "type": "string",
                         "minLength": 1,
+                        "format": "starts_with",
                         "pattern": "^s3:\\/\\/.*"
                       },
                       "bucketOwnerAccountId": {
