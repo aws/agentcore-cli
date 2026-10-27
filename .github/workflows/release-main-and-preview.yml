@@ -48,6 +48,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.release.outputs.version }}
+      previous_tag: ${{ steps.release.outputs.previous_tag }}
     env:
       AGENTCORE_TELEMETRY_DISABLED: '1'
     steps:
@@ -97,7 +98,14 @@ jobs:
               exit 1
             fi
           fi
+          PREVIOUS=$(git tag -l 'v0.*' | grep -E '^v0\.[0-9]+\.[0-9]+$' \
+            | xargs npx --no-install semver --range "<$VERSION" | tail -1)
+          if [[ -z "$PREVIOUS" ]]; then
+            echo "::error::No previous stable v0 tag found before v$VERSION"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=v$PREVIOUS" >> "$GITHUB_OUTPUT"
       - name: Pack CLI
         run: npm pack --ignore-scripts --silent
       - uses: actions/upload-artifact@v7
@@ -139,6 +147,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.verify.outputs.version }}
+          PREVIOUS_TAG: ${{ needs.verify.outputs.previous_tag }}
           REF: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -146,5 +155,6 @@ jobs:
             gh release upload "v$VERSION" --clobber "aws-agentcore-$VERSION.tgz"
           else
             gh release create "v$VERSION" --target "$REF" --title "v$VERSION" \
-              --generate-notes --latest=false "aws-agentcore-$VERSION.tgz"
+              --generate-notes --notes-start-tag "$PREVIOUS_TAG" --latest=false \
+              "aws-agentcore-$VERSION.tgz"
           fi
