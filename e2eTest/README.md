@@ -15,6 +15,13 @@ To run tagged tests:
 bun run test:e2e -- --tagsFilter='runtime || canary'
 ```
 
+The generated-project vulnerability E2E is Linux-only and additionally requires Docker with
+ARM64 build support and Trivy:
+
+```sh
+bun run test:e2e:generated-artifact-security
+```
+
 Set `AGENTCORE_CLI_PATH` to use a different executable. The value is split on whitespace and is not
 run through a shell, so paths containing spaces, quoting, and shell syntax are not supported:
 

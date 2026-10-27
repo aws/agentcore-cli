@@ -13,6 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  generated-artifact-security:
+    uses: ./.github/workflows/generated-artifact-security.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
   verify:
     uses: ./.github/workflows/verify.yml
     permissions:

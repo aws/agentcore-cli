@@ -10,7 +10,7 @@ Orchestrators (ci.yml, canary.yml, canary-v0.yml, prerelease.yml, release-prepar
                release.yml, slack-issue-notification.yml,
                slack-open-prs-notification.yml,
                workflow-metrics.yml)
-Jobs          (verify.yml, e2e-test.yml)
+Jobs          (verify.yml, e2e-test.yml, generated-artifact-security.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
@@ -29,6 +29,7 @@ An orchestrator calls jobs via `workflow_call`.
 ci.yml
   |-- verify.yml     (one job per platform: static checks on Linux, then bundle,
   |                   package, compile, smoke test and unit tests)
+  |-- generated-artifact-security.yml (fresh Python lockfiles and ARM64 image scans)
   `-- e2e-test.yml   (deploys and invokes real AgentCore resources)
 
 canary.yml (scheduled)
@@ -43,12 +44,13 @@ canary-v0.yml (scheduled)
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
 release-main-and-preview.yml (npm publish and GitHub release when a release PR merges)
-  `-- verify.yml
+  |-- verify.yml
+  `-- generated-artifact-security.yml
 ```
 
-`verify.yml` and `e2e-test.yml` each appear in two orchestrators. Push CI builds
-the CLI from source for E2E, while the canary installs the resolved npm version.
-Both use the same E2E test runner.
+Each reusable job appears in multiple orchestrators. Push CI builds the CLI from
+source for E2E, while the canary installs the resolved npm version. Both use the
+same E2E test runner.
 
 ## Naming Convention
 
