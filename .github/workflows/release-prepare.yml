@@ -90,6 +90,10 @@ jobs:
           npm run build
           node scripts/generate-schema.mjs
           npx prettier --write schemas/
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
       - name: Update snapshots
         run: npm run test:update-snapshots
       - uses: actions/create-github-app-token@v3
@@ -109,8 +113,6 @@ jobs:
             echo "::error::$BRANCH already exists; review that release branch before preparing another"
             exit 1
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "chore(release): v$VERSION"
           git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
