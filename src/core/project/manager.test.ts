@@ -2095,22 +2095,6 @@ describe("FsProjectManager.deploy", () => {
     expect(await Bun.file(targetsFile(root)).json()).toEqual(targets);
   });
 
-  test("rejects an unsupported region without calling STS or writing the file", async () => {
-    const root = await inTempDirectory();
-    const subject = deployManager();
-    const project = await projectWithTargets(root, undefined);
-
-    const attempt = deploy(subject.manager, project, "default", { region: "af-south-1" });
-
-    await expect(attempt).rejects.toThrow(/'af-south-1' is not an AgentCore-supported region/);
-    await expect(
-      deploy(subject.manager, project, "default", { region: "af-south-1" }),
-    ).rejects.toThrow(/Supported regions: .*us-east-1.*Re-run with --region/s);
-    expect(subject.calls).toEqual([]);
-    expect(subject.accountCalls).toEqual([]);
-    expect(await Bun.file(targetsFile(root)).exists()).toBe(false);
-  });
-
   test("reports an actionable error when the account cannot be resolved", async () => {
     const root = await inTempDirectory();
     const subject = deployManager({

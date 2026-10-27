@@ -51,22 +51,8 @@ describe("AWS deployment targets", () => {
     ).toBe(false);
   });
 
-  test.each([
-    "ap-south-2",
-    "ap-southeast-5",
-    "ap-southeast-7",
-    "cn-north-1",
-    "cn-northwest-1",
-    "eu-south-1",
-    "eu-south-2",
-    "us-gov-west-1",
-    "us-west-1",
-  ])("accepts supported region %s", (region) => {
-    expect(AgentCoreRegionSchema.safeParse(region).success).toBe(true);
-  });
-
-  test("rejects an AWS region where AgentCore is unavailable", () => {
-    expect(AgentCoreRegionSchema.safeParse("af-south-1").success).toBe(false);
+  test("accepts a region without AgentCore, leaving CloudFormation to reject it", () => {
+    expect(AgentCoreRegionSchema.safeParse("ap-northeast-3").success).toBe(true);
   });
 
   test.each([

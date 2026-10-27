@@ -93,7 +93,6 @@ import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
-  AgentCoreRegionSchema,
   AwsDeploymentTargetSchema,
   AwsDeploymentTargetsSchema,
   DEFAULT_TARGET_NAME,
@@ -1789,19 +1788,9 @@ export class FsProjectManager implements ProjectManager {
     targetsPath: string,
     region: string,
   ): Promise<AwsDeploymentTarget> {
-    const supportedRegion = AgentCoreRegionSchema.safeParse(region);
-    if (!supportedRegion.success) {
-      throw new InputValidationError(
-        `Cannot create the default deployment target for project '${project.name}': ` +
-          `'${region}' is not an AgentCore-supported region.\n` +
-          `Supported regions: ${AgentCoreRegionSchema.options.join(", ")}.\n` +
-          `Re-run with --region <region> or set AWS_REGION to one of them.`,
-      );
-    }
-
     let account: string;
     try {
-      account = await this.resolveAccount(supportedRegion.data);
+      account = await this.resolveAccount(region);
     } catch (error) {
       const cause = AgentCoreCLIError.fromError(error);
       throw new InvalidEnvironmentError(
@@ -1816,7 +1805,7 @@ export class FsProjectManager implements ProjectManager {
     const entry = AwsDeploymentTargetSchema.safeParse({
       name: DEFAULT_TARGET_NAME,
       account,
-      region: supportedRegion.data,
+      region,
     });
     if (!entry.success) {
       throw new MalformedServiceResponseError(
