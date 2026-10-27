@@ -6,10 +6,10 @@ import {
   SECURITY_GROUP_ID_PATTERN,
   SUBNET_ID_PATTERN,
   VPC_ID_PATTERN,
-  isContainerBuild,
 } from "./constants";
 import type { DirectoryPath } from "./types";
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from "./auth";
+import { ContainerUriSchema } from "./container";
 import { ConnectionSchema } from "./connections";
 import { TagsSchema } from "./tags";
 import { z } from "zod";
@@ -308,6 +308,11 @@ export const ProjectRuntimeSchema = z
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,
     codeLocation: DirectoryPathSchema,
+    /**
+     * Existing private or public ECR image to deploy. When set, deployment skips local source,
+     * Dockerfile validation, CodeBuild, and the CDK-managed ECR repository.
+     */
+    containerUri: ContainerUriSchema.optional(),
     dockerfile: DockerfilePathSchema.optional(),
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
@@ -331,6 +336,7 @@ export const ProjectRuntimeSchema = z
     connections: z.array(ConnectionSchema).optional(),
   })
   .superRefine((data, ctx) => {
+    const requiresContainerBuild = data.build === "Container" && data.containerUri === undefined;
     if (data.networkMode === "VPC" && !data.networkConfig) {
       ctx.addIssue({
         code: "custom",
@@ -347,7 +353,7 @@ export const ProjectRuntimeSchema = z
     }
     if (
       data.networkMode === "VPC" &&
-      isContainerBuild(data) &&
+      requiresContainerBuild &&
       data.networkConfig &&
       data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
@@ -359,7 +365,7 @@ export const ProjectRuntimeSchema = z
     }
     // Mirrors the CDK, which feeds networkConfig.vpcId to the CodeBuild project's
     // VpcConfig. Only `build: "Container"` reaches that path, so CodeZip is exempt.
-    if (data.networkMode === "VPC" && data.build === "Container" && !data.networkConfig?.vpcId) {
+    if (data.networkMode === "VPC" && requiresContainerBuild && !data.networkConfig?.vpcId) {
       ctx.addIssue({
         code: "custom",
         message:
@@ -396,13 +402,29 @@ export const ProjectRuntimeSchema = z
         path: ["runtimeVersion"],
       });
     }
-    for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+    for (const field of [
+      "containerUri",
+      "dockerfile",
+      "buildContextPath",
+      "customDockerBuildArgs",
+    ] as const) {
       if (data.build !== "Container" && data[field]) {
         ctx.addIssue({
           code: "custom",
           message: `${field} is only allowed for Container builds`,
           path: [field],
         });
+      }
+    }
+    if (data.containerUri !== undefined) {
+      for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+        if (data[field] !== undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${field} cannot be used with containerUri`,
+            path: [field],
+          });
+        }
       }
     }
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
