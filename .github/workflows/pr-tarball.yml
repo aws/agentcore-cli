@@ -1,7 +1,7 @@
 name: PR Tarball
 on:
   pull_request_target:
-    branches: [main, feat/**]
+    branches: [v0.x, feat/**]
 
 permissions:
   contents: write

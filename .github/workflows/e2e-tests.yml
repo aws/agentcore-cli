@@ -9,7 +9,7 @@ on:
         description: 'CDK repo branch to build from (default: main)'
         default: 'main'
   pull_request_target:
-    branches: [main, feat/**]
+    branches: [v0.x, feat/**]
     # Skip E2E on changes that can't affect agent behavior (e.g. docs-only PRs).
     # Only run when CLI source, e2e/browser tests, packaging, or the e2e
     # workflows themselves change.
