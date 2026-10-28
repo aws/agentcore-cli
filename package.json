@@ -67,8 +67,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@aws-cdk/cloudformation-diff": "2.187.4",
-    "@aws-cdk/toolkit-lib": "1.38.2",
+    "@aws-cdk/cloudformation-diff": "2.187.6",
+    "@aws-cdk/toolkit-lib": "1.44.1",
     "@aws-sdk/client-application-signals": "^3.1092.0",
     "@aws-sdk/client-bedrock-agent": "^3.1092.0",
     "@aws-sdk/client-bedrock-agentcore": "^3.1153.0",
