@@ -101,7 +101,7 @@
     "@opentelemetry/exporter-metrics-otlp-http": "^0.215.0",
     "@opentelemetry/otlp-transformer": "0.213.0",
     "@opentelemetry/resources": "^2.6.1",
-    "@opentelemetry/sdk-metrics": "^2.6.1",
+    "@opentelemetry/sdk-metrics": "^3.0.0",
     "@smithy/shared-ini-file-loader": "^4.4.2",
     "commander": "^14.0.2",
     "cross-spawn": "^7.0.6",
