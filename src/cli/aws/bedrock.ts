@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from './account';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
@@ -17,6 +18,7 @@ export async function invokeBedrockSync(options: BedrockInvokeOptions): Promise<
   const client = new BedrockRuntimeClient({
     region: options.region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   const command = new InvokeModelCommand({

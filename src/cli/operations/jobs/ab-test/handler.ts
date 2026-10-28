@@ -13,6 +13,7 @@
  */
 import { ConfigIO, JobNotFoundError, ResourceNotFoundError, toError } from '../../../../lib';
 import type { Result } from '../../../../lib/result';
+import { getProxyRequestHandler } from '../../../../lib/utils/aws-proxy';
 import type { DeployedResourceState, DeployedState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import { createABTest, deleteABTest, getABTest, listABTests, updateABTest } from '../../../aws/agentcore-ab-tests';
@@ -439,7 +440,11 @@ export const abTestHandler: ABTestHandler = {
 
     // 5. Runtime experiment spans (last 2h)
     const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-    const logsClient = new CloudWatchLogsClient({ region, credentials: getCredentialProvider() });
+    const logsClient = new CloudWatchLogsClient({
+      region,
+      credentials: getCredentialProvider(),
+      requestHandler: getProxyRequestHandler(),
+    });
     const variantNames = test.variants.map(v => v.name);
 
     try {
