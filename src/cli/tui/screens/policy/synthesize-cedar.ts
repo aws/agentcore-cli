@@ -26,6 +26,8 @@ const DEFAULT_THRESHOLDS: Record<GuardrailCategoryType, number> = {
  */
 export interface SynthesizeCedarOptions {
   targetName?: string;
+  /** Tool exposed by the target. Required for a tool-scoped action reference. */
+  toolName?: string;
   gatewayArn?: string;
 }
 
@@ -34,10 +36,12 @@ export function synthesizeCedar(form: GuardrailFormConfig, options: SynthesizeCe
     return '// No guardrail rules configured';
   }
 
-  const { targetName, gatewayArn } = options;
+  const { targetName, toolName, gatewayArn } = options;
   const fn = GUARDRAIL_FUNCTION_MAP[form.category];
   const gwRef = gatewayArn ? `resource == AgentCore::Gateway::"${gatewayArn}"` : 'resource is AgentCore::Gateway';
-  const actionRef = targetName ? `action == AgentCore::Action::"${targetName}___POST:/invocations"` : 'action';
+  const actionRef = targetName
+    ? `action == AgentCore::Action::"${targetName}___${toolName ?? 'POST:/invocations'}"`
+    : 'action';
   const dataPath = form.dataPath || defaultDataPathForEffect(form.effect);
   const threshold = DEFAULT_THRESHOLDS[form.category];
   // permit allows below threshold; forbid and suppressOutput block above it.

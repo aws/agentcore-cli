@@ -1,6 +1,6 @@
 import { ResourceNotFoundError, ValidationError, findConfigRoot, serializeResult, toError } from '../../lib';
 import type { Result } from '../../lib/result';
-import type { Policy } from '../../schema';
+import type { AgentCoreGatewayTarget, AgentCoreProjectSpec, Policy } from '../../schema';
 import { EnforcementModeSchema, PolicySchema, ValidationModeSchema } from '../../schema';
 import { detectRegion } from '../aws';
 import { getPolicyGeneration, startPolicyGeneration } from '../aws/policy-generation';
@@ -23,6 +23,38 @@ import { findDeployedGateway, firstDeployedGateway } from './deployed-gateways';
 import type { AddResult, AddScreenComponent, RemovableResource } from './types';
 import type { Command } from '@commander-js/extra-typings';
 import { existsSync, readFileSync } from 'fs';
+
+/** Return a tool name only when the target exposes exactly one known tool. */
+function singleKnownToolName(target: AgentCoreGatewayTarget | undefined): string | undefined {
+  if (!target) return undefined;
+
+  const toolNames = [
+    ...(target.toolDefinitions ?? []).map(tool => tool.name),
+    ...(target.configurations ?? []).map(configuration => configuration.name),
+  ];
+  return toolNames.length === 1 ? toolNames[0] : undefined;
+}
+
+export function resolvePolicyTarget(
+  project: AgentCoreProjectSpec,
+  targetName: string,
+  gatewayName?: string
+): { gatewayName?: string; toolName?: string } {
+  const matchingGateways = project.agentCoreGateways.filter(gateway =>
+    gateway.targets.some(target => target.name === targetName)
+  );
+  if (!gatewayName && matchingGateways.length > 1) {
+    throw new ValidationError(
+      `Target "${targetName}" exists on multiple gateways: ${matchingGateways.map(g => g.name).join(', ')}. Use --gateway <name> to specify one.`
+    );
+  }
+
+  const resolvedGatewayName = gatewayName ?? matchingGateways[0]?.name;
+  const target = project.agentCoreGateways
+    .find(gateway => gateway.name === resolvedGatewayName)
+    ?.targets.find(candidate => candidate.name === targetName);
+  return { gatewayName: resolvedGatewayName, toolName: singleKnownToolName(target) };
+}
 
 export interface AddPolicyOptions {
   name: string;
@@ -417,17 +449,30 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
 
                 let resolvedGatewayArn: string | undefined;
                 let resolvedTargetName: string | undefined = cliOptions.target;
-                if (cliOptions.gateway) {
+                let resolvedToolName: string | undefined;
+                let resolvedGatewayName: string | undefined = cliOptions.gateway;
+
+                // A target name identifies its gateway in the project spec. Resolve that
+                // relationship when --gateway is omitted so target-scoped policies can
+                // still be constrained to the deployed gateway resource.
+                if (cliOptions.target) {
+                  const project = await this.readProjectSpec();
+                  const resolved = resolvePolicyTarget(project, cliOptions.target, resolvedGatewayName);
+                  resolvedGatewayName = resolved.gatewayName;
+                  resolvedToolName = resolved.toolName;
+                }
+
+                if (resolvedGatewayName) {
                   try {
                     const deployedState = await this.configIO.readDeployedState();
-                    const gateway = findDeployedGateway(deployedState, cliOptions.gateway);
+                    const gateway = findDeployedGateway(deployedState, resolvedGatewayName);
                     if (gateway?.gatewayArn) {
                       resolvedGatewayArn = gateway.gatewayArn;
                       if (!resolvedTargetName) {
                         const targetNames = Object.keys(gateway.targets ?? {});
                         if (targetNames.length > 1) {
                           throw new ValidationError(
-                            `Multiple targets found on gateway "${cliOptions.gateway}": ${targetNames.join(', ')}. Use --target <name> to specify one.`
+                            `Multiple targets found on gateway "${resolvedGatewayName}": ${targetNames.join(', ')}. Use --target <name> to specify one.`
                           );
                         }
                         resolvedTargetName = targetNames[0];
@@ -448,7 +493,7 @@ export class PolicyPrimitive extends BasePrimitive<AddPolicyOptions, RemovablePo
                     effect: policyEffect,
                     dataPath: cliOptions.formDataPath ?? defaultDataPathForEffect(policyEffect),
                   },
-                  { targetName: resolvedTargetName, gatewayArn: resolvedGatewayArn }
+                  { targetName: resolvedTargetName, toolName: resolvedToolName, gatewayArn: resolvedGatewayArn }
                 );
                 // Output-phase effects (suppressOutput) must register on RETURN_OUTPUT.
                 effectiveOptions = {
