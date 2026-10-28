@@ -8,7 +8,9 @@ import Link from 'ink-link';
 import React, { useCallback, useEffect, useState } from 'react';
 
 type FlowState =
-  { name: 'create-wizard' } | { name: 'create-success'; memoryName: string } | { name: 'error'; message: string };
+  | { name: 'create-wizard' }
+  | { name: 'create-success'; memoryName: string }
+  | { name: 'error'; message: string };
 
 interface AddMemoryFlowProps {
   /** Whether running in interactive TUI mode */
