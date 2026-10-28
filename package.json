@@ -49,7 +49,7 @@
     "*.{json,md}": "prettier --write"
   },
   "devDependencies": {
-    "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.7",
     "@types/bun": "latest",
     "@types/cross-spawn": "^6.0.6",
     "@types/react": "^19.2.17",
@@ -58,10 +58,10 @@
     "husky": "^9.1.7",
     "ink-testing-library": "^4.0.0",
     "lint-staged": "^17.0.8",
-    "oxlint": "^1.73.0",
-    "prettier": "^3.8.4",
-    "secretlint": "^12.2.0",
-    "vitest": "^4.1.12"
+    "oxlint": "^1.89.0",
+    "prettier": "^3.9.10",
+    "secretlint": "^13.0.7",
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "typescript": "^5"
