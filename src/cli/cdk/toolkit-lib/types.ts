@@ -178,6 +178,13 @@ export interface CdkToolkitWrapperOptions {
    * Without this, the toolkit falls back to AWS_REGION env var or us-east-1.
    */
   region?: string;
+
+  /**
+   * IAM permissions boundary (policy name or policy ARN) to attach to every IAM role in the
+   * synthesized stacks. Overrides `AGENTCORE_PERMISSIONS_BOUNDARY` and
+   * `iam.permissionsBoundary` in agentcore.json.
+   */
+  permissionsBoundary?: string;
 }
 
 export interface StackSelectionOptions {

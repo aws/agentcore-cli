@@ -48,24 +48,71 @@ Main project configuration using a **flat resource model**. Agents, memories, an
 
 ### Project Fields
 
-| Field               | Required | Description                                                 |
-| ------------------- | -------- | ----------------------------------------------------------- |
-| `name`              | Yes      | Project name (1-23 chars, alphanumeric, starts with letter) |
-| `version`           | Yes      | Schema version (integer, currently `1`)                     |
-| `tags`              | No       | Project-level tags applied to all resources                 |
-| `runtimes`          | Yes      | Array of agent specifications                               |
-| `memories`          | Yes      | Array of memory resources                                   |
-| `credentials`       | Yes      | Array of credential providers (API key or OAuth)            |
-| `evaluators`        | Yes      | Array of custom evaluator definitions                       |
-| `onlineEvalConfigs` | Yes      | Array of online eval configurations                         |
-| `payments`          | No       | Array of payment manager configurations                     |
-| `policyEngines`     | No       | Array of policy engine configurations                       |
-| `agentCoreGateways` | No       | Array of gateway definitions                                |
-| `mcpRuntimeTools`   | No       | Array of MCP runtime tool definitions                       |
-| `unassignedTargets` | No       | Targets not yet assigned to a gateway                       |
+| Field               | Required | Description                                                  |
+| ------------------- | -------- | ------------------------------------------------------------ |
+| `name`              | Yes      | Project name (1-23 chars, alphanumeric, starts with letter)  |
+| `version`           | Yes      | Schema version (integer, currently `1`)                      |
+| `tags`              | No       | Project-level tags applied to all resources                  |
+| `iam`               | No       | Project-wide IAM settings. See [IAM Settings](#iam-settings) |
+| `runtimes`          | Yes      | Array of agent specifications                                |
+| `memories`          | Yes      | Array of memory resources                                    |
+| `credentials`       | Yes      | Array of credential providers (API key or OAuth)             |
+| `evaluators`        | Yes      | Array of custom evaluator definitions                        |
+| `onlineEvalConfigs` | Yes      | Array of online eval configurations                          |
+| `payments`          | No       | Array of payment manager configurations                      |
+| `policyEngines`     | No       | Array of policy engine configurations                        |
+| `agentCoreGateways` | No       | Array of gateway definitions                                 |
+| `mcpRuntimeTools`   | No       | Array of MCP runtime tool definitions                        |
+| `unassignedTargets` | No       | Targets not yet assigned to a gateway                        |
 
 > Gateway configuration is in the `agentCoreGateways` field. See [Gateways and MCP Tools](#gateways-and-mcp-tools)
 > below.
+
+### IAM Settings
+
+```json
+{
+  "iam": {
+    "permissionsBoundary": "AgentCoreExecutionRoleBoundary"
+  }
+}
+```
+
+| Field                 | Required | Description                                                                              |
+| --------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `permissionsBoundary` | No       | IAM policy name or policy ARN attached as the permissions boundary of every project role |
+
+`permissionsBoundary` is applied to every IAM role the project creates — agent runtime execution roles, memory, gateway,
+harness, payment and A/B test roles included. Set it when your account denies `iam:CreateRole` unless the new role
+carries a boundary, which otherwise fails `agentcore deploy` with an `explicit deny in a permissions boundary` error.
+
+A bare policy name is resolved against each deployment target's own partition and account, so one value works across
+targets and partitions. A full ARN is used verbatim.
+
+Because a boundary is a property of the account rather than of the project, it can also be set per machine, which is
+usually the better default — it applies to every project and is not committed:
+
+```bash
+agentcore config permissionsBoundary AgentCoreExecutionRoleBoundary
+```
+
+Sources are consulted most-specific first: `AGENTCORE_PERMISSIONS_BOUNDARY`, then `iam.permissionsBoundary` here, then
+the machine's global config. Put it in `agentcore.json` when the whole team deploys into the same boundary-enforcing
+account and you want the constraint reviewed in git; use the global config otherwise.
+
+To clear the machine default, set it to an empty string — a blank value counts as unset, and `agentcore config` can only
+write keys, not remove them:
+
+```bash
+agentcore config permissionsBoundary ''
+```
+
+In `agentcore.json`, omit the `iam.permissionsBoundary` key instead; a blank value there is a validation error.
+
+> The `iam` block holds constraints imposed on the project from outside — things the account requires of any role. It is
+> not a place to author roles; per-resource `executionRoleArn` remains the way to supply a role you manage yourself.
+
+See [Permissions](./PERMISSIONS.md#hardening-with-permission-boundaries) for the boundary policy itself.
 
 ---
 

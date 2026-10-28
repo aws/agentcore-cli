@@ -1,4 +1,6 @@
+import { readGlobalConfigSync } from '../../../lib/schemas/io/global-config';
 import type { AgentCoreProjectSpec } from '../../../schema';
+import { resolvePermissionsBoundary } from '../../aws';
 import type { DeployMode } from '../../telemetry/schemas/common-shapes';
 
 export const DEFAULT_DEPLOY_ATTRS = {
@@ -30,5 +32,12 @@ export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, m
     policy_engine_count: policyEngines.length,
     policy_count: policyEngines.reduce((sum, pe) => sum + (pe.policies ?? []).length, 0),
     deploy_mode: mode,
+    // Records adoption only — the boundary value itself is customer-identifying and is not emitted.
+    permissions_boundary: Boolean(
+      resolvePermissionsBoundary({
+        configured: projectSpec.iam?.permissionsBoundary,
+        global: readGlobalConfigSync().permissionsBoundary,
+      })
+    ),
   };
 }
