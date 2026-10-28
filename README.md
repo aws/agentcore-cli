@@ -3,7 +3,7 @@
   <p><strong>Create, develop, and deploy AI agents to Amazon Bedrock AgentCore</strong></p>
 
   <p>
-    <a href="https://github.com/aws/agentcore-cli/actions/workflows/build-and-test.yml"><img src="https://img.shields.io/github/actions/workflow/status/aws/agentcore-cli/build-and-test.yml?branch=main&label=build" alt="Build Status"></a>
+    <a href="https://github.com/aws/agentcore-cli/actions/workflows/build-and-test.yml"><img src="https://img.shields.io/github/actions/workflow/status/aws/agentcore-cli/build-and-test.yml?branch=v0.x&label=build" alt="Build Status"></a>
     <a href="https://www.npmjs.com/package/@aws/agentcore"><img src="https://img.shields.io/npm/v/@aws/agentcore" alt="npm version"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/aws/agentcore-cli" alt="License"></a>
   </p>

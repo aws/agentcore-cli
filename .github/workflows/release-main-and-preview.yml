@@ -4,7 +4,7 @@ name: release-publish
 on:
   workflow_dispatch:
   push:
-    branches: [main, v0.x]
+    branches: [v0.x]
 
 jobs:
   check-release:
@@ -20,8 +20,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" != main && "$GITHUB_REF_NAME" != v0.x ]]; then
-            echo "::error::v0 releases must run from main or v0.x, not $GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF_NAME" != v0.x ]]; then
+            echo "::error::v0 releases must run from v0.x, not $GITHUB_REF_NAME"
             exit 1
           fi
           IS_RELEASE=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \

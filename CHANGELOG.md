@@ -922,14 +922,14 @@ This release includes breaking changes that affect existing projects created dur
 
 ### Documentation
 
-- [Commands reference](https://github.com/aws/agentcore-cli/blob/main/docs/commands.md)
-- [Frameworks](https://github.com/aws/agentcore-cli/blob/main/docs/frameworks.md)
-- [Configuration](https://github.com/aws/agentcore-cli/blob/main/docs/configuration.md)
-- [Local development](https://github.com/aws/agentcore-cli/blob/main/docs/local-development.md)
-- [Memory](https://github.com/aws/agentcore-cli/blob/main/docs/memory.md)
-- [Gateway](https://github.com/aws/agentcore-cli/blob/main/docs/gateway.md)
-- [Evaluations](https://github.com/aws/agentcore-cli/blob/main/docs/evals.md)
-- [IAM permissions](https://github.com/aws/agentcore-cli/blob/main/docs/PERMISSIONS.md)
+- [Commands reference](https://github.com/aws/agentcore-cli/blob/v0.x/docs/commands.md)
+- [Frameworks](https://github.com/aws/agentcore-cli/blob/v0.x/docs/frameworks.md)
+- [Configuration](https://github.com/aws/agentcore-cli/blob/v0.x/docs/configuration.md)
+- [Local development](https://github.com/aws/agentcore-cli/blob/v0.x/docs/local-development.md)
+- [Memory](https://github.com/aws/agentcore-cli/blob/v0.x/docs/memory.md)
+- [Gateway](https://github.com/aws/agentcore-cli/blob/v0.x/docs/gateway.md)
+- [Evaluations](https://github.com/aws/agentcore-cli/blob/v0.x/docs/evals.md)
+- [IAM permissions](https://github.com/aws/agentcore-cli/blob/v0.x/docs/PERMISSIONS.md)
 - [Migration from Starter Toolkit](https://github.com/awslabs/amazon-bedrock-agentcore-samples/blob/main/MIGRATION.md)
 
 ## [0.4.0] - 2026-03-28

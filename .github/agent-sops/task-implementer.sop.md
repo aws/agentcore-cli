@@ -36,13 +36,13 @@ Initialize the task environment and discover repository instruction files.
 - You MUST comment on the github issue if the tests fail, and use the handoff_to_user tool to get feedback on how to
   continue.
 - You MUST check the current branch using `git branch --show-current`
-- You MUST create a new feature branch if currently on main branch:
+- You MUST create a new feature branch if currently on v0.x branch:
   - You MUST use `git checkout -b <BRANCH_NAME>` to create and switch to a new feature branch
   - You SHOULD use the BRANCH_NAME pattern `agent-tasks/{ISSUE_NUMBER}` unless this branch already exists
   - You MUST make note of the newly created branch name
   - You MUST use `git push origin <BRANCH_NAME>` to create the feature branch in remote
   - If the push operation is deferred, continue with the workflow and note the deferred status
-- You MAY continue on the current branch if not on main branch
+- You MAY continue on the current branch if not on v0.x branch
 
 ### 2. Explore Phase
 
@@ -542,4 +542,4 @@ This pattern ensures quality gates are not skipped and provides an audit trail o
 - Commit early and often with descriptive messages
 - Follow Conventional Commits specification
 - You must create a new commit for each feedback iteration
-- You must only push to your feature branch, never main
+- You must only push to your feature branch, never v0.x

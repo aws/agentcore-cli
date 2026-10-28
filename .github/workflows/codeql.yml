@@ -2,14 +2,14 @@ name: CodeQL
 
 on:
   push:
-    branches: ['main', 'refactor']
+    branches: ['v0.x', 'refactor']
   pull_request:
-    branches: ['main', 'refactor', 'feat/**']
+    branches: ['v0.x', 'refactor', 'feat/**']
 
-# Cancel in-progress runs for PRs; never cancel runs on main (merges should not abort each other)
+# Cancel in-progress runs for PRs; never cancel runs on v0.x (merges should not abort each other)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/v0.x' }}
 
 jobs:
   analyze:

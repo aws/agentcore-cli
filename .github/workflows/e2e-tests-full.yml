@@ -9,7 +9,7 @@ on:
         description: 'Branch of CDK constructs repo to build from'
         default: 'main'
   push:
-    branches: [main, 'feat/**']
+    branches: [v0.x, 'feat/**']
 
 env:
   AGENTCORE_TELEMETRY_DISABLED: '1'
@@ -94,7 +94,7 @@ jobs:
         run: |
           if [ -n "${{ inputs.cdk_branch }}" ] && [ "${{ inputs.cdk_branch }}" != "main" ]; then
             CDK_BRANCH="${{ inputs.cdk_branch }}"
-          elif [ "${{ github.ref_name }}" != "main" ]; then
+          elif [ "${{ github.ref_name }}" != "v0.x" ]; then
             CDK_BRANCH="main"
             REPO_URL="https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git"
             # Check if a branch exists on the CDK repo with the same name
@@ -163,7 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || 'main' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || 'v0.x' }}
       - uses: actions/setup-node@v7
         with:
           node-version: '20.x'

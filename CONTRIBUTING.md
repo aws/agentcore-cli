@@ -24,7 +24,7 @@ Contributions via pull requests are much appreciated. Before sending us a pull r
 
 1. **Every PR must be linked to an issue.** Open an issue first (or find an existing one) and reference it in your PR
    using `Closes #issue-number`. PRs without an associated issue will not be reviewed.
-2. You are working against the latest source on the _main_ branch.
+2. You are working against the latest source on the _v0.x_ branch.
 3. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem
    already.
 4. You open an issue to discuss any significant work - we would hate for your time to be wasted.
