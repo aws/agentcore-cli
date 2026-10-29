@@ -980,6 +980,11 @@
                       "type": "string",
                       "const": "S3"
                     },
+                    "kmsKeyArn": {
+                      "description": "Customer-managed KMS key used to encrypt the S3 source documents",
+                      "type": "string",
+                      "pattern": "^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key\\/[a-zA-Z0-9-]{36}$"
+                    },
                     "uri": {
                       "type": "string",
                       "minLength": 1

@@ -257,7 +257,11 @@ interface KnowledgeBase {
 }
 
 type DataSource =
-  | { type: 'S3'; uri: string } // valid s3:// URI
+  | {
+      type: 'S3';
+      uri: string; // valid s3:// URI
+      kmsKeyArn?: string; // @regex ^arn:[^:]+:kms:[a-zA-Z0-9-]*:[0-9]{12}:key/[a-zA-Z0-9-]{36}$
+    }
   | {
       type: 'WEB' | 'CONFLUENCE' | 'SHAREPOINT' | 'ONEDRIVE' | 'GOOGLEDRIVE';
       connectorConfigFile: string;

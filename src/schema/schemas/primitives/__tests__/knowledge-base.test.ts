@@ -16,6 +16,22 @@ describe('KnowledgeBaseNameSchema', () => {
 });
 
 describe('S3DataSourceSchema', () => {
+  it.each(['aws', 'aws-cn', 'aws-us-gov'])('accepts an S3 encryption key in partition %s', partition => {
+    const source = {
+      type: 'S3',
+      uri: 's3://my-bucket/docs/',
+      kmsKeyArn: `arn:${partition}:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012`,
+    };
+    expect(S3DataSourceSchema.parse(source)).toEqual(source);
+  });
+
+  it.each(['*', 'arn:aws:kms:us-east-1:123456789012:alias/my-key', 'not-an-arn'])(
+    'rejects an invalid encryption key %s',
+    kmsKeyArn => {
+      expect(() => S3DataSourceSchema.parse({ type: 'S3', uri: 's3://my-bucket/', kmsKeyArn })).toThrow();
+    }
+  );
+
   it('accepts a valid S3 URI with prefix', () => {
     expect(() => S3DataSourceSchema.parse({ type: 'S3', uri: 's3://my-bucket/docs/' })).not.toThrow();
   });
