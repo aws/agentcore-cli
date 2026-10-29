@@ -1,4 +1,4 @@
-import { findConfigRoot, readEnvFile } from '../../../lib';
+import { ConfigIO, findConfigRoot, readEnvFile } from '../../../lib';
 import type { AgentEnvSpec } from '../../../schema';
 import { getGatewayEnvVars } from './gateway-env.js';
 import { getMemoryEnvVars } from './memory-env.js';
@@ -24,9 +24,28 @@ export async function loadDevEnv(workingDir: string, runtime?: AgentEnvSpec): Pr
   const gatewayEnvVars = await getGatewayEnvVars();
   const memoryEnvVars = await getMemoryEnvVars();
   const paymentEnvVars = await getPaymentEnvVars(runtime);
+  const targetRegionEnvVars = await getTargetRegionEnvVars(configRoot);
 
   return {
-    envVars: { ...gatewayEnvVars, ...memoryEnvVars, ...paymentEnvVars, ...dotEnvVars },
+    envVars: { ...gatewayEnvVars, ...memoryEnvVars, ...paymentEnvVars, ...dotEnvVars, ...targetRegionEnvVars },
     deployedMemoryCount: Object.keys(memoryEnvVars).length,
   };
+}
+
+/**
+ * Make the first configured deployment target's region authoritative for local dev.
+ * AgentCore SDK clients in a local runtime resolve their region from the environment,
+ * so inheriting a different shell or .env region can point them at the wrong resources.
+ */
+async function getTargetRegionEnvVars(configRoot: string | null): Promise<Record<string, string>> {
+  if (!configRoot) return {};
+
+  try {
+    const targets = await new ConfigIO({ baseDir: configRoot }).readAWSDeploymentTargets();
+    const region = targets[0]?.region;
+    return region ? { AWS_REGION: region, AWS_DEFAULT_REGION: region } : {};
+  } catch {
+    // A project may not have a deployment target before its first deploy.
+    return {};
+  }
 }
