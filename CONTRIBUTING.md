@@ -357,8 +357,9 @@ Conventions:
 
 - **`index.tsx`** exports a `create<Name>Handler(...)` factory returning a
   `Handler`/`Router`. Dependencies (such as `Core` and `AppIO`) are passed in,
-  never imported as singletons. Re-export the command's `screen.tsx` from here.
-- **`screen.tsx`** exports the React component(s) for the TUI. Screens receive
+  never imported as singletons.
+- **`screen.tsx`** exports the React component(s) for the TUI, which `src/components/Root.tsx`
+  imports directly when it routes them. Screens receive
   `ScreenProps` (`{ ctx, core }`) threaded down from `Root`, and drive data
   fetching with react-query against `core`.
 - **`types.tsx`** defines the interface(s) this command needs from Core.
@@ -430,6 +431,13 @@ construct (see [Changes that span repositories](#changes-that-span-repositories)
 reference, including the domain's `types.tsx` interface, `TestCoreClient`, test assertions and
 `README.md` examples, and delete exported helpers the removal leaves with no caller outside their own
 tests.
+
+**A leaf that opens its own screen from flags** — `gateway invoke --id X` landing straight on
+that gateway's screen — calls `renderTuiAt` with `${ctx.require(PathKey)}/${encodeURIComponent(id)}`,
+and takes the renderer as an injectable parameter defaulting to `renderTuiAt` so a test can assert
+the path without a terminal. `src/handlers/gateway/invoke/index.tsx` is the model. Once a partial set
+of flags opens the TUI, the existing headless validation tests for that leaf need `--json`, or they
+open the TUI instead of failing.
 
 **A new TUI screen** must also be routed: add its `<Route>` entries to the route table in
 `src/components/Root.tsx` and import it there, or the screen is unreachable however correct it is.

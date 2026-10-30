@@ -120,8 +120,8 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - tsconfig is strict with `noUncheckedIndexedAccess` and `verbatimModuleSyntax` (use `import type`
   for type-only imports). Relative imports often include the extension (`./harness/index.tsx`),
   and most files are `.tsx` even without JSX; follow the neighbouring files.
-- Handler directories: `index.tsx` (`create<Name>Handler(core, io)` factory, re-exports the
-  screen), `screen.tsx`, `types.tsx` (the Core interface the handler consumes; implemented in
+- Handler directories: `index.tsx` (`create<Name>Handler(core, io)` factory), `screen.tsx`
+  (imported directly by the route table in `src/components/Root.tsx`), `types.tsx` (the Core interface the handler consumes; implemented in
   `src/core/`). Leaf handlers use `createHandler({ name, description, flags: [flag(...)], handle })`
   with zod-validated flags. Emit JSON via `ctx.require(JsonRendererKey).renderJson(...)` and write
   through the injected `AppIO`; never touch `process.stdout` directly in handlers.
