@@ -29,6 +29,11 @@ also need [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
 npm install -g @aws/agentcore
 ```
 
+The CLI uses the AWS SDK's default credential chain, so `AWS_PROFILE` selects a named profile.
+Inside a project, `agentcore status` shows the AWS account behind the active credentials and the
+profile they come from, and warns when that account differs from the deployment target's. With
+`--json`, the same details are in `awsIdentity` and `targetAccount`.
+
 If the Python-based Bedrock AgentCore Starter Toolkit is installed, uninstall it: both provide an
 `agentcore` command.
 

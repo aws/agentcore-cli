@@ -17,7 +17,7 @@ import {
   waitForFlatText,
   waitForText,
 } from "../../../testing";
-import type { Project, ResolvedProjectResource } from "../types";
+import type { AwsIdentity, Project, ResolvedProjectResource } from "../types";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -364,5 +364,77 @@ describe("project status screen", () => {
     expect(flatFrame(screen.lastFrame)).toContain("agentcore create");
     await screen.press("escape");
     await waitForText(screen.lastFrame, "the platform for production AI agents");
+  });
+});
+
+describe("project status screen AWS identity", () => {
+  function withIdentity(
+    resolve: (region: string) => Promise<AwsIdentity>,
+    value: TestCoreClient = core(),
+  ) {
+    const regions: string[] = [];
+    value.projectManager.resolveAwsIdentity = (region) => {
+      regions.push(region);
+      return resolve(region);
+    };
+    return { value, regions };
+  }
+
+  test("names the active account and profile, resolved in the target's region", async () => {
+    const { value, regions } = withIdentity(async () => ({
+      credentialSource: "profile",
+      profile: "dev",
+      success: true,
+      account: TARGET.account,
+    }));
+    const screen = renderStatus(value);
+
+    await waitForFlatText(screen.lastFrame, `AWS account ${TARGET.account} (profile dev)`);
+    await waitForGroup(screen);
+    expect(flatFrame(screen.lastFrame)).not.toContain("configured for account");
+    expect(regions).toEqual([TARGET.region]);
+  });
+
+  test("warns when the credentials belong to another account than the target's", async () => {
+    const { value } = withIdentity(async () => ({
+      credentialSource: "environment",
+      success: true,
+      account: "999988887777",
+    }));
+    const screen = renderStatus(value);
+
+    await waitForFlatText(
+      screen.lastFrame,
+      "AWS account 999988887777 (credentials from environment variables)",
+    );
+    await waitForFlatText(
+      screen.lastFrame,
+      `The active AWS credentials belong to account 999988887777, but target 'default' is ` +
+        `configured for account ${TARGET.account}.`,
+    );
+  });
+
+  test("reports an unavailable identity and still lists the resources", async () => {
+    const { value } = withIdentity(async () => ({
+      credentialSource: "profile",
+      profile: "default",
+      success: false,
+      error: "Could not load credentials from any providers",
+    }));
+    const screen = renderStatus(value);
+
+    await waitForFlatText(
+      screen.lastFrame,
+      "AWS account unavailable (profile default): Could not load credentials from any providers",
+    );
+    await waitForGroup(screen);
+  });
+
+  test("shows the resources while the identity is still resolving", async () => {
+    const { value } = withIdentity(() => new Promise<AwsIdentity>(() => {}));
+    const screen = renderStatus(value);
+
+    await waitForGroup(screen);
+    expect(flatFrame(screen.lastFrame)).toContain("Resolving AWS account…");
   });
 });

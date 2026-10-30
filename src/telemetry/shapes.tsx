@@ -82,4 +82,7 @@ export const commandRunSchema = safeSchema({
   project_payment_connector_count: z.number().int().nonnegative().optional(),
   project_memory_strategy_count: z.number().int().nonnegative().optional(),
   project_knowledge_base_data_source_count: z.number().int().nonnegative().optional(),
+  // Set by status. Never the account ID itself, only whether it resolved and matched.
+  aws_identity_resolved: z.boolean().optional(),
+  aws_account_mismatch: z.boolean().optional(),
 });
