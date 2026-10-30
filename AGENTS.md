@@ -59,7 +59,11 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   hashed over the command `input` (top-level `clientToken` excluded). Any change to the request a
   handler sends (new field, different default, different region) makes replay fail with
   "Missing fixture ... Re-run with RECORD=1". Either re-record against live AWS or keep the request
-  unchanged. Tests pin `--region us-west-2` for stable recordings. Never hand-edit or reformat
+  unchanged. It also means **a per-run value inside the request makes the command permanently
+  unreplayable** — a `randomUUID()` session id or a timestamp rehashes every run. Inject the
+  generator through `CoreClient`'s config (defaulting to the real one) so tests can pin it. A
+  **streaming response** likewise cannot be recorded until `src/testing/fixtures.tsx` grows
+  freeze/revive support for it. Tests pin `--region us-west-2` for stable recordings. Never hand-edit or reformat
   fixtures/golden files (`__fixtures__` and `*.snap` are Prettier-ignored). Use `settle()` and
   `uniquePerRecording()` from `src/testing/fixtures.tsx` for service state transitions and
   per-recording unique values.
@@ -112,6 +116,10 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - Errors: throw `AgentCoreCLIError` subclasses (`src/errors/`), which carry `source`
   (user/service/internal), `exitCode`, and `meta` for logging and telemetry.
   `AgentCoreCLIError.fromError` maps Commander errors to exit code 2 and SDK 4xx to user errors.
+  Error text is asserted behaviour: when you refactor an error path, keep everything the old
+  message named. If it identified which item failed, the replacement must still identify it —
+  moving the identity into a structured field does not excuse dropping it from the sentence the
+  user reads.
 - Runtime files: logs in `~/.agentcore/logs/`, global CLI settings in `~/.agentcore/config.json`.
 - Commits and PR titles use conventional commits with scope: `feat(invoke): ...`,
   `fix(tui): ...`, `refactor(gateway): ...`, `test(cli): ...`. PRs must link an issue and follow

@@ -372,6 +372,40 @@ Conventions:
 Mount the new handler in `src/handlers/index.tsx` (or on the appropriate parent
 router), passing its dependencies, as in `root.handler(createHarnessHandler(core, io))`.
 
+### What a change touches beyond its handler
+
+Work this out before editing anything. Missing one of these is the most common reason a PR
+needs a second review round.
+
+**A new flag, field or output value on an existing command:**
+
+| File                                     | Change                                                    | When                                      |
+| ---------------------------------------- | --------------------------------------------------------- | ----------------------------------------- |
+| `src/handlers/<domain>/<leaf>/index.tsx` | add to the `flags: [flag(...)]` array with its zod schema | always                                    |
+| `src/handlers/<domain>/types.tsx`        | widen the Core interface the handler consumes             | if the value reaches the SDK              |
+| `src/core/<domain>.tsx`                  | put the value into the SDK request                        | if the value reaches the SDK              |
+| `src/projectSchemas/<resource>.ts`       | add the field to the zod project schema                   | only on an `agentcore add` path           |
+| `src/core/project/backends/cdk.ts`       | map it to the deployed resource                           | only if it must reach a deployed resource |
+| the handler's `*.test.tsx`               | a command-flow case covering the new value                | always                                    |
+| `__fixtures__/` and `*.golden.json`      | re-record with `RECORD=1`                                 | if the SDK request changed                |
+| `README.md`, `docs/`                     | update the guidance that covers it                        | if it exists                              |
+
+**A new leaf** adds its own directory (`index.tsx`, `screen.tsx` if it has a TUI screen),
+and must be mounted on its parent router — registration order is `--help` order. Add it to
+the parent's `.supportedTuiCommands(...)` only if it has a screen; mutation leaves ship
+headless first.
+
+**A new resource with a project collection** also needs its `src/projectSchemas/<resource>.ts`
+schema registered in `project.ts` with `.superRefine(uniqueNames("<resource>"))`, a Core
+sub-client, a deploy mapping in `src/core/project/backends/cdk.ts`, and the companion L3
+construct (see [Changes that span repositories](#changes-that-span-repositories)). Add a
+`type: z.literal(...)` discriminator only if the sibling schemas have one — most do not.
+
+**A new TUI screen** uses `useWindowSize` from `src/components/ui/useWindowSize.tsx`, puts a
+wrapper shared by more than one screen in `src/components/`, and needs a screen test through
+`renderScreen`. A new primitive under `src/components/ui/` is a larger change than it looks;
+raise it before building one.
+
 ### Core and dependency inversion
 
 AWS operations and project orchestration live in **`src/core/`**, behind
@@ -488,6 +522,29 @@ Four things to know before you record one:
 
 A golden file records what a user sees, so review it like output, not like a blob: if the
 diff is not explainable by your change, something else moved.
+
+### Two things that make a command unrecordable until the harness is extended
+
+Check both against the operation you are adding **before** writing the handler. Finding out
+afterwards means reworking `CoreClient`'s constructor or the test harness, not just your
+command.
+
+- **A value generated per run inside the SDK request.** Fixture keys hash the request, so a
+  fresh `randomUUID()` session id, timestamp, or generated name produces a fresh hash on
+  every run and the fixture can never be found again. Inject the generator at the Core edge
+  — `CoreClient` takes it as config, defaulting to the real implementation — so a test can
+  pin it. A handler that calls the generator directly cannot be replayed at all.
+- **A streaming response.** `makeRecordingSend` cannot serialise a stream, so there is
+  nothing to record. The operation needs freeze-on-record / revive-on-replay support in
+  `src/testing/fixtures.tsx` before a test over it can exist.
+
+### Which test to write
+
+Prefer a fixture-backed command-flow test over a unit test when the command's value is its
+rendered output. A unit test over a Core helper asserts the shape you just wrote; the
+command-flow test asserts what the customer sees, through the real parser, middleware, Core
+and renderer. When you add command-flow coverage, delete the unit test it replaces rather
+than keeping both.
 
 See [this talk](https://www.youtube.com/watch?v=yszygk1cpEc&t=1s) for background
 on the pattern.

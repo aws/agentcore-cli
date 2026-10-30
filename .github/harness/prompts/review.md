@@ -72,6 +72,13 @@ cheap to miss by reading a diff in isolation.
 - **Account-specific values in fixtures or golden files** - Account IDs, ARNs, or generated resource
   names recorded from the author's own account do not reproduce elsewhere. Hand-edited or
   reformatted recordings are also a finding: they must come from `RECORD=1`.
+- **A per-run value inside an SDK request** - Fixture keys hash the request, so a `randomUUID()`,
+  `Date.now()`, or generated name built inside the handler rehashes every run and the command can
+  never replay. The generator belongs in `CoreClient`'s config so a test can pin it. Same for a
+  streaming response, which cannot be recorded until `src/testing/fixtures.tsx` supports it.
+- **An error message that lost what it used to name** - When an error path is refactored, check the
+  replacement still identifies which item failed. Moving the identity into a structured field does
+  not excuse dropping it from the message the user reads.
 - **Dead guards on resolved context values** - A middleware-resolved value such as `RegionKey` is
   never `undefined` below the middleware that sets it, so a branch on its absence cannot run. This
   reads as correct defensive code and is not.
