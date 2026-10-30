@@ -56,10 +56,17 @@ const COINBASE = {
 /**
  * The names Identity sees: project, target, then the spec credential name. Spec names
  * and the `.env.local` variables derived from them are untouched by the scoping.
+ * Payment names are joined with hyphens, which a payment connector can reference.
  */
 const OPENAI_PROVIDER = "example_dev_openai-key";
 const OAUTH_PROVIDER = "example_dev_my-oauth";
-const WALLET_PROVIDER = "example_dev_wallet";
+const WALLET_PROVIDER = "example-dev-wallet";
+
+/** The service's pattern for a payment connector's `credentialProviderArn`. */
+const PAYMENT_CONNECTOR_CREDENTIAL_ARN =
+  /^arn:[^:]+:(acps|bedrock-agentcore):[A-Za-z0-9-]{1,64}:[0-9]{12}:token-vault\/[a-zA-Z0-9-.]+\/paymentcredentialprovider\/[a-zA-Z0-9-.]+$/;
+const paymentProviderArn = (name: string) =>
+  `arn:aws:bedrock-agentcore:${REGION}:123456789012:token-vault/default/paymentcredentialprovider/${name}`;
 
 const tempDirectories: string[] = [];
 afterEach(async () => {
@@ -716,7 +723,7 @@ describe("createCredentialProvisioner", () => {
   });
 
   test("updates an existing StripePrivy payment provider", async () => {
-    const subject = account({ example_dev_pay: { credentialProviderArn: "arn:existing" } });
+    const subject = account({ "example-dev-pay": { credentialProviderArn: "arn:existing" } });
     const input = await project(
       [{ authorizerType: "PaymentCredentialProvider", name: "pay", provider: "StripePrivy" }],
       "AGENTCORE_CREDENTIAL_PAY_APP_ID='app-1'\n" +
@@ -727,9 +734,9 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.contents()["example_dev_pay"]?.operation).toBe("updated");
-    expect(subject.configFor("example_dev_pay")).toEqual({
-      name: "example_dev_pay",
+    expect(subject.contents()["example-dev-pay"]?.operation).toBe("updated");
+    expect(subject.configFor("example-dev-pay")).toEqual({
+      name: "example-dev-pay",
       credentialProviderVendor: "StripePrivy",
       providerConfigurationInput: {
         stripePrivyConfiguration: {
@@ -740,6 +747,27 @@ describe("createCredentialProvisioner", () => {
         },
       },
     });
+  });
+
+  test("names a payment provider so its connector can reference it", async () => {
+    const subject = account();
+    const input = await project(
+      [{ ...COINBASE, name: "my_wallet" }],
+      "AGENTCORE_CREDENTIAL_MY_WALLET_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_MY_WALLET_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_MY_WALLET_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    const { result } = await run(subject.provision, input);
+
+    // The underscores of the scope and of the credential name both become hyphens;
+    // the spec name, and the variables derived from it, keep theirs.
+    expect(Object.keys(subject.contents())).toEqual(["example-dev-my-wallet"]);
+    expect(Object.keys(result)).toEqual(["my_wallet"]);
+    expect(paymentProviderArn("example-dev-my-wallet")).toMatch(PAYMENT_CONNECTOR_CREDENTIAL_ARN);
+    expect(paymentProviderArn("example_dev_my_wallet")).not.toMatch(
+      PAYMENT_CONNECTOR_CREDENTIAL_ARN,
+    );
   });
 
   test("names every payment variable that is unset", async () => {
@@ -934,9 +962,52 @@ describe("orphanedCredentials", () => {
     };
     const input = await project([COINBASE]);
 
-    expect(orphanedCredentials(recorded, input.spec.credentials)).toEqual([
+    expect(orphanedCredentials(input, INPUT.targetName, recorded)).toEqual([
       { name: "openai-key", authorizerType: "ApiKeyCredentialProvider" },
     ]);
+  });
+
+  test("keeps a payment provider recorded under its underscored name, by that name", async () => {
+    // Created by a CLI that joined payment names with underscores, which no connector
+    // can reference. The deploy creates the hyphenated one, so the old one goes,
+    // whether or not its credential is still declared.
+    const recorded: DeployedCredentials = {
+      wallet: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: paymentProviderArn("example_dev_wallet"),
+      }),
+      dropped: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: paymentProviderArn("example_dev_dropped"),
+      }),
+      current: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: paymentProviderArn("example-dev-current"),
+      }),
+    };
+    const input = await project([COINBASE, { ...COINBASE, name: "current" }]);
+
+    expect(orphanedCredentials(input, INPUT.targetName, recorded)).toEqual([
+      {
+        name: "wallet",
+        authorizerType: "PaymentCredentialProvider",
+        legacyProvider: "example_dev_wallet",
+      },
+      {
+        name: "dropped",
+        authorizerType: "PaymentCredentialProvider",
+        legacyProvider: "example_dev_dropped",
+      },
+    ]);
+  });
+
+  test("leaves a v0 payment provider's bare name alone", async () => {
+    const recorded: DeployedCredentials = {
+      wallet: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: paymentProviderArn("wallet"),
+      }),
+    };
+
+    expect(
+      orphanedCredentials(await migratedProject([COINBASE]), INPUT.targetName, recorded),
+    ).toEqual([]);
   });
 });
 
@@ -971,6 +1042,21 @@ describe("createCredentialRemover", () => {
       `removing credential provider '${WALLET_PROVIDER}'`,
     ]);
     expect(subject.optionsSeen).toEqual([OPTIONS, OPTIONS, OPTIONS]);
+  });
+
+  test("deletes a payment provider by the name it was recorded under", async () => {
+    const subject = account({
+      example_dev_wallet: { credentialProviderArn: paymentProviderArn("example_dev_wallet") },
+      [WALLET_PROVIDER]: { credentialProviderArn: paymentProviderArn(WALLET_PROVIDER) },
+    });
+
+    const { events } = await remove(subject, [
+      { ...COINBASE, legacyProvider: "example_dev_wallet" },
+    ]);
+
+    expect(subject.deleted).toEqual([{ kind: "payment", name: "example_dev_wallet" }]);
+    expect(Object.keys(subject.contents())).toEqual([WALLET_PROVIDER]);
+    expect(stepMessages(events)).toEqual(["removing credential provider 'example_dev_wallet'"]);
   });
 
   test("treats a provider that is already gone as removed", async () => {
