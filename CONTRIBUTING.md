@@ -372,6 +372,15 @@ Conventions:
 Mount the new handler in `src/handlers/index.tsx` (or on the appropriate parent
 router), passing its dependencies, as in `root.handler(createHarnessHandler(core, io))`.
 
+`flag(name, description, schema, { group, help })` takes two optional extras that shape `--help`:
+`group` is the heading the flag is listed under, and `help` is long-form text printed in a
+`Parameter details:` section. Keep long `help` in a sibling file named for what it documents —
+`src/handlers/eval/online-eval/filtersHelp.tsx` and `harness/parameterHelp.tsx` are the models — and
+follow their house style: a one-line summary, the JSON shape with `// [required]` annotations, a link
+to the API reference, and two worked examples. A flag taking tags goes through `parseTags`
+(`src/handlers/utils.tsx`), which accepts one JSON object or repeated `key=value` entries and
+validates both against `TagsSchema`; do not hand-roll tag parsing.
+
 ### What a change touches beyond its handler
 
 Work this out before editing anything. Missing one of these is the most common reason a PR
@@ -409,9 +418,12 @@ sub-client, a deploy mapping in `src/core/project/backends/cdk.ts`, and the comp
 construct (see [Changes that span repositories](#changes-that-span-repositories)). Add a
 `type: z.literal(...)` discriminator only if the sibling schemas have one — most do not.
 
-**A new TUI screen** uses `useWindowSize` from `src/components/ui/useWindowSize.tsx`, puts a
-wrapper shared by more than one screen in `src/components/`, and needs a screen test through
-`renderScreen`. A new primitive under `src/components/ui/` is a larger change than it looks;
+**A new TUI screen** must also be routed: add its `<Route>` entries to the route table in
+`src/components/Root.tsx` and import it there, or the screen is unreachable however correct it is.
+A bare parent path (`…/get` with no id) gets a `Navigate` to the list, which is what
+`withTuiOnEmptyFlagsAndArgs` lands on. The screen uses `useWindowSize` from
+`src/components/ui/useWindowSize.tsx`, puts a wrapper shared by more than one screen in
+`src/components/`, and needs a screen test through `renderScreen`. A new primitive under `src/components/ui/` is a larger change than it looks;
 raise it before building one.
 
 ### Core and dependency inversion

@@ -48,7 +48,9 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - **Global config keys.** Adding a global config key means updating `types.tsx`,
   `DEFAULT_GLOBAL_CONFIG`, and `applyOverrides` in `src/globalConfig/`. Retired keys in an existing
   `~/.agentcore/config.json` are dropped on read (the zod schema strips unknown keys).
-- **TUI support is opt-in per top-level command** via the root's `.supportedTuiCommands(...)`.
+- **TUI support is opt-in per router, at any depth**, via that router's `.supportedTuiCommands(...)`;
+  `compile()` threads support down the tree, so a nested router hides its own leaves (24 routers under
+  `src/handlers/` declare one). Omitting a leaf keeps it command-line only.
   Handler registration order is `--help` and menu order. Commands without TUI support
   are omitted from the TUI menu.
   `.menuSection(title)` draws a menu divider above the next registered handler (menu only).
@@ -86,7 +88,11 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   root replaces `RegionKey` with the resolved region (flag → env → config → `DEFAULT_REGION`)
   before any handler runs, so `ctx.value(RegionKey)` is always set and a guard on its absence is
   dead code. To tell "the user passed `--flag`" from "something resolved a default", capture that
-  before the middleware runs — don't infer it from the context value.
+  before the middleware runs — don't infer it from the context value. **A zod `.default()` on a
+  flag hides the same distinction**: by the time `handle` runs, a defaulted flag and a passed one are
+  identical. If any rule depends on the user having passed it, declare the schema `.optional()` and
+  apply the default in `handle`, and put the default's value in the flag description so `--help`
+  still states it.
 - **The e2e suite is not a PR gate.** `.github/workflows/e2e-test.yml` runs only on
   `workflow_call` / `workflow_dispatch` and checks caller authorization, so nothing runs it for a
   contributor automatically. Run it locally with credentials and say so in the PR.
@@ -132,6 +138,10 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   behavior tested, not a quota to fill — a test asserting what the implementation plainly says
   gets removed in review. For a flag, the case worth testing is usually the one where it is
   **absent**, since that is the path a default or a middleware silently changes.
+- **Client tests** go one layer lower, for assertions about the request a Core client builds:
+  `new EvalClient({ data: () => ({ send: mock(fn) }) as never } as unknown as AwsClients)`, then assert
+  the SDK command's `input`. No fixture, no recording — the right choice when the point is the request
+  itself. Several `src/core/*.test.tsx` files use it.
 - **Command-flow tests** build the real stack: `new CoreClient({ ...fixtureFactories(FIXTURES), logger: createSilentLogger() })`,
   then `createRootHandler(core, { io: testIO().io, ... })`, then
   `root.route(["node", "agentcore", ...args, "--region", REGION])`, asserting captured stdout with
