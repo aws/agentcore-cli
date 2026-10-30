@@ -282,6 +282,59 @@ describe("build", () => {
     expect(syncRuntimeBuild(first.runtime, root).changes).toEqual([]);
   });
 
+  test("a pre-built image ignores local Dockerfiles and manifests", async () => {
+    const root = await project({
+      "app/search/Dockerfile": "FROM scratch\n",
+      "app/search/pyproject.toml": "[invalid",
+      "app/search/package.json": "{invalid",
+    });
+    const prebuilt = runtime({
+      build: "Container",
+      containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/team/search:release",
+      runtimeVersion: undefined,
+    });
+
+    expect(syncRuntimeBuild(prebuilt, root)).toEqual({
+      runtime: prebuilt,
+      changes: [],
+      warnings: [],
+    });
+    expect(prepareRuntimes(root, [prebuilt], "deploy")).toEqual({
+      runtimes: [prebuilt],
+      changed: [],
+      messages: [],
+    });
+  });
+
+  test("a pre-built image does not require its local code folder", async () => {
+    const root = await project({});
+    const prebuilt = runtime({
+      build: "Container",
+      codeLocation: "app/missing" as ProjectRuntime["codeLocation"],
+      containerUri: "public.ecr.aws/example/search:release",
+      runtimeVersion: undefined,
+    });
+
+    expect(prepareRuntimes(root, [prebuilt], "deploy").runtimes).toEqual([prebuilt]);
+  });
+
+  test("a pre-built image removes a stale runtimeVersion without reading local files", async () => {
+    const root = await project({});
+    const prebuilt = runtime({
+      build: "Container",
+      codeLocation: "app/missing" as ProjectRuntime["codeLocation"],
+      containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/search:release",
+    });
+
+    expect(syncRuntimeBuild(prebuilt, root).changes).toEqual([
+      {
+        field: "runtimeVersion",
+        from: "PYTHON_3_14",
+        reason: "pre-built container image",
+      },
+    ]);
+  });
+
   test("a Container runtime whose Dockerfile is missing fails instead of switching", async () => {
     const root = await project({
       "app/search/main.py": "",
