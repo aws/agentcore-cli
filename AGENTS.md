@@ -144,4 +144,6 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - Pass `platform: "win32"` to `createRootHandler` or `renderScreen` to exercise Windows branches;
   CI runs unit tests on Linux, Windows, and macOS.
 - Shared helpers are exported from `src/testing/index.tsx` (`testIO`, `expectError`,
-  `createSilentLogger`, `TestGlobalConfigAccessor`, fixture helpers).
+  `createSilentLogger`, `TestGlobalConfigAccessor`, fixture helpers including `fixtureFetch` for
+  non-SDK HTTP). `menuEntries` in `src/testing/renderScreen.tsx` reads a rendered TUI menu,
+  split at its command-line-only divider.

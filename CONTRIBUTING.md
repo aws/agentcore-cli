@@ -386,6 +386,7 @@ needs a second review round.
 | `src/core/<domain>.tsx`                  | put the value into the SDK request                        | if the value reaches the SDK              |
 | `src/projectSchemas/<resource>.ts`       | add the field to the zod project schema                   | only on an `agentcore add` path           |
 | `src/core/project/backends/cdk.ts`       | map it to the deployed resource                           | only if it must reach a deployed resource |
+| `src/testing/TestCoreClient.tsx`         | add the new method to the matching test sub-client        | if a Core interface gained a method       |
 | the handler's `*.test.tsx`               | a command-flow case covering the new value                | always                                    |
 | `__fixtures__/` and `*.golden.json`      | re-record with `RECORD=1`                                 | if the SDK request changed                |
 | `README.md`, `docs/`                     | update the guidance that covers it                        | if it exists                              |
@@ -393,7 +394,14 @@ needs a second review round.
 **A new leaf** adds its own directory (`index.tsx`, `screen.tsx` if it has a TUI screen),
 and must be mounted on its parent router — registration order is `--help` order. Add it to
 the parent's `.supportedTuiCommands(...)` only if it has a screen; mutation leaves ship
-headless first.
+headless first, and the TUI menu lists them under its command-line-only divider. The
+domain's test suite usually asserts the router's exact child list and menu entries (and
+`src/handlers/root.test.tsx` does for top-level commands), so update those assertions too.
+
+**A new Core sub-client** — a domain Core did not talk to before — is declared on the `Core`
+type in `src/handlers/types.tsx`, constructed in `CoreClient` (`src/core/index.tsx`), and
+mirrored by a test sub-client in `src/testing/TestCoreClient.tsx`, which implements `Core`
+and so fails typecheck until it matches.
 
 **A new resource with a project collection** also needs its `src/projectSchemas/<resource>.ts`
 schema registered in `project.ts` with `.superRefine(uniqueNames("<resource>"))`, a Core
@@ -428,10 +436,10 @@ it takes **factory functions** (`(config) => new BedrockAgentCore...Client(...)`
 injected at the app edge in `src/index.ts`. That keeps the SDK swappable —
 crucial for the testing strategy below.
 
-The import direction follows from this and is one-way: **`src/core/` must not import from
-`src/handlers/`.** Core implements contracts the handlers declare; it does not know they
-exist. When something in Core needs presentation — an error hint, a suggested next command —
-it belongs in the handler instead. Put it where every caller reaches it, though: a hint
+The import direction follows from this. **Core imports the contracts the handlers declare
+— the types in `src/handlers/<domain>/types.tsx` — and nothing that presents.** It never
+imports a screen, a component, a router, or user-facing text. When something in Core needs
+presentation — an error hint, a suggested next command — it belongs in the handler instead. Put it where every caller reaches it, though: a hint
 added only to a screen is missing from the headless path, which is where most users hit the
 error.
 
@@ -468,7 +476,7 @@ We aim for **90% line coverage** (`bun test --coverage`).
 
 Handlers and screens use injected streams for user-facing output. An `AppIO`
 (`{ stdin, stdout, stderr }`, defined in `src/io/types.ts`) is passed in the
-configuration object to `createRootHandler(core, { io, logger, globalConfigAccessor, globalConfig })`
+configuration object to `createRootHandler(core, { io, logger, globalConfigAccessor })`
 at the edge (`src/index.ts` passes the real process streams) and threaded down to
 the TUI renderer and handlers. JSON output flows
 through the context: a `withJsonRenderer` middleware pins a `JsonRenderer` wired
@@ -484,6 +492,9 @@ compare rendered output against committed **golden files**. The record/replay
 seam sits at the SDK `.send()` boundary (the same seam `src/index.ts` wires the
 real clients into), so replayed tests still exercise the real `CoreClient`,
 `HarnessClient`, and option translation — only the network call is swapped out.
+Calls that are not AWS SDK operations — a presigned URL, a non-AWS HTTP service — go
+through the `fetch` injected into `CoreClient`, and record and replay the same way through
+`fixtureFetch(dir)`. `src/handlers/feedback/feedback.fixture.test.tsx` is the model.
 
 Two modes, selected by the `RECORD` env var:
 

@@ -85,8 +85,9 @@ cheap to miss by reading a diff in isolation.
 - **Presentation reaching only one surface** - An error hint, warning, or suggestion added in a
   screen is missing from the headless path, and vice versa. Check both, including under `--json`,
   where silence can hide a no-op a script will not notice.
-- **`src/core/` importing from `src/handlers/`** - The dependency runs one way only. Core implements
-  contracts handlers declare.
+- **Presentation in `src/core/`** - Core imports the contract types a handler declares in its
+  `types.tsx`; it must not import screens, components, routers, or user-facing text from
+  `src/handlers/`. Hints and suggested next steps belong in the handler.
 - **Free functions that should be methods** - Several helpers taking the same state as their first
   argument belong on the type that owns it (`ProjectManager`, `SourceResolver`).
 - **Presence checked instead of emptiness** - `x` existing as `[]` is not the feature being
