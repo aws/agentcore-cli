@@ -69,13 +69,30 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   staged at build time from `@aws/agent-inspector` (files get a `.asset` suffix);
   `AGENT_INSPECTOR_PATH` overrides it with a local build. `scripts/sync-vended-cdk.ts` pins
   `@aws/agentcore-cdk` in `src/assets/cdk/package.json` (release workflow; must not import `src/`).
-- **`command.md` is generated** from `agentcore --help` ("Do not edit directly"). Regenerate it
-  after changing command names, flags, or descriptions. Section grouping lives in
-  `DEFAULT_GROUPS` in `scripts/generate-command-reference.mjs`.
+- **`command.md` is generated, and not yours to regenerate.** `release-prepare.yml` runs
+  `bun scripts/generate-command-reference.mjs` and commits the result in the release PR. Leave it
+  out of a feature PR: regenerating on a branch pulls in every command change merged since the
+  last release, and reviewers ask for it to be backed out. Generate locally to preview your
+  `--help`, then revert. Section grouping lives in `DEFAULT_GROUPS` in that script.
 - **Build quirks** (`scripts/build.ts`): `@aws-cdk/toolkit-lib` is external in the npm bundle but
   inlined in compiled binaries (so the bootstrap template is embedded explicitly); identifiers are
   never minified because stack traces and telemetry error names depend on them. `dist/index.js` is
   a loader that enables Node's compile cache then imports `dist/main.js`.
+- **A context value a middleware resolves is never `undefined` below it.** `withRegion` at the
+  root replaces `RegionKey` with the resolved region (flag → env → config → `DEFAULT_REGION`)
+  before any handler runs, so `ctx.value(RegionKey)` is always set and a guard on its absence is
+  dead code. To tell "the user passed `--flag`" from "something resolved a default", capture that
+  before the middleware runs — don't infer it from the context value.
+- **The e2e suite is not a PR gate.** `.github/workflows/e2e-test.yml` runs only on
+  `workflow_call` / `workflow_dispatch` and checks caller authorization, so nothing runs it for a
+  contributor automatically. Run it locally with credentials and say so in the PR.
+- **A deploy-path field needs three things, in order**: the property published on the
+  `AWS::BedrockAgentCore::*` resource (there is no `AwsCustomResource` escape hatch), the L3
+  construct released from `aws/agentcore-l3-cdk-constructs`, then the `@aws/agentcore-cdk` pin in
+  `src/assets/cdk/package.json` bumped. Check `src/core/project/backends/cdk.ts` for whether the
+  resource is mapped at all.
+- **Check emptiness, not presence, on optional collections.** `config.insights` existing as `[]`
+  is not the same as the feature being configured; test `(x?.length ?? 0) > 0`.
 - Line endings are LF (`.gitattributes`). The Husky pre-commit hook runs lint-staged
   (oxlint --fix + Prettier) on staged files.
 - Root-level `.*.bun-build` files are compile leftovers (gitignored); ignore them.
@@ -102,7 +119,11 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 
 ## Testing patterns
 
-- Tests live beside code as `*.test.ts(x)`; target is 90% line coverage.
+- Tests live beside code as `*.test.ts(x)`; name any test-support file `*.test-support.ts` so it
+  is not mistaken for shipped code. Target is 90% line coverage, but coverage is a floor on
+  behavior tested, not a quota to fill — a test asserting what the implementation plainly says
+  gets removed in review. For a flag, the case worth testing is usually the one where it is
+  **absent**, since that is the path a default or a middleware silently changes.
 - **Command-flow tests** build the real stack: `new CoreClient({ ...fixtureFactories(FIXTURES), logger: createSilentLogger() })`,
   then `createRootHandler(core, { io: testIO().io, ... })`, then
   `root.route(["node", "agentcore", ...args, "--region", REGION])`, asserting captured stdout with

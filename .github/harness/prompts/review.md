@@ -54,6 +54,39 @@ all issues have already been flagged.
 
 ## Patterns to look out for
 
+These are findings this repo's reviewers raise repeatedly. Check for them specifically; they are
+cheap to miss by reading a diff in isolation.
+
 - **Excessive mocking** - Avoid excessive mocking; it couples tests to implementation details, provides weaker
   guarantees, and often points to mismanaged dependencies. Prefer real dependencies (e.g. temp directories over fs
   mocks) and only mock at true I/O boundaries (e.g. network calls, AWS SDK clients, HTTP requests).
+- **Comments that restate the code** - A comment earns its place only by adding what the code cannot
+  say: a reason, a constraint, a rejected alternative. Flag added comments that paraphrase the line
+  below them. Say which lines.
+- **Tests that assert the implementation** - A test that would pass for any implementation of the
+  same signature, or that restates a literal the code already contains, is maintenance cost with no
+  regression caught. Conversely, flag a new flag or option whose **absent** case is untested: that
+  is the path a default or a middleware silently changes.
+- **`command.md` in the diff** - It is generated and committed by the release workflow. Its presence
+  in a feature PR is unrelated churn; ask for it to be reverted.
+- **Account-specific values in fixtures or golden files** - Account IDs, ARNs, or generated resource
+  names recorded from the author's own account do not reproduce elsewhere. Hand-edited or
+  reformatted recordings are also a finding: they must come from `RECORD=1`.
+- **Dead guards on resolved context values** - A middleware-resolved value such as `RegionKey` is
+  never `undefined` below the middleware that sets it, so a branch on its absence cannot run. This
+  reads as correct defensive code and is not.
+- **Presentation reaching only one surface** - An error hint, warning, or suggestion added in a
+  screen is missing from the headless path, and vice versa. Check both, including under `--json`,
+  where silence can hide a no-op a script will not notice.
+- **`src/core/` importing from `src/handlers/`** - The dependency runs one way only. Core implements
+  contracts handlers declare.
+- **Free functions that should be methods** - Several helpers taking the same state as their first
+  argument belong on the type that owns it (`ProjectManager`, `SourceResolver`).
+- **Presence checked instead of emptiness** - `x` existing as `[]` is not the feature being
+  configured; the test is usually `(x?.length ?? 0) > 0`.
+- **Missing `{ sensitive: true }`** - On a credential-bearing flag, or on literal input sent to a
+  model or runtime at call time. A sensitive value must also cross into the TUI as a Context value,
+  never as a route segment or query param.
+- **A deploy-path field with no backing** - A field expected to reach a deployed resource needs the
+  CloudFormation property, the released L3 construct, and the `@aws/agentcore-cdk` pin bump in
+  `src/assets/cdk/package.json`. There is no `AwsCustomResource` escape hatch.

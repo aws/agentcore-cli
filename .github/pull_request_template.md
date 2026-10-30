@@ -12,6 +12,12 @@ Closes #
 
 <!-- Link any related documentation PR, or state that documentation is included here or not applicable. -->
 
+## Related Changes in Other Repositories
+
+<!-- Link any companion PR this change depends on, such as an L3 construct change in
+aws/agentcore-l3-cdk-constructs, or state "none". A companion PR must be merged and
+released before the @aws/agentcore-cdk pin here can be bumped. -->
+
 ## Type of Change
 
 <!-- Check all that apply -->
@@ -28,11 +34,17 @@ How have you tested the change?
 
 - [ ] I ran `bun test`
 - [ ] I ran the relevant end-to-end tests with `bun run test:e2e`, or explained why they are not applicable
+      (CI does not run them for you)
 - [ ] I ran `bun run typecheck`
 - [ ] I ran `bun run lint:check`
 - [ ] I ran `bun run format:check`
+- [ ] I ran `bun run audit`
+- [ ] I ran `bun run secrets:check`
 - [ ] I ran `bun run build`
 - [ ] If I modified `src/assets/`, I updated affected snapshots with `bun test <test-file> --update-snapshots` and committed them
+- [ ] If I re-recorded fixtures or golden files, the diff contains no account IDs, ARNs, or other
+      values specific to the account I recorded against
+- [ ] This PR does not change `command.md` (the release workflow regenerates it)
 
 ## Checklist
 

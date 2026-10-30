@@ -17,15 +17,51 @@ Run development commands from the repository root.
   out of the PR. Use conventional commit messages such as `fix:`, `feat:`, or `docs:`.
 - **Add or update tests.** Cover behavior changes and add a regression test for bug fixes.
   Update affected fixtures and snapshots. Do not disable tests or remove assertions to make checks pass.
-- **Run the checks.** Unit tests, typechecking, linting, formatting, and the build must pass:
-  `bun test`, `bun run typecheck`, `bun run lint:check`, `bun run format:check`, and `bun run build`.
+  Test observable behavior, not implementation detail: a test that only restates what the code
+  does adds maintenance cost without catching a regression, and reviewers will ask for it to go.
+- **Run the checks.** Unit tests, typechecking, linting, formatting, the dependency and secret
+  scans, and the build must pass: `bun test`, `bun run typecheck`, `bun run lint:check`,
+  `bun run format:check`, `bun run audit`, `bun run secrets:check`, and `bun run build`.
   Run the relevant [end-to-end tests](e2eTest/README.md) for changes to deployment or AWS interactions.
   All required CI checks must pass before merge.
 - **Keep the documentation current.** Update affected commands, examples, and configuration
-  guidance. Call out breaking changes and any migration steps in the PR.
+  guidance in `README.md` and `docs/`. Call out breaking changes and any migration steps in the PR.
+  Do not regenerate `command.md` — see [Generated files](#generated-files).
+- **Comment why, not what.** A comment earns its place by adding what the code cannot say for
+  itself: the reason behind a non-obvious choice, a constraint, or why an alternative was rejected.
+  Delete comments that restate the line below them, and prefer a clearer name over an explanation.
 - **Report what you verified.** List the checks you ran and their results. State explicitly
   when a test could not be run and why. Do not include credentials or customer data in code,
   fixtures, or logs.
+
+## Generated files
+
+Two files in the tree are generated. Neither is hand-edited, and they are refreshed at
+different times:
+
+- **`command.md`** is generated from `agentcore --help`. The release workflow
+  (`.github/workflows/release-prepare.yml`) regenerates it and commits it in the release PR,
+  so **leave it out of a feature PR.** Regenerating it on a feature branch picks up every
+  other command change merged since the last release, which buries your diff in unrelated
+  churn. Run `bun scripts/generate-command-reference.mjs` locally if you want to preview how
+  your `--help` will read, then revert the file before committing.
+- **Fixtures and golden files** under `src/handlers/**/__fixtures__/` are recordings. Refresh
+  them with `RECORD=1 bun test <file>` — see [Golden files and record mode](#golden-files-and-record-mode).
+
+## Changes that span repositories
+
+The CLI vends CDK projects built from [`@aws/agentcore-cdk`](https://github.com/aws/agentcore-l3-cdk-constructs),
+pinned in `src/assets/cdk/package.json`. A change that has to reach a deployed resource lands in
+three steps, in order:
+
+1. The CloudFormation resource must publish the property. The CLI deploys the control plane
+   only through CloudFormation and has no escape hatch, so a property absent from the resource
+   schema is one the CLI cannot set.
+2. The L3 construct change merges and is released in `aws/agentcore-l3-cdk-constructs`.
+3. The pin in `src/assets/cdk/package.json` is bumped to that release.
+
+Link the companion PR from this one, and expect the pin bump to be a follow-up rather than part
+of the same change.
 
 ## Development
 
@@ -358,6 +394,17 @@ it takes **factory functions** (`(config) => new BedrockAgentCore...Client(...)`
 injected at the app edge in `src/index.ts`. That keeps the SDK swappable —
 crucial for the testing strategy below.
 
+The import direction follows from this and is one-way: **`src/core/` must not import from
+`src/handlers/`.** Core implements contracts the handlers declare; it does not know they
+exist. When something in Core needs presentation — an error hint, a suggested next command —
+it belongs in the handler instead. Put it where every caller reaches it, though: a hint
+added only to a screen is missing from the headless path, which is where most users hit the
+error.
+
+Loose helper functions that all operate on the same state belong on the type that owns it
+(`ProjectManager`, `SourceResolver`) rather than as a module of free functions passed the
+same argument. Reserve free functions for genuinely stateless utilities.
+
 ### The TUI
 
 The interactive UI is built with [Ink](https://github.com/vadimdemedes/ink)
@@ -417,6 +464,30 @@ output change. Fixtures are Date-safe (Dates round-trip via a tagged encoding)
 and strip volatile transport metadata (`$metadata`, request IDs) so they stay
 stable. Golden files are excluded from Prettier (`.prettierignore`) — they are
 byte-for-byte recordings, not source to reformat.
+
+Four things to know before you record one:
+
+- **Scrub account-specific values out of the recording.** `matchGolden` strips presigned
+  URLs and normalizes JSON, but nothing else. An account ID, an ARN, or a generated
+  resource name recorded from your own account is committed verbatim and will not
+  reproduce on anyone else's, so the next person to re-record sees a diff with no
+  behavior change behind it. Use `uniquePerRecording` (`src/testing/fixtures.tsx`) for
+  values that must stay stable across re-records, and keep account-derived identifiers
+  out of asserted output.
+- **The two failure messages mean different things.** `Missing fixture …` means the SDK
+  request your handler sends has changed, because fixture keys hash that request — either
+  re-record or leave the request alone. `Missing golden file …` just means this assertion
+  has never been recorded; record it.
+- **Build a fresh `CoreClient` per run.** It carries per-run caches, so sharing one across
+  tests leaks state between them. See the `createFixtureCore()` helper in
+  `src/handlers/harness/harness.test.tsx`.
+- **A new AWS client needs a new fixture factory.** `fixtureFactories` returns one factory
+  per client the CLI talks to (CloudFormation, AgentCore control and data, IAM, CloudWatch
+  Logs, X-Ray, Application Signals). A handler reaching a service that is not in that list
+  cannot replay until the factory is added.
+
+A golden file records what a user sees, so review it like output, not like a blob: if the
+diff is not explainable by your change, something else moved.
 
 See [this talk](https://www.youtube.com/watch?v=yszygk1cpEc&t=1s) for background
 on the pattern.
