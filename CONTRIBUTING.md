@@ -546,6 +546,10 @@ Four things to know before you record one:
 A golden file records what a user sees, so review it like output, not like a blob: if the
 diff is not explainable by your change, something else moved.
 
+A test that hand-builds part of an SDK response casts it `as unknown as <ResponseType>`, the idiom
+across the suite. A bare `as <ResponseType>` on a partial literal compiles only until the literal
+contains a nested optional, then fails comparability in both directions with TS2352.
+
 ### Two things that make a command unrecordable until the harness is extended
 
 Check both against the operation you are adding **before** writing the handler. Finding out

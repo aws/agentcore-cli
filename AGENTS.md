@@ -50,7 +50,12 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   `~/.agentcore/config.json` are dropped on read (the zod schema strips unknown keys).
 - **TUI support is opt-in per router, at any depth**, via that router's `.supportedTuiCommands(...)`;
   `compile()` threads support down the tree, so a nested router hides its own leaves (24 routers under
-  `src/handlers/` declare one). Omitting a leaf keeps it command-line only.
+  `src/handlers/` declare one). Omitting a leaf keeps it command-line only. A branch's _own_ support is
+  not its decision: `Router.doesSupportTui()` always returns `true`, so whether a group launches the
+  TUI depends entirely on whether its parent's list names it. A new group its parent does not list
+  inherits no TUI dispatch; one the parent does list launches the TUI on a bare invocation even with no
+  screen of its own, and its `.default(...)` runs only when the TUI is declined — `--json`, no TTY, or
+  the parent leaving it out. Test a bare invocation of any new group for exactly this.
   Handler registration order is `--help` and menu order. Commands without TUI support
   are omitted from the TUI menu.
   `.menuSection(title)` draws a menu divider above the next registered handler (menu only).
