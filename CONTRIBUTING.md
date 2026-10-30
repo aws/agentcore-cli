@@ -372,6 +372,14 @@ Conventions:
 Mount the new handler in `src/handlers/index.tsx` (or on the appropriate parent
 router), passing its dependencies, as in `root.handler(createHarnessHandler(core, io))`.
 
+When two or more commands take the same set of flags, put the set on a class with
+`static readonly flags` (an `as const` array each command spreads into its own `flags`) and a
+`static resolve(flags, …)` that owns every rule across those flags.
+`src/handlers/eval/sessionSource.tsx` is the model. Keeping the flags and their validation on
+one type means a command cannot take the flags without the rules, and spreading the array keeps
+`--help` order identical across the commands that share it. A rule involving a flag outside the
+set belongs in the command that owns that flag, not on the class.
+
 `flag(name, description, schema, { group, help })` takes two optional extras that shape `--help`:
 `group` is the heading the flag is listed under, and `help` is long-form text printed in a
 `Parameter details:` section. Keep long `help` in a sibling file named for what it documents —
@@ -526,6 +534,10 @@ output change. Fixtures are Date-safe (Dates round-trip via a tagged encoding)
 and strip volatile transport metadata (`$metadata`, request IDs) so they stay
 stable. Golden files are excluded from Prettier (`.prettierignore`) — they are
 byte-for-byte recordings, not source to reformat.
+
+Record against your own AWS account. A contributor adding a flag to a command with a
+fixture-backed suite re-records that suite with `RECORD=1` using their own credentials, then
+scrubs the result before committing — the first point below is what makes that safe.
 
 Four things to know before you record one:
 
