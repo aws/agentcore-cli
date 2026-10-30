@@ -439,6 +439,13 @@ the path without a terminal. `src/handlers/gateway/invoke/index.tsx` is the mode
 of flags opens the TUI, the existing headless validation tests for that leaf need `--json`, or they
 open the TUI instead of failing.
 
+**A Core call a screen can leave while it is still running** — a long poll, a stream, a
+generation the user cancels with Esc — takes `signal?: AbortSignal` as its last parameter, as ten
+Core methods across `eval`, `gateway`, `harness` and `runtime` already do. The screen owns an
+`AbortController` and aborts on Esc and on unmount. If the method you need does not take a signal
+yet, extend it: ignoring a late result while the service call keeps running leaves work in flight
+that the user asked to stop.
+
 **A new TUI screen** must also be routed: add its `<Route>` entries to the route table in
 `src/components/Root.tsx` and import it there, or the screen is unreachable however correct it is.
 A bare parent path (`…/get` with no id) gets a `Navigate` to the list, which is what
