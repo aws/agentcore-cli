@@ -88,6 +88,7 @@ import {
   ResourceNotFoundError,
 } from "../../errors/errors";
 import { isChinaRegion } from "../partition";
+import { activeCredentialSource } from "../region";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
@@ -108,6 +109,7 @@ import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
+import type { AwsIdentity } from "../../handlers/project/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
 import { projectFormat, type ProjectFormat } from "./legacy/detect";
@@ -117,6 +119,10 @@ import { assertNoPendingMigration } from "./migrate/journal";
 import { prepareRuntimes } from "./runtimeBuild";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
+
+// Status asks for the AWS identity on every run, including for projects that
+// never call AWS otherwise, so an unreachable STS endpoint must not stall it.
+const AWS_IDENTITY_TIMEOUT_MS = 3000;
 
 const NODE_INSTALL_HINT = "Install Node.js: https://nodejs.org/";
 const UV_INSTALL_HINT = "Install uv: https://docs.astral.sh/uv/getting-started/installation/";
@@ -403,6 +409,8 @@ type ProjectManagerConfig = {
    * Injectable so unit tests never call AWS.
    */
   resolveAccount?: (region: string) => Promise<string>;
+  /** How long resolveAwsIdentity waits for the account. Defaults to 3 seconds. */
+  awsIdentityTimeoutMs?: number;
 };
 
 /**
@@ -417,6 +425,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly json: ReadWriteJson;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
+  private readonly awsIdentityTimeoutMs: number;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -437,6 +446,7 @@ export class FsProjectManager implements ProjectManager {
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
+    this.awsIdentityTimeoutMs = config.awsIdentityTimeoutMs ?? AWS_IDENTITY_TIMEOUT_MS;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -1747,6 +1757,30 @@ export class FsProjectManager implements ProjectManager {
     const target = await this.resolveExistingTarget(project, input.target);
     const resources = await this.backendFor(project).resolveProjectResources(project, { target });
     return { resources, target };
+  }
+
+  public async resolveAwsIdentity(region: string): Promise<AwsIdentity> {
+    const source = activeCredentialSource();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Timed out resolving the AWS account after ${this.awsIdentityTimeoutMs / 1000}s.`,
+            ),
+          ),
+        this.awsIdentityTimeoutMs,
+      );
+    });
+    try {
+      const account = await Promise.race([this.resolveAccount(region), timeout]);
+      return { ...source, success: true, account };
+    } catch (error) {
+      return { ...source, success: false, error: AgentCoreCLIError.fromError(error).message };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async resolveExistingTarget(

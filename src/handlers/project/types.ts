@@ -326,6 +326,22 @@ export type ResolvedProjectResources = {
   target: AwsDeploymentTarget;
 };
 
+/**
+ * Where the default AWS SDK credential chain takes credentials from. AWS_PROFILE
+ * wins over access keys in the environment; without either, the chain reads the
+ * "default" profile (and then container or instance credentials).
+ */
+export type AwsCredentialSource =
+  { credentialSource: "profile"; profile: string } | { credentialSource: "environment" };
+
+/**
+ * The AWS account behind the active credentials, or why it could not be
+ * resolved. Status reports it rather than failing, so a missing, expired, or
+ * unreachable identity never hides the project's resources.
+ */
+export type AwsIdentity = AwsCredentialSource &
+  ({ success: true; account: string } | { success: false; error: string });
+
 export type Project = {
   name: string;
   /** Absolute path to the project root (the parent of agentcore/). */
@@ -603,6 +619,13 @@ export interface ProjectManager {
     project: Project,
     input: ResolveProjectResourcesInput,
   ): Promise<ResolvedProjectResources>;
+
+  /**
+   * Resolve the AWS account behind the active credentials (STS
+   * GetCallerIdentity in `region`) and where those credentials come from.
+   * Never throws: failures and a slow lookup are reported in the result.
+   */
+  resolveAwsIdentity(region: string): Promise<AwsIdentity>;
 
   /** Add a resource to an existing AgentCore project. */
   addResource(

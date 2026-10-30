@@ -14,8 +14,10 @@ import { serviceIdFromArn } from "../../../core/arn";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { ProjectKey } from "../../../router";
 import type { Core, ScreenProps } from "../../types";
-import type { DeployableResource, Project, ResolvedProjectResource } from "../types";
+import type { AwsIdentity, DeployableResource, Project, ResolvedProjectResource } from "../types";
+import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { LoadingFrame, ProjectGate } from "../ProjectGate";
+import { accountMismatchWarning, awsIdentitySummary, isAccountMismatch } from "./identity";
 
 const theme = darkTheme;
 
@@ -217,6 +219,15 @@ function ProjectStatusView({
     queryFn: () => core.projectManager.resolveProjectResources(project, { target: targetName }),
   });
 
+  // Resolved after the resources, in the target's region, and never blocks the
+  // tree: the identity line reports a failure instead of replacing the screen.
+  const target = status.data?.target;
+  const identity = useQuery({
+    queryKey: ["aws-identity", target?.region],
+    queryFn: () => core.projectManager.resolveAwsIdentity(target!.region),
+    enabled: target !== undefined,
+  });
+
   const nodes = useMemo(
     () => (status.data ? buildStatusNodes(project.spec, status.data.resources) : []),
     [project, status.data],
@@ -253,6 +264,9 @@ function ProjectStatusView({
       ]}
     >
       <Box flexDirection="column" paddingX={1}>
+        <Box marginBottom={1}>
+          <AwsIdentityLine identity={identity.data} target={status.data.target} />
+        </Box>
         {nodes.length === 0 ? (
           <Text color={theme.colors.muted}>
             No resources are declared in this project. Run `agentcore add` to declare one.
@@ -262,5 +276,28 @@ function ProjectStatusView({
         )}
       </Box>
     </Layout>
+  );
+}
+
+function AwsIdentityLine({
+  identity,
+  target,
+}: {
+  identity: AwsIdentity | undefined;
+  target: AwsDeploymentTarget;
+}) {
+  if (!identity) {
+    return <Text color={theme.colors.muted}>Resolving AWS account…</Text>;
+  }
+  if (!identity.success) {
+    return <Text color={theme.colors.warning}>{awsIdentitySummary(identity)}</Text>;
+  }
+  return (
+    <Box flexDirection="column">
+      <Text color={theme.colors.muted}>{awsIdentitySummary(identity)}</Text>
+      {isAccountMismatch(identity, target) ? (
+        <Text color={theme.colors.warning}>{accountMismatchWarning(identity.account, target)}</Text>
+      ) : null}
+    </Box>
   );
 }

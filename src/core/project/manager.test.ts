@@ -2130,6 +2130,65 @@ describe("FsProjectManager.deploy", () => {
   });
 });
 
+describe("FsProjectManager.resolveAwsIdentity", () => {
+  const savedProfile = process.env.AWS_PROFILE;
+  afterEach(() => {
+    if (savedProfile === undefined) delete process.env.AWS_PROFILE;
+    else process.env.AWS_PROFILE = savedProfile;
+  });
+
+  function identityManager(resolveAccount: (region: string) => Promise<string>) {
+    process.env.AWS_PROFILE = "dev";
+    return new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      resolveAccount,
+      awsIdentityTimeoutMs: 20,
+    });
+  }
+
+  test("returns the account STS resolves in the given region", async () => {
+    const regions: string[] = [];
+    const subject = identityManager(async (region) => {
+      regions.push(region);
+      return "111122223333";
+    });
+
+    expect(await subject.resolveAwsIdentity("us-gov-west-1")).toEqual({
+      credentialSource: "profile",
+      profile: "dev",
+      success: true,
+      account: "111122223333",
+    });
+    expect(regions).toEqual(["us-gov-west-1"]);
+  });
+
+  test("reports a failed lookup instead of throwing", async () => {
+    const subject = identityManager(async () => {
+      throw new Error("The security token included in the request is expired");
+    });
+
+    expect(await subject.resolveAwsIdentity("us-east-1")).toEqual({
+      credentialSource: "profile",
+      profile: "dev",
+      success: false,
+      error: "The security token included in the request is expired",
+    });
+  });
+
+  test("gives up on a lookup that does not answer in time", async () => {
+    const subject = identityManager(() => new Promise<string>(() => {}));
+
+    expect(await subject.resolveAwsIdentity("us-east-1")).toEqual({
+      credentialSource: "profile",
+      profile: "dev",
+      success: false,
+      error: "Timed out resolving the AWS account after 0.02s.",
+    });
+  });
+});
+
 describe("FsProjectManager.resolve", () => {
   async function legacyProject(
     dependency: unknown,
