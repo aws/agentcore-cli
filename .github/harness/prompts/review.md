@@ -69,9 +69,10 @@ cheap to miss by reading a diff in isolation.
   is the path a default or a middleware silently changes.
 - **`command.md` in the diff** - It is generated and committed by the release workflow. Its presence
   in a feature PR is unrelated churn; ask for it to be reverted.
-- **Account-specific values in fixtures or golden files** - Account IDs, ARNs, or generated resource
-  names recorded from the author's own account do not reproduce elsewhere. Hand-edited or
-  reformatted recordings are also a finding: they must come from `RECORD=1`.
+- **Unexplained changes in re-recorded fixtures or golden files** - A re-record from another account
+  rewrites every ARN; that churn is expected. Flag changes beyond those identifiers that the PR does
+  not explain, and recordings that were hand-edited or reformatted rather than produced by
+  `RECORD=1`.
 - **A per-run value inside an SDK request** - Fixture keys hash the request, so a `randomUUID()`,
   `Date.now()`, or generated name built inside the handler rehashes every run and the command can
   never replay. The generator belongs in `CoreClient`'s config so a test can pin it. Same for a

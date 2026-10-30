@@ -556,18 +556,17 @@ stable. Golden files are excluded from Prettier (`.prettierignore`) — they are
 byte-for-byte recordings, not source to reformat.
 
 Record against your own AWS account. A contributor adding a flag to a command with a
-fixture-backed suite re-records that suite with `RECORD=1` using their own credentials, then
-scrubs the result before committing — the first point below is what makes that safe.
+fixture-backed suite re-records that suite with `RECORD=1` using their own credentials.
 
-Four things to know before you record one:
+Before you record one:
 
-- **Scrub account-specific values out of the recording.** `matchGolden` strips presigned
-  URLs and normalizes JSON, but nothing else. An account ID, an ARN, or a generated
-  resource name recorded from your own account is committed verbatim and will not
-  reproduce on anyone else's, so the next person to re-record sees a diff with no
-  behavior change behind it. Use `uniquePerRecording` (`src/testing/fixtures.tsx`) for
-  values that must stay stable across re-records, and keep account-derived identifiers
-  out of asserted output.
+- **Recordings carry the recording account's identifiers, and that is expected.** Most committed
+  fixtures and golden files contain real account IDs in their ARNs; `matchGolden` strips presigned
+  URLs and normalizes JSON, nothing else. A re-record from a different account therefore rewrites
+  every ARN in the suite. Review the diff for changes beyond those identifiers, and use
+  `uniquePerRecording` (`src/testing/fixtures.tsx`) for values that must stay stable across
+  re-records — call it inside the test, not at module load, or replay fails the whole file when the
+  value has never been recorded.
 - **The two failure messages mean different things.** `Missing fixture …` means the SDK
   request your handler sends has changed, because fixture keys hash that request — either
   re-record or leave the request alone. `Missing golden file …` just means this assertion

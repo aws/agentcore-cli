@@ -42,8 +42,8 @@ How have you tested the change?
 - [ ] I ran `bun run secrets:check`
 - [ ] I ran `bun run build`
 - [ ] If I modified `src/assets/`, I updated affected snapshots with `bun test <test-file> --update-snapshots` and committed them
-- [ ] If I re-recorded fixtures or golden files, the diff contains no account IDs, ARNs, or other
-      values specific to the account I recorded against
+- [ ] If I re-recorded fixtures or golden files, every change beyond account identifiers is explained
+      by this PR
 - [ ] This PR does not change `command.md` (the release workflow regenerates it)
 
 ## Checklist
