@@ -68,12 +68,16 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
 > = {
   openApiSchema: {
     authRequired: true,
-    validAuthTypes: ["OAUTH", "API_KEY"],
+    validAuthTypes: ["OAUTH", "API_KEY", "GATEWAY_IAM_ROLE"],
     iamRoleFallback: false,
   },
   smithyModel: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
   apiGateway: { authRequired: false, validAuthTypes: ["API_KEY", "NONE"], iamRoleFallback: true },
-  mcpServer: { authRequired: false, validAuthTypes: ["OAUTH", "NONE"], iamRoleFallback: false },
+  mcpServer: {
+    authRequired: false,
+    validAuthTypes: ["OAUTH", "NONE", "GATEWAY_IAM_ROLE"],
+    iamRoleFallback: false,
+  },
   lambda: { authRequired: false, validAuthTypes: ["OAUTH", "NONE"], iamRoleFallback: true },
   lambdaFunctionArn: {
     authRequired: false,
@@ -406,13 +410,23 @@ export const AgentCoreGatewayTargetSchema = z
       }
       if (
         data.outboundAuth?.type === "GATEWAY_IAM_ROLE" &&
-        data.targetType === "passthrough" &&
+        authConfig.validAuthTypes.includes("GATEWAY_IAM_ROLE") &&
         !data.outboundAuth.service
       ) {
         ctx.addIssue({
           code: "custom",
-          message: "GATEWAY_IAM_ROLE outbound auth on passthrough targets requires a service name.",
+          message: `GATEWAY_IAM_ROLE outbound auth on ${data.targetType} targets requires a service name.`,
           path: ["outboundAuth", "service"],
+        });
+      }
+      if (
+        data.outboundAuth?.type !== "GATEWAY_IAM_ROLE" &&
+        (data.outboundAuth?.service !== undefined || data.outboundAuth?.region !== undefined)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "service and region are only valid with GATEWAY_IAM_ROLE outbound auth.",
+          path: ["outboundAuth"],
         });
       }
     }

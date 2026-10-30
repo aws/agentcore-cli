@@ -152,6 +152,45 @@ describe("project add gateway-target", () => {
     expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets[0]).toEqual(target);
   });
 
+  test("accepts configured IAM auth through --target-configuration", async () => {
+    const projectRoot = await inProject();
+    await addGateway();
+    const targets = [
+      {
+        name: "mcp-iam",
+        targetType: "mcpServer",
+        endpoint: ENDPOINT,
+        outboundAuth: {
+          type: "GATEWAY_IAM_ROLE",
+          service: "bedrock-agentcore",
+          region: "us-east-1",
+        },
+      },
+      {
+        name: "openapi-iam",
+        targetType: "openApiSchema",
+        schemaSource: { inline: { path: "openapi.json" } },
+        outboundAuth: {
+          type: "GATEWAY_IAM_ROLE",
+          service: "execute-api",
+        },
+      },
+    ];
+
+    for (const target of targets) {
+      await run([
+        "add",
+        "gateway-target",
+        "--gateway",
+        "tools",
+        "--target-configuration",
+        JSON.stringify(target),
+      ]);
+    }
+
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
+  });
+
   test("rejects shortcut flags with complete Target JSON", async () => {
     await inProject();
     await addGateway();
