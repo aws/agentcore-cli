@@ -127,6 +127,9 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - Errors: throw `AgentCoreCLIError` subclasses (`src/errors/`), which carry `source`
   (user/service/internal), `exitCode`, and `meta` for logging and telemetry.
   `AgentCoreCLIError.fromError` maps Commander errors to exit code 2 and SDK 4xx to user errors.
+  `SilentCLIError` (`src/errors/errors.tsx`) is the one to throw when the command has already
+  written its own output and only needs to carry an exit code — a remote command's exit status, for
+  instance — so the root handler does not print a second message over it.
   Error text is asserted behaviour: when you refactor an error path, keep everything the old
   message named. If it identified which item failed, the replacement must still identify it —
   moving the identity into a structured field does not excuse dropping it from the sentence the
@@ -143,6 +146,9 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   behavior tested, not a quota to fill — a test asserting what the implementation plainly says
   gets removed in review. For a flag, the case worth testing is usually the one where it is
   **absent**, since that is the path a default or a middleware silently changes.
+- `testIO().stdout()` / `.stderr()` return the captured text with the trailing newline trimmed, so
+  assert `toBe("hello")`, not `toBe("hello\n")`. A new helper or constant in `src/testing/` is only
+  visible to tests once it is re-exported from the `src/testing/index.tsx` barrel.
 - **Client tests** go one layer lower, for assertions about the request a Core client builds:
   `new EvalClient({ data: () => ({ send: mock(fn) }) as never } as unknown as AwsClients)`, then assert
   the SDK command's `input`. No fixture, no recording — the right choice when the point is the request

@@ -486,6 +486,11 @@ We aim for **90% line coverage** (`bun test --coverage`).
 
 #### Injected IO
 
+A command with live output does not go through the JSON renderer: it writes the bytes to
+`io.stdout` as they arrive and keeps progress, banners and session metadata on `io.stderr`, so a
+caller can redirect one without the other. `--json` suppresses the streaming and emits one folded
+object instead.
+
 Handlers and screens use injected streams for user-facing output. An `AppIO`
 (`{ stdin, stdout, stderr }`, defined in `src/io/types.ts`) is passed in the
 configuration object to `createRootHandler(core, { io, logger, globalConfigAccessor })`
