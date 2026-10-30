@@ -66,7 +66,9 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   hashed over the command `input` (top-level `clientToken` excluded). Any change to the request a
   handler sends (new field, different default, different region) makes replay fail with
   "Missing fixture ... Re-run with RECORD=1". Either re-record against live AWS or keep the request
-  unchanged. A key whose value is `undefined` is dropped before hashing (the key is
+  unchanged. The fixture path depends only on the request, so a request sent several times — a
+  poll for a long-running job — records to one file, each call overwriting the last; replay serves
+  the final recorded response to every call. A key whose value is `undefined` is dropped before hashing (the key is
   `JSON.stringify`'d), so a new optional field left unset keeps the old hash — a new optional flag is
   replay-safe whenever it is absent. It also means **a per-run value inside the request makes the command permanently
   unreplayable** — a `randomUUID()` session id or a timestamp rehashes every run. Inject the
@@ -126,6 +128,8 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   with zod-validated flags. Emit JSON via `ctx.require(JsonRendererKey).renderJson(...)` and write
   through the injected `AppIO`; never touch `process.stdout` directly in handlers.
 - Build `CoreOptions` from context with `coreOptsFromCtx(ctx)` (`src/handlers/utils.tsx`).
+- A leaf that prints human-readable output unless `--json` is passed reads `ctx.value(JsonKey)`
+  (`src/handlers/keys.tsx`) to choose; 29 handlers do.
 - Errors: throw `AgentCoreCLIError` subclasses (`src/errors/`), which carry `source`
   (user/service/internal), `exitCode`, and `meta` for logging and telemetry.
   `AgentCoreCLIError.fromError` maps Commander errors to exit code 2 and SDK 4xx to user errors.

@@ -379,7 +379,9 @@ When two or more commands take the same set of flags, put the set on a class wit
 `src/handlers/eval/sessionSource.tsx` is the model. Keeping the flags and their validation on
 one type means a command cannot take the flags without the rules, and spreading the array keeps
 `--help` order identical across the commands that share it. A rule involving a flag outside the
-set belongs in the command that owns that flag, not on the class.
+set belongs in the command that owns that flag, not on the class. Only flags that are identical across the
+commands — same name, schema, required-ness and description — go on the class; when the overlap is
+partial, the flags that differ stay on each command.
 
 `flag(name, description, schema, { group, help })` takes two optional extras that shape `--help`:
 `group` is the heading the flag is listed under, and `help` is long-form text printed in a
