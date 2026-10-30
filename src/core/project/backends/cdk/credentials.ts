@@ -49,13 +49,46 @@ function keepsV0CredentialNames(project: Project): boolean {
  * The Identity name a credential's provider is created under. Scoped to the project
  * and target so two targets in one account and region never share a provider.
  *
+ * A payment provider is scoped with hyphens, and the credential name's underscores
+ * become hyphens too: a payment connector's `credentialProviderArn` only accepts
+ * letters, digits, `-` and `.` in the provider name, and Identity names do not
+ * allow `.`, so an underscore anywhere in the name leaves the connector unable to
+ * reference its provider. Two credentials cannot meet on one name this way: names
+ * that differ only in `_` and `-` derive the same `.env.local` variables, which the
+ * spec already refuses.
+ *
  * A v0 project, and one migrated from v0, keeps the bare credential name v0 created
  * its providers under: the agent code it deployed looks them up by that name, and a
  * scoped name would create a second set of providers beside the ones still in use.
  */
-function providerName(project: Project, targetName: string, credentialName: string): string {
-  if (keepsV0CredentialNames(project)) return credentialName;
-  return `${project.name}_${targetName}_${credentialName}`;
+function providerName(
+  project: Project,
+  targetName: string,
+  { name, authorizerType }: CredentialProviderRef,
+): string {
+  if (keepsV0CredentialNames(project)) return name;
+  if (authorizerType === "PaymentCredentialProvider") {
+    return `${project.name}-${targetName}-${name.replaceAll("_", "-")}`;
+  }
+  return `${project.name}_${targetName}_${name}`;
+}
+
+/**
+ * The name CLIs before the hyphenated scheme gave a payment provider, when the
+ * recorded ARN still points at it. Such a provider can never back a connector, so
+ * the deploy that creates its replacement deletes it like any other orphan.
+ */
+function legacyPaymentProviderName(
+  project: Project,
+  targetName: string,
+  name: string,
+  { credentialProviderArn, authorizerType }: DeployedCredential,
+): string | undefined {
+  if (keepsV0CredentialNames(project) || authorizerType !== "PaymentCredentialProvider") {
+    return undefined;
+  }
+  const legacy = `${project.name}_${targetName}_${name}`;
+  return credentialProviderArn.endsWith(`/${legacy}`) ? legacy : undefined;
 }
 
 const PROVIDER_NAME_MAX_LENGTH = 128;
@@ -109,7 +142,10 @@ export type CredentialProvisioner = (
 ) => AsyncGenerator<ProjectEvent, DeployedCredentials>;
 
 /** A credential's spec name and provider kind, enough to name and delete its provider. */
-export type CredentialProviderRef = Pick<Credential, "name" | "authorizerType">;
+export type CredentialProviderRef = Pick<Credential, "name" | "authorizerType"> & {
+  /** The name a payment provider was recorded under before the hyphenated scheme. */
+  legacyProvider?: string;
+};
 
 export type CredentialRemovalInput = CredentialProvisionInput & {
   /** The credentials whose providers to delete. The caller decides the set. */
@@ -129,15 +165,24 @@ export type CredentialRemover = (
  * A recorded entry without `authorizerType` was written by a CLI that named providers
  * by the bare credential name, so nothing exists under the scoped name and the entry
  * is skipped.
+ *
+ * A payment provider recorded under its underscored name is orphaned even while its
+ * credential is still declared: the deploy creates its hyphenated replacement, and
+ * the old one is deleted by the name it was recorded under.
  */
 export function orphanedCredentials(
+  project: Project,
+  targetName: string,
   recorded: DeployedCredentials,
-  declared: readonly Credential[],
 ): CredentialProviderRef[] {
-  const names = new Set(declared.map(({ name }) => name));
-  return Object.entries(recorded).flatMap(([name, { authorizerType }]) =>
-    authorizerType && !names.has(name) ? [{ name, authorizerType }] : [],
-  );
+  const names = new Set(project.spec.credentials.map(({ name }) => name));
+  return Object.entries(recorded).flatMap(([name, deployed]) => {
+    const { authorizerType } = deployed;
+    if (!authorizerType) return [];
+    const legacyProvider = legacyPaymentProviderName(project, targetName, name, deployed);
+    if (legacyProvider) return [{ name, authorizerType, legacyProvider }];
+    return names.has(name) ? [] : [{ name, authorizerType }];
+  });
 }
 
 /**
@@ -158,8 +203,9 @@ export function createCredentialRemover(identity: ProviderDeletes): CredentialRe
     { region, credentials, targetName, providers },
   ) {
     const options: CoreOptions = { region, credentials };
-    for (const { name, authorizerType } of providers) {
-      const provider = providerName(project, targetName, name);
+    for (const ref of providers) {
+      const { authorizerType } = ref;
+      const provider = ref.legacyProvider ?? providerName(project, targetName, ref);
       if (keepsV0CredentialNames(project) && authorizerType !== "PaymentCredentialProvider") {
         yield {
           type: "step",
@@ -227,7 +273,7 @@ export function createCredentialProvisioner(
     // Every name is composed and checked before the first lookup, so one that is
     // too long fails the deploy before it touches Identity.
     const named: NamedCredential[] = declared.map((credential) => {
-      const provider = providerName(project, targetName, credential.name);
+      const provider = providerName(project, targetName, credential);
       if (provider.length > PROVIDER_NAME_MAX_LENGTH) {
         throw new ProjectStateError(
           `Credential '${credential.name}' would create a credential provider named ` +
