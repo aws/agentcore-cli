@@ -66,7 +66,9 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   hashed over the command `input` (top-level `clientToken` excluded). Any change to the request a
   handler sends (new field, different default, different region) makes replay fail with
   "Missing fixture ... Re-run with RECORD=1". Either re-record against live AWS or keep the request
-  unchanged. It also means **a per-run value inside the request makes the command permanently
+  unchanged. A key whose value is `undefined` is dropped before hashing (the key is
+  `JSON.stringify`'d), so a new optional field left unset keeps the old hash — a new optional flag is
+  replay-safe whenever it is absent. It also means **a per-run value inside the request makes the command permanently
   unreplayable** — a `randomUUID()` session id or a timestamp rehashes every run. Inject the
   generator through `CoreClient`'s config (defaulting to the real one) so tests can pin it. A
   **streaming response** likewise cannot be recorded until `src/testing/fixtures.tsx` grows

@@ -426,6 +426,11 @@ sub-client, a deploy mapping in `src/core/project/backends/cdk.ts`, and the comp
 construct (see [Changes that span repositories](#changes-that-span-repositories)). Add a
 `type: z.literal(...)` discriminator only if the sibling schemas have one — most do not.
 
+**Removing a flag, field or return value** runs the same inventory in reverse: grep for every
+reference, including the domain's `types.tsx` interface, `TestCoreClient`, test assertions and
+`README.md` examples, and delete exported helpers the removal leaves with no caller outside their own
+tests.
+
 **A new TUI screen** must also be routed: add its `<Route>` entries to the route table in
 `src/components/Root.tsx` and import it there, or the screen is unreachable however correct it is.
 A bare parent path (`…/get` with no id) gets a `Navigate` to the list, which is what
