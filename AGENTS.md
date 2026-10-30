@@ -48,7 +48,14 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - **Global config keys.** Adding a global config key means updating `types.tsx`,
   `DEFAULT_GLOBAL_CONFIG`, and `applyOverrides` in `src/globalConfig/`. Retired keys in an existing
   `~/.agentcore/config.json` are dropped on read (the zod schema strips unknown keys).
-- **TUI support is opt-in per top-level command** via the root's `.supportedTuiCommands(...)`.
+- **TUI support is opt-in per router, at any depth**, via that router's `.supportedTuiCommands(...)`;
+  `compile()` threads support down the tree, so a nested router hides its own leaves (24 routers under
+  `src/handlers/` declare one). Omitting a leaf keeps it command-line only. A branch's _own_ support is
+  not its decision: `Router.doesSupportTui()` always returns `true`, so whether a group launches the
+  TUI depends entirely on whether its parent's list names it. A new group its parent does not list
+  inherits no TUI dispatch; one the parent does list launches the TUI on a bare invocation even with no
+  screen of its own, and its `.default(...)` runs only when the TUI is declined — `--json`, no TTY, or
+  the parent leaving it out. Test a bare invocation of any new group for exactly this.
   Handler registration order is `--help` and menu order. Commands without TUI support
   are omitted from the TUI menu.
   `.menuSection(title)` draws a menu divider above the next registered handler (menu only).
@@ -59,7 +66,15 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   hashed over the command `input` (top-level `clientToken` excluded). Any change to the request a
   handler sends (new field, different default, different region) makes replay fail with
   "Missing fixture ... Re-run with RECORD=1". Either re-record against live AWS or keep the request
-  unchanged. Tests pin `--region us-west-2` for stable recordings. Never hand-edit or reformat
+  unchanged. The fixture path depends only on the request, so a request sent several times — a
+  poll for a long-running job — records to one file, each call overwriting the last; replay serves
+  the final recorded response to every call. A key whose value is `undefined` is dropped before hashing (the key is
+  `JSON.stringify`'d), so a new optional field left unset keeps the old hash — a new optional flag is
+  replay-safe whenever it is absent. It also means **a per-run value inside the request makes the command permanently
+  unreplayable** — a `randomUUID()` session id or a timestamp rehashes every run. Inject the
+  generator through `CoreClient`'s config (defaulting to the real one) so tests can pin it. A
+  **streaming response** likewise cannot be recorded until `src/testing/fixtures.tsx` grows
+  freeze/revive support for it. Tests pin `--region us-west-2` for stable recordings. Never hand-edit or reformat
   fixtures/golden files (`__fixtures__` and `*.snap` are Prettier-ignored). Use `settle()` and
   `uniquePerRecording()` from `src/testing/fixtures.tsx` for service state transitions and
   per-recording unique values.
@@ -69,13 +84,34 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   staged at build time from `@aws/agent-inspector` (files get a `.asset` suffix);
   `AGENT_INSPECTOR_PATH` overrides it with a local build. `scripts/sync-vended-cdk.ts` pins
   `@aws/agentcore-cdk` in `src/assets/cdk/package.json` (release workflow; must not import `src/`).
-- **`command.md` is generated** from `agentcore --help` ("Do not edit directly"). Regenerate it
-  after changing command names, flags, or descriptions. Section grouping lives in
-  `DEFAULT_GROUPS` in `scripts/generate-command-reference.mjs`.
+- **`command.md` is generated, and not yours to regenerate.** `release-prepare.yml` runs
+  `bun scripts/generate-command-reference.mjs` and commits the result in the release PR. Leave it
+  out of a feature PR: regenerating on a branch pulls in every command change merged since the
+  last release, and reviewers ask for it to be backed out. Generate locally to preview your
+  `--help`, then revert. Section grouping lives in `DEFAULT_GROUPS` in that script.
 - **Build quirks** (`scripts/build.ts`): `@aws-cdk/toolkit-lib` is external in the npm bundle but
   inlined in compiled binaries (so the bootstrap template is embedded explicitly); identifiers are
   never minified because stack traces and telemetry error names depend on them. `dist/index.js` is
   a loader that enables Node's compile cache then imports `dist/main.js`.
+- **A context value a middleware resolves is never `undefined` below it.** `withRegion` at the
+  root replaces `RegionKey` with the resolved region (flag → env → config → `DEFAULT_REGION`)
+  before any handler runs, so `ctx.value(RegionKey)` is always set and a guard on its absence is
+  dead code. To tell "the user passed `--flag`" from "something resolved a default", capture that
+  before the middleware runs — don't infer it from the context value. **A zod `.default()` on a
+  flag hides the same distinction**: by the time `handle` runs, a defaulted flag and a passed one are
+  identical. If any rule depends on the user having passed it, declare the schema `.optional()` and
+  apply the default in `handle`, and put the default's value in the flag description so `--help`
+  still states it.
+- **The e2e suite is not a PR gate.** `.github/workflows/e2e-test.yml` runs only on
+  `workflow_call` / `workflow_dispatch` and checks caller authorization, so nothing runs it for a
+  contributor automatically. Run it locally with credentials and say so in the PR.
+- **A deploy-path field needs three things, in order**: the property published on the
+  `AWS::BedrockAgentCore::*` resource (there is no `AwsCustomResource` escape hatch), the L3
+  construct released from `aws/agentcore-l3-cdk-constructs`, then the `@aws/agentcore-cdk` pin in
+  `src/assets/cdk/package.json` bumped. Check `src/core/project/backends/cdk.ts` for whether the
+  resource is mapped at all.
+- **Check emptiness, not presence, on optional collections.** `config.insights` existing as `[]`
+  is not the same as the feature being configured; test `(x?.length ?? 0) > 0`.
 - Line endings are LF (`.gitattributes`). The Husky pre-commit hook runs lint-staged
   (oxlint --fix + Prettier) on staged files.
 - Root-level `.*.bun-build` files are compile leftovers (gitignored); ignore them.
@@ -86,15 +122,24 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - tsconfig is strict with `noUncheckedIndexedAccess` and `verbatimModuleSyntax` (use `import type`
   for type-only imports). Relative imports often include the extension (`./harness/index.tsx`),
   and most files are `.tsx` even without JSX; follow the neighbouring files.
-- Handler directories: `index.tsx` (`create<Name>Handler(core, io)` factory, re-exports the
-  screen), `screen.tsx`, `types.tsx` (the Core interface the handler consumes; implemented in
+- Handler directories: `index.tsx` (`create<Name>Handler(core, io)` factory), `screen.tsx`
+  (imported directly by the route table in `src/components/Root.tsx`), `types.tsx` (the Core interface the handler consumes; implemented in
   `src/core/`). Leaf handlers use `createHandler({ name, description, flags: [flag(...)], handle })`
   with zod-validated flags. Emit JSON via `ctx.require(JsonRendererKey).renderJson(...)` and write
   through the injected `AppIO`; never touch `process.stdout` directly in handlers.
 - Build `CoreOptions` from context with `coreOptsFromCtx(ctx)` (`src/handlers/utils.tsx`).
+- A leaf that prints human-readable output unless `--json` is passed reads `ctx.value(JsonKey)`
+  (`src/handlers/keys.tsx`) to choose; 29 handlers do.
 - Errors: throw `AgentCoreCLIError` subclasses (`src/errors/`), which carry `source`
   (user/service/internal), `exitCode`, and `meta` for logging and telemetry.
   `AgentCoreCLIError.fromError` maps Commander errors to exit code 2 and SDK 4xx to user errors.
+  `SilentCLIError` (`src/errors/errors.tsx`) is the one to throw when the command has already
+  written its own output and only needs to carry an exit code — a remote command's exit status, for
+  instance — so the root handler does not print a second message over it.
+  Error text is asserted behaviour: when you refactor an error path, keep everything the old
+  message named. If it identified which item failed, the replacement must still identify it —
+  moving the identity into a structured field does not excuse dropping it from the sentence the
+  user reads.
 - Runtime files: logs in `~/.agentcore/logs/`, global CLI settings in `~/.agentcore/config.json`.
 - Commits and PR titles use conventional commits with scope: `feat(invoke): ...`,
   `fix(tui): ...`, `refactor(gateway): ...`, `test(cli): ...`. PRs must link an issue and follow
@@ -102,7 +147,18 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 
 ## Testing patterns
 
-- Tests live beside code as `*.test.ts(x)`; target is 90% line coverage.
+- Tests live beside code as `*.test.ts(x)`; name any test-support file `*.test-support.ts` so it
+  is not mistaken for shipped code. Target is 90% line coverage, but coverage is a floor on
+  behavior tested, not a quota to fill — a test asserting what the implementation plainly says
+  gets removed in review. For a flag, the case worth testing is usually the one where it is
+  **absent**, since that is the path a default or a middleware silently changes.
+- `testIO().stdout()` / `.stderr()` return the captured text with the trailing newline trimmed, so
+  assert `toBe("hello")`, not `toBe("hello\n")`. A new helper or constant in `src/testing/` is only
+  visible to tests once it is re-exported from the `src/testing/index.tsx` barrel.
+- **Client tests** go one layer lower, for assertions about the request a Core client builds:
+  `new EvalClient({ data: () => ({ send: mock(fn) }) as never } as unknown as AwsClients)`, then assert
+  the SDK command's `input`. No fixture, no recording — the right choice when the point is the request
+  itself. Several `src/core/*.test.tsx` files use it.
 - **Command-flow tests** build the real stack: `new CoreClient({ ...fixtureFactories(FIXTURES), logger: createSilentLogger() })`,
   then `createRootHandler(core, { io: testIO().io, ... })`, then
   `root.route(["node", "agentcore", ...args, "--region", REGION])`, asserting captured stdout with
@@ -115,4 +171,6 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - Pass `platform: "win32"` to `createRootHandler` or `renderScreen` to exercise Windows branches;
   CI runs unit tests on Linux, Windows, and macOS.
 - Shared helpers are exported from `src/testing/index.tsx` (`testIO`, `expectError`,
-  `createSilentLogger`, `TestGlobalConfigAccessor`, fixture helpers).
+  `createSilentLogger`, `TestGlobalConfigAccessor`, fixture helpers including `fixtureFetch` for
+  non-SDK HTTP). `menuEntries` in `src/testing/renderScreen.tsx` reads a rendered TUI menu,
+  split at its command-line-only divider.

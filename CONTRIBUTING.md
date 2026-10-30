@@ -17,15 +17,51 @@ Run development commands from the repository root.
   out of the PR. Use conventional commit messages such as `fix:`, `feat:`, or `docs:`.
 - **Add or update tests.** Cover behavior changes and add a regression test for bug fixes.
   Update affected fixtures and snapshots. Do not disable tests or remove assertions to make checks pass.
-- **Run the checks.** Unit tests, typechecking, linting, formatting, and the build must pass:
-  `bun test`, `bun run typecheck`, `bun run lint:check`, `bun run format:check`, and `bun run build`.
+  Test observable behavior, not implementation detail: a test that only restates what the code
+  does adds maintenance cost without catching a regression, and reviewers will ask for it to go.
+- **Run the checks.** Unit tests, typechecking, linting, formatting, the dependency and secret
+  scans, and the build must pass: `bun test`, `bun run typecheck`, `bun run lint:check`,
+  `bun run format:check`, `bun run audit`, `bun run secrets:check`, and `bun run build`.
   Run the relevant [end-to-end tests](e2eTest/README.md) for changes to deployment or AWS interactions.
   All required CI checks must pass before merge.
 - **Keep the documentation current.** Update affected commands, examples, and configuration
-  guidance. Call out breaking changes and any migration steps in the PR.
+  guidance in `README.md` and `docs/`. Call out breaking changes and any migration steps in the PR.
+  Do not regenerate `command.md` — see [Generated files](#generated-files).
+- **Comment why, not what.** A comment earns its place by adding what the code cannot say for
+  itself: the reason behind a non-obvious choice, a constraint, or why an alternative was rejected.
+  Delete comments that restate the line below them, and prefer a clearer name over an explanation.
 - **Report what you verified.** List the checks you ran and their results. State explicitly
   when a test could not be run and why. Do not include credentials or customer data in code,
   fixtures, or logs.
+
+## Generated files
+
+Two files in the tree are generated. Neither is hand-edited, and they are refreshed at
+different times:
+
+- **`command.md`** is generated from `agentcore --help`. The release workflow
+  (`.github/workflows/release-prepare.yml`) regenerates it and commits it in the release PR,
+  so **leave it out of a feature PR.** Regenerating it on a feature branch picks up every
+  other command change merged since the last release, which buries your diff in unrelated
+  churn. Run `bun scripts/generate-command-reference.mjs` locally if you want to preview how
+  your `--help` will read, then revert the file before committing.
+- **Fixtures and golden files** under `src/handlers/**/__fixtures__/` are recordings. Refresh
+  them with `RECORD=1 bun test <file>` — see [Golden files and record mode](#golden-files-and-record-mode).
+
+## Changes that span repositories
+
+The CLI vends CDK projects built from [`@aws/agentcore-cdk`](https://github.com/aws/agentcore-l3-cdk-constructs),
+pinned in `src/assets/cdk/package.json`. A change that has to reach a deployed resource lands in
+three steps, in order:
+
+1. The CloudFormation resource must publish the property. The CLI deploys the control plane
+   only through CloudFormation and has no escape hatch, so a property absent from the resource
+   schema is one the CLI cannot set.
+2. The L3 construct change merges and is released in `aws/agentcore-l3-cdk-constructs`.
+3. The pin in `src/assets/cdk/package.json` is bumped to that release.
+
+Link the companion PR from this one, and expect the pin bump to be a follow-up rather than part
+of the same change.
 
 ## Development
 
@@ -321,8 +357,9 @@ Conventions:
 
 - **`index.tsx`** exports a `create<Name>Handler(...)` factory returning a
   `Handler`/`Router`. Dependencies (such as `Core` and `AppIO`) are passed in,
-  never imported as singletons. Re-export the command's `screen.tsx` from here.
-- **`screen.tsx`** exports the React component(s) for the TUI. Screens receive
+  never imported as singletons.
+- **`screen.tsx`** exports the React component(s) for the TUI, which `src/components/Root.tsx`
+  imports directly when it routes them. Screens receive
   `ScreenProps` (`{ ctx, core }`) threaded down from `Root`, and drive data
   fetching with react-query against `core`.
 - **`types.tsx`** defines the interface(s) this command needs from Core.
@@ -335,6 +372,89 @@ Conventions:
 
 Mount the new handler in `src/handlers/index.tsx` (or on the appropriate parent
 router), passing its dependencies, as in `root.handler(createHarnessHandler(core, io))`.
+
+When two or more commands take the same set of flags, put the set on a class with
+`static readonly flags` (an `as const` array each command spreads into its own `flags`) and a
+`static resolve(flags, …)` that owns every rule across those flags.
+`src/handlers/eval/sessionSource.tsx` is the model. Keeping the flags and their validation on
+one type means a command cannot take the flags without the rules, and spreading the array keeps
+`--help` order identical across the commands that share it. A rule involving a flag outside the
+set belongs in the command that owns that flag, not on the class. Only flags that are identical across the
+commands — same name, schema, required-ness and description — go on the class; when the overlap is
+partial, the flags that differ stay on each command.
+
+`flag(name, description, schema, { group, help })` takes two optional extras that shape `--help`:
+`group` is the heading the flag is listed under, and `help` is long-form text printed in a
+`Parameter details:` section. Keep long `help` in a sibling file named for what it documents —
+`src/handlers/eval/online-eval/filtersHelp.tsx` and `harness/parameterHelp.tsx` are the models — and
+follow their house style: a one-line summary, the JSON shape with `// [required]` annotations, a link
+to the API reference, and two worked examples. A flag taking tags goes through `parseTags`
+(`src/handlers/utils.tsx`), which accepts one JSON object or repeated `key=value` entries and
+validates both against `TagsSchema`; do not hand-roll tag parsing.
+
+### What a change touches beyond its handler
+
+Work this out before editing anything. Missing one of these is the most common reason a PR
+needs a second review round.
+
+**A new flag, field or output value on an existing command:**
+
+| File                                     | Change                                                    | When                                      |
+| ---------------------------------------- | --------------------------------------------------------- | ----------------------------------------- |
+| `src/handlers/<domain>/<leaf>/index.tsx` | add to the `flags: [flag(...)]` array with its zod schema | always                                    |
+| `src/handlers/<domain>/types.tsx`        | widen the Core interface the handler consumes             | if the value reaches the SDK              |
+| `src/core/<domain>.tsx`                  | put the value into the SDK request                        | if the value reaches the SDK              |
+| `src/projectSchemas/<resource>.ts`       | add the field to the zod project schema                   | only on an `agentcore add` path           |
+| `src/core/project/backends/cdk.ts`       | map it to the deployed resource                           | only if it must reach a deployed resource |
+| `src/testing/TestCoreClient.tsx`         | add the new method to the matching test sub-client        | if a Core interface gained a method       |
+| the handler's `*.test.tsx`               | a command-flow case covering the new value                | always                                    |
+| `__fixtures__/` and `*.golden.json`      | re-record with `RECORD=1`                                 | if the SDK request changed                |
+| `README.md`, `docs/`                     | update the guidance that covers it                        | if it exists                              |
+
+**A new leaf** adds its own directory (`index.tsx`, `screen.tsx` if it has a TUI screen),
+and must be mounted on its parent router — registration order is `--help` order. Add it to
+the parent's `.supportedTuiCommands(...)` only if it has a screen; mutation leaves ship
+headless first, and the TUI menu lists them under its command-line-only divider. The
+domain's test suite usually asserts the router's exact child list and menu entries (and
+`src/handlers/root.test.tsx` does for top-level commands), so update those assertions too.
+
+**A new Core sub-client** — a domain Core did not talk to before — is declared on the `Core`
+type in `src/handlers/types.tsx`, constructed in `CoreClient` (`src/core/index.tsx`), and
+mirrored by a test sub-client in `src/testing/TestCoreClient.tsx`, which implements `Core`
+and so fails typecheck until it matches.
+
+**A new resource with a project collection** also needs its `src/projectSchemas/<resource>.ts`
+schema registered in `project.ts` with `.superRefine(uniqueNames("<resource>"))`, a Core
+sub-client, a deploy mapping in `src/core/project/backends/cdk.ts`, and the companion L3
+construct (see [Changes that span repositories](#changes-that-span-repositories)). Add a
+`type: z.literal(...)` discriminator only if the sibling schemas have one — most do not.
+
+**Removing a flag, field or return value** runs the same inventory in reverse: grep for every
+reference, including the domain's `types.tsx` interface, `TestCoreClient`, test assertions and
+`README.md` examples, and delete exported helpers the removal leaves with no caller outside their own
+tests.
+
+**A leaf that opens its own screen from flags** — `gateway invoke --id X` landing straight on
+that gateway's screen — calls `renderTuiAt` with `${ctx.require(PathKey)}/${encodeURIComponent(id)}`,
+and takes the renderer as an injectable parameter defaulting to `renderTuiAt` so a test can assert
+the path without a terminal. `src/handlers/gateway/invoke/index.tsx` is the model. Once a partial set
+of flags opens the TUI, the existing headless validation tests for that leaf need `--json`, or they
+open the TUI instead of failing.
+
+**A Core call a screen can leave while it is still running** — a long poll, a stream, a
+generation the user cancels with Esc — takes `signal?: AbortSignal` as its last parameter, as ten
+Core methods across `eval`, `gateway`, `harness` and `runtime` already do. The screen owns an
+`AbortController` and aborts on Esc and on unmount. If the method you need does not take a signal
+yet, extend it: ignoring a late result while the service call keeps running leaves work in flight
+that the user asked to stop.
+
+**A new TUI screen** must also be routed: add its `<Route>` entries to the route table in
+`src/components/Root.tsx` and import it there, or the screen is unreachable however correct it is.
+A bare parent path (`…/get` with no id) gets a `Navigate` to the list, which is what
+`withTuiOnEmptyFlagsAndArgs` lands on. The screen uses `useWindowSize` from
+`src/components/ui/useWindowSize.tsx`, puts a wrapper shared by more than one screen in
+`src/components/`, and needs a screen test through `renderScreen`. A new primitive under `src/components/ui/` is a larger change than it looks;
+raise it before building one.
 
 ### Core and dependency inversion
 
@@ -357,6 +477,17 @@ Construction is also inverted. `CoreClient` doesn't build SDK clients directly;
 it takes **factory functions** (`(config) => new BedrockAgentCore...Client(...)`)
 injected at the app edge in `src/index.ts`. That keeps the SDK swappable —
 crucial for the testing strategy below.
+
+The import direction follows from this. **Core imports the contracts the handlers declare
+— the types in `src/handlers/<domain>/types.tsx` — and nothing that presents.** It never
+imports a screen, a component, a router, or user-facing text. When something in Core needs
+presentation — an error hint, a suggested next command — it belongs in the handler instead. Put it where every caller reaches it, though: a hint
+added only to a screen is missing from the headless path, which is where most users hit the
+error.
+
+Loose helper functions that all operate on the same state belong on the type that owns it
+(`ProjectManager`, `SourceResolver`) rather than as a module of free functions passed the
+same argument. Reserve free functions for genuinely stateless utilities.
 
 ### The TUI
 
@@ -385,9 +516,14 @@ We aim for **90% line coverage** (`bun test --coverage`).
 
 #### Injected IO
 
+A command with live output does not go through the JSON renderer: it writes the bytes to
+`io.stdout` as they arrive and keeps progress, banners and session metadata on `io.stderr`, so a
+caller can redirect one without the other. `--json` suppresses the streaming and emits one folded
+object instead.
+
 Handlers and screens use injected streams for user-facing output. An `AppIO`
 (`{ stdin, stdout, stderr }`, defined in `src/io/types.ts`) is passed in the
-configuration object to `createRootHandler(core, { io, logger, globalConfigAccessor, globalConfig })`
+configuration object to `createRootHandler(core, { io, logger, globalConfigAccessor })`
 at the edge (`src/index.ts` passes the real process streams) and threaded down to
 the TUI renderer and handlers. JSON output flows
 through the context: a `withJsonRenderer` middleware pins a `JsonRenderer` wired
@@ -403,6 +539,9 @@ compare rendered output against committed **golden files**. The record/replay
 seam sits at the SDK `.send()` boundary (the same seam `src/index.ts` wires the
 real clients into), so replayed tests still exercise the real `CoreClient`,
 `HarnessClient`, and option translation — only the network call is swapped out.
+Calls that are not AWS SDK operations — a presigned URL, a non-AWS HTTP service — go
+through the `fetch` injected into `CoreClient`, and record and replay the same way through
+`fixtureFetch(dir)`. `src/handlers/feedback/feedback.fixture.test.tsx` is the model.
 
 Two modes, selected by the `RECORD` env var:
 
@@ -417,6 +556,60 @@ output change. Fixtures are Date-safe (Dates round-trip via a tagged encoding)
 and strip volatile transport metadata (`$metadata`, request IDs) so they stay
 stable. Golden files are excluded from Prettier (`.prettierignore`) — they are
 byte-for-byte recordings, not source to reformat.
+
+Record against your own AWS account. A contributor adding a flag to a command with a
+fixture-backed suite re-records that suite with `RECORD=1` using their own credentials.
+
+Before you record one:
+
+- **Recordings carry the recording account's identifiers, and that is expected.** Most committed
+  fixtures and golden files contain real account IDs in their ARNs; `matchGolden` strips presigned
+  URLs and normalizes JSON, nothing else. A re-record from a different account therefore rewrites
+  every ARN in the suite. Review the diff for changes beyond those identifiers, and use
+  `uniquePerRecording` (`src/testing/fixtures.tsx`) for values that must stay stable across
+  re-records — call it inside the test, not at module load, or replay fails the whole file when the
+  value has never been recorded.
+- **The two failure messages mean different things.** `Missing fixture …` means the SDK
+  request your handler sends has changed, because fixture keys hash that request — either
+  re-record or leave the request alone. `Missing golden file …` just means this assertion
+  has never been recorded; record it.
+- **Build a fresh `CoreClient` per run.** It carries per-run caches, so sharing one across
+  tests leaks state between them. See the `createFixtureCore()` helper in
+  `src/handlers/harness/harness.test.tsx`.
+- **A new AWS client needs a new fixture factory.** `fixtureFactories` returns one factory
+  per client the CLI talks to (CloudFormation, AgentCore control and data, IAM, CloudWatch
+  Logs, X-Ray, Application Signals). A handler reaching a service that is not in that list
+  cannot replay until the factory is added.
+
+A golden file records what a user sees, so review it like output, not like a blob: if the
+diff is not explainable by your change, something else moved.
+
+A test that hand-builds part of an SDK response casts it `as unknown as <ResponseType>`, the idiom
+across the suite. A bare `as <ResponseType>` on a partial literal compiles only until the literal
+contains a nested optional, then fails comparability in both directions with TS2352.
+
+### Two things that make a command unrecordable until the harness is extended
+
+Check both against the operation you are adding **before** writing the handler. Finding out
+afterwards means reworking `CoreClient`'s constructor or the test harness, not just your
+command.
+
+- **A value generated per run inside the SDK request.** Fixture keys hash the request, so a
+  fresh `randomUUID()` session id, timestamp, or generated name produces a fresh hash on
+  every run and the fixture can never be found again. Inject the generator at the Core edge
+  — `CoreClient` takes it as config, defaulting to the real implementation — so a test can
+  pin it. A handler that calls the generator directly cannot be replayed at all.
+- **A streaming response.** `makeRecordingSend` cannot serialise a stream, so there is
+  nothing to record. The operation needs freeze-on-record / revive-on-replay support in
+  `src/testing/fixtures.tsx` before a test over it can exist.
+
+### Which test to write
+
+Prefer a fixture-backed command-flow test over a unit test when the command's value is its
+rendered output. A unit test over a Core helper asserts the shape you just wrote; the
+command-flow test asserts what the customer sees, through the real parser, middleware, Core
+and renderer. When you add command-flow coverage, delete the unit test it replaces rather
+than keeping both.
 
 See [this talk](https://www.youtube.com/watch?v=yszygk1cpEc&t=1s) for background
 on the pattern.
