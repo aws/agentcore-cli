@@ -15,6 +15,11 @@ describe('getBundleNameVariants', () => {
     expect(variants).toEqual(['MyBundle', 'testevoMyBundle', 'testevo_MyBundle']);
   });
 
+  it('adds variants for every distinct project name prefix', () => {
+    const variants = getBundleNameVariants('MyBundle', ['projDev', 'proj', 'proj']);
+    expect(variants).toEqual(['MyBundle', 'projDevMyBundle', 'projDev_MyBundle', 'projMyBundle', 'proj_MyBundle']);
+  });
+
   it('filters out empty bundle name', () => {
     const variants = getBundleNameVariants('', 'proj');
     expect(variants).toEqual(['proj', 'proj_']);

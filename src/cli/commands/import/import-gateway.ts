@@ -20,6 +20,7 @@ import {
 } from '../../aws/agentcore-control';
 import { ANSI } from '../../constants';
 import { isAccessDeniedError } from '../../errors';
+import { getPhysicalProjectName } from '../../operations/resource-naming';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { executeCdkImportPipeline } from './import-pipeline';
 import {
@@ -588,7 +589,7 @@ export async function handleImportGateway(options: ImportResourceOptions): Promi
         const deployedIds = new Set(Object.keys(deployedTemplate.Resources));
 
         // Find gateway logical ID
-        const gatewayResourceName = `${ctx.projectName}-${localName}`;
+        const gatewayResourceName = `${getPhysicalProjectName(ctx.projectName, target)}-${localName}`;
         let gatewayLogicalId = findLogicalIdByProperty(
           synthTemplate,
           'AWS::BedrockAgentCore::Gateway',

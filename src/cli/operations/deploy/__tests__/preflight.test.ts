@@ -1,5 +1,12 @@
 import { StaleCdkConstructError } from '../../../../lib/errors/types.js';
-import { extractUnknownKeys, formatError, rewriteIfStaleCdkConstruct, validateProject } from '../preflight.js';
+import type { AgentCoreProjectSpec } from '../../../../schema/index.js';
+import {
+  extractUnknownKeys,
+  formatError,
+  rewriteIfStaleCdkConstruct,
+  validateProject,
+  validateTargetIsolation,
+} from '../preflight.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { mockReadProjectSpec, mockReadAWSDeploymentTargets, mockReadDeployedState, mockConfigExists } = vi.hoisted(
@@ -349,6 +356,130 @@ describe('validateProject', () => {
 
     const result = await validateProject();
     expect(result.projectSpec.name).toBe('ZeroTrustTodayACProj');
+  });
+
+  it('checks runtime name length against the project name plus the target resourceNameSuffix', async () => {
+    const selectedTarget = {
+      name: 'dev',
+      account: '111111111111',
+      region: 'us-east-1',
+      resourceNameSuffix: 'Dev',
+    } as const;
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    // "proj" (4) + "Dev" (3) + "_" (1) + 41-char name = 49 > 48, but fits without the suffix
+    mockReadProjectSpec.mockResolvedValue({ name: 'proj', runtimes: [{ name: 'a'.repeat(41) }] });
+    mockReadAWSDeploymentTargets.mockResolvedValue([selectedTarget]);
+
+    await expect(validateProject(selectedTarget)).rejects.toThrow('Runtime name too long: "projDev_');
+  });
+
+  it('rejects a resourceNameSuffix that pushes the project name past 23 chars', async () => {
+    const selectedTarget = {
+      name: 'dev',
+      account: '111111111111',
+      region: 'us-east-1',
+      resourceNameSuffix: 'Staging1',
+    } as const;
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({ name: 'a'.repeat(16), runtimes: [{ name: 'agent' }] });
+    mockReadAWSDeploymentTargets.mockResolvedValue([selectedTarget]);
+
+    await expect(validateProject(selectedTarget)).rejects.toThrow('Use a shorter resourceNameSuffix');
+  });
+
+  it('rejects a resourceNameSuffix when the vended CDK app predates it', async () => {
+    const selectedTarget = {
+      name: 'dev',
+      account: '111111111111',
+      region: 'us-east-1',
+      resourceNameSuffix: 'Dev',
+    } as const;
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({ name: 'proj', runtimes: [{ name: 'agent' }] });
+    mockReadAWSDeploymentTargets.mockResolvedValue([selectedTarget]);
+
+    // node:fs readFileSync is mocked to return "{}" — a cdk.ts without resourceNameSuffix support
+    await expect(validateProject(selectedTarget)).rejects.toThrow('predates that option');
+  });
+
+  it('fails when a deployed target in the same account and region uses the same resource names', async () => {
+    const dev = { name: 'dev', account: '111111111111', region: 'us-east-1' } as const;
+    const prod = { name: 'prod', account: '111111111111', region: 'us-east-1' } as const;
+    mockRequireConfigRoot.mockReturnValue('/project/agentcore');
+    mockValidate.mockReturnValue(undefined);
+    mockReadProjectSpec.mockResolvedValue({ name: 'proj', runtimes: [{ name: 'agent' }] });
+    mockReadAWSDeploymentTargets.mockResolvedValue([dev, prod]);
+    mockReadDeployedState.mockResolvedValue({ targets: { dev: { resources: {} } } });
+
+    await expect(validateProject(prod)).rejects.toThrow(
+      'Targets "prod" and "dev" deploy to the same account (111111111111) and region (us-east-1)'
+    );
+  });
+});
+
+describe('validateTargetIsolation', () => {
+  const spec = { name: 'proj', runtimes: [{ name: 'agent' }] } as unknown as AgentCoreProjectSpec;
+  const dev = { name: 'dev', account: '111111111111', region: 'us-east-1' } as const;
+  const prod = { name: 'prod', account: '111111111111', region: 'us-east-1' } as const;
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('allows same-account targets with different resourceNameSuffix values', () => {
+    expect(() =>
+      validateTargetIsolation(
+        spec,
+        [
+          { ...dev, resourceNameSuffix: 'Dev' },
+          { ...prod, resourceNameSuffix: 'Prod' },
+        ],
+        [{ ...prod, resourceNameSuffix: 'Prod' }],
+        ['dev']
+      )
+    ).not.toThrow();
+  });
+
+  it('allows a suffix on only one of the targets', () => {
+    expect(() =>
+      validateTargetIsolation(spec, [dev, { ...prod, resourceNameSuffix: 'Prod' }], [dev], ['prod'])
+    ).not.toThrow();
+  });
+
+  it('ignores targets in a different region or account', () => {
+    const other = [
+      { ...prod, region: 'us-west-2' },
+      { ...prod, name: 'other', account: '222222222222' },
+    ] as const;
+    expect(() => validateTargetIsolation(spec, [dev, ...other], [dev], ['prod', 'other'])).not.toThrow();
+  });
+
+  it('only warns when the colliding target is neither deployed nor being deployed', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(() => validateTargetIsolation(spec, [dev, prod], [dev], [])).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Deploying "prod" as well will fail.'));
+  });
+
+  it('fails when two colliding targets are deployed in the same run', () => {
+    expect(() => validateTargetIsolation(spec, [dev, prod], [dev, prod], [])).toThrow(
+      'Set a different "resourceNameSuffix"'
+    );
+  });
+
+  it('fails for payment managers even when suffixes differ', () => {
+    const withPayments = { ...spec, payments: [{ name: 'pm' }] } as unknown as AgentCoreProjectSpec;
+    expect(() =>
+      validateTargetIsolation(
+        withPayments,
+        [
+          { ...dev, resourceNameSuffix: 'Dev' },
+          { ...prod, resourceNameSuffix: 'Prod' },
+        ],
+        [{ ...dev, resourceNameSuffix: 'Dev' }],
+        ['prod']
+      )
+    ).toThrow('payment managers');
   });
 });
 

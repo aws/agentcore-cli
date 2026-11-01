@@ -9,6 +9,7 @@ import {
 } from '../../aws/agentcore-control';
 import { arnPrefix } from '../../aws/partition';
 import { ANSI } from '../../constants';
+import { getPhysicalProjectName } from '../../operations/resource-naming';
 import { withCommandRunTelemetry } from '../../telemetry/cli-command-run.js';
 import { failResult, findResourceInDeployedState, parseAndValidateArn } from './import-utils';
 import { executeResourceImport } from './resource-import';
@@ -132,7 +133,7 @@ function createOnlineEvalDescriptor(): ResourceImportDescriptor<GetOnlineEvalCon
         agentName = awsAgentName;
       } else {
         // Strip CDK project prefix if present (service names use "{projectName}_{agentName}")
-        const prefix = `${ctx.projectName}_`;
+        const prefix = `${getPhysicalProjectName(ctx.projectName, target)}_`;
         if (awsAgentName.startsWith(prefix)) {
           const stripped = awsAgentName.slice(prefix.length);
           if (agentNames.has(stripped)) {

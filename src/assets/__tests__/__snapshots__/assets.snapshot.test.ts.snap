@@ -65,6 +65,20 @@ function toStackName(projectName: string, targetName: string): string {
   return \`AgentCore-\${sanitize(projectName)}-\${sanitize(targetName)}\`;
 }
 
+function readResourceNameSuffixes(configRoot: string): Record<string, string> {
+  const raw = JSON.parse(fs.readFileSync(path.join(configRoot, 'aws-targets.json'), 'utf8')) as {
+    name?: unknown;
+    resourceNameSuffix?: unknown;
+  }[];
+  const suffixes: Record<string, string> = {};
+  for (const entry of raw) {
+    if (typeof entry.name === 'string' && typeof entry.resourceNameSuffix === 'string') {
+      suffixes[entry.name] = entry.resourceNameSuffix;
+    }
+  }
+  return suffixes;
+}
+
 async function main() {
   // Config root is parent of cdk/ directory. The CLI sets process.cwd() to agentcore/cdk/.
   const configRoot = path.resolve(process.cwd(), '..');
@@ -100,6 +114,11 @@ async function main() {
   if (targets.length === 0) {
     throw new Error('No deployment targets configured. Please define targets in agentcore/aws-targets.json');
   }
+
+  // Optional per-target resourceNameSuffix, appended to the project name in deployed resource
+  // names so several targets can share one account+region. Read from the raw file because the
+  // published @aws/agentcore-cdk target schema may not know the field yet and strips it.
+  const resourceNameSuffixes = readResourceNameSuffixes(configRoot);
 
   // Read harness configs: the full validated spec drives the CFN resource; the
   // role-scoped fields drive the IAM role + container build.
@@ -236,8 +255,12 @@ async function main() {
         )
       : undefined;
 
+    // Physical resource names derive from spec.name (e.g. runtime \`\${spec.name}_\${agent}\`), so the
+    // suffix is applied there. Stack name and project tag keep the plain project name.
+    const physicalProjectName = \`\${spec.name}\${resourceNameSuffixes[target.name] ?? ''}\`;
+
     new AgentCoreStack(app, stackName, {
-      spec,
+      spec: physicalProjectName === spec.name ? spec : { ...spec, name: physicalProjectName },
       mcpSpec,
       credentials,
       connectorParametersByFile,

@@ -13,6 +13,7 @@ import { arnPrefix } from '../../aws/partition';
 import { ANSI } from '../../constants';
 import { ExecLogger } from '../../logging';
 import { setupPythonProject } from '../../operations/python/setup';
+import { getPhysicalProjectName } from '../../operations/resource-naming';
 import { copyAndRenderDir } from '../../templates/render';
 import { getTemplatePath } from '../../templates/templateRoot';
 import { resolveVpcIdFromSubnets } from '../shared/vpc-utils';
@@ -562,7 +563,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           );
           let logicalId: string | undefined;
 
-          const expectedRuntimeName = `${projectName}_${agent.name}`;
+          const expectedRuntimeName = `${getPhysicalProjectName(projectName, target)}_${agent.name}`;
           logicalId = findLogicalIdByProperty(
             synthTemplate,
             'AWS::BedrockAgentCore::Runtime',
@@ -601,7 +602,7 @@ export async function handleImport(options: ImportOptions): Promise<ImportResult
           // CDK prefixes memory names with the project name (e.g. "myproject_Agent_mem"),
           // so also try matching with the project name prefix.
           if (!logicalId) {
-            const prefixedName = `${projectName}_${memory.name}`;
+            const prefixedName = `${getPhysicalProjectName(projectName, target)}_${memory.name}`;
             logicalId = findLogicalIdByProperty(synthTemplate, 'AWS::BedrockAgentCore::Memory', 'Name', prefixedName, {
               excludeLogicalIds: deployedIds,
             });

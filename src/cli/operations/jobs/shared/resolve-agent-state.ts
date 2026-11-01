@@ -9,13 +9,15 @@ export interface ResolvedAgentState {
   runtimeId: string;
   runtimeArn: string;
   roleArn?: string;
+  /** Deployment target the runtime was found in. */
+  targetName: string;
 }
 
 /** Find the agent runtime across all deployment targets; undefined if not deployed. */
 export function resolveAgentState(deployedState: DeployedState, agentName: string): ResolvedAgentState | undefined {
-  for (const target of Object.values(deployedState.targets)) {
+  for (const [targetName, target] of Object.entries(deployedState.targets)) {
     const agent = target.resources?.runtimes?.[agentName];
-    if (agent) return agent;
+    if (agent) return { ...agent, targetName };
   }
   return undefined;
 }

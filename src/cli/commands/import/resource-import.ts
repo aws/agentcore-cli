@@ -1,5 +1,6 @@
 import { toError } from '../../../lib';
 import type { AgentCoreProjectSpec } from '../../../schema';
+import { getPhysicalProjectName } from '../../operations/resource-naming';
 import { NAME_REGEX } from './constants';
 import { executeCdkImportPipeline } from './import-pipeline';
 import { failResult, findResourceInDeployedState, resolveImportContext, toStackName } from './import-utils';
@@ -176,7 +177,7 @@ export async function executeResourceImport<TDetail, TSummary>(
         );
 
         if (!logicalId) {
-          const prefixedName = `${ctx.projectName}_${localName}`;
+          const prefixedName = `${getPhysicalProjectName(ctx.projectName, target)}_${localName}`;
           logicalId = findLogicalIdByProperty(
             synthTemplate,
             descriptor.cfnResourceType,

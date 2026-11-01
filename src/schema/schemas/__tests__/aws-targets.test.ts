@@ -136,6 +136,23 @@ describe('AwsDeploymentTargetSchema', () => {
     expect(AwsDeploymentTargetSchema.safeParse({ name: 'prod' }).success).toBe(false);
     expect(AwsDeploymentTargetSchema.safeParse({ account: '123456789012' }).success).toBe(false);
   });
+
+  it('accepts target with alphanumeric resourceNameSuffix', () => {
+    const result = AwsDeploymentTargetSchema.safeParse({ ...validTarget, resourceNameSuffix: 'Prod1' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.resourceNameSuffix).toBe('Prod1');
+    }
+  });
+
+  it('rejects resourceNameSuffix with separators or over 8 chars', () => {
+    expect(AwsDeploymentTargetSchema.safeParse({ ...validTarget, resourceNameSuffix: 'dev-1' }).success).toBe(false);
+    expect(AwsDeploymentTargetSchema.safeParse({ ...validTarget, resourceNameSuffix: 'dev_1' }).success).toBe(false);
+    expect(AwsDeploymentTargetSchema.safeParse({ ...validTarget, resourceNameSuffix: '' }).success).toBe(false);
+    expect(AwsDeploymentTargetSchema.safeParse({ ...validTarget, resourceNameSuffix: 'a'.repeat(9) }).success).toBe(
+      false
+    );
+  });
 });
 
 describe('AwsDeploymentTargetsSchema', () => {

@@ -22,6 +22,8 @@ export type DeployResult = Result<{
   logPath?: string;
   /** Sync outcome rides on BOTH branches so dep_sync_* telemetry survives a failed deploy. */
   dependencySyncResult?: DependencySyncResult;
+  /** Whether the deployed target sets resourceNameSuffix (telemetry). Undefined before the target loads. */
+  usesResourceNameSuffix?: boolean;
 };
 
 export type PreflightResult = Result<{

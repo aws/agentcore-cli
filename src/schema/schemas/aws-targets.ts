@@ -56,6 +56,17 @@ export const AwsAccountIdSchema = z
   .describe('AWS account ID');
 
 // ============================================================================
+// Resource Name Suffix
+// ============================================================================
+
+export const ResourceNameSuffixSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9]{1,8}$/, 'Resource name suffix must be 1-8 alphanumeric characters')
+  .describe(
+    'Appended to the project name when naming deployed resources, so several targets can share one account and region'
+  );
+
+// ============================================================================
 // AWS Deployment Target
 // ============================================================================
 
@@ -64,6 +75,7 @@ export const AwsDeploymentTargetSchema = z.object({
   description: z.string().max(256).optional(),
   account: AwsAccountIdSchema,
   region: AgentCoreRegionSchema,
+  resourceNameSuffix: ResourceNameSuffixSchema.optional(),
 });
 
 export type AwsDeploymentTarget = z.infer<typeof AwsDeploymentTargetSchema>;

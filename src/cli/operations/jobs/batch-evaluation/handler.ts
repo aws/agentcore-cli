@@ -22,6 +22,7 @@ import {
 import type { BatchEvaluationResultEntry } from '../../../aws/agentcore-batch-evaluation';
 import { detectRegion } from '../../../aws/region';
 import { ExecLogger } from '../../../logging/exec-logger';
+import { getPhysicalProjectNameForTarget } from '../../resource-naming';
 import { NOT_FOUND_STATUS } from '../shared/constants';
 import { regionFromArn, resolveJobRegion } from '../shared/region';
 import { resolveAgentState } from '../shared/resolve-agent-state';
@@ -95,7 +96,7 @@ export const batchEvaluationHandler: BatchEvaluationHandler = {
         return { success: false, error: err };
       }
       const { serviceName, logGroupName } = buildCloudWatchSource(
-        projectSpec.name,
+        getPhysicalProjectNameForTarget(projectSpec.name, awsTargets, agentState.targetName),
         opts.agent,
         agentState.runtimeId,
         opts.endpoint

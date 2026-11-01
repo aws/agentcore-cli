@@ -1,4 +1,4 @@
-import type { AgentCoreProjectSpec } from '../../../schema';
+import type { AgentCoreProjectSpec, AwsDeploymentTarget } from '../../../schema';
 import type { DeployMode } from '../../telemetry/schemas/common-shapes';
 
 export const DEFAULT_DEPLOY_ATTRS = {
@@ -15,7 +15,11 @@ export const DEFAULT_DEPLOY_ATTRS = {
   deploy_mode: 'deploy' as DeployMode,
 };
 
-export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, mode: DeployMode) {
+export function computeDeployAttrs(
+  projectSpec: Partial<AgentCoreProjectSpec>,
+  mode: DeployMode,
+  targets?: readonly AwsDeploymentTarget[]
+) {
   const gateways = projectSpec.agentCoreGateways ?? [];
   const policyEngines = projectSpec.policyEngines ?? [];
   return {
@@ -30,5 +34,6 @@ export function computeDeployAttrs(projectSpec: Partial<AgentCoreProjectSpec>, m
     policy_engine_count: policyEngines.length,
     policy_count: policyEngines.reduce((sum, pe) => sum + (pe.policies ?? []).length, 0),
     deploy_mode: mode,
+    ...(targets?.length && { uses_resource_name_suffix: targets.some(t => Boolean(t.resourceNameSuffix)) }),
   };
 }

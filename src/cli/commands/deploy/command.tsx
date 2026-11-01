@@ -52,6 +52,9 @@ async function handleDeployCLI(options: DeployOptions): Promise<void> {
     if (result.dependencySyncResult) {
       recorder.set(toDepSyncAttrs(result.dependencySyncResult));
     }
+    if (result.usesResourceNameSuffix !== undefined) {
+      recorder.set({ uses_resource_name_suffix: result.usesResourceNameSuffix });
+    }
     if (!result.success) {
       return { success: false as const, error: result.error, deployResult: result };
     }

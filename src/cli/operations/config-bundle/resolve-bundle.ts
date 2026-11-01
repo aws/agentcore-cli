@@ -6,6 +6,7 @@
  */
 import { ConfigIO } from '../../../lib';
 import { listConfigurationBundleVersions, listConfigurationBundles } from '../../aws/agentcore-config-bundles';
+import { getPhysicalProjectName } from '../resource-naming';
 import { getBundleNameVariants } from './bundle-name-variants';
 
 export interface ResolvedBundle {
@@ -52,16 +53,25 @@ export async function resolveBundleByName(
   }
 
   // Fallback: search via API
-  // The API stores bundles with a prefixed name: {projectName}{bundleName}
-  let projectName: string | undefined;
+  // The API stores bundles with a prefixed name: {projectName}{bundleName}, where projectName
+  // carries the resourceNameSuffix of the target the bundle was deployed to.
+  const projectNames: string[] = [];
   try {
     const projectSpec = await configIO.readProjectSpec();
-    projectName = projectSpec.name;
+    try {
+      const targets = await configIO.readAWSDeploymentTargets();
+      for (const target of targets.filter(t => t.region === region)) {
+        projectNames.push(getPhysicalProjectName(projectSpec.name, target));
+      }
+    } catch {
+      // Targets may not be available — fall back to the plain project name
+    }
+    projectNames.push(projectSpec.name);
   } catch {
     // Project spec may not be available
   }
 
-  const nameVariants = getBundleNameVariants(bundleName, projectName);
+  const nameVariants = getBundleNameVariants(bundleName, projectNames);
   let nextToken: string | undefined;
   let match: { bundleId: string; bundleArn: string; bundleName: string } | undefined;
   do {
