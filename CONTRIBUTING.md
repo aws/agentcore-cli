@@ -45,23 +45,23 @@ different times:
   other command change merged since the last release, which buries your diff in unrelated
   churn. Run `bun scripts/generate-command-reference.mjs` locally if you want to preview how
   your `--help` will read, then revert the file before committing.
-- **Fixtures and golden files** under `src/handlers/**/__fixtures__/` are recordings. Refresh
+- **Fixtures and golden files** under `src/handlers/**/__fixtures__/` and `src/core/**/__fixtures__/` are recordings. Refresh
   them with `RECORD=1 bun test <file>` — see [Golden files and record mode](#golden-files-and-record-mode).
 
-## Changes that span repositories
+## Changes that reach a deployed resource
 
-The CLI vends CDK projects built from [`@aws/agentcore-cdk`](https://github.com/aws/agentcore-l3-cdk-constructs),
-pinned in `src/assets/cdk/package.json`. A change that has to reach a deployed resource lands in
-three steps, in order:
+The CLI vends CDK projects built from `@aws/agentcore-cdk`, pinned in
+`src/assets/cdk/package.json`. A change that has to reach a deployed resource lands in three
+steps, in order:
 
 1. The CloudFormation resource must publish the property. The CLI deploys the control plane
    only through CloudFormation and has no escape hatch, so a property absent from the resource
    schema is one the CLI cannot set.
-2. The L3 construct change merges and is released in `aws/agentcore-l3-cdk-constructs`.
+2. A released `@aws/agentcore-cdk` supports it.
 3. The pin in `src/assets/cdk/package.json` is bumped to that release.
 
-Link the companion PR from this one, and expect the pin bump to be a follow-up rather than part
-of the same change.
+Say in your issue when a change needs steps 1 or 2, so maintainers can sequence them. Expect the
+pin bump to be a follow-up rather than part of the same change.
 
 ## Development
 
@@ -425,8 +425,8 @@ and so fails typecheck until it matches.
 
 **A new resource with a project collection** also needs its `src/projectSchemas/<resource>.ts`
 schema registered in `project.ts` with `.superRefine(uniqueNames("<resource>"))`, a Core
-sub-client, a deploy mapping in `src/core/project/backends/cdk.ts`, and the companion L3
-construct (see [Changes that span repositories](#changes-that-span-repositories)). Add a
+sub-client, a deploy mapping in `src/core/project/backends/cdk.ts`, and support in a released `@aws/agentcore-cdk` (see
+[Changes that reach a deployed resource](#changes-that-reach-a-deployed-resource)). Add a
 `type: z.literal(...)` discriminator only if the sibling schemas have one — most do not.
 
 **Removing a flag, field or return value** runs the same inventory in reverse: grep for every
@@ -557,18 +557,22 @@ and strip volatile transport metadata (`$metadata`, request IDs) so they stay
 stable. Golden files are excluded from Prettier (`.prettierignore`) — they are
 byte-for-byte recordings, not source to reformat.
 
-Record against your own AWS account. A contributor adding a flag to a command with a
-fixture-backed suite re-records that suite with `RECORD=1` using their own credentials.
+Maintainers re-record fixture-backed suites against the project's test account. If your change
+alters the request a recorded suite sends, cover the new behavior with a `TestCoreClient`
+command-flow test and say in the PR which suite needs re-recording; a maintainer records it before
+merge. Never record against an account that runs production workloads or holds customer data.
 
 Before you record one:
 
 - **Recordings carry the recording account's identifiers, and that is expected.** Most committed
   fixtures and golden files contain real account IDs in their ARNs; `matchGolden` strips presigned
   URLs and normalizes JSON, nothing else. A re-record from a different account therefore rewrites
-  every ARN in the suite. Review the diff for changes beyond those identifiers, and use
-  `uniquePerRecording` (`src/testing/fixtures.tsx`) for values that must stay stable across
-  re-records — call it inside the test, not at module load, or replay fails the whole file when the
-  value has never been recorded.
+  every ARN in the suite. Review the diff for changes beyond those identifiers.
+- **A value the service needs fresh on every recording goes through `uniquePerRecording`**
+  (`src/testing/fixtures.tsx`). Record mode generates a new value and saves it; replay reads the
+  saved one back, so it is identical on every replay and different on every recording — a session
+  id that must not collide with an earlier recording's traces, for instance. Call it inside the
+  test, not at module load, or replay fails the whole file when the value has never been recorded.
 - **The two failure messages mean different things.** `Missing fixture …` means the SDK
   request your handler sends has changed, because fixture keys hash that request — either
   re-record or leave the request alone. `Missing golden file …` just means this assertion

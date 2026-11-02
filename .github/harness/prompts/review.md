@@ -97,5 +97,5 @@ cheap to miss by reading a diff in isolation.
   model or runtime at call time. A sensitive value must also cross into the TUI as a Context value,
   never as a route segment or query param.
 - **A deploy-path field with no backing** - A field expected to reach a deployed resource needs the
-  CloudFormation property, the released L3 construct, and the `@aws/agentcore-cdk` pin bump in
+  CloudFormation property, support in a released `@aws/agentcore-cdk`, and the pin bump in
   `src/assets/cdk/package.json`. There is no `AwsCustomResource` escape hatch.

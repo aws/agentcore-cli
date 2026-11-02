@@ -12,12 +12,6 @@ Closes #
 
 <!-- Link any related documentation PR, or state that documentation is included here or not applicable. -->
 
-## Related Changes in Other Repositories
-
-<!-- Link any companion PR this change depends on, such as an L3 construct change in
-aws/agentcore-l3-cdk-constructs, or state "none". A companion PR must be merged and
-released before the @aws/agentcore-cdk pin here can be bumped. -->
-
 ## Type of Change
 
 <!-- Check all that apply -->

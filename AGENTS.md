@@ -93,25 +93,27 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
   inlined in compiled binaries (so the bootstrap template is embedded explicitly); identifiers are
   never minified because stack traces and telemetry error names depend on them. `dist/index.js` is
   a loader that enables Node's compile cache then imports `dist/main.js`.
-- **A context value a middleware resolves is never `undefined` below it.** `withRegion` at the
-  root replaces `RegionKey` with the resolved region (flag → env → config → `DEFAULT_REGION`)
-  before any handler runs, so `ctx.value(RegionKey)` is always set and a guard on its absence is
-  dead code. To tell "the user passed `--flag`" from "something resolved a default", capture that
-  before the middleware runs — don't infer it from the context value. **A zod `.default()` on a
-  flag hides the same distinction**: by the time `handle` runs, a defaulted flag and a passed one are
-  identical. If any rule depends on the user having passed it, declare the schema `.optional()` and
-  apply the default in `handle`, and put the default's value in the flag description so `--help`
-  still states it.
+- **A context value a middleware resolves is never `undefined` below it.** `withRegion` at the root
+  replaces `RegionKey` with the resolved region (flag → env → config → `DEFAULT_REGION`) before any
+  handler runs, so `ctx.value(RegionKey)` is always set and a guard on its absence is dead code. To
+  tell "the user passed `--region`" from "a default was resolved", read `RegionExplicitKey`, which
+  `withRegion` sets before it resolves the region. For a new middleware-resolved value, capture the
+  same distinction before the middleware runs; don't infer it from the context value. **A zod
+  `.default()` on a flag hides the same distinction**: by the time `handle` runs, a defaulted flag
+  and a passed one are identical. If any rule depends on the user having passed it, declare the
+  schema `.optional()` and apply the default in `handle`, and put the default's value in the flag
+  description so `--help` still states it.
 - **The e2e suite is not a PR gate.** `.github/workflows/e2e-test.yml` runs only on
   `workflow_call` / `workflow_dispatch` and checks caller authorization, so nothing runs it for a
   contributor automatically. Run it locally with credentials and say so in the PR.
 - **A deploy-path field needs three things, in order**: the property published on the
-  `AWS::BedrockAgentCore::*` resource (there is no `AwsCustomResource` escape hatch), the L3
-  construct released from `aws/agentcore-l3-cdk-constructs`, then the `@aws/agentcore-cdk` pin in
+  `AWS::BedrockAgentCore::*` resource (there is no `AwsCustomResource` escape hatch), support in
+  a released `@aws/agentcore-cdk`, then the pin in
   `src/assets/cdk/package.json` bumped. Check `src/core/project/backends/cdk.ts` for whether the
   resource is mapped at all.
-- **Check emptiness, not presence, on optional collections.** `config.insights` existing as `[]`
-  is not the same as the feature being configured; test `(x?.length ?? 0) > 0`.
+- **Check emptiness, not presence, on optional collections.** `spec.efsAccessPoints` existing as
+  `[]` is not the same as the feature being configured; test `(spec.efsAccessPoints?.length ?? 0) > 0`,
+  as `src/core/project/templates/export.ts` does.
 - Line endings are LF (`.gitattributes`). The Husky pre-commit hook runs lint-staged
   (oxlint --fix + Prettier) on staged files.
 - Root-level `.*.bun-build` files are compile leftovers (gitignored); ignore them.
@@ -122,11 +124,12 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 - tsconfig is strict with `noUncheckedIndexedAccess` and `verbatimModuleSyntax` (use `import type`
   for type-only imports). Relative imports often include the extension (`./harness/index.tsx`),
   and most files are `.tsx` even without JSX; follow the neighbouring files.
-- Handler directories: `index.tsx` (`create<Name>Handler(core, io)` factory), `screen.tsx`
-  (imported directly by the route table in `src/components/Root.tsx`), `types.tsx` (the Core interface the handler consumes; implemented in
-  `src/core/`). Leaf handlers use `createHandler({ name, description, flags: [flag(...)], handle })`
-  with zod-validated flags. Emit JSON via `ctx.require(JsonRendererKey).renderJson(...)` and write
-  through the injected `AppIO`; never touch `process.stdout` directly in handlers.
+- Handler directories: `index.tsx` (`create<Name>Handler(core, io)` factory), `screen.tsx` (imported
+  directly by the route table in `src/components/Root.tsx`), `types.tsx` (the Core interface the
+  handler consumes; implemented in `src/core/`). Leaf handlers use
+  `createHandler({ name, description, flags: [flag(...)], handle })` with zod-validated flags. Emit
+  JSON via `ctx.require(JsonRendererKey).renderJson(...)` and write through the injected `AppIO`;
+  never touch `process.stdout` directly in handlers.
 - Build `CoreOptions` from context with `coreOptsFromCtx(ctx)` (`src/handlers/utils.tsx`).
 - A leaf that prints human-readable output unless `--json` is passed reads `ctx.value(JsonKey)`
   (`src/handlers/keys.tsx`) to choose; 29 handlers do.
@@ -147,11 +150,12 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 
 ## Testing patterns
 
-- Tests live beside code as `*.test.ts(x)`; name any test-support file `*.test-support.ts` so it
-  is not mistaken for shipped code. Target is 90% line coverage, but coverage is a floor on
-  behavior tested, not a quota to fill — a test asserting what the implementation plainly says
-  gets removed in review. For a flag, the case worth testing is usually the one where it is
-  **absent**, since that is the path a default or a middleware silently changes.
+- Tests live beside code as `*.test.ts(x)`; name any test-support file `*-test-support.ts` (the glob
+  the oxlint override in `.oxlintrc.json` matches) so it is not mistaken for shipped code. Target is
+  90% line coverage, but coverage is a floor on behavior tested, not a quota to fill — a test
+  asserting what the implementation plainly says gets removed in review. For a flag, the case worth
+  testing is usually the one where it is **absent**, since that is the path a default or a
+  middleware silently changes.
 - `testIO().stdout()` / `.stderr()` return the captured text with the trailing newline trimmed, so
   assert `toBe("hello")`, not `toBe("hello\n")`. A new helper or constant in `src/testing/` is only
   visible to tests once it is re-exported from the `src/testing/index.tsx` barrel.
