@@ -26,6 +26,22 @@ const ENVIRONMENT = "Environment:";
 const FILESYSTEM_STORAGE = "Filesystem storage:";
 const ACCESS_AND_PERMISSIONS = "Access and permissions:";
 
+const AUTHORIZER_CONFIGURATION_HELP = `(JSON object)
+Project authorizer configuration. For CUSTOM_JWT, the only top-level key is
+customJwtAuthorizer:
+
+  {
+    "customJwtAuthorizer": {
+      "discoveryUrl": "https://idp.example.com/.well-known/openid-configuration",
+      "allowedAudience": ["my-app"]
+    }
+  }
+
+The generated harness.yaml uses the service API spelling customJWTAuthorizer.
+
+Example:
+  --authorizer-configuration '{"customJwtAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["my-app"]}}'`;
+
 // toAddHarnessInput validates what either entry point collected — the flags,
 // or the wizard's answers — against the one spec schema, then checks the
 // deployed name the way every add does. Both paths therefore refuse the same
@@ -192,7 +208,7 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         "authorizer-configuration",
         "inbound authorizer configuration (JSON)",
         z.string().optional(),
-        { group: ACCESS_AND_PERMISSIONS },
+        { group: ACCESS_AND_PERMISSIONS, help: AUTHORIZER_CONFIGURATION_HELP },
       ),
     ],
     handle: async (ctx, flags) => {
