@@ -10,6 +10,7 @@
     "dev": "tsx watch main.ts"
   },
   "dependencies": {
+    "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "^0.12.0",
     "ai": "^6.0.0",
     {{#if (eq modelProvider "Bedrock")}}
     "@ai-sdk/amazon-bedrock": "^4.0.0",
