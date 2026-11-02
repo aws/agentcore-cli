@@ -557,10 +557,22 @@ and strip volatile transport metadata (`$metadata`, request IDs) so they stay
 stable. Golden files are excluded from Prettier (`.prettierignore`) — they are
 byte-for-byte recordings, not source to reformat.
 
-Maintainers re-record fixture-backed suites against the project's test account. If your change
-alters the request a recorded suite sends, cover the new behavior with a `TestCoreClient`
-command-flow test and say in the PR which suite needs re-recording; a maintainer records it before
-merge. Never record against an account that runs production workloads or holds customer data.
+Record in your own AWS account. Any account works; maintainers record against the project's own
+account, so a recording may be re-made later with different identifiers in it.
+
+### Setting up an account to record
+
+1. **Credentials.** Export credentials the usual way (`AWS_PROFILE`, or the standard environment
+   variables). The suites use the default AWS credential chain.
+2. **Region.** Every fixture-backed suite pins `--region us-west-2`, so AgentCore must be available
+   to your account in `us-west-2`.
+3. **Permissions.** The identity needs the AgentCore control- and data-plane operations the suite
+   calls, plus any IAM, CloudWatch Logs or CloudFormation calls it makes. The SDK commands a suite
+   sends are the fixture file names in its `__fixtures__/` directory.
+4. **Pre-existing resources.** Many suites read a resource that must already exist, pinned in a
+   `FIXTURE_*` constant at the top of the test file, whose header comment says what it needs.
+   Create the equivalent in your account and point the constant at it.
+5. **Record.** Run `RECORD=1 bun test <file>`, then review the diff before committing.
 
 Before you record one:
 
