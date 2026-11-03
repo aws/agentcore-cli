@@ -574,6 +574,7 @@ test("invokeRuntime maps all modeled IAM fields and response metadata", async ()
   expect(sent[0]!.options).toEqual({ abortSignal: controller.signal });
   const { response, ...metadata } = sdkResponse;
   expect(result).toEqual({
+    kind: "stream",
     ...metadata,
     body: response,
   });
@@ -631,6 +632,7 @@ test("invokeRuntime aborts an established IAM response stream", async () => {
     { region: "us-east-1" },
     controller.signal,
   );
+  if (response.kind !== "stream") throw new Error("expected a streaming response");
   const iterator = response.body[Symbol.asyncIterator]();
 
   expect(await iterator.next()).toEqual({ done: false, value: Buffer.from("partial") });
@@ -746,6 +748,7 @@ test("CUSTOM_JWT invoke uses the generated endpoint and exact fetch request", as
   );
   expect(result.runtimeSessionId).toBe("returned-runtime");
   expect(result.mcpSessionId).toBe("returned-mcp");
+  if (result.kind !== "stream") throw new Error("expected a streaming response");
   const resultBytes: Uint8Array[] = [];
   for await (const chunk of result.body) resultBytes.push(chunk);
   expect(Buffer.concat(resultBytes)).toEqual(Buffer.from([1, 2]));
@@ -856,6 +859,7 @@ test("CUSTOM_JWT non-2xx returns safe service details for the response writer", 
   const response = await core.runtime.invokeRuntime(request, { region: "us-east-1" });
 
   expect(response).toMatchObject({
+    kind: "rejected",
     statusCode: 401,
     error: {
       detail:
@@ -863,9 +867,6 @@ test("CUSTOM_JWT non-2xx returns safe service details for the response writer", 
       requestId: "request-[REDACTED]",
     },
   });
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of response.body) chunks.push(chunk);
-  expect(chunks).toEqual([]);
   expectSafeDebugLog(
     logs,
     "Runtime invocation returned a non-success response",
@@ -1022,6 +1023,7 @@ test("invokeRuntime exposes an empty async iterable when the SDK omits the body"
     { region: "us-east-1" },
   );
 
+  if (response.kind !== "stream") throw new Error("expected a streaming response");
   const chunks: Uint8Array[] = [];
   for await (const chunk of response.body) chunks.push(chunk);
   expect(chunks).toEqual([]);

@@ -377,6 +377,7 @@ async function* events<T>(items: T[]): AsyncGenerator<T> {
 }
 
 const DEFAULT_RUNTIME_INVOKE_RESPONSE: RuntimeInvokeResponse = {
+  kind: "stream",
   statusCode: 200,
   contentType: "application/json",
   body: events([]),
@@ -852,6 +853,7 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   ): Promise<RuntimeInvokeResponse> {
     this.calls.push({ method: "invokeRuntime", args: [request, options, signal] });
     if (this.error) throw this.error;
+    if (this.invokeResponse.kind === "rejected") return this.invokeResponse;
     return {
       ...this.invokeResponse,
       body: this.invokeBodies.shift() ?? this.invokeResponse.body,

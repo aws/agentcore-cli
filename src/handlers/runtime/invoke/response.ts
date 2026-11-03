@@ -6,7 +6,11 @@ import {
   writeStreamingResponseFile,
   type StreamingResponseOutput,
 } from "../../../io";
-import type { RuntimeInvokeResponse } from "../types";
+import type {
+  RuntimeInvokeRejectedResponse,
+  RuntimeInvokeResponse,
+  RuntimeInvokeStreamResponse,
+} from "../types";
 
 const RESPONSE_STREAM_FAILED = "response stream failed";
 
@@ -15,7 +19,7 @@ export function classifyRuntimeResponse(contentType: string) {
 }
 
 export async function writeRuntimeInvokeFile(
-  response: RuntimeInvokeResponse,
+  response: RuntimeInvokeStreamResponse,
   path: string,
   signal?: AbortSignal,
   onBytes?: (size: number) => void,
@@ -44,18 +48,18 @@ function summary(
     `trace-id=${value(response.traceId)} trace-parent=${value(response.traceParent)} ` +
     `trace-state=${value(response.traceState)} baggage=${value(response.baggage)} ` +
     `complete=${complete} bytes=${byteCount}${error ? ` error=${error}` : ""}` +
-    `${response.error?.requestId ? ` request-id=${response.error.requestId}` : ""}\n`
+    `${response.kind === "rejected" && response.error.requestId ? ` request-id=${response.error.requestId}` : ""}\n`
   );
 }
 
 async function writeRejectedRuntimeResponse(
-  response: RuntimeInvokeResponse,
+  response: RuntimeInvokeRejectedResponse,
   output: StreamingResponseOutput,
 ): Promise<never> {
   try {
     await output.beforeOutput?.();
     await pipeline(
-      [summary(response, 0, false, response.error?.detail ?? `HTTP ${response.statusCode}`)],
+      [summary(response, 0, false, response.error.detail ?? `HTTP ${response.statusCode}`)],
       output.stderr,
       { end: false, signal: output.signal },
     );
@@ -69,9 +73,9 @@ export async function writeRuntimeInvokeResponse(
   response: RuntimeInvokeResponse,
   output: StreamingResponseOutput,
 ): Promise<void> {
-  if (response.error) await writeRejectedRuntimeResponse(response, output);
+  if (response.kind === "rejected") return writeRejectedRuntimeResponse(response, output);
   await writeStreamingResponse(response, output, {
-    metadata: ({ body: _body, ...metadata }) => metadata,
+    metadata: ({ body: _body, kind: _kind, ...metadata }) => metadata,
     summary,
     fail: (error) => failure(error, output.signal),
     binaryTtyError: "Binary or unknown response content requires --output-file or --json",

@@ -84,6 +84,7 @@ async function run(
   const core = new TestCoreClient();
   core.runtime.setGetResponse(getResponse);
   core.runtime.setInvokeResponse({
+    kind: "stream",
     statusCode: 200,
     contentType: "application/json",
     body: body(Uint8Array.from([0, 255]), Uint8Array.from([10, 1])),
@@ -105,7 +106,12 @@ describe("runtime invoke", () => {
           agentRuntimeArn: RUNTIME_ARN,
           ...(input === "bearer-token" && { authorizerConfiguration: { customJWTAuthorizer: {} } }),
         } as GetAgentRuntimeResponse)
-        .setInvokeResponse({ statusCode: 200, contentType: "text/plain", body: stream });
+        .setInvokeResponse({
+          kind: "stream",
+          statusCode: 200,
+          contentType: "text/plain",
+          body: stream,
+        });
       const io = testIO({ isTTY: true });
       const stdin = io.io.stdin as unknown as PassThrough;
       const pending = runCommand(core, io.io, [
@@ -140,7 +146,12 @@ describe("runtime invoke", () => {
       const stream = new StreamController<Uint8Array>();
       core.runtime
         .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
-        .setInvokeResponse({ statusCode: 200, contentType: "text/plain", body: stream });
+        .setInvokeResponse({
+          kind: "stream",
+          statusCode: 200,
+          contentType: "text/plain",
+          body: stream,
+        });
       const io = testIO({ isTTY: true });
       const pending = runCommand(core, io.io, [
         "runtime",
@@ -300,6 +311,7 @@ describe("runtime invoke", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/event-stream",
         body: (async function* () {
@@ -400,6 +412,7 @@ describe("runtime invoke", () => {
     core.runtime.invokeRuntime = async (request, options, signal) => {
       core.runtime.calls.push({ method: "invokeRuntime", args: [request, options, signal] });
       return {
+        kind: "stream" as const,
         statusCode: 200,
         contentType: "text/event-stream",
         body: (async function* () {
@@ -503,6 +516,7 @@ describe("runtime invoke", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "application/octet-stream",
         body: (async function* () {
@@ -734,6 +748,7 @@ describe("runtime invoke", () => {
     outputCore.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: body(Buffer.from("response")),
@@ -784,13 +799,13 @@ describe("runtime invoke", () => {
       authorizerConfiguration: { customJWTAuthorizer: {} },
     } as GetAgentRuntimeResponse);
     core.runtime.setInvokeResponse({
+      kind: "rejected",
       statusCode: 401,
       contentType: "application/json",
       error: {
         detail: "ExpiredTokenException: The token has expired",
         requestId: "request-123",
       },
-      body: body(),
     });
     const output = captureIO();
     const errors: string[] = [];

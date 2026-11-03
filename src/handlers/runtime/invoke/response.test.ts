@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { SilentCLIError, UserCancellationError } from "../../../errors";
 import { waitFor } from "../../../testing";
-import type { RuntimeInvokeResponse } from "../types";
+import type { RuntimeInvokeRejectedResponse, RuntimeInvokeStreamResponse } from "../types";
 import { writeRuntimeInvokeResponse } from "./response";
 
 const files: string[] = [];
@@ -27,11 +27,26 @@ function failingBody(error: Error): AsyncIterable<Uint8Array> {
   })();
 }
 
-function response(overrides: Partial<RuntimeInvokeResponse> = {}): RuntimeInvokeResponse {
+function response(
+  overrides: Partial<RuntimeInvokeStreamResponse> = {},
+): RuntimeInvokeStreamResponse {
   return {
+    kind: "stream",
     statusCode: 200,
     contentType: "text/plain",
     body: body(Buffer.from("ok")),
+    ...overrides,
+  };
+}
+
+function rejectedResponse(
+  overrides: Partial<RuntimeInvokeRejectedResponse> = {},
+): RuntimeInvokeRejectedResponse {
+  return {
+    kind: "rejected",
+    statusCode: 401,
+    contentType: "application/json",
+    error: {},
     ...overrides,
   };
 }
@@ -242,20 +257,15 @@ describe("Runtime invoke response output", () => {
   test.each([false, true])(
     "reports a rejected Runtime response once without writing response output (json=%s)",
     async (json) => {
-      let iterations = 0;
       const stdout = capture();
       const stderr = capture();
-      const result = response({
+      const result = rejectedResponse({
         statusCode: 401,
         contentType: "application/json",
         error: {
           detail: "ExpiredTokenException: The token has expired",
           requestId: "request-123",
         },
-        body: (async function* () {
-          iterations++;
-          yield Buffer.from("must-not-be-written");
-        })(),
       });
 
       const pending = writeRuntimeInvokeResponse(result, {
@@ -266,7 +276,6 @@ describe("Runtime invoke response output", () => {
 
       await expect(pending).rejects.toBeInstanceOf(SilentCLIError);
       await expect(pending).rejects.toThrow("HTTP 401");
-      expect(iterations).toBe(0);
       expect(stdout.bytes()).toHaveLength(0);
       expect(stderr.bytes().toString()).toBe(
         "status=401 content-type=application/json runtime-session-id=- mcp-session-id=- " +
@@ -285,7 +294,7 @@ describe("Runtime invoke response output", () => {
 
     await expect(
       writeRuntimeInvokeResponse(
-        response({
+        rejectedResponse({
           statusCode: 403,
           error: { detail: "AccessDeniedException: Access denied" },
         }),

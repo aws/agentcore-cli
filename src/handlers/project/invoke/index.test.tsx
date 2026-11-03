@@ -124,6 +124,7 @@ async function routedCommand(
   core.runtime
     .setGetResponse({ agentRuntimeArn: arn(`runtime/${RUNTIME_ID}`) } as GetAgentRuntimeResponse)
     .setInvokeResponse({
+      kind: "stream",
       statusCode: 200,
       contentType: "text/plain",
       body: (async function* () {

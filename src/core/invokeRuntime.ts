@@ -30,7 +30,7 @@ export type RuntimeInvokeRequest = {
   baggage?: string;
 };
 
-export type RuntimeInvokeResponse = {
+export type RuntimeInvokeResponseMetadata = {
   statusCode: number;
   contentType: string;
   runtimeSessionId?: string;
@@ -40,14 +40,22 @@ export type RuntimeInvokeResponse = {
   traceParent?: string;
   traceState?: string;
   baggage?: string;
-  error?: RuntimeInvokeErrorResponse;
+};
+
+export type RuntimeInvokeStreamResponse = RuntimeInvokeResponseMetadata & {
+  kind: "stream";
   body: AsyncIterable<Uint8Array>;
 };
 
-export type RuntimeInvokeErrorResponse = {
-  detail?: string;
-  requestId?: string;
+export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
+  kind: "rejected";
+  error: {
+    detail?: string;
+    requestId?: string;
+  };
 };
+
+export type RuntimeInvokeResponse = RuntimeInvokeStreamResponse | RuntimeInvokeRejectedResponse;
 
 // The CUSTOM_JWT path puts the account id in the invocation URL, so a bad ARN must fail here.
 export function accountIdFromRuntimeArn(arn: string | undefined): string {
@@ -346,6 +354,7 @@ async function invokeRuntimeWithCustomJwt(
     const requestId =
       errorResponse.header("x-amzn-requestid") ?? errorResponse.header("x-amz-request-id");
     return {
+      kind: "rejected",
       statusCode: response.status,
       contentType: response.headers.get("content-type") ?? "",
       runtimeSessionId:
@@ -360,11 +369,11 @@ async function invokeRuntimeWithCustomJwt(
         ...(detail !== undefined && { detail }),
         ...(requestId !== undefined && { requestId }),
       },
-      body: emptyBody(),
     };
   }
   const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
   return {
+    kind: "stream",
     statusCode: response.status,
     contentType: response.headers.get("content-type") ?? "",
     runtimeSessionId:
@@ -409,6 +418,7 @@ async function invokeRuntimeWithIam(
 
   const body = (response.response as AsyncIterable<Uint8Array> | undefined) ?? emptyBody();
   return {
+    kind: "stream",
     statusCode: response.statusCode ?? 0,
     contentType: response.contentType ?? "",
     runtimeSessionId: response.runtimeSessionId,

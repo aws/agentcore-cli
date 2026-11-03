@@ -242,7 +242,7 @@ export function RuntimeInvokeConsole({
         ...(mcp && { mcpSessionId, mcpProtocolVersion }),
       });
       const response = await core.runtime.invokeRuntime(request, opts, controller.signal);
-      if (response.error) {
+      if (response.kind === "rejected") {
         updateExchange({
           error: {
             name: "Runtime invocation failed",

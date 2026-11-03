@@ -928,7 +928,7 @@ export class EvalClient implements CoreEvalClient {
             options,
             signal,
           );
-          if (response.error) {
+          if (response.kind === "rejected") {
             throw new AgentCoreCLIError(
               `Runtime invocation failed (HTTP ${response.statusCode})${
                 response.error.detail ? `: ${response.error.detail}` : ""
