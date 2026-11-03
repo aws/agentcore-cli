@@ -28,11 +28,17 @@ How have you tested the change?
 
 - [ ] I ran `bun test`
 - [ ] I ran the relevant end-to-end tests with `bun run test:e2e`, or explained why they are not applicable
+      (CI does not run them for you)
 - [ ] I ran `bun run typecheck`
 - [ ] I ran `bun run lint:check`
 - [ ] I ran `bun run format:check`
+- [ ] I ran `bun run audit`
+- [ ] I ran `bun run secrets:check`
 - [ ] I ran `bun run build`
 - [ ] If I modified `src/assets/`, I updated affected snapshots with `bun test <test-file> --update-snapshots` and committed them
+- [ ] If I re-recorded fixtures or golden files, every change beyond account identifiers is explained
+      by this PR
+- [ ] This PR does not change `command.md` (the release workflow regenerates it)
 
 ## Checklist
 
