@@ -146,6 +146,70 @@ describe("gateway custom validation", () => {
       }).success,
     ).toBe(false);
   });
+  it.each([
+    [
+      "mcpServer",
+      {
+        endpoint: "https://example.com/mcp",
+      },
+    ],
+    [
+      "openApiSchema",
+      {
+        schemaSource: { inline: { path: "openapi.json" } },
+      },
+    ],
+  ])("allows configured IAM role authentication for %s targets", (targetType, configuration) => {
+    const target = {
+      name: "target",
+      targetType,
+      ...configuration,
+    };
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        ...target,
+        outboundAuth: { type: "GATEWAY_IAM_ROLE" },
+      }).success,
+    ).toBe(false);
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        ...target,
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+      }).success,
+    ).toBe(true);
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        ...target,
+        outboundAuth: {
+          type: "GATEWAY_IAM_ROLE",
+          service: "bedrock-agentcore",
+          region: "us-east-1",
+        },
+      }).success,
+    ).toBe(true);
+  });
+  it("rejects IAM signing fields for other outbound authentication types", () => {
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        name: "mcp",
+        targetType: "mcpServer",
+        endpoint: "https://example.com/mcp",
+        outboundAuth: { type: "NONE", service: "bedrock-agentcore" },
+      }).success,
+    ).toBe(false);
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        name: "openapi",
+        targetType: "openApiSchema",
+        schemaSource: { inline: { path: "openapi.json" } },
+        outboundAuth: {
+          type: "OAUTH",
+          credentialName: "oauth",
+          region: "us-east-1",
+        },
+      }).success,
+    ).toBe(false);
+  });
   it("limits passthrough-only authentication modes", () => {
     expect(
       AgentCoreGatewayTargetSchema.safeParse({

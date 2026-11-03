@@ -2095,22 +2095,6 @@ describe("FsProjectManager.deploy", () => {
     expect(await Bun.file(targetsFile(root)).json()).toEqual(targets);
   });
 
-  test("rejects an unsupported region without calling STS or writing the file", async () => {
-    const root = await inTempDirectory();
-    const subject = deployManager();
-    const project = await projectWithTargets(root, undefined);
-
-    const attempt = deploy(subject.manager, project, "default", { region: "af-south-1" });
-
-    await expect(attempt).rejects.toThrow(/'af-south-1' is not an AgentCore-supported region/);
-    await expect(
-      deploy(subject.manager, project, "default", { region: "af-south-1" }),
-    ).rejects.toThrow(/Supported regions: .*us-east-1.*Re-run with --region/s);
-    expect(subject.calls).toEqual([]);
-    expect(subject.accountCalls).toEqual([]);
-    expect(await Bun.file(targetsFile(root)).exists()).toBe(false);
-  });
-
   test("reports an actionable error when the account cannot be resolved", async () => {
     const root = await inTempDirectory();
     const subject = deployManager({
@@ -2121,7 +2105,7 @@ describe("FsProjectManager.deploy", () => {
     await expect(
       deploy(subject.manager, project, "default", { region: "us-east-2" }),
     ).rejects.toThrow(
-      /the AWS account could not be resolved: The security token included in the request is expired[\s\S]*aws login/,
+      /the AWS account could not be resolved in region 'us-east-2': The security token included in the request is expired[\s\S]*Check that 'us-east-2' is a region enabled[\s\S]*aws login/,
     );
     expect(subject.calls).toEqual([]);
     expect(await Bun.file(targetsFile(root)).exists()).toBe(false);

@@ -630,18 +630,6 @@ describe("project deploy handler", () => {
     ]);
   });
 
-  test("rejects an unsupported region instead of writing an invalid target", async () => {
-    const subject = await testDeployCommand({ outputs: {} });
-    const projectRoot = await inProjectWithTargets(JSON.stringify([]));
-
-    const message = await messageFrom(subject.run(["--region", "af-south-1"]));
-
-    expect(message).toContain("'af-south-1' is not an AgentCore-supported region");
-    expect(message).toContain("us-east-1");
-    expect(subject.calls).toEqual([]);
-    expect(await Bun.file(join(projectRoot, "agentcore", "aws-targets.json")).text()).toBe("[]");
-  });
-
   test("explains how to fix unresolvable credentials", async () => {
     const subject = await testDeployCommand({ outputs: {} }, [], {
       resolveAccount: async () => {
@@ -669,20 +657,6 @@ async function messageFrom(command: Promise<void>): Promise<string> {
 }
 
 describe("project deploy reports which field of aws-targets.json is wrong", () => {
-  test("names the offending field for an unsupported region", async () => {
-    const subject = await testDeployCommand({ outputs: {} });
-    await inProjectWithTargets(
-      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-11" }]),
-    );
-
-    const message = await messageFrom(subject.run());
-
-    expect(message).toContain("aws-targets.json");
-    expect(message).toContain("at [0].region");
-    expect(message).toContain('"us-east-1"');
-    expect(subject.calls).toEqual([]);
-  });
-
   test("surfaces the duplicate target name", async () => {
     const subject = await testDeployCommand({ outputs: {} });
     await inProjectWithTargets(JSON.stringify([DEFAULT_TARGET, DEFAULT_TARGET]));

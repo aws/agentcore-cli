@@ -93,7 +93,6 @@ import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
-  AgentCoreRegionSchema,
   AwsDeploymentTargetSchema,
   AwsDeploymentTargetsSchema,
   DEFAULT_TARGET_NAME,
@@ -1789,26 +1788,19 @@ export class FsProjectManager implements ProjectManager {
     targetsPath: string,
     region: string,
   ): Promise<AwsDeploymentTarget> {
-    const supportedRegion = AgentCoreRegionSchema.safeParse(region);
-    if (!supportedRegion.success) {
-      throw new InputValidationError(
-        `Cannot create the default deployment target for project '${project.name}': ` +
-          `'${region}' is not an AgentCore-supported region.\n` +
-          `Supported regions: ${AgentCoreRegionSchema.options.join(", ")}.\n` +
-          `Re-run with --region <region> or set AWS_REGION to one of them.`,
-      );
-    }
-
     let account: string;
     try {
-      account = await this.resolveAccount(supportedRegion.data);
+      account = await this.resolveAccount(region);
     } catch (error) {
       const cause = AgentCoreCLIError.fromError(error);
       throw new InvalidEnvironmentError(
         `Cannot create the default deployment target for project '${project.name}' because ` +
-          `the AWS account could not be resolved: ${cause.message}\n` +
-          `Sign in with 'aws login' (or set AWS_PROFILE or credential environment variables) ` +
-          `and re-run 'agentcore deploy'.`,
+          `the AWS account could not be resolved in region '${region}': ${cause.message}\n` +
+          // With no region allowlist, a mistyped or not-enabled region surfaces here as an STS
+          // failure, so the hint names the region before suggesting credentials.
+          `Check that '${region}' is a region enabled for your account (--region or AWS_REGION), ` +
+          `and sign in with 'aws login' (or set AWS_PROFILE or credential environment variables), ` +
+          `then re-run 'agentcore deploy'.`,
         { cause: error },
       );
     }
@@ -1816,7 +1808,7 @@ export class FsProjectManager implements ProjectManager {
     const entry = AwsDeploymentTargetSchema.safeParse({
       name: DEFAULT_TARGET_NAME,
       account,
-      region: supportedRegion.data,
+      region,
     });
     if (!entry.success) {
       throw new MalformedServiceResponseError(
