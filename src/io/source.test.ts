@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,6 +58,62 @@ describe("SourceResolver bytes", () => {
 
     expect(await resolver.resolveBytes("payload", "-")).toEqual(bytes);
   });
+
+  test.each(["bun", "node"])(
+    "waits for delayed process stdin under %s after importing Ink",
+    async (runtime) => {
+      const build = await Bun.build({
+        entrypoints: [join(import.meta.dir, "source.ts")],
+        target: "node",
+        format: "cjs",
+      });
+      expect(build.success).toBe(true);
+      const directory = await mkdtemp(join(tmpdir(), `agentcore-source-${runtime}-`));
+      tempDirectories.push(directory);
+      const bundle = join(directory, "source.cjs");
+      await writeFile(bundle, await build.outputs[0]!.text());
+
+      const child = spawn(
+        runtime,
+        [
+          "-e",
+          `
+          (async () => {
+            await import("ink");
+            const { SourceResolver } = require(process.argv[1]);
+            const resolution = new SourceResolver({ stdin: process.stdin })
+              .resolveText("bearer-token", "-");
+            process.stderr.write("READY\\n");
+            const value = await resolution;
+            process.stdout.write(value);
+          })().catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+        `,
+          bundle,
+        ],
+        { stdio: ["pipe", "pipe", "pipe"] },
+      );
+      let output = "";
+      let errors = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        errors += chunk;
+      });
+
+      await once(child.stderr, "data");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      child.stdin.end("late value");
+
+      const [code] = await once(child, "close");
+      expect(code).toBe(0);
+      expect(errors).toBe("READY\n");
+      expect(output).toBe("late value");
+    },
+  );
 
   test("rejects a second stdin consumer and identifies both options", async () => {
     const resolver = new SourceResolver({ stdin: stdin(new TextEncoder().encode("value")) });
