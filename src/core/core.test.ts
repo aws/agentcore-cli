@@ -7,6 +7,7 @@ import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { XRayClient } from "@aws-sdk/client-xray";
 import type { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
+import { SilentCLIError } from "../errors";
 import {
   GetEventCommand,
   GetMemoryRecordCommand,
@@ -824,25 +825,23 @@ test("CUSTOM_JWT modeled header failures do not expose their values", async () =
   expect(fetched).toBe(false);
 });
 
-test("CUSTOM_JWT non-2xx cancels without reading and exposes status only", async () => {
+test("CUSTOM_JWT non-2xx returns safe service details for the response writer", async () => {
   const { logger, logs } = captureLogs();
-  let cancelled = 0;
-  let read = false;
-  const response = {
-    ok: false,
-    status: 401,
-    headers: new Headers(),
-    body: {
-      cancel: async () => {
-        cancelled++;
-      },
-      async *[Symbol.asyncIterator]() {
-        read = true;
-        yield new TextEncoder().encode("secret response body");
-      },
-    },
-  } as unknown as Response;
-  const core = customJwtCore(async () => response, { logger });
+  const core = customJwtCore(
+    async () =>
+      new Response(
+        JSON.stringify({
+          __type: "com.amazonaws.bedrockagentcore#ExpiredTokenException",
+          message:
+            "Bearer secret-token expired for secret-header-value in runtime-session-value with secret payload; application/json remains useful",
+        }),
+        {
+          status: 401,
+          headers: { "X-Amzn-RequestId": "request-secret-token" },
+        },
+      ),
+    { logger },
+  );
   const request: RuntimeInvokeRequest = {
     runtimeId: "runtime-123",
     accountId: "123456789012",
@@ -850,14 +849,23 @@ test("CUSTOM_JWT non-2xx cancels without reading and exposes status only", async
     payload: new TextEncoder().encode("secret payload"),
     contentType: "application/json",
     bearerToken: "secret-token",
+    runtimeSessionId: "runtime-session-value",
     applicationHeaders: [["X-Secret", "secret-header-value"]],
   };
 
-  await expect(core.runtime.invokeRuntime(request, { region: "us-east-1" })).rejects.toThrow(
-    /^HTTP 401$/,
-  );
-  expect(cancelled).toBe(1);
-  expect(read).toBe(false);
+  const response = await core.runtime.invokeRuntime(request, { region: "us-east-1" });
+
+  expect(response).toMatchObject({
+    statusCode: 401,
+    error: {
+      detail:
+        "ExpiredTokenException: Bearer [REDACTED] expired for [REDACTED] in [REDACTED] with [REDACTED]; application/json remains useful",
+      requestId: "request-[REDACTED]",
+    },
+  });
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.body) chunks.push(chunk);
+  expect(chunks).toEqual([]);
   expectSafeDebugLog(
     logs,
     "Runtime invocation returned a non-success response",
@@ -868,11 +876,97 @@ test("CUSTOM_JWT non-2xx cancels without reading and exposes status only", async
       region: "us-east-1",
       httpStatusCode: 401,
     },
-    ["secret response body", "secret payload", "secret-token", "secret-header-value"],
+    ["secret payload", "secret-token", "secret-header-value", "runtime-session-value"],
   );
 });
 
-test("CUSTOM_JWT transport failures do not expose arbitrary causes", async () => {
+test.each([
+  [
+    "nested JSON",
+    JSON.stringify({ error: { code: "invalid_token", message: "The token has expired" } }),
+    "invalid_token: The token has expired",
+  ],
+  ["plain text", "Unauthorized\nrequest", "Unauthorized request"],
+  ["unrecognized JSON", JSON.stringify({ unexpected: "value" }), undefined],
+] as const)("CUSTOM_JWT non-2xx extracts %s error details", async (_name, body, detail) => {
+  const core = customJwtCore(async () => new Response(body, { status: 403 }));
+  const request: RuntimeInvokeRequest = {
+    runtimeId: "runtime-123",
+    accountId: "123456789012",
+    qualifier: "DEFAULT",
+    payload: new Uint8Array(),
+    contentType: "application/json",
+    bearerToken: "secret-token",
+  };
+
+  const response = await core.runtime.invokeRuntime(request, { region: "us-east-1" });
+  expect(response).toMatchObject({
+    statusCode: 403,
+    error: detail === undefined ? {} : { detail },
+  });
+});
+
+test("CUSTOM_JWT non-2xx cancels an oversized error response and exposes status only", async () => {
+  let cancelled = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(32 * 1024).fill(65));
+    },
+    cancel() {
+      cancelled++;
+    },
+  });
+  const core = customJwtCore(async () => new Response(body, { status: 502 }));
+
+  const response = await core.runtime.invokeRuntime(
+    {
+      runtimeId: "runtime-123",
+      accountId: "123456789012",
+      qualifier: "DEFAULT",
+      payload: new Uint8Array(),
+      contentType: "application/json",
+      bearerToken: "secret-token",
+    },
+    { region: "us-east-1" },
+  );
+  expect(response).toMatchObject({
+    statusCode: 502,
+    error: {},
+  });
+  expect(cancelled).toBe(1);
+});
+
+test("CUSTOM_JWT non-2xx preserves cancellation while reading an error response", async () => {
+  let cancelled = 0;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelled++;
+    },
+  });
+  const core = customJwtCore(async () => new Response(body, { status: 401 }));
+  const controller = new AbortController();
+  const reason = new Error("cancelled by user");
+  const pending = core.runtime.invokeRuntime(
+    {
+      runtimeId: "runtime-123",
+      accountId: "123456789012",
+      qualifier: "DEFAULT",
+      payload: new Uint8Array(),
+      contentType: "application/json",
+      bearerToken: "secret-token",
+    },
+    { region: "us-east-1" },
+    controller.signal,
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  controller.abort(reason);
+
+  await expect(pending).rejects.toBe(reason);
+  expect(cancelled).toBe(1);
+});
+
+test("CUSTOM_JWT transport failures are visible without exposing arbitrary causes", async () => {
   const { logger, logs } = captureLogs();
   const core = customJwtCore(
     async () => {
@@ -883,20 +977,20 @@ test("CUSTOM_JWT transport failures do not expose arbitrary causes", async () =>
     { logger },
   );
 
-  await expect(
-    core.runtime.invokeRuntime(
-      {
-        runtimeId: "runtime-123",
-        accountId: "123456789012",
-        qualifier: "DEFAULT",
-        payload: new TextEncoder().encode("secret payload"),
-        contentType: "application/json",
-        bearerToken: "secret-token",
-        applicationHeaders: [["X-Secret", "secret-header-value"]],
-      },
-      { region: "us-east-1" },
-    ),
-  ).rejects.toThrow(/^Runtime invocation failed$/);
+  const pending = core.runtime.invokeRuntime(
+    {
+      runtimeId: "runtime-123",
+      accountId: "123456789012",
+      qualifier: "DEFAULT",
+      payload: new TextEncoder().encode("secret payload"),
+      contentType: "application/json",
+      bearerToken: "secret-token",
+      applicationHeaders: [["X-Secret", "secret-header-value"]],
+    },
+    { region: "us-east-1" },
+  );
+  await expect(pending).rejects.toThrow(/^Runtime invocation failed$/);
+  await expect(pending).rejects.not.toBeInstanceOf(SilentCLIError);
   expectSafeDebugLog(
     logs,
     "Runtime invocation transport failed",

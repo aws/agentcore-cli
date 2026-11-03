@@ -928,6 +928,25 @@ export class EvalClient implements CoreEvalClient {
             options,
             signal,
           );
+          if (response.error) {
+            throw new AgentCoreCLIError(
+              `Runtime invocation failed (HTTP ${response.statusCode})${
+                response.error.detail ? `: ${response.error.detail}` : ""
+              }`,
+              {
+                source:
+                  response.statusCode >= 400 && response.statusCode < 500
+                    ? ERROR_SOURCE.USER
+                    : ERROR_SOURCE.SERVICE,
+                meta: {
+                  httpStatusCode: response.statusCode,
+                  ...(response.error.requestId !== undefined && {
+                    requestId: response.error.requestId,
+                  }),
+                },
+              },
+            );
+          }
           // Read to completion to free the socket; a scripted example ignores the text.
           let text = "";
           const decoder = new TextDecoder();

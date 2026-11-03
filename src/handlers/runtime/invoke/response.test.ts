@@ -239,6 +239,71 @@ describe("Runtime invoke response output", () => {
     expect(stderr.bytes()).toHaveLength(0);
   });
 
+  test.each([false, true])(
+    "reports a rejected Runtime response once without writing response output (json=%s)",
+    async (json) => {
+      let iterations = 0;
+      const stdout = capture();
+      const stderr = capture();
+      const result = response({
+        statusCode: 401,
+        contentType: "application/json",
+        error: {
+          detail: "ExpiredTokenException: The token has expired",
+          requestId: "request-123",
+        },
+        body: (async function* () {
+          iterations++;
+          yield Buffer.from("must-not-be-written");
+        })(),
+      });
+
+      const pending = writeRuntimeInvokeResponse(result, {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        json,
+      });
+
+      await expect(pending).rejects.toBeInstanceOf(SilentCLIError);
+      await expect(pending).rejects.toThrow("HTTP 401");
+      expect(iterations).toBe(0);
+      expect(stdout.bytes()).toHaveLength(0);
+      expect(stderr.bytes().toString()).toBe(
+        "status=401 content-type=application/json runtime-session-id=- mcp-session-id=- " +
+          "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
+          "complete=false bytes=0 error=ExpiredTokenException: The token has expired " +
+          "request-id=request-123\n",
+      );
+    },
+  );
+
+  test("does not create an output file for a rejected Runtime response", async () => {
+    const file = join(tmpdir(), `runtime-invoke-rejected-${process.pid}-${files.length}`);
+    files.push(file);
+    const stdout = capture();
+    const stderr = capture();
+
+    await expect(
+      writeRuntimeInvokeResponse(
+        response({
+          statusCode: 403,
+          error: { detail: "AccessDeniedException: Access denied" },
+        }),
+        {
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          outputFile: file,
+        },
+      ),
+    ).rejects.toThrow("HTTP 403");
+
+    expect(await Bun.file(file).exists()).toBe(false);
+    expect(stdout.bytes()).toHaveLength(0);
+    expect(stderr.bytes().toString()).toContain(
+      "complete=false bytes=0 error=AccessDeniedException: Access denied",
+    );
+  });
+
   test("preserves partial stdout and reports one static incomplete summary", async () => {
     const stdout = capture();
     const stderr = capture();

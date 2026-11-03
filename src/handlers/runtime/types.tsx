@@ -42,7 +42,13 @@ export type RuntimeInvokeResponse = {
   traceParent?: string;
   traceState?: string;
   baggage?: string;
+  error?: RuntimeInvokeErrorResponse;
   body: AsyncIterable<Uint8Array>;
+};
+
+export type RuntimeInvokeErrorResponse = {
+  detail?: string;
+  requestId?: string;
 };
 
 export type RuntimeShellRequest = {

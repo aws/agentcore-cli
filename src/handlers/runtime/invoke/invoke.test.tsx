@@ -32,12 +32,18 @@ function body(...chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   })();
 }
 
-function captureIO(input?: Uint8Array): { io: AppIO; bytes: () => Buffer } {
+function captureIO(input?: Uint8Array): {
+  io: AppIO;
+  bytes: () => Buffer;
+  stderrBytes: () => Buffer;
+} {
   const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   const chunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
   stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+  stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
   if (input) stdin.end(input);
   return {
     io: {
@@ -46,6 +52,7 @@ function captureIO(input?: Uint8Array): { io: AppIO; bytes: () => Buffer } {
       stderr: stderr as unknown as NodeJS.WriteStream,
     },
     bytes: () => Buffer.concat(chunks),
+    stderrBytes: () => Buffer.concat(stderrChunks),
   };
 }
 
@@ -768,5 +775,55 @@ describe("runtime invoke", () => {
       ExitCode.FAILURE,
       ExitCode.FAILURE,
     ]);
+  });
+
+  test("prints rejected CUSTOM_JWT responses before exiting unsuccessfully", async () => {
+    const core = new TestCoreClient();
+    core.runtime.setGetResponse({
+      agentRuntimeArn: RUNTIME_ARN,
+      authorizerConfiguration: { customJWTAuthorizer: {} },
+    } as GetAgentRuntimeResponse);
+    core.runtime.setInvokeResponse({
+      statusCode: 401,
+      contentType: "application/json",
+      error: {
+        detail: "ExpiredTokenException: The token has expired",
+        requestId: "request-123",
+      },
+      body: body(),
+    });
+    const output = captureIO();
+    const errors: string[] = [];
+    const errorLog = spyOn(console, "error").mockImplementation((message) => {
+      errors.push(String(message));
+    });
+
+    try {
+      const code = await runWithExitCode(async () =>
+        runCommand(core, output.io, [
+          "runtime",
+          "invoke",
+          "--id",
+          RUNTIME_ID,
+          "--payload",
+          "{}",
+          "--bearer-token",
+          "secret-token",
+        ]),
+      );
+
+      expect(code).toBe(ExitCode.FAILURE);
+      expect(errors).toEqual([]);
+      expect(output.bytes()).toHaveLength(0);
+      expect(output.stderrBytes().toString()).toBe(
+        "status=401 content-type=application/json runtime-session-id=- mcp-session-id=- " +
+          "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
+          "complete=false bytes=0 error=ExpiredTokenException: The token has expired " +
+          "request-id=request-123\n",
+      );
+      expect(output.stderrBytes().toString()).not.toContain("secret-token");
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 });

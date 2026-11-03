@@ -612,6 +612,37 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("failed · 0 bytes");
   });
 
+  test("shows a sanitized rejected response without treating it as streamed output", async () => {
+    let iterations = 0;
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        statusCode: 401,
+        contentType: "application/json",
+        error: {
+          detail: "ExpiredTokenException: The token has expired",
+          requestId: "request-123",
+        },
+        body: (async function* () {
+          iterations++;
+          yield Buffer.from("must-not-be-rendered");
+        })(),
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "Runtime invocation failed · HTTP 401");
+    expect(screen.lastFrame()).toContain("ExpiredTokenException: The token has expired");
+    expect(screen.lastFrame()).toContain("Request ID: request-123");
+    expect(screen.lastFrame()).toContain("failed · 0 bytes");
+    expect(screen.lastFrame()).not.toContain("must-not-be-rendered");
+    expect(iterations).toBe(0);
+  });
+
   test("formats modeled AWS service errors with their diagnostics", async () => {
     const core = new TestCoreClient();
     core.runtime.setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse);

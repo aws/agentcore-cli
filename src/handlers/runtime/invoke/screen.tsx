@@ -242,6 +242,18 @@ export function RuntimeInvokeConsole({
         ...(mcp && { mcpSessionId, mcpProtocolVersion }),
       });
       const response = await core.runtime.invokeRuntime(request, opts, controller.signal);
+      if (response.error) {
+        updateExchange({
+          error: {
+            name: "Runtime invocation failed",
+            message: response.error.detail,
+            statusCode: response.statusCode,
+            requestId: response.error.requestId,
+          },
+          state: "failed",
+        });
+        return;
+      }
       updateExchange({
         heading: `Response · ${response.statusCode} · ${response.contentType || "-"}`,
         metadata: metadata(response),
