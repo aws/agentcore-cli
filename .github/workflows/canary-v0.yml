@@ -26,7 +26,7 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
     steps:
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
       - name: Resolve latest published v0 release
@@ -46,11 +46,11 @@ jobs:
     timeout-minutes: 30
     steps:
       # Use the test harness from the same release as the published CLI.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/v${{ needs.resolve_release.outputs.version }}
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20.x"
           cache: npm
@@ -58,14 +58,14 @@ jobs:
         run: |
           git config --global user.email "ci@amazon.com"
           git config --global user.name "CI"
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - name: Fetch E2E role from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@75989f65f7f193deaf83c237c36572d1a8f800b2
         with:
           role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
           repo: E2E_AWS_ROLE_ARN
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region || 'us-east-1' }}
@@ -92,7 +92,7 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       # Use the emitter from this branch; the canary job checks out the v0 release.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch E2E role from Secrets Manager
@@ -101,7 +101,7 @@ jobs:
           role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
           repo: E2E_AWS_ROLE_ARN
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: us-east-1

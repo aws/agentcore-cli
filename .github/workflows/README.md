@@ -112,6 +112,6 @@ Every job declares the least privilege it needs. Most only require
 
 ### Package managers
 
-V1 builds use `oven-sh/setup-bun@v2` and `bun install --frozen-lockfile`.
+V1 builds use a SHA-pinned `oven-sh/setup-bun` v2 action and `bun install --frozen-lockfile`.
 The PR tarball job uses npm for v0 PRs and Bun for v1 PRs, based on the
 checked-out branch's lockfile. Both install paths enforce their lockfile.
