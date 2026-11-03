@@ -85,10 +85,10 @@ export class SourceResolver {
 
     // Importing Ink under Bun drains the process.stdin stream object before a
     // headless handler can claim it, while file descriptor 0 still retains the
-    // bytes. Use a fresh non-closing stream for the real process input; injected
-    // AppIO streams continue through the ordinary testable path.
+    // bytes. Node can make fd 0 non-blocking when process.stdin is accessed, so
+    // use its stream directly there to wait for delayed input.
     const source =
-      this.config.stdin === process.stdin
+      this.config.stdin === process.stdin && process.versions.bun !== undefined
         ? createReadStream("", { fd: 0, autoClose: false })
         : this.config.stdin;
     const stdin = this.config.signal ? addAbortSignal(this.config.signal, source) : source;
