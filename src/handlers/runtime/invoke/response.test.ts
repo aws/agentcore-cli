@@ -263,7 +263,6 @@ describe("Runtime invoke response output", () => {
         statusCode: 401,
         contentType: "application/json",
         error: {
-          detail: "ExpiredTokenException: The token has expired",
           requestId: "request-123",
         },
       });
@@ -280,8 +279,7 @@ describe("Runtime invoke response output", () => {
       expect(stderr.bytes().toString()).toBe(
         "status=401 content-type=application/json runtime-session-id=- mcp-session-id=- " +
           "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
-          "complete=false bytes=0 error=ExpiredTokenException: The token has expired " +
-          "request-id=request-123\n",
+          "complete=false bytes=0 error=HTTP 401 request-id=request-123\n",
       );
     },
   );
@@ -296,7 +294,7 @@ describe("Runtime invoke response output", () => {
       writeRuntimeInvokeResponse(
         rejectedResponse({
           statusCode: 403,
-          error: { detail: "AccessDeniedException: Access denied" },
+          error: {},
         }),
         {
           stdout: stdout.stream,
@@ -308,9 +306,7 @@ describe("Runtime invoke response output", () => {
 
     expect(await Bun.file(file).exists()).toBe(false);
     expect(stdout.bytes()).toHaveLength(0);
-    expect(stderr.bytes().toString()).toContain(
-      "complete=false bytes=0 error=AccessDeniedException: Access denied",
-    );
+    expect(stderr.bytes().toString()).toContain("complete=false bytes=0 error=HTTP 403");
   });
 
   test("preserves partial stdout and reports one static incomplete summary", async () => {

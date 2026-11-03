@@ -803,7 +803,6 @@ describe("runtime invoke", () => {
       statusCode: 401,
       contentType: "application/json",
       error: {
-        detail: "ExpiredTokenException: The token has expired",
         requestId: "request-123",
       },
     });
@@ -833,8 +832,7 @@ describe("runtime invoke", () => {
       expect(output.stderrBytes().toString()).toBe(
         "status=401 content-type=application/json runtime-session-id=- mcp-session-id=- " +
           "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
-          "complete=false bytes=0 error=ExpiredTokenException: The token has expired " +
-          "request-id=request-123\n",
+          "complete=false bytes=0 error=HTTP 401 request-id=request-123\n",
       );
       expect(output.stderrBytes().toString()).not.toContain("secret-token");
     } finally {

@@ -52,7 +52,6 @@ export type RuntimeInvokeStreamResponse = RuntimeInvokeResponseMetadata & {
 export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
   kind: "rejected";
   error: {
-    detail?: string;
     requestId?: string;
   };
 };

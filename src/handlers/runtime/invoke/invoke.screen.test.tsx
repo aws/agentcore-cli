@@ -620,7 +620,7 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("failed · 0 bytes");
   });
 
-  test("shows a sanitized rejected response without treating it as streamed output", async () => {
+  test("shows a rejected response without treating it as streamed output", async () => {
     const core = new TestCoreClient();
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
@@ -629,7 +629,6 @@ describe("Runtime invoke JSON console", () => {
         statusCode: 401,
         contentType: "application/json",
         error: {
-          detail: "ExpiredTokenException: The token has expired",
           requestId: "request-123",
         },
       });
@@ -640,7 +639,6 @@ describe("Runtime invoke JSON console", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "Runtime invocation failed · HTTP 401");
-    expect(screen.lastFrame()).toContain("ExpiredTokenException: The token has expired");
     expect(screen.lastFrame()).toContain("Request ID: request-123");
     expect(screen.lastFrame()).toContain("failed · 0 bytes");
   });

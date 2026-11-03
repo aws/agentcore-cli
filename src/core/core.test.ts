@@ -828,19 +828,20 @@ test("CUSTOM_JWT modeled header failures do not expose their values", async () =
   expect(fetched).toBe(false);
 });
 
-test("CUSTOM_JWT non-2xx returns safe service details for the response writer", async () => {
+test("CUSTOM_JWT non-2xx cancels the response body and returns status metadata", async () => {
   const { logger, logs } = captureLogs();
+  let cancelled = 0;
   const core = customJwtCore(
     async () =>
       new Response(
-        JSON.stringify({
-          __type: "com.amazonaws.bedrockagentcore#ExpiredTokenException",
-          message:
-            "Bearer secret-token expired for secret-header-value in runtime-session-value with secret payload; application/json remains useful",
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled++;
+          },
         }),
         {
           status: 401,
-          headers: { "X-Amzn-RequestId": "request-secret-token" },
+          headers: { "X-Amzn-RequestId": "request-123" },
         },
       ),
     { logger },
@@ -862,11 +863,10 @@ test("CUSTOM_JWT non-2xx returns safe service details for the response writer", 
     kind: "rejected",
     statusCode: 401,
     error: {
-      detail:
-        "ExpiredTokenException: Bearer [REDACTED] expired for [REDACTED] in [REDACTED] with [REDACTED]; application/json remains useful",
-      requestId: "request-[REDACTED]",
+      requestId: "request-123",
     },
   });
+  expect(cancelled).toBe(1);
   expectSafeDebugLog(
     logs,
     "Runtime invocation returned a non-success response",
@@ -879,92 +879,6 @@ test("CUSTOM_JWT non-2xx returns safe service details for the response writer", 
     },
     ["secret payload", "secret-token", "secret-header-value", "runtime-session-value"],
   );
-});
-
-test.each([
-  [
-    "nested JSON",
-    JSON.stringify({ error: { code: "invalid_token", message: "The token has expired" } }),
-    "invalid_token: The token has expired",
-  ],
-  ["plain text", "Unauthorized\nrequest", "Unauthorized request"],
-  ["unrecognized JSON", JSON.stringify({ unexpected: "value" }), undefined],
-] as const)("CUSTOM_JWT non-2xx extracts %s error details", async (_name, body, detail) => {
-  const core = customJwtCore(async () => new Response(body, { status: 403 }));
-  const request: RuntimeInvokeRequest = {
-    runtimeId: "runtime-123",
-    accountId: "123456789012",
-    qualifier: "DEFAULT",
-    payload: new Uint8Array(),
-    contentType: "application/json",
-    bearerToken: "secret-token",
-  };
-
-  const response = await core.runtime.invokeRuntime(request, { region: "us-east-1" });
-  expect(response).toMatchObject({
-    statusCode: 403,
-    error: detail === undefined ? {} : { detail },
-  });
-});
-
-test("CUSTOM_JWT non-2xx cancels an oversized error response and exposes status only", async () => {
-  let cancelled = 0;
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      controller.enqueue(new Uint8Array(32 * 1024).fill(65));
-    },
-    cancel() {
-      cancelled++;
-    },
-  });
-  const core = customJwtCore(async () => new Response(body, { status: 502 }));
-
-  const response = await core.runtime.invokeRuntime(
-    {
-      runtimeId: "runtime-123",
-      accountId: "123456789012",
-      qualifier: "DEFAULT",
-      payload: new Uint8Array(),
-      contentType: "application/json",
-      bearerToken: "secret-token",
-    },
-    { region: "us-east-1" },
-  );
-  expect(response).toMatchObject({
-    statusCode: 502,
-    error: {},
-  });
-  expect(cancelled).toBe(1);
-});
-
-test("CUSTOM_JWT non-2xx preserves cancellation while reading an error response", async () => {
-  let cancelled = 0;
-  const body = new ReadableStream<Uint8Array>({
-    cancel() {
-      cancelled++;
-    },
-  });
-  const core = customJwtCore(async () => new Response(body, { status: 401 }));
-  const controller = new AbortController();
-  const reason = new Error("cancelled by user");
-  const pending = core.runtime.invokeRuntime(
-    {
-      runtimeId: "runtime-123",
-      accountId: "123456789012",
-      qualifier: "DEFAULT",
-      payload: new Uint8Array(),
-      contentType: "application/json",
-      bearerToken: "secret-token",
-    },
-    { region: "us-east-1" },
-    controller.signal,
-  );
-
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  controller.abort(reason);
-
-  await expect(pending).rejects.toBe(reason);
-  expect(cancelled).toBe(1);
 });
 
 test("CUSTOM_JWT transport failures are visible without exposing arbitrary causes", async () => {

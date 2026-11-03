@@ -246,7 +246,6 @@ export function RuntimeInvokeConsole({
         updateExchange({
           error: {
             name: "Runtime invocation failed",
-            message: response.error.detail,
             statusCode: response.statusCode,
             requestId: response.error.requestId,
           },
