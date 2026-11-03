@@ -1045,6 +1045,7 @@ invoke a harness
 - `--user-id <user-id>`: the end-user ID for user-scoped AgentCore Identity credentials
 - `--session-id <session-id>`: the Runtime session ID to continue (33-100 characters)
 - `--qualifier <qualifier>`: the harness endpoint qualifier to invoke (default DEFAULT)
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token, from stdin ('-') or a file ('file://&lt;path&gt;')
 
 #### `agentcore harness exec`
 

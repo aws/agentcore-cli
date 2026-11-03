@@ -23,7 +23,7 @@ import {
 import type { RuntimeInvokeRequest } from "../handlers/runtime/types";
 import type { Logger, LoggerBindings } from "../logging";
 import { CoreClient } from "./index";
-import type { ClientConfig, CoreFetch } from "./types";
+import type { ClientConfig, CoreFetch, DataClientConfig } from "./types";
 import { toClientConfig } from "./utils";
 import { createSilentLogger } from "../testing";
 
@@ -214,6 +214,31 @@ test("data() caches independently of control()", () => {
   expect(d1).toBe(d2);
   expect(controlBuilt).toBe(1);
   expect(dataBuilt).toBe(1);
+});
+
+test("data() never caches a bearer-token client or hands one to a SigV4 caller", () => {
+  const configs: DataClientConfig[] = [];
+  const core = new CoreClient({
+    createControlClient: fakeControl,
+    createDataClient: (config) => {
+      configs.push(config);
+      return fakeData(config);
+    },
+    createIamClient: fakeIam,
+    createLogsClient: fakeLogs,
+    createXrayClient: fakeXray,
+    createApplicationSignalsClient: fakeApplicationSignals,
+    logger: createSilentLogger(),
+  });
+
+  const b1 = core.data({ region: "us-east-1", bearerToken: "jwt" });
+  const b2 = core.data({ region: "us-east-1", bearerToken: "jwt" });
+  const sigv4 = core.data({ region: "us-east-1" });
+
+  expect(b1).not.toBe(b2);
+  expect(sigv4).not.toBe(b1);
+  expect(core.data({ region: "us-east-1" })).toBe(sigv4);
+  expect(configs.map((config) => config.bearerToken)).toEqual(["jwt", "jwt", undefined]);
 });
 
 test("exposes feature sub-clients", () => {

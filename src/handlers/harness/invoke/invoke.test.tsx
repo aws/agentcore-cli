@@ -1,4 +1,6 @@
 import { test, expect, describe, spyOn } from "bun:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   InvokeHarnessRequest,
   InvokeHarnessStreamOutput,
@@ -8,6 +10,7 @@ import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
   expectError,
+  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -17,6 +20,7 @@ import {
 } from "../../../testing";
 import { InputValidationError } from "../../../errors";
 import * as tui from "../../../tui";
+import type { HarnessInvokeRequest } from "../types";
 import { HarnessInvokeLaunchContextKey } from "./launchContext";
 
 // Command-flow tests for `harness invoke`, driven through the real root handler
@@ -222,6 +226,73 @@ describe("harness invoke", () => {
       { kind: "user", text: "hi" },
       { kind: "error", message: "session id malformed" },
     ]);
+  });
+
+  test("--bearer-token - reads the JWT from stdin and sends it on the invoke", async () => {
+    const { core } = await run(
+      ["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi", "--bearer-token", "-"],
+      undefined,
+      testIO({ stdin: "jwt-123\n" }),
+    );
+
+    const invoke = core.harness.calls.find((c) => c.method === "invokeHarness")!;
+    const request = invoke.args[0] as HarnessInvokeRequest;
+    expect(request.bearerToken).toBe("jwt-123");
+    expect(request.harnessArn).toBe(ARN);
+  });
+
+  test("--bearer-token file:// reads the JWT from a file", async () => {
+    const { path, cleanup } = await inTempDirectory("agentcore-harness-invoke-");
+    try {
+      const tokenFile = join(path, "token");
+      await writeFile(tokenFile, "jwt-from-file\n");
+      const { core } = await run([
+        "harness",
+        "invoke",
+        "--id",
+        "MyHarness-abc123",
+        "--prompt",
+        "hi",
+        "--bearer-token",
+        `file://${tokenFile}`,
+      ]);
+
+      const invoke = core.harness.calls.find((c) => c.method === "invokeHarness")!;
+      expect((invoke.args[0] as HarnessInvokeRequest).bearerToken).toBe("jwt-from-file");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("an inline --bearer-token is rejected", async () => {
+    await expectError(
+      run([
+        "harness",
+        "invoke",
+        "--id",
+        "MyHarness-abc123",
+        "--prompt",
+        "hi",
+        "--bearer-token",
+        "jwt",
+      ]),
+      /inline secret values are not accepted/,
+      InputValidationError,
+    );
+  });
+
+  test("--bearer-token without --prompt is rejected instead of opening the TUI", async () => {
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+    try {
+      await expectError(
+        run(["harness", "invoke", "--id", "MyHarness-abc123", "--bearer-token", "-"]),
+        /--bearer-token requires --prompt/,
+        InputValidationError,
+      );
+      expect(render).not.toHaveBeenCalled();
+    } finally {
+      render.mockRestore();
+    }
   });
 
   test("errors when --id is omitted", async () => {

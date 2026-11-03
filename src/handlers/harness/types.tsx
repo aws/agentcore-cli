@@ -35,6 +35,11 @@ export type HarnessShellRequest = {
   onReconnect?: () => void | Promise<void>;
 };
 
+// HarnessInvokeRequest is InvokeHarnessRequest plus an optional bearer token for
+// a CUSTOM_JWT harness. With a token, the invoke authenticates with
+// `Authorization: Bearer` instead of SigV4 and needs no AWS credentials.
+export type HarnessInvokeRequest = InvokeHarnessRequest & { bearerToken?: string };
+
 // CreateHarnessInput is CreateHarnessRequest with the execution role made
 // optional: when omitted, Core provisions the default execution role in IAM and
 // creates the harness with it.
@@ -103,7 +108,7 @@ export interface CoreHarnessClient {
     options: CoreOptions,
   ): Promise<ListHarnessVersionsResponse>;
   invokeHarness(
-    request: InvokeHarnessRequest,
+    request: HarnessInvokeRequest,
     options: CoreOptions,
     abortSignal?: AbortSignal,
   ): Promise<InvokeHarnessResponse>;

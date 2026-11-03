@@ -5,6 +5,8 @@ import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import { XRayClient } from "@aws-sdk/client-xray";
 import { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
+import { HttpBearerAuthSigner } from "@smithy/core";
+import type { TokenIdentity } from "@smithy/types";
 import type {
   CreateApplicationSignalsClient,
   CreateCloudFormationClient,
@@ -23,8 +25,22 @@ import type {
 export const createControlClient: CreateControlClient = (config) =>
   new BedrockAgentCoreControlClient({ ...config });
 
-export const createDataClient: CreateDataClient = (config) =>
-  new BedrockAgentCoreClient({ ...config });
+// A bearer token swaps SigV4 for Smithy's HTTP bearer auth scheme, so the client
+// sends `Authorization: Bearer <token>` and never resolves AWS credentials.
+export const createDataClient: CreateDataClient = ({ bearerToken, ...config }) =>
+  new BedrockAgentCoreClient({
+    ...config,
+    ...(bearerToken !== undefined && {
+      httpAuthSchemes: [
+        {
+          schemeId: "smithy.api#httpBearerAuth",
+          identityProvider: () => async (): Promise<TokenIdentity> => ({ token: bearerToken }),
+          signer: new HttpBearerAuthSigner(),
+        },
+      ],
+      httpAuthSchemeProvider: () => [{ schemeId: "smithy.api#httpBearerAuth" }],
+    }),
+  });
 
 export const createIamClient: CreateIamClient = (config) => new IAMClient({ ...config });
 
