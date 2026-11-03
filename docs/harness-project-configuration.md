@@ -48,10 +48,7 @@ model:
   bedrockModelConfig:
     modelId: global.anthropic.claude-sonnet-5-5
 memory:
-  managedMemoryConfiguration:
-    strategies:
-      - SEMANTIC
-      - EPISODIC
+  managedMemoryConfiguration: {}
 ```
 
 Edit the file, then run `agentcore deploy` from the project directory to
@@ -193,8 +190,8 @@ Memory persists conversation events and can extract information for later
 retrieval. It is separate from the conversation truncation settings that control
 what fits in a model request.
 
-Newly scaffolded harnesses use managed memory with `SEMANTIC` and `EPISODIC` strategies unless
-another memory configuration was supplied. Removing `memory` from an existing YAML file disables
+Newly scaffolded harnesses use `memory: { managedMemoryConfiguration: {} }` unless another memory
+configuration was supplied. Removing `memory` from an existing YAML file disables
 memory. Reading the file never adds the scaffold default.
 
 ### Managed Memory
@@ -206,6 +203,8 @@ memory:
   managedMemoryConfiguration:
     strategies:
       - SEMANTIC
+      - SUMMARIZATION
+      - USER_PREFERENCE
       - EPISODIC
     eventExpiryDuration: 30
 ```

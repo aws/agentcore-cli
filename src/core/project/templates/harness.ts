@@ -11,7 +11,6 @@ import { FsTreeNode } from "./fsTree";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors/errors";
 import type { TemplateRenderer, TemplateResolver } from "./types";
 import type { AssetSource } from "../source";
-import { DEFAULT_TEMPLATE_MEMORY_STRATEGIES } from "../../../projectSchemas/memory";
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant";
 const TEMPLATE_FIELDS = new Set([
@@ -72,10 +71,7 @@ export function getHarnessTemplateResolver(
 
       const parsed = parseHarnessSpec({
         ...spec,
-        memory:
-          spec.memory === undefined
-            ? { mode: "managed", strategies: [...DEFAULT_TEMPLATE_MEMORY_STRATEGIES] }
-            : spec.memory,
+        memory: spec.memory === undefined ? { mode: "managed" } : spec.memory,
         dockerfile: spec.dockerfile ? "Dockerfile" : undefined,
       });
       const { systemPrompt, ...settings } = parsed;

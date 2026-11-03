@@ -15,7 +15,7 @@ const model = {
   modelId: "global.anthropic.claude-sonnet-4-6",
 } as const;
 const defaultSettings = {
-  memory: { mode: "managed", strategies: ["SEMANTIC", "EPISODIC"] },
+  memory: { mode: "managed" },
   allowedTools: ["*"],
   skills: [],
   truncation: { strategy: "sliding_window" },
@@ -53,7 +53,7 @@ test("scaffolds valid YAML with inactive examples and a resolvable prompt", asyn
   expect(data).toEqual({
     name: "assistant",
     model: { bedrockModelConfig: { modelId: model.modelId } },
-    memory: { managedMemoryConfiguration: { strategies: ["SEMANTIC", "EPISODIC"] } },
+    memory: { managedMemoryConfiguration: {} },
     tools: [],
     allowedTools: ["*"],
     skills: [],
@@ -69,7 +69,6 @@ test("scaffolds valid YAML with inactive examples and a resolvable prompt", asyn
 
 test.each([
   { mode: "disabled" },
-  { mode: "managed" },
   {
     mode: "existing",
     name: "ConversationMemory",

@@ -2,7 +2,6 @@ import z from "zod";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
   DEFAULT_STRATEGY_NAMESPACE_TEMPLATES,
-  DEFAULT_TEMPLATE_MEMORY_STRATEGIES,
   defaultMemoryName,
   type Memory,
 } from "../../projectSchemas/memory";
@@ -16,7 +15,7 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   return {
     name: defaultMemoryName(runtimeName),
     eventExpiryDuration: 30,
-    strategies: DEFAULT_TEMPLATE_MEMORY_STRATEGIES.map((type) => ({
+    strategies: (["SEMANTIC", "EPISODIC"] as const).map((type) => ({
       type,
       namespaceTemplates: DEFAULT_STRATEGY_NAMESPACE_TEMPLATES[type],
       ...(type === "EPISODIC" && {

@@ -48,10 +48,9 @@ skills: []
 # a project memory name. Use memory: { disabled: {} } to turn memory off.
 # https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_HarnessMemoryConfiguration.html
 memory:
-  managedMemoryConfiguration:
-    strategies:
-      - SEMANTIC
-      - EPISODIC
+  managedMemoryConfiguration: {}
+# To tune managed memory, replace {} with strategies and/or eventExpiryDuration.
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html
 
 # Context policy and limits for one invocation.
 truncation:
