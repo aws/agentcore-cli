@@ -20,16 +20,16 @@ def get_memory_session_manager(
 {{#if memoryStrategies.length}}
     retrieval_config = {
 {{#if (includes memoryStrategies "SEMANTIC")}}
-        f"/users/{actor_id}/facts": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}3{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.5{{/if}}),
+        f"/users/{actor_id}/facts": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}3{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.0{{/if}}),
 {{/if}}
 {{#if (includes memoryStrategies "USER_PREFERENCE")}}
-        f"/users/{actor_id}/preferences": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}3{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.5{{/if}}),
+        f"/users/{actor_id}/preferences": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}3{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.0{{/if}}),
 {{/if}}
 {{#if (includes memoryStrategies "EPISODIC")}}
-        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}5{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.5{{/if}}),
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}5{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.0{{/if}}),
 {{/if}}
 {{#if (includes memoryStrategies "SUMMARIZATION")}}
-        f"/summaries/{actor_id}": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}3{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.5{{/if}}),
+        f"/summaries/{actor_id}": RetrievalConfig(top_k={{#if memoryRetrievalTopK}}{{memoryRetrievalTopK}}{{else}}3{{/if}}, relevance_score={{#if memoryRetrievalRelevanceScore}}{{memoryRetrievalRelevanceScore}}{{else}}0.0{{/if}}),
 {{/if}}
     }
 {{/if}}

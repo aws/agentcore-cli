@@ -8,6 +8,7 @@ export const MemoryStrategyTypeSchema = z.enum([
   "EPISODIC",
 ]);
 export type MemoryStrategyType = z.infer<typeof MemoryStrategyTypeSchema>;
+export const DEFAULT_TEMPLATE_MEMORY_STRATEGIES = ["SEMANTIC", "EPISODIC"] as const;
 export const DEFAULT_STRATEGY_NAMESPACE_TEMPLATES: Partial<Record<MemoryStrategyType, string[]>> = {
   SEMANTIC: ["/users/{actorId}/facts"],
   USER_PREFERENCE: ["/users/{actorId}/preferences"],

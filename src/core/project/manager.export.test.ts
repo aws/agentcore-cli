@@ -179,7 +179,14 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
         resourceConfig: {
           name: "chat_history",
           eventExpiryDuration: 30,
-          strategies: [{ type: "SEMANTIC" }],
+          strategies: [
+            { type: "SEMANTIC" },
+            {
+              type: "EPISODIC",
+              namespaceTemplates: ["/episodes/{actorId}/{sessionId}"],
+              reflectionNamespaceTemplates: ["/episodes/{actorId}"],
+            },
+          ],
         },
       }),
     );
@@ -188,41 +195,52 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 
     const session = await Bun.file(join(result.agentPath, "memory", "session.py")).text();
     expect(session).toContain('MEMORY_ID = os.getenv("MEMORY_CHAT_HISTORY_ID")');
+    expect(session).toContain(
+      'f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.0)',
+    );
+    expect(session).toContain(
+      'f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.0)',
+    );
+    expect(session).not.toContain("/preferences");
+    expect(session).not.toContain("/summaries/");
     expect(await Bun.file(join(result.agentPath, "main.py")).text()).toContain(
       "from memory.session import get_memory_session_manager",
     );
     expect(result.notes).toEqual([]);
   });
 
-  test("renders memory retrieval tuning and notes messagesCount", async () => {
-    const { manager: subject } = manager();
-    let project = await projectWithHarness(subject, {
-      memory: {
-        mode: "existing",
-        name: "chat_history",
-        messagesCount: 12,
-        retrievalConfig: { topK: 8, relevanceScore: 0.7 },
-      },
-    });
-    project = await drain(
-      subject.addResource(project, {
-        resourceType: "memory",
-        resourceConfig: {
+  test.each([0, 0.7])(
+    "renders relevanceScore=%p and notes messagesCount",
+    async (relevanceScore) => {
+      const { manager: subject } = manager();
+      let project = await projectWithHarness(subject, {
+        memory: {
+          mode: "existing",
           name: "chat_history",
-          eventExpiryDuration: 30,
-          strategies: [{ type: "SEMANTIC" }],
+          messagesCount: 12,
+          retrievalConfig: { topK: 8, relevanceScore },
         },
-      }),
-    );
+      });
+      project = await drain(
+        subject.addResource(project, {
+          resourceType: "memory",
+          resourceConfig: {
+            name: "chat_history",
+            eventExpiryDuration: 30,
+            strategies: [{ type: "SEMANTIC" }],
+          },
+        }),
+      );
 
-    const result = await drain(subject.exportHarness(project, exportInput()));
+      const result = await drain(subject.exportHarness(project, exportInput()));
 
-    const session = await Bun.file(join(result.agentPath, "memory", "session.py")).text();
-    expect(session).toContain("RetrievalConfig(top_k=8, relevance_score=0.7)");
-    expect(result.notes.map((note) => note.category)).toContain(
-      "Memory messagesCount is not directly portable to Strands",
-    );
-  });
+      const session = await Bun.file(join(result.agentPath, "memory", "session.py")).text();
+      expect(session).toContain(`RetrievalConfig(top_k=8, relevance_score=${relevanceScore})`);
+      expect(result.notes.map((note) => note.category)).toContain(
+        "Memory messagesCount is not directly portable to Strands",
+      );
+    },
+  );
 
   test("renders OpenAI Responses settings with compatible Strands extras", async () => {
     const { manager: subject } = manager();

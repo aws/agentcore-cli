@@ -217,7 +217,9 @@ describe("project create wizard", () => {
     expect(harness.model).toEqual({
       openAiModelConfig: { modelId: "gpt-6.1-sol", apiKeyArn },
     });
-    expect(harness.memory).toEqual({ managedMemoryConfiguration: {} });
+    expect(harness.memory).toEqual({
+      managedMemoryConfiguration: { strategies: ["SEMANTIC", "EPISODIC"] },
+    });
     expect(harness.systemPrompt).toBeUndefined();
     r.unmount();
   }, 10000);

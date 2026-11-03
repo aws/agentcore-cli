@@ -578,7 +578,9 @@ describe("project add harness", () => {
 
     const harnessYaml = parse(await Bun.file(join(projectRoot, "app", "x", "harness.yaml")).text());
     expect(harnessYaml.systemPrompt).toBeUndefined();
-    expect(harnessYaml.memory).toEqual({ managedMemoryConfiguration: {} });
+    expect(harnessYaml.memory).toEqual({
+      managedMemoryConfiguration: { strategies: ["SEMANTIC", "EPISODIC"] },
+    });
     expect(harnessYaml.tools).toEqual([]);
     expect(harnessYaml.skills).toEqual([]);
     expect(existsSync(join(projectRoot, "app", "x", "harness.json"))).toBe(false);
