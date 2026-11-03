@@ -97,7 +97,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--gateway",
-        help="The Gateway URL from the output of `agentcore deploy`.",
+        help="The Gateway ARN from the output of `agentcore deploy`.",
     )
     parser.add_argument(
         "--role-arn",
@@ -151,20 +151,11 @@ def main() -> None:
                 "instructions": "Use the available tools to complete the task.",
             }
             if args.gateway:
-                # Bedrock Managed Agents calls Gateway with IAM from the service side.
+                # Bedrock Managed Agents calls Gateway with the session role from the service side.
                 agent["tools"] = [
-                    {
-                        "type": "mcp",
-                        "server_label": "team_tools",
-                        "required": True,
-                        "connection_origin": "service",
-                        "transport": {"type": "http", "server_url": args.gateway},
-                    }
+                    {"type": "mcp", "server_label": "team_tools", "connector_id": args.gateway}
                 ]
-                args.input += (
-                    " Then use the Gateway's documentation and runbook tools to explain"
-                    " how to investigate an MCP connection failure. Cite your sources."
-                )
+                args.input += " Then list the tools that the Gateway gives you."
             events = sessions.create(
                 agent=agent,
                 environment={
