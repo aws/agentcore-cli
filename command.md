@@ -302,11 +302,10 @@ add a Runtime to the current project
 **Options**
 
 - `--name <name>`: the name of the Runtime (required)
-- `--language <language>`: language you will write the Runtime in: python or typescript (required unless importing a Bedrock Agent or using a pre-built image)
+- `--language <language>`: language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)
 - `--protocol <protocol>`: protocol the Runtime serves: HTTP (default), MCP, A2A, or AGUI
 - `--description <description>`: an optional description of the Runtime
 - `--tags <tags...>`: tags as repeated key=value entries or one JSON object
-- `--advanced-configuration <advanced-configuration>`: advanced Runtime settings as JSON using agentcore.json keys (containerUri, networkMode, authorizerType, etc.)
 - `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
 - `--network-mode <network-mode>`: network mode for the Runtime environment (PUBLIC or VPC)
 - `--network-config <network-config>`: VPC network configuration (JSON)
