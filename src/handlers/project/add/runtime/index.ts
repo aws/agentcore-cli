@@ -4,7 +4,12 @@ import { isChinaRegion } from "../../../../core/partition";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
-import { AgentNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
+import {
+  AgentNameSchema,
+  ProjectRuntimeSchema,
+  type EnvVar,
+} from "../../../../projectSchemas/runtime";
+import { buildDocsRuntimeSpec } from "../../../../core/project/templates/runtimeDocs";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
   NetworkModeSchema,
@@ -16,6 +21,7 @@ import type { AddResourceInput } from "../../types";
 import {
   RuntimeDocsConfigSchema,
   RuntimeResourceConfigSchema,
+  RuntimeAdvancedConfigurationSchema,
   type ImportBedrockAgentInput,
 } from "./types";
 import {
@@ -60,6 +66,14 @@ export function toAddRuntimeInput(input: RuntimeInput): AddResourceInput {
       : RuntimeDocsConfigSchema.safeParse(input);
   if (!result.success)
     throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  if ("scaffoldRuntimeInput" in result.data) {
+    if (result.data.containerUri !== undefined)
+      throw new InputValidationError("containerUri cannot be combined with a Bedrock Agent import");
+  } else {
+    const runtime = ProjectRuntimeSchema.safeParse(buildDocsRuntimeSpec(result.data));
+    if (!runtime.success)
+      throw new InputValidationError(z.prettifyError(runtime.error), { cause: runtime.error });
+  }
   return { resourceType: "runtime", resourceConfig: result.data };
 }
 
@@ -72,7 +86,15 @@ export function runtimeDocsAddedMessage(
   name: string,
   language: "Python" | "TypeScript",
   protocol: ProtocolMode,
+  containerUri?: string,
 ): string {
+  if (containerUri !== undefined)
+    return [
+      `added runtime "${name}" (${protocol}) from a pre-built ECR image`,
+      "",
+      "next steps:",
+      "  1. deploy it with agentcore deploy",
+    ].join("\n");
   const folder = `app/${name}`;
   return [
     `added runtime "${name}" (${language}, ${protocol})`,
@@ -94,7 +116,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("name", "the name of the Runtime", AgentNameSchema, { group: CONFIGURATION }),
       flag(
         "language",
-        "language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)",
+        "language you will write the Runtime in: python or typescript (required unless importing a Bedrock Agent or using a pre-built image)",
         z.enum(["python", "typescript"]).optional(),
         { group: CONFIGURATION },
       ),
@@ -108,6 +130,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         group: CONFIGURATION,
       }),
       tagsFlag({ group: CONFIGURATION }),
+      flag(
+        "advanced-configuration",
+        "advanced Runtime settings as JSON using agentcore.json keys (containerUri, networkMode, authorizerType, etc.)",
+        z.string().optional(),
+        { group: CONFIGURATION },
+      ),
       flag(
         "environment-variables",
         "environment variables (JSON object of key/value strings)",
@@ -190,9 +218,51 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       const project = ctx.require(ProjectKey);
       const deploymentTargets = await config.projectManager.listTargets(project);
       requireDeployedNameFits("Runtime", project.name, flags.name, "_", 48, deploymentTargets);
+      const rawAdvanced = parseJsonFlag<unknown>(
+        "advanced-configuration",
+        flags["advanced-configuration"],
+      );
+      const parsedAdvanced = RuntimeAdvancedConfigurationSchema.safeParse(
+        rawAdvanced === undefined ? {} : rawAdvanced,
+      );
+      if (!parsedAdvanced.success)
+        throw new InputValidationError(
+          `Invalid --advanced-configuration:\n${z.prettifyError(parsedAdvanced.error)}`,
+          { cause: parsedAdvanced.error },
+        );
+      const advanced = parsedAdvanced.data;
+      const legacyFlags = {
+        description: "description",
+        executionRoleArn: "role-arn",
+        additionalPolicies: "additional-policies",
+        envVars: "environment-variables",
+        networkMode: "network-mode",
+        networkConfig: "network-config",
+        authorizerType: "authorizer-type",
+        authorizerConfiguration: "authorizer-configuration",
+        protocol: "protocol",
+        requestHeaderAllowlist: "request-header-allowlist",
+        lifecycleConfiguration: "lifecycle-configuration",
+        filesystemConfigurations: "filesystem-configurations",
+        tags: "tags",
+      } as const;
+      for (const [key, flagName] of Object.entries(legacyFlags)) {
+        if (key in advanced && flags[flagName] !== undefined)
+          throw new InputValidationError(
+            `Specify ${key} in --advanced-configuration or --${flagName}, not both`,
+          );
+      }
 
       // Passing --agent-id is what selects a Bedrock Agent import.
       const isImport = flags["agent-id"] !== undefined;
+      if (isImport && advanced.containerUri !== undefined)
+        throw new InputValidationError(
+          "containerUri cannot be combined with --agent-id; choose a pre-built image or an import",
+        );
+      if (isImport && advanced.protocol !== undefined)
+        throw new InputValidationError(
+          "--agent-id imports Python HTTP runtime code; protocol cannot be overridden in --advanced-configuration",
+        );
 
       if (!isImport) {
         const offending = (["agent-alias-id", "framework"] as const).find(
@@ -212,7 +282,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
               `--${offending} cannot be combined with it`,
           );
         }
-      } else if (flags.language === undefined) {
+      } else if (flags.language === undefined && advanced.containerUri === undefined) {
         throw new InputValidationError(
           "required option '--language <language>' not specified: pass python or typescript",
         );
@@ -282,6 +352,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           flags["filesystem-configurations"],
         ),
         tags: parseTags(flags["tags"]),
+        ...advanced,
       };
 
       if (isImport) {
@@ -303,14 +374,14 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         return;
       }
 
-      const language = RUNTIME_LANGUAGES[flags.language!];
-      const protocol = flags.protocol ?? "HTTP";
+      const language = RUNTIME_LANGUAGES[flags.language ?? "python"];
+      const protocol = infra.protocol ?? flags.protocol ?? "HTTP";
       await addProjectResource(
         ctx,
         config,
         project,
         toAddRuntimeInput({ ...infra, language, protocol }),
-        runtimeDocsAddedMessage(flags.name, language, protocol),
+        runtimeDocsAddedMessage(flags.name, language, protocol, advanced.containerUri),
       );
     },
   });

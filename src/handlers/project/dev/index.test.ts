@@ -270,6 +270,21 @@ async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ n
 }
 
 describe("project dev build settings sync", () => {
+  test("pre-built images fail before any local builder, environment, or listener starts", async () => {
+    const subject = harness({
+      project: project({
+        ...runtime("image", "Container"),
+        containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+      }),
+    });
+    await expect(subject.run({ agent: "image" })).rejects.toThrow("uses a pre-built containerUri");
+    expect(subject.container.inputs).toEqual([]);
+    expect(subject.codeZip.inputs).toEqual([]);
+    expect(subject.environmentInputs).toEqual([]);
+    expect(subject.collector.starts).toEqual([]);
+    expect(subject.ui.starts).toEqual([]);
+  });
+
   async function codeProject(files: Record<string, string>) {
     const root = await mkdtemp(join(tmpdir(), "dev-sync-"));
     for (const [path, content] of Object.entries(files)) {

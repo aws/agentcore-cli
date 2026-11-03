@@ -65,6 +65,174 @@ async function runtimeOf(projectRoot: string, name: string) {
   return spec.runtimes.find((candidate: { name: string }) => candidate.name === name);
 }
 
+describe("runtime advanced configuration", () => {
+  const privateUri = "123456789012.dkr.ecr.us-west-2.amazonaws.com/team/agent:v1";
+
+  test.each([
+    privateUri,
+    "public.ecr.aws/example/agent:v1",
+    `${privateUri.split(":")[0]}@sha256:${"a".repeat(64)}`,
+  ])("adds a pre-built image without language or local scaffolding: %s", async (containerUri) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io, core } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--advanced-configuration",
+      JSON.stringify({ containerUri }),
+    ]);
+    expect(await runtimeOf(projectRoot, "image")).toEqual({
+      name: "image",
+      codeLocation: "app/image",
+      entrypoint: "main.py",
+      build: "Container",
+      protocol: "HTTP",
+      containerUri,
+    });
+    expect(await Bun.file(join(projectRoot, "app", "image", "README.md")).exists()).toBe(false);
+    expect(core.projectCommands).toEqual([]);
+    expect(io.stderr()).toContain("from a pre-built ECR image");
+    expect(io.stderr()).not.toContain("write your agent");
+  });
+
+  test("persists validated advanced settings with a pre-built VPC image", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const advanced = {
+      containerUri: privateUri,
+      networkMode: "VPC",
+      networkConfig: {
+        subnets: ["subnet-0123456789abcdef0"],
+        securityGroups: Array.from({ length: 6 }, (_, i) => `sg-${String(i).padStart(17, "0")}`),
+      },
+      authorizerType: "AWS_IAM",
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: 300 },
+      envVars: [{ name: "IMAGE_VERSION", value: "v1" }],
+      protocol: "MCP",
+      tags: { test: "prebuilt" },
+    };
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--language",
+      "typescript",
+      "--advanced-configuration",
+      JSON.stringify(advanced),
+    ]);
+    expect(await runtimeOf(projectRoot, "image")).toMatchObject({
+      ...advanced,
+      entrypoint: "main.js",
+      build: "Container",
+    });
+  });
+
+  test("advanced configuration also applies to the existing CodeZip path", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "source",
+      "--language",
+      "python",
+      "--advanced-configuration",
+      '{"lifecycleConfiguration":{"idleRuntimeSessionTimeout":300}}',
+    ]);
+    expect(await runtimeOf(projectRoot, "source")).toMatchObject({
+      build: "CodeZip",
+      lifecycleConfiguration: { idleRuntimeSessionTimeout: 300 },
+    });
+  });
+
+  test.each([
+    "{",
+    "null",
+    "[]",
+    '"not an object"',
+    '{"containerUri":"https://example.com/image:v1"}',
+    '{"container_uri":"typo"}',
+    '{"name":"override"}',
+    '{"build":"CodeZip"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1","dockerfile":"Dockerfile"}',
+    '{"networkMode":"VPC"}',
+    '{"authorizerType":"CUSTOM_JWT"}',
+  ])("rejects invalid advanced configuration before writing files: %s", async (advanced) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const before = await specOf(projectRoot);
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "invalid",
+        "--language",
+        "python",
+        "--advanced-configuration",
+        advanced,
+      ]),
+    ).rejects.toBeInstanceOf(InputValidationError);
+    expect(await specOf(projectRoot)).toEqual(before);
+    expect(await Bun.file(join(projectRoot, "app", "invalid", "README.md")).exists()).toBe(false);
+  });
+
+  test("rejects duplicate configuration from an existing flag", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--network-mode",
+        "PUBLIC",
+        "--advanced-configuration",
+        JSON.stringify({ containerUri: privateUri, networkMode: "PUBLIC" }),
+      ]),
+    ).rejects.toThrow("Specify networkMode");
+  });
+
+  test("rejects pre-built images with a Bedrock Agent import", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--agent-id",
+        "A1B2C3D4E5",
+        "--advanced-configuration",
+        JSON.stringify({ containerUri: privateUri }),
+      ]),
+    ).rejects.toThrow("containerUri cannot be combined with --agent-id");
+  });
+
+  test("rejects advanced protocol overrides for a Bedrock Agent import", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--agent-id",
+        "A1B2C3D4E5",
+        "--advanced-configuration",
+        '{"protocol":"MCP"}',
+      ]),
+    ).rejects.toThrow("protocol cannot be overridden");
+  });
+});
+
 describe("project add runtime", () => {
   const allInfrastructureFlags = [
     "--description",
