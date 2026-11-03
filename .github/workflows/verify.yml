@@ -44,6 +44,11 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      # Native binaries still run the project's CDK app in Node. CodeBuild's
+      # Windows image ships an older Node; use the supported runtime for tests.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
@@ -89,6 +94,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run build
