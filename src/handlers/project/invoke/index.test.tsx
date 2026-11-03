@@ -240,6 +240,27 @@ describe("invoke", () => {
     expect(options.region).toBe(TARGET.region);
   });
 
+  test("invokes a project harness by name with a bearer token, looked up with target credentials", async () => {
+    const subject = await routedCommand(
+      ["--harness", "support", "--bearer-token", "-", "--prompt", "hi"],
+      { harnesses: [HARNESS] },
+      { stdin: "jwt-123\n" },
+    );
+    await subject.route();
+
+    expect(subject.core.harness.calls.map((call) => call.method)).toEqual([
+      "getHarness",
+      "invokeHarness",
+    ]);
+    const [request, options] = subject.core.harness.calls[1]!.args as [
+      HarnessInvokeRequest,
+      { credentials: unknown },
+    ];
+    expect(request.harnessArn).toBe(arn(`harness/${HARNESS_ID}`));
+    expect(request.bearerToken).toBe("jwt-123");
+    expect(options.credentials).toBe(TARGET_CREDENTIALS);
+  });
+
   test.each([
     [["--runtime", "checkout"], `/agentcore/runtime/invoke/${RUNTIME_ID}`],
     [

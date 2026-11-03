@@ -3,7 +3,7 @@ import { createHandler, flag, PathKey } from "../../../router";
 import { SourceResolver, type AppIO } from "../../../io";
 import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx } from "../../utils.tsx";
-import { JsonKey } from "../../keys.tsx";
+import { AwsCredentialProviderKey, JsonKey } from "../../keys.tsx";
 import { JsonRendererKey, renderTuiAt } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { InputValidationError, SourceResolutionError } from "../../../errors";
@@ -68,6 +68,19 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
         return;
       }
 
+      // Without the ARN the invoke must look the harness up with GetHarness. A
+      // project harness gets that from its target's credentials; otherwise it
+      // would need the default AWS credentials a bearer-token caller lacks.
+      const harnessArn = ctx.value(HarnessInvokeArnKey);
+      if (
+        flags["bearer-token"] !== undefined &&
+        harnessArn === undefined &&
+        ctx.value(AwsCredentialProviderKey) === undefined
+      ) {
+        throw new InputValidationError(
+          "--bearer-token needs the harness ARN; use 'agentcore invoke --harness <arn> --bearer-token ...'",
+        );
+      }
       const opts = coreOptsFromCtx(ctx);
       const prompt = flags["prompt"];
       const bearerToken = await resolveBearerToken(flags["bearer-token"], io.stdin);
@@ -76,7 +89,7 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
           core.harness,
           {
             harnessId: flags["id"],
-            harnessArn: ctx.value(HarnessInvokeArnKey),
+            harnessArn,
             prompt,
             qualifier: flags["qualifier"] ?? "DEFAULT",
             sessionId: flags["session-id"],
