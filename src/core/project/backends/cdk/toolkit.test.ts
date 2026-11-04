@@ -307,6 +307,50 @@ describe("Toolkit loading", () => {
 
     expect(lines).toEqual(["CREATE_COMPLETE | AWS::IAM::Role"]);
   });
+
+  test("reports a resource failure when Toolkit only throws NoStack after rollback", async () => {
+    const { loaded } = loadedToolkit();
+    const reason = "Agent with agentId: staging-agent not found";
+    const runner = createCdkRunner(createSilentLogger(), async (ioHost) => {
+      loaded.toolkit.deploy = async () => {
+        for (const event of [
+          {
+            ResourceType: "AWS::IAM::Role",
+            LogicalResourceId: "RuntimeRole",
+            ResourceStatus: "CREATE_FAILED",
+            ResourceStatusReason: "Resource creation cancelled",
+          },
+          {
+            ResourceType: "AWS::BedrockAgentCore::RuntimeEndpoint",
+            LogicalResourceId: "RuntimeEndpointProd",
+            ResourceStatus: "CREATE_FAILED",
+            ResourceStatusReason: reason,
+          },
+          {
+            ResourceType: "AWS::CloudFormation::Stack",
+            LogicalResourceId: "AgentCore-orders-staging",
+            ResourceStatus: "CREATE_FAILED",
+            ResourceStatusReason: "The following resource(s) failed",
+          },
+        ]) {
+          await ioHost.notify({
+            ...message("rollback progress"),
+            code: "CDK_TOOLKIT_I5502",
+            data: { event },
+          });
+        }
+        throw new Error("NoStack: CloudFormationStack object does not hold a stack");
+      };
+      return loaded;
+    });
+
+    await expect(
+      runner({ kind: "deploy", stackArtifactId: "AgentCore-orders-staging" }, runOptions()),
+    ).rejects.toThrow(
+      `NoStack: CloudFormationStack object does not hold a stack\n\n` +
+        `CloudFormation failure: RuntimeEndpointProd (CREATE_FAILED): ${reason}`,
+    );
+  });
 });
 
 describe("bootstrap template loading", () => {
