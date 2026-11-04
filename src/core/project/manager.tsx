@@ -779,6 +779,14 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
+        if (
+          isRuntimeDocsConfig(input.resourceConfig) &&
+          input.resourceConfig.containerUri !== undefined
+        ) {
+          projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          yield { type: "step", message: "configuring runtime from the existing ECR image" };
+          break;
+        }
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
         // The folder may hold the user's own code, but never another resource's.
         const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);

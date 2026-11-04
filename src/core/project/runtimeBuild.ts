@@ -61,7 +61,9 @@ export function describeChange(name: string, change: RuntimeChange): string {
  */
 function codeZipRevertEdits(runtime: ProjectRuntime): string {
   const edits = ['set "build": "CodeZip"'];
-  const containerOnly = (["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const)
+  const containerOnly = (
+    ["containerUri", "dockerfile", "buildContextPath", "customDockerBuildArgs"] as const
+  )
     .filter((field) => runtime[field] !== undefined)
     .map((field) => `"${field}"`);
   if (containerOnly.length > 0) edits.push(`remove ${containerOnly.join(", ")}`);
@@ -79,6 +81,26 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
   const next: ProjectRuntime = { ...runtime };
   const reasons: Partial<Record<SyncedField, string>> = {};
   const warnings: string[] = [];
+
+  // A pre-built image is already the complete container artifact. Local manifests, Dockerfiles,
+  // and build contexts do not participate in deployment, so synchronization must not inspect or
+  // infer from them. runtimeVersion remains container-inapplicable and is cleaned up as usual.
+  if (runtime.containerUri !== undefined) {
+    if (next.runtimeVersion !== undefined) {
+      delete next.runtimeVersion;
+      reasons.runtimeVersion = "pre-built container image";
+    }
+    const changes = (["runtimeVersion"] as const)
+      .filter((field) => runtime[field] !== next[field])
+      .map((field) => ({
+        field,
+        from: runtime[field],
+        to: next[field],
+        reason: reasons[field] ?? "agentcore.json",
+      }));
+    return { runtime: next, changes, warnings };
+  }
+
   const context = contextDir(runtime, projectRoot);
   const contextLabel = displayPath(projectRoot, context);
 
@@ -526,7 +548,7 @@ export function prepareRuntimes(
     const pointAtReadme = (found: string[]) =>
       problems.push(...found.map((problem) => `${problem.replace(/\.?$/, ".")} See ${readme}.`));
     const folder = resolve(projectRoot, runtime.codeLocation);
-    if (!isDirectory(folder)) {
+    if (runtime.containerUri === undefined && !isDirectory(folder)) {
       pointAtReadme([
         `runtime "${runtime.name}": ${displayPath(projectRoot, folder)}/ does not exist.`,
       ]);
@@ -564,6 +586,7 @@ function runtimeProblems(
   const folder = resolve(projectRoot, runtime.codeLocation);
   const folderLabel = `${displayPath(projectRoot, folder)}/`;
   const problems: string[] = [];
+  if (runtime.containerUri !== undefined) return problems;
   if (runtime.build === "Container") {
     const context = contextDir(runtime, projectRoot);
     const dockerfile = runtime.dockerfile ?? DOCKERFILE_NAME;

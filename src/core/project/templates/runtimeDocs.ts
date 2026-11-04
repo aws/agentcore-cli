@@ -95,17 +95,19 @@ export function runtimeDocsTree(
 }
 
 /**
- * The agentcore.json entry for a docs-only runtime, with starting values: a
- * CodeZip build on the latest runtime for the language. dev, build, and deploy
- * update build, runtimeVersion, and entrypoint from the code once it exists.
+ * A new runtime starts with CodeZip on the latest language runtime, or Container
+ * when an existing image is supplied. The pre-built path retains schema-required
+ * source placeholders without creating or building those files.
  */
 export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
   const { name, language, ...infra } = input;
   return {
     name,
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
-    build: "CodeZip",
-    runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
+    build: infra.containerUri ? "Container" : "CodeZip",
+    ...(infra.containerUri
+      ? { containerUri: infra.containerUri }
+      : { runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON }),
     entrypoint: docsRuntimeEntrypoint(language),
     protocol: infra.protocol ?? "HTTP",
     ...(infra.description && { description: infra.description }),
