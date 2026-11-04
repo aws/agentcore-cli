@@ -314,31 +314,36 @@ export class CdkBackend implements ProjectBackend {
       }
     }
 
-    const bootstrap = await this.bootstrap(target.region, credentials);
-    this.logger
-      .child({
-        account: target.account,
-        region: target.region,
-        bootstrapState: bootstrap.kind,
-        ...("version" in bootstrap && { bootstrapVersion: bootstrap.version }),
-      })
-      .debug("checked CDK bootstrap stack");
+    // A bootstrap stack provisioned outside the CLI (StackSets, an org tool) has
+    // its own name, so the probe would miss it and bootstrapping would collide
+    // with the resources it already owns. CDK's own version check still runs.
+    if (!input.skipBootstrap) {
+      const bootstrap = await this.bootstrap(target.region, credentials);
+      this.logger
+        .child({
+          account: target.account,
+          region: target.region,
+          bootstrapState: bootstrap.kind,
+          ...("version" in bootstrap && { bootstrapVersion: bootstrap.version }),
+        })
+        .debug("checked CDK bootstrap stack");
 
-    if (bootstrap.kind !== "current") {
-      const environment = `aws://${target.account}/${target.region}`;
-      yield { type: "step", message: `bootstrapping ${environment}` };
-      const template = await this.loadBootstrapTemplate();
-      try {
-        yield* this.runCdk(
-          {
-            kind: "bootstrap",
-            environments: [environment],
-            ...(template && { templateFile: template.path }),
-          },
-          options,
-        );
-      } finally {
-        await template?.cleanup();
+      if (bootstrap.kind !== "current") {
+        const environment = `aws://${target.account}/${target.region}`;
+        yield { type: "step", message: `bootstrapping ${environment}` };
+        const template = await this.loadBootstrapTemplate();
+        try {
+          yield* this.runCdk(
+            {
+              kind: "bootstrap",
+              environments: [environment],
+              ...(template && { templateFile: template.path }),
+            },
+            options,
+          );
+        } finally {
+          await template?.cleanup();
+        }
       }
     }
 

@@ -1687,6 +1687,7 @@ export class FsProjectManager implements ProjectManager {
       target,
       confirmTeardown: input.confirmTeardown,
       transactionSearch: input.transactionSearch,
+      skipBootstrap: input.skipBootstrap,
     });
   }
 

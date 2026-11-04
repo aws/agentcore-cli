@@ -991,6 +991,19 @@ describe("CdkBackend.deploy", () => {
     });
   });
 
+  test("neither probes nor bootstraps when bootstrap is managed externally", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ bootstrap: { kind: "absent" } });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput({ skipBootstrap: true })));
+
+    expect(subject.bootstrapRegions).toEqual([]);
+    expect(subject.runs.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackArtifactId: "AgentCore-example-default-0" },
+    ]);
+  });
+
   test("rejects credentials for a different account before build or mutation", async () => {
     const input = await project();
     const subject = harness({ account: "999900001111" });

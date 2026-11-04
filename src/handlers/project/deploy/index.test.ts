@@ -316,6 +316,26 @@ describe("project deploy handler", () => {
     );
   });
 
+  test("rejects --skip-bootstrap for a v0 project instead of letting v0 bootstrap", async () => {
+    await inProjectWithTargets();
+    await writeFile(
+      join(process.cwd(), "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 1 }),
+    );
+    const legacyDeploys: V0DeployInput[] = [];
+    const subject = await testDeployCommand({ outputs: {} }, [], {
+      runV0Deploy: async (input) => {
+        legacyDeploys.push(input);
+        return 0;
+      },
+    });
+
+    await expect(subject.run(["--yes", "--skip-bootstrap"])).rejects.toThrow(
+      /--skip-bootstrap isn't available for v0 projects/,
+    );
+    expect(legacyDeploys).toEqual([]);
+  });
+
   test("preserves the v0 deployer's non-zero exit code", async () => {
     await inProjectWithTargets();
     await writeFile(
@@ -370,6 +390,13 @@ describe("project deploy handler", () => {
     await inProjectWithTargets();
     await disabled.run();
     expect(disabled.calls[0]?.input.transactionSearch).toBe(false);
+  });
+
+  test("passes --skip-bootstrap into the deploy", async () => {
+    const subject = await testDeployCommand({ outputs: {} });
+    await inProjectWithTargets();
+    await subject.run(["--skip-bootstrap"]);
+    expect(subject.calls[0]?.input.skipBootstrap).toBe(true);
   });
 
   test("passes an explicit target and renders the result as JSON", async () => {
