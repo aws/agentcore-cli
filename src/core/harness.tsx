@@ -32,12 +32,12 @@ import {
   InvokeHarnessCommand,
   type InvokeAgentRuntimeCommandRequest,
   type InvokeAgentRuntimeCommandResponse,
-  type InvokeHarnessRequest,
   type InvokeHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   CoreHarnessClient,
   CreateHarnessInput,
+  HarnessInvokeRequest,
   ResolvedHarnessRuntime,
   HarnessShellRequest,
 } from "../handlers/harness/types";
@@ -206,12 +206,12 @@ export class HarnessClient implements CoreHarnessClient {
   }
 
   async invokeHarness(
-    request: InvokeHarnessRequest,
+    { bearerToken, ...request }: HarnessInvokeRequest,
     options: CoreOptions,
     abortSignal?: AbortSignal,
   ): Promise<InvokeHarnessResponse> {
     const response = await this.clients
-      .data(toClientConfig(options))
+      .data({ ...toClientConfig(options), ...(bearerToken !== undefined && { bearerToken }) })
       .send(new InvokeHarnessCommand(request), { abortSignal });
     if (!response.stream || !abortSignal) return response;
     // The SDK honors the abort signal while the request is being established,

@@ -14,23 +14,29 @@ export async function invokeHarnessTurn(
   client: CoreHarnessClient,
   input: {
     harnessId: string;
+    // A caller that already holds the ARN skips the GetHarness lookup, which is
+    // what lets a bearer-token invoke run without AWS credentials.
+    harnessArn?: string;
     prompt: string;
     qualifier?: string;
     sessionId?: string;
     userId?: string;
+    bearerToken?: string;
   },
   options: CoreOptions,
   signal?: AbortSignal,
 ): Promise<HarnessInvokeResult> {
-  const detail = await client.getHarness(input.harnessId, options);
+  const harnessArn =
+    input.harnessArn ?? (await client.getHarness(input.harnessId, options)).harness?.arn;
   const sessionId = input.sessionId ?? newSessionId();
   const response = await client.invokeHarness(
     {
-      harnessArn: detail.harness?.arn,
+      harnessArn,
       qualifier: input.qualifier ?? "DEFAULT",
       runtimeSessionId: sessionId,
       runtimeUserId: input.userId,
       messages: [{ role: "user", content: [{ text: input.prompt }] }],
+      ...(input.bearerToken !== undefined && { bearerToken: input.bearerToken }),
     },
     options,
     signal,
