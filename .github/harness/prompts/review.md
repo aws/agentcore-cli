@@ -93,7 +93,7 @@ cheap to miss by reading a diff in isolation.
   argument belong on the type that owns it (`ProjectManager`, `SourceResolver`).
 - **Presence checked instead of emptiness** - `x` existing as `[]` is not the feature being
   configured; the test is usually `(x?.length ?? 0) > 0`.
-- **Missing `{ sensitive: true }`** - On a credential-bearing flag, or on literal input sent to a
+- **Missing `{{ sensitive: true }}`** - On a credential-bearing flag, or on literal input sent to a
   model or runtime at call time. A sensitive value must also cross into the TUI as a Context value,
   never as a route segment or query param.
 - **A deploy-path field with no backing** - A field expected to reach a deployed resource needs the
