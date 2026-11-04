@@ -25,7 +25,7 @@ jobs:
       contents: read
       pull-requests: write
       statuses: write
-    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-size-title.yml@458c0a684af0f9e3a013ec05cd23851def4f9cab
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-size-title.yml@c2106996dd94e56f6c5fad625c83573e9724fb63
     with:
       runner: codebuild
     secrets: inherit
@@ -42,7 +42,7 @@ jobs:
       pull-requests: write
       issues: write
       contents: read
-    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@c2106996dd94e56f6c5fad625c83573e9724fb63
     with:
       runner: codebuild
       pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
@@ -61,7 +61,7 @@ jobs:
       pull-requests: write
       issues: write
       contents: read
-    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@4b3972e790e4cc312ddf6f1909a0b6ca8a749506
+    uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@c2106996dd94e56f6c5fad625c83573e9724fb63
     with:
       runner: codebuild
       model_id: us.anthropic.claude-opus-5
@@ -124,13 +124,13 @@ jobs:
           echo "author=$author" >> "$GITHUB_OUTPUT"
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
       - name: Fetch secrets from Secrets Manager
-        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@31aa3b031a86664e29861d68956e44b07cf21a74
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
         with:
           role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
           repo: AUTHORIZED_USERS
       - name: Check authorization
         id: authz
-        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@31aa3b031a86664e29861d68956e44b07cf21a74
+        uses: aws/agentcore-devx-devtools/.github/actions/check-authorized-user@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
         with:
           subject: ${{ steps.pr.outputs.author }}
           authorized-users: ${{ env.AUTHORIZED_USERS }}
