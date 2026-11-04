@@ -47,6 +47,10 @@ export type ResolvedHarnessRuntime = {
   runtimeName: string;
 };
 
+export type CoreInvokeHarnessRequest = InvokeHarnessRequest & {
+  bearerToken?: string;
+};
+
 export interface CoreHarnessClient {
   openHarnessShell(
     request: HarnessShellRequest,
@@ -103,7 +107,7 @@ export interface CoreHarnessClient {
     options: CoreOptions,
   ): Promise<ListHarnessVersionsResponse>;
   invokeHarness(
-    request: InvokeHarnessRequest,
+    request: CoreInvokeHarnessRequest,
     options: CoreOptions,
     abortSignal?: AbortSignal,
   ): Promise<InvokeHarnessResponse>;

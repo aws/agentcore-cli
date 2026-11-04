@@ -221,6 +221,35 @@ describe("invoke", () => {
     },
   );
 
+  test("looks up a Harness selected by ARN before a bearer invocation", async () => {
+    const subject = await routedCommand(
+      ["--harness", arn(`harness/${HARNESS_ID}`), "--prompt", "hi", "--bearer-token", "jwt"],
+      undefined,
+    );
+    subject.core.harness.setGetResponse({
+      harness: {
+        arn: arn(`harness/${HARNESS_ID}`),
+        authorizerConfiguration: {
+          customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+        },
+      },
+    } as GetHarnessResponse);
+
+    await subject.route();
+
+    expect(subject.core.harness.calls.find((call) => call.method === "getHarness")?.args[0]).toBe(
+      HARNESS_ID,
+    );
+    expect(
+      subject.core.harness.calls.find((call) => call.method === "invokeHarness")?.args[0],
+    ).toEqual(
+      expect.objectContaining({
+        harnessArn: arn(`harness/${HARNESS_ID}`),
+        bearerToken: "jwt",
+      }),
+    );
+  });
+
   test.each([
     [["--runtime", "checkout"], `/agentcore/runtime/invoke/${RUNTIME_ID}`],
     [

@@ -32,26 +32,26 @@ import {
   InvokeHarnessCommand,
   type InvokeAgentRuntimeCommandRequest,
   type InvokeAgentRuntimeCommandResponse,
-  type InvokeHarnessRequest,
   type InvokeHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   CoreHarnessClient,
+  CoreInvokeHarnessRequest,
   CreateHarnessInput,
   ResolvedHarnessRuntime,
   HarnessShellRequest,
 } from "../handlers/harness/types";
 import type { RuntimeShellSession } from "../handlers/runtime/types";
 import { createHarnessShellOpener, type OpenHarnessShell } from "./harnessShell";
+import { createBearerHarnessClient } from "./harnessBearer";
 import { InputValidationError } from "../errors";
 import type { AwsClients, CoreOptions } from "./types";
 import { abortable } from "./abortable";
 import { ensureDefaultExecutionRole } from "./executionRole";
 import { toClientConfig } from "./utils";
 
-// HarnessClient implements the harness-facing operations on top of the shared AWS
-// clients provided by CoreClient. It owns no clients of its own; it borrows the
-// cached ones so every Core sub-client shares the same connections.
+// HarnessClient uses CoreClient's cached AWS clients for IAM requests. CUSTOM_JWT
+// invocation uses a short-lived Harness-only bearer client.
 export class HarnessClient implements CoreHarnessClient {
   constructor(
     private readonly clients: AwsClients,
@@ -206,20 +206,34 @@ export class HarnessClient implements CoreHarnessClient {
   }
 
   async invokeHarness(
-    request: InvokeHarnessRequest,
+    request: CoreInvokeHarnessRequest,
     options: CoreOptions,
     abortSignal?: AbortSignal,
   ): Promise<InvokeHarnessResponse> {
-    const response = await this.clients
-      .data(toClientConfig(options))
-      .send(new InvokeHarnessCommand(request), { abortSignal });
-    if (!response.stream || !abortSignal) return response;
+    const { bearerToken, ...sdkRequest } = request;
+    const client =
+      bearerToken === undefined
+        ? this.clients.data(toClientConfig(options))
+        : createBearerHarnessClient(options, bearerToken);
+    let response: InvokeHarnessResponse;
+    try {
+      response = await client.send(new InvokeHarnessCommand(sdkRequest), { abortSignal });
+    } catch (error) {
+      if (bearerToken !== undefined) client.destroy();
+      throw error;
+    }
+    if (!response.stream) {
+      if (bearerToken !== undefined) client.destroy();
+      return response;
+    }
     // The SDK honors the abort signal while the request is being established,
     // but once the event stream is flowing, aborting no longer tears the
     // iteration down — consumers awaiting the next event would hang until the
     // turn ran to completion. Racing each read against the signal keeps abort
     // (esc in the TUI) responsive mid-stream.
-    return { ...response, stream: abortable(response.stream, abortSignal) };
+    let stream = abortSignal ? abortable(response.stream, abortSignal) : response.stream;
+    if (bearerToken !== undefined) stream = withCleanup(stream, () => client.destroy());
+    return { ...response, stream };
   }
 
   async invokeAgentRuntimeCommand(
@@ -233,6 +247,14 @@ export class HarnessClient implements CoreHarnessClient {
     if (!response.stream || !abortSignal) return response;
     // Same mid-stream abort gap as invokeHarness; see above.
     return { ...response, stream: abortable(response.stream, abortSignal) };
+  }
+}
+
+async function* withCleanup<T>(stream: AsyncIterable<T>, cleanup: () => void): AsyncIterable<T> {
+  try {
+    yield* stream;
+  } finally {
+    cleanup();
   }
 }
 

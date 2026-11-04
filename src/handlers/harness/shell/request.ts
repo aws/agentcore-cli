@@ -1,6 +1,7 @@
 import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../../../errors";
 import type { HarnessShellRequest } from "../types";
+import { resolveHarnessArn } from "../request";
 
 export function normalizeHarnessShellRequest(
   detail: GetHarnessResponse,
@@ -12,21 +13,7 @@ export function normalizeHarnessShellRequest(
       `Harness is not ready (status: ${harness?.status ?? "unknown"})`,
     );
   }
-  const harnessArn = harness.arn;
-  if (!harnessArn?.match(/^arn:[^:]+:bedrock-agentcore:[^:]+:\d{12}:harness\/.+$/)) {
-    throw new InputValidationError("Harness returned an invalid ARN");
-  }
-  const authorizer = harness.authorizerConfiguration;
-  const customJwt = authorizer !== undefined && "customJWTAuthorizer" in authorizer;
-  if (authorizer && !customJwt) {
-    throw new InputValidationError("Harness uses an unsupported authorizer");
-  }
-  if (customJwt && !input.bearerToken) {
-    throw new InputValidationError("CUSTOM_JWT Harness requires --bearer-token");
-  }
-  if (!customJwt && input.bearerToken !== undefined) {
-    throw new InputValidationError("IAM Harness does not accept --bearer-token");
-  }
+  const harnessArn = resolveHarnessArn(detail, input.bearerToken);
   return {
     harnessArn,
     qualifier: input.qualifier,
