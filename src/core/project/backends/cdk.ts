@@ -32,13 +32,16 @@ import type {
 import { createCloudFormationClient } from "../../factories";
 import type { AwsCredentials, CreateCloudFormationClient } from "../../types";
 import {
+  assertPaymentConnectorCredentials,
   createCredentialProvisioner,
   createCredentialRemover,
   orphanedCredentials,
+  providerRefFromRecorded,
   type CredentialProviderCalls,
   type CredentialProviderRef,
   type CredentialProvisioner,
   type CredentialRemover,
+  type DeployedCredentials,
 } from "./cdk/credentials";
 import {
   countDeployableResources,
@@ -273,6 +276,7 @@ export class CdkBackend implements ProjectBackend {
     const recorded =
       (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
         ?.credentials ?? {};
+    assertPaymentConnectorCredentials(project, target.name, recorded);
     const orphaned = orphanedCredentials(recorded, project.spec.credentials);
 
     // Credential providers aren't stack resources; the synthesized app reads their
@@ -281,6 +285,7 @@ export class CdkBackend implements ProjectBackend {
       credentials,
       region: target.region,
       targetName: target.name,
+      recorded,
     });
     // Recorded every deploy (even when empty) so dropping the last credential
     // from the spec clears the stale entry instead of leaving it advertised.
@@ -297,7 +302,7 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options, orphaned });
+      return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
     }
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
@@ -431,6 +436,7 @@ export class CdkBackend implements ProjectBackend {
     input,
     options,
     orphaned,
+    recorded,
   }: {
     project: Project;
     artifact: StackArtifact;
@@ -438,6 +444,7 @@ export class CdkBackend implements ProjectBackend {
     options: CdkRunOptions;
     /** Providers recorded for this target before the deploy that the spec no longer declares. */
     orphaned: CredentialProviderRef[];
+    recorded: DeployedCredentials;
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
@@ -472,7 +479,12 @@ export class CdkBackend implements ProjectBackend {
       credentials: options.credentials,
       region: target.region,
       targetName: target.name,
-      providers: [...orphaned, ...project.spec.credentials],
+      providers: [
+        ...orphaned,
+        ...project.spec.credentials.map((credential) =>
+          providerRefFromRecorded(credential, recorded),
+        ),
+      ],
     });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };
