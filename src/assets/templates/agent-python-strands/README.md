@@ -13,6 +13,13 @@ file defines a Starlette ASGI app with the Strands Agent SDK running within.
 
 `model/load.py` instantiates the chosen model provider.
 
+## Memory
+
+The template provisions semantic and episodic memory. `memory/session.py` retrieves up to three
+semantic facts for the actor and five episodes for the current session. The default
+`relevance_score=0.0` selects results by `top_k` without score filtering. To opt into score
+filtering, increase `relevance_score` in the retrieval configuration.
+
 ## Input Validation
 
 Validate invocation input before forwarding it to Strands. Keep plain prompts typed as strings. If the app accepts a

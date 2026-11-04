@@ -15,15 +15,13 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   return {
     name: defaultMemoryName(runtimeName),
     eventExpiryDuration: 30,
-    strategies: (["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"] as const).map(
-      (type) => ({
-        type,
-        namespaceTemplates: DEFAULT_STRATEGY_NAMESPACE_TEMPLATES[type],
-        ...(type === "EPISODIC" && {
-          reflectionNamespaceTemplates: DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
-        }),
+    strategies: (["SEMANTIC", "EPISODIC"] as const).map((type) => ({
+      type,
+      namespaceTemplates: DEFAULT_STRATEGY_NAMESPACE_TEMPLATES[type],
+      ...(type === "EPISODIC" && {
+        reflectionNamespaceTemplates: DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
       }),
-    ),
+    })),
   };
 }
 

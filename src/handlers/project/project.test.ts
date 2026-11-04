@@ -211,8 +211,6 @@ describe("project create", () => {
     expect(memory).toMatchObject({ name: "agentMemory", eventExpiryDuration: 30 });
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual([
       "SEMANTIC",
-      "USER_PREFERENCE",
-      "SUMMARIZATION",
       "EPISODIC",
     ]);
     expect(await Bun.file(join(projectRoot, "app", "agent", "main.py")).exists()).toBe(true);

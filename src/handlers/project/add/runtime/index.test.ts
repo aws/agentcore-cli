@@ -420,8 +420,6 @@ describe("project add runtime --agent-id (Bedrock Agent import)", () => {
     expect(spec.memories).toMatchObject([{ name: "support_proxyMemory" }]);
     expect(spec.memories[0].strategies.map(({ type }: { type: string }) => type)).toEqual([
       "SEMANTIC",
-      "USER_PREFERENCE",
-      "SUMMARIZATION",
       "EPISODIC",
     ]);
   });

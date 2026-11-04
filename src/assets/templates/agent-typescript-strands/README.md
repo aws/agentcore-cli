@@ -17,6 +17,11 @@ from `.env.local` under `agentcore dev`; the `openai_compatible` provider is the
 pointed at the base URL you gave the `agentcore create` wizard, baked into `load.ts` as
 `clientConfig.baseURL`.
 
+## Memory
+
+The template provisions semantic and episodic memory. `memory/memory.ts` retrieves semantic
+facts for the actor and episodes for the current session, with score filtering disabled by default.
+
 ## Input Validation
 
 The generated Zod request schema keeps the prompt and actor ID typed as strings before forwarding them to Strands.
