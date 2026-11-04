@@ -114,11 +114,15 @@
   },
   "overrides": {
     "@opentelemetry/core": "^2.10.0",
+    "minimatch": "11.0.4",
     "@aws-cdk/toolkit-lib": {
       "yaml": "^1"
     },
     "@ag-ui/core": {
       "zod": "^4.6.6"
     }
+  },
+  "patchedDependencies": {
+    "minimatch@11.0.4": "patches/minimatch@11.0.4.patch"
   }
 }
