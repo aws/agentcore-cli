@@ -3,7 +3,7 @@ import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
 import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
-import { SilentCLIError, UserCancellationError } from "../../../errors";
+import { ProjectStateError, SilentCLIError, UserCancellationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
@@ -74,6 +74,12 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         "confirm removing the target's stack when the project declares nothing to deploy",
         z.boolean().default(false),
       ),
+      flag(
+        "skip-bootstrap",
+        "do not check or create the CDK bootstrap stack; use when the target's account " +
+          "is bootstrapped by someone else (e.g. CloudFormation StackSets)",
+        z.boolean().default(false),
+      ),
     ],
     handle: async (ctx, flags) => {
       // withProject has already resolved the enclosing project.
@@ -81,12 +87,17 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       recordProjectResourceCounts(ctx, project);
       const jsonOutput = ctx.require(JsonKey);
       if (project.legacy) {
-        await delegateV0Deploy(config, ctx, {
-          projectRoot: project.rootPath,
-          target: flags.target,
-          yes: flags.yes,
-          json: jsonOutput,
-        });
+        await delegateV0Deploy(
+          config,
+          ctx,
+          {
+            projectRoot: project.rootPath,
+            target: flags.target,
+            yes: flags.yes,
+            json: jsonOutput,
+          },
+          flags["skip-bootstrap"],
+        );
         return;
       }
       const canPrompt =
@@ -113,6 +124,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         region: ctx.require(RegionKey),
         confirmTeardown,
         transactionSearch: globalConfig.transactionSearch,
+        skipBootstrap: flags["skip-bootstrap"],
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.
@@ -192,12 +204,17 @@ function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
     handle: async (ctx, flags, args) => {
       const projectRoot = enclosingProjectRoot(process.cwd());
       if (projectRoot && (await isV0Project(projectRoot))) {
-        await delegateV0Deploy(config, ctx, {
-          projectRoot,
-          target: flags.target as string,
-          yes: flags.yes as boolean,
-          json: ctx.require(JsonKey),
-        });
+        await delegateV0Deploy(
+          config,
+          ctx,
+          {
+            projectRoot,
+            target: flags.target as string,
+            yes: flags.yes as boolean,
+            json: ctx.require(JsonKey),
+          },
+          flags["skip-bootstrap"] as boolean,
+        );
         return;
       }
       await handler.handle(ctx, flags, args);
@@ -209,7 +226,16 @@ async function delegateV0Deploy(
   config: DeployProjectHandlerConfig,
   ctx: Context,
   input: Parameters<V0DeployRunner>[0],
+  skipBootstrap: boolean,
 ): Promise<void> {
+  // Unlike --region, this can't be dropped with a warning: v0 has no such option
+  // and auto-bootstraps under --yes, the very mutation the flag forbids.
+  if (skipBootstrap) {
+    throw new ProjectStateError(
+      "--skip-bootstrap isn't available for v0 projects. " +
+        "Run `agentcore migrate` to use it with the v1 deploy.",
+    );
+  }
   // A migration stopped while writing the files leaves a v0 spec beside a v1 CDK
   // app; the v0 deployer mustn't deploy that.
   await assertNoPendingMigration(input.projectRoot, input.target);

@@ -661,6 +661,7 @@ build and deploy project resources to an AWS target
 
 - `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
 - `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+- `--skip-bootstrap`: do not check or create the CDK bootstrap stack; use when the target's account is bootstrapped by someone else (e.g. CloudFormation StackSets) (default: false)
 
 ### `agentcore invoke`
 
