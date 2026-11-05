@@ -5,8 +5,7 @@ from strands.tools.mcp.mcp_client import MCPClient
 
 logger = logging.getLogger(__name__)
 
-{{#if remoteMcpTools}}
-{{#if (some remoteMcpTools "toolPatterns")}}
+{{#if (or (some remoteMcpTools "toolPatterns") (some gatewayTools "toolPatterns"))}}
 import fnmatch
 
 
@@ -18,6 +17,50 @@ def _allowed_tools(server, *patterns):
     return {"allowed": [allowed]}
 
 {{/if}}
+{{#if (includes gatewayAuthTypes "AWS_IAM")}}
+from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+
+{{/if}}
+{{#if (includes gatewayAuthTypes "OAUTH")}}
+from bedrock_agentcore.identity.auth import requires_access_token
+
+{{/if}}
+{{#each gatewayTools}}
+{{#if oauth}}
+@requires_access_token(
+    provider_name={{safeJson oauth.providerName}},
+    scopes={{safeJson oauth.scopes}},
+    auth_flow="M2M",
+{{#if oauth.customParameters}}
+    custom_parameters={{safeJson oauth.customParameters}},
+{{/if}}
+)
+def _get_{{pythonName}}_token(*, access_token: str) -> str:
+    """Fetch an OAuth access token for the {{name}} gateway from AgentCore Identity."""
+    return access_token
+
+{{/if}}
+def get_{{pythonName}}_mcp_client() -> MCPClient | None:
+    """Returns an MCP Client for the {{name}} AgentCore Gateway."""
+    url = os.environ.get("{{urlEnvVarName}}")
+    if not url:
+        logger.warning("{{urlEnvVarName}} is not set; {{name}} gateway tools are unavailable")
+        return None
+    def transport():
+    {{#if (eq authType "AWS_IAM")}}
+        return aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION")))
+    {{/if}}
+    {{#if oauth}}
+        return streamablehttp_client(url, headers={"Authorization": f"Bearer {_get_{{pythonName}}_token()}"})
+    {{/if}}
+    {{#if (eq authType "NONE")}}
+        return streamablehttp_client(url)
+    {{/if}}
+
+    return MCPClient(transport{{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
+
+{{/each}}
+{{#if remoteMcpTools}}
 {{#if (some remoteMcpTools "headerCredentials")}}
 from bedrock_agentcore.identity.auth import requires_api_key
 {{/if}}
@@ -48,12 +91,21 @@ def get_{{pythonName}}_mcp_client() -> MCPClient | None:
     {{/if}}
 
 {{/each}}
-def get_all_remote_mcp_clients() -> list[MCPClient]:
-    """Returns all configured remote MCP clients."""
-    clients = [{{#each remoteMcpTools}}get_{{pythonName}}_mcp_client(){{#unless @last}}, {{/unless}}{{/each}}]
+{{/if}}
+{{#if (or gatewayTools remoteMcpTools)}}
+def get_all_mcp_clients() -> list[MCPClient]:
+    """Returns all configured gateway and remote MCP clients."""
+    clients = [
+{{#each gatewayTools}}
+        get_{{pythonName}}_mcp_client(),
+{{/each}}
+{{#each remoteMcpTools}}
+        get_{{pythonName}}_mcp_client(),
+{{/each}}
+    ]
     return [c for c in clients if c is not None]
 {{/if}}
-{{#unless remoteMcpTools}}
+{{#unless (or gatewayTools remoteMcpTools)}}
 {{#if isVpc}}
 # VPC mode: external MCP endpoints are not reachable without a NAT gateway.
 # Add an AgentCore Gateway with `agentcore add gateway`, or configure your own endpoint below.

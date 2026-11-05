@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type {
+  HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessMemoryRetrievalConfig,
   HarnessSkill,
@@ -14,6 +15,7 @@ import type {
   HarnessTruncationConfig,
 } from "../../../projectSchemas/harness";
 import type { ProjectSpecSchema } from "../../../projectSchemas/project";
+import type { Connection } from "../../../projectSchemas/connections";
 import {
   credentialEnvVarName,
   credentialProviderNameEnvVarName,
@@ -23,7 +25,7 @@ import { memoryEnvVarName, type Memory } from "../../../projectSchemas/memory";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors/errors";
 import { toPythonPackageName } from "../fsUtils";
-import { resourceNameFromArn } from "../../arn";
+import { parseArn, resourceNameFromArn, serviceIdFromArn } from "../../arn";
 
 type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
 
@@ -187,12 +189,12 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
         ? String(memory.retrievalConfig.relevanceScore)
         : undefined,
     actorId: memory.actorId,
-    // Gateways are never exported as code (see resolveTools); the template still
-    // needs the keys so its conditionals resolve.
     // Tools. Empty collections become undefined: the template's custom `or`/
     // `some` helpers use JS truthiness, where [] is truthy, unlike `{{#if}}`.
     inlineFunctionTools: undefinedIfEmpty(tools.inlineFunctionTools),
     remoteMcpTools: undefinedIfEmpty(tools.remoteMcpTools),
+    gatewayTools: undefinedIfEmpty(tools.gatewayTools),
+    gatewayAuthTypes: [...new Set(tools.gatewayTools.map(({ authType }) => authType))],
     hasShell: tools.hasShell,
     hasFileOperations: tools.hasFileOperations,
     // Skills
@@ -236,7 +238,9 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     ...(spec.lifecycleConfig && { lifecycleConfiguration: spec.lifecycleConfig }),
     ...(filesystemConfigurations.length > 0 && { filesystemConfigurations }),
     ...(additionalPolicies.length > 0 && { additionalPolicies }),
-    ...(spec.connections?.length && { connections: spec.connections }),
+    ...((spec.connections?.length || tools.connections.length) && {
+      connections: [...(spec.connections ?? []), ...tools.connections],
+    }),
     ...(spec.tags && { tags: spec.tags }),
     // NOTE: the harness's executionRoleArn is deliberately NOT carried over. The
     // exported agent is a new runtime that needs its own CDK-managed role so the
@@ -566,6 +570,16 @@ interface ToolsResolution {
       pythonName: string;
     }[];
   }[];
+  gatewayTools: {
+    name: string;
+    pythonName: string;
+    urlEnvVarName: string;
+    authType: "AWS_IAM" | "NONE" | "OAUTH";
+    oauth?: { providerName: string; scopes: string[]; customParameters?: Record<string, string> };
+    toolPatterns?: string[];
+  }[];
+  /** Runtime connections that make deploy grant gateway access and set each tool's URL variable. */
+  connections: Connection[];
   hasShell: boolean;
   hasFileOperations: boolean;
 }
@@ -581,6 +595,8 @@ function resolveTools(
   const result: ToolsResolution = {
     inlineFunctionTools: [],
     remoteMcpTools: [],
+    gatewayTools: [],
+    connections: [],
     // Builtin tools are always available in the harness runtime; include them
     // unless the allowedTools filter excludes them.
     hasShell: isBuiltinIncluded("shell", allowedPatterns),
@@ -663,15 +679,57 @@ function resolveTools(
         break;
       }
       case "agentcore_gateway": {
-        const cfg = configOf(tool, "agentCoreGateway") as { gatewayArn?: string } | undefined;
-        notes.push({
-          category: GATEWAY_TOOL_NOTE_CATEGORY,
-          message:
-            `The gateway tool "${tool.name}"${cfg?.gatewayArn ? ` (${cfg.gatewayArn})` : ""} was ` +
-            `not exported: gateway URL discovery, outbound auth, and IAM wiring are managed by ` +
-            `the harness runtime. To keep these tools, connect an MCP client to the gateway in ` +
-            `mcp_client/client.py and grant the runtime role bedrock-agentcore:InvokeGateway on ` +
-            `the gateway (or its OAuth token flow) before deploying.`,
+        const cfg = configOf(tool, "agentCoreGateway") as
+          { gatewayArn: string; outboundAuth?: HarnessGatewayOutboundAuth } | undefined;
+        if (!cfg) break;
+        const auth = cfg.outboundAuth ?? { awsIam: {} };
+        if ("oauth" in auth && auth.oauth.grantType === "USER_FEDERATION") {
+          notes.push({
+            category: GATEWAY_TOOL_NOTE_CATEGORY,
+            message:
+              `The gateway tool "${tool.name}" (${cfg.gatewayArn}) was not exported: it uses the ` +
+              `OAuth grant type USER_FEDERATION, which needs a user consent flow the exported ` +
+              `agent does not have. Connect to the gateway in mcp_client/client.py yourself, ` +
+              `and add a gateway connection to this runtime in agentcore.json so deploy grants ` +
+              `the token access.`,
+          });
+          break;
+        }
+        if (!CONNECTION_ID_PATTERN.test(tool.name)) {
+          throw new InputValidationError(
+            `Gateway tool "${tool.name}" names the runtime connection that carries its URL, so ` +
+              `it must start with a letter. Rename the tool in the harness, then export again.`,
+          );
+        }
+        const urlEnvVarName = `GATEWAY_${connectionEnvToken(tool.name)}_URL`;
+        const oauth = "oauth" in auth ? auth.oauth : undefined;
+        result.connections.push({
+          id: tool.name,
+          to: {
+            type: "gateway",
+            arn: cfg.gatewayArn,
+            outboundAuth:
+              "oauth" in auth
+                ? { oauth: { ...auth.oauth, grantType: "CLIENT_CREDENTIALS" as const } }
+                : auth,
+          },
+        });
+        envEntries.push({
+          key: urlEnvVarName,
+          value: gatewayUrl(tool.name, cfg.gatewayArn),
+          comment: `URL of gateway tool "${tool.name}" for agentcore dev (deploy sets it on the runtime)`,
+        });
+        result.gatewayTools.push({
+          name: tool.name,
+          pythonName: stablePythonIdentifier(tool.name),
+          urlEnvVarName,
+          authType: oauth ? "OAUTH" : "none" in auth ? "NONE" : "AWS_IAM",
+          oauth: oauth && {
+            providerName: resourceNameFromArn(oauth.providerArn),
+            scopes: oauth.scopes,
+            customParameters: oauth.customParameters,
+          },
+          toolPatterns: serverToolPatterns(tool.name, allowedPatterns),
         });
         break;
       }
@@ -701,7 +759,39 @@ function resolveTools(
     }
   }
 
+  const tokens = [
+    ...(spec.connections ?? []).flatMap((c) => (c.id ? [connectionEnvToken(c.id)] : [])),
+    ...result.connections.map((c) => connectionEnvToken(c.id!)),
+  ];
+  const duplicate = tokens.find((token, index) => tokens.indexOf(token) !== index);
+  if (duplicate) {
+    throw new InputValidationError(
+      `Harness "${spec.name}" has gateway tools or connections whose names both become ` +
+        `"${duplicate}" in environment variable names. Rename one of them, then export again.`,
+    );
+  }
+
   return result;
+}
+
+const CONNECTION_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+
+/** The env-var token @aws/agentcore-cdk derives from a connection id. */
+function connectionEnvToken(id: string): string {
+  return id.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+/** The MCP endpoint of a gateway, as @aws/agentcore-cdk derives it from the ARN at deploy. */
+function gatewayUrl(toolName: string, gatewayArn: string): string {
+  const arn = parseArn(gatewayArn);
+  if (arn?.service !== "bedrock-agentcore" || !arn.resource.startsWith("gateway/")) {
+    throw new InputValidationError(
+      `Gateway tool "${toolName}" has gatewayArn "${gatewayArn}", which is not a gateway ARN.`,
+    );
+  }
+  const { partition, region } = arn;
+  const suffix = partition === "aws-cn" ? "amazonaws.com.cn" : "amazonaws.com";
+  return `https://${serviceIdFromArn(gatewayArn)}.gateway.bedrock-agentcore.${region}.${suffix}/mcp`;
 }
 
 function undefinedIfEmpty<T>(values: T[]): T[] | undefined {

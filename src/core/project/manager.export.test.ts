@@ -117,6 +117,64 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(client).toContain('tool_filters=_allowed_tools("exa", "web_*")');
   });
 
+  test("connects gateway tools through their URL variable and records the connections", async () => {
+    const { manager: subject } = manager();
+    const gatewayArn = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/example-abc123";
+    const project = await projectWithHarness(subject, {
+      allowedTools: ["@tools/*", "@partner"],
+      tools: [
+        {
+          type: "agentcore_gateway",
+          name: "tools",
+          config: { agentCoreGateway: { gatewayArn, outboundAuth: { awsIam: {} } } },
+        },
+        {
+          type: "agentcore_gateway",
+          name: "partner",
+          config: {
+            agentCoreGateway: {
+              gatewayArn,
+              outboundAuth: {
+                oauth: {
+                  providerArn:
+                    "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/oauth2credentialprovider/partner-oauth",
+                  scopes: ["partner/invoke"],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const client = await Bun.file(join(result.agentPath, "mcp_client", "client.py")).text();
+    expect(client).toContain('url = os.environ.get("GATEWAY_TOOLS_URL")');
+    expect(client).toContain('aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore"');
+    expect(client).toContain('provider_name="partner-oauth"');
+    expect(client).toMatch(
+      /headers=\{"Authorization": f"Bearer \{_get_partner_[a-f0-9]{10}_token\(\)\}"\}/,
+    );
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("mcp_clients = get_all_mcp_clients()");
+    const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
+    expect(pyproject).toContain('"mcp-proxy-for-aws >= 1.1.0, < 2.0.0"');
+    const spec = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json();
+    expect(
+      spec.runtimes.find((runtime: { name: string }) => runtime.name === "assistantAgent")
+        .connections,
+    ).toEqual([
+      { id: "tools", to: { type: "gateway", arn: gatewayArn, outboundAuth: { awsIam: {} } } },
+      expect.objectContaining({ id: "partner" }),
+    ]);
+    expect(
+      (await readEnvFile(join(project.rootPath, "agentcore", ".env.local"))).GATEWAY_TOOLS_URL,
+    ).toBe("https://example-abc123.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp");
+    const notes = await Bun.file(join(result.agentPath, "EXPORT_NOTES.md")).text();
+    expect(notes).not.toContain("Gateway tool not exported");
+  });
+
   test("merges service model parameters under the explicit settings", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject);

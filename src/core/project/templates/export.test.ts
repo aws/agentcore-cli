@@ -396,15 +396,6 @@ describe("mapHarnessToExportPlan tools", () => {
     const result = plan({
       spec: harness({
         tools: [
-          {
-            type: "agentcore_gateway",
-            name: "gw",
-            config: {
-              agentCoreGateway: {
-                gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:gateway/g-1",
-              },
-            },
-          },
           { type: "agentcore_browser", name: "browser" },
           { type: "agentcore_code_interpreter", name: "ci" },
         ],
@@ -415,14 +406,11 @@ describe("mapHarnessToExportPlan tools", () => {
     // branch to render them from — the notes below are the whole output.
     expect(result.context.hasBrowser).toBeUndefined();
     expect(result.context.hasCodeInterpreter).toBeUndefined();
-    expect(result.context.hasGateway).toBeUndefined();
     expect(result.context.remoteMcpTools).toBeUndefined();
     expect(categories(result)).toEqual([
-      GATEWAY_TOOL_NOTE_CATEGORY,
       BROWSER_TOOL_NOTE_CATEGORY,
       CODE_INTERPRETER_TOOL_NOTE_CATEGORY,
     ]);
-    expect(result.notes[0]!.message).toContain("gateway/g-1");
   });
 
   test("includes the harness builtins unless allowedTools filters them out", () => {
@@ -458,6 +446,148 @@ describe("mapHarnessToExportPlan tools", () => {
       },
     ]);
     expect(categories(restricted)).toEqual([ALLOWED_TOOLS_NOTE_CATEGORY]);
+  });
+});
+
+describe("mapHarnessToExportPlan gateway tools", () => {
+  const GATEWAY_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/example-abc123";
+  const PROVIDER_ARN =
+    "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/oauth2credentialprovider/gw-oauth";
+  const MEMORY_CONNECTION = {
+    id: "notes",
+    to: {
+      type: "memory",
+      arn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/notes-AbCdEf1234",
+    },
+  } as const;
+  const gatewayTool = (name: string, outboundAuth?: Record<string, unknown>) => ({
+    type: "agentcore_gateway",
+    name,
+    config: {
+      agentCoreGateway: { gatewayArn: GATEWAY_ARN, ...(outboundAuth && { outboundAuth }) },
+    },
+  });
+  const oauth = {
+    providerArn: PROVIDER_ARN,
+    scopes: ["tools/invoke"],
+    grantType: "CLIENT_CREDENTIALS" as const,
+    customParameters: { audience: "tools" },
+  };
+
+  test.each([
+    ["no outboundAuth", undefined, "AWS_IAM", undefined, { awsIam: {} }],
+    ["awsIam", { awsIam: {} }, "AWS_IAM", undefined, { awsIam: {} }],
+    ["none", { none: {} }, "NONE", undefined, { none: {} }],
+    [
+      "oauth client credentials",
+      { oauth },
+      "OAUTH",
+      {
+        providerName: "gw-oauth",
+        scopes: ["tools/invoke"],
+        customParameters: { audience: "tools" },
+      },
+      { oauth },
+    ],
+  ])(
+    "exports a gateway tool with %s as a client and a runtime connection",
+    (_, outboundAuth, authType, oauthContext, connectionAuth) => {
+      const result = plan({
+        spec: harness({
+          tools: [gatewayTool("my-tools", outboundAuth)],
+          connections: [MEMORY_CONNECTION],
+        }),
+      });
+
+      expect(result.context.gatewayTools).toEqual([
+        {
+          name: "my-tools",
+          pythonName: expect.stringMatching(/^my_tools_[a-f0-9]{10}$/),
+          urlEnvVarName: "GATEWAY_MY_TOOLS_URL",
+          authType,
+          oauth: oauthContext,
+          toolPatterns: undefined,
+        },
+      ]);
+      expect(result.context.gatewayAuthTypes).toEqual([authType]);
+      expect(result.runtime.connections).toEqual([
+        MEMORY_CONNECTION,
+        { id: "my-tools", to: { type: "gateway", arn: GATEWAY_ARN, outboundAuth: connectionAuth } },
+      ]);
+      expect(result.envEntries).toEqual([
+        {
+          key: "GATEWAY_MY_TOOLS_URL",
+          value: "https://example-abc123.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+          comment: expect.stringContaining('gateway tool "my-tools"'),
+        },
+      ]);
+      expect(result.notes).toEqual([]);
+    },
+  );
+
+  test("narrows a gateway to the tools @server/tool selects and drops an unselected one", () => {
+    const result = plan({
+      spec: harness({
+        tools: [gatewayTool("tools"), gatewayTool("other")],
+        allowedTools: ["@tools/search*"],
+      }),
+    });
+
+    expect(result.context.gatewayTools).toEqual([
+      expect.objectContaining({ name: "tools", toolPatterns: ["search*"] }),
+    ]);
+    expect(result.runtime.connections?.map((connection) => connection.id)).toEqual(["tools"]);
+  });
+
+  test("reports a USER_FEDERATION gateway tool instead of exporting it", () => {
+    const result = plan({
+      spec: harness({
+        tools: [gatewayTool("tools", { oauth: { ...oauth, grantType: "USER_FEDERATION" } })],
+      }),
+    });
+
+    expect(result.context.gatewayTools).toBeUndefined();
+    expect(result.runtime.connections).toBeUndefined();
+    expect(result.envEntries).toEqual([]);
+    expect(categories(result)).toEqual([GATEWAY_TOOL_NOTE_CATEGORY]);
+    expect(result.notes[0]!.message).toContain(GATEWAY_ARN);
+  });
+
+  test.each([
+    [
+      "a name that cannot be a connection id",
+      [gatewayTool("1tools")],
+      [],
+      /must start with a letter/,
+    ],
+    [
+      "names that collide once tokenized",
+      [gatewayTool("my-tools"), gatewayTool("my_tools")],
+      [],
+      /"MY_TOOLS"/,
+    ],
+    [
+      "a name that collides with a harness connection",
+      [gatewayTool("notes")],
+      [MEMORY_CONNECTION],
+      /"NOTES"/,
+    ],
+    [
+      "a gatewayArn that is not a gateway ARN",
+      [
+        {
+          type: "agentcore_gateway",
+          name: "tools",
+          config: { agentCoreGateway: { gatewayArn: "example-abc123" } },
+        },
+      ],
+      [],
+      /not a gateway ARN/,
+    ],
+  ])("rejects a gateway tool with %s", (_, tools, connections, message) => {
+    const exportPlan = () => plan({ spec: harness({ tools, connections }) });
+    expect(exportPlan).toThrow(InputValidationError);
+    expect(exportPlan).toThrow(message);
   });
 });
 
