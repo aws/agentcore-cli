@@ -40,6 +40,7 @@ import {
   type CredentialProviderCalls,
   type CredentialProviderRef,
   type CredentialProvisioner,
+  type CredentialRemovalInput,
   type CredentialRemover,
   type DeployedCredentials,
 } from "./cdk/credentials";
@@ -54,6 +55,7 @@ import {
   removeTargetState,
   stackReferenceOf,
   updateTargetState,
+  type DeployedState,
 } from "./cdk/deployedState";
 import {
   bootstrapStackReader,
@@ -110,6 +112,32 @@ function stackExportName(stackName: string, ...parts: string[]): string {
   return [stackName, ...parts]
     .map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, ""))
     .join("-");
+}
+
+function targetsRecordingPaymentProvider(
+  state: DeployedState,
+  target: AwsDeploymentTarget,
+  provider: CredentialProviderRef,
+): string[] {
+  if (provider.authorizerType !== "PaymentCredentialProvider") return [];
+  const physicalName = provider.physicalName ?? provider.name;
+  return Object.entries(state.targets).flatMap(([name, saved]) => {
+    if (name === target.name) return [];
+    const sharesProvider = Object.values(saved.resources?.credentials ?? {}).some((credential) => {
+      if (credential.authorizerType && credential.authorizerType !== "PaymentCredentialProvider") {
+        return false;
+      }
+      const arn = credential.credentialProviderArn;
+      const parts = arn.split(":");
+      return (
+        (parts[2] === "bedrock-agentcore" || parts[2] === "acps") &&
+        parts[3] === target.region &&
+        parts[4] === target.account &&
+        arn.endsWith(`/paymentcredentialprovider/${physicalName}`)
+      );
+    });
+    return sharesProvider ? [name] : [];
+  });
 }
 
 function findDeployedResourceId(
@@ -273,9 +301,8 @@ export class CdkBackend implements ProjectBackend {
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
     // credential has since left the spec.
-    const recorded =
-      (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
-        ?.credentials ?? {};
+    const deployedState = await readDeployedState(this.json, project.rootPath);
+    const recorded = deployedState.targets[target.name]?.resources?.credentials ?? {};
     assertPaymentConnectorCredentials(project, target.name, recorded);
     const orphaned = orphanedCredentials(recorded, project.spec.credentials);
 
@@ -302,7 +329,15 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
+      return yield* this.teardown({
+        project,
+        artifact,
+        input,
+        options,
+        orphaned,
+        recorded,
+        deployedState,
+      });
     }
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
@@ -403,7 +438,7 @@ export class CdkBackend implements ProjectBackend {
 
     // After the stack update, since a resource in it may have been using the provider
     // until this deploy removed the reference.
-    yield* this.removeCredentials(project, {
+    yield* this.removeUnsharedCredentials(project, target, deployedState, {
       credentials,
       region: target.region,
       targetName: target.name,
@@ -437,6 +472,7 @@ export class CdkBackend implements ProjectBackend {
     options,
     orphaned,
     recorded,
+    deployedState,
   }: {
     project: Project;
     artifact: StackArtifact;
@@ -445,6 +481,7 @@ export class CdkBackend implements ProjectBackend {
     /** Providers recorded for this target before the deploy that the spec no longer declares. */
     orphaned: CredentialProviderRef[];
     recorded: DeployedCredentials;
+    deployedState: DeployedState;
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
@@ -475,7 +512,7 @@ export class CdkBackend implements ProjectBackend {
     // After the stack, since a resource in it may still be using the provider. The
     // declared credentials are included because `agentcore remove all` empties the spec
     // before the deploy that gets here, so what it recorded is all that names them.
-    yield* this.removeCredentials(project, {
+    yield* this.removeUnsharedCredentials(project, target, deployedState, {
       credentials: options.credentials,
       region: target.region,
       targetName: target.name,
@@ -488,6 +525,30 @@ export class CdkBackend implements ProjectBackend {
     });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };
+  }
+
+  private async *removeUnsharedCredentials(
+    project: Project,
+    target: AwsDeploymentTarget,
+    deployedState: DeployedState,
+    input: CredentialRemovalInput,
+  ): AsyncGenerator<ProjectEvent, void> {
+    const providers: CredentialProviderRef[] = [];
+    for (const provider of input.providers) {
+      const otherTargets = targetsRecordingPaymentProvider(deployedState, target, provider);
+      if (otherTargets.length === 0) {
+        providers.push(provider);
+        continue;
+      }
+      yield {
+        type: "step",
+        message:
+          `Leaving credential provider '${provider.physicalName ?? provider.name}' in place: ` +
+          `also recorded for target${otherTargets.length === 1 ? "" : "s"} ` +
+          otherTargets.map((name) => `'${name}'`).join(", "),
+      };
+    }
+    yield* this.removeCredentials(project, { ...input, providers });
   }
 
   /**

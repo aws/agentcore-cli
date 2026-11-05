@@ -60,10 +60,10 @@ function previousProviderName(
  * providers keep the physical name in deployed state. New payment providers need
  * a name whose ARN CreatePaymentConnector can accept.
  *
- * Projects that use v0 credential names keep the bare payment credential name
- * when no payment provider is recorded for this target. Existing payment
- * providers use the recorded physical name, so upgrading the CLI does not
- * replace one that agent code may still use.
+ * Raw v0 projects keep their bare credential names. Migrated projects keep
+ * connector-compatible bare names. Existing payment providers use their
+ * recorded physical names, so upgrading the CLI does not replace one that
+ * agent code may still use.
  */
 function providerName(
   project: Project,
@@ -75,7 +75,12 @@ function providerName(
     const existing = recordedPaymentCredential(recorded, credential.name);
     if (existing)
       return paymentProviderNameFromArn(credential.name, existing.credentialProviderArn);
-    if (keepsV0CredentialNames(project)) return credential.name;
+    if (
+      project.legacy ||
+      (keepsV0CredentialNames(project) && CONNECTOR_PAYMENT_NAME_PATTERN.test(credential.name))
+    ) {
+      return credential.name;
+    }
 
     const parts = [project.name, targetName, credential.name];
     const suffix = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 16);
@@ -96,11 +101,23 @@ function recordedPaymentCredential(
   if (existing?.authorizerType && existing.authorizerType !== "PaymentCredentialProvider") {
     return undefined;
   }
+  // Older state omits the kind; its ARN must still identify a payment provider.
+  if (
+    existing?.authorizerType === undefined &&
+    existing &&
+    !paymentProviderNameInArn(existing.credentialProviderArn)
+  ) {
+    return undefined;
+  }
   return existing;
 }
 
+function paymentProviderNameInArn(arn: string): string | undefined {
+  return /\/paymentcredentialprovider\/([^/]+)$/.exec(arn)?.[1];
+}
+
 function paymentProviderNameFromArn(credentialName: string, arn: string): string {
-  const name = /\/paymentcredentialprovider\/([^/]+)$/.exec(arn)?.[1];
+  const name = paymentProviderNameInArn(arn);
   if (!name) {
     throw new ProjectStateError(
       `Credential '${credentialName}' has an invalid recorded payment provider ARN '${arn}' ` +
@@ -241,14 +258,15 @@ export function providerRefFromRecorded(
 /**
  * Deletes the given credentials' providers under their target-scoped names.
  *
- * Every kind is deleted. A provider's name is scoped to this project and target, so
- * nothing outside this target can be using it. A provider that is already gone is
- * not an error, and a provider that cannot be deleted is reported rather than
- * failing the deploy that already changed the stack.
+ * Every kind handed to the remover is deleted. The caller excludes payment
+ * providers still recorded by another target before reaching this function.
+ * A provider that is already gone is not an error, and a provider that cannot
+ * be deleted is reported rather than failing the deploy that already changed
+ * the stack.
  *
  * A v0 project's providers carry the bare credential name, so another project in the
  * account can be using the same API key or OAuth provider; those are never deleted.
- * Payment providers are deleted, as v0's own teardown deleted them.
+ * Unshared payment providers are deleted, as v0's own teardown deleted them.
  */
 export function createCredentialRemover(identity: ProviderDeletes): CredentialRemover {
   return async function* removeCredentials(
@@ -341,32 +359,34 @@ export function createCredentialProvisioner(
       return { credential, provider };
     });
 
+    // Lost target state must not turn an existing payment provider into an
+    // untracked orphan while a newly named provider takes its place.
+    for (const { credential, provider } of named) {
+      if (
+        credential.authorizerType !== "PaymentCredentialProvider" ||
+        recordedPaymentCredential(recorded, credential.name)
+      ) {
+        continue;
+      }
+      const previousName = previousProviderName(project, targetName, credential.name);
+      if (previousName === provider) continue;
+      const previous = await undefinedWhenAbsent(() =>
+        identity.getPaymentCredentialProvider(previousName, options),
+      );
+      if (!previous) continue;
+      throw new ProjectStateError(
+        `Payment credential '${credential.name}' has no provider recorded for target ` +
+          `'${targetName}' in agentcore/.cli/deployed-state.json, but provider ` +
+          `'${previousName}' exists in AWS. Restore the target's deployed-state.json ` +
+          `entry, or delete that provider if unused, then re-deploy.`,
+      );
+    }
+
     // Resolve every credential before writing any: look up existing providers and
     // validate the secret each one needs. A missing secret then fails before the
     // first provider is written, not partway through the list.
     const plans: (NamedCredential & { provision: Provision })[] = [];
     for (const { credential, provider } of named) {
-      // Lost target state must not turn an existing payment provider into an
-      // untracked orphan while a newly named provider takes its place.
-      if (
-        credential.authorizerType === "PaymentCredentialProvider" &&
-        !recordedPaymentCredential(recorded, credential.name)
-      ) {
-        const previousName = previousProviderName(project, targetName, credential.name);
-        if (
-          previousName !== provider &&
-          (await undefinedWhenAbsent(() =>
-            identity.getPaymentCredentialProvider(previousName, options),
-          ))
-        ) {
-          throw new ProjectStateError(
-            `Payment credential '${credential.name}' has no provider recorded for target ` +
-              `'${targetName}' in agentcore/.cli/deployed-state.json, but provider ` +
-              `'${previousName}' exists in AWS. Restore the target's deployed-state.json ` +
-              `entry, or delete that provider if unused, then re-deploy.`,
-          );
-        }
-      }
       plans.push({
         credential,
         provider,

@@ -752,41 +752,43 @@ describe("createCredentialProvisioner", () => {
     expect(subject.contents()[OLD_WALLET_PROVIDER]?.operation).toBeUndefined();
   });
 
-  test("ignores a recorded API key ARN when the credential changed to payment", async () => {
-    const subject = account(
-      {},
-      {},
-      {
-        AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID: "key-1",
-        AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET: "key-secret",
-        AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET: "wallet-secret",
-      },
-    );
-    const input = await project([COINBASE]);
-    input.spec = ProjectSpecSchema.parse({
-      ...input.spec,
-      payments: [
+  for (const authorizerType of ["ApiKeyCredentialProvider", undefined] as const) {
+    test(`ignores an API key ARN (${authorizerType ?? "untyped"}) when changing to payment`, async () => {
+      const subject = account(
+        {},
+        {},
         {
-          name: "MyPayments",
-          connectors: [{ name: "Coinbase", provider: "CoinbaseCDP", credentialName: "wallet" }],
+          AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID: "key-1",
+          AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET: "key-secret",
+          AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET: "wallet-secret",
         },
-      ],
+      );
+      const input = await project([COINBASE]);
+      input.spec = ProjectSpecSchema.parse({
+        ...input.spec,
+        payments: [
+          {
+            name: "MyPayments",
+            connectors: [{ name: "Coinbase", provider: "CoinbaseCDP", credentialName: "wallet" }],
+          },
+        ],
+      });
+      const recorded: DeployedCredentials = {
+        wallet: {
+          ...(authorizerType && { authorizerType }),
+          credentialProviderArn: "arn:apikey:wallet",
+        },
+      };
+
+      expect(() =>
+        assertPaymentConnectorCredentials(input, INPUT.targetName, recorded),
+      ).not.toThrow();
+      const { result } = await run(subject.provision, input, { ...INPUT, recorded });
+
+      expect(Object.keys(subject.contents())).toEqual([WALLET_PROVIDER]);
+      expect(result.wallet?.authorizerType).toBe("PaymentCredentialProvider");
     });
-    const recorded: DeployedCredentials = {
-      wallet: {
-        authorizerType: "ApiKeyCredentialProvider",
-        credentialProviderArn: "arn:apikey:wallet",
-      },
-    };
-
-    expect(() =>
-      assertPaymentConnectorCredentials(input, INPUT.targetName, recorded),
-    ).not.toThrow();
-    const { result } = await run(subject.provision, input, { ...INPUT, recorded });
-
-    expect(Object.keys(subject.contents())).toEqual([WALLET_PROVIDER]);
-    expect(result.wallet?.authorizerType).toBe("PaymentCredentialProvider");
-  });
+  }
 
   test("fails before writing when an old payment provider is not recorded for the target", async () => {
     const oldProvider = { credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER) };
@@ -1209,6 +1211,63 @@ describe("projects migrated from v0", () => {
     expect(prodTarget.result.wallet?.credentialProviderArn).toBe(arn);
     expect(Object.keys(subject.contents())).toEqual(["wallet"]);
     expect(subject.contents().wallet?.operation).toBeUndefined();
+  });
+
+  test("a new underscored payment credential deploys with a connector-compatible name", async () => {
+    const subject = account(
+      {},
+      {},
+      {
+        AGENTCORE_CREDENTIAL_WALLET_US_API_KEY_ID: "key-1",
+        AGENTCORE_CREDENTIAL_WALLET_US_API_KEY_SECRET: "key-secret",
+        AGENTCORE_CREDENTIAL_WALLET_US_WALLET_SECRET: "wallet-secret",
+      },
+    );
+    const input = await migratedProject([{ ...COINBASE, name: "wallet_us" }]);
+    input.spec = ProjectSpecSchema.parse({
+      ...input.spec,
+      payments: [
+        {
+          name: "MyPayments",
+          connectors: [{ name: "Coinbase", provider: "CoinbaseCDP", credentialName: "wallet_us" }],
+        },
+      ],
+    });
+
+    const { result } = await run(subject.provision, input);
+    const [name] = Object.keys(subject.contents());
+
+    expect(name).toMatch(/^example-dev-wallet-us-[a-f0-9]{16}$/);
+    expect(result.wallet_us?.authorizerType).toBe("PaymentCredentialProvider");
+  });
+
+  test("an underscored payment credential keeps its recorded bare provider", async () => {
+    const arn = paymentArn("wallet_us");
+    const subject = account({ wallet_us: { credentialProviderArn: arn } });
+    const input = await migratedProject([{ ...COINBASE, name: "wallet_us" }]);
+
+    const { result } = await run(subject.provision, input, {
+      ...INPUT,
+      recorded: {
+        wallet_us: { authorizerType: "PaymentCredentialProvider", credentialProviderArn: arn },
+      },
+    });
+
+    expect(result.wallet_us?.credentialProviderArn).toBe(arn);
+    expect(Object.keys(subject.contents())).toEqual(["wallet_us"]);
+    expect(subject.contents().wallet_us?.operation).toBeUndefined();
+  });
+
+  test("does not adopt an unrecorded underscored provider", async () => {
+    const arn = paymentArn("wallet_us");
+    const subject = account({ wallet_us: { credentialProviderArn: arn } });
+    const input = await migratedProject([{ ...COINBASE, name: "wallet_us" }]);
+
+    await expect(run(subject.provision, input)).rejects.toThrow(
+      /no provider recorded for target 'dev'.*provider 'wallet_us' exists in AWS/s,
+    );
+    expect(Object.keys(subject.contents())).toEqual(["wallet_us"]);
+    expect(subject.contents().wallet_us?.operation).toBeUndefined();
   });
 
   test("removes a migrated payment provider by its bare name without recorded state", async () => {

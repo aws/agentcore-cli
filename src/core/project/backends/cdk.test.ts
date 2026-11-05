@@ -1004,6 +1004,48 @@ describe("CdkBackend.deploy", () => {
     ]);
   });
 
+  test("teardown leaves a payment provider recorded by another target", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({ ...input.spec, migratedFrom: "v1" });
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    const wallet = {
+      credentialProviderArn:
+        "arn:aws:acps:us-east-1:111122223333:" +
+        "token-vault/default/paymentcredentialprovider/wallet",
+      authorizerType: "PaymentCredentialProvider",
+    };
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: { stackArn: "arn:stack:default", resources: { credentials: { wallet } } },
+          prod: { stackArn: "arn:stack:prod", resources: { credentials: { wallet } } },
+        },
+      }),
+    );
+    const handed: CredentialRemovalInput[] = [];
+    const subject = harness({
+      removeCredentials: async function* (_project, removalInput) {
+        handed.push(removalInput);
+        yield { type: "step", message: "checked credential removals" };
+      },
+    });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(handed[0]?.providers).toEqual([]);
+    expect(stepMessages(deployed.events)).toContain(
+      "Leaving credential provider 'wallet' in place: also recorded for target 'prod'",
+    );
+    const state = JSON.parse(await Bun.file(statePath).text());
+    expect(state.targets.default).toBeUndefined();
+    expect(state.targets.prod.resources.credentials.wallet).toEqual(wallet);
+  });
+
   test("removes a recorded provider whose credential left the spec, after the stack update", async () => {
     const input = await project();
     input.spec = ProjectSpecSchema.parse({
@@ -1071,6 +1113,93 @@ describe("CdkBackend.deploy", () => {
       messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
     ).toBeLessThan(messages.indexOf("removing credential provider 'example_default_wallet'"));
     expect(deployed.result).toEqual({ outputs: {} });
+  });
+
+  test("deploy leaves a dropped payment provider used by another target", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({ ...input.spec, migratedFrom: "v1" });
+    await writeAssembly(input, [TARGET.name]);
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    const wallet = {
+      credentialProviderArn:
+        "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
+        "token-vault/default/paymentcredentialprovider/wallet",
+      authorizerType: "PaymentCredentialProvider",
+    };
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: { resources: { credentials: { wallet } } },
+          prod: { resources: { credentials: { wallet } } },
+        },
+      }),
+    );
+    const handed: CredentialRemovalInput[] = [];
+    const subject = harness({
+      removeCredentials: async function* (_project, removalInput) {
+        handed.push(removalInput);
+        yield { type: "step", message: "checked credential removals" };
+      },
+    });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(handed[0]?.providers).toEqual([]);
+    expect(stepMessages(deployed.events)).toContain(
+      "Leaving credential provider 'wallet' in place: also recorded for target 'prod'",
+    );
+    const state = JSON.parse(await Bun.file(statePath).text());
+    expect(state.targets.default.resources.credentials).toEqual({});
+    expect(state.targets.prod.resources.credentials.wallet).toEqual(wallet);
+  });
+
+  test("deploy removes a provider when the other target's matching name is in another account", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({ ...input.spec, migratedFrom: "v1" });
+    await writeAssembly(input, [TARGET.name]);
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    const wallet = {
+      credentialProviderArn:
+        "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
+        "token-vault/default/paymentcredentialprovider/wallet",
+      authorizerType: "PaymentCredentialProvider",
+    };
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: { resources: { credentials: { wallet } } },
+          prod: {
+            resources: {
+              credentials: {
+                wallet: {
+                  ...wallet,
+                  credentialProviderArn:
+                    "arn:aws:bedrock-agentcore:us-west-2:444455556666:" +
+                    "token-vault/default/paymentcredentialprovider/wallet",
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const handed: CredentialRemovalInput[] = [];
+    const subject = harness({
+      removeCredentials: async function* (_project, removalInput) {
+        handed.push(removalInput);
+        yield { type: "step", message: "checked credential removals" };
+      },
+    });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(handed[0]?.providers).toEqual([
+      { name: "wallet", authorizerType: "PaymentCredentialProvider", physicalName: "wallet" },
+    ]);
   });
 
   test("says to add a resource when there is no stack to remove either", async () => {
