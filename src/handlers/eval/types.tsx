@@ -563,8 +563,8 @@ export interface CoreEvalClient {
     filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse>;
 
-  // createDataset seeds a new dataset's DRAFT from `source`, which is required.
-  // `schemaType` governs the structure of every example and is immutable after creation.
+  // createDataset seeds a new dataset's DRAFT from `source`, or creates it empty when
+  // `source` is omitted.
   // The response reports status CREATING — ingestion is asynchronous, and the dataset is not
   // writable until GetDataset reports ACTIVE.
   createDataset(input: CreateDatasetInput, options: CoreOptions): Promise<CreateDatasetResponse>;
