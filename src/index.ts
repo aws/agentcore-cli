@@ -20,6 +20,7 @@ import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
+import { shouldRecordCommandFailure } from "./telemetry/commandOutcome";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
 import { NpmCliVersionManager, printUpdateNotice } from "./cliVersionManager";
@@ -116,7 +117,7 @@ process.exit(
       await rootHandler.route(argv, context);
     } catch (e) {
       const error = AgentCoreCLIError.fromError(e);
-      if (error.exitCode !== 0) {
+      if (shouldRecordCommandFailure(error)) {
         rootLogger.child({ error: error.json() }).error();
         commandRunMetricEvent.setAttributes({
           exit_reason: "failure",

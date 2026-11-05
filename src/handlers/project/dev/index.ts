@@ -13,6 +13,7 @@ import {
   ERROR_SOURCE,
   InputValidationError,
   DeserializationError,
+  LegacyDeployWarningExit,
   NotImplementedError,
   ResourceNotFoundError,
   SilentCLIError,
@@ -257,11 +258,16 @@ async function runHarnessDev({
 }): Promise<void> {
   const { harnesses, deploymentTarget } = input;
   if (!input.skipDeploy) {
-    await createDeployProjectHandler(config).handle(
-      ctx,
-      { target: deploymentTarget, yes: input.yes },
-      {},
-    );
+    try {
+      await createDeployProjectHandler(config).handle(
+        ctx,
+        { target: deploymentTarget, yes: input.yes },
+        {},
+      );
+    } catch (error) {
+      // v0 deploy completed; its post-deploy warnings must not prevent harness dev from starting.
+      if (!(error instanceof LegacyDeployWarningExit)) throw error;
+    }
   }
   if (input.mode === "headless" && (input.skipDeploy || ctx.require(JsonKey))) {
     config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);

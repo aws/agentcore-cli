@@ -6,6 +6,7 @@ import { PACKAGE_VERSION } from "../constants";
 import { AgentCoreCLIError } from "../errors/errors";
 import { CommandRunMetricEventKey, type Context } from "../router";
 import { DefaultTelemetryClient } from "../telemetry";
+import { shouldRecordCommandFailure } from "../telemetry/commandOutcome";
 import { FileSystemSink } from "../telemetry/fileSystemSink";
 import type { AttributesOf, MetricName, TelemetryClient } from "../telemetry/types";
 import { TestGlobalConfigAccessor } from "./globalConfig";
@@ -77,7 +78,7 @@ export async function withTelemetry<T>(
     return await command(ctx.withValue(CommandRunMetricEventKey, event));
   } catch (cause) {
     const error = AgentCoreCLIError.fromError(cause);
-    if (error.exitCode !== 0) {
+    if (shouldRecordCommandFailure(error)) {
       event.setAttributes({
         exit_reason: "failure",
         error_name: error.name,

@@ -24,6 +24,7 @@ import { JsonRendererKey } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import type { DeployProjectInput, Project, ProjectManager } from "../types";
 import type { V0DeployInput } from "../../../core/project/legacy/deploy";
+import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import {
   BMA_POLICY_FILE,
@@ -125,6 +126,7 @@ type HarnessOptions = {
   loadEnvironment?: DevProjectHandlerConfig["loadDevEnvironment"];
   /** Deploy through the real project manager instead of recording deployments. */
   realDeploy?: boolean;
+  runV0Deploy?: V0DeployRunner;
   /**
    * Replaces the build-settings sync. By default it passes the project through,
    * since most projects here are in-memory; `"real"` uses the project manager's.
@@ -209,7 +211,7 @@ function harness(options: HarnessOptions = {}) {
     projectManager,
     runV0Deploy: async (input) => {
       legacyDeployments.push(input);
-      return 0;
+      return options.runV0Deploy ? options.runV0Deploy(input) : 0;
     },
     waitReady: async () => {
       await Bun.sleep(5);
@@ -875,6 +877,25 @@ describe("project dev harnesses", () => {
     expect(subject.io.stderr()).toBe(
       "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
     );
+  });
+
+  test("v0 post-deploy warnings still allow harness Inspector to start", async () => {
+    const configuredProject = harnessProject();
+    configuredProject.legacy = { format: "v0", v0Spec: {} as never };
+    const subject = harness({ project: configuredProject, runV0Deploy: async () => 2 });
+    const pending = subject.route(["--mode", "browser", "--target", "staging"]);
+    pending.catch(() => undefined);
+    await Bun.sleep(10);
+
+    try {
+      expect(subject.legacyDeployments).toHaveLength(1);
+      expect(subject.ui.starts).toEqual([{ port: 8081 }]);
+      expect(subject.io.stderr()).toContain("Agent Inspector running at http://127.0.0.1:8081");
+    } finally {
+      process.emit("SIGTERM", "SIGTERM");
+      await expect(pending).rejects.toBeInstanceOf(UserCancellationError);
+    }
+    expect(subject.ui.closed).toBe(1);
   });
 
   test("harness dev's deploy refuses a target a migration hasn't finished", async () => {
