@@ -945,6 +945,78 @@ describe("CdkBackend.deploy", () => {
     expect(deployed.result).toEqual({ outputs: {} });
   });
 
+  test("removes a payment provider recorded under its underscored name once its replacement deployed", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      credentials: [
+        { authorizerType: "PaymentCredentialProvider", name: "wallet", provider: "CoinbaseCDP" },
+      ],
+    });
+    await writeAssembly(input, [TARGET.name]);
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    const arn = (name: string) =>
+      `arn:aws:bedrock-agentcore:${TARGET.region}:${TARGET.account}:token-vault/default/paymentcredentialprovider/${name}`;
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: {
+            stackArn: "arn:stack:default",
+            resources: {
+              credentials: {
+                wallet: {
+                  credentialProviderArn: arn("example_default_wallet"),
+                  authorizerType: "PaymentCredentialProvider",
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      yield { type: "step", message: "preparing credential provider 'example-default-wallet'" };
+      return {
+        wallet: {
+          credentialProviderArn: arn("example-default-wallet"),
+          authorizerType: "PaymentCredentialProvider",
+        },
+      };
+    };
+    const handed: CredentialRemovalInput[] = [];
+    const removeCredentials: CredentialRemover = async function* (_project, removalInput) {
+      handed.push(removalInput);
+      yield { type: "step", message: "removing credential provider 'example_default_wallet'" };
+    };
+    const subject = harness({ provisionCredentials, removeCredentials });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    // The credential is still declared, but the stack now uses the hyphenated provider,
+    // and no connector could ever reference the underscored one.
+    expect(handed).toEqual([
+      {
+        credentials: subject.credentials,
+        region: TARGET.region,
+        targetName: TARGET.name,
+        providers: [
+          {
+            name: "wallet",
+            authorizerType: "PaymentCredentialProvider",
+            legacyProvider: "example_default_wallet",
+          },
+        ],
+      },
+    ]);
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
+    ).toBeLessThan(messages.indexOf("removing credential provider 'example_default_wallet'"));
+  });
+
   test("says to add a resource when there is no stack to remove either", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });

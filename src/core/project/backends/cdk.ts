@@ -273,7 +273,7 @@ export class CdkBackend implements ProjectBackend {
     const recorded =
       (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
         ?.credentials ?? {};
-    const orphaned = orphanedCredentials(recorded, project.spec.credentials);
+    const orphaned = orphanedCredentials(project, target.name, recorded);
 
     // Credential providers aren't stack resources; the synthesized app reads their
     // ARNs from deployed-state.json, so they must exist and be recorded before synth.
