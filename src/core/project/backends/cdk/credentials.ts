@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import {
   ResourceNotFoundException,
@@ -45,20 +46,84 @@ function keepsV0CredentialNames(project: Project): boolean {
   return project.legacy !== undefined || project.spec.migratedFrom === "v1";
 }
 
-/**
- * The Identity name a credential's provider is created under. Scoped to the project
- * and target so two targets in one account and region never share a provider.
- *
- * A v0 project, and one migrated from v0, keeps the bare credential name v0 created
- * its providers under: the agent code it deployed looks them up by that name, and a
- * scoped name would create a second set of providers beside the ones still in use.
- */
-function providerName(project: Project, targetName: string, credentialName: string): string {
+function previousProviderName(
+  project: Project,
+  targetName: string,
+  credentialName: string,
+): string {
   if (keepsV0CredentialNames(project)) return credentialName;
   return `${project.name}_${targetName}_${credentialName}`;
 }
 
+/**
+ * The Identity name a credential's provider is created under. Existing payment
+ * providers keep the physical name in deployed state. New payment providers need
+ * a name whose ARN CreatePaymentConnector can accept.
+ *
+ * A raw v0 project without recorded payment state keeps v0's bare credential
+ * name. Other existing payment providers use the recorded physical name, so
+ * upgrading the CLI does not replace one that agent code may still use.
+ */
+function providerName(
+  project: Project,
+  targetName: string,
+  credential: CredentialProviderRef,
+  recorded: DeployedCredentials,
+): string {
+  if (credential.authorizerType === "PaymentCredentialProvider") {
+    const existing = recorded[credential.name];
+    if (existing)
+      return paymentProviderNameFromArn(credential.name, existing.credentialProviderArn);
+    if (project.legacy) return credential.name;
+
+    const parts = [project.name, targetName, credential.name];
+    const suffix = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 16);
+    const prefix = parts.join("-").replaceAll("_", "-");
+    return `${prefix.slice(0, PROVIDER_NAME_MAX_LENGTH - suffix.length - 1)}-${suffix}`;
+  }
+  return previousProviderName(project, targetName, credential.name);
+}
+
 const PROVIDER_NAME_MAX_LENGTH = 128;
+const CONNECTOR_PAYMENT_NAME_PATTERN = /^[a-zA-Z0-9.-]+$/;
+
+function paymentProviderNameFromArn(credentialName: string, arn: string): string {
+  const name = /\/paymentcredentialprovider\/([^/]+)$/.exec(arn)?.[1];
+  if (!name) {
+    throw new ProjectStateError(
+      `Credential '${credentialName}' has an invalid recorded payment provider ARN '${arn}' ` +
+        "in agentcore/.cli/deployed-state.json.",
+    );
+  }
+  return name;
+}
+
+/** Checks recorded ARNs before deploy can write any provider or CloudFormation resource. */
+export function assertPaymentConnectorCredentials(
+  project: Project,
+  targetName: string,
+  recorded: DeployedCredentials,
+): void {
+  for (const manager of project.spec.payments ?? []) {
+    for (const connector of manager.connectors) {
+      if (!connector.credentialName) continue;
+      const existing = recorded[connector.credentialName];
+      if (!existing) continue;
+      const name = paymentProviderNameFromArn(
+        connector.credentialName,
+        existing.credentialProviderArn,
+      );
+      if (CONNECTOR_PAYMENT_NAME_PATTERN.test(name)) continue;
+      throw new ProjectStateError(
+        `Payment connector '${connector.name}' in manager '${manager.name}' cannot use ` +
+          `credential '${connector.credentialName}' on target '${targetName}': its recorded ` +
+          `provider ARN '${existing.credentialProviderArn}' has a provider name that ` +
+          `CreatePaymentConnector rejects. Create a payment credential under a different ` +
+          `name, point the connector to it, then deploy. The existing provider is unchanged.`,
+      );
+    }
+  }
+}
 
 const DELETE_COMMANDS: Record<CredentialType, string> = {
   ApiKeyCredentialProvider: "delete-api-key-credential-provider",
@@ -101,6 +166,8 @@ export type CredentialProvisionInput = {
   /** Credential provider shared with the rest of the deployment preflight. */
   credentials: CdkCredentialProvider;
   targetName: string;
+  /** Existing target state, used to preserve deployed payment provider names. */
+  recorded?: DeployedCredentials;
 };
 
 export type CredentialProvisioner = (
@@ -109,7 +176,9 @@ export type CredentialProvisioner = (
 ) => AsyncGenerator<ProjectEvent, DeployedCredentials>;
 
 /** A credential's spec name and provider kind, enough to name and delete its provider. */
-export type CredentialProviderRef = Pick<Credential, "name" | "authorizerType">;
+export type CredentialProviderRef = Pick<Credential, "name" | "authorizerType"> & {
+  physicalName?: string;
+};
 
 export type CredentialRemovalInput = CredentialProvisionInput & {
   /** The credentials whose providers to delete. The caller decides the set. */
@@ -136,8 +205,25 @@ export function orphanedCredentials(
 ): CredentialProviderRef[] {
   const names = new Set(declared.map(({ name }) => name));
   return Object.entries(recorded).flatMap(([name, { authorizerType }]) =>
-    authorizerType && !names.has(name) ? [{ name, authorizerType }] : [],
+    authorizerType && !names.has(name)
+      ? [providerRefFromRecorded({ name, authorizerType }, recorded)]
+      : [],
   );
+}
+
+/** Carries a payment provider's recorded physical name into an explicit removal. */
+export function providerRefFromRecorded(
+  credential: CredentialProviderRef,
+  recorded: DeployedCredentials,
+): CredentialProviderRef {
+  const existing = recorded[credential.name];
+  return existing && credential.authorizerType === "PaymentCredentialProvider"
+    ? {
+        name: credential.name,
+        authorizerType: credential.authorizerType,
+        physicalName: paymentProviderNameFromArn(credential.name, existing.credentialProviderArn),
+      }
+    : { name: credential.name, authorizerType: credential.authorizerType };
 }
 
 /**
@@ -158,8 +244,9 @@ export function createCredentialRemover(identity: ProviderDeletes): CredentialRe
     { region, credentials, targetName, providers },
   ) {
     const options: CoreOptions = { region, credentials };
-    for (const { name, authorizerType } of providers) {
-      const provider = providerName(project, targetName, name);
+    for (const { name, authorizerType, physicalName } of providers) {
+      const provider =
+        physicalName ?? providerName(project, targetName, { name, authorizerType }, {});
       if (keepsV0CredentialNames(project) && authorizerType !== "PaymentCredentialProvider") {
         yield {
           type: "step",
@@ -200,7 +287,10 @@ export function createCredentialProvisioner(
   identity: CredentialProviderCalls,
   processEnv: Record<string, string | undefined> = process.env,
 ): CredentialProvisioner {
-  return async function* provisionCredentials(project, { region, credentials, targetName }) {
+  return async function* provisionCredentials(
+    project,
+    { region, credentials, targetName, recorded = {} },
+  ) {
     const declared = project.spec.credentials;
     if (declared.length === 0) return {};
 
@@ -227,7 +317,7 @@ export function createCredentialProvisioner(
     // Every name is composed and checked before the first lookup, so one that is
     // too long fails the deploy before it touches Identity.
     const named: NamedCredential[] = declared.map((credential) => {
-      const provider = providerName(project, targetName, credential.name);
+      const provider = providerName(project, targetName, credential, recorded);
       if (provider.length > PROVIDER_NAME_MAX_LENGTH) {
         throw new ProjectStateError(
           `Credential '${credential.name}' would create a credential provider named ` +
@@ -244,6 +334,24 @@ export function createCredentialProvisioner(
     // first provider is written, not partway through the list.
     const plans: (NamedCredential & { provision: Provision })[] = [];
     for (const { credential, provider } of named) {
+      // Lost target state must not turn an existing payment provider into an
+      // untracked orphan while a newly named provider takes its place.
+      if (credential.authorizerType === "PaymentCredentialProvider" && !recorded[credential.name]) {
+        const previousName = previousProviderName(project, targetName, credential.name);
+        if (
+          previousName !== provider &&
+          (await undefinedWhenAbsent(() =>
+            identity.getPaymentCredentialProvider(previousName, options),
+          ))
+        ) {
+          throw new ProjectStateError(
+            `Payment credential '${credential.name}' has no provider recorded for target ` +
+              `'${targetName}' in agentcore/.cli/deployed-state.json, but provider ` +
+              `'${previousName}' exists in AWS. Restore the target's deployed-state.json ` +
+              `entry, or delete that provider if unused, then re-deploy.`,
+          );
+        }
+      }
       plans.push({
         credential,
         provider,

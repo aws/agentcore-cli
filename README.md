@@ -98,6 +98,13 @@ up from the current directory.
 Use `--mode browser` for Agent Inspector, `--skip-deploy` to reuse deployed harnesses,
 and `--agent <name>` to choose an agent in mixed projects.
 
+New payment credentials receive provider names that payment connectors can reference.
+An existing payment credential keeps the provider ARN recorded for its deployment
+target. If that ARN is incompatible with a manual connector, deploy stops before
+provisioning anything. Add a payment credential under a different name and point
+the connector to it; the old provider remains until you remove its credential
+from the project and deploy each affected target.
+
 ## Commands
 
 | Command                                                          | Purpose                                                                                        |
