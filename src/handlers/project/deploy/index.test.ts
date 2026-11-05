@@ -385,9 +385,15 @@ describe("project deploy handler", () => {
       exit_reason: "success",
       legacy_deploy_exit_code: 2,
     });
-    expect(
-      JSON.parse((await readFile(subject.telemetryFilePath, "utf8")).trim()).attrs,
-    ).not.toHaveProperty("error_name");
+    const events = (await readFile(subject.telemetryFilePath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const warningRun = events.find(
+      (event) =>
+        event.metricName === "cli.command_run" && event.attrs.legacy_deploy_exit_code === 2,
+    );
+    expect(warningRun?.attrs).not.toHaveProperty("error_name");
     expect(subject.calls).toEqual([]);
   });
 
