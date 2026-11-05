@@ -22,7 +22,7 @@ invoke agents from your terminal.
 
 ## Installation
 
-You need Node.js 20.12 or later and AWS credentials configured as for the AWS CLI. Python templates
+You need Node.js 22 or later and AWS credentials configured as for the AWS CLI. Python templates
 also need [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash

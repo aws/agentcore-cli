@@ -36,7 +36,7 @@ Before finishing a change run `bun test`, `bun run typecheck`, `bun run lint:che
 ## Critical gotchas
 
 - **No `Bun` global in `src/`.** oxlint's `no-restricted-globals` bans it because the npm bundle
-  runs on Node (`engines.node >= 20.12`). Use `node:*` APIs in `src/`. `Bun.*` is allowed only in
+  runs on Node (`engines.node >= 22`). Use `node:*` APIs in `src/`. `Bun.*` is allowed only in
   `scripts/**`, `src/testing/**`, `**/*.test.*`, and `**/*-test-support.ts`. Generic Bun advice
   (Bun.serve, Bun.file, bun:sqlite, Bun.$) does **not** apply to shipped code.
 - **Two test runners.** Unit tests use `bun test` (`import { test, expect, describe } from "bun:test"`).

@@ -45,6 +45,10 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      # The stdin regression test spawns Node and imports Ink, which requires Node 22 or newer.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
       - run: bun install --frozen-lockfile
 
       # Every static check reports even when an earlier one fails. Build and tests only run when all pass.
@@ -90,6 +94,9 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun pm pack --ignore-scripts
