@@ -752,6 +752,42 @@ describe("createCredentialProvisioner", () => {
     expect(subject.contents()[OLD_WALLET_PROVIDER]?.operation).toBeUndefined();
   });
 
+  test("ignores a recorded API key ARN when the credential changed to payment", async () => {
+    const subject = account(
+      {},
+      {},
+      {
+        AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID: "key-1",
+        AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET: "key-secret",
+        AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET: "wallet-secret",
+      },
+    );
+    const input = await project([COINBASE]);
+    input.spec = ProjectSpecSchema.parse({
+      ...input.spec,
+      payments: [
+        {
+          name: "MyPayments",
+          connectors: [{ name: "Coinbase", provider: "CoinbaseCDP", credentialName: "wallet" }],
+        },
+      ],
+    });
+    const recorded: DeployedCredentials = {
+      wallet: {
+        authorizerType: "ApiKeyCredentialProvider",
+        credentialProviderArn: "arn:apikey:wallet",
+      },
+    };
+
+    expect(() =>
+      assertPaymentConnectorCredentials(input, INPUT.targetName, recorded),
+    ).not.toThrow();
+    const { result } = await run(subject.provision, input, { ...INPUT, recorded });
+
+    expect(Object.keys(subject.contents())).toEqual([WALLET_PROVIDER]);
+    expect(result.wallet?.authorizerType).toBe("PaymentCredentialProvider");
+  });
+
   test("fails before writing when an old payment provider is not recorded for the target", async () => {
     const oldProvider = { credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER) };
     const subject = account({ [OLD_WALLET_PROVIDER]: oldProvider });
@@ -1153,6 +1189,40 @@ describe("projects migrated from v0", () => {
     expect(Object.keys(subject.contents())).toEqual(["openai-key"]);
     expect(subject.contents()["openai-key"]?.operation).toBe("updated");
     expect(result["openai-key"]?.credentialProviderArn).toBe("arn:apikey:openai-key");
+  });
+
+  test("a new target reuses the bare payment provider recorded by another target", async () => {
+    const arn = paymentArn("wallet");
+    const subject = account({ wallet: { credentialProviderArn: arn } });
+    const input = await migratedProject([COINBASE]);
+
+    const defaultTarget = await run(subject.provision, input, {
+      ...INPUT,
+      targetName: "default",
+      recorded: {
+        wallet: { authorizerType: "PaymentCredentialProvider", credentialProviderArn: arn },
+      },
+    });
+    const prodTarget = await run(subject.provision, input, { ...INPUT, targetName: "prod" });
+
+    expect(defaultTarget.result.wallet?.credentialProviderArn).toBe(arn);
+    expect(prodTarget.result.wallet?.credentialProviderArn).toBe(arn);
+    expect(Object.keys(subject.contents())).toEqual(["wallet"]);
+    expect(subject.contents().wallet?.operation).toBeUndefined();
+  });
+
+  test("removes a migrated payment provider by its bare name without recorded state", async () => {
+    const subject = account({ wallet: { credentialProviderArn: paymentArn("wallet") } });
+
+    await collect(
+      createCredentialRemover(subject.client)(await migratedProject([]), {
+        ...INPUT,
+        providers: [COINBASE],
+      }),
+    );
+
+    expect(subject.deleted).toEqual([{ kind: "payment", name: "wallet" }]);
+    expect(subject.contents()).toEqual({});
   });
 
   test("never delete API key or OAuth providers, which v0 projects may share", async () => {

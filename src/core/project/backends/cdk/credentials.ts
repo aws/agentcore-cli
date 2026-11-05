@@ -60,9 +60,10 @@ function previousProviderName(
  * providers keep the physical name in deployed state. New payment providers need
  * a name whose ARN CreatePaymentConnector can accept.
  *
- * A raw v0 project without recorded payment state keeps v0's bare credential
- * name. Other existing payment providers use the recorded physical name, so
- * upgrading the CLI does not replace one that agent code may still use.
+ * Projects that use v0 credential names keep the bare payment credential name
+ * when no payment provider is recorded for this target. Existing payment
+ * providers use the recorded physical name, so upgrading the CLI does not
+ * replace one that agent code may still use.
  */
 function providerName(
   project: Project,
@@ -71,10 +72,10 @@ function providerName(
   recorded: DeployedCredentials,
 ): string {
   if (credential.authorizerType === "PaymentCredentialProvider") {
-    const existing = recorded[credential.name];
+    const existing = recordedPaymentCredential(recorded, credential.name);
     if (existing)
       return paymentProviderNameFromArn(credential.name, existing.credentialProviderArn);
-    if (project.legacy) return credential.name;
+    if (keepsV0CredentialNames(project)) return credential.name;
 
     const parts = [project.name, targetName, credential.name];
     const suffix = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 16);
@@ -86,6 +87,17 @@ function providerName(
 
 const PROVIDER_NAME_MAX_LENGTH = 128;
 const CONNECTOR_PAYMENT_NAME_PATTERN = /^[a-zA-Z0-9.-]+$/;
+
+function recordedPaymentCredential(
+  recorded: DeployedCredentials,
+  credentialName: string,
+): DeployedCredential | undefined {
+  const existing = recorded[credentialName];
+  if (existing?.authorizerType && existing.authorizerType !== "PaymentCredentialProvider") {
+    return undefined;
+  }
+  return existing;
+}
 
 function paymentProviderNameFromArn(credentialName: string, arn: string): string {
   const name = /\/paymentcredentialprovider\/([^/]+)$/.exec(arn)?.[1];
@@ -107,7 +119,7 @@ export function assertPaymentConnectorCredentials(
   for (const manager of project.spec.payments ?? []) {
     for (const connector of manager.connectors) {
       if (!connector.credentialName) continue;
-      const existing = recorded[connector.credentialName];
+      const existing = recordedPaymentCredential(recorded, connector.credentialName);
       if (!existing) continue;
       const name = paymentProviderNameFromArn(
         connector.credentialName,
@@ -216,7 +228,7 @@ export function providerRefFromRecorded(
   credential: CredentialProviderRef,
   recorded: DeployedCredentials,
 ): CredentialProviderRef {
-  const existing = recorded[credential.name];
+  const existing = recordedPaymentCredential(recorded, credential.name);
   return existing && credential.authorizerType === "PaymentCredentialProvider"
     ? {
         name: credential.name,
@@ -336,7 +348,10 @@ export function createCredentialProvisioner(
     for (const { credential, provider } of named) {
       // Lost target state must not turn an existing payment provider into an
       // untracked orphan while a newly named provider takes its place.
-      if (credential.authorizerType === "PaymentCredentialProvider" && !recorded[credential.name]) {
+      if (
+        credential.authorizerType === "PaymentCredentialProvider" &&
+        !recordedPaymentCredential(recorded, credential.name)
+      ) {
         const previousName = previousProviderName(project, targetName, credential.name);
         if (
           previousName !== provider &&
