@@ -50,6 +50,19 @@ agentcore deploy
 agentcore invoke --harness MyAssistant --prompt "Hey, what can you do for me?"
 ```
 
+To invoke a CUSTOM_JWT Harness, supply AWS credentials for the Harness lookup and pipe a
+bearer token for the invocation:
+
+```bash
+printf '%s' "$JWT" | agentcore invoke \
+  --harness MyAssistant-AbCdEf1234 \
+  --region us-east-1 --bearer-token - --prompt "Hello"
+```
+
+The same flags work with `agentcore harness invoke --id <harness-id>`. You can also select a
+Harness by ARN with `agentcore invoke --harness <harness-arn>`, but the CLI still looks up
+its configuration before invoking it. `--bearer-token file://<path>` reads a token from a file.
+
 To start from code you own instead, pick a template (`agentcore create --help` lists them):
 
 ```bash
