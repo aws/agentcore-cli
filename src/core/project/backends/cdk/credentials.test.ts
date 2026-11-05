@@ -752,6 +752,26 @@ describe("createCredentialProvisioner", () => {
     expect(subject.contents()[OLD_WALLET_PROVIDER]?.operation).toBeUndefined();
   });
 
+  test("fails before writing when an old payment provider is not recorded for the target", async () => {
+    const oldProvider = { credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER) };
+    const subject = account({ [OLD_WALLET_PROVIDER]: oldProvider });
+    const input = await project(
+      [API_KEY, COINBASE],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    await expect(run(subject.provision, input)).rejects.toThrow(
+      `Payment credential 'wallet' has no provider recorded for target 'dev' in ` +
+        `agentcore/.cli/deployed-state.json, but provider '${OLD_WALLET_PROVIDER}' exists in AWS. ` +
+        `Restore the target's deployed-state.json entry, or delete that provider if unused, ` +
+        `then re-deploy.`,
+    );
+    expect(subject.contents()).toEqual({ [OLD_WALLET_PROVIDER]: oldProvider });
+  });
+
   test("keeps normalized payment names distinct after the display prefix is truncated", async () => {
     const names = ["w".repeat(127) + "x", "w".repeat(127) + "y"];
     const processEnv = Object.fromEntries(

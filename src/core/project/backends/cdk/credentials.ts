@@ -46,6 +46,15 @@ function keepsV0CredentialNames(project: Project): boolean {
   return project.legacy !== undefined || project.spec.migratedFrom === "v1";
 }
 
+function previousProviderName(
+  project: Project,
+  targetName: string,
+  credentialName: string,
+): string {
+  if (keepsV0CredentialNames(project)) return credentialName;
+  return `${project.name}_${targetName}_${credentialName}`;
+}
+
 /**
  * The Identity name a credential's provider is created under. Existing payment
  * providers keep the physical name in deployed state. New payment providers need
@@ -72,8 +81,7 @@ function providerName(
     const prefix = parts.join("-").replaceAll("_", "-");
     return `${prefix.slice(0, PROVIDER_NAME_MAX_LENGTH - suffix.length - 1)}-${suffix}`;
   }
-  if (keepsV0CredentialNames(project)) return credential.name;
-  return `${project.name}_${targetName}_${credential.name}`;
+  return previousProviderName(project, targetName, credential.name);
 }
 
 const PROVIDER_NAME_MAX_LENGTH = 128;
@@ -326,6 +334,24 @@ export function createCredentialProvisioner(
     // first provider is written, not partway through the list.
     const plans: (NamedCredential & { provision: Provision })[] = [];
     for (const { credential, provider } of named) {
+      // Lost target state must not turn an existing payment provider into an
+      // untracked orphan while a newly named provider takes its place.
+      if (credential.authorizerType === "PaymentCredentialProvider" && !recorded[credential.name]) {
+        const previousName = previousProviderName(project, targetName, credential.name);
+        if (
+          previousName !== provider &&
+          (await undefinedWhenAbsent(() =>
+            identity.getPaymentCredentialProvider(previousName, options),
+          ))
+        ) {
+          throw new ProjectStateError(
+            `Payment credential '${credential.name}' has no provider recorded for target ` +
+              `'${targetName}' in agentcore/.cli/deployed-state.json, but provider ` +
+              `'${previousName}' exists in AWS. Restore the target's deployed-state.json ` +
+              `entry, or delete that provider if unused, then re-deploy.`,
+          );
+        }
+      }
       plans.push({
         credential,
         provider,
