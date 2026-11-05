@@ -37,6 +37,7 @@
     "lint:check": "oxlint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test:e2e:generated-artifact-security": "SKIP_E2E_AWS_CLEANUP=1 vitest run e2eTest/project/generated-artifact-security.test.ts --config vitest.e2e.config.ts",
     "secrets:check": "secretlint '**/*'",
     "prepublishOnly": "bun run build",
     "prepare": "husky || true"
