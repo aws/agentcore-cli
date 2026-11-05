@@ -114,6 +114,9 @@
   },
   "overrides": {
     "@opentelemetry/core": "^2.10.0",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    },
     "@aws-cdk/toolkit-lib": {
       "yaml": "^1"
     },
