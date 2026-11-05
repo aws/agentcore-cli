@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { UserCancellationError } from "../../../errors/errors";
+import {
+  LegacyDeployError,
+  LegacyDeployWarningExit,
+  UserCancellationError,
+} from "../../../errors/errors";
 import { createRootHandler } from "../../index";
 import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
 import { ValueContext } from "../../../router";
@@ -344,7 +348,46 @@ describe("project deploy handler", () => {
     );
     const subject = await testDeployCommand({ outputs: {} }, [], { runV0Deploy: async () => 7 });
 
-    await expect(subject.run(["--yes"])).rejects.toMatchObject({ exitCode: 7 });
+    const error = await subject.run(["--yes"]).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(LegacyDeployError);
+    expect(error).toMatchObject({ exitCode: 7, meta: { legacyDeployExitCode: 7 } });
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      exit_reason: "failure",
+      error_name: "LegacyDeployError",
+      legacy_deploy_exit_code: 7,
+    });
+    expect(subject.calls).toEqual([]);
+  });
+
+  test("preserves v0's warning exit code without reporting a failed deploy", async () => {
+    await inProjectWithTargets();
+    await writeFile(
+      join(process.cwd(), "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 1 }),
+    );
+    const subject = await testDeployCommand({ outputs: {} }, [], { runV0Deploy: async () => 2 });
+
+    const error = await subject.run(["--yes"]).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(LegacyDeployWarningExit);
+    expect(error).toMatchObject({
+      name: "LegacyDeployWarningExit",
+      exitCode: 2,
+    });
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      exit_reason: "success",
+      legacy_deploy_exit_code: 2,
+    });
+    expect(
+      JSON.parse((await readFile(subject.telemetryFilePath, "utf8")).trim()).attrs,
+    ).not.toHaveProperty("error_name");
     expect(subject.calls).toEqual([]);
   });
 

@@ -3,7 +3,12 @@ import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
 import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
-import { ProjectStateError, SilentCLIError, UserCancellationError } from "../../../errors";
+import {
+  LegacyDeployError,
+  LegacyDeployWarningExit,
+  ProjectStateError,
+  UserCancellationError,
+} from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
@@ -258,9 +263,9 @@ async function delegateV0Deploy(
     );
   }
   const exitCode = await (config.runV0Deploy ?? runV0Deploy)(input);
-  if (exitCode !== 0) {
-    throw new SilentCLIError("v0 deploy exited unsuccessfully", { exitCode });
-  }
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({ legacy_deploy_exit_code: exitCode });
+  if (exitCode === 2) throw new LegacyDeployWarningExit();
+  if (exitCode !== 0) throw new LegacyDeployError(exitCode);
 }
 
 /**
