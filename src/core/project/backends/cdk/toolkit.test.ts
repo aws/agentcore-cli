@@ -339,7 +339,9 @@ describe("Toolkit loading", () => {
             data: { event },
           });
         }
-        throw new Error("NoStack: CloudFormationStack object does not hold a stack");
+        const error = new Error("CloudFormationStack object does not hold a stack");
+        error.name = "NoStack";
+        throw error;
       };
       return loaded;
     });
@@ -347,9 +349,73 @@ describe("Toolkit loading", () => {
     await expect(
       runner({ kind: "deploy", stackArtifactId: "AgentCore-orders-staging" }, runOptions()),
     ).rejects.toThrow(
-      `NoStack: CloudFormationStack object does not hold a stack\n\n` +
+      `CloudFormationStack object does not hold a stack\n\n` +
         `CloudFormation failure: RuntimeEndpointProd (CREATE_FAILED): ${reason}`,
     );
+  });
+
+  test("reports a bootstrap resource failure when Toolkit throws NoStack", async () => {
+    const { loaded } = loadedToolkit();
+    const reason = "Bootstrap bucket could not be created";
+    const runner = createCdkRunner(createSilentLogger(), async (ioHost) => {
+      loaded.toolkit.bootstrap = async () => {
+        await ioHost.notify({
+          ...message("bootstrap rollback progress"),
+          action: "bootstrap",
+          code: "CDK_TOOLKIT_I5502",
+          data: {
+            event: {
+              ResourceType: "AWS::S3::Bucket",
+              LogicalResourceId: "StagingBucket",
+              ResourceStatus: "CREATE_FAILED",
+              ResourceStatusReason: reason,
+            },
+          },
+        });
+        const error = new Error("CloudFormationStack object does not hold a stack");
+        error.name = "NoStack";
+        throw error;
+      };
+      return loaded;
+    });
+
+    await expect(
+      runner({ kind: "bootstrap", environments: ["aws://111122223333/us-east-1"] }, runOptions()),
+    ).rejects.toThrow(
+      `CloudFormationStack object does not hold a stack\n\n` +
+        `CloudFormation failure: StagingBucket (CREATE_FAILED): ${reason}`,
+    );
+  });
+
+  test("does not repeat a resource failure already diagnosed by Toolkit", async () => {
+    const { loaded } = loadedToolkit();
+    const reason = `The resource failed: ${"validation error ".repeat(12)}`;
+    const original = new Error(
+      `The stack failed to deploy:\n  ${reason.slice(0, 120)}\n  ${reason.slice(120)}`,
+    );
+    const runner = createCdkRunner(createSilentLogger(), async (ioHost) => {
+      loaded.toolkit.deploy = async () => {
+        await ioHost.notify({
+          ...message("update failed"),
+          code: "CDK_TOOLKIT_I5502",
+          data: {
+            event: {
+              ResourceType: "AWS::BedrockAgentCore::RuntimeEndpoint",
+              LogicalResourceId: "RuntimeEndpointProd",
+              ResourceStatus: "UPDATE_FAILED",
+              ResourceStatusReason: reason,
+            },
+          },
+        });
+        throw original;
+      };
+      return loaded;
+    });
+
+    await expect(
+      runner({ kind: "deploy", stackArtifactId: "AgentCore-orders-staging" }, runOptions()),
+    ).rejects.toBe(original);
+    expect(original.message).not.toContain("CloudFormation failure:");
   });
 });
 

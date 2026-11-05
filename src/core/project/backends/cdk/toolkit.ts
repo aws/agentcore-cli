@@ -137,6 +137,9 @@ export function createCdkIoHost(
         ...(message.code && { code: message.code }),
       })
       .debug(message.message);
+    // I5502 carries each stack activity event. Toolkit 1.38.2 loses its resource
+    // diagnosis on first-create rollback when it reads a missing stack before
+    // formatting the collected failures; use these events for that NoStack case.
     if (message.code === "CDK_TOOLKIT_I5502" && onResourceFailure) {
       const event = (message.data as { event?: StackEvent } | undefined)?.event;
       if (
@@ -144,6 +147,7 @@ export function createCdkIoHost(
         event.ResourceType !== "AWS::CloudFormation::Stack" &&
         event.LogicalResourceId &&
         event.ResourceStatusReason &&
+        // Match Toolkit's cancellation filter so the initiating failure wins.
         !event.ResourceStatusReason.includes("cancelled")
       ) {
         onResourceFailure({
@@ -276,12 +280,7 @@ export function createCdkRunner(
     try {
       return await performCdkOperation(loaded, operation, options);
     } catch (error) {
-      if (
-        operation.kind === "deploy" &&
-        error instanceof Error &&
-        firstFailure &&
-        !error.message.includes(firstFailure.reason)
-      ) {
+      if (error instanceof Error && error.name === "NoStack" && firstFailure) {
         error.message +=
           `\n\nCloudFormation failure: ${firstFailure.logicalId} ` +
           `(${firstFailure.status}): ${firstFailure.reason}`;
