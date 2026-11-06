@@ -334,9 +334,13 @@ export function createCredentialProvisioner(
     // first provider is written, not partway through the list.
     const plans: (NamedCredential & { provision: Provision })[] = [];
     for (const { credential, provider } of named) {
-      // Lost target state must not turn an existing payment provider into an
-      // untracked orphan while a newly named provider takes its place.
-      if (credential.authorizerType === "PaymentCredentialProvider" && !recorded[credential.name]) {
+      // A bare v0 provider may belong to another target, so its existence does
+      // not prove this target lost state.
+      if (
+        credential.authorizerType === "PaymentCredentialProvider" &&
+        !recorded[credential.name] &&
+        !keepsV0CredentialNames(project)
+      ) {
         const previousName = previousProviderName(project, targetName, credential.name);
         if (
           previousName !== provider &&

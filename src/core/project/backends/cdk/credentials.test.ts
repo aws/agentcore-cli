@@ -1155,6 +1155,27 @@ describe("projects migrated from v0", () => {
     expect(result["openai-key"]?.credentialProviderArn).toBe("arn:apikey:openai-key");
   });
 
+  test("a new target deploys when another target uses the bare payment provider", async () => {
+    const oldProvider = { credentialProviderArn: paymentArn("wallet") };
+    const subject = account({ wallet: oldProvider });
+    const input = await migratedProject(
+      [COINBASE],
+      "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    const { result } = await run(subject.provision, input, {
+      ...INPUT,
+      targetName: "prod",
+    });
+
+    expect(subject.contents().wallet).toEqual(oldProvider);
+    expect(result.wallet?.credentialProviderArn).toMatch(
+      /^arn:payment:example-prod-wallet-[a-f0-9]{16}$/,
+    );
+  });
+
   test("never delete API key or OAuth providers, which v0 projects may share", async () => {
     const subject = account({ "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } });
 
