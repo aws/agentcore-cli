@@ -539,55 +539,49 @@ describe("mapHarnessToExportPlan gateway tools", () => {
     expect(result.runtime.connections?.map((connection) => connection.id)).toEqual(["tools"]);
   });
 
-  test("reports a USER_FEDERATION gateway tool instead of exporting it", () => {
-    const result = plan({
-      spec: harness({
-        tools: [gatewayTool("tools", { oauth: { ...oauth, grantType: "USER_FEDERATION" } })],
-      }),
-    });
-
-    expect(result.context.gatewayTools).toBeUndefined();
-    expect(result.runtime.connections).toBeUndefined();
-    expect(result.envEntries).toEqual([]);
-    expect(categories(result)).toEqual([GATEWAY_TOOL_NOTE_CATEGORY]);
-    expect(result.notes[0]!.message).toContain(GATEWAY_ARN);
-  });
-
   test.each([
     [
-      "a name that cannot be a connection id",
-      [gatewayTool("1tools")],
+      "the USER_FEDERATION grant type",
+      gatewayTool("tools", { oauth: { ...oauth, grantType: "USER_FEDERATION" } }),
       [],
-      /must start with a letter/,
+      /USER_FEDERATION/,
     ],
-    [
-      "names that collide once tokenized",
-      [gatewayTool("my-tools"), gatewayTool("my_tools")],
-      [],
-      /"MY_TOOLS"/,
-    ],
-    [
-      "a name that collides with a harness connection",
-      [gatewayTool("notes")],
-      [MEMORY_CONNECTION],
-      /"NOTES"/,
-    ],
+    ["a name that cannot be a connection id", gatewayTool("3p-tools"), [], /Connection id must/],
     [
       "a gatewayArn that is not a gateway ARN",
-      [
-        {
-          type: "agentcore_gateway",
-          name: "tools",
-          config: { agentCoreGateway: { gatewayArn: "example-abc123" } },
-        },
-      ],
+      {
+        type: "agentcore_gateway",
+        name: "tools",
+        config: { agentCoreGateway: { gatewayArn: "example-abc123" } },
+      },
       [],
-      /not a gateway ARN/,
+      /valid bedrock-agentcore gateway ARN/,
     ],
-  ])("rejects a gateway tool with %s", (_, tools, connections, message) => {
-    const exportPlan = () => plan({ spec: harness({ tools, connections }) });
-    expect(exportPlan).toThrow(InputValidationError);
-    expect(exportPlan).toThrow(message);
+    ["a name that collides once tokenized", gatewayTool("my_tools"), [], /GATEWAY_MY_TOOLS/],
+    [
+      "a name that collides with a harness connection",
+      gatewayTool("notes"),
+      [MEMORY_CONNECTION],
+      /GATEWAY_NOTES/,
+    ],
+    [
+      "a name that collides with an id-less harness connection",
+      gatewayTool("gateway-example-abc123"),
+      [{ to: { type: "gateway", arn: GATEWAY_ARN } }],
+      /GATEWAY_GATEWAY_EXAMPLE_ABC123/,
+    ],
+  ])("skips a gateway tool with %s and exports the rest", (_, tool, connections, message) => {
+    const result = plan({
+      spec: harness({ tools: [gatewayTool("my-tools"), tool], connections }),
+    });
+
+    expect((result.context.gatewayTools as { name: string }[]).map(({ name }) => name)).toEqual([
+      "my-tools",
+    ]);
+    expect(result.runtime.connections?.at(-1)?.id).toBe("my-tools");
+    expect(result.envEntries.map(({ key }) => key)).toEqual(["GATEWAY_MY_TOOLS_URL"]);
+    expect(categories(result)).toEqual([GATEWAY_TOOL_NOTE_CATEGORY]);
+    expect(result.notes[0]!.message).toMatch(message);
   });
 });
 

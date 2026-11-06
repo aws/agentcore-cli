@@ -151,15 +151,13 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 
     const client = await Bun.file(join(result.agentPath, "mcp_client", "client.py")).text();
     expect(client).toContain('url = os.environ.get("GATEWAY_TOOLS_URL")');
-    expect(client).toContain('aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore"');
+    expect(client).toMatch(/GATEWAY_TOOLS_URL"\)[\s\S]*?auth = _SigV4Auth\(\)/);
     expect(client).toContain('provider_name="partner-oauth"');
-    expect(client).toMatch(
-      /headers=\{"Authorization": f"Bearer \{_get_partner_[a-f0-9]{10}_token\(\)\}"\}/,
-    );
+    expect(client).toMatch(/auth = _BearerAuth\(_get_partner_[a-f0-9]{10}_token\)/);
     const main = await Bun.file(join(result.agentPath, "main.py")).text();
     expect(main).toContain("mcp_clients = get_all_mcp_clients()");
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"mcp-proxy-for-aws >= 1.1.0, < 2.0.0"');
+    expect(pyproject).not.toMatch(/^ {5,}"/m);
     const spec = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json();
     expect(
       spec.runtimes.find((runtime: { name: string }) => runtime.name === "assistantAgent")

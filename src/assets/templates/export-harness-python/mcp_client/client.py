@@ -17,12 +17,56 @@ def _allowed_tools(server, *patterns):
     return {"allowed": [allowed]}
 
 {{/if}}
+{{#if gatewayTools}}
+import httpx
+
+{{/if}}
 {{#if (includes gatewayAuthTypes "AWS_IAM")}}
-from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.session import get_session
+
+
+class _SigV4Auth(httpx.Auth):
+    """Signs each gateway request with SigV4 using the runtime's AWS credentials."""
+
+    requires_request_body = True
+
+    def __init__(self):
+        region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION"))
+        self._signer = SigV4Auth(get_session().get_credentials(), "bedrock-agentcore", region)
+
+    def auth_flow(self, request):
+        # The gateway does not sign the connection header, so leave it out of the signature.
+        headers = {k: v for k, v in request.headers.items() if k.lower() != "connection"}
+        signed = AWSRequest(method=request.method, url=str(request.url), data=request.content, headers=headers)
+        self._signer.add_auth(signed)
+        request.headers.update(dict(signed.headers))
+        yield request
 
 {{/if}}
 {{#if (includes gatewayAuthTypes "OAUTH")}}
 from bedrock_agentcore.identity.auth import requires_access_token
+
+
+class _BearerAuth(httpx.Auth):
+    """Sends an AgentCore Identity access token, fetching a new one when the gateway rejects it."""
+
+    requires_request_body = True
+
+    def __init__(self, get_token):
+        self._get_token = get_token
+        self._token = None
+
+    async def async_auth_flow(self, request):
+        if self._token is None:
+            self._token = await self._get_token()
+        request.headers["Authorization"] = f"Bearer {self._token}"
+        response = yield request
+        if response.status_code == 401:
+            self._token = await self._get_token()
+            request.headers["Authorization"] = f"Bearer {self._token}"
+            yield request
 
 {{/if}}
 {{#each gatewayTools}}
@@ -35,7 +79,7 @@ from bedrock_agentcore.identity.auth import requires_access_token
     custom_parameters={{safeJson oauth.customParameters}},
 {{/if}}
 )
-def _get_{{pythonName}}_token(*, access_token: str) -> str:
+async def _get_{{pythonName}}_token(*, access_token: str) -> str:
     """Fetch an OAuth access token for the {{name}} gateway from AgentCore Identity."""
     return access_token
 
@@ -46,18 +90,16 @@ def get_{{pythonName}}_mcp_client() -> MCPClient | None:
     if not url:
         logger.warning("{{urlEnvVarName}} is not set; {{name}} gateway tools are unavailable")
         return None
-    def transport():
     {{#if (eq authType "AWS_IAM")}}
-        return aws_iam_streamablehttp_client(url, aws_service="bedrock-agentcore", aws_region=os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION")))
+    auth = _SigV4Auth()
     {{/if}}
     {{#if oauth}}
-        return streamablehttp_client(url, headers={"Authorization": f"Bearer {_get_{{pythonName}}_token()}"})
+    auth = _BearerAuth(_get_{{pythonName}}_token)
     {{/if}}
     {{#if (eq authType "NONE")}}
-        return streamablehttp_client(url)
+    auth = None
     {{/if}}
-
-    return MCPClient(transport{{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
+    return MCPClient(lambda: streamablehttp_client(url, auth=auth){{#if toolPatterns}}, tool_filters=_allowed_tools({{safeJson name}}, {{#each toolPatterns}}{{safeJson this}}{{#unless @last}}, {{/unless}}{{/each}}){{/if}})
 
 {{/each}}
 {{#if remoteMcpTools}}

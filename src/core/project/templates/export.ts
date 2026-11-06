@@ -15,7 +15,11 @@ import type {
   HarnessTruncationConfig,
 } from "../../../projectSchemas/harness";
 import type { ProjectSpecSchema } from "../../../projectSchemas/project";
-import type { Connection } from "../../../projectSchemas/connections";
+import {
+  ConnectionSchema,
+  connectionTokenFor,
+  type Connection,
+} from "../../../projectSchemas/connections";
 import {
   credentialEnvVarName,
   credentialProviderNameEnvVarName,
@@ -603,6 +607,7 @@ function resolveTools(
     hasFileOperations: isBuiltinIncluded("file_operations", allowedPatterns),
   };
 
+  const connectionTokens = new Set((spec.connections ?? []).map(connectionTokenFor));
   for (const tool of spec.tools) {
     const allowed =
       tool.type === "inline_function"
@@ -682,41 +687,55 @@ function resolveTools(
         const cfg = configOf(tool, "agentCoreGateway") as
           { gatewayArn: string; outboundAuth?: HarnessGatewayOutboundAuth } | undefined;
         if (!cfg) break;
-        const auth = cfg.outboundAuth ?? { awsIam: {} };
-        if ("oauth" in auth && auth.oauth.grantType === "USER_FEDERATION") {
+        const skip = (reason: string) =>
           notes.push({
             category: GATEWAY_TOOL_NOTE_CATEGORY,
             message:
-              `The gateway tool "${tool.name}" (${cfg.gatewayArn}) was not exported: it uses the ` +
-              `OAuth grant type USER_FEDERATION, which needs a user consent flow the exported ` +
-              `agent does not have. Connect to the gateway in mcp_client/client.py yourself, ` +
-              `and add a gateway connection to this runtime in agentcore.json so deploy grants ` +
-              `the token access.`,
+              `The gateway tool "${tool.name}" (${cfg.gatewayArn}) was not exported: ${reason} ` +
+              `Connect to the gateway in mcp_client/client.py yourself, and add a gateway ` +
+              `connection to this runtime in agentcore.json so deploy grants access to it.`,
           });
+        const auth = cfg.outboundAuth ?? { awsIam: {} };
+        if ("oauth" in auth && auth.oauth.grantType === "USER_FEDERATION") {
+          skip(
+            "it uses the OAuth grant type USER_FEDERATION, which needs a user consent flow the " +
+              "exported agent does not have.",
+          );
           break;
         }
-        if (!CONNECTION_ID_PATTERN.test(tool.name)) {
-          throw new InputValidationError(
-            `Gateway tool "${tool.name}" names the runtime connection that carries its URL, so ` +
-              `it must start with a letter. Rename the tool in the harness, then export again.`,
-          );
-        }
-        const urlEnvVarName = `GATEWAY_${connectionEnvToken(tool.name)}_URL`;
-        const oauth = "oauth" in auth ? auth.oauth : undefined;
-        result.connections.push({
+        const parsed = ConnectionSchema.safeParse({
           id: tool.name,
           to: {
             type: "gateway",
             arn: cfg.gatewayArn,
             outboundAuth:
               "oauth" in auth
-                ? { oauth: { ...auth.oauth, grantType: "CLIENT_CREDENTIALS" as const } }
+                ? { oauth: { ...auth.oauth, grantType: "CLIENT_CREDENTIALS" } }
                 : auth,
           },
         });
+        if (!parsed.success) {
+          skip(
+            `the runtime connection it needs is invalid ` +
+              `(${parsed.error.issues.map((issue) => issue.message).join(", ")}).`,
+          );
+          break;
+        }
+        const token = connectionTokenFor(parsed.data);
+        if (connectionTokens.has(token)) {
+          skip(
+            `another gateway tool or connection on this harness already uses the environment ` +
+              `variable prefix GATEWAY_${token}.`,
+          );
+          break;
+        }
+        connectionTokens.add(token);
+        const urlEnvVarName = `GATEWAY_${token}_URL`;
+        const oauth = "oauth" in auth ? auth.oauth : undefined;
+        result.connections.push(parsed.data);
         envEntries.push({
           key: urlEnvVarName,
-          value: gatewayUrl(tool.name, cfg.gatewayArn),
+          value: gatewayUrl(cfg.gatewayArn),
           comment: `URL of gateway tool "${tool.name}" for agentcore dev (deploy sets it on the runtime)`,
         });
         result.gatewayTools.push({
@@ -759,37 +778,12 @@ function resolveTools(
     }
   }
 
-  const tokens = [
-    ...(spec.connections ?? []).flatMap((c) => (c.id ? [connectionEnvToken(c.id)] : [])),
-    ...result.connections.map((c) => connectionEnvToken(c.id!)),
-  ];
-  const duplicate = tokens.find((token, index) => tokens.indexOf(token) !== index);
-  if (duplicate) {
-    throw new InputValidationError(
-      `Harness "${spec.name}" has gateway tools or connections whose names both become ` +
-        `"${duplicate}" in environment variable names. Rename one of them, then export again.`,
-    );
-  }
-
   return result;
 }
 
-const CONNECTION_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
-
-/** The env-var token @aws/agentcore-cdk derives from a connection id. */
-function connectionEnvToken(id: string): string {
-  return id.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-}
-
 /** The MCP endpoint of a gateway, as @aws/agentcore-cdk derives it from the ARN at deploy. */
-function gatewayUrl(toolName: string, gatewayArn: string): string {
-  const arn = parseArn(gatewayArn);
-  if (arn?.service !== "bedrock-agentcore" || !arn.resource.startsWith("gateway/")) {
-    throw new InputValidationError(
-      `Gateway tool "${toolName}" has gatewayArn "${gatewayArn}", which is not a gateway ARN.`,
-    );
-  }
-  const { partition, region } = arn;
+function gatewayUrl(gatewayArn: string): string {
+  const { partition, region } = parseArn(gatewayArn)!;
   const suffix = partition === "aws-cn" ? "amazonaws.com.cn" : "amazonaws.com";
   return `https://${serviceIdFromArn(gatewayArn)}.gateway.bedrock-agentcore.${region}.${suffix}/mcp`;
 }
