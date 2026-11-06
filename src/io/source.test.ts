@@ -100,17 +100,27 @@ describe("SourceResolver bytes", () => {
       child.stdout.on("data", (chunk) => {
         output += chunk;
       });
-      child.stderr.on("data", (chunk) => {
-        errors += chunk;
+      const ready = new Promise<void>((resolve, reject) => {
+        child.stderr.on("data", (chunk) => {
+          errors += chunk;
+          if (errors.includes("READY\n")) resolve();
+        });
+        child.once("close", (code) => {
+          reject(new Error(`Child exited before READY (${code}):\n${errors}`));
+        });
+        child.once("error", (error) => {
+          reject(error);
+        });
       });
 
-      await once(child.stderr, "data");
+      await ready;
       await new Promise((resolve) => setTimeout(resolve, 100));
       child.stdin.end("late value");
 
       const [code] = await once(child, "close");
+      // Node 20 can warn while importing Ink, before the READY marker.
+      expect(errors).toContain("READY\n");
       expect(code).toBe(0);
-      expect(errors).toBe("READY\n");
       expect(output).toBe("late value");
     },
   );
