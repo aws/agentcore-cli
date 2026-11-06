@@ -109,8 +109,8 @@ describe("SourceResolver bytes", () => {
       child.stdin.end("late value");
 
       const [code] = await once(child, "close");
-      expect(code).toBe(0);
       expect(errors).toBe("READY\n");
+      expect(code).toBe(0);
       expect(output).toBe("late value");
     },
   );
