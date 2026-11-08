@@ -591,14 +591,18 @@ describe("ContainerDevRunner", () => {
       ["docker", "rm", "-f"],
       ["docker", "build", "-f"],
       ["docker", "run", "--rm"],
+      ["docker", "stop", "-t"],
       ["docker", "rm", "-f"],
     ]);
     expect(calls[0]?.command).toEqual(["docker", "rm", "-f", containerName(root)]);
-    expect(calls[3]?.command).toEqual(calls[0]!.command);
+    // At shutdown the container gets a 2s grace period, then is removed.
+    expect(calls[3]?.command).toEqual(["docker", "stop", "-t", "2", containerName(root)]);
+    expect(calls[4]?.command).toEqual(calls[0]!.command);
     expect(calls[0]?.options.signal).not.toBe(runInput.signal);
     expect(calls[1]?.options.signal).toBe(runInput.signal);
     expect(calls[2]?.options.signal).toBe(runInput.signal);
     expect(calls[3]?.options.signal).not.toBe(runInput.signal);
+    expect(calls[4]?.options.signal).not.toBe(runInput.signal);
   });
 
   test("cleans up when the container process fails", async () => {
@@ -669,6 +673,19 @@ describe("ContainerDevRunner", () => {
 
     expect(runIteratorClosed).toBe(true);
     expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+  });
+
+  test("removes the container at shutdown even when stop fails", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness({
+      stream: (command) =>
+        command[1] === "stop" ? rejectedEvents(new Error("daemon is slow")) : [],
+    });
+
+    await collect(runner.run(input(root, projectRuntime)));
+
+    expect(calls.at(-1)?.command).toEqual(["docker", "rm", "-f", containerName(root)]);
   });
 
   test("ignores stale and final cleanup failures", async () => {

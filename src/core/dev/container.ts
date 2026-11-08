@@ -24,7 +24,11 @@ const AWS_ENV_KEYS = [
   "AWS_DEFAULT_REGION",
   "AWS_PROFILE",
 ] as const;
-const CLEANUP_TIMEOUT_MS = 2_000;
+// Each container command in cleanup gets this long. Finch sends every command through its VM,
+// so a 2s limit cut `rm` short and left the dev container running.
+const CLEANUP_TIMEOUT_MS = 15_000;
+/** Seconds `stop` waits for the container to exit before it kills it. */
+const STOP_GRACE_SECONDS = 2;
 const DOCKERFILE_NAME = "Dockerfile";
 const CONTAINER_RUNTIME_INSTALL_HINT =
   "Install Docker (https://docs.docker.com/get-docker/), Podman (https://podman.io/), " +
@@ -203,7 +207,7 @@ export class ContainerDevRunner implements DevRunner {
       });
     } finally {
       try {
-        await this.removeContainer(tool, containerName, context);
+        await this.removeContainer(tool, containerName, context, { stopFirst: true });
       } finally {
         await rm(envFile, { force: true });
       }
@@ -244,21 +248,35 @@ export class ContainerDevRunner implements DevRunner {
     throw new MissingToolError("container runtime", CONTAINER_RUNTIME_INSTALL_HINT);
   }
 
+  /**
+   * Best-effort removal of the dev container. At shutdown it is stopped first (`stop -t 2`), so it
+   * gets a short grace period and is killed after that, then removed. Each step has its own
+   * timeout; a missing container or an unavailable daemon is safe to ignore.
+   */
   private async removeContainer(
     tool: ContainerTool,
     containerName: string,
     cwd: string,
+    options: { stopFirst?: boolean } = {},
   ): Promise<void> {
-    try {
-      for await (const _event of this.streamProcess([tool, "rm", "-f", containerName], {
-        cwd,
-        env: this.processEnv,
-        signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
-      })) {
-        // Best-effort cleanup intentionally discards command output.
+    const steps = [
+      ...(options.stopFirst
+        ? [[tool, "stop", "-t", String(STOP_GRACE_SECONDS), containerName]]
+        : []),
+      [tool, "rm", "-f", containerName],
+    ];
+    for (const command of steps) {
+      try {
+        for await (const _event of this.streamProcess(command, {
+          cwd,
+          env: this.processEnv,
+          signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
+        })) {
+          // Best-effort cleanup intentionally discards command output.
+        }
+      } catch {
+        // A container that is already gone, or a slow or stopped daemon: try the next step.
       }
-    } catch {
-      // A missing container and an unavailable daemon are both safe to ignore here.
     }
   }
 }
