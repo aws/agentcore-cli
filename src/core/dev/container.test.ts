@@ -326,6 +326,40 @@ describe("ContainerDevRunner", () => {
     expect(parseEnv(run.envFile!.contents).DOCKER_HOST).toBe("tcp://application-value");
   });
 
+  test("uses the tool AGENTCORE_CONTAINER_TOOL names, even when an earlier one can build", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness({
+      available: async () => true,
+      processEnv: {
+        AWS_ACCESS_KEY_ID: "test-access-key",
+        AWS_SECRET_ACCESS_KEY: "test-secret-key",
+        AGENTCORE_CONTAINER_TOOL: "finch",
+      },
+    });
+
+    await collect(runner.run(input(root, projectRuntime)));
+
+    expect(commandCall(calls, "build").command[0]).toBe("finch");
+    expect(commandCall(calls, "run").command[0]).toBe("finch");
+  });
+
+  test("refuses an AGENTCORE_CONTAINER_TOOL it does not know", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { runner } = harness({
+      processEnv: {
+        AWS_ACCESS_KEY_ID: "test-access-key",
+        AWS_SECRET_ACCESS_KEY: "test-secret-key",
+        AGENTCORE_CONTAINER_TOOL: "nerdctl",
+      },
+    });
+
+    await expect(collect(runner.run(input(root, projectRuntime)))).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
+  });
+
   test("selects the first tool that supports container builds", async () => {
     const probes: Array<[string, string[] | undefined]> = [];
     const projectRuntime = runtime();

@@ -211,6 +211,22 @@ export class ContainerDevRunner implements DevRunner {
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
+    // AGENTCORE_CONTAINER_TOOL picks the tool. Without it, the first that can build wins; a Docker
+    // CLI answers `build --help` even when its engine is down, so a Finch user sets this.
+    const chosen = this.processEnv.AGENTCORE_CONTAINER_TOOL;
+    if (chosen) {
+      if (!(CONTAINER_TOOLS as readonly string[]).includes(chosen)) {
+        throw new InputValidationError(
+          `AGENTCORE_CONTAINER_TOOL is '${chosen}'; use ${CONTAINER_TOOLS.join(", ")}.`,
+        );
+      }
+      if (!(await this.toolAvailable(chosen))) {
+        signal.throwIfAborted();
+        throw new MissingToolError(chosen, CONTAINER_RUNTIME_INSTALL_HINT);
+      }
+      signal.throwIfAborted();
+      return chosen as ContainerTool;
+    }
     for (const tool of CONTAINER_TOOLS) {
       const hasVersion = await this.toolAvailable(tool);
       signal.throwIfAborted();
