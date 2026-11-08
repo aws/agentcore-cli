@@ -50,10 +50,23 @@ export class BoxDevRunner implements DevRunner {
     yield { type: "status", message: `Starting the agent in a box (box run ${name})` };
     yield* this.streamProcess(["box", "run", name, "--no-banner"], {
       cwd: input.projectRoot,
-      env: { ...process.env },
+      env: { ...process.env, ...credentialEnvironment(input.env) },
       signal: input.signal,
     });
   }
+}
+
+/**
+ * The dev environment without its OTEL variables: the `agentcore/.env.local`
+ * values, such as a model provider's API key. `box run` reads a profile's
+ * `env://` credential from its own environment, and the agent gets only a
+ * stand-in value. The OTEL variables point at dev's collector, which the box
+ * does not reach.
+ */
+function credentialEnvironment(env: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env ?? {}).filter(([name]) => !name.startsWith("OTEL_")),
+  );
 }
 
 /** The project's name from its spec, which is also the name of its box profile. */

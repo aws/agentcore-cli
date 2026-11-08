@@ -80,6 +80,26 @@ describe("BoxDevRunner", () => {
     ]);
   });
 
+  test("hands box run the .env.local values, so it can attach the API key, and not dev's OTEL ones", async () => {
+    const { projectRoot, calls, runner } = await scene(true);
+
+    await collect(
+      runner.run({
+        ...input(projectRoot),
+        env: {
+          AGENTCORE_CREDENTIAL_AGENTOPENAIAPIKEY: "sk-real",
+          OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+          OTEL_SERVICE_NAME: "agent",
+        },
+      }),
+    );
+
+    const env = calls[0]!.options.env!;
+    expect(env.AGENTCORE_CREDENTIAL_AGENTOPENAIAPIKEY).toBe("sk-real");
+    expect(env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(process.env.OTEL_EXPORTER_OTLP_ENDPOINT);
+    expect(env.OTEL_SERVICE_NAME).toBe(process.env.OTEL_SERVICE_NAME);
+  });
+
   test("runs the agent the usual way when the project has no box profile", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
 
