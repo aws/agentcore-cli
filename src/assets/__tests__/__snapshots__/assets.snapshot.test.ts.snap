@@ -4079,8 +4079,9 @@ new session and prints its ID.
 uv run client.py --runtime <ACR ARN> --session-id <BMA session ID> --input "List the files in the workspace."
 \`\`\`
 
-If you add a Gateway, add \`--gateway <Gateway MCP URL>\` with the URL from the output of \`agentcore deploy\`. BMA adds
-the Gateway tools when it creates the session, so the flag has no effect on a session that exists.
+If you add a Gateway, add \`--gateway <Gateway ARN>\` with the ARN from the output of \`agentcore deploy\`. Use the
+flag only for a new session. The Gateway must support MCP version \`2025-03-26\`. If it does not, the agent gets no Gateway
+tools, and BMA does not show an error.
 
 To delete the session after the turn, add \`--delete\`. To print each stream event as JSON, add \`--raw\`.
 "
@@ -4186,7 +4187,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--gateway",
-        help="The Gateway URL from the output of \`agentcore deploy\`.",
+        help="The Gateway ARN from the output of \`agentcore deploy\`.",
     )
     parser.add_argument(
         "--role-arn",
@@ -4240,20 +4241,11 @@ def main() -> None:
                 "instructions": "Use the available tools to complete the task.",
             }
             if args.gateway:
-                # Bedrock Managed Agents calls Gateway with IAM from the service side.
+                # Bedrock Managed Agents calls Gateway with the session role from the service side.
                 agent["tools"] = [
-                    {
-                        "type": "mcp",
-                        "server_label": "team_tools",
-                        "required": True,
-                        "connection_origin": "service",
-                        "transport": {"type": "http", "server_url": args.gateway},
-                    }
+                    {"type": "mcp", "server_label": "team_tools", "connector_id": args.gateway}
                 ]
-                args.input += (
-                    " Then use the Gateway's documentation and runbook tools to explain"
-                    " how to investigate an MCP connection failure. Cite your sources."
-                )
+                args.input += " Then list the tools that the Gateway gives you."
             events = sessions.create(
                 agent=agent,
                 environment={
