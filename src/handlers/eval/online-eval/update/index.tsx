@@ -7,6 +7,7 @@ import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseJsonFlag } from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
+import { FAILURE_ANALYSIS, noteInsightsForConfig } from "../insightsNote";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 import { OnlineEvalOutputConfigFlag } from "../outputConfig";
 
@@ -124,6 +125,10 @@ export const createUpdateOnlineEvalHandler = (core: Core, io: AppIO) =>
         },
         coreOptsFromCtx(ctx),
       );
+      // Unchanged evaluators may already include FailureAnalysis.
+      if (flags["evaluators"] === undefined || flags["evaluators"].includes(FAILURE_ANALYSIS)) {
+        await noteInsightsForConfig(core, io, flags["id"], coreOptsFromCtx(ctx));
+      }
       ctx.require(JsonRendererKey).renderJson(response);
     },
   });

@@ -4,6 +4,7 @@ import { flag } from "../../../../router";
 import { createLogsHandler } from "../../../observability/logs";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
+import { noteInsightsForConfig } from "../insightsNote";
 
 export const createOnlineEvalLogsHandler = (core: Core, io: AppIO) =>
   createLogsHandler(io, {
@@ -13,6 +14,7 @@ export const createOnlineEvalLogsHandler = (core: Core, io: AppIO) =>
     read: async (ctx, flags, request, signal) => {
       const options = coreOptsFromCtx(ctx);
       const source = await core.eval.resourceOnlineEvaluationLogSource(flags.id, options);
+      await noteInsightsForConfig(core, io, flags.id, options);
 
       if (request.mode === "search") {
         return {

@@ -82,6 +82,9 @@ import type {
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
   UpdateHarnessResponse,
+  GetAgentInsightStoreResponse,
+  ListAgentInsightStoresResponse,
+  UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   GetABTestResponse,
@@ -117,6 +120,10 @@ import type {
   StartBatchEvaluationResponse,
   StartRecommendationResponse,
   StopBatchEvaluationResponse,
+  AgentInsightArchiveStatus,
+  GetAgentInsightResponse,
+  ListAgentInsightsResponse,
+  UpdateAgentInsightResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type {
@@ -198,6 +205,8 @@ import type {
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
+  AgentInsightStoreUpdate,
+  ListAgentInsightsInput,
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
@@ -2422,6 +2431,108 @@ export class TestEvalClient implements CoreEvalClient {
     });
     if (this.error) throw this.error;
     return this.updateDatasetResult;
+  }
+
+  private insightListResponse: ListAgentInsightsResponse = { agentInsights: [] };
+  private insightGetResponse = {} as GetAgentInsightResponse;
+  private insightUpdateResponse = {} as UpdateAgentInsightResponse;
+  private insightStoreListResponse: ListAgentInsightStoresResponse = { agentInsightStores: [] };
+  private insightStoreGetResponse = {} as GetAgentInsightStoreResponse;
+  private insightStoreUpdateResponse = {} as UpdateAgentInsightStoreResponse;
+
+  setInsightListResponse(response: ListAgentInsightsResponse): this {
+    this.insightListResponse = response;
+    return this;
+  }
+
+  setInsightGetResponse(response: GetAgentInsightResponse): this {
+    this.insightGetResponse = response;
+    return this;
+  }
+
+  setInsightUpdateResponse(response: UpdateAgentInsightResponse): this {
+    this.insightUpdateResponse = response;
+    return this;
+  }
+
+  setInsightStoreListResponse(response: ListAgentInsightStoresResponse): this {
+    this.insightStoreListResponse = response;
+    return this;
+  }
+
+  setInsightStoreGetResponse(response: GetAgentInsightStoreResponse): this {
+    this.insightStoreGetResponse = response;
+    return this;
+  }
+
+  setInsightStoreUpdateResponse(response: UpdateAgentInsightStoreResponse): this {
+    this.insightStoreUpdateResponse = response;
+    return this;
+  }
+
+  async listAgentInsights(
+    input: ListAgentInsightsInput,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightsResponse> {
+    this.calls.push({ method: "listAgentInsights", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.insightListResponse;
+  }
+
+  async getAgentInsight(
+    applicationName: string,
+    agentInsightId: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightResponse> {
+    this.calls.push({
+      method: "getAgentInsight",
+      args: [applicationName, agentInsightId, options],
+    });
+    if (this.error) throw this.error;
+    return this.insightGetResponse;
+  }
+
+  async setAgentInsightArchiveStatus(
+    applicationName: string,
+    agentInsightId: string,
+    archiveStatus: AgentInsightArchiveStatus,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightResponse> {
+    this.calls.push({
+      method: "setAgentInsightArchiveStatus",
+      args: [applicationName, agentInsightId, archiveStatus, options],
+    });
+    if (this.error) throw this.error;
+    return this.insightUpdateResponse;
+  }
+
+  async listAgentInsightStores(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightStoresResponse> {
+    this.calls.push({ method: "listAgentInsightStores", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return this.insightStoreListResponse;
+  }
+
+  async getAgentInsightStore(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightStoreResponse> {
+    this.calls.push({ method: "getAgentInsightStore", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.insightStoreGetResponse;
+  }
+
+  async updateAgentInsightStore(
+    id: string,
+    update: AgentInsightStoreUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightStoreResponse> {
+    this.calls.push({ method: "updateAgentInsightStore", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.insightStoreUpdateResponse;
   }
 }
 

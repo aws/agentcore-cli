@@ -11,6 +11,8 @@ import { createOnDemandHandler } from "./ondemand";
 import { createConfigBundleHandler } from "./config-bundle";
 import { createAbTestHandler } from "./ab-test";
 import { createRecommendationHandler } from "./recommendation";
+import { createInsightHandler } from "./insight";
+import { createInsightStoreHandler } from "./insight-store";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
   // Only the groups with an interactive screen are marked TUI-supported;
@@ -34,7 +36,9 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .handler(createOnDemandHandler(core, io))
     .handler(createConfigBundleHandler(core, io))
     .handler(createAbTestHandler(core, io))
-    .handler(createRecommendationHandler(core, io));
+    .handler(createRecommendationHandler(core, io))
+    .handler(createInsightHandler(core, io))
+    .handler(createInsightStoreHandler(core, io));
 }
 
 export { EvalScreen } from "./screen.tsx";
