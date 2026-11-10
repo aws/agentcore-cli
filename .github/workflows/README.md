@@ -61,7 +61,7 @@ Both use the same E2E test runner.
 Dispatch `release-prepare` with a bump and a channel, review the release PR it opens, merge it.
 `release-publish` then publishes the merged package.json version.
 
-Publishing listens for pushes to `refactor` and `v1.x`, not PR events. It looks up the pushed
+Publishing listens for pushes to `v1.x`, not PR events. It looks up the pushed
 commit's associated PRs and proceeds only when that exact commit
 is the merge of a `release/v*` PR opened by `agentcore-devx-automation[bot]` (account ID
 `282717993`) from this repository into the target branch. Manually opened release PRs,
@@ -73,11 +73,10 @@ and `release-main-and-preview.yml` with the `npm-publish` environment as a trust
 job exchanges its GitHub OIDC token for a short-lived npm token. There is no npm secret in the repository.
 npm checks the filename of the top-level workflow and the environment, so the publish step must stay in
 `release-main-and-preview.yml` under `npm-publish` rather than move into a reusable workflow. The name is
-shared with the v0 release workflow on `main` (later `v0.x`): each branch runs its own copy.
+shared with the v0 release workflow on `v0.x`: each branch runs its own copy.
 
-The prepare job uses `aws-release-4-core`, the check-release and publish jobs use `ubuntu-latest`. The `release-main-and-preview.yml`
-allowlist currently covers `refactor` only. Have a runner-group administrator allowlist `v1.x`
-before renaming `refactor`.
+The prepare job uses `aws-release-4-core`, the check-release and publish jobs use `ubuntu-latest`.
+The `release-main-and-preview.yml` runner group must allow `v1.x`.
 The allowlist is scoped to workflow paths and branches; renaming a workflow also requires an
 update. Keep PR-triggered workflows and the verification matrix off this release-only pool.
 

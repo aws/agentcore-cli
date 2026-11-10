@@ -8,8 +8,7 @@ on:
   # for a release whose merge push never ran.
   workflow_dispatch:
   push:
-    # Keep both names until the v1.x runner allowlisting and refactor renaming are completed.
-    branches: [refactor, v1.x]
+    branches: [v1.x]
 
 jobs:
   check-release:
@@ -84,7 +83,7 @@ jobs:
           set -euo pipefail
           VERSION=$(bun pm pkg get version | tr -d '"')
           # rc notes span from the previous rc, stable notes from the previous stable. Only this
-          # workflow's tags count, main's v1.0.0-preview.N tags live in the same repo.
+          # workflow's tags count, v0.x's v1.0.0-preview.N tags live in the same repo.
           DIST_TAG=latest
           SEMVER_FLAGS=()
           if [[ "$VERSION" == *-rc.* ]]; then
