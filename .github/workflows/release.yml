@@ -1,5 +1,5 @@
 # Placeholder to keep the v0-only release workflow available for manual dispatch
-# after v1 becomes the default branch. Select main (later v0.x) in the branch
+# after v1 becomes the default branch. Select v0.x in the branch
 # picker to run that branch's real release.yml.
 name: Release
 
@@ -13,5 +13,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "::error::The v0 release workflow runs from main (later v0.x). Select that branch and try again."
+          echo "::error::The v0 release workflow runs from v0.x. Select that branch and try again."
           exit 1

@@ -2,7 +2,7 @@ name: prerelease
 
 on:
   push:
-    branches: [main, refactor, v1.x]
+    branches: [v0.x, v1.x]
   workflow_dispatch:
 
 permissions:
@@ -17,8 +17,8 @@ jobs:
     runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 30
     env:
-      RELEASE_TAG: ${{ github.ref_name == 'main' && 'prerelease' || format('prerelease-{0}', github.ref_name) }}
-      RELEASE_TITLE: ${{ github.ref_name == 'main' && 'prerelease' || format('prerelease ({0})', github.ref_name) }}
+      RELEASE_TAG: ${{ github.ref_name == 'v0.x' && 'prerelease' || format('prerelease-{0}', github.ref_name) }}
+      RELEASE_TITLE: ${{ github.ref_name == 'v0.x' && 'prerelease' || format('prerelease ({0})', github.ref_name) }}
       TARBALL_NAME: agentcore-cli-prerelease.tgz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

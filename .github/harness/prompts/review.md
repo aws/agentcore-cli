@@ -10,7 +10,7 @@ You have these repos cloned locally for context:
 
 **Evaluate the PR against its own base branch — not the default branch.** These clones are checked out
 on each repo's default branch. The `agentcore-cli` default branch is the v1 release line
-(`refactor`, later `v1.x`), which has a different source layout from v0 (`main`, later `v0.x`):
+(`v1.x`), which has a different source layout from v0 (`v0.x`):
 `src/handlers/` and `src/core/` in place of `src/cli/` and `src/lib/`. A PR may target either
 release line or a `feat/**` branch. Reading the default branch's tree while reviewing a PR against
 a different base can make correct code look broken.
