@@ -582,7 +582,7 @@ export class CdkBackend implements ProjectBackend {
     const byExportName = (...parts: string[]) => {
       if (!stack?.StackName) return undefined;
       // The CDK library builds every ExportName through this shared helper
-      // https://github.com/aws/agentcore-l3-cdk-constructs/blob/main/src/cdk/logical-ids.ts#L84
+      // https://github.com/aws/agentcore-l3-cdk-constructs/blob/v1.x/src/cdk/logical-ids.ts#L84
       const want = stackExportName(stack.StackName, ...parts);
       return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
     };
