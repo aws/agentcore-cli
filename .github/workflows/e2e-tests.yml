@@ -6,8 +6,8 @@ on:
         description: 'AWS region for deployment'
         default: 'us-east-1'
       cdk_branch:
-        description: 'CDK repo branch to build from (default: main)'
-        default: 'main'
+        description: 'CDK repo branch to build from (default: v0.x)'
+        default: 'v0.x'
   pull_request_target:
     branches: [v0.x, feat/**]
     # Skip E2E on changes that can't affect agent behavior (e.g. docs-only PRs).
@@ -167,7 +167,7 @@ jobs:
       # Clone CDK repo for bundle script (requires App token for private repo access)
       - name: Clone CDK repo
         run: |
-          CDK_BRANCH="${INPUT_CDK_BRANCH:-main}"
+          CDK_BRANCH="${INPUT_CDK_BRANCH:-v0.x}"
           echo "Cloning CDK from branch: $CDK_BRANCH"
           git clone --depth 1 --branch "$CDK_BRANCH" "https://x-access-token:${CDK_REPO_TOKEN}@github.com/${CDK_REPO}.git" /tmp/cdk-repo
           git -C /tmp/cdk-repo remote remove origin

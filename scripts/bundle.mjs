@@ -33,6 +33,7 @@ const __dirname = path.dirname(__filename);
 const cliRoot = path.resolve(__dirname, '..');
 
 const CDK_REPO_URL = 'https://github.com/aws/agentcore-l3-cdk-constructs.git';
+const CDK_BRANCH = 'v0.x';
 
 function log(msg) {
   console.log(`\n[bundle] ${msg}`);
@@ -68,15 +69,16 @@ function resolveCdkPath() {
     return sibling;
   }
 
-  // 3. Clone latest from GitHub
+  // 3. Clone the v0 CDK branch from GitHub
   const cloneDir = path.join(cliRoot, '.cdk-constructs-clone');
-  log(`CDK constructs repo not found locally. Cloning latest from GitHub...`);
+  log(`CDK constructs repo not found locally. Cloning ${CDK_BRANCH} from GitHub...`);
 
   if (fs.existsSync(cloneDir)) {
     log('Pulling latest changes...');
-    run('git', ['pull', 'origin', 'main'], { cwd: cloneDir });
+    run('git', ['fetch', '--depth', '1', 'origin', CDK_BRANCH], { cwd: cloneDir });
+    run('git', ['checkout', '--detach', 'FETCH_HEAD'], { cwd: cloneDir });
   } else {
-    run('git', ['clone', '--depth', '1', CDK_REPO_URL, cloneDir]);
+    run('git', ['clone', '--depth', '1', '--branch', CDK_BRANCH, CDK_REPO_URL, cloneDir]);
   }
 
   return cloneDir;
