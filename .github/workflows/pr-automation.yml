@@ -2,7 +2,7 @@ name: PR Automation
 
 on:
   pull_request_target:
-    branches: [v0.x, refactor, 'feat/**']
+    branches: [v0.x, v1.x, 'feat/**']
     types: [opened, reopened, edited, synchronize, labeled]
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ jobs:
     with:
       runner: codebuild
       pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
-      allowed_base_branches: '["v0.x","refactor"]'
+      allowed_base_branches: '["v0.x","v1.x"]'
     secrets: inherit
 
   harness-review:
