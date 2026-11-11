@@ -46,6 +46,11 @@ const ResourceStateSchema = z
         runtimeArns: z.array(z.string()),
       })
       .optional(),
+    /**
+     * The Box gateway the last deploy of a Box project created. A deploy reads it to find out
+     * that agentcore.json lost its "box" marker, which would delete the gateway.
+     */
+    boxGateway: z.object({ name: z.string() }).passthrough().optional(),
     // The legacy deployer recorded the CloudFormation stack name
     // here. New deploys record the stack ARN instead. Keep this
     // field so projects can be correctly inspected after upgrading.

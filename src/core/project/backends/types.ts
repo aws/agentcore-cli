@@ -5,6 +5,7 @@ import type {
   ResolvedDeployedResource,
   ResolvedProjectResource,
   TeardownConfirmationHandler,
+  BoxGatewayDeletionHandler,
 } from "../../../handlers/project/types";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 
@@ -13,6 +14,8 @@ export type DeployBackendInput = {
   target: AwsDeploymentTarget;
   /** Requests approval after synthesis identifies a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
+  /** Requests approval for a deploy that would delete the Box gateway; absent means declined. */
+  confirmBoxGatewayDeletion?: BoxGatewayDeletionHandler;
   /** Whether to enable CloudWatch Transaction Search on deploy (global config). */
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */

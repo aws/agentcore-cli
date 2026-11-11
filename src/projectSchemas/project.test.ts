@@ -408,3 +408,17 @@ describe("project custom validation", () => {
     }
   });
 });
+
+describe("the Box marker", () => {
+  test("is absent after a parse of a project without it, so a write-back adds no key", () => {
+    expect(ProjectSpecSchema.parse(minimalProject)).not.toHaveProperty("box");
+  });
+
+  test("accepts {}", () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, box: {} }).box).toEqual({});
+  });
+
+  test.each([[{ gateway: {} }], [true], [null]])("rejects %j", (box) => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, box }).success).toBe(false);
+  });
+});
