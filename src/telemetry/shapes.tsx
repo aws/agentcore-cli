@@ -64,6 +64,7 @@ export const commandRunSchema = safeSchema({
   error_source: z.enum(Object.values(ERROR_SOURCE)).optional(),
   is_tui: z.boolean().default(false),
   project_format: z.enum(["v0", "v1", "unknown"]).optional(),
+  legacy_deploy_exit_code: z.number().int().min(0).max(255).optional(),
   project_runtime_count: z.number().int().nonnegative().optional(),
   project_memory_count: z.number().int().nonnegative().optional(),
   project_knowledge_base_count: z.number().int().nonnegative().optional(),

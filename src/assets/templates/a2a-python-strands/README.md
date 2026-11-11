@@ -8,6 +8,13 @@ This agent speaks the A2A protocol. Other agents discover it via its agent card 
 `/.well-known/agent-card.json` and invoke it with JSON-RPC (`message/send`, `message/stream`)
 at the server root, matching the AgentCore Runtime A2A service contract.
 
+## Memory
+
+The template provisions semantic and episodic memory. `memory/session.py` retrieves up to three
+semantic facts for the actor and five episodes for the current session. The default
+`relevance_score=0.0` selects results by `top_k` without score filtering. To opt into score
+filtering, increase `relevance_score` in the retrieval configuration.
+
 ## Adding Tools
 
 Define tools with the `@tool` decorator in `main.py` and add them to the `tools` list:

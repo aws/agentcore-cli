@@ -50,6 +50,19 @@ agentcore deploy
 agentcore invoke --harness MyAssistant --prompt "Hey, what can you do for me?"
 ```
 
+To invoke a CUSTOM_JWT Harness, supply AWS credentials for the Harness lookup and pipe a
+bearer token for the invocation:
+
+```bash
+printf '%s' "$JWT" | agentcore invoke \
+  --harness MyAssistant-AbCdEf1234 \
+  --region us-east-1 --bearer-token - --prompt "Hello"
+```
+
+The same flags work with `agentcore harness invoke --id <harness-id>`. You can also select a
+Harness by ARN with `agentcore invoke --harness <harness-arn>`, but the CLI still looks up
+its configuration before invoking it. `--bearer-token file://<path>` reads a token from a file.
+
 To start from code you own instead, pick a template (`agentcore create --help` lists them):
 
 ```bash
@@ -97,6 +110,13 @@ up from the current directory.
 `agentcore dev` runs runtimes locally or deploys harnesses and prints invoke guidance.
 Use `--mode browser` for Agent Inspector, `--skip-deploy` to reuse deployed harnesses,
 and `--agent <name>` to choose an agent in mixed projects.
+
+New payment credentials receive provider names that payment connectors can reference.
+An existing payment credential keeps the provider ARN recorded for its deployment
+target. If that ARN is incompatible with a manual connector, deploy stops before
+provisioning anything. Add a payment credential under a different name and point
+the connector to it; the old provider remains until you remove its credential
+from the project and deploy each affected target.
 
 ## Commands
 

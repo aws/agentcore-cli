@@ -86,6 +86,7 @@ export async function invokeLocalRuntime(
 
   const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
   return {
+    kind: "stream",
     statusCode: response.status,
     contentType: response.headers.get("content-type") ?? "",
     runtimeSessionId:

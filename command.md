@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.0.1`.
+This reference was generated from `agentcore --help` for version `1.0.2`.
 
 ## Table of contents
 
@@ -661,6 +661,7 @@ build and deploy project resources to an AWS target
 
 - `--target <target>`: name of the aws-targets.json entry to deploy; the default target is created automatically from your AWS account and region on first deploy (default: "default")
 - `--yes`: confirm removing the target's stack when the project declares nothing to deploy (default: false)
+- `--skip-bootstrap`: do not check or create the CDK bootstrap stack; use when the target's account is bootstrapped by someone else (e.g. CloudFormation StackSets) (default: false)
 
 ### `agentcore invoke`
 
@@ -1045,7 +1046,7 @@ invoke a harness
 - `--user-id <user-id>`: the end-user ID for user-scoped AgentCore Identity credentials
 - `--session-id <session-id>`: the Runtime session ID to continue (33-100 characters)
 - `--qualifier <qualifier>`: the harness endpoint qualifier to invoke (default DEFAULT)
-- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token, from stdin ('-') or a file ('file://&lt;path&gt;')
+- `--bearer-token <bearer-token>`: the CUSTOM\_JWT bearer token
 
 #### `agentcore harness exec`
 

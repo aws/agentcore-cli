@@ -3,9 +3,8 @@ import {
   GetHarnessCommand,
   type GetHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { InvokeHarnessCommand } from "@aws-sdk/client-bedrock-agentcore";
 import { InputValidationError } from "../errors";
-import type { AwsClients, ClientConfig, DataClientConfig } from "./types";
+import type { AwsClients, ClientConfig } from "./types";
 import { HarnessClient, harnessRuntimeFromResponse } from "./harness";
 
 const RESPONSE = {
@@ -56,47 +55,5 @@ describe("HarnessClient.resolveRuntime", () => {
       controller.signal,
     );
     expect(configs).toEqual([{ region: "us-west-2", endpoint: "https://control.test" }]);
-  });
-});
-
-describe("HarnessClient.invokeHarness", () => {
-  const REQUEST = {
-    harnessArn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:harness/MyHarness-abc123",
-    runtimeSessionId: "s".repeat(33),
-    messages: [{ role: "user" as const, content: [{ text: "hi" }] }],
-  };
-
-  async function invoke(bearerToken?: string) {
-    const configs: DataClientConfig[] = [];
-    const inputs: unknown[] = [];
-    const clients = {
-      data: (config: DataClientConfig) => {
-        configs.push(config);
-        return {
-          send: async (command: unknown) => {
-            expect(command).toBeInstanceOf(InvokeHarnessCommand);
-            inputs.push((command as InvokeHarnessCommand).input);
-            return {};
-          },
-        };
-      },
-    } as unknown as AwsClients;
-    await new HarnessClient(clients).invokeHarness(
-      { ...REQUEST, ...(bearerToken !== undefined && { bearerToken }) },
-      { region: "us-west-2" },
-    );
-    return { configs, inputs };
-  }
-
-  test("routes a bearer token to the data client config, not the request", async () => {
-    const { configs, inputs } = await invoke("jwt-123");
-    expect(configs).toEqual([{ region: "us-west-2", bearerToken: "jwt-123" }]);
-    expect(inputs).toEqual([REQUEST]);
-  });
-
-  test("uses the SigV4 client without a bearer token", async () => {
-    const { configs, inputs } = await invoke();
-    expect(configs).toEqual([{ region: "us-west-2" }]);
-    expect(inputs).toEqual([REQUEST]);
   });
 });

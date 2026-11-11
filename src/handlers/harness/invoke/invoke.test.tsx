@@ -1,6 +1,4 @@
 import { test, expect, describe, spyOn } from "bun:test";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import type {
   InvokeHarnessRequest,
   InvokeHarnessStreamOutput,
@@ -10,7 +8,6 @@ import { createRootHandler } from "../../index";
 import {
   createSilentLogger,
   expectError,
-  inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
@@ -20,7 +17,6 @@ import {
 } from "../../../testing";
 import { InputValidationError } from "../../../errors";
 import * as tui from "../../../tui";
-import type { HarnessInvokeRequest } from "../types";
 import { HarnessInvokeLaunchContextKey } from "./launchContext";
 
 // Command-flow tests for `harness invoke`, driven through the real root handler
@@ -28,7 +24,7 @@ import { HarnessInvokeLaunchContextKey } from "./launchContext";
 // TestCoreClient rather than recorded fixtures: the invoke response is an
 // AsyncIterable stream, which the fixture serialization cannot capture.
 
-const ARN = "arn:aws:bedrock-agentcore:us-west-2:123:harness/MyHarness-abc123";
+const ARN = "arn:aws:bedrock-agentcore:us-west-2:123456789012:harness/MyHarness-abc123";
 
 const GET_RESPONSE = {
   harness: { harnessId: "MyHarness-abc123", harnessName: "MyHarness", arn: ARN },
@@ -138,6 +134,64 @@ describe("harness invoke", () => {
     expect((invoke.args[1] as { region: string }).region).toBe("us-west-2");
   });
 
+  test("looks up a CUSTOM_JWT harness before invoking with a bearer token", async () => {
+    const { core } = await run(
+      ["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi", "--bearer-token", "-"],
+      (core) =>
+        core.harness.setGetResponse({
+          harness: {
+            ...GET_RESPONSE.harness,
+            authorizerConfiguration: {
+              customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+            },
+          },
+        } as GetHarnessResponse),
+      testIO({ stdin: "secret-token\n" }),
+    );
+    expect(core.harness.calls.find((call) => call.method === "getHarness")?.args[0]).toBe(
+      "MyHarness-abc123",
+    );
+    expect(core.harness.calls.find((call) => call.method === "invokeHarness")?.args[0]).toEqual(
+      expect.objectContaining({ harnessArn: ARN, bearerToken: "secret-token" }),
+    );
+  });
+
+  test("requires a bearer token for a CUSTOM_JWT harness", async () => {
+    await expect(
+      run(["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi"], (core) =>
+        core.harness.setGetResponse({
+          harness: {
+            ...GET_RESPONSE.harness,
+            authorizerConfiguration: {
+              customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+            },
+          },
+        } as GetHarnessResponse),
+      ),
+    ).rejects.toThrow("CUSTOM_JWT Harness requires --bearer-token");
+  });
+
+  test("rejects a bearer token for an IAM harness", async () => {
+    await expect(
+      run([
+        "harness",
+        "invoke",
+        "--id",
+        "MyHarness-abc123",
+        "--prompt",
+        "hi",
+        "--bearer-token",
+        "secret-token",
+      ]),
+    ).rejects.toThrow("IAM Harness does not accept --bearer-token");
+  });
+
+  test("--bearer-token requires a one-shot prompt", async () => {
+    await expect(
+      run(["harness", "invoke", "--id", "MyHarness-abc123", "--bearer-token", "secret-token"]),
+    ).rejects.toThrow("--prompt");
+  });
+
   test("--session-id is passed through and echoed in the output", async () => {
     const sessionId = "custom-session-id-that-is-long-enough";
     const { core, stdout } = await run([
@@ -226,86 +280,6 @@ describe("harness invoke", () => {
       { kind: "user", text: "hi" },
       { kind: "error", message: "session id malformed" },
     ]);
-  });
-
-  // A bearer-token invoke needs the ARN, which `agentcore invoke --harness <arn>`
-  // hands to this handler; `harness invoke --id` alone cannot supply it.
-  const BEARER_INVOKE = ["invoke", "--harness", ARN, "--prompt", "hi"];
-
-  test("--bearer-token - reads the JWT from stdin and invokes the ARN without GetHarness", async () => {
-    const { core } = await run(
-      [...BEARER_INVOKE, "--bearer-token", "-"],
-      undefined,
-      testIO({ stdin: "jwt-123\n" }),
-    );
-
-    expect(core.harness.calls.map((c) => c.method)).toEqual(["invokeHarness"]);
-    const request = core.harness.calls[0]!.args[0] as HarnessInvokeRequest;
-    expect(request.bearerToken).toBe("jwt-123");
-    expect(request.harnessArn).toBe(ARN);
-  });
-
-  test("--bearer-token file:// reads the JWT from a file", async () => {
-    const { path, cleanup } = await inTempDirectory("agentcore-harness-invoke-");
-    try {
-      const tokenFile = join(path, "token");
-      await writeFile(tokenFile, "jwt-from-file\n");
-      const { core } = await run([...BEARER_INVOKE, "--bearer-token", `file://${tokenFile}`]);
-
-      const invoke = core.harness.calls.find((c) => c.method === "invokeHarness")!;
-      expect((invoke.args[0] as HarnessInvokeRequest).bearerToken).toBe("jwt-from-file");
-    } finally {
-      await cleanup();
-    }
-  });
-
-  test("a non-DEFAULT --qualifier reaches InvokeHarness with --bearer-token", async () => {
-    const { core } = await run(
-      [...BEARER_INVOKE, "--qualifier", "prod", "--bearer-token", "-"],
-      undefined,
-      testIO({ stdin: "jwt-123\n" }),
-    );
-
-    const invoke = core.harness.calls.find((c) => c.method === "invokeHarness")!;
-    const request = invoke.args[0] as HarnessInvokeRequest;
-    expect(request.qualifier).toBe("prod");
-    expect(request.bearerToken).toBe("jwt-123");
-  });
-
-  test("an inline --bearer-token is rejected", async () => {
-    await expectError(
-      run([...BEARER_INVOKE, "--bearer-token", "jwt"]),
-      /inline secret values are not accepted/,
-      InputValidationError,
-    );
-  });
-
-  test("--bearer-token with only --id is rejected up front, pointing to invoke --harness <arn>", async () => {
-    let core: TestCoreClient | undefined;
-    await expectError(
-      run(
-        ["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi", "--bearer-token", "-"],
-        (c) => (core = c),
-        testIO({ stdin: "jwt-123\n" }),
-      ),
-      /agentcore invoke --harness <arn> --bearer-token/,
-      InputValidationError,
-    );
-    expect(core!.harness.calls).toEqual([]);
-  });
-
-  test("--bearer-token without --prompt is rejected instead of opening the TUI", async () => {
-    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
-    try {
-      await expectError(
-        run(["harness", "invoke", "--id", "MyHarness-abc123", "--bearer-token", "-"]),
-        /--bearer-token requires --prompt/,
-        InputValidationError,
-      );
-      expect(render).not.toHaveBeenCalled();
-    } finally {
-      render.mockRestore();
-    }
   });
 
   test("errors when --id is omitted", async () => {

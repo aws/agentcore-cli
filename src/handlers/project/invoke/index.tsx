@@ -1,5 +1,4 @@
 import z from "zod";
-import { parseArn } from "../../../core/arn";
 import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { withProject } from "../../../middleware";
@@ -16,7 +15,6 @@ import { attributeName, parseFlags } from "../../../router/flags";
 import { renderTuiAt } from "../../../tui";
 import { createInvokeGatewayHandler, invokeGatewayFlags } from "../../gateway/invoke";
 import { createInvokeHarnessHandler, invokeHarnessFlags } from "../../harness/invoke";
-import { HarnessInvokeArnKey } from "../../harness/invoke/launchContext";
 import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
 import { assertMutuallyExclusiveFlags, resolveResource } from "../../utils";
@@ -106,9 +104,6 @@ type ResourceSelection = { resourceType: ProjectInvokableResource; identifier: s
 
 const isSet = (value: unknown) => value !== undefined && value !== false;
 
-const isHarnessArn = (identifier: string) =>
-  parseArn(identifier)?.resource.startsWith("harness/") === true;
-
 function flaggedResource(flags: InvokeFlags, headless: boolean): ResourceSelection | undefined {
   assertMutuallyExclusiveFlags(flags, RESOURCE_TYPES, { exactlyOne: headless });
   const resourceType = RESOURCE_TYPES.find((type) => flags[type] !== undefined);
@@ -186,9 +181,6 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
         .withValue(PathKey, `/agentcore/${resourceType}/invoke`);
       if (resource.credentials) {
         handlerCtx = handlerCtx.withValue(AwsCredentialProviderKey, resource.credentials);
-      }
-      if (resourceType === "harness" && !isProjectName && isHarnessArn(identifier)) {
-        handlerCtx = handlerCtx.withValue(HarnessInvokeArnKey, identifier);
       }
       await handler.handle(handlerCtx, parsedHandlerFlags, {});
     },

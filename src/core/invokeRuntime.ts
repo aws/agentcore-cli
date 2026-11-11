@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { InvokeAgentRuntimeCommand } from "@aws-sdk/client-bedrock-agentcore";
-import { InputValidationError, RuntimeInvokeResponseError } from "../errors";
+import { InputValidationError, NetworkingError } from "../errors";
 import type { Logger } from "../logging";
 import type { AwsClients, CoreFetch, CoreOptions } from "./types";
 import { abortable } from "./abortable";
@@ -30,7 +30,7 @@ export type RuntimeInvokeRequest = {
   baggage?: string;
 };
 
-export type RuntimeInvokeResponse = {
+export type RuntimeInvokeResponseMetadata = {
   statusCode: number;
   contentType: string;
   runtimeSessionId?: string;
@@ -40,8 +40,21 @@ export type RuntimeInvokeResponse = {
   traceParent?: string;
   traceState?: string;
   baggage?: string;
+};
+
+export type RuntimeInvokeStreamResponse = RuntimeInvokeResponseMetadata & {
+  kind: "stream";
   body: AsyncIterable<Uint8Array>;
 };
+
+export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
+  kind: "rejected";
+  error: {
+    requestId?: string;
+  };
+};
+
+export type RuntimeInvokeResponse = RuntimeInvokeStreamResponse | RuntimeInvokeRejectedResponse;
 
 // The CUSTOM_JWT path puts the account id in the invocation URL, so a bad ARN must fail here.
 export function accountIdFromRuntimeArn(arn: string | undefined): string {
@@ -152,17 +165,37 @@ async function invokeRuntimeWithCustomJwt(
               : typeof error,
       })
       .debug("Runtime invocation transport failed");
-    throw new RuntimeInvokeResponseError("Runtime invocation failed", error);
+    throw new NetworkingError("Runtime invocation failed");
   }
   if (!response.ok) {
     logger
       .child({ httpStatusCode: response.status })
       .debug("Runtime invocation returned a non-success response");
+    const requestId =
+      response.headers.get("x-amzn-requestid") ??
+      response.headers.get("x-amz-request-id") ??
+      undefined;
     await response.body?.cancel().catch(() => undefined);
-    throw new RuntimeInvokeResponseError(`HTTP ${response.status}`);
+    return {
+      kind: "rejected",
+      statusCode: response.status,
+      contentType: response.headers.get("content-type") ?? "",
+      runtimeSessionId:
+        response.headers.get("x-amzn-bedrock-agentcore-runtime-session-id") ?? undefined,
+      mcpSessionId: response.headers.get("mcp-session-id") ?? undefined,
+      mcpProtocolVersion: response.headers.get("mcp-protocol-version") ?? undefined,
+      traceId: response.headers.get("x-amzn-trace-id") ?? undefined,
+      traceParent: response.headers.get("traceparent") ?? undefined,
+      traceState: response.headers.get("tracestate") ?? undefined,
+      baggage: response.headers.get("baggage") ?? undefined,
+      error: {
+        ...(requestId !== undefined && { requestId }),
+      },
+    };
   }
   const body = (response.body as AsyncIterable<Uint8Array> | null) ?? emptyBody();
   return {
+    kind: "stream",
     statusCode: response.status,
     contentType: response.headers.get("content-type") ?? "",
     runtimeSessionId:
@@ -207,6 +240,7 @@ async function invokeRuntimeWithIam(
 
   const body = (response.response as AsyncIterable<Uint8Array> | undefined) ?? emptyBody();
   return {
+    kind: "stream",
     statusCode: response.statusCode ?? 0,
     contentType: response.contentType ?? "",
     runtimeSessionId: response.runtimeSessionId,

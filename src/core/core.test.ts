@@ -7,6 +7,7 @@ import type { IAMClient } from "@aws-sdk/client-iam";
 import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { XRayClient } from "@aws-sdk/client-xray";
 import type { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
+import { SilentCLIError } from "../errors";
 import {
   GetEventCommand,
   GetMemoryRecordCommand,
@@ -23,7 +24,7 @@ import {
 import type { RuntimeInvokeRequest } from "../handlers/runtime/types";
 import type { Logger, LoggerBindings } from "../logging";
 import { CoreClient } from "./index";
-import type { ClientConfig, CoreFetch, DataClientConfig } from "./types";
+import type { ClientConfig, CoreFetch } from "./types";
 import { toClientConfig } from "./utils";
 import { createSilentLogger } from "../testing";
 
@@ -214,31 +215,6 @@ test("data() caches independently of control()", () => {
   expect(d1).toBe(d2);
   expect(controlBuilt).toBe(1);
   expect(dataBuilt).toBe(1);
-});
-
-test("data() never caches a bearer-token client or hands one to a SigV4 caller", () => {
-  const configs: DataClientConfig[] = [];
-  const core = new CoreClient({
-    createControlClient: fakeControl,
-    createDataClient: (config) => {
-      configs.push(config);
-      return fakeData(config);
-    },
-    createIamClient: fakeIam,
-    createLogsClient: fakeLogs,
-    createXrayClient: fakeXray,
-    createApplicationSignalsClient: fakeApplicationSignals,
-    logger: createSilentLogger(),
-  });
-
-  const b1 = core.data({ region: "us-east-1", bearerToken: "jwt" });
-  const b2 = core.data({ region: "us-east-1", bearerToken: "jwt" });
-  const sigv4 = core.data({ region: "us-east-1" });
-
-  expect(b1).not.toBe(b2);
-  expect(sigv4).not.toBe(b1);
-  expect(core.data({ region: "us-east-1" })).toBe(sigv4);
-  expect(configs.map((config) => config.bearerToken)).toEqual(["jwt", "jwt", undefined]);
 });
 
 test("exposes feature sub-clients", () => {
@@ -598,6 +574,7 @@ test("invokeRuntime maps all modeled IAM fields and response metadata", async ()
   expect(sent[0]!.options).toEqual({ abortSignal: controller.signal });
   const { response, ...metadata } = sdkResponse;
   expect(result).toEqual({
+    kind: "stream",
     ...metadata,
     body: response,
   });
@@ -655,6 +632,7 @@ test("invokeRuntime aborts an established IAM response stream", async () => {
     { region: "us-east-1" },
     controller.signal,
   );
+  if (response.kind !== "stream") throw new Error("expected a streaming response");
   const iterator = response.body[Symbol.asyncIterator]();
 
   expect(await iterator.next()).toEqual({ done: false, value: Buffer.from("partial") });
@@ -770,6 +748,7 @@ test("CUSTOM_JWT invoke uses the generated endpoint and exact fetch request", as
   );
   expect(result.runtimeSessionId).toBe("returned-runtime");
   expect(result.mcpSessionId).toBe("returned-mcp");
+  if (result.kind !== "stream") throw new Error("expected a streaming response");
   const resultBytes: Uint8Array[] = [];
   for await (const chunk of result.body) resultBytes.push(chunk);
   expect(Buffer.concat(resultBytes)).toEqual(Buffer.from([1, 2]));
@@ -849,25 +828,24 @@ test("CUSTOM_JWT modeled header failures do not expose their values", async () =
   expect(fetched).toBe(false);
 });
 
-test("CUSTOM_JWT non-2xx cancels without reading and exposes status only", async () => {
+test("CUSTOM_JWT non-2xx cancels the response body and returns status metadata", async () => {
   const { logger, logs } = captureLogs();
   let cancelled = 0;
-  let read = false;
-  const response = {
-    ok: false,
-    status: 401,
-    headers: new Headers(),
-    body: {
-      cancel: async () => {
-        cancelled++;
-      },
-      async *[Symbol.asyncIterator]() {
-        read = true;
-        yield new TextEncoder().encode("secret response body");
-      },
-    },
-  } as unknown as Response;
-  const core = customJwtCore(async () => response, { logger });
+  const core = customJwtCore(
+    async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled++;
+          },
+        }),
+        {
+          status: 401,
+          headers: { "X-Amzn-RequestId": "request-123" },
+        },
+      ),
+    { logger },
+  );
   const request: RuntimeInvokeRequest = {
     runtimeId: "runtime-123",
     accountId: "123456789012",
@@ -875,14 +853,20 @@ test("CUSTOM_JWT non-2xx cancels without reading and exposes status only", async
     payload: new TextEncoder().encode("secret payload"),
     contentType: "application/json",
     bearerToken: "secret-token",
+    runtimeSessionId: "runtime-session-value",
     applicationHeaders: [["X-Secret", "secret-header-value"]],
   };
 
-  await expect(core.runtime.invokeRuntime(request, { region: "us-east-1" })).rejects.toThrow(
-    /^HTTP 401$/,
-  );
+  const response = await core.runtime.invokeRuntime(request, { region: "us-east-1" });
+
+  expect(response).toMatchObject({
+    kind: "rejected",
+    statusCode: 401,
+    error: {
+      requestId: "request-123",
+    },
+  });
   expect(cancelled).toBe(1);
-  expect(read).toBe(false);
   expectSafeDebugLog(
     logs,
     "Runtime invocation returned a non-success response",
@@ -893,11 +877,11 @@ test("CUSTOM_JWT non-2xx cancels without reading and exposes status only", async
       region: "us-east-1",
       httpStatusCode: 401,
     },
-    ["secret response body", "secret payload", "secret-token", "secret-header-value"],
+    ["secret payload", "secret-token", "secret-header-value", "runtime-session-value"],
   );
 });
 
-test("CUSTOM_JWT transport failures do not expose arbitrary causes", async () => {
+test("CUSTOM_JWT transport failures are visible without exposing arbitrary causes", async () => {
   const { logger, logs } = captureLogs();
   const core = customJwtCore(
     async () => {
@@ -908,20 +892,20 @@ test("CUSTOM_JWT transport failures do not expose arbitrary causes", async () =>
     { logger },
   );
 
-  await expect(
-    core.runtime.invokeRuntime(
-      {
-        runtimeId: "runtime-123",
-        accountId: "123456789012",
-        qualifier: "DEFAULT",
-        payload: new TextEncoder().encode("secret payload"),
-        contentType: "application/json",
-        bearerToken: "secret-token",
-        applicationHeaders: [["X-Secret", "secret-header-value"]],
-      },
-      { region: "us-east-1" },
-    ),
-  ).rejects.toThrow(/^Runtime invocation failed$/);
+  const pending = core.runtime.invokeRuntime(
+    {
+      runtimeId: "runtime-123",
+      accountId: "123456789012",
+      qualifier: "DEFAULT",
+      payload: new TextEncoder().encode("secret payload"),
+      contentType: "application/json",
+      bearerToken: "secret-token",
+      applicationHeaders: [["X-Secret", "secret-header-value"]],
+    },
+    { region: "us-east-1" },
+  );
+  await expect(pending).rejects.toThrow(/^Runtime invocation failed$/);
+  await expect(pending).rejects.not.toBeInstanceOf(SilentCLIError);
   expectSafeDebugLog(
     logs,
     "Runtime invocation transport failed",
@@ -953,6 +937,7 @@ test("invokeRuntime exposes an empty async iterable when the SDK omits the body"
     { region: "us-east-1" },
   );
 
+  if (response.kind !== "stream") throw new Error("expected a streaming response");
   const chunks: Uint8Array[] = [];
   for await (const chunk of response.body) chunks.push(chunk);
   expect(chunks).toEqual([]);

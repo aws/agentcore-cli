@@ -92,3 +92,20 @@ export const ConnectionSchema = z
   .strict();
 export type Connection = z.infer<typeof ConnectionSchema>;
 export const ConnectionsSchema = z.array(ConnectionSchema);
+
+/**
+ Mirrors @aws/agentcore-cdk: deploy names a connection's env vars <TYPE>_<TOKEN>_<FIELD> with this token.
+**/
+export function connectionTokenFor(connection: Connection): string {
+  return connectionEnvToken(connection.id ?? connectionIdForTarget(connection.to));
+}
+
+function connectionEnvToken(id: string): string {
+  return id.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+function connectionIdForTarget(target: ConnectionTarget): string {
+  const afterColon = "arn" in target && target.arn ? target.arn.split(":").pop()! : undefined;
+  const suffix = afterColon ? afterColon.slice(afterColon.lastIndexOf("/") + 1) : target.type;
+  return `${target.type}-${suffix}`.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 64);
+}

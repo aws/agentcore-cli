@@ -27,7 +27,6 @@ import type {
   CreateIamClient,
   CreateLogsClient,
   CreateXrayClient,
-  DataClientConfig,
 } from "./types";
 import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
@@ -47,7 +46,6 @@ export type {
   CreateIamClient,
   CreateLogsClient,
   CreateXrayClient,
-  DataClientConfig,
 } from "./types";
 
 type CoreClientConfig = {
@@ -168,10 +166,8 @@ export class CoreClient implements AwsClients {
   }
 
   // data returns the data-plane client for `config`, creating and caching it on
-  // first use. A bearer-token client is built fresh each time: caching it would
-  // keep the token alive and risk reusing it for a SigV4 caller.
-  data(config: DataClientConfig): BedrockAgentCoreClient {
-    if (config.bearerToken !== undefined) return this.createDataClient(config);
+  // first use.
+  data(config: ClientConfig): BedrockAgentCoreClient {
     return this.dataClients.get(config, this.createDataClient);
   }
 

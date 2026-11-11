@@ -39,13 +39,6 @@ export interface ClientConfig {
   credentials?: AwsCredentials;
 }
 
-// DataClientConfig is a ClientConfig for the data plane, which alone can
-// authenticate with a CUSTOM_JWT bearer token instead of SigV4. A bearer client
-// never resolves AWS credentials, so callers holding only a JWT can use it.
-export interface DataClientConfig extends ClientConfig {
-  bearerToken?: string;
-}
-
 export type CredentialedClientConfig = {
   region: string;
   credentials: AwsCredentials;
@@ -55,7 +48,7 @@ export type CredentialedClientConfig = {
 // than the clients themselves) lets CoreClient create/cache one client per config
 // while keeping construction swappable for unit tests.
 export type CreateControlClient = (config: ClientConfig) => BedrockAgentCoreControlClient;
-export type CreateDataClient = (config: DataClientConfig) => BedrockAgentCoreClient;
+export type CreateDataClient = (config: ClientConfig) => BedrockAgentCoreClient;
 export type CreateIamClient = (config: ClientConfig) => IAMClient;
 export type CreateLogsClient = (config: ClientConfig) => CloudWatchLogsClient;
 export type CreateXrayClient = (config: ClientConfig) => XRayClient;
@@ -72,7 +65,7 @@ export type CoreFetch = (
 // endpoint, ...).
 export interface AwsClients {
   control(config: ClientConfig): BedrockAgentCoreControlClient;
-  data(config: DataClientConfig): BedrockAgentCoreClient;
+  data(config: ClientConfig): BedrockAgentCoreClient;
   iam(config: ClientConfig): IAMClient;
   // logs reads the CloudWatch Logs streams AgentCore writes batch-evaluation
   // results to. CloudWatch is a distinct service from the AgentCore data plane,

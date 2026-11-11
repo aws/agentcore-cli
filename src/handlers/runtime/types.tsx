@@ -32,7 +32,7 @@ export type RuntimeInvokeRequest = {
   baggage?: string;
 };
 
-export type RuntimeInvokeResponse = {
+export type RuntimeInvokeResponseMetadata = {
   statusCode: number;
   contentType: string;
   runtimeSessionId?: string;
@@ -42,8 +42,21 @@ export type RuntimeInvokeResponse = {
   traceParent?: string;
   traceState?: string;
   baggage?: string;
+};
+
+export type RuntimeInvokeStreamResponse = RuntimeInvokeResponseMetadata & {
+  kind: "stream";
   body: AsyncIterable<Uint8Array>;
 };
+
+export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
+  kind: "rejected";
+  error: {
+    requestId?: string;
+  };
+};
+
+export type RuntimeInvokeResponse = RuntimeInvokeStreamResponse | RuntimeInvokeRejectedResponse;
 
 export type RuntimeShellRequest = {
   runtimeArn: string;

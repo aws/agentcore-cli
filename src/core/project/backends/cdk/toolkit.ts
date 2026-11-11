@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { StackEvent } from "@aws-sdk/client-cloudformation";
 import type {
   IActionAwareIoHost,
   IIoHost,
@@ -120,7 +121,13 @@ export async function loadBootstrapTemplate(
   };
 }
 
-export function createCdkIoHost(logger: Logger, onLine?: (line: string) => void): IIoHost {
+type ResourceFailure = { logicalId: string; status: string; reason: string };
+
+export function createCdkIoHost(
+  logger: Logger,
+  onLine?: (line: string) => void,
+  onResourceFailure?: (failure: ResourceFailure) => void,
+): IIoHost {
   const toolkitLogger = logger.child({ component: "cdk-toolkit" });
   const notify = async (message: IoMessage<unknown>): Promise<void> => {
     toolkitLogger
@@ -130,6 +137,26 @@ export function createCdkIoHost(logger: Logger, onLine?: (line: string) => void)
         ...(message.code && { code: message.code }),
       })
       .debug(message.message);
+    // I5502 carries each stack activity event. Toolkit 1.38.2 loses its resource
+    // diagnosis on first-create rollback when it reads a missing stack before
+    // formatting the collected failures; use these events for that NoStack case.
+    if (message.code === "CDK_TOOLKIT_I5502" && onResourceFailure) {
+      const event = (message.data as { event?: StackEvent } | undefined)?.event;
+      if (
+        event?.ResourceStatus?.endsWith("_FAILED") &&
+        event.ResourceType !== "AWS::CloudFormation::Stack" &&
+        event.LogicalResourceId &&
+        event.ResourceStatusReason &&
+        // Match Toolkit's cancellation filter so the initiating failure wins.
+        !event.ResourceStatusReason.includes("cancelled")
+      ) {
+        onResourceFailure({
+          logicalId: event.LogicalResourceId,
+          status: event.ResourceStatus,
+          reason: event.ResourceStatusReason,
+        });
+      }
+    }
     // Toolkit messages can span lines (diffs, stack traces); split so the sink
     // always receives displayable single lines.
     if (onLine) {
@@ -245,8 +272,20 @@ export function createCdkRunner(
   return async (operation, options) => {
     // A fresh ioHost per operation, so each operation's messages can flow into
     // its own onOutput sink rather than only the construction-time logger.
-    const ioHost = createCdkIoHost(logger, options.onOutput);
+    let firstFailure: ResourceFailure | undefined;
+    const ioHost = createCdkIoHost(logger, options.onOutput, (failure) => {
+      firstFailure ??= failure;
+    });
     const loaded = await load(ioHost, options.region, options.credentials);
-    return performCdkOperation(loaded, operation, options);
+    try {
+      return await performCdkOperation(loaded, operation, options);
+    } catch (error) {
+      if (error instanceof Error && error.name === "NoStack" && firstFailure) {
+        error.message +=
+          `\n\nCloudFormation failure: ${firstFailure.logicalId} ` +
+          `(${firstFailure.status}): ${firstFailure.reason}`;
+      }
+      throw error;
+    }
   };
 }

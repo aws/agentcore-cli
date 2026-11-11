@@ -1,4 +1,3 @@
-import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { addAbortSignal } from "node:stream";
 import { buffer } from "node:stream/consumers";
@@ -83,15 +82,9 @@ export class SourceResolver {
     }
     this.stdinClaimedBy = name;
 
-    // Importing Ink under Bun drains the process.stdin stream object before a
-    // headless handler can claim it, while file descriptor 0 still retains the
-    // bytes. Use a fresh non-closing stream for the real process input; injected
-    // AppIO streams continue through the ordinary testable path.
-    const source =
-      this.config.stdin === process.stdin
-        ? createReadStream("", { fd: 0, autoClose: false })
-        : this.config.stdin;
-    const stdin = this.config.signal ? addAbortSignal(this.config.signal, source) : source;
+    const stdin = this.config.signal
+      ? addAbortSignal(this.config.signal, this.config.stdin)
+      : this.config.stdin;
     try {
       return await buffer(stdin);
     } catch (error) {

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { SilentCLIError, UserCancellationError } from "../../../errors";
 import { waitFor } from "../../../testing";
-import type { RuntimeInvokeResponse } from "../types";
+import type { RuntimeInvokeRejectedResponse, RuntimeInvokeStreamResponse } from "../types";
 import { writeRuntimeInvokeResponse } from "./response";
 
 const files: string[] = [];
@@ -27,11 +27,26 @@ function failingBody(error: Error): AsyncIterable<Uint8Array> {
   })();
 }
 
-function response(overrides: Partial<RuntimeInvokeResponse> = {}): RuntimeInvokeResponse {
+function response(
+  overrides: Partial<RuntimeInvokeStreamResponse> = {},
+): RuntimeInvokeStreamResponse {
   return {
+    kind: "stream",
     statusCode: 200,
     contentType: "text/plain",
     body: body(Buffer.from("ok")),
+    ...overrides,
+  };
+}
+
+function rejectedResponse(
+  overrides: Partial<RuntimeInvokeRejectedResponse> = {},
+): RuntimeInvokeRejectedResponse {
+  return {
+    kind: "rejected",
+    statusCode: 401,
+    contentType: "application/json",
+    error: {},
     ...overrides,
   };
 }
@@ -237,6 +252,61 @@ describe("Runtime invoke response output", () => {
       }),
     );
     expect(stderr.bytes()).toHaveLength(0);
+  });
+
+  test.each([false, true])(
+    "reports a rejected Runtime response once without writing response output (json=%s)",
+    async (json) => {
+      const stdout = capture();
+      const stderr = capture();
+      const result = rejectedResponse({
+        statusCode: 401,
+        contentType: "application/json",
+        error: {
+          requestId: "request-123",
+        },
+      });
+
+      const pending = writeRuntimeInvokeResponse(result, {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        json,
+      });
+
+      await expect(pending).rejects.toBeInstanceOf(SilentCLIError);
+      await expect(pending).rejects.toThrow("HTTP 401");
+      expect(stdout.bytes()).toHaveLength(0);
+      expect(stderr.bytes().toString()).toBe(
+        "status=401 content-type=application/json runtime-session-id=- mcp-session-id=- " +
+          "mcp-protocol-version=- trace-id=- trace-parent=- trace-state=- baggage=- " +
+          "complete=false bytes=0 error=HTTP 401 request-id=request-123\n",
+      );
+    },
+  );
+
+  test("does not create an output file for a rejected Runtime response", async () => {
+    const file = join(tmpdir(), `runtime-invoke-rejected-${process.pid}-${files.length}`);
+    files.push(file);
+    const stdout = capture();
+    const stderr = capture();
+
+    await expect(
+      writeRuntimeInvokeResponse(
+        rejectedResponse({
+          statusCode: 403,
+          error: {},
+        }),
+        {
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          outputFile: file,
+        },
+      ),
+    ).rejects.toThrow("HTTP 403");
+
+    expect(await Bun.file(file).exists()).toBe(false);
+    expect(stdout.bytes()).toHaveLength(0);
+    expect(stderr.bytes().toString()).toContain("complete=false bytes=0 error=HTTP 403");
   });
 
   test("preserves partial stdout and reports one static incomplete summary", async () => {

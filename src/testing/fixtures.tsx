@@ -261,7 +261,7 @@ export function fixtureFactories(dir: string): {
         send: makeRecordingSend(real, dir),
       } as unknown as BedrockAgentCoreControlClient;
     },
-    createDataClient: (config) => {
+    createDataClient: (config: ClientConfig) => {
       const real = createDataClient(config);
       return {
         send: makeRecordingSend(real, dir),

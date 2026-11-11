@@ -24,7 +24,6 @@ import {
   waitFor,
 } from "../../../testing";
 import * as tui from "../../../tui";
-import type { HarnessInvokeRequest } from "../../harness/types";
 import { createRootHandler } from "../../index";
 import { RegionKey } from "../../keys";
 
@@ -113,7 +112,7 @@ function backend() {
 async function routedCommand(
   args: readonly string[],
   resources: Resources | undefined,
-  options: { writeTargets?: boolean; isTTY?: boolean; stdin?: string } = {},
+  options: { writeTargets?: boolean; isTTY?: boolean } = {},
 ) {
   if (resources) {
     await inProject(resources, options);
@@ -125,6 +124,7 @@ async function routedCommand(
   core.runtime
     .setGetResponse({ agentRuntimeArn: arn(`runtime/${RUNTIME_ID}`) } as GetAgentRuntimeResponse)
     .setInvokeResponse({
+      kind: "stream",
       statusCode: 200,
       contentType: "text/plain",
       body: (async function* () {
@@ -150,7 +150,7 @@ async function routedCommand(
         yield Buffer.from("gateway response");
       })(),
     });
-  const io = testIO({ isTTY: options.isTTY, stdin: options.stdin });
+  const io = testIO({ isTTY: options.isTTY });
   const root = createRootHandler(core, {
     io: io.io,
     logger: createSilentLogger(),
@@ -221,44 +221,33 @@ describe("invoke", () => {
     },
   );
 
-  test("invokes a harness ARN with a bearer token and no GetHarness lookup", async () => {
-    const harnessArn = arn(`harness/${HARNESS_ID}`);
+  test("looks up a Harness selected by ARN before a bearer invocation", async () => {
     const subject = await routedCommand(
-      ["--harness", harnessArn, "--bearer-token", "-", "--prompt", "hi"],
+      ["--harness", arn(`harness/${HARNESS_ID}`), "--prompt", "hi", "--bearer-token", "jwt"],
       undefined,
-      { stdin: "jwt-123\n" },
     );
+    subject.core.harness.setGetResponse({
+      harness: {
+        arn: arn(`harness/${HARNESS_ID}`),
+        authorizerConfiguration: {
+          customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+        },
+      },
+    } as GetHarnessResponse);
+
     await subject.route();
 
-    expect(subject.core.harness.calls.map((call) => call.method)).toEqual(["invokeHarness"]);
-    const [request, options] = subject.core.harness.calls[0]!.args as [
-      HarnessInvokeRequest,
-      { region: string },
-    ];
-    expect(request.harnessArn).toBe(harnessArn);
-    expect(request.bearerToken).toBe("jwt-123");
-    expect(options.region).toBe(TARGET.region);
-  });
-
-  test("invokes a project harness by name with a bearer token, looked up with target credentials", async () => {
-    const subject = await routedCommand(
-      ["--harness", "support", "--bearer-token", "-", "--prompt", "hi"],
-      { harnesses: [HARNESS] },
-      { stdin: "jwt-123\n" },
+    expect(subject.core.harness.calls.find((call) => call.method === "getHarness")?.args[0]).toBe(
+      HARNESS_ID,
     );
-    await subject.route();
-
-    expect(subject.core.harness.calls.map((call) => call.method)).toEqual([
-      "getHarness",
-      "invokeHarness",
-    ]);
-    const [request, options] = subject.core.harness.calls[1]!.args as [
-      HarnessInvokeRequest,
-      { credentials: unknown },
-    ];
-    expect(request.harnessArn).toBe(arn(`harness/${HARNESS_ID}`));
-    expect(request.bearerToken).toBe("jwt-123");
-    expect(options.credentials).toBe(TARGET_CREDENTIALS);
+    expect(
+      subject.core.harness.calls.find((call) => call.method === "invokeHarness")?.args[0],
+    ).toEqual(
+      expect.objectContaining({
+        harnessArn: arn(`harness/${HARNESS_ID}`),
+        bearerToken: "jwt",
+      }),
+    );
   });
 
   test.each([

@@ -120,17 +120,18 @@ describe("runtime templates", () => {
   });
 
   test.each<[RuntimeTemplateShortcutName, string[]]>([
-    ["agent-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
-    ["a2a-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
-    ["agent-typescript-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
+    ["agent-python-strands", ["SEMANTIC", "EPISODIC"]],
+    ["agent-python-strands-container", ["SEMANTIC", "EPISODIC"]],
+    ["a2a-python-strands", ["SEMANTIC", "EPISODIC"]],
+    ["agent-typescript-strands", ["SEMANTIC", "EPISODIC"]],
     ["agent-python-minimal", []],
     ["agent-python-langchain", []],
     ["agent-typescript-vercel", []],
     ["mcp-python-fastmcp", []],
-    ["agui-python-strands", ["SEMANTIC", "USER_PREFERENCE", "SUMMARIZATION", "EPISODIC"]],
+    ["agui-python-strands", ["SEMANTIC", "EPISODIC"]],
     ["environment-python-bma", []],
   ])("%s ships with its pre-configured memory", async (template, expectedStrategies) => {
-    const { spec } = await addTemplate("my_agent", template);
+    const { spec, appDir } = await addTemplate("my_agent", template);
     const memory = (spec.memories ?? []).find(
       (candidate: { name: string }) => candidate.name === "my_agentMemory",
     );
@@ -140,6 +141,34 @@ describe("runtime templates", () => {
     }
     expect(memory).toMatchObject({ name: "my_agentMemory", eventExpiryDuration: 30 });
     expect(memory.strategies.map(({ type }: { type: string }) => type)).toEqual(expectedStrategies);
+    expect(memory.strategies).toEqual([
+      { type: "SEMANTIC", namespaceTemplates: ["/users/{actorId}/facts"] },
+      {
+        type: "EPISODIC",
+        namespaceTemplates: ["/episodes/{actorId}/{sessionId}"],
+        reflectionNamespaceTemplates: ["/episodes/{actorId}"],
+      },
+    ]);
+
+    const isTypeScript = template === "agent-typescript-strands";
+    const memoryCode = await Bun.file(
+      join(appDir, "memory", isTypeScript ? "memory.ts" : "session.py"),
+    ).text();
+    expect(memoryCode).not.toContain("/preferences");
+    expect(memoryCode).not.toContain("/summaries/");
+    if (isTypeScript) {
+      expect(memoryCode).toContain("{ namespace: '/users/{actorId}/facts' }");
+      expect(memoryCode).toContain("{ namespace: '/episodes/{actorId}/{sessionId}' }");
+      expect(memoryCode.match(/namespace:/g)).toHaveLength(2);
+    } else {
+      expect(memoryCode).toContain(
+        'f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.0)',
+      );
+      expect(memoryCode).toContain(
+        'f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.0)',
+      );
+      expect(memoryCode.match(/RetrievalConfig\(/g)).toHaveLength(2);
+    }
   });
 
   test.each<[RuntimeTemplateShortcutName, string]>([

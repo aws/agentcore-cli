@@ -30,6 +30,10 @@ const TARGET = {
 } as const;
 const STACK_ARN =
   "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default/abc";
+const OLD_PAYMENT_PROVIDER = "example_default_wallet";
+const OLD_PAYMENT_ARN =
+  "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
+  `token-vault/default/paymentcredentialprovider/${OLD_PAYMENT_PROVIDER}`;
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
 
 /** A template holding only what CDK adds itself, as an empty project synthesizes. */
@@ -609,7 +613,12 @@ describe("CdkBackend.deploy", () => {
 
     // The target's name scopes the provider names, so provisioning needs it.
     expect(handed).toEqual([
-      { credentials: subject.credentials, region: TARGET.region, targetName: TARGET.name },
+      {
+        credentials: subject.credentials,
+        region: TARGET.region,
+        targetName: TARGET.name,
+        recorded: {},
+      },
     ]);
     // The credential step runs (and its ARNs are recorded) before synthesis, so
     // the assembly is synthesized against a state file that already describes them.
@@ -695,6 +704,60 @@ describe("CdkBackend.deploy", () => {
     // Validated before synth/bootstrap/deploy, so nothing ran against AWS.
     expect(subject.commands).toEqual([]);
     expect(subject.runs).toEqual([]);
+  });
+
+  test("rejects an incompatible recorded payment ARN before provisioning", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      credentials: [
+        { name: "wallet", authorizerType: "PaymentCredentialProvider", provider: "CoinbaseCDP" },
+      ],
+      payments: [
+        {
+          name: "MyPayments",
+          connectors: [{ name: "Coinbase", provider: "CoinbaseCDP", credentialName: "wallet" }],
+        },
+      ],
+    });
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: {
+            resources: {
+              credentials: {
+                wallet: {
+                  authorizerType: "PaymentCredentialProvider",
+                  credentialProviderArn: OLD_PAYMENT_ARN,
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    let provisioned = false;
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      provisioned = true;
+      yield { type: "step", message: "preparing payment credential" };
+      return {};
+    };
+    const subject = harness({ provisionCredentials });
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      /connector 'Coinbase'.*credential 'wallet'.*target 'default'.*different name/s,
+    );
+    expect(provisioned).toBe(false);
+    expect(subject.commands).toEqual([]);
+    expect(subject.runs).toEqual([]);
+    expect(
+      JSON.parse(await Bun.file(statePath).text()).targets.default.resources.credentials.wallet
+        .credentialProviderArn,
+    ).toBe(OLD_PAYMENT_ARN);
   });
 
   test("will not remove a stack the user did not ask to remove", async () => {
@@ -846,7 +909,7 @@ describe("CdkBackend.deploy", () => {
     const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
     await mkdir(dirname(statePath), { recursive: true });
     const recordedWallet = {
-      credentialProviderArn: "arn:payment:wallet",
+      credentialProviderArn: OLD_PAYMENT_ARN,
       authorizerType: "PaymentCredentialProvider" as const,
     };
     await writeFile(
@@ -877,7 +940,66 @@ describe("CdkBackend.deploy", () => {
         credentials: subject.credentials,
         region: TARGET.region,
         targetName: TARGET.name,
-        providers: [{ name: "wallet", authorizerType: "PaymentCredentialProvider" }],
+        providers: [
+          {
+            name: "wallet",
+            authorizerType: "PaymentCredentialProvider",
+            physicalName: OLD_PAYMENT_PROVIDER,
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("teardown removes a declared payment credential by its recorded physical name", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      credentials: [
+        { name: "wallet", authorizerType: "PaymentCredentialProvider", provider: "CoinbaseCDP" },
+      ],
+    });
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    await mkdir(dirname(statePath), { recursive: true });
+    const recordedWallet = {
+      credentialProviderArn: OLD_PAYMENT_ARN,
+      authorizerType: "PaymentCredentialProvider" as const,
+    };
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        targets: {
+          default: {
+            stackArn: "arn:stack:default",
+            resources: { credentials: { wallet: recordedWallet } },
+          },
+        },
+      }),
+    );
+
+    const handed: CredentialRemovalInput[] = [];
+    const subject = harness({
+      provisionCredentials: async function* () {
+        yield { type: "step", message: "reusing existing payment credential" };
+        return { wallet: recordedWallet };
+      },
+      removeCredentials: async function* (_project, removalInput) {
+        handed.push(removalInput);
+        yield { type: "step", message: "removing existing payment credential" };
+      },
+    });
+
+    await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(handed[0]?.providers).toEqual([
+      {
+        name: "wallet",
+        authorizerType: "PaymentCredentialProvider",
+        physicalName: OLD_PAYMENT_PROVIDER,
       },
     ]);
   });
@@ -905,7 +1027,7 @@ describe("CdkBackend.deploy", () => {
                   authorizerType: "ApiKeyCredentialProvider",
                 },
                 wallet: {
-                  credentialProviderArn: "arn:payment:wallet",
+                  credentialProviderArn: OLD_PAYMENT_ARN,
                   authorizerType: "PaymentCredentialProvider",
                 },
               },
@@ -933,7 +1055,13 @@ describe("CdkBackend.deploy", () => {
         credentials: subject.credentials,
         region: TARGET.region,
         targetName: TARGET.name,
-        providers: [{ name: "wallet", authorizerType: "PaymentCredentialProvider" }],
+        providers: [
+          {
+            name: "wallet",
+            authorizerType: "PaymentCredentialProvider",
+            physicalName: OLD_PAYMENT_PROVIDER,
+          },
+        ],
       },
     ]);
     // After the stack update, since a resource in the stack may have used the
@@ -989,6 +1117,19 @@ describe("CdkBackend.deploy", () => {
       type: "step",
       message: `bootstrapping aws://${TARGET.account}/${TARGET.region}`,
     });
+  });
+
+  test("neither probes nor bootstraps when bootstrap is managed externally", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ bootstrap: { kind: "absent" } });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput({ skipBootstrap: true })));
+
+    expect(subject.bootstrapRegions).toEqual([]);
+    expect(subject.runs.map(({ operation }) => operation)).toEqual([
+      { kind: "deploy", stackArtifactId: "AgentCore-example-default-0" },
+    ]);
   });
 
   test("rejects credentials for a different account before build or mutation", async () => {
