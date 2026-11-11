@@ -26,9 +26,6 @@ import asyncio
 {{#if timeoutSeconds}}
 import threading
 {{/if}}
-{{#if hasFileOperations}}
-import os
-{{/if}}
 {{#if truncationStrategy}}
 {{#if (eq truncationStrategy "sliding_window")}}
 from strands.agent.conversation_manager import SlidingWindowConversationManager
@@ -44,19 +41,13 @@ from harness_runtime import InvocationBudget, LimitExceeded{{#if builtinToolRena
 from model.load import load_model{{#if bedrockPromptCaching}}, load_aux_model{{/if}}
 {{#if (or gatewayTools remoteMcpTools)}}
 from mcp_client.client import get_all_mcp_clients
-{{else}}
-{{#unless isExportHarness}}
-from mcp_client.client import get_streamable_http_mcp_client
-{{/unless}}
 {{/if}}
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#unless hasFileOperations}}
-{{#if (or needsOs (some gitSkills "credentialArn"))}}
+{{#if (some gitSkills "credentialArn")}}
 import os
 {{/if}}
-{{/unless}}
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -64,11 +55,6 @@ log = app.logger
 {{#if (or gatewayTools remoteMcpTools)}}
 # Define MCP clients for all configured MCP servers (gateways and/or remote MCP)
 mcp_clients = get_all_mcp_clients()
-{{else}}
-{{#unless isExportHarness}}
-# Define a Streamable HTTP MCP Client
-mcp_clients = [get_streamable_http_mcp_client()]
-{{/unless}}
 {{/if}}
 
 {{#if systemPromptText}}
@@ -104,15 +90,6 @@ _INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{registeredName}}"{{#u
 {{else}}
 _INLINE_FUNCTION_NAMES = set()
 
-{{#unless isExportHarness}}
-# Define a simple function tool
-@tool
-def add_numbers(a: int, b: int) -> int:
-    """Return the sum of two numbers"""
-    return a+b
-tools.append(add_numbers)
-
-{{/unless}}
 {{/if}}
 {{#if builtinTools}}
 # Built-in tools selected by allowedTools.
@@ -134,74 +111,12 @@ tools.append({{#if (lookup ../builtinToolRenames this)}}RenamedTool({{this}}, "{
 tools.append({{#if builtinToolRenames.web_fetch}}RenamedTool(make_web_fetch(mode="markdown"), "{{builtinToolRenames.web_fetch}}"){{else}}make_web_fetch(mode="markdown"){{/if}})
 {{/if}}
 {{/if}}
-{{#if needsOs}}{{#unless isExportHarness}}
-_MOUNT_PATHS = [
-    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
-    {{#each efsMounts}}"{{mountPath}}",{{/each}}
-    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
-]
-
-def _safe_resolve(path: str) -> str:
-    resolved = os.path.realpath(path)
-    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
-        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
-    return resolved
-
-@tool
-def file_read(path: str) -> str:
-    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
-    try:
-        full_path = _safe_resolve(path)
-        with open(full_path) as f:
-            return f.read()
-    except ValueError as e:
-        return str(e)
-    except OSError as e:
-        return f"Error reading '{path}': {e.strerror}"
-
-@tool
-def file_write(path: str, content: str) -> str:
-    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
-    try:
-        full_path = _safe_resolve(path)
-        parent = os.path.dirname(full_path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(full_path, "w") as f:
-            f.write(content)
-        return f"Written to {path}"
-    except ValueError as e:
-        return str(e)
-    except OSError as e:
-        return f"Error writing '{path}': {e.strerror}"
-
-@tool
-def list_files(path: str) -> str:
-    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
-    try:
-        full_path = _safe_resolve(path)
-        entries = os.listdir(full_path)
-        return "\n".join(entries) if entries else "(empty directory)"
-    except ValueError as e:
-        return str(e)
-    except OSError as e:
-        return f"Error listing '{path}': {e.strerror}"
-
-tools.extend([file_read, file_write, list_files])
-{{/unless}}{{/if}}
-
 {{#if (or gatewayTools remoteMcpTools)}}
+
 # Add MCP clients to tools
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
-{{else}}
-{{#unless isExportHarness}}
-# Add MCP client to tools if available
-for mcp_client in mcp_clients:
-    if mcp_client:
-        tools.append(mcp_client)
-{{/unless}}
 {{/if}}
 
 

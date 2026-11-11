@@ -686,6 +686,33 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     );
   });
 
+  test("imports os only for the Git skill credential lookup", async () => {
+    const { manager: subject } = manager();
+    const render = async (harness: Record<string, unknown>) => {
+      const project = await projectWithHarness(subject, harness);
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      return Bun.file(join(result.agentPath, "main.py")).text();
+    };
+
+    // Mounted storage is reached through the harness file tools, which need no os import.
+    const mounted = await render({ sessionStoragePath: "/mnt/data/" });
+    expect(mounted).not.toMatch(/^import os$/m);
+    const gitCredential = await render({
+      sessionStoragePath: "/mnt/data/",
+      skills: [
+        {
+          gitUrl: "https://github.com/example/skills.git",
+          auth: {
+            credentialArn:
+              "arn:aws:bedrock-agentcore:us-east-1:111122223333:token-vault/default/apikeycredentialprovider/GitKey",
+          },
+        },
+      ],
+    });
+    expect(gitCredential).toMatch(/^import os$/m);
+    expect(gitCredential).toContain('IdentityClient(os.environ.get("AWS_REGION"');
+  });
+
   test("emits a CodeZip runtime with no container files", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject);
@@ -928,6 +955,7 @@ describe("FsProjectManager.exportHarness generated Python", () => {
     "no builtins or plugins": { allowedTools: ["exa"] },
     "subagent without builtins": { allowedTools: ["subagent"] },
     "subagent with limits": { maxIterations: 3, maxTokens: 64, timeoutSeconds: 5 },
+    "session storage": { sessionStoragePath: "/mnt/data/" },
     "memory and skills": {
       memory: { mode: "existing", name: "chat_history" },
       skills: [{ s3Uri: "s3://bucket/skills" }],

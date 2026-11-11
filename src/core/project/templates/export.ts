@@ -261,14 +261,6 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     timeoutSeconds: spec.timeoutSeconds,
     // Conversation truncation
     ...resolveTruncationContext(spec.truncation),
-    // Filesystem mounts (informational for the template; tools are harness builtins)
-    sessionStorageMountPath: spec.sessionStoragePath,
-    efsMounts: (spec.efsAccessPoints ?? []).map(({ mountPath }) => ({ mountPath })),
-    s3Mounts: (spec.s3AccessPoints ?? []).map(({ mountPath }) => ({ mountPath })),
-    needsOs:
-      !!spec.sessionStoragePath ||
-      (spec.efsAccessPoints?.length ?? 0) > 0 ||
-      (spec.s3AccessPoints?.length ?? 0) > 0,
   };
 
   const runtime: ProjectRuntime = {
