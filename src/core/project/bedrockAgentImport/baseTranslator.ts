@@ -250,7 +250,11 @@ export function escapePythonString(value: string): string {
 }
 
 export function escapePythonTripleQuoted(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
+  // Escape every double-quote, not just """ runs. A quote left adjacent to the
+  // closing """ delimiter (a trailing " or "") merges into """" and breaks the
+  // literal; escaping each quote keeps it inside the string and also collapses
+  // any longer run safely.
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function pythonParameter(name: string, parameter: ImportedFunctionParameter): string {
