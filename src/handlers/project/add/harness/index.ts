@@ -2,11 +2,21 @@ import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
-import { parseJsonFlag, parseTags } from "../../../utils";
+import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets";
-import { DEFAULT_HARNESS_MODEL, HarnessSpecSchema } from "../../../../projectSchemas/harness";
+import {
+  DEFAULT_HARNESS_MODEL,
+  HarnessSpecSchema,
+  type HarnessModelProvider,
+} from "../../../../projectSchemas/harness";
+import {
+  HARNESS_API_KEY_PROVIDER_LABELS,
+  harnessApiKeyCredentialName,
+} from "../../../../core/project/templates/harness";
+import { SourceResolver } from "../../../../io";
 import type { AddResourceInput, Project } from "../../types";
+import { toLiteLlmGatewayModel } from "../../../harness/liteLlmGateway";
 
 const CONFIGURATION = "Configuration:";
 const TOOLS_AND_SKILLS = "Tools and skills:";
@@ -20,16 +30,56 @@ const ACCESS_AND_PERMISSIONS = "Access and permissions:";
 // or the wizard's answers — against the one spec schema, then checks the
 // deployed name the way every add does. Both paths therefore refuse the same
 // input with the same message.
+//
+// apiKey is the model's managed API key, already read from its source: the
+// model then names the project credential the manager stores it under, so it
+// cannot also carry its own apiKeyArn or apiKeyCredentialName.
 export function toAddHarnessInput(
   project: Project,
   targets: readonly AwsDeploymentTarget[],
   input: unknown,
+  apiKey?: string,
 ): AddResourceInput {
-  const result = HarnessSpecSchema.safeParse(input);
+  const result = HarnessSpecSchema.safeParse(
+    apiKey === undefined ? input : withManagedApiKeyCredential(input),
+  );
   if (!result.success)
     throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  if (result.data.model.provider === "lite_llm") {
+    result.data.model = toLiteLlmGatewayModel(result.data.model);
+  }
   requireDeployedNameFits("Harness", project.name, result.data.name, "_", 40, targets);
-  return { resourceType: "harness", resourceConfig: result.data };
+  return {
+    resourceType: "harness",
+    resourceConfig: result.data,
+    ...(apiKey !== undefined && { apiKey }),
+  };
+}
+
+function withManagedApiKeyCredential(input: unknown): unknown {
+  if (typeof input !== "object" || input === null) return input;
+  const { name, model } = input as { name?: unknown; model?: unknown };
+  if (typeof model !== "object" || model === null) return input;
+  const { provider, apiKeyArn, apiKeyCredentialName } = model as Record<string, unknown>;
+  if (apiKeyArn !== undefined || apiKeyCredentialName !== undefined) {
+    throw new InputValidationError(
+      "--api-key cannot be combined with apiKeyArn or apiKeyCredentialName in --model",
+    );
+  }
+  if (provider === "bedrock") {
+    throw new InputValidationError(
+      "--api-key is not supported for the bedrock model provider; Bedrock uses the harness role",
+    );
+  }
+  if (typeof name !== "string" || !isKeyedProvider(provider)) return input;
+  return {
+    ...input,
+    model: { ...model, apiKeyCredentialName: harnessApiKeyCredentialName(name, provider) },
+  };
+}
+
+function isKeyedProvider(provider: unknown): provider is Exclude<HarnessModelProvider, "bedrock"> {
+  return typeof provider === "string" && provider in HARNESS_API_KEY_PROVIDER_LABELS;
 }
 
 export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
@@ -41,17 +91,16 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       flag("model", "model configuration (JSON)", z.string().optional(), {
         group: CONFIGURATION,
       }),
+      flag(
+        "api-key",
+        "API key for a non-Bedrock --model; '-' for stdin, 'file://path' for file",
+        z.string().optional(),
+        { group: CONFIGURATION, sensitive: true },
+      ),
       flag("system-prompt", "the agent's system prompt", z.string().optional(), {
         group: CONFIGURATION,
       }),
-      flag(
-        "tags",
-        "tags as key=value (repeatable) or JSON object",
-        z.array(z.string()).optional(),
-        {
-          group: CONFIGURATION,
-        },
-      ),
+      tagsFlag({ group: CONFIGURATION }),
       flag("tools", "tools available to the agent (JSON)", z.string().optional(), {
         group: TOOLS_AND_SKILLS,
       }),
@@ -181,11 +230,14 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       };
 
       const project = ctx.require(ProjectKey);
-      const input = toAddHarnessInput(
-        project,
-        await config.projectManager.listTargets(project),
-        harnessInput,
+      const targets = await config.projectManager.listTargets(project);
+      // Validate before reading the key, so a refused input never consumes stdin.
+      if (flags["api-key"] !== undefined) toAddHarnessInput(project, targets, harnessInput, "");
+      const apiKey = await new SourceResolver({ stdin: config.io.stdin }).resolveSecret(
+        "api-key",
+        flags["api-key"],
       );
+      const input = toAddHarnessInput(project, targets, harnessInput, apiKey);
       await addProjectResource(
         ctx,
         config,

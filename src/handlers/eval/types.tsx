@@ -18,6 +18,7 @@ import type {
   GetOnlineEvaluationConfigResponse,
   ListConfigurationBundlesResponse,
   ListConfigurationBundleVersionsResponse,
+  VersionFilter,
   ListDatasetsResponse,
   ListEvaluatorsResponse,
   ListOnlineEvaluationConfigsResponse,
@@ -57,6 +58,7 @@ import type {
   DataSourceConfig as DataPlaneDataSourceConfig,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
+import type { LogSource } from "../../core/observability/types";
 import type { EvaluatorModelProvider } from "../../projectSchemas/evaluator";
 
 // SessionWindow is the resolved explicit time filter for a batch evaluation's
@@ -88,7 +90,8 @@ export type SessionSourceValue =
 // indistinguishable list — this keeps `level` and the id fields so callers can
 // tell a SESSION result from a TRACE or TOOL_CALL one, and group by session.
 export type BatchEvaluationResultEntry = {
-  evaluatorId: string;
+  // Session/trace failures can occur before an evaluator is selected.
+  evaluatorId?: string;
   // The scope the score applies to, read from the result log record's
   // `aws.bedrock_agentcore.evaluation_level` attribute (Title-case, e.g. "Trace"
   // / "Session"). The trustworthy discriminator — do not infer it from which id
@@ -102,6 +105,7 @@ export type BatchEvaluationResultEntry = {
   label?: string;
   explanation?: string;
   error?: string;
+  errorType?: string;
 };
 
 // BatchEvaluationDetail is a GetBatchEvaluation response augmented with the
@@ -170,42 +174,6 @@ export type CreateOnlineEvalInput = {
   | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
   | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
 );
-
-export type CreateOnlineInsightInput = {
-  name: string;
-  description?: string;
-  samplingRate: number;
-  sessionTimeoutMinutes?: number;
-  filters?: Rule["filters"];
-  insightIds: string[];
-  clusteringConfig?: { frequencies: ("DAILY" | "WEEKLY" | "MONTHLY")[] };
-  evaluationExecutionRoleArn: string;
-  enableOnCreate?: boolean;
-} & (
-  | { agent: string; endpoint?: string; dataSourceConfig?: undefined }
-  | { agent?: undefined; endpoint?: undefined; dataSourceConfig: DataSourceConfig }
-);
-
-export type UpdateOnlineInsightInput = {
-  samplingRate?: number;
-  sessionTimeoutMinutes?: number;
-  filters?: Rule["filters"];
-  insightIds?: string[];
-  clusteringConfig?: { frequencies: ("DAILY" | "WEEKLY" | "MONTHLY")[] };
-  agent?: string;
-  endpoint?: string;
-  clearEndpoint?: boolean;
-  dataSourceConfig?: DataSourceConfig;
-  evaluationExecutionRoleArn?: string;
-};
-
-// Online insight configs are the same OnlineEvaluationConfig resource with insights
-// instead of evaluators, so the responses share the SDK shapes under insight names.
-export type CreateOnlineInsightResponse = CreateOnlineEvaluationConfigResponse;
-export type GetOnlineInsightResponse = GetOnlineEvaluationConfigResponse;
-export type UpdateOnlineInsightResponse = UpdateOnlineEvaluationConfigResponse;
-export type ListOnlineInsightsResponse = ListOnlineEvaluationConfigsResponse;
-export type DeleteOnlineInsightResponse = DeleteOnlineEvaluationConfigResponse;
 
 // UpdateOnlineEvalInput carries the fields a caller may change on an online
 // evaluation config. Undefined fields are left untouched by Core (merged over
@@ -293,17 +261,6 @@ export type StartBatchEvaluationInput = {
   outputConfig?: OutputConfig;
 };
 
-// Batch insights use the same service job API as batch evaluations, but remain
-// a distinct Core operation so each command keeps its own required fields.
-export type StartBatchInsightsInput = {
-  name: string;
-  description?: string;
-  insightIds?: string[];
-  evaluatorIds?: string[];
-  source: SessionSourceValue;
-  kmsKeyArn?: string;
-};
-
 // InvokeDatasetInput is the runtime-level shape for replaying a dataset: invoke each
 // example against the runtime, one client-generated session per example. Runtime fields
 // only — no evaluator/name/kms (those belong to the grader the handler composes on top,
@@ -388,6 +345,7 @@ export type DatasetUpdateProgressEvent = {
 // and implemented by src/core/eval.tsx (dependency inversion: handlers own the
 // abstraction).
 export interface CoreEvalClient {
+  resourceOnlineEvaluationLogSource(id: string, options: CoreOptions): Promise<LogSource>;
   createEvaluator(
     request: CreateEvaluatorRequest,
     options: CoreOptions,
@@ -434,18 +392,12 @@ export interface CoreEvalClient {
     options: CoreOptions,
     opts?: { includeResults?: boolean },
   ): Promise<GetBatchEvaluationResult>;
-  getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail>;
   listBatchEvaluations(
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
   ): Promise<ListBatchEvaluationsResponse>;
   stopBatchEvaluation(id: string, options: CoreOptions): Promise<StopBatchEvaluationResponse>;
-  listBatchInsights(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListBatchEvaluationsResponse>;
 
   getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse>;
   listABTests(
@@ -472,10 +424,6 @@ export interface CoreEvalClient {
   // + RUNNING status; poll with getBatchEvaluation.
   startBatchEvaluation(
     input: StartBatchEvaluationInput,
-    options: CoreOptions,
-  ): Promise<StartBatchEvaluationResponse>;
-  startBatchInsights(
-    input: StartBatchInsightsInput,
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse>;
 
@@ -525,28 +473,6 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<DeleteOnlineEvaluationConfigResponse>;
 
-  createOnlineInsight(
-    input: CreateOnlineInsightInput,
-    options: CoreOptions,
-  ): Promise<CreateOnlineInsightResponse>;
-  updateOnlineInsight(
-    id: string,
-    update: UpdateOnlineInsightInput,
-    options: CoreOptions,
-  ): Promise<UpdateOnlineInsightResponse>;
-  getOnlineInsight(id: string, options: CoreOptions): Promise<GetOnlineInsightResponse>;
-  listOnlineInsights(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListOnlineInsightsResponse>;
-  setOnlineInsightExecutionStatus(
-    id: string,
-    executionStatus: "ENABLED" | "DISABLED",
-    options: CoreOptions,
-  ): Promise<UpdateOnlineInsightResponse>;
-  deleteOnlineInsight(id: string, options: CoreOptions): Promise<DeleteOnlineInsightResponse>;
-
   createConfigurationBundle(
     input: CreateConfigurationBundleInput,
     options: CoreOptions,
@@ -579,6 +505,7 @@ export interface CoreEvalClient {
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
+    filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse>;
 
   // createDataset seeds a new dataset's DRAFT from `source`, which is required.

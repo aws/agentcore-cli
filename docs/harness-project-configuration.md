@@ -11,13 +11,14 @@
 - [Conversation context and invocation limits](#conversation-context-and-invocation-limits)
 - [Environment and containers](#environment-and-containers)
 - [Networking and authentication](#networking-and-authentication)
+- [Connections](#connections)
 - [Session lifetime and storage](#session-lifetime-and-storage)
 - [Tags](#tags)
 - [Validation](#validation)
 
 ## Harness Project Files
 
-`agentcore create` (without `--template`) and `agentcore add harness` share the same
+The `agentcore create` wizard's harness option and `agentcore add harness` share the same
 scaffolding flow. Each harness has `app/<name>/harness.yaml` and
 `app/<name>/system-prompt.md`:
 
@@ -65,12 +66,12 @@ Select one configuration under `model`: `bedrockModelConfig`, `openAiModelConfig
 `geminiModelConfig`, or `liteLlmModelConfig`. Each requires `modelId`. Choose a
 model supported by the selected provider and API format.
 
-| Provider   | Credentials                        | Provider-specific options                                          |
-| ---------- | ---------------------------------- | ------------------------------------------------------------------ |
-| `bedrock`  | Harness execution role             | `apiFormat`: `converse_stream`, `responses`, or `chat_completions` |
-| `open_ai`  | `apiKeyArn` is required            | `apiFormat`: `responses` or `chat_completions`                     |
-| `gemini`   | `apiKeyArn` is required            | `topK`: integer from 0 to 500                                      |
-| `lite_llm` | Depends on the underlying provider | `apiBase` for a custom endpoint                                    |
+| Provider   | Credentials                    | Provider-specific options                                          |
+| ---------- | ------------------------------ | ------------------------------------------------------------------ |
+| `bedrock`  | Harness execution role         | `apiFormat`: `converse_stream`, `responses`, or `chat_completions` |
+| `open_ai`  | `apiKeyArn` is required        | `apiFormat`: `responses` or `chat_completions`                     |
+| `gemini`   | `apiKeyArn` is required        | `topK`: integer from 0 to 500                                      |
+| `lite_llm` | Gateway credential is required | CLI authoring requires the gateway's `apiBase` URL                 |
 
 `apiKeyArn` identifies an AgentCore Identity API-key credential provider, not a
 raw API key or a Secrets Manager secret ARN. The execution role needs permission
@@ -114,19 +115,47 @@ model:
     topK: 40
 ```
 
-For LiteLLM, use a provider-prefixed model ID:
+For LiteLLM, configure the customer's model gateway. The Harness CLI wizards and
+model flags require the gateway's API base URL and a model alias configured on
+that gateway. They add the `litellm_proxy/` prefix to the alias, unless it is
+already present, so the SDK calls the gateway rather than the underlying
+provider directly. No Bedrock-backed LiteLLM model is prefilled.
+
+In `harness.yaml`, use the explicit proxy-prefixed alias:
 
 ```yaml
 model:
   liteLlmModelConfig:
-    modelId: openai/gpt-6.1-sol
+    modelId: litellm_proxy/my-model
     apiBase: https://models.example.com/v1
     apiKeyArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/apikeycredentialprovider/model-proxy
 ```
 
+The credential is the gateway API key, not the upstream provider's API key.
+The CLI requires the gateway credential because the LiteLLM proxy SDK path
+requires credentials, even if the gateway's own authentication policy differs.
+The gateway determines the upstream provider, which can still be Bedrock.
+
+For project scaffolding:
+
+```sh
+agentcore add harness --name assistant \
+  --model '{"provider":"lite_llm","modelId":"my-model","apiBase":"https://models.example.com/v1"}' \
+  --api-key file://./gateway-key.txt
+```
+
+This narrows newly authored CLI configurations to gateway routing. Existing
+Harness API/CDK configurations and files remain compatible with direct LiteLLM
+SDK models. Reading, deploying, or exporting them does not rewrite the model;
+an unchanged legacy model is also preserved during unrelated wizard updates.
+Changing a LiteLLM model through the CLI requires the gateway configuration.
+
 Do not set `apiFormat` for `gemini` or `lite_llm`, `topK` for other providers,
 or `apiBase` outside `lite_llm` in this YAML format.
 LiteLLM also accepts `model.liteLlmModelConfig.additionalParams` for provider-specific options.
+When authoring a gateway model through the CLI, `additionalParams` cannot override
+`model`, `api_base`, `base_url`, `custom_llm_provider`, `use_litellm_proxy`, or
+`fallbacks`. Configure routing and fallbacks on the gateway instead.
 
 See [Models and instructions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-models.html)
 for provider behavior and supported API formats.
@@ -644,6 +673,66 @@ executionRoleArn: arn:aws:iam::123456789012:role/MyHarnessRole
 CDK cannot modify a supplied role. Add the required model, tool, skill-source,
 and storage permissions to that role yourself. Loading a skill or adding a tool
 does not bypass IAM permissions or network restrictions.
+
+## Connections
+
+`connections` declares that this Harness reaches an AgentCore resource that is
+**not** part of this project. Deployment adds least-privilege IAM for each target
+to the Harness execution role. Access between resources declared in the same
+`agentcore.json` is already implicit, so a connection is only needed for an
+external ARN.
+
+```yaml
+connections:
+  - id: shared-memory
+    to:
+      type: memory
+      arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:memory/SharedMemory-abc123
+      namespaces:
+        - /users/{actorId}/facts
+    access: read
+    description: Facts curated by the platform team.
+```
+
+Each entry needs `to`. `id` is optional and matches
+`[a-zA-Z][a-zA-Z0-9_-]{0,63}`. `access` is `read` or `readwrite`. `description`
+is at most 200 characters. There is no `from` field: the enclosing Harness is
+always the source.
+
+`to.type` selects the target, and each type takes its own fields:
+
+| `to.type`         | ARN                            | Target options                                            |
+| ----------------- | ------------------------------ | --------------------------------------------------------- |
+| `memory`          | required, `:memory/`           | `namespaces`: namespaces to retrieve from                 |
+| `gateway`         | required, `:gateway/`          | `outboundAuth`: `awsIam`, `none`, or `oauth`              |
+| `runtime`         | required, `:runtime/`          | `exec`: boolean, also allow exec/code execution           |
+| `browser`         | optional, `:browser/`          | omit the ARN to use the service-provided browser          |
+| `codeInterpreter` | optional, `:code-interpreter/` | omit the ARN to use the service-provided code interpreter |
+
+For an external Gateway, `outboundAuth` is how this Harness authenticates
+**outbound** to that Gateway. It is not the Gateway's own inbound authorizer:
+
+```yaml
+connections:
+  - to:
+      type: gateway
+      arn: arn:aws:bedrock-agentcore:us-west-2:123456789012:gateway/partner-tools-abc123
+      outboundAuth:
+        oauth:
+          providerArn: arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/oauth2credentialprovider/partner
+          scopes: [tools.read]
+          grantType: CLIENT_CREDENTIALS
+```
+
+Connection `grantType` accepts `CLIENT_CREDENTIALS`, `AUTHORIZATION_CODE`, or
+`TOKEN_EXCHANGE`, and `oauth` also takes a string map of `customParameters`.
+These are not the same values as a `agentcore_gateway` tool's `outboundAuth`,
+which takes `CLIENT_CREDENTIALS` or `USER_FEDERATION`. A tool entry makes a
+Gateway's tools available to the model; a connection only grants access to an
+external resource. Declaring a connection does not add a tool.
+
+See the [connection schema](../src/projectSchemas/connections.ts) for the exact
+ARN patterns and field constraints.
 
 ## Session Lifetime and Storage
 

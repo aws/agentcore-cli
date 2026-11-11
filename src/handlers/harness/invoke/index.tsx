@@ -8,10 +8,17 @@ import { JsonRendererKey, renderTuiAt } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { InputValidationError } from "../../../errors";
 import { invokeHarnessTurn } from "./operation.ts";
+import { HarnessInvokeLaunchContextKey } from "./launchContext";
+import { resolveHarnessBearerToken } from "../request";
 
 export const invokeHarnessFlags = [
-  flag("id", "the ID of the harness", z.string().min(1).max(48)),
+  flag("id", "the ID of the harness", z.string().min(1).max(51)),
   flag("prompt", "the message to send to the harness", z.string().optional()),
+  flag(
+    "user-id",
+    "the end-user ID for user-scoped AgentCore Identity credentials",
+    z.string().optional(),
+  ),
   flag(
     "session-id",
     "the Runtime session ID to continue (33-100 characters)",
@@ -22,6 +29,9 @@ export const invokeHarnessFlags = [
     "the harness endpoint qualifier to invoke (default DEFAULT)",
     z.string().optional(),
   ),
+  flag("bearer-token", "the CUSTOM_JWT bearer token", z.string().optional(), {
+    sensitive: true,
+  }),
 ] as const;
 
 export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
@@ -35,18 +45,32 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
       // one-shot CLI transcript below needs --prompt (and is the only shape
       // JSON mode supports).
       if (!flags["prompt"]) {
+        if (flags["bearer-token"] !== undefined) {
+          throw new InputValidationError(
+            "required option '--prompt <text>' not specified with '--bearer-token'",
+          );
+        }
         if (ctx.require(JsonKey)) {
           throw new InputValidationError("required option '--prompt <text>' not specified");
         }
         let path = `${ctx.require(PathKey)}/${flags["id"]}`;
         if (flags["session-id"]) path += `/${flags["session-id"]}`;
         if (flags["qualifier"]) path += `?qualifier=${encodeURIComponent(flags["qualifier"])}`;
-        await renderTuiAt(path, ctx, core, io);
+        await renderTuiAt(
+          path,
+          ctx.withValue(HarnessInvokeLaunchContextKey, {
+            harnessId: flags["id"],
+            userId: flags["user-id"],
+          }),
+          core,
+          io,
+        );
         return;
       }
 
       const opts = coreOptsFromCtx(ctx);
       const prompt = flags["prompt"];
+      const bearerToken = await resolveHarnessBearerToken(flags["bearer-token"], io.stdin);
       const invoke = () =>
         invokeHarnessTurn(
           core.harness,
@@ -55,6 +79,8 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
             prompt,
             qualifier: flags["qualifier"] ?? "DEFAULT",
             sessionId: flags["session-id"],
+            userId: flags["user-id"],
+            bearerToken,
           },
           opts,
         );

@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { parseEnv } from "node:util";
 import { atomicWrite, readTextFile } from "../../io";
 import { InputValidationError } from "../../errors";
+import { readEnvFile, type ReadEnvFileOptions } from "../../io/envFile";
+import { LocalSecrets } from "../../io/localSecrets";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 
 /** The project-relative path of the local secrets file (read by `agentcore dev`). */
@@ -11,6 +13,8 @@ export const ENV_LOCAL_RELATIVE_PATH = join("agentcore", ".env.local");
 const KEY_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 const COMMENT_LINE = /^\s*#/;
 const SECRET_FILE_MODE = 0o600;
+const ENV_ENTRY =
+  /^([ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*)(?:"[^"]*"|'[^']*'|`[^`]*`|[^\r\n#]*)/gm;
 
 /**
  * The project's `.env.local` secrets file, edited transactionally. `insertIfNew`
@@ -24,7 +28,10 @@ export class EnvLocalFile {
   // string: the file's content before the write.
   private snapshot?: string | null;
 
-  constructor(private readonly rootPath: string) {}
+  constructor(
+    private readonly rootPath: string,
+    private readonly secrets = new LocalSecrets(),
+  ) {}
 
   /** The absolute path of the secrets file. */
   get path(): string {
@@ -55,12 +62,13 @@ export class EnvLocalFile {
         continue;
       }
       const separator = content === "" || content.endsWith("\n") ? "" : "\n";
-      // Each entry is two lines:  # <comment>\n<key>=<value>
-      content += `${separator}# ${entry.comment}\n${entry.key}=${formatValue(entry.value)}\n`;
+      const encrypted = await this.secrets.encrypt({ [entry.key]: entry.value ?? "" });
+      content += `${separator}# ${entry.comment}\n${entry.key}=${formatValue(encrypted[entry.key])}\n`;
       written.push(entry.key);
     }
 
-    if (written.length > 0) {
+    content = await this.encryptContent(content);
+    if (content !== (existing ?? "")) {
       this.snapshot = existing;
       await atomicWrite(this.path, content, { mode: SECRET_FILE_MODE });
     }
@@ -72,10 +80,8 @@ export class EnvLocalFile {
    * does not exist. Values are read back with the same parser `agentcore dev`
    * uses, so quoting written by {@link insertIfNew} round-trips.
    */
-  async read(): Promise<Record<string, string | undefined>> {
-    const content = await this.readOrNull();
-    if (content === null) return {};
-    return parseEnv(content);
+  async read(options: ReadEnvFileOptions = {}): Promise<Record<string, string | undefined>> {
+    return readEnvFile(this.path, { ...options, secrets: this.secrets });
   }
 
   /**
@@ -108,7 +114,9 @@ export class EnvLocalFile {
     if (removedKeys.size > 0) {
       // Preserve the earliest snapshot so rollback undoes this whole operation.
       if (this.snapshot === undefined) this.snapshot = existing;
-      await atomicWrite(this.path, kept.join("\n"), { mode: SECRET_FILE_MODE });
+      await atomicWrite(this.path, await this.encryptContent(kept.join("\n")), {
+        mode: SECRET_FILE_MODE,
+      });
     }
     return {
       removed: [...targets].filter((key) => removedKeys.has(key)),
@@ -134,6 +142,16 @@ export class EnvLocalFile {
 
   private async enforcePermissions(): Promise<void> {
     if (process.platform !== "win32") await chmod(this.path, SECRET_FILE_MODE);
+  }
+
+  private async encryptContent(content: string): Promise<string> {
+    const parsed = parseEnv(content) as Record<string, string>;
+    const encrypted = await this.secrets.encrypt(parsed);
+    if (encrypted === parsed) return content;
+    // parseEnv owns value parsing; matching assignment spans preserves comments and multiline values.
+    return content.replace(ENV_ENTRY, (entry, prefix: string, key: string) =>
+      encrypted[key] !== parsed[key] ? `${prefix}${formatValue(encrypted[key])}` : entry,
+    );
   }
 }
 

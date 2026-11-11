@@ -1,5 +1,6 @@
 import type { CoreOptions } from "../../../core/types";
 import type { CoreHarnessClient } from "../types";
+import { resolveHarnessArn } from "../request";
 import { applyEvent, finishTurn, newSessionId, newTurn, type TranscriptItem } from "./transcript";
 
 export type HarnessInvokeResult = {
@@ -17,18 +18,23 @@ export async function invokeHarnessTurn(
     prompt: string;
     qualifier?: string;
     sessionId?: string;
+    userId?: string;
+    bearerToken?: string;
   },
   options: CoreOptions,
   signal?: AbortSignal,
 ): Promise<HarnessInvokeResult> {
   const detail = await client.getHarness(input.harnessId, options);
+  const harnessArn = resolveHarnessArn(detail, input.bearerToken);
   const sessionId = input.sessionId ?? newSessionId();
   const response = await client.invokeHarness(
     {
-      harnessArn: detail.harness?.arn,
+      harnessArn,
       qualifier: input.qualifier ?? "DEFAULT",
       runtimeSessionId: sessionId,
+      runtimeUserId: input.userId,
       messages: [{ role: "user", content: [{ text: input.prompt }] }],
+      bearerToken: input.bearerToken,
     },
     options,
     signal,

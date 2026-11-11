@@ -59,6 +59,7 @@ describe("DefaultTelemetryClient", () => {
       exit_reason: "success",
       command_path: "/agentcore",
     });
+    metricEvent.setAttributes({ project_format: "v0" });
 
     await metricEvent.emit(123);
 
@@ -67,6 +68,7 @@ describe("DefaultTelemetryClient", () => {
       exit_reason: "failure",
       command_path: "/agentcore",
     });
+    metricEvent2.setAttributes({ project_format: "unknown" });
 
     await metricEvent2.emit(456);
     await client.shutdown();
@@ -89,6 +91,7 @@ describe("DefaultTelemetryClient", () => {
           exit_reason: "success",
           command_path: "/agentcore",
           is_tui: false,
+          project_format: "v0",
         },
       },
       {
@@ -99,6 +102,7 @@ describe("DefaultTelemetryClient", () => {
           exit_reason: "failure",
           command_path: "/agentcore",
           is_tui: false,
+          project_format: "unknown",
         },
       },
     ]);

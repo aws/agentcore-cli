@@ -1,7 +1,7 @@
 import { withApiKey } from 'bedrock-agentcore/identity';
 
 const IDENTITY_PROVIDER_NAME =
-  process.env.{{identityProviders.[0].envVarName}}_NAME ?? {{safeJson identityProviders.[0].name}};
+  process.env.{{identityProviders.[0].providerNameEnvVarName}} ?? {{safeJson identityProviders.[0].name}};
 const IDENTITY_ENV_VAR = {{safeJson identityProviders.[0].envVarName}};
 
 // Fetches the API key from AgentCore Identity. The workload access token is

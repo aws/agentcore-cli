@@ -19,6 +19,7 @@ import { InputValidationError } from "../../../../../errors";
 import type { AppIO } from "../../../../../io";
 import { createRootHandler } from "../../../../index";
 import { createPaymentProjectTestHarness } from "../../payment-test-support";
+import { readEnvFile } from "../../../../../io/envFile";
 
 const { cleanup, inProject, projectSpec, run } = createPaymentProjectTestHarness(
   "add-payment-credential-wizard",
@@ -95,8 +96,11 @@ describe("project add credentials payment wizard", () => {
     ]);
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
     expect(env).toContain("AGENTCORE_CREDENTIAL_COINBASE_PROD_API_KEY_ID='coinbase-key'");
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_COINBASE_PROD_API_KEY_SECRET='${apiKeySecret}'`);
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_COINBASE_PROD_WALLET_SECRET='${walletSecret}'`);
+    expect(env).not.toContain(apiKeySecret);
+    expect(env).not.toContain(walletSecret);
+    const decrypted = await readEnvFile(join(projectRoot, "agentcore", ".env.local"));
+    expect(decrypted.AGENTCORE_CREDENTIAL_COINBASE_PROD_API_KEY_SECRET).toBe(apiKeySecret);
+    expect(decrypted.AGENTCORE_CREDENTIAL_COINBASE_PROD_WALLET_SECRET).toBe(walletSecret);
     expect(screen.frames.join("\n")).not.toContain(apiKeySecret);
     expect(screen.frames.join("\n")).not.toContain(walletSecret);
     screen.unmount();
@@ -148,9 +152,12 @@ describe("project add credentials payment wizard", () => {
     ]);
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
     expect(env).toContain("AGENTCORE_CREDENTIAL_STRIPE_PROD_APP_ID='privy-app'");
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_STRIPE_PROD_APP_SECRET='${appSecret}'`);
-    expect(env).toContain(
-      `AGENTCORE_CREDENTIAL_STRIPE_PROD_AUTHORIZATION_PRIVATE_KEY='${authorizationKey}'`,
+    expect(env).not.toContain(appSecret);
+    expect(env).not.toContain(authorizationKey);
+    const decrypted = await readEnvFile(join(projectRoot, "agentcore", ".env.local"));
+    expect(decrypted.AGENTCORE_CREDENTIAL_STRIPE_PROD_APP_SECRET).toBe(appSecret);
+    expect(decrypted.AGENTCORE_CREDENTIAL_STRIPE_PROD_AUTHORIZATION_PRIVATE_KEY).toBe(
+      authorizationKey,
     );
     expect(env).toContain(
       "AGENTCORE_CREDENTIAL_STRIPE_PROD_AUTHORIZATION_ID='stripe-authorization'",

@@ -1,7 +1,7 @@
 import z from "zod";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import type { AddProjectResourceConfig } from "../types";
-import { parseJsonFlagWithSchema, parseTags } from "../../../utils";
+import { parseJsonFlagWithSchema, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError } from "../../../../errors";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -162,11 +162,7 @@ export const createAddMemoryHandler = (config: AddProjectResourceConfig) =>
         "IAM role the Memory assumes; a default role is created when omitted",
         z.string().optional(),
       ),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);

@@ -3,6 +3,7 @@ import {
   CredentialSchema,
   credentialEnvironmentVariableNames,
   credentialNameFieldSuffix,
+  credentialProviderNameEnvVarName,
 } from "./credential";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
@@ -144,6 +145,11 @@ describe("credential schema", () => {
       "AGENTCORE_CREDENTIAL_STRIPE_AUTHORIZATION_PRIVATE_KEY",
       "AGENTCORE_CREDENTIAL_STRIPE_AUTHORIZATION_ID",
     ]);
+  });
+
+  it("keeps local credential material separate from the deployed provider-name variable", () => {
+    expect(credentialProviderNameEnvVarName("service-key")).toBe("CREDENTIAL_SERVICE_KEY_NAME");
+    expect(credentialProviderNameEnvVarName("service.key")).toBe("CREDENTIAL_SERVICE_KEY_NAME");
   });
 
   it.each<[string, Record<string, unknown>, RegExp]>([

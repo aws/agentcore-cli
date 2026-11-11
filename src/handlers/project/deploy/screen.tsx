@@ -1,8 +1,11 @@
+import { useEffect } from "react";
+import { useApp } from "ink";
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
+import { TuiHandoffKey } from "../../../tui/handoff";
 import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
@@ -11,11 +14,12 @@ import {
   declaresNothingDeployable,
   DEPLOY_NEXT_STEP,
   deployedMessage,
+  recordProjectResourceCounts,
   teardownQuestion,
 } from "./index";
 
 const BREADCRUMB = ["agentcore", "deploy"];
-const DESCRIPTION = "deploy the project to AWS";
+const DESCRIPTION = "build and deploy project resources to an AWS target";
 const PROJECT_MENU = "/agentcore";
 
 // DeployProjectScreen runs the same projectManager.deploy generator the command
@@ -40,20 +44,33 @@ export function DeployProjectScreen({ ctx, core }: ScreenProps) {
           description={DESCRIPTION}
           onBack={goBack}
         >
-          {({ targetName, target, back }) => (
-            <DeployConfirm
-              project={project}
-              ctx={ctx}
-              core={core}
-              targetName={targetName}
-              target={target}
-              onCancel={back}
-            />
-          )}
+          {({ targetName, target, back }) =>
+            project.legacy ? (
+              <LegacyDeployHandoff ctx={ctx} targetName={targetName} />
+            ) : (
+              <DeployConfirm
+                project={project}
+                ctx={ctx}
+                core={core}
+                targetName={targetName}
+                target={target}
+                onCancel={back}
+              />
+            )
+          }
         </DeploymentTargetPicker>
       )}
     </ProjectGate>
   );
+}
+
+function LegacyDeployHandoff({ ctx, targetName }: { ctx: Context; targetName: string }) {
+  const { exit } = useApp();
+  useEffect(() => {
+    ctx.value(TuiHandoffKey)?.(["deploy", "--target", targetName]);
+    exit();
+  }, [ctx, exit, targetName]);
+  return null;
 }
 
 function DeployConfirm({
@@ -93,6 +110,7 @@ function DeployConfirm({
       isPending={false}
       error={null}
       action={async function* () {
+        recordProjectResourceCounts(ctx, project);
         const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
         const result = yield* core.projectManager.deploy(project, {
           target: targetName,

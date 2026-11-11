@@ -116,7 +116,7 @@ describe("Gateway menu and list", () => {
 
     await waitForText(screen.lastFrame, "inspect MCP tool gateways and their targets");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
-      screens: ["create", "get", "list", "invoke", "target", "connector", "rule", "policy"],
+      screens: ["get", "list", "invoke", "target", "connector", "rule", "policy"],
       cliOnly: [],
     });
     expect(screen.core.gateway.calls).toEqual([]);

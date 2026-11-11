@@ -15,6 +15,7 @@ import { ConnectionSchema } from "./connections";
 import { uniqueBy } from "./zod-util";
 import { TagsSchema } from "./tags";
 import { z } from "zod";
+import { modelIdHelp } from "./modelDocs";
 export const CONTAINER_URI_PATTERN =
   /^(([0-9]{12})\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com(\.cn)?|public\.ecr\.aws)\/((?:[a-z0-9]+(?:[._-][a-z0-9]+)*\/)*[a-z0-9]+(?:[._-][a-z0-9]+)*)(?::([^:@]{1,300}))?(?:@(.+))?$/;
 export const MAX_CONTAINER_URI_LENGTH = 1024;
@@ -49,6 +50,10 @@ export const HARNESS_DEFAULT_MODEL_IDS: Record<HarnessModelProvider, string> = {
   gemini: "gemini-3.8-flash",
   lite_llm: `bedrock/${DEFAULT_HARNESS_MODEL.modelId}`,
 };
+/** The harness model ID field's help text, with a link to the provider's model IDs. */
+export function harnessModelIdHelp(provider: HarnessModelProvider, what: string): string {
+  return modelIdHelp(provider, what);
+}
 export const MAX_LITE_LLM_API_BASE_LENGTH = 16383;
 export const BedrockApiFormatSchema = z.enum(["converse_stream", "responses", "chat_completions"]);
 export type BedrockApiFormat = z.infer<typeof BedrockApiFormatSchema>;
@@ -61,6 +66,12 @@ export const HarnessModelSchema = z
     provider: HarnessModelProviderSchema,
     modelId: z.string().min(1, "Model ID is required"),
     apiKeyArn: z.string().optional(),
+    /**
+     * A project credential (`credentials` in agentcore.json) whose API key credential provider the
+     * model uses. Resolved to its ARN at synth time from the deployed credentials, so the CLI can
+     * create and manage the provider. Mutually exclusive with `apiKeyArn`.
+     */
+    apiKeyCredentialName: z.string().min(1).optional(),
     apiFormat: HarnessApiFormatSchema.optional(),
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
@@ -92,13 +103,29 @@ export const HarnessModelSchema = z
         });
       }
     }
+    if (model.apiKeyArn !== undefined && model.apiKeyCredentialName !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Set either apiKeyArn or apiKeyCredentialName, not both",
+        path: ["apiKeyCredentialName"],
+      });
+    }
+    if (model.apiKeyCredentialName !== undefined && model.provider === "bedrock") {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          'apiKeyCredentialName is not supported for the "bedrock" provider; Bedrock uses the harness role',
+        path: ["apiKeyCredentialName"],
+      });
+    }
     if (
       model.apiKeyArn === undefined &&
+      model.apiKeyCredentialName === undefined &&
       (model.provider === "open_ai" || model.provider === "gemini")
     ) {
       ctx.addIssue({
         code: "custom",
-        message: `apiKeyArn is required for the "${model.provider}" provider`,
+        message: `apiKeyArn or apiKeyCredentialName is required for the "${model.provider}" provider`,
         path: ["apiKeyArn"],
       });
     }
@@ -778,6 +805,97 @@ export const HarnessYamlSchema = z
     },
   )
   .pipe(HarnessSpecSchema);
+
+const MODEL_CONFIG_KEYS = {
+  bedrock: "bedrockModelConfig",
+  open_ai: "openAiModelConfig",
+  gemini: "geminiModelConfig",
+  lite_llm: "liteLlmModelConfig",
+} as const satisfies Record<HarnessModelProvider, string>;
+
+const MEMORY_CONFIG_KEYS = {
+  managed: "managedMemoryConfiguration",
+  existing: "agentCoreMemoryConfiguration",
+  disabled: "disabled",
+} as const satisfies Record<HarnessMemoryRef["mode"], string>;
+
+/**
+ * Encodes a harness spec as a `harness.yaml` document: the inverse of
+ * {@link HarnessYamlSchema}'s transform. Fields that are unset are omitted.
+ *
+ * The on-disk format cannot say "no network mode" or "no authorizer type": reading
+ * it back always yields `networkMode: PUBLIC` and `authorizerType: AWS_IAM`
+ * (or `CUSTOM_JWT` with an authorizer configuration), which is what an unset
+ * field means.
+ */
+export function encodeHarnessYaml(spec: HarnessSpec): Record<string, unknown> {
+  const {
+    name,
+    model,
+    systemPrompt,
+    tools,
+    skills,
+    allowedTools,
+    memory,
+    containerUri,
+    networkMode,
+    networkConfig,
+    lifecycleConfig,
+    sessionStoragePath,
+    efsAccessPoints,
+    s3AccessPoints,
+    authorizerType: _authorizerType,
+    authorizerConfiguration,
+    ...settings
+  } = spec;
+  const { provider, ...modelConfig } = model;
+  const { mode, ...memoryConfig } = memory ?? {};
+  const mounts = [
+    ...(sessionStoragePath ? [{ sessionStorage: { mountPath: sessionStoragePath } }] : []),
+    ...(efsAccessPoints ?? []).map((efsAccessPoint) => ({ efsAccessPoint })),
+    ...(s3AccessPoints ?? []).map((s3FilesAccessPoint) => ({ s3FilesAccessPoint })),
+  ];
+  const runtime = withoutUndefined({
+    networkConfiguration: networkMode
+      ? withoutUndefined({
+          networkMode,
+          networkModeConfig: networkConfig && {
+            subnets: networkConfig.subnets,
+            securityGroups: networkConfig.securityGroups,
+          },
+        })
+      : undefined,
+    lifecycleConfiguration: lifecycleConfig,
+    filesystemConfigurations: mounts.length ? mounts : undefined,
+  });
+  return withoutUndefined({
+    name,
+    model: { [MODEL_CONFIG_KEYS[provider]]: modelConfig },
+    systemPrompt: systemPrompt === undefined ? undefined : [{ text: systemPrompt }],
+    tools,
+    skills: skills.map((skill) => {
+      if ("s3Uri" in skill) return { s3: { uri: skill.s3Uri } };
+      if ("gitUrl" in skill) {
+        const { gitUrl, ...git } = skill;
+        return { git: { url: gitUrl, ...git } };
+      }
+      return skill;
+    }),
+    allowedTools,
+    memory: mode ? { [MEMORY_CONFIG_KEYS[mode]]: memoryConfig } : undefined,
+    ...settings,
+    environmentArtifact: containerUri ? { containerConfiguration: { containerUri } } : undefined,
+    environment: Object.keys(runtime).length ? { agentCoreRuntimeEnvironment: runtime } : undefined,
+    networkConfig: networkConfig?.vpcId ? { vpcId: networkConfig.vpcId } : undefined,
+    authorizerConfiguration: authorizerConfiguration && {
+      customJWTAuthorizer: authorizerConfiguration.customJwtAuthorizer,
+    },
+  });
+}
+
+function withoutUndefined(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
+}
 
 export const HarnessRegistryEntrySchema = z.object({
   name: HarnessNameSchema,

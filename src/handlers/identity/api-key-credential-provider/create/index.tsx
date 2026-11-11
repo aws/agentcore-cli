@@ -3,7 +3,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import type { AppIO } from "../../../../io";
-import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseTags } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseTags, tagsFlag } from "../../../utils";
 import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../parser";
 
@@ -24,7 +24,7 @@ export const createCreateApiKeyCredentialProviderHandler = (core: Core, io: AppI
         'external secret reference JSON: {"secretId":"<arn>","jsonKey":"<key>"}',
         z.string().optional(),
       ),
-      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       assertMutuallyExclusiveFlags(flags, ["api-key", "api-key-secret-reference"], {

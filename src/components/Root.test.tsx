@@ -7,7 +7,7 @@ afterEach(cleanupScreens);
 
 // screenCommands walks the compiled Commander tree for every command with a
 // screen, so a screen added later is covered without a new test. The root is
-// skipped: it has nothing to go back to. (CliOnlyScreen.test covers the rest.)
+// skipped: it has nothing to go back to. (CommandFallbackScreen.test covers CLI-only paths.)
 function screenCommands(command: Command, path: string[]): [string[], Command][] {
   const here = [...path, command.name()];
   return command.commands

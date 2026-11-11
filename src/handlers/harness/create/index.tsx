@@ -11,9 +11,10 @@ import type {
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import { createHandler, flag } from "../../../router";
 import type { Core } from "../../types.tsx";
-import { coreOptsFromCtx, parseJsonFlag, parseTags } from "../../utils.tsx";
+import { coreOptsFromCtx, parseJsonFlag, parseTags, tagsFlag } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
 import { parameterHelp } from "../parameterHelp.tsx";
+import { toHarnessGatewayModel } from "../liteLlmGateway";
 
 export const createCreateHarnessHandler = (core: Core) =>
   createHandler({
@@ -84,14 +85,7 @@ export const createCreateHarnessHandler = (core: Core) =>
       flag("max-iterations", "max agent loop iterations per invocation", z.number().optional()),
       flag("max-tokens", "max total output tokens per invocation", z.number().optional()),
       flag("timeout-seconds", "max duration in seconds per invocation", z.number().optional()),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-        {
-          help: parameterHelp.tags,
-        },
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const response = await core.harness.createHarness(
@@ -99,7 +93,9 @@ export const createCreateHarnessHandler = (core: Core) =>
           harnessName: flags["name"],
           executionRoleArn: flags["execution-role-arn"],
           systemPrompt: flags["system-prompt"] ? [{ text: flags["system-prompt"] }] : undefined,
-          model: parseJsonFlag<HarnessModelConfiguration>("model", flags["model"]),
+          model: toHarnessGatewayModel(
+            parseJsonFlag<HarnessModelConfiguration>("model", flags["model"]),
+          ),
           tools: parseJsonFlag<HarnessTool[]>("tools", flags["tools"]),
           skills: parseJsonFlag<HarnessSkill[]>("skills", flags["skills"]),
           allowedTools: flags["allowed-tools"],

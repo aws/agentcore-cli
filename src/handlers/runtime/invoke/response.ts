@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { RuntimeInvokeResponseError, UserCancellationError } from "../../../errors";
 import {
   classifyStreamingResponse,
@@ -5,7 +6,11 @@ import {
   writeStreamingResponseFile,
   type StreamingResponseOutput,
 } from "../../../io";
-import type { RuntimeInvokeResponse } from "../types";
+import type {
+  RuntimeInvokeRejectedResponse,
+  RuntimeInvokeResponse,
+  RuntimeInvokeStreamResponse,
+} from "../types";
 
 const RESPONSE_STREAM_FAILED = "response stream failed";
 
@@ -14,7 +19,7 @@ export function classifyRuntimeResponse(contentType: string) {
 }
 
 export async function writeRuntimeInvokeFile(
-  response: RuntimeInvokeResponse,
+  response: RuntimeInvokeStreamResponse,
   path: string,
   signal?: AbortSignal,
   onBytes?: (size: number) => void,
@@ -42,16 +47,34 @@ function summary(
     `mcp-protocol-version=${value(response.mcpProtocolVersion)} ` +
     `trace-id=${value(response.traceId)} trace-parent=${value(response.traceParent)} ` +
     `trace-state=${value(response.traceState)} baggage=${value(response.baggage)} ` +
-    `complete=${complete} bytes=${byteCount}${error ? ` error=${error}` : ""}\n`
+    `complete=${complete} bytes=${byteCount}${error ? ` error=${error}` : ""}` +
+    `${response.kind === "rejected" && response.error.requestId ? ` request-id=${response.error.requestId}` : ""}\n`
   );
+}
+
+async function writeRejectedRuntimeResponse(
+  response: RuntimeInvokeRejectedResponse,
+  output: StreamingResponseOutput,
+): Promise<never> {
+  try {
+    await output.beforeOutput?.();
+    await pipeline([summary(response, 0, false, `HTTP ${response.statusCode}`)], output.stderr, {
+      end: false,
+      signal: output.signal,
+    });
+  } catch (error) {
+    failure(error, output.signal);
+  }
+  throw new RuntimeInvokeResponseError(`HTTP ${response.statusCode}`);
 }
 
 export async function writeRuntimeInvokeResponse(
   response: RuntimeInvokeResponse,
   output: StreamingResponseOutput,
 ): Promise<void> {
+  if (response.kind === "rejected") return writeRejectedRuntimeResponse(response, output);
   await writeStreamingResponse(response, output, {
-    metadata: ({ body: _body, ...metadata }) => metadata,
+    metadata: ({ body: _body, kind: _kind, ...metadata }) => metadata,
     summary,
     fail: (error) => failure(error, output.signal),
     binaryTtyError: "Binary or unknown response content requires --output-file or --json",

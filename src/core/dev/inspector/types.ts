@@ -5,6 +5,10 @@
  * implementations (DevSupervisor, the trace store, bundled assets) at the edge,
  * and tests inject fakes.
  */
+import type {
+  InvokeHarnessRequest,
+  InvokeHarnessResponse,
+} from "@aws-sdk/client-bedrock-agentcore";
 import type { Project } from "../../../handlers/project/types";
 
 /** One managed agent's state, as reported by GET /api/status. */
@@ -54,4 +58,9 @@ export interface InspectorDeps {
   project?: Project;
   /** Agent name to pre-select in the UI. */
   selectedAgent?: string;
+  invokeHarness?: (
+    name: string,
+    input: Omit<InvokeHarnessRequest, "harnessArn">,
+    signal: AbortSignal,
+  ) => Promise<InvokeHarnessResponse>;
 }

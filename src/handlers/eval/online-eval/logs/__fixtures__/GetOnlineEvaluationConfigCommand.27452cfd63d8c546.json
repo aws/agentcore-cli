@@ -1,0 +1,43 @@
+{
+  "onlineEvaluationConfigArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/bugbash725_MyOnlineEval-x7cbMK8W2z",
+  "onlineEvaluationConfigId": "bugbash725_MyOnlineEval-x7cbMK8W2z",
+  "onlineEvaluationConfigName": "bugbash725_MyOnlineEval",
+  "rule": {
+    "samplingConfig": {
+      "samplingPercentage": 100
+    },
+    "sessionConfig": {
+      "sessionTimeoutMinutes": 5
+    }
+  },
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "bugbash725_MyAgent.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/runtimes/bugbash725_MyAgent-w4LhmF4ztO-DEFAULT"
+      ]
+    }
+  },
+  "status": "ACTIVE",
+  "executionStatus": "ENABLED",
+  "createdAt": {
+    "$date": "2026-06-10T18:05:53.375Z"
+  },
+  "updatedAt": {
+    "$date": "2026-06-10T18:06:03.710Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Correctness"
+    }
+  ],
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/results/bugbash725_MyOnlineEval-x7cbMK8W2z",
+      "resultDestination": "DEDICATED_LOG_GROUP"
+    }
+  },
+  "evaluationExecutionRoleArn": "arn:aws:iam::123456789012:role/AgentCoreEvaluationFixtureRole"
+}

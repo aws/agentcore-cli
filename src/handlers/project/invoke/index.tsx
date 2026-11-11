@@ -88,6 +88,7 @@ function handlerFlags(): HandlerFlag[] {
   }
   return [...merged.values()].map(({ flag, owners }) => ({
     ...flag,
+    description: flag.name === "user-id" ? "the user ID to invoke as" : flag.description,
     group: owners.length === 1 ? `${RESOURCE_LABELS[owners[0]!]} options:` : "Request options:",
   }));
 }

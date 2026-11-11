@@ -59,7 +59,7 @@ const HarnessInvokeResponseSchema = z.object({
 });
 
 const harnessTags = [TAGS.HARNESS, TAGS.CANARY];
-describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessTags }, () => {
+describe("add, dev, deploy, and invoke harnesses", { sequential: true, tags: harnessTags }, () => {
   const cli = new CliRunner();
   const projectName = `${E2E_PREFIX}${Date.now().toString(36)}`;
   let projectDir: string;
@@ -91,34 +91,36 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessT
     },
   );
 
-  test("deploys all harnesses", { timeout: TIMEOUT_MS.PROJECT_DEPLOY }, async () => {
-    const deployment = parseResult(
-      DeployResponseSchema,
-      await cli.run(["deploy", "--yes", "--json"], projectDir),
-    );
-    expect(deployment.message).toContain("Deployed project");
-  });
-
-  test.each(HARNESS_TEST_CASES)(
-    "$name can be invoked after deployed",
-    { concurrent: true, timeout: TIMEOUT_MS.PROJECT_INVOKE },
-    async (harness) => {
-      const response = parseResult(
-        HarnessInvokeResponseSchema,
-        await cli.run(
-          ["invoke", "--harness", harness.name, "--json", ...harness.invokeFlags],
-          projectDir,
-        ),
+  describe.each(["dev", "deploy"])("%s", { sequential: true }, (command) => {
+    test("deploys all harnesses", { timeout: TIMEOUT_MS.PROJECT_DEPLOY }, async () => {
+      const deployment = parseResult(
+        DeployResponseSchema,
+        await cli.run([command, "--yes", "--json"], projectDir),
       );
-      const responseText = response.transcript
-        .filter((item) => item.kind === "text")
-        .flatMap((item) => item.text ?? [])
-        .join("");
+      expect(deployment.message).toContain("deployed project");
+    });
 
-      expect(responseText.trim()).not.toBe("");
-      if (harness.expectedText) expect(responseText).toContain(harness.expectedText);
-    },
-  );
+    test.each(HARNESS_TEST_CASES)(
+      "$name can be invoked after deployed",
+      { concurrent: true, timeout: TIMEOUT_MS.PROJECT_INVOKE },
+      async (harness) => {
+        const response = parseResult(
+          HarnessInvokeResponseSchema,
+          await cli.run(
+            ["invoke", "--harness", harness.name, "--json", ...harness.invokeFlags],
+            projectDir,
+          ),
+        );
+        const responseText = response.transcript
+          .filter((item) => item.kind === "text")
+          .flatMap((item) => item.text ?? [])
+          .join("");
+
+        expect(responseText.trim()).not.toBe("");
+        if (harness.expectedText) expect(responseText).toContain(harness.expectedText);
+      },
+    );
+  });
 
   test(
     "removes all harnesses and deploys the empty project",
@@ -134,7 +136,7 @@ describe("add, deploy, and invoke harnesses", { sequential: true, tags: harnessT
         DeployResponseSchema,
         await cli.run(["deploy", "--yes", "--json"], projectDir),
       );
-      expect(deployment.message).toContain("Removed project");
+      expect(deployment.message).toContain("removed project");
     },
   );
 });

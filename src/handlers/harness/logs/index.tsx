@@ -7,7 +7,7 @@ import type { Core } from "../../types";
 import { coreOptsFromCtx } from "../../utils";
 
 const harnessFlags = [
-  flag("id", "the ID of the harness", z.string().min(1).max(48)),
+  flag("id", "the ID of the harness", z.string().min(1).max(51)),
   flag("qualifier", "the harness endpoint qualifier", z.string().min(1).optional()),
 ] as const;
 

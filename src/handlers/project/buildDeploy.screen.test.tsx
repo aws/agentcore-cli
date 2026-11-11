@@ -2,26 +2,33 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { writeMigrationState } from "../../core/project/migrate/journal";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
+import { CommandRunMetricEventKey } from "../../router";
 import {
+  assertMetricEmitted,
   cleanupScreens,
   flatFrame,
+  getTestTelemetryClient,
   initProject,
   inProjectContext,
   inTempDirectory,
   renderScreen,
   TestCoreClient,
+  waitFor,
   waitForFlatText,
   waitForText,
 } from "../../testing";
 import type { DeployResult, Project, ProjectEvent } from "./types";
+import { ProjectKey } from "../../router";
+import { TuiHandoffKey } from "../../tui/handoff";
 
 // The build and deploy screens run the same ProjectManager generators the
 // commands run, so these tests stub the backend exactly as the handler tests
 // do and assert the same steps come out — through the TaskList this time.
 
 const EVENTS: ProjectEvent[] = [
-  { type: "step", message: "Synthesizing CloudFormation templates" },
+  { type: "step", message: "synthesizing CloudFormation templates" },
   { type: "output", line: "cdk synth: 3 stacks" },
   { type: "step", message: "Deploying stack" },
   { type: "output", line: "CREATE_IN_PROGRESS | AWS::IAM::Role" },
@@ -75,7 +82,11 @@ async function inProject(
   core: TestCoreClient,
   options: { empty?: boolean; targets?: boolean; staging?: boolean } = {},
 ): Promise<string> {
-  const { projectRoot, cleanup } = await initProject({ name: "orders", core });
+  const { projectRoot, cleanup } = await initProject({
+    name: "orders",
+    flags: ["--template", "agent-python-minimal"],
+    core,
+  });
   cleanups.push(cleanup);
   if (options.targets !== false) {
     await writeFile(
@@ -96,6 +107,34 @@ async function inProject(
   return projectRoot;
 }
 
+test.each(["build", "deploy"])(
+  "the %s screen shows legacy dependency guidance without starting backend work",
+  async (command) => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    await writeFile(
+      join(projectRoot, "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 1 }),
+    );
+    await writeFile(
+      join(projectRoot, "agentcore", "cdk", "package.json"),
+      JSON.stringify({ dependencies: { "@aws/agentcore-cdk": "^0.1.0-alpha.19" } }),
+    );
+    const r = renderScreen(`/agentcore/${command}`, { core });
+
+    await waitForFlatText(r.lastFrame, "npx @aws/agentcore@0 deploy");
+
+    expect(flatFrame(r.lastFrame)).toContain("CDK dependencies are older than v0.24.2");
+    expect(r.frames.some((frame) => frame.includes("synthesizing CloudFormation templates"))).toBe(
+      false,
+    );
+    expect(deploys).toEqual([]);
+    expect(core.projectCommands).toEqual([]);
+    r.unmount();
+  },
+);
+
 describe("project build screen", () => {
   test("starts at once, renders the backend's steps as the CLI does, then the CLI's own success line", async () => {
     const { backend } = fakeBackend();
@@ -105,14 +144,14 @@ describe("project build screen", () => {
 
     // Both steps settle to ✓, as the inline TaskList leaves them on the
     // command line; the finished steps' output tails collapse.
-    await waitForText(r.lastFrame, "✔ Built project 'orders'");
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
     const frame = r.lastFrame()!;
     expect(frame).toContain("agentcore → build");
     // No frame — not even the first — advertised a question.
     expect(r.frames.some((painted) => painted.includes("(y/N)") || painted.includes("y/n"))).toBe(
       false,
     );
-    expect(frame).toContain("✓ Synthesizing CloudFormation templates");
+    expect(frame).toContain("✓ synthesizing CloudFormation templates");
     expect(frame).toContain("✓ Deploying stack");
     expect(frame).not.toContain("cdk synth");
     expect(frame).toContain("agentcore deploy");
@@ -131,7 +170,7 @@ describe("project build screen", () => {
 
     await waitForText(r.lastFrame, "✗ synth exploded");
     const frame = r.lastFrame()!;
-    expect(frame).toContain("✓ Synthesizing CloudFormation templates");
+    expect(frame).toContain("✓ synthesizing CloudFormation templates");
     expect(frame).toContain("✕ Deploying stack");
     expect(frame).toContain("CREATE_IN_PROGRESS | AWS::IAM::Role");
     // With no confirmation to return to, esc leaves for the root menu
@@ -155,19 +194,73 @@ describe("project build screen", () => {
 });
 
 describe("project deploy screen", () => {
+  test("a translated v0 project hands the selected target to the deploy command", async () => {
+    const core = new TestCoreClient();
+    const project = {
+      name: "orders",
+      rootPath: "/workspace/orders",
+      spec: {
+        name: "orders",
+        version: 2,
+        managedBy: "CDK",
+        runtimes: [],
+        memories: [],
+        knowledgeBases: [],
+        credentials: [],
+        evaluators: [],
+        onlineEvalConfigs: [],
+        agentCoreGateways: [],
+        policyEngines: [],
+        configBundles: [],
+        harnesses: [],
+      },
+      legacy: {
+        format: "v0",
+        v0Spec: {} as never,
+      },
+    } as Project;
+    core.projectManager.listTargets = async () => [
+      { name: "default", account: "111122223333", region: "us-east-1" },
+    ];
+    let handoff: string[] | undefined;
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: (ctx) =>
+        ctx.withValue(ProjectKey, project).withValue(TuiHandoffKey, (args) => {
+          handoff = args;
+        }),
+    });
+
+    await waitFor(() => handoff !== undefined);
+
+    expect(handoff).toEqual(["deploy", "--target", "default"]);
+    expect(core.projectCommands).toEqual([]);
+    r.unmount();
+  });
+
   test("one target: deploys to it at once, then the CLI's own success line", async () => {
     const { backend, deploys } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core);
-    const r = renderScreen("/agentcore/deploy", { core });
+    const { client, filePath, cleanup } = await getTestTelemetryClient();
+    cleanups.push(cleanup);
+    const event = client.createMetricEvent("cli.command_run", {
+      exit_reason: "success",
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+    });
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: (ctx) => ctx.withValue(CommandRunMetricEventKey, event),
+    });
 
     // A project with resources is not asked anything, as on the command line.
-    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
     const frame = flatFrame(r.lastFrame);
     expect(frame).not.toContain("(y/N)");
     expect(frame).toContain("project orders");
     expect(frame).toContain("target default");
-    expect(frame).toContain("✓ Synthesizing CloudFormation templates");
+    expect(frame).toContain("✓ synthesizing CloudFormation templates");
     expect(frame).toContain("✓ Deploying stack");
     // Stack outputs are not listed, as the command prints them only with --json.
     expect(frame).not.toContain("RuntimeArn");
@@ -179,6 +272,16 @@ describe("project deploy screen", () => {
     expect(deploys).toHaveLength(1);
     expect(deploys[0]!.confirmed).toBe(false);
     expect(deploys[0]!.input.target.name).toBe("default");
+    await event.emit(100);
+    await client.shutdown();
+    await assertMetricEmitted(filePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+      project_runtime_count: 1,
+      project_memory_count: 0,
+      project_gateway_count: 0,
+      project_harness_count: 0,
+    });
     r.unmount();
   });
 
@@ -200,7 +303,7 @@ describe("project deploy screen", () => {
     expect(r.lastFrame()).toContain("[esc] back");
 
     await r.write("r");
-    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
     // Loading retries once, then deploy itself re-reads through listTargets.
     expect(attempts).toBe(3);
     r.unmount();
@@ -233,7 +336,7 @@ describe("project deploy screen", () => {
     await r.press("down");
     await r.press("return");
 
-    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'staging'");
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'staging'");
     expect(flatFrame(r.lastFrame)).toContain("target staging");
     expect(deploys[0]!.input.target).toEqual(STAGING);
     r.unmount();
@@ -254,7 +357,7 @@ describe("project deploy screen", () => {
       withContext: inProjectContext,
     });
 
-    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
     expect(deploys).toHaveLength(1);
     await r.press("return");
     await waitForText(r.lastFrame, "the platform for production AI agents");
@@ -286,7 +389,7 @@ describe("project deploy screen", () => {
       withContext: inProjectContext,
     });
 
-    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
     expect(deploys).toHaveLength(1);
     await r.press("return");
     await waitForText(r.lastFrame, "the platform for production AI agents");
@@ -312,10 +415,10 @@ describe("project deploy screen", () => {
     await inProject(core, { targets: false });
     const r = renderScreen("/agentcore/deploy", { core });
 
-    await waitForText(r.lastFrame, "✔ Deployed project 'orders' to target 'default'");
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
     const frame = flatFrame(r.lastFrame);
     // The manager's own provisioning step streams through like any other.
-    expect(frame).toContain("✓ Created default deployment target: account 887863153624");
+    expect(frame).toContain("✓ created default deployment target: account 887863153624");
     expect(deploys[0]!.input.target).toMatchObject({ name: "default", account: "887863153624" });
     r.unmount();
   });
@@ -324,7 +427,17 @@ describe("project deploy screen", () => {
     const { backend, deploys } = fakeBackend({ result: { outputs: {}, tornDown: true } });
     const core = new TestCoreClient({ backends: { CDK: backend } });
     await inProject(core, { empty: true });
-    const r = renderScreen("/agentcore/deploy", { core });
+    const { client, filePath, cleanup } = await getTestTelemetryClient();
+    cleanups.push(cleanup);
+    const event = client.createMetricEvent("cli.command_run", {
+      exit_reason: "success",
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+    });
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: (ctx) => ctx.withValue(CommandRunMetricEventKey, event),
+    });
 
     await waitForFlatText(r.lastFrame, "declares no resources to deploy");
     // Confirm lays its (y/N) inline, so the question wraps around it.
@@ -333,8 +446,18 @@ describe("project deploy screen", () => {
     );
     await r.write("y");
 
-    await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
+    await waitForText(r.lastFrame, "✔ removed project 'orders' from target 'default'");
     expect(deploys[0]!.confirmed).toBe(true);
+    await event.emit(100);
+    await client.shutdown();
+    await assertMetricEmitted(filePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      is_tui: true,
+      project_runtime_count: 0,
+      project_memory_count: 0,
+      project_gateway_count: 0,
+      project_harness_count: 0,
+    });
     // Nothing is left to invoke.
     expect(r.lastFrame()).not.toContain("agentcore invoke");
     r.unmount();
@@ -349,10 +472,39 @@ describe("project deploy screen", () => {
     await inProject(core);
     const r = renderScreen("/agentcore/deploy", { core });
 
-    await waitForText(r.lastFrame, "✔ Removed project 'orders' from target 'default'");
-    expect(r.lastFrame()).not.toContain("Deployed project");
+    await waitForText(r.lastFrame, "✔ removed project 'orders' from target 'default'");
+    expect(r.lastFrame()).not.toContain("deployed project");
     // Nothing is left to invoke, so the invoke next step follows the result too.
     expect(r.lastFrame()).not.toContain("agentcore invoke");
+    r.unmount();
+  });
+
+  test("refuses a target a migration hasn't finished, before any backend work", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    await writeMigrationState(projectRoot, {
+      version: 2,
+      startedAt: "2026-10-13T00:00:00.000Z",
+      files: { status: "installed", backup: "agentcore/.cli/migrate-backup", changes: [] },
+      refactored: [],
+      targets: [
+        {
+          name: "default",
+          account: "111122223333",
+          region: "us-east-1",
+          stackName: "AgentCore-orders-default",
+          status: "pending",
+        },
+      ],
+    });
+    const r = renderScreen("/agentcore/deploy", { core });
+
+    await waitForFlatText(r.lastFrame, "agentcore migrate --target default");
+    expect(flatFrame(r.lastFrame)).toContain(
+      "Target 'default' (AWS account 111122223333, us-east-1) hasn't been migrated yet",
+    );
+    expect(deploys).toEqual([]);
     r.unmount();
   });
 

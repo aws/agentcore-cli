@@ -1,5 +1,9 @@
 // Every upstream fetch carries the client abort signal, so a browser disconnect tears down the agent request.
 import { randomUUID } from "node:crypto";
+import type {
+  InvokeHarnessRequest,
+  InvokeHarnessStreamOutput,
+} from "@aws-sdk/client-bedrock-agentcore";
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
 import {
   apiError,
@@ -18,6 +22,9 @@ export async function handleInvocations(
   request: HttpRequest,
 ): Promise<HttpResponse> {
   const parsed = parseJsonBody(request.body);
+  if (parsed && "harnessName" in parsed) {
+    return invokeHarness({ deps, body: parsed, signal: request.signal });
+  }
   const agentName = asString(parsed?.agentName);
   // Request header, agent body, and echoed x-session-id must agree, so one session id is computed once.
   const sessionId = asString(parsed?.sessionId) ?? randomUUID();
@@ -44,6 +51,110 @@ export async function handleInvocations(
     accept: "text/event-stream, */*",
     normalizeSse: true,
   });
+}
+
+type HarnessOverrides = Partial<Omit<InvokeHarnessRequest, "systemPrompt">> & {
+  systemPrompt?: string;
+};
+
+async function invokeHarness({
+  deps,
+  body,
+  signal,
+}: {
+  deps: InspectorDeps;
+  body: Record<string, unknown>;
+  signal: AbortSignal;
+}): Promise<HttpResponse> {
+  const name = asString(body.harnessName);
+  if (!name?.trim()) return apiError(400, "harnessName is required");
+  const prompt = asString(body.prompt);
+  if (!prompt?.trim()) return apiError(400, "prompt is required");
+  if (!deps.project?.spec.harnesses.some((harness) => harness.name === name)) {
+    return apiError(404, `Harness "${name}" not found`);
+  }
+  if (!deps.invokeHarness) return apiError(409, "Harness invocation is not available");
+
+  const sessionId = asString(body.sessionId) ?? randomUUID();
+  const overrides = body.harnessOverrides as HarnessOverrides | undefined;
+  const systemPrompt = asString(overrides?.systemPrompt);
+  try {
+    const response = await deps.invokeHarness(
+      name,
+      {
+        ...overrides,
+        qualifier: overrides?.qualifier ?? "DEFAULT",
+        runtimeSessionId: sessionId,
+        runtimeUserId: asString(body.userId),
+        messages: [{ role: "user", content: [{ text: prompt }] }],
+        systemPrompt: systemPrompt ? [{ text: systemPrompt }] : undefined,
+      },
+      signal,
+    );
+    return sse(transformHarnessSse(response.stream ?? []), sessionId);
+  } catch (error) {
+    return apiError(502, `Harness invocation failed: ${errorMessage(error)}`);
+  }
+}
+
+async function* transformHarnessSse(
+  stream: AsyncIterable<InvokeHarnessStreamOutput> | Iterable<InvokeHarnessStreamOutput>,
+): AsyncGenerator<Uint8Array, void> {
+  try {
+    for await (const event of stream) {
+      const payload = harnessStreamEvent(event);
+      if (payload) yield sseEvent(payload);
+    }
+  } catch (error) {
+    yield sseEvent({ type: "error", errorType: "invocationError", message: errorMessage(error) });
+  }
+}
+
+function harnessStreamEvent(event: InvokeHarnessStreamOutput): unknown {
+  if (event.messageStart) return { type: "messageStart", ...event.messageStart };
+  if (event.contentBlockStart) {
+    const { start, contentBlockIndex } = event.contentBlockStart;
+    const type = start?.toolUse ? "toolUse" : start?.toolResult ? "toolResult" : undefined;
+    if (type) {
+      return {
+        type: "contentBlockStart",
+        contentBlockIndex,
+        start: { type, ...start },
+      };
+    }
+  }
+  if (event.contentBlockDelta) {
+    const { delta, contentBlockIndex } = event.contentBlockDelta;
+    let payload: unknown;
+    if (delta?.text !== undefined) payload = { type: "text", text: delta.text };
+    else if (delta?.toolUse) payload = { type: "toolUse", ...delta.toolUse };
+    else if (delta?.toolResult) {
+      payload = {
+        type: "toolResult",
+        results: delta.toolResult.map((chunk) =>
+          chunk.json !== undefined ? { text: JSON.stringify(chunk.json) } : chunk,
+        ),
+      };
+    } else if (delta?.reasoningContent) {
+      payload = { type: "reasoningContent", ...delta.reasoningContent };
+    }
+    if (payload) return { type: "contentBlockDelta", contentBlockIndex, delta: payload };
+  }
+  if (event.contentBlockStop) return { type: "contentBlockStop", ...event.contentBlockStop };
+  if (event.messageStop) return { type: "messageStop", ...event.messageStop };
+  if (event.metadata) return { type: "metadata", ...event.metadata };
+  for (const errorType of [
+    "validationException",
+    "internalServerException",
+    "runtimeClientError",
+  ] as const) {
+    const error = event[errorType];
+    if (error) return { type: "error", errorType, message: error.message ?? String(error) };
+  }
+  if (event.$unknown) {
+    const [errorType] = event.$unknown;
+    return { type: "error", errorType, message: `Unknown harness stream event: ${errorType}` };
+  }
 }
 
 async function forwardInvocation(

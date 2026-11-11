@@ -7,6 +7,8 @@ export {
   GatewayInvokeResponseError,
   InputValidationError,
   InvalidEnvironmentError,
+  LegacyDeployError,
+  LegacyDeployWarningExit,
   MalformedServiceResponseError,
   NestedProjectError,
   NetworkingError,

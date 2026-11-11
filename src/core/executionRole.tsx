@@ -208,7 +208,10 @@ function executionPolicy(region: string, accountId: string, harnessName: string)
           "bedrock-agentcore:ListEvents",
           "bedrock-agentcore:RetrieveMemoryRecords",
         ],
-        Resource: `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/harness_*`,
+        Resource: [
+          `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/${harnessName}-*`,
+          `arn:aws:bedrock-agentcore:${region}:${accountId}:memory/harness_${harnessName}_*`,
+        ],
       },
       {
         Sid: "AgentCoreGatewayAccess",

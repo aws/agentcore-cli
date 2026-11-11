@@ -14,6 +14,7 @@ import type { Core } from "../../types.tsx";
 import { coreOptsFromCtx, parseJsonFlag } from "../../utils.tsx";
 import { JsonRendererKey } from "../../../tui";
 import { parameterHelp } from "../parameterHelp.tsx";
+import { toHarnessGatewayModel } from "../liteLlmGateway";
 
 // updated wraps a PATCH-semantics field: `--<flag> <json>` replaces the value,
 // `--clear-<flag> true` sends an empty wrapper (unsetting it), and omitting
@@ -28,7 +29,7 @@ export const createUpdateHarnessHandler = (core: Core) =>
     name: "update",
     description: "update a harness (creates a new version)",
     flags: [
-      flag("id", "the ID of the harness to update", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness to update", z.string().min(1).max(51)),
       flag("execution-role-arn", "IAM role the harness assumes", z.string().optional(), {
         help: parameterHelp.executionRoleArn,
       }),
@@ -111,7 +112,9 @@ export const createUpdateHarnessHandler = (core: Core) =>
           harnessId: flags["id"],
           executionRoleArn: flags["execution-role-arn"],
           systemPrompt: flags["system-prompt"] ? [{ text: flags["system-prompt"] }] : undefined,
-          model: parseJsonFlag<HarnessModelConfiguration>("model", flags["model"]),
+          model: toHarnessGatewayModel(
+            parseJsonFlag<HarnessModelConfiguration>("model", flags["model"]),
+          ),
           tools: parseJsonFlag<HarnessTool[]>("tools", flags["tools"]),
           skills: parseJsonFlag<HarnessSkill[]>("skills", flags["skills"]),
           allowedTools: flags["allowed-tools"],

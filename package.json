@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/aws/agentcore-cli.git"
@@ -20,7 +20,7 @@
     "!dist/bin"
   ],
   "scripts": {
-    "audit": "bun audit --ignore GHSA-vfj7-8cjw-p6xm",
+    "audit": "bun audit",
     "build": "bun scripts/build.ts bundle",
     "compile": "bun run compile:darwin-x64 && bun run compile:darwin-arm64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64 && bun run compile:windows-arm64",
     "compile:darwin-x64": "bun scripts/build.ts compile bun-darwin-x64",
@@ -51,43 +51,48 @@
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
     "@types/bun": "latest",
+    "@types/cross-spawn": "^6.0.6",
     "@types/react": "^19.2.17",
     "@types/semver": "^7.8.0",
+    "@types/ws": "^8.18.1",
     "husky": "^9.1.7",
     "ink-testing-library": "^4.0.0",
     "lint-staged": "^17.0.8",
     "oxlint": "^1.73.0",
     "prettier": "^3.8.4",
     "secretlint": "^12.2.0",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.12"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "@aws-cdk/cloudformation-diff": "2.187.4",
     "@aws-cdk/toolkit-lib": "1.38.2",
     "@aws-sdk/client-application-signals": "^3.1092.0",
     "@aws-sdk/client-bedrock-agent": "^3.1092.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.1135.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.1153.0",
     "@aws-sdk/client-bedrock-agentcore-control": "^3.1143.0",
     "@aws-sdk/client-cloudformation": "^3.1092.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1092.0",
     "@aws-sdk/client-iam": "^3.1080.0",
+    "@aws-sdk/client-s3": "^3.1121.0",
     "@aws-sdk/client-sts": "^3.1092.0",
     "@aws-sdk/client-xray": "^3.1092.0",
     "@aws-sdk/util-endpoints": "^3.996.44",
-    "@aws/agent-inspector": "0.6.2",
+    "@aws/agent-inspector": "0.6.3",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
     "@opentelemetry/otlp-transformer": "0.214.0",
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-metrics": "^2.10.0",
     "@smithy/core": "^3.33.3",
-    "@tanstack/react-query": "^5.101.2",
-    "bedrock-agentcore": "^0.4.3",
+    "@tanstack/react-query": "^5.104.5",
+    "bedrock-agentcore": "0.4.6",
     "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
-    "handlebars": "^4.7.9",
+    "cross-spawn": "^7.0.6",
+    "handlebars": "^4.7.10",
     "ink": "^7.1.0",
     "ink-scroll-view": "^0.3.7",
     "lodash": "^4.18.1",
@@ -95,17 +100,28 @@
     "react-devtools-core": "^7.0.1",
     "react-router": "^8.3.0",
     "semver": "^7.8.5",
-    "string-width": "^8.2.2",
+    "smol-toml": "^1.9.1",
+    "string-width": "^8.3.0",
     "terminal-size": "^4.0.1",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
+    "ws": "^8.21.3",
     "yaml": "^2.8.1",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "2.1.2"
+  },
   "overrides": {
     "@opentelemetry/core": "^2.10.0",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    },
     "@aws-cdk/toolkit-lib": {
       "yaml": "^1"
+    },
+    "@ag-ui/core": {
+      "zod": "^4.6.6"
     }
   }
 }

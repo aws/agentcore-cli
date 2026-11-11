@@ -18,6 +18,7 @@ import type { AppIO } from "../../../../../io";
 import { createRootHandler } from "../../../../index";
 import { createGatewayProjectTestHarness } from "../../gateway-test-support";
 import { OAUTH_VENDOR_CHOICES } from "./screen";
+import { readEnvFile } from "../../../../../io/envFile";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 
@@ -104,7 +105,11 @@ describe("project add credentials oauth wizard", () => {
       },
     ]);
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_SERVICE_OAUTH_CLIENT_SECRET='${secret}'`);
+    expect(env).not.toContain(secret);
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
+        .AGENTCORE_CREDENTIAL_SERVICE_OAUTH_CLIENT_SECRET,
+    ).toBe(secret);
     screen.unmount();
   }, 15000);
 

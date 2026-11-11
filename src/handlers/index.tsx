@@ -18,8 +18,10 @@ import {
   withLogging,
   withGlobalConfigAccessor,
   withPlatform,
+  withV0ProjectNotice,
 } from "../middleware";
 import type { AppIO } from "../io";
+import type { V0DeployRunner } from "../core/project/legacy/deploy";
 import type { Core } from "./types.tsx";
 import type { Logger } from "../logging";
 import type { GlobalConfigAccessor } from "../globalConfig";
@@ -31,6 +33,8 @@ export interface RootHandlerConfig {
   globalConfigAccessor: GlobalConfigAccessor;
   /** Host platform, defaults to `process.platform`. Tests pass "win32" to exercise Windows paths. */
   platform?: NodeJS.Platform;
+  /** Overrides the v0 deploy subprocess boundary in tests. */
+  runV0Deploy?: V0DeployRunner;
 }
 
 export function createRootHandler(core: Core, config: RootHandlerConfig): Router {
@@ -83,13 +87,18 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // Pin the host platform so Windows-specific behavior is decided from the context.
   root.use(withPlatform(config.platform ?? process.platform));
 
-  // Install sub handlers. Registration order is menu/help order; project is
-  // the primary workflow, so it goes first.
-  createProjectHandlers(core, io).forEach((handler) => {
+  // Make v0 compatibility mode visible for every command and TUI session
+  // launched from a legacy project.
+  root.use(withV0ProjectNotice(io));
+
+  // Install sub handlers. Registration order is menu/help order.
+  root.helpSection("project");
+  createProjectHandlers(core, io, { runV0Deploy: config.runV0Deploy }).forEach((handler) => {
     root.handler(handler);
   });
 
   root.menuSection("resources");
+  root.helpSection("resources");
   // Ordered from the agent outward: what runs it, what it calls, what it
   // remembers, then how it is measured.
   root.handler(createHarnessHandler(core, io));
@@ -100,14 +109,12 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   root.handler(createEvalHandler(core, io));
   root.handler(createPaymentHandler(core, io));
 
+  root.helpSection("settings");
   root.handler(createFeedbackHandler(core, io));
   root.handler(createConfigHandler());
   root.handler(createUpdateHandler(io));
 
-  // These have no screen of their own but belong with the commands around
-  // them, so the menu keeps them in place; selecting one opens its help, except
-  // dev, which closes the TUI and runs (see CommandHandoffScreen).
-  root.listInMenu("dev", "logs", "traces", "export", "payment");
+  root.listInMenu("dev");
 
   // Invoking with no subcommand launches the interactive TUI.
   root.default(renderTui(core, io));

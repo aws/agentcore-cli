@@ -131,6 +131,9 @@ function commandForRuntime(
   if (input.runtime.protocol === "MCP") {
     env.FASTMCP_PORT = String(input.port);
   }
+  if (input.runtime.protocol === "A2A") {
+    env.A2A_PORT = String(input.port);
+  }
 
   if (!entrypoint.endsWith(".py")) {
     return {

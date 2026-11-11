@@ -11,6 +11,13 @@ import { contextKey, globalFlag } from "../router";
 // withRegion middleware can fall back to AWS_REGION / the shared config file.
 export const RegionKey = globalFlag("region", "AWS region", z.string().optional());
 
+// withRegion overwrites RegionKey with the fully-resolved region (flag -> env ->
+// config -> DEFAULT_REGION) before any handler runs, so by the time a leaf reads
+// ctx.value(RegionKey) it's never undefined. This key preserves whether --region
+// was actually passed, for callers (like the v0 compat path) that must tell
+// "user asked for a region" apart from "we picked one for them".
+export const RegionExplicitKey = contextKey<boolean>("region.explicit");
+
 export const DebugKey = globalFlag("debug", "debug logging", z.boolean().default(false));
 
 export const JsonKey = globalFlag("json", "JSON output", z.boolean().default(false));

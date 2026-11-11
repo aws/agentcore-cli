@@ -14,11 +14,21 @@ import {
   resolveRuntimeTemplateShortcut,
   type TemplateName,
 } from "../shortcuts";
-import { createNextStep, DEFAULT_CREATE_RUNTIME_NAME, resolveScaffoldHarnessInput } from "./index";
+import {
+  createNextStep,
+  DEFAULT_CREATE_RUNTIME_NAME,
+  EMPTY_PROJECT_SUMMARY,
+  emptyProjectCreatedMessage,
+  emptyProjectNextSteps,
+  resolveScaffoldHarnessInput,
+} from "./index";
+import { isChinaRegion } from "../../../core/partition";
 import {
   HarnessModelField,
   emptyHarnessModel,
+  harnessModelApiKeySource,
   harnessModelSummary,
+  resolveHarnessModelApiKey,
   toHarnessModelInput,
   type HarnessModelValues,
 } from "../HarnessModelField";
@@ -106,7 +116,7 @@ const TEMPLATE_CHOICES: Choice<TemplateName>[] = PROJECT_TEMPLATE_NAMES.map((tem
 
 // buildCreateInput translates the form through the same resolver as the
 // flag-driven path, including its existing API-key ARN support. apiKey is the
-// code-based model step's key, already read from its file:// source.
+// chosen model step's key, already read from its file:// source.
 export function buildCreateInput(
   values: CreateProjectFormValues,
   apiKey?: string,
@@ -122,8 +132,10 @@ export function buildCreateInput(
         "model-provider": model.provider,
         "model-id": model.modelId,
         "api-key-arn": model.apiKeyArn,
+        "api-key": harnessModelApiKeySource(values.model),
         "api-base": model.apiBase,
       }),
+      ...(apiKey !== undefined && { harnessApiKey: apiKey }),
     };
   }
   if (values.template === EMPTY_TEMPLATE_NAME) {
@@ -187,6 +199,8 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
 
   const patch = (update: Partial<CreateProjectFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
+  const isEmptyProject = values.kind === "agent" && values.template === EMPTY_TEMPLATE_NAME;
+  const china = region !== undefined && isChinaRegion(region);
 
   return (
     <Wizard
@@ -202,9 +216,11 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         // read here, at submit, the way the flag path reads --api-key.
         assertProjectPathFits(values.name, ctx.require(PlatformKey));
         const apiKey =
-          values.kind === "agent" && templateTakesModelProvider(values.template)
-            ? await resolveRuntimeModelApiKey(toRuntimeModelOverrides(values.runtimeModel))
-            : undefined;
+          values.kind === "harness"
+            ? await resolveHarnessModelApiKey(values.model)
+            : templateTakesModelProvider(values.template)
+              ? await resolveRuntimeModelApiKey(toRuntimeModelOverrides(values.runtimeModel))
+              : undefined;
         const input = buildCreateInput(values, apiKey);
         const resolvedRegion = ctx.require(RegionKey);
         validateCreateRegionSupport(input, resolvedRegion);
@@ -213,14 +229,23 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         return yield* core.projectManager.create(input);
       }}
       runningLabel={`creating ${values.name}…`}
-      successLabel={`project created in ./${values.name}`}
-      successNextSteps={[
-        `cd ${values.name}`,
-        createNextStep(values.kind === "agent" && values.template !== EMPTY_TEMPLATE_NAME),
-      ]}
+      successLabel={
+        isEmptyProject
+          ? `empty project created in ./${values.name}. ${EMPTY_PROJECT_SUMMARY}`
+          : `project created in ./${values.name}`
+      }
+      successNextSteps={
+        isEmptyProject
+          ? emptyProjectNextSteps(values.name, china)
+          : [`cd ${values.name}`, createNextStep(values.kind === "agent")]
+      }
       successHint="enter exits"
       onDone={() => {
-        ctx.value(TuiExitMessageKey)?.(`Next step:\n  cd ${values.name}/ && agentcore`);
+        ctx.value(TuiExitMessageKey)?.(
+          isEmptyProject
+            ? emptyProjectCreatedMessage(values.name, china).trimEnd()
+            : `next step:\n  cd ${values.name}/ && agentcore`,
+        );
         exit();
       }}
       doneLabel="exit"
@@ -249,7 +274,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       </Step>
 
       {values.kind === "harness" && (
-        <Step stepKey="model" title="model provider">
+        <Step stepKey="model" title="model gateway">
           <HarnessModelField value={values.model} onChange={(model) => patch({ model })} />
         </Step>
       )}

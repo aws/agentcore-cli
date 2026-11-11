@@ -62,7 +62,7 @@ describe("API key credential provider menu", () => {
     await waitForText(screen.lastFrame, "get an API key credential provider");
     expect(menuEntries(screen.lastFrame()!)).toEqual({
       screens: ["get", "list"],
-      cliOnly: ["create", "update", "delete"],
+      cliOnly: [],
     });
   });
 });

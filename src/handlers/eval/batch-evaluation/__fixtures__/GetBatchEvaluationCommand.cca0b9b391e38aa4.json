@@ -1,0 +1,61 @@
+{
+  "batchEvaluationId": "cli_logs_mixed_retry_20261013-356d56c3e2",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_mixed_retry_20261013-356d56c3e2",
+  "batchEvaluationName": "cli_logs_mixed_retry_20261013",
+  "status": "COMPLETED_WITH_ERRORS",
+  "createdAt": {
+    "$date": "2026-10-13T16:30:57.517Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "CliEvalBugbash.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/cli-eval-errors-20261013"
+      ],
+      "filterConfig": {
+        "sessionIds": [
+          "cli-success-session",
+          "cli-error-session-1"
+        ]
+      }
+    }
+  },
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/cli-eval-custom-results-20261013",
+      "logStreamName": "run-cli_logs_mixed_retry_20261013-356d56c3e2",
+      "metricsNamespace": "Bedrock-AgentCore/Evaluations",
+      "resultDestination": "DEDICATED_LOG_GROUP"
+    }
+  },
+  "evaluationResults": {
+    "numberOfSessionsCompleted": 1,
+    "numberOfSessionsInProgress": 0,
+    "numberOfSessionsFailed": 1,
+    "totalNumberOfSessions": 2,
+    "numberOfSessionsIgnored": 0,
+    "evaluatorSummaries": [
+      {
+        "evaluatorId": "Builtin.Helpfulness",
+        "statistics": {
+          "averageScore": 0.83
+        },
+        "totalEvaluated": 1,
+        "totalFailed": 1
+      }
+    ]
+  },
+  "errorDetails": [
+    "1 of 2 sessions failed during batch evaluation."
+  ],
+  "updatedAt": {
+    "$date": "2026-10-13T16:32:00.790Z"
+  }
+}

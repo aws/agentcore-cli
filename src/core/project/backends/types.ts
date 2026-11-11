@@ -15,6 +15,8 @@ export type DeployBackendInput = {
   confirmTeardown: TeardownConfirmationHandler;
   /** Whether to enable CloudWatch Transaction Search on deploy (global config). */
   transactionSearch?: boolean;
+  /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
+  skipBootstrap?: boolean;
 };
 
 export type ResolveDeployedResourcesBackendInput = {

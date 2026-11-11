@@ -15,11 +15,6 @@ export function isBmaRuntime(
   );
 }
 
-export const BMA_CUSTOM_EXECUTION_ROLE_WARNING =
-  `Warning: --role-arn uses an existing execution role, so AgentCore CDK cannot attach ` +
-  `${BMA_POLICY_FILE}. Ensure the role grants bedrock-mantle:RegisterEnvironment and ` +
-  `bedrock-mantle:ConnectEnvironment before deploying.`;
-
 export const BMA_TEMPLATE_PROFILE = {
   usesModel: false,
   dependencySetup: "deferred",

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Prod",
+    "account": "123456789012",
+    "region": "us-east-1"
+  },
+  {
+    "name": "prod",
+    "account": "123456789012",
+    "region": "us-west-2"
+  }
+]

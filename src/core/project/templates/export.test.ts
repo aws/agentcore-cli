@@ -3,7 +3,10 @@ import z from "zod";
 import { InputValidationError } from "../../../errors/errors";
 import { HarnessSpecSchema, type HarnessSpec } from "../../../projectSchemas/harness";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
-import { credentialEnvVarName } from "../../../projectSchemas/credential";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+} from "../../../projectSchemas/credential";
 import {
   ALLOWED_TOOLS_NOTE_CATEGORY,
   AWS_SKILLS_NOTE_CATEGORY,
@@ -21,7 +24,6 @@ import {
   MEMORY_NAME_NOT_FOUND_NOTE_CATEGORY,
   MODEL_API_KEY_NOTE_CATEGORY,
   buildExportNotesMarkdown,
-  formatExportNotes,
   mapHarnessToExportPlan,
   matchesAllowedTools,
   type HarnessExportInput,
@@ -137,7 +139,11 @@ describe("mapHarnessToExportPlan model mapping", () => {
     expect(result.context.modelTopP).toBe("0.8");
     expect(result.context.hasIdentity).toBe(true);
     expect(result.context.identityProviders).toEqual([
-      { name: "MyOpenAiKey", envVarName: "AGENTCORE_CREDENTIAL_MYOPENAIKEY" },
+      {
+        name: "MyOpenAiKey",
+        envVarName: "AGENTCORE_CREDENTIAL_MYOPENAIKEY",
+        providerNameEnvVarName: "CREDENTIAL_MYOPENAIKEY_NAME",
+      },
     ]);
     expect(result.credentials).toEqual([
       { authorizerType: "ApiKeyCredentialProvider", name: "MyOpenAiKey" },
@@ -163,6 +169,50 @@ describe("mapHarnessToExportPlan model mapping", () => {
     expect(result.context.modelProvider).toBe("Gemini");
     expect(result.context.strandsExtras).toBe("gemini,web-fetch");
     expect(result.credentials).toEqual([]);
+  });
+
+  test.each([
+    ["open_ai", "gpt-4.1", "OpenAI"],
+    ["lite_llm", "openai/gpt-4.1", "LiteLLM"],
+  ] as const)(
+    "uses a %s model's apiKeyCredentialName as the credential directly",
+    (provider, modelId, modelProvider) => {
+      const credentialName = "assistantOpenAIApiKey";
+      const result = plan({
+        spec: harness({ model: { provider, modelId, apiKeyCredentialName: credentialName } }),
+        projectSpec: projectSpec({
+          credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: credentialName }],
+        }),
+      });
+
+      expect(result.context.modelProvider).toBe(modelProvider);
+      expect(result.context.hasIdentity).toBe(true);
+      expect(result.context.identityProviders).toEqual([
+        {
+          name: credentialName,
+          envVarName: credentialEnvVarName(credentialName),
+          providerNameEnvVarName: credentialProviderNameEnvVarName(credentialName),
+        },
+      ]);
+      expect(result.credentials).toEqual([]);
+      expect(categories(result)).toEqual([MODEL_API_KEY_NOTE_CATEGORY]);
+      expect(result.notes[0]!.message).toContain(`project credential "${credentialName}"`);
+      expect(result.notes[0]!.message).not.toContain("was added to agentcore.json");
+    },
+  );
+
+  test("declares a named credential the project does not have yet", () => {
+    const result = plan({
+      spec: harness({
+        model: { provider: "gemini", modelId: "gemini-2.5-flash", apiKeyCredentialName: "GemKey" },
+      }),
+    });
+    expect(result.credentials).toEqual([
+      { authorizerType: "ApiKeyCredentialProvider", name: "GemKey" },
+    ]);
+    expect(result.notes[0]!.message).toContain(
+      'A credential entry named "GemKey" was added to agentcore.json',
+    );
   });
 
   test("threads LiteLLM apiBase and additionalParams and trusts bedrock/ models without a key", () => {
@@ -374,15 +424,6 @@ describe("mapHarnessToExportPlan tools", () => {
     const result = plan({
       spec: harness({
         tools: [
-          {
-            type: "agentcore_gateway",
-            name: "gw",
-            config: {
-              agentCoreGateway: {
-                gatewayArn: "arn:aws:bedrock-agentcore:us-east-1:111122223333:gateway/g-1",
-              },
-            },
-          },
           { type: "agentcore_browser", name: "browser" },
           { type: "agentcore_code_interpreter", name: "ci" },
         ],
@@ -393,14 +434,11 @@ describe("mapHarnessToExportPlan tools", () => {
     // branch to render them from — the notes below are the whole output.
     expect(result.context.hasBrowser).toBeUndefined();
     expect(result.context.hasCodeInterpreter).toBeUndefined();
-    expect(result.context.hasGateway).toBeUndefined();
     expect(result.context.remoteMcpTools).toBeUndefined();
     expect(categories(result)).toEqual([
-      GATEWAY_TOOL_NOTE_CATEGORY,
       BROWSER_TOOL_NOTE_CATEGORY,
       CODE_INTERPRETER_TOOL_NOTE_CATEGORY,
     ]);
-    expect(result.notes[0]!.message).toContain("gateway/g-1");
   });
 
   test("includes the harness builtins unless allowedTools filters them out", () => {
@@ -438,6 +476,142 @@ describe("mapHarnessToExportPlan tools", () => {
       },
     ]);
     expect(categories(restricted)).toEqual([ALLOWED_TOOLS_NOTE_CATEGORY]);
+  });
+});
+
+describe("mapHarnessToExportPlan gateway tools", () => {
+  const GATEWAY_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/example-abc123";
+  const PROVIDER_ARN =
+    "arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/oauth2credentialprovider/gw-oauth";
+  const MEMORY_CONNECTION = {
+    id: "notes",
+    to: {
+      type: "memory",
+      arn: "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/notes-AbCdEf1234",
+    },
+  } as const;
+  const gatewayTool = (name: string, outboundAuth?: Record<string, unknown>) => ({
+    type: "agentcore_gateway",
+    name,
+    config: {
+      agentCoreGateway: { gatewayArn: GATEWAY_ARN, ...(outboundAuth && { outboundAuth }) },
+    },
+  });
+  const oauth = {
+    providerArn: PROVIDER_ARN,
+    scopes: ["tools/invoke"],
+    grantType: "CLIENT_CREDENTIALS" as const,
+    customParameters: { audience: "tools" },
+  };
+
+  test.each([
+    ["no outboundAuth", undefined, "AWS_IAM", undefined, { awsIam: {} }],
+    ["awsIam", { awsIam: {} }, "AWS_IAM", undefined, { awsIam: {} }],
+    ["none", { none: {} }, "NONE", undefined, { none: {} }],
+    [
+      "oauth client credentials",
+      { oauth },
+      "OAUTH",
+      {
+        providerName: "gw-oauth",
+        scopes: ["tools/invoke"],
+        customParameters: { audience: "tools" },
+      },
+      { oauth },
+    ],
+  ])(
+    "exports a gateway tool with %s as a client and a runtime connection",
+    (_, outboundAuth, authType, oauthContext, connectionAuth) => {
+      const result = plan({
+        spec: harness({
+          tools: [gatewayTool("my-tools", outboundAuth)],
+          connections: [MEMORY_CONNECTION],
+        }),
+      });
+
+      expect(result.context.gatewayTools).toEqual([
+        {
+          name: "my-tools",
+          pythonName: expect.stringMatching(/^my_tools_[a-f0-9]{10}$/),
+          urlEnvVarName: "GATEWAY_MY_TOOLS_URL",
+          authType,
+          oauth: oauthContext,
+          toolPatterns: undefined,
+        },
+      ]);
+      expect(result.context.gatewayAuthTypes).toEqual([authType]);
+      expect(result.runtime.connections).toEqual([
+        MEMORY_CONNECTION,
+        { id: "my-tools", to: { type: "gateway", arn: GATEWAY_ARN, outboundAuth: connectionAuth } },
+      ]);
+      expect(result.envEntries).toEqual([
+        {
+          key: "GATEWAY_MY_TOOLS_URL",
+          value: "https://example-abc123.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+          comment: expect.stringContaining('gateway tool "my-tools"'),
+        },
+      ]);
+      expect(result.notes).toEqual([]);
+    },
+  );
+
+  test("narrows a gateway to the tools @server/tool selects and drops an unselected one", () => {
+    const result = plan({
+      spec: harness({
+        tools: [gatewayTool("tools"), gatewayTool("other")],
+        allowedTools: ["@tools/search*"],
+      }),
+    });
+
+    expect(result.context.gatewayTools).toEqual([
+      expect.objectContaining({ name: "tools", toolPatterns: ["search*"] }),
+    ]);
+    expect(result.runtime.connections?.map((connection) => connection.id)).toEqual(["tools"]);
+  });
+
+  test.each([
+    [
+      "the USER_FEDERATION grant type",
+      gatewayTool("tools", { oauth: { ...oauth, grantType: "USER_FEDERATION" } }),
+      [],
+      /USER_FEDERATION/,
+    ],
+    ["a name that cannot be a connection id", gatewayTool("3p-tools"), [], /Connection id must/],
+    [
+      "a gatewayArn that is not a gateway ARN",
+      {
+        type: "agentcore_gateway",
+        name: "tools",
+        config: { agentCoreGateway: { gatewayArn: "example-abc123" } },
+      },
+      [],
+      /valid bedrock-agentcore gateway ARN/,
+    ],
+    ["a name that collides once tokenized", gatewayTool("my_tools"), [], /GATEWAY_MY_TOOLS/],
+    [
+      "a name that collides with a harness connection",
+      gatewayTool("notes"),
+      [MEMORY_CONNECTION],
+      /GATEWAY_NOTES/,
+    ],
+    [
+      "a name that collides with an id-less harness connection",
+      gatewayTool("gateway-example-abc123"),
+      [{ to: { type: "gateway", arn: GATEWAY_ARN } }],
+      /GATEWAY_GATEWAY_EXAMPLE_ABC123/,
+    ],
+  ])("skips a gateway tool with %s and exports the rest", (_, tool, connections, message) => {
+    const result = plan({
+      spec: harness({ tools: [gatewayTool("my-tools"), tool], connections }),
+    });
+
+    expect((result.context.gatewayTools as { name: string }[]).map(({ name }) => name)).toEqual([
+      "my-tools",
+    ]);
+    expect(result.runtime.connections?.at(-1)?.id).toBe("my-tools");
+    expect(result.envEntries.map(({ key }) => key)).toEqual(["GATEWAY_MY_TOOLS_URL"]);
+    expect(categories(result)).toEqual([GATEWAY_TOOL_NOTE_CATEGORY]);
+    expect(result.notes[0]!.message).toMatch(message);
   });
 });
 
@@ -545,7 +719,7 @@ describe("mapHarnessToExportPlan memory", () => {
     });
 
     expect(result.hasMemory).toBe(true);
-    expect(result.context.memoryEnvVarName).toBe("AGENTCORE_MEMORY_CHAT_HISTORY_ID");
+    expect(result.context.memoryEnvVarName).toBe("MEMORY_CHAT_HISTORY_ID");
     expect(result.context.memoryStrategies).toEqual(["SEMANTIC"]);
     expect(result.context.actorId).toBe("actor-1");
     expect(result.notes).toEqual([]);
@@ -843,22 +1017,5 @@ describe("export notes rendering", () => {
   test("buildExportNotesMarkdown says when nothing is left to do", () => {
     const markdown = buildExportNotesMarkdown([], "assistant", "assistantAgent", "v");
     expect(markdown).toContain("No manual steps required.");
-  });
-
-  test("formatExportNotes renders a warning block or a quiet confirmation", () => {
-    expect(formatExportNotes([], "notes.md")).toEqual([
-      { text: "No manual follow-up required. (Details: notes.md)", tone: "dim" },
-    ]);
-    const lines = formatExportNotes(
-      [{ category: "Cat", message: "line one\nline two" }],
-      "notes.md",
-    );
-    expect(lines.map((line) => line.text)).toEqual([
-      "1 export note requiring manual follow-up:",
-      "  - Cat",
-      "    line one",
-      "    line two",
-      "These notes are also saved to notes.md",
-    ]);
   });
 });

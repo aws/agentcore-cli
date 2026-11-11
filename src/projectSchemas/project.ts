@@ -39,6 +39,14 @@ export const ProjectSpecSchema = z
   .object({
     name: ProjectNameSchema,
     version: z.literal(2),
+    /**
+     * Set by `agentcore migrate` on a project it converted from the v0 CLI. `"v1"` is
+     * the agentcore.json schema version the v0 CLI wrote (not the v1 CLI). It tells the
+     * CDK library to keep v0's physical names for the whole project: no target segment,
+     * and v0's fixed harness role names. Those names are create-only, so removing this
+     * from a deployed project replaces its resources.
+     */
+    migratedFrom: z.literal("v1").optional(),
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),

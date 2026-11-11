@@ -17,7 +17,7 @@ export type RuntimeShellSdkFrame = Pick<ShellFrame, "channel" | "payload">;
 
 export type RuntimeShellSdkSession = Pick<
   ShellSession,
-  "sessionId" | "reconnected" | "kicked" | "exitCode" | "send" | "resize" | "close"
+  "sessionId" | "shellId" | "kicked" | "exitCode" | "send" | "resize" | "close"
 > &
   AsyncIterable<RuntimeShellSdkFrame>;
 
@@ -59,6 +59,7 @@ export function createRuntimeShellOpener(config: RuntimeShellOpenerConfig = {}):
       runtimeArn: request.runtimeArn,
       endpointName: request.qualifier,
       ...(request.runtimeSessionId !== undefined && { sessionId: request.runtimeSessionId }),
+      ...(request.shellId !== undefined && { shellId: request.shellId }),
       auth:
         request.bearerToken === undefined
           ? "sigv4"
@@ -88,7 +89,7 @@ function credentialProvider(
   return typeof credentials === "function" ? credentials : async () => credentials;
 }
 
-function isRetryableUpgrade(error: unknown): boolean {
+export function isRetryableUpgrade(error: unknown): boolean {
   const reported = error instanceof Error ? error : new Error(String(error));
   return (
     RETRYABLE_UPGRADE.test(reported.message) ||
@@ -98,11 +99,15 @@ function isRetryableUpgrade(error: unknown): boolean {
   );
 }
 
-class RuntimeShellSessionAdapter implements RuntimeShellSession {
+export class RuntimeShellSessionAdapter implements RuntimeShellSession {
   constructor(private readonly session: RuntimeShellSdkSession) {}
 
   get runtimeSessionId(): string {
     return this.session.sessionId;
+  }
+
+  get shellId(): string {
+    return this.session.shellId;
   }
 
   get kicked(): boolean {

@@ -76,38 +76,56 @@ test("respects custom errors codes from known errors", async () => {
   expect(errors).toEqual(["Error: custom failure"]);
 });
 
-test("withUserCancellation returns the result and removes its SIGINT listener", async () => {
-  const initialListeners = process.listenerCount("SIGINT");
+test("withUserCancellation returns the result and removes its signal listeners", async () => {
+  const initialListeners = ["SIGINT", "SIGTERM"].map((signal) => process.listenerCount(signal));
   let signal: AbortSignal | undefined;
+  let cancellations = 0;
 
-  const result = await withUserCancellation(async (current) => {
-    signal = current;
-    return "done";
-  });
+  const result = await withUserCancellation(
+    async (current) => {
+      signal = current;
+      return "done";
+    },
+    () => cancellations++,
+  );
 
   expect(result).toBe("done");
   expect(signal?.aborted).toBe(true);
-  expect(process.listenerCount("SIGINT")).toBe(initialListeners);
+  expect(cancellations).toBe(0);
+  expect(["SIGINT", "SIGTERM"].map((signal) => process.listenerCount(signal))).toEqual(
+    initialListeners,
+  );
 });
 
-test("withUserCancellation replaces transport aborts with the shared reason", async () => {
-  const initialListeners = process.listenerCount("SIGINT");
-  let signal: AbortSignal | undefined;
-  const pending = withUserCancellation((current) => {
-    signal = current;
-    return new Promise<never>((_, reject) => {
-      const abort = () => reject(new Error("transport aborted"));
-      if (current.aborted) abort();
-      else current.addEventListener("abort", abort, { once: true });
-    });
-  });
+test.each(["SIGINT", "SIGTERM"] as const)(
+  "withUserCancellation replaces %s transport aborts with the shared reason",
+  async (signalName) => {
+    const initialListeners = ["SIGINT", "SIGTERM"].map((signal) => process.listenerCount(signal));
+    let signal: AbortSignal | undefined;
+    let cancellations = 0;
+    const pending = withUserCancellation(
+      (current) => {
+        signal = current;
+        return new Promise<never>((_, reject) => {
+          const abort = () => reject(new Error("transport aborted"));
+          if (current.aborted) abort();
+          else current.addEventListener("abort", abort, { once: true });
+        });
+      },
+      () => cancellations++,
+    );
 
-  process.emit("SIGINT", "SIGINT");
+    process.emit(signalName, signalName);
+    process.emit(signalName, signalName);
 
-  expect(signal?.reason).toBeInstanceOf(UserCancellationError);
-  await expect(pending).rejects.toBe(signal?.reason);
-  expect(process.listenerCount("SIGINT")).toBe(initialListeners);
-});
+    expect(signal?.reason).toBeInstanceOf(UserCancellationError);
+    await expect(pending).rejects.toBe(signal?.reason);
+    expect(cancellations).toBe(1);
+    expect(["SIGINT", "SIGTERM"].map((signal) => process.listenerCount(signal))).toEqual(
+      initialListeners,
+    );
+  },
+);
 
 test("withUserCancellation preserves non-cancellation failures", async () => {
   const failure = new TypeError("operation failed");

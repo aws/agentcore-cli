@@ -2,7 +2,7 @@ import z from "zod";
 import { createHandler, flag } from "../../../../../router";
 import { JsonRendererKey } from "../../../../../tui";
 import type { Core } from "../../../../types";
-import { coreOptsFromCtx, parseTags } from "../../../../utils";
+import { coreOptsFromCtx, parseTags, tagsFlag } from "../../../../utils";
 import { LEVELS } from "../../levels";
 
 export const createCodeBasedCreateHandler = (core: Core) =>
@@ -20,11 +20,7 @@ export const createCodeBasedCreateHandler = (core: Core) =>
         z.number().int().min(1).max(300).optional(),
       ),
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const response = await core.eval.createEvaluator(

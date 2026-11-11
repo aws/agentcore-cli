@@ -19,7 +19,7 @@ type ProjectStatus = {
 export const createStatusProjectHandler = (config: StatusProjectHandlerConfig) =>
   createHandler({
     name: "status",
-    description: "show the status of the project's deployed resources",
+    description: "inspect deployed project resources for an AWS target",
     middlewares: config.middlewares,
     flags: [
       flag(

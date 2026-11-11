@@ -77,6 +77,23 @@ export class AgentCoreCLIError extends Error {
 /** Base for CLI errors intentionally omitted from root stderr output. */
 export class SilentCLIError extends AgentCoreCLIError {}
 
+/** A v0 deploy completed, but its post-deploy steps reported warnings. */
+export class LegacyDeployWarningExit extends SilentCLIError {
+  constructor() {
+    super("v0 deploy completed with post-deploy warnings", { exitCode: 2 });
+  }
+}
+
+/** A v0 deploy failed after taking ownership of terminal output. */
+export class LegacyDeployError extends SilentCLIError {
+  constructor(exitCode: number) {
+    super(`v0 deploy exited unsuccessfully with code ${exitCode}`, {
+      exitCode,
+      meta: { legacyDeployExitCode: exitCode },
+    });
+  }
+}
+
 /** Error raised for invalid user input. */
 export class InputValidationError extends AgentCoreCLIError {
   constructor(message?: string, options?: Omit<AgentCoreCLIErrorOptions, "source">) {

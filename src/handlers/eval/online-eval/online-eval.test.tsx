@@ -101,6 +101,7 @@ describe("eval online-eval command hierarchy", () => {
       "pause",
       "resume",
       "delete",
+      "logs",
     ]);
   });
 

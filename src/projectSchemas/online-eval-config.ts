@@ -10,13 +10,6 @@ export const OnlineEvalConfigNameSchema = z
     /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
     "Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)",
   );
-export const ClusteringConfigSchema = z.object({
-  frequencies: z
-    .array(z.enum(["DAILY", "WEEKLY", "MONTHLY"]))
-    .min(1)
-    .max(3),
-});
-export type ClusteringConfig = z.infer<typeof ClusteringConfigSchema>;
 export const OnlineEvalEvaluatorsSchema = z
   .array(z.string().min(1))
   .max(ONLINE_EVAL_MAX_EVALUATORS, "At most 10 evaluators may be selected");
@@ -27,9 +20,7 @@ export const OnlineEvalConfigSchema = z
     endpoint: z.string().min(1).optional(),
     logGroupNames: z.array(z.string().min(1)).min(1).max(5).optional(),
     serviceNames: z.array(z.string().min(1)).min(1).optional(),
-    evaluators: OnlineEvalEvaluatorsSchema.optional(),
-    insights: z.array(z.string().min(1)).optional(),
-    clusteringConfig: ClusteringConfigSchema.optional(),
+    evaluators: OnlineEvalEvaluatorsSchema.min(1, "At least one evaluator is required"),
     samplingRate: z.number().min(0.01).max(100),
     description: z.string().max(200).optional(),
     enableOnCreate: z.boolean().optional(),
@@ -46,23 +37,5 @@ export const OnlineEvalConfigSchema = z
   })
   .refine((data) => !data.serviceNames || data.logGroupNames, {
     message: '"serviceNames" requires "logGroupNames"',
-  })
-  .refine(
-    (data) => {
-      const hasEvaluators = data.evaluators != null && data.evaluators.length > 0;
-      const hasInsights = data.insights != null && data.insights.length > 0;
-      return hasEvaluators || hasInsights;
-    },
-    { message: "At least one of evaluators or insights must be provided" },
-  )
-  .refine(
-    (data) =>
-      !(data.evaluators && data.evaluators.length > 0 && data.insights && data.insights.length > 0),
-    {
-      message: "Cannot have both evaluators and insights (preview constraint)",
-    },
-  )
-  .refine((data) => !data.clusteringConfig || (data.insights && data.insights.length > 0), {
-    message: "clusteringConfig requires insights to be set",
   });
 export type OnlineEvalConfig = z.infer<typeof OnlineEvalConfigSchema>;

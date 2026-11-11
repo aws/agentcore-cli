@@ -4,7 +4,7 @@ import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import type { AppIO } from "../../../../io";
-import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseTags } from "../../../utils";
+import { assertMutuallyExclusiveFlags, coreOptsFromCtx, parseTags, tagsFlag } from "../../../utils";
 import { SourceResolver } from "../../../../io";
 import { parseSecretReference } from "../../parser";
 import {
@@ -44,7 +44,7 @@ export const createCreateOauth2CredentialProviderHandler = (core: Core, io: AppI
         z.string().optional(),
         { sensitive: true },
       ),
-      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const vendor = flags.vendor as CredentialProviderVendorType;

@@ -13,7 +13,10 @@ export type InteractiveTerminalConfig = {
   io: AppIO;
   dimensions?: () => { columns: number; rows: number };
   onResize?: (listener: () => void) => () => void;
+  onDetach?: () => Promise<void>;
 };
+
+export type InteractiveTerminalResult = "completed" | "detached";
 
 export class InteractiveTerminal {
   private readonly dimensions: () => { columns: number; rows: number };
@@ -35,7 +38,10 @@ export class InteractiveTerminal {
       });
   }
 
-  async run(peer: InteractiveTerminalPeer, signal?: AbortSignal): Promise<void> {
+  async run(
+    peer: InteractiveTerminalPeer,
+    signal?: AbortSignal,
+  ): Promise<InteractiveTerminalResult> {
     if (this.stopCurrent) throw new Error("InteractiveTerminal is already running");
 
     const { stdin, stdout, stderr } = this.config.io;
@@ -49,6 +55,11 @@ export class InteractiveTerminal {
       fail = reject;
     });
     let pending = Promise.resolve();
+    let didDetach = false;
+    let resolveDetach!: () => void;
+    const detached = new Promise<void>((resolve) => {
+      resolveDetach = resolve;
+    });
     const enqueue = (operation: () => Promise<void>) => {
       pending = pending.then(operation).catch((error) => {
         queuedFailure = error;
@@ -64,8 +75,19 @@ export class InteractiveTerminal {
     this.stopCurrent = close;
 
     const onData = (chunk: Buffer | string) => {
+      if (didDetach) return;
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
-      enqueue(() => peer.send(bytes));
+      const escape = this.config.onDetach ? bytes.indexOf(0x1d) : -1;
+      if (escape < 0) {
+        enqueue(() => peer.send(bytes));
+        return;
+      }
+      didDetach = true;
+      if (escape > 0) enqueue(() => peer.send(bytes.subarray(0, escape)));
+      enqueue(async () => {
+        await this.config.onDetach?.();
+        resolveDetach();
+      });
     };
     const resize = () => {
       const { columns, rows } = this.dimensions();
@@ -93,9 +115,10 @@ export class InteractiveTerminal {
           output.write(frame.data);
         }
       };
-      await Promise.race([pump(), failure]);
+      await Promise.race([pump(), failure, detached]);
       await pending;
       if (hasQueuedFailure) throw queuedFailure;
+      return didDetach ? "detached" : "completed";
     } finally {
       signal?.removeEventListener("abort", abort);
       removeResize();

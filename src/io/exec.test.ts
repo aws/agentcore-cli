@@ -2,22 +2,75 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  cmdSpawnArgs,
   MissingToolError,
   ProcessFailedError,
   requireTool,
+  resolveExecutable,
+  runInheritedProcess,
   runProcess,
   streamProcess,
   toolAvailable,
-  windowsCommandScript,
   type ProcessEvent,
 } from "./exec";
 
-// Scripts run from files rather than `node -e` one-liners: on win32 runProcess
-// spawns through cmd.exe (for PATHEXT resolution), which mangles quoted args.
+describe("resolveExecutable", () => {
+  const files = new Set(
+    [
+      "C:\\Program Files\\nodejs\\npm.cmd",
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Windows\\System32\\where.exe",
+    ].map((path) => path.toLowerCase()),
+  );
+  const isExecutableFile = (path: string) => files.has(path.toLowerCase());
+  const resolve = (command: string, env: NodeJS.ProcessEnv) =>
+    resolveExecutable(command, { env, platform: "win32", isExecutableFile });
+
+  test("resolves bare commands from PATH with PATHEXT", () => {
+    const env = {
+      Path: "C:\\Program Files\\nodejs;C:\\Windows\\System32",
+      PATHEXT: ".COM;.EXE;.BAT;.CMD",
+    };
+
+    expect(resolve("npm", env)?.toLowerCase()).toBe("c:\\program files\\nodejs\\npm.cmd");
+    expect(resolve("node", env)?.toLowerCase()).toBe("c:\\program files\\nodejs\\node.exe");
+    expect(resolve("where", env)?.toLowerCase()).toBe("c:\\windows\\system32\\where.exe");
+  });
+
+  test("does not add the current directory to PATH lookup", () => {
+    expect(resolve("npm", { Path: "C:\\Windows\\System32", PATHEXT: ".CMD" })).toBeNull();
+  });
+
+  test("skips empty and relative PATH entries", () => {
+    const cwdFiles = new Set(["npm.cmd", ".\\npm.cmd", "bin\\npm.cmd"]);
+    expect(
+      resolveExecutable("npm", {
+        env: { Path: ";.;bin;", PATHEXT: ".CMD" },
+        platform: "win32",
+        isExecutableFile: (path) => cwdFiles.has(path),
+      }),
+    ).toBeNull();
+  });
+
+  test("handles quoted and duplicate-case PATH keys consistently", () => {
+    expect(
+      resolve("npm", {
+        Path: "C:\\Windows\\System32",
+        PATH: '"C:\\Program Files\\nodejs"',
+        PATHEXT: ".CMD",
+      })?.toLowerCase(),
+    ).toBe("c:\\program files\\nodejs\\npm.cmd");
+  });
+
+  test("leaves explicit paths unchanged", () => {
+    expect(resolve(".\\tools\\npm.cmd", {})).toBe(".\\tools\\npm.cmd");
+    expect(resolve("C:\\tools\\npm.cmd", {})).toBe("C:\\tools\\npm.cmd");
+  });
+});
+
+// Run Node scripts from files so these tests work with both Node and Bun.
 const scriptsDir = await mkdtemp(join(tmpdir(), "agentcore-exec-"));
 async function script(name: string, source: string): Promise<string> {
   const path = join(scriptsDir, name);
@@ -96,6 +149,20 @@ describe("runProcess", () => {
     await expect(
       runProcess(["node", succeeding], { cwd: process.cwd(), signal: AbortSignal.abort() }),
     ).rejects.toThrow();
+  });
+});
+
+describe("runInheritedProcess", () => {
+  test("returns the child exit code", async () => {
+    const failing = await script("inherit-fail.js", "process.exit(7)");
+
+    await expect(runInheritedProcess(["node", failing], { cwd: process.cwd() })).resolves.toBe(7);
+  });
+
+  test("rejects with ProcessFailedError when the executable cannot spawn", async () => {
+    await expect(
+      runInheritedProcess(["definitely-not-a-real-tool-xyz"], { cwd: process.cwd() }),
+    ).rejects.toBeInstanceOf(ProcessFailedError);
   });
 });
 
@@ -258,56 +325,3 @@ function processRunning(pid: number): boolean {
     return false;
   }
 }
-
-describe("windowsCommandScript", () => {
-  const PATHEXT = ".COM;.EXE;.BAT;.CMD";
-
-  test.each([
-    ["npm", "npm.CMD", "npm.CMD"],
-    ["npm.cmd", "npm.cmd", "npm.cmd"],
-    ["uv", "uv.EXE", undefined],
-    ["missing", "other.CMD", undefined],
-  ])("resolves %s on PATH", async (executable, present, expected) => {
-    const dir = await mkdtemp(join(scriptsDir, "path-"));
-    await writeFile(join(dir, present), "");
-    const found = windowsCommandScript(executable, { PATH: dir, PATHEXT });
-    expect(found).toBe(expected === undefined ? undefined : join(dir, expected));
-  });
-
-  test("takes the first PATH entry that matches", async () => {
-    const first = await mkdtemp(join(scriptsDir, "first-"));
-    const second = await mkdtemp(join(scriptsDir, "second-"));
-    await writeFile(join(first, "tool.EXE"), "");
-    await writeFile(join(second, "tool.CMD"), "");
-    const PATH = [first, second].join(delimiter);
-    expect(windowsCommandScript("tool", { PATH, PATHEXT })).toBeUndefined();
-  });
-});
-
-describe("cmdSpawnArgs", () => {
-  test("quotes each argument and escapes cmd.exe metacharacters", () => {
-    const { file, args } = cmdSpawnArgs("C:\\Program Files\\nodejs\\npm.cmd", [
-      "run",
-      "cdk",
-      "--",
-      "synth",
-      "--output",
-      "C:\\Users\\a\\My Agents (x)\\cdk.out",
-      'import m; print("A=" + m.x)',
-    ]);
-    expect(file).toMatch(/cmd\.exe$/i);
-    expect(args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
-    expect(args[3]).toBe(
-      '"C:\\Program^ Files\\nodejs\\npm.cmd ^"run^" ^"cdk^" ^"--^" ^"synth^" ^"--output^" ' +
-        '^"C:\\Users\\a\\My^ Agents^ ^(x^)\\cdk.out^" ' +
-        '^"import^ m^;^ print^(\\^"A=\\^"^ +^ m.x^)^""',
-    );
-  });
-
-  test.each([
-    [['a\\"b', "trail\\"], '"x.cmd ^"a\\\\\\^"b^" ^"trail\\\\^""'],
-    [['a\\\\"b', "trail\\\\"], '"x.cmd ^"a\\\\\\\\\\^"b^" ^"trail\\\\\\\\^""'],
-  ])("doubles every backslash run before a quote and at the end: %j", (input, expected) => {
-    expect(cmdSpawnArgs("x.cmd", input).args[3]).toBe(expected);
-  });
-});

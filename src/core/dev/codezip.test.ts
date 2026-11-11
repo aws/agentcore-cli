@@ -189,6 +189,7 @@ describe("CodeZipDevRunner", () => {
 
       expect(calls[0]?.command).toEqual(["uv", "run", "python", "main.py"]);
       expect(calls[0]?.options.env?.FASTMCP_PORT).toBe(protocol === "MCP" ? "9000" : undefined);
+      expect(calls[0]?.options.env?.A2A_PORT).toBe(protocol === "A2A" ? "9000" : undefined);
     },
   );
 

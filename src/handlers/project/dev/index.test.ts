@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { writeMigrationState } from "../../../core/project/migrate/journal";
+import {
+  InternalServerException,
+  type InvokeHarnessStreamOutput,
+} from "@aws-sdk/client-bedrock-agentcore";
+import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
@@ -9,11 +17,15 @@ import {
   UserCancellationError,
 } from "../../../errors";
 import type { HttpRequestHandler, PortChecker } from "../../../io";
-import { ProjectKey, ValueContext } from "../../../router";
-import { testIO } from "../../../testing";
+import { GlobalConfigAccessorKey, ProjectKey, Router, ValueContext } from "../../../router";
+import { TestCoreClient, TestGlobalConfigAccessor, testIO } from "../../../testing";
+import { ProjectStateError } from "../../../errors";
 import { JsonRendererKey } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
-import type { Project } from "../types";
+import type { DeployProjectInput, Project, ProjectManager } from "../types";
+import type { V0DeployInput } from "../../../core/project/legacy/deploy";
+import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
+import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import {
   BMA_POLICY_FILE,
   BMA_TEMPLATE_NAME,
@@ -31,6 +43,7 @@ function runtime(name = "orders", build: ProjectRuntime["build"] = "CodeZip"): P
     protocol: "HTTP",
     entrypoint: "main.py",
     codeLocation: `app/${name}`,
+    ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
   } as ProjectRuntime;
 }
 
@@ -38,7 +51,7 @@ function project(...runtimes: ProjectRuntime[]): Project {
   return {
     name: "test-project",
     rootPath: "/workspace/project",
-    spec: { runtimes } as Project["spec"],
+    spec: { ...ProjectSpecSchema.parse({ name: "testProject", version: 2 }), runtimes },
   };
 }
 
@@ -111,6 +124,14 @@ type HarnessOptions = {
   checkPort?: PortChecker;
   json?: boolean;
   loadEnvironment?: DevProjectHandlerConfig["loadDevEnvironment"];
+  /** Deploy through the real project manager instead of recording deployments. */
+  realDeploy?: boolean;
+  runV0Deploy?: V0DeployRunner;
+  /**
+   * Replaces the build-settings sync. By default it passes the project through,
+   * since most projects here are in-memory; `"real"` uses the project manager's.
+   */
+  syncRuntimeBuilds?: "real" | ProjectManager["syncRuntimeBuilds"];
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -122,8 +143,44 @@ function harness(options: HarnessOptions = {}) {
   const container = options.container ?? captureRunner();
   const collector = fakeCollector();
   const environmentInputs: DevEnvironmentInput[] = [];
+  const deployments: { project: Project; input: DeployProjectInput }[] = [];
+  const legacyDeployments: V0DeployInput[] = [];
+  const resolutions: Parameters<
+    DevProjectHandlerConfig["projectManager"]["resolveDeployedResource"]
+  >[1][] = [];
+  const core = new TestCoreClient();
+  const harnessClient = core.harness.setGetResponse({
+    harness: { arn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:harness/test" },
+  } as GetHarnessResponse);
+  const projectManager = core.projectManager;
+  if (!options.realDeploy) {
+    projectManager.deploy = async function* (configuredProject, input) {
+      deployments.push({ project: configuredProject, input });
+      yield { type: "output", line: "Deploying harnesses" };
+      return { outputs: {} };
+    };
+  }
+  projectManager.resolveTarget = async () => undefined;
+  if (options.syncRuntimeBuilds !== "real") {
+    projectManager.syncRuntimeBuilds =
+      options.syncRuntimeBuilds ??
+      (async (configuredProject) => ({ project: configuredProject, messages: [], written: false }));
+  }
+  projectManager.resolveDeployedResource = async (_project, input) => {
+    resolutions.push(input);
+    return {
+      resourceType: "harness",
+      name: input.name,
+      id: "harness-test",
+      target: { name: input.target, account: "111122223333", region: "eu-west-1" },
+      credentialProvider: async () => ({ accessKeyId: "test", secretAccessKey: "test" }),
+    };
+  };
+  projectManager.resolve = async () =>
+    options.reloadedRuntimes ? project(...options.reloadedRuntimes) : undefined;
   const handler = createDevProjectHandler({
     io: io.io,
+    harness: harnessClient,
     runners: { CodeZip: codeZip.runner, Container: container.runner },
     loadDevEnvironment:
       options.loadEnvironment ??
@@ -151,15 +208,17 @@ function harness(options: HarnessOptions = {}) {
     watchFile: (path, onChange) => {
       watchers.push({ path, onChange });
     },
-    projectManager: {
-      resolve: async () =>
-        options.reloadedRuntimes ? project(...options.reloadedRuntimes) : undefined,
+    projectManager,
+    runV0Deploy: async (input) => {
+      legacyDeployments.push(input);
+      return options.runV0Deploy ? options.runV0Deploy(input) : 0;
     },
     waitReady: async () => {
       await Bun.sleep(5);
     },
   });
   const ctx = ValueContext.EmptyContext()
+    .withValue(GlobalConfigAccessorKey, new TestGlobalConfigAccessor())
     .withValue(ProjectKey, options.project ?? project(runtime()))
     .withValue(JsonKey, options.json ?? false)
     .withValue(RegionKey, "us-west-2")
@@ -173,6 +232,10 @@ function harness(options: HarnessOptions = {}) {
     container,
     collector,
     environmentInputs,
+    deployments,
+    legacyDeployments,
+    resolutions,
+    harnessClient,
     io,
     ui,
     watchers,
@@ -182,27 +245,120 @@ function harness(options: HarnessOptions = {}) {
         agent?: string;
         port?: number;
         traces?: boolean;
-        mode?: "browser" | "headless" | "tui";
+        mode?: "browser" | "headless";
+        target?: string;
+        yes?: boolean;
+        "skip-deploy"?: boolean;
         "ui-port"?: number;
       } = {},
-    ) => handler.handle(ctx, { traces: true, mode: "headless", ...flags }, {}),
+    ) =>
+      handler.handle(
+        ctx,
+        { traces: true, yes: false, "skip-deploy": false, mode: "headless", ...flags },
+        {},
+      ),
+    route: (args: readonly string[]) =>
+      new Router("agentcore", "test")
+        .handler(handler)
+        .route(["node", "agentcore", "dev", ...args], ctx),
   };
 }
 
 /** Ask the captured Inspector handler for the current agent status. */
 async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ name: string }[]> {
-  const response = await subject.inspectorHandler()!({
-    method: "GET",
-    url: "/api/status",
-    headers: { host: "127.0.0.1:8081" },
-    body: Buffer.alloc(0),
-    signal: new AbortController().signal,
-  });
+  const response = await inspectorRequest({ subject, url: "/api/status" });
   const status = JSON.parse(String(response.body)) as { agents: { name: string }[] };
   return status.agents;
 }
 
+describe("project dev build settings sync", () => {
+  async function codeProject(files: Record<string, string>) {
+    const root = await mkdtemp(join(tmpdir(), "dev-sync-"));
+    for (const [path, content] of Object.entries(files)) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), content);
+    }
+    const configured = { ...project(runtime("search")), rootPath: root };
+    await mkdir(join(root, "agentcore"), { recursive: true });
+    await writeFile(join(root, "agentcore", "agentcore.json"), JSON.stringify(configured.spec));
+    return configured;
+  }
+
+  const specOnDisk = async (root: string) =>
+    JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf-8"));
+
+  test("writes the version the code asks for to agentcore.json, prints it, and runs with it", async () => {
+    const configured = await codeProject({
+      "app/search/main.py": "",
+      "app/search/pyproject.toml": '[project]\nrequires-python = ">=3.10,<3.13"\n',
+    });
+    const subject = harness({ project: configured, syncRuntimeBuilds: "real" });
+
+    await subject.run({ agent: "search" });
+
+    expect(subject.io.stderr()).toContain(
+      'search: runtimeVersion PYTHON_3_14 -> PYTHON_3_12 (requires-python ">=3.10,<3.13" in ' +
+        "app/search/pyproject.toml)",
+    );
+    expect(subject.codeZip.inputs[0]?.runtime).toMatchObject({
+      build: "CodeZip",
+      runtimeVersion: "PYTHON_3_12",
+    });
+    expect((await specOnDisk(configured.rootPath)).runtimes[0].runtimeVersion).toBe("PYTHON_3_12");
+  });
+
+  test("a Dockerfile in the code folder switches to the container runner", async () => {
+    const configured = await codeProject({ "app/search/Dockerfile": "FROM scratch\n" });
+    const subject = harness({ project: configured, syncRuntimeBuilds: "real" });
+
+    await subject.run({ agent: "search" });
+
+    expect(subject.io.stderr()).toContain(
+      "search: build CodeZip -> Container (Dockerfile in app/search)",
+    );
+    expect(subject.container.inputs[0]?.runtime).toMatchObject({
+      build: "Container",
+      dockerfile: "Dockerfile",
+    });
+    expect(subject.codeZip.inputs).toEqual([]);
+    const written = (await specOnDisk(configured.rootPath)).runtimes[0];
+    expect(written).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    expect(written.runtimeVersion).toBeUndefined();
+  });
+
+  test("stops before running anything when the folder is missing what the build needs", async () => {
+    const configured = await codeProject({ "app/search/README.md": "" });
+    const subject = harness({ project: configured, syncRuntimeBuilds: "real" });
+
+    await expect(subject.run({ agent: "search" })).rejects.toThrow(
+      'runtime "search": no pyproject.toml in app/search/. See app/search/README.md.',
+    );
+    expect(subject.codeZip.inputs).toEqual([]);
+    expect(subject.collector.starts).toEqual([]);
+  });
+});
+
 describe("project dev selection and dispatch", () => {
+  test("loads the environment and dispatches a translated v0 runtime", async () => {
+    const configuredProject = project(runtime());
+    configuredProject.legacy = {
+      format: "v0",
+      v0Spec: {} as never,
+    };
+    const subject = harness({ project: configuredProject });
+
+    await subject.run({ agent: "orders" });
+
+    expect(subject.environmentInputs).toEqual([
+      {
+        projectRoot: "/workspace/project",
+        runtime: expect.objectContaining({ name: "orders" }),
+        region: "us-west-2",
+      },
+    ]);
+    expect(subject.codeZip.inputs).toHaveLength(1);
+  });
+
   test.each([
     ["headless", undefined, project(bmaRuntime({ additionalPolicies: undefined }))],
     ["browser", undefined, project(bmaRuntime({ tags: undefined }))],
@@ -230,7 +386,13 @@ describe("project dev selection and dispatch", () => {
   );
 
   test.each([
-    [project(), {}, "This project has no runtimes", InputValidationError],
+    [project(), {}, "This project has no runtimes or harnesses", InputValidationError],
+    [
+      harnessProject(["orders"], [runtime("orders")]),
+      { agent: "orders" },
+      "names both a runtime and a harness",
+      InputValidationError,
+    ],
     [
       project(runtime("orders"), runtime("support", "Container")),
       { port: 4567 },
@@ -240,7 +402,7 @@ describe("project dev selection and dispatch", () => {
     [
       project(runtime("orders"), runtime("support", "Container")),
       { agent: "missing" },
-      "Runtime 'missing' was not found. Available runtimes: orders, support",
+      "Agent 'missing' was not found. Available agents: orders, support",
       ResourceNotFoundError,
     ],
   ] as const)(
@@ -445,18 +607,27 @@ describe("project dev trace collection", () => {
     await expect(subject.run({ agent: "orders" })).rejects.toThrow("runner failed");
     expect(subject.collector.state.closed).toBe(1);
   });
+
+  test("the collector is closed when startup output fails", async () => {
+    const subject = harness();
+    subject.io.io.stderr.write = () => {
+      throw new Error("status output failed");
+    };
+    await expect(subject.run({ agent: "orders" })).rejects.toThrow("status output failed");
+    expect(subject.collector.state.closed).toBe(1);
+  });
 });
 
-describe("project dev Inspector UI mode", () => {
-  // Wraps the run promise so awaiting this helper does not flatten it into
-  // "wait for the whole dev command to exit".
-  async function runUi(subject: ReturnType<typeof harness>, flags: Record<string, unknown> = {}) {
-    const pending = subject.run({ mode: "browser", ...flags });
-    pending.catch(() => undefined);
-    await Bun.sleep(5); // let the handler start the UI server and block on events
-    return { pending };
-  }
+// Return the pending command inside an object so awaiting startup does not wait for dev to exit.
+async function runUi(subject: ReturnType<typeof harness>, args: readonly string[] = []) {
+  const pending = subject.route(["--mode", "browser", ...args]);
+  pending.catch(() => undefined);
+  await Bun.sleep(10);
+  expect(subject.ui.starts).toHaveLength(1);
+  return { pending };
+}
 
+describe("project dev Inspector UI mode", () => {
   test("starts the Inspector, prints the URL, and opens the browser on a TTY", async () => {
     const subject = harness({ tty: true });
     const { pending } = await runUi(subject);
@@ -519,14 +690,107 @@ describe("project dev Inspector UI mode", () => {
     await pending.catch(() => undefined);
   });
 
-  test("--agent narrows the supervised set", async () => {
+  test("a reload that no longer resolves reports why and keeps the current agents", async () => {
+    let calls = 0;
     const subject = harness({
-      project: project(bmaRuntime(), runtime("orders"), runtime("support", "Container")),
+      reloadedRuntimes: [runtime("orders"), runtime("payments")],
+      syncRuntimeBuilds: async (configuredProject) => {
+        if (++calls > 1) {
+          throw new ProjectStateError(
+            'runtime "payments": app/payments/ does not exist. See app/payments/README.md.',
+          );
+        }
+        return { project: configuredProject, messages: [], written: false };
+      },
     });
-    const { pending } = await runUi(subject, { agent: "support" });
+    const { pending } = await runUi(subject);
+    const before = (await inspectorStatus(subject)).map((agent) => agent.name);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect(subject.io.stderr()).toContain("Could not reload agents from agentcore.json:");
+    expect(subject.io.stderr()).toContain('runtime "payments": app/payments/ does not exist.');
+    expect(subject.io.stderr()).not.toContain("Reloaded agents from agentcore.json.");
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(before);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("any reload error is reported, not only an unresolvable runtime", async () => {
+    let calls = 0;
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders")],
+      syncRuntimeBuilds: async (configuredProject) => {
+        if (++calls > 1) throw new Error("EACCES: permission denied, open agentcore.json");
+        return { project: configuredProject, messages: [], written: false };
+      },
+    });
+    const { pending } = await runUi(subject);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect(subject.io.stderr()).toContain(
+      "Could not reload agents from agentcore.json:\nEACCES: permission denied",
+    );
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("the reload caused by the CLI's own write-back is quiet", async () => {
+    const results = [
+      { messages: [], written: false },
+      { messages: ["orders: runtimeVersion PYTHON_3_14 -> PYTHON_3_12 (...)"], written: true },
+      { messages: [], written: false },
+    ];
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders")],
+      syncRuntimeBuilds: async (configuredProject) => ({
+        project: configuredProject,
+        ...results.shift()!,
+      }),
+    });
+    const { pending } = await runUi(subject);
+
+    subject.watchers[0]!.onChange(); // the user's edit: rewritten, reported
+    await Bun.sleep(5);
+    subject.watchers[0]!.onChange(); // the CLI's own write: nothing to change
+    await Bun.sleep(5);
+
+    const reloads = subject.io.stderr().split("Reloaded agents from agentcore.json.").length - 1;
+    expect(reloads).toBe(1);
+    expect(subject.io.stderr()).toContain("orders: runtimeVersion PYTHON_3_14 -> PYTHON_3_12");
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("--agent narrows the supervised set", async () => {
+    const container = stayingRunner([{ type: "stdout", line: "support ready" }]);
+    const subject = harness({
+      project: harnessProject(
+        ["harness"],
+        [bmaRuntime(), runtime("orders"), runtime("support", "Container")],
+      ),
+      container,
+    });
+    const { pending } = await runUi(subject, ["--agent", "support"]);
 
     expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(["support"]);
+    const status = await inspectorRequest({ subject, url: "/api/status" });
+    expect(JSON.parse(String(status.body)).harnesses).toEqual([]);
     expect(subject.io.stderr()).not.toContain("Skipping runtime");
+    const started = await inspectorRequest({
+      subject,
+      url: "/api/start",
+      body: { agentName: "support" },
+    });
+    expect(started.status).toBe(200);
+    expect(container.inputs[0]?.port).toBe(8080);
+    expect(subject.io.stdout()).toContain("[support] support ready");
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
@@ -561,6 +825,349 @@ test("project dev renders attributed human and NDJSON output", async () => {
     );
     expect(subject.io.stderr()).toBe(json ? "" : "[orders] Starting\n[orders] agent warning");
   }
+});
+
+function harnessProject(
+  names: readonly string[] = ["support"],
+  runtimes: readonly ProjectRuntime[] = [],
+): Project {
+  const configured = project(...runtimes);
+  configured.spec.harnesses = names.map((name) => ({ name, path: `harnesses/${name}` }));
+  return configured;
+}
+
+async function inspectorRequest({
+  subject,
+  url,
+  body,
+}: {
+  subject: ReturnType<typeof harness>;
+  url: string;
+  body?: unknown;
+}) {
+  return subject.inspectorHandler()!({
+    method: body === undefined ? "GET" : "POST",
+    url,
+    headers: { host: "127.0.0.1:8081", "x-agentcore-local": "1" },
+    body: Buffer.from(body === undefined ? "" : JSON.stringify(body)),
+    signal: new AbortController().signal,
+  });
+}
+
+describe("project dev harnesses", () => {
+  test("a v0 harness project uses the v0 deployer before continuing in v1 dev", async () => {
+    const configuredProject = harnessProject();
+    configuredProject.legacy = {
+      format: "v0",
+      v0Spec: {} as never,
+    };
+    const subject = harness({ project: configuredProject });
+
+    await subject.route(["--target", "staging", "--yes"]);
+
+    expect(subject.legacyDeployments).toEqual([
+      {
+        projectRoot: configuredProject.rootPath,
+        target: "staging",
+        yes: true,
+        json: false,
+      },
+    ]);
+    expect(subject.deployments).toEqual([]);
+    expect(subject.io.stderr()).toBe(
+      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.",
+    );
+  });
+
+  test("v0 post-deploy warnings still allow harness Inspector to start", async () => {
+    const configuredProject = harnessProject();
+    configuredProject.legacy = { format: "v0", v0Spec: {} as never };
+    const subject = harness({ project: configuredProject, runV0Deploy: async () => 2 });
+    const pending = subject.route(["--mode", "browser", "--target", "staging"]);
+    pending.catch(() => undefined);
+    await Bun.sleep(10);
+
+    try {
+      expect(subject.legacyDeployments).toHaveLength(1);
+      expect(subject.ui.starts).toEqual([{ port: 8081 }]);
+      expect(subject.io.stderr()).toContain("Agent Inspector running at http://127.0.0.1:8081");
+    } finally {
+      process.emit("SIGTERM", "SIGTERM");
+      await expect(pending).rejects.toBeInstanceOf(UserCancellationError);
+    }
+    expect(subject.ui.closed).toBe(1);
+  });
+
+  test("harness dev's deploy refuses a target a migration hasn't finished", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-dev-migrate-"));
+    try {
+      await writeMigrationState(root, {
+        version: 2,
+        startedAt: "2026-10-13T00:00:00.000Z",
+        files: { status: "installed", backup: "agentcore/.cli/migrate-backup", changes: [] },
+        refactored: [],
+        targets: [
+          {
+            name: "default",
+            account: "111122223333",
+            region: "us-east-1",
+            stackName: "AgentCore-testProject-default",
+            status: "pending",
+          },
+        ],
+      });
+      const configured = { ...harnessProject(["support"]), rootPath: root };
+      const subject = harness({ project: configured, realDeploy: true });
+
+      await expect(subject.route([])).rejects.toThrow(
+        "Target 'default' (AWS account 111122223333, us-east-1) hasn't been migrated yet",
+      );
+      expect(subject.ui.starts).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    { names: ["support"], args: [], json: false },
+    { names: ["orders", "support"], args: ["--mode", "headless"], json: true },
+    { names: ["support"], args: ["--skip-deploy"], json: true },
+  ])("headless deploys and returns invoke guidance (%o)", async ({ names, args, json }) => {
+    const subject = harness({ project: harnessProject(names), tty: true, json });
+    await subject.route([...args]);
+    const skipDeploy = args.some((arg) => arg === "--skip-deploy");
+    expect(subject.deployments).toHaveLength(skipDeploy ? 0 : 1);
+    expect(subject.ui.starts).toEqual([]);
+    expect(subject.ui.opened).toEqual([]);
+    expect(subject.codeZip.inputs).toEqual([]);
+    expect(subject.io.stderr()).toContain("next step:\n  agentcore invoke");
+  });
+
+  test.each([
+    { names: ["support"], args: [], target: "default", port: 8081 },
+    {
+      names: ["orders", "support"],
+      args: ["--target", "staging", "--ui-port", "9001", "--yes"],
+      target: "staging",
+      port: 9001,
+    },
+  ])("deploys then serves Inspector (%o)", async ({ names, args, target, port }) => {
+    const configuredProject = harnessProject(names);
+    const subject = harness({ project: configuredProject, tty: true });
+    const { pending } = await runUi(subject, args);
+    try {
+      const deployment = subject.deployments[0]!;
+      expect(subject.deployments).toHaveLength(1);
+      expect(deployment.project).toBe(configuredProject);
+      expect(deployment.input.target).toBe(target);
+      const response = await inspectorRequest({ subject, url: "/api/status" });
+      const status = JSON.parse(String(response.body));
+      expect(status.agents).toEqual([]);
+      expect(status.harnesses.map(({ name }: { name: string }) => name)).toEqual(names);
+      expect(subject.ui.starts[0]?.port).toBe(port);
+      expect(subject.ui.opened).toEqual([`http://127.0.0.1:${port}`]);
+      expect(subject.codeZip.inputs).toHaveLength(0);
+      expect(subject.collector.starts).toHaveLength(0);
+    } finally {
+      process.emit("SIGTERM", "SIGTERM");
+      await expect(pending).rejects.toBeInstanceOf(UserCancellationError);
+    }
+    expect(subject.ui.closed).toBe(1);
+  });
+
+  test("rejects runtime flags on harness dev", async () => {
+    const subject = harness({ project: harnessProject() });
+    await expect(subject.route(["--port=8080", "--no-traces"])).rejects.toThrow(
+      "--port, --no-traces does not apply to harness dev",
+    );
+    expect(subject.deployments).toHaveLength(0);
+  });
+
+  test("rejects harness flags on runtime dev", async () => {
+    const subject = harness();
+    await expect(subject.route(["--target=default", "--yes", "--skip-deploy"])).rejects.toThrow(
+      "--target, --yes, --skip-deploy does not apply to runtime dev",
+    );
+    expect(subject.codeZip.inputs).toHaveLength(0);
+  });
+
+  test("mixed projects require an unambiguous agent and can choose the runtime path", async () => {
+    const subject = harness({ project: harnessProject(["support"], [runtime("orders")]) });
+    await expect(subject.route([])).rejects.toThrow("Pass --agent <name>");
+    await subject.route(["--agent", "orders", "--no-traces"]);
+    expect(subject.codeZip.inputs).toHaveLength(1);
+    expect(subject.deployments).toHaveLength(0);
+  });
+
+  test("Inspector invokes the selected harness without deploying", async () => {
+    const subject = harness({
+      project: harnessProject(["orders", "support"], [runtime("runtime")]),
+      tty: true,
+    });
+    const toolUse = { toolUseId: "search-1", name: "search" };
+    const toolResult = { toolUseId: "search-1", status: "success" as const };
+    subject.harnessClient.queueInvokeStream(
+      (async function* (): AsyncGenerator<InvokeHarnessStreamOutput> {
+        yield { contentBlockStart: { contentBlockIndex: 0, start: undefined } };
+        yield { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "Hello" } } };
+        yield { contentBlockStart: { contentBlockIndex: 1, start: { toolUse } } };
+        yield { contentBlockStart: { contentBlockIndex: 2, start: { toolResult } } };
+        yield {
+          contentBlockDelta: {
+            contentBlockIndex: 2,
+            delta: {
+              toolResult: [
+                { text: "before:" },
+                { json: null },
+                { json: false },
+                { json: 0 },
+                { json: { answer: 42 } },
+                { text: ":after" },
+              ],
+            },
+          },
+        };
+        yield {
+          contentBlockDelta: {
+            contentBlockIndex: 3,
+            delta: { reasoningContent: { text: "Thinking" } },
+          },
+        };
+        yield {
+          internalServerException: new InternalServerException({
+            message: "internal error",
+            $metadata: {},
+          }),
+        };
+        yield { $unknown: ["newEventType", {}] };
+        throw new Error("stream failed");
+      })(),
+    );
+    const { pending } = await runUi(subject, [
+      "--agent",
+      "support",
+      "--target",
+      "staging",
+      "--skip-deploy",
+    ]);
+    try {
+      const status = await inspectorRequest({ subject, url: "/api/status" });
+      expect(JSON.parse(String(status.body)).harnesses).toEqual([{ name: "support" }]);
+      const response = await inspectorRequest({
+        subject,
+        url: "/invocations",
+        body: {
+          harnessName: "support",
+          prompt: "Hello",
+          userId: "user",
+        },
+      });
+      expect(response.status).toBe(200);
+      const events = Buffer.concat(
+        await Array.fromAsync(response.body as AsyncIterable<Uint8Array>),
+      )
+        .toString()
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)));
+      expect(events).toEqual([
+        { type: "contentBlockDelta", contentBlockIndex: 0, delta: { type: "text", text: "Hello" } },
+        {
+          type: "contentBlockStart",
+          contentBlockIndex: 1,
+          start: { type: "toolUse", toolUse },
+        },
+        {
+          type: "contentBlockStart",
+          contentBlockIndex: 2,
+          start: { type: "toolResult", toolResult },
+        },
+        {
+          type: "contentBlockDelta",
+          contentBlockIndex: 2,
+          delta: {
+            type: "toolResult",
+            results: [
+              { text: "before:" },
+              { text: "null" },
+              { text: "false" },
+              { text: "0" },
+              { text: '{"answer":42}' },
+              { text: ":after" },
+            ],
+          },
+        },
+        {
+          type: "contentBlockDelta",
+          contentBlockIndex: 3,
+          delta: { type: "reasoningContent", text: "Thinking" },
+        },
+        { type: "error", errorType: "internalServerException", message: "internal error" },
+        {
+          type: "error",
+          errorType: "newEventType",
+          message: "Unknown harness stream event: newEventType",
+        },
+        { type: "error", errorType: "invocationError", message: "stream failed" },
+      ]);
+      expect(subject.deployments).toHaveLength(0);
+      expect(subject.ui.opened).toEqual(["http://127.0.0.1:8081"]);
+      expect(subject.resolutions).toEqual([
+        { target: "staging", resourceType: "harness", name: "support" },
+      ]);
+      expect(
+        subject.harnessClient.calls
+          .find(({ method }) => method === "invokeHarness")
+          ?.args.slice(0, 2),
+      ).toMatchObject([
+        {
+          harnessArn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:harness/test",
+          qualifier: "DEFAULT",
+          runtimeSessionId: response.headers?.["x-session-id"],
+          runtimeUserId: "user",
+          messages: [{ role: "user", content: [{ text: "Hello" }] }],
+        },
+        { region: "eu-west-1", credentials: expect.any(Function) },
+      ]);
+      const overridden = await inspectorRequest({
+        subject,
+        url: "/invocations",
+        body: {
+          harnessName: "support",
+          prompt: "Hello",
+          harnessOverrides: { qualifier: "STAGING" },
+        },
+      });
+      expect(overridden.status).toBe(200);
+      expect(subject.harnessClient.calls.at(-1)?.args[0]).toMatchObject({
+        qualifier: "STAGING",
+      });
+    } finally {
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    }
+    const signal = subject.harnessClient.calls.find(({ method }) => method === "invokeHarness")
+      ?.args[2] as AbortSignal;
+    expect(signal.aborted).toBe(true);
+  });
+
+  test.each([
+    ["/invocations", { harnessName: "missing", prompt: "hi" }, 404, 'Harness "missing" not found'],
+    ["/invocations", { harnessName: "support", prompt: "hi" }, 502, "lookup failed"],
+    ["/api/start", { agentName: "runtime" }, 404, "Runtime 'runtime' was not found"],
+  ] as const)("Inspector rejects %s %o", async (url, body, status, error) => {
+    const subject = harness({ project: harnessProject() });
+    subject.harnessClient.setError(new Error("lookup failed"));
+    const { pending } = await runUi(subject, ["--skip-deploy"]);
+    try {
+      const response = await inspectorRequest({ subject, url, body });
+      expect(response.status).toBe(status);
+      expect(JSON.parse(String(response.body)).error).toContain(error);
+    } finally {
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    }
+  });
 });
 
 function heldRunner() {

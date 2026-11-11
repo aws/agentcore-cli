@@ -29,18 +29,19 @@ describe("AWS deployment targets", () => {
     expect(AwsAccountIdSchema.safeParse(account).success).toBe(false);
   });
 
-  test.each([
-    "",
-    "1default",
-    "-default",
-    "_default",
-    "has_underscore",
-    "has-hyphen",
-    "has spaces",
-    "has.dots",
-  ])("rejects invalid target name %j", (name) => {
-    expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);
-  });
+  test.each(["", "1default", "-default", "_default", "has_underscore", "has spaces", "has.dots"])(
+    "rejects invalid target name %j",
+    (name) => {
+      expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(false);
+    },
+  );
+
+  test.each(["prod-us", "a-b-c", "us-east-1", "trailing-"])(
+    "accepts hyphenated target name %j, as the v0 CLI did",
+    (name) => {
+      expect(DeploymentTargetNameSchema.safeParse(name).success).toBe(true);
+    },
+  );
 
   test("enforces target name and description lengths", () => {
     expect(DeploymentTargetNameSchema.safeParse("a".repeat(64)).success).toBe(true);
@@ -50,22 +51,14 @@ describe("AWS deployment targets", () => {
     ).toBe(false);
   });
 
-  test.each([
-    "ap-south-2",
-    "ap-southeast-5",
-    "ap-southeast-7",
-    "cn-north-1",
-    "cn-northwest-1",
-    "eu-south-1",
-    "eu-south-2",
-    "us-gov-west-1",
-    "us-west-1",
-  ])("accepts supported region %s", (region) => {
-    expect(AgentCoreRegionSchema.safeParse(region).success).toBe(true);
+  test("accepts a region without AgentCore, leaving CloudFormation to reject it", () => {
+    expect(AgentCoreRegionSchema.safeParse("ap-northeast-3").success).toBe(true);
   });
 
-  test("rejects an AWS region where AgentCore is unavailable", () => {
-    expect(AgentCoreRegionSchema.safeParse("af-south-1").success).toBe(false);
+  test("trims whitespace and rejects an empty region", () => {
+    expect(AgentCoreRegionSchema.parse(" us-east-1 ")).toBe("us-east-1");
+    expect(AgentCoreRegionSchema.safeParse("").success).toBe(false);
+    expect(AgentCoreRegionSchema.safeParse("   ").success).toBe(false);
   });
 
   test.each([

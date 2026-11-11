@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import type { InvokeHarnessRequest } from "@aws-sdk/client-bedrock-agentcore";
 import type {
   GetAgentRuntimeResponse,
   GetGatewayResponse,
@@ -123,6 +124,7 @@ async function routedCommand(
   core.runtime
     .setGetResponse({ agentRuntimeArn: arn(`runtime/${RUNTIME_ID}`) } as GetAgentRuntimeResponse)
     .setInvokeResponse({
+      kind: "stream",
       statusCode: 200,
       contentType: "text/plain",
       body: (async function* () {
@@ -189,7 +191,12 @@ afterEach(async () => {
 describe("invoke", () => {
   test.each([
     ["runtime", ["--runtime", "checkout", "--payload", "{}"], "runtime", "invokeRuntime"],
-    ["harness", ["--harness", "support", "--prompt", "hi"], "harness", "invokeHarness"],
+    [
+      "harness",
+      ["--harness", "support", "--prompt", "hi", "--user-id", "user-123"],
+      "harness",
+      "invokeHarness",
+    ],
     [
       "gateway",
       ["--gateway", "tools", "--path", "/mcp", "--payload", "{}"],
@@ -207,9 +214,41 @@ describe("invoke", () => {
 
       const invoke = core[client].calls.find((call) => call.method === method)!;
       expect(invoke.args[1]).toEqual({ region: TARGET.region, credentials: TARGET_CREDENTIALS });
+      if (client === "harness") {
+        expect((invoke.args[0] as InvokeHarnessRequest).runtimeUserId).toBe("user-123");
+      }
       expect(resolved.targets).toEqual(["default"]);
     },
   );
+
+  test("looks up a Harness selected by ARN before a bearer invocation", async () => {
+    const subject = await routedCommand(
+      ["--harness", arn(`harness/${HARNESS_ID}`), "--prompt", "hi", "--bearer-token", "jwt"],
+      undefined,
+    );
+    subject.core.harness.setGetResponse({
+      harness: {
+        arn: arn(`harness/${HARNESS_ID}`),
+        authorizerConfiguration: {
+          customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+        },
+      },
+    } as GetHarnessResponse);
+
+    await subject.route();
+
+    expect(subject.core.harness.calls.find((call) => call.method === "getHarness")?.args[0]).toBe(
+      HARNESS_ID,
+    );
+    expect(
+      subject.core.harness.calls.find((call) => call.method === "invokeHarness")?.args[0],
+    ).toEqual(
+      expect.objectContaining({
+        harnessArn: arn(`harness/${HARNESS_ID}`),
+        bearerToken: "jwt",
+      }),
+    );
+  });
 
   test.each([
     [["--runtime", "checkout"], `/agentcore/runtime/invoke/${RUNTIME_ID}`],

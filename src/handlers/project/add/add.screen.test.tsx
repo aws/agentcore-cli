@@ -42,7 +42,6 @@ const ADD_COMMAND_KINDS: Record<string, ChinaAddKind> = {
   "gateway-target": "gateway-target",
   "gateway-connector": "gateway-connector",
   "online-eval": "online-eval",
-  "online-insight": "online-insight",
   harness: "harness",
   "config-bundle": "config-bundle",
   "policy-engine": "policy-engine",

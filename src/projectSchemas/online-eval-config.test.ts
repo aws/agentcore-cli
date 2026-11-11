@@ -30,29 +30,12 @@ describe("online evaluation custom validation", () => {
         .success,
     ).toBe(false);
   });
-  it("requires exactly one analysis mode and binds clustering to insights", () => {
+  it("requires at least one evaluator", () => {
     const source = { ...base, agent: "agent" };
-    expect(
-      OnlineEvalConfigSchema.safeParse({ ...source, evaluators: [], insights: [] }).success,
-    ).toBe(false);
-    expect(OnlineEvalConfigSchema.safeParse({ ...source, insights: ["Latency"] }).success).toBe(
+    expect(OnlineEvalConfigSchema.safeParse({ ...source, evaluators: [] }).success).toBe(false);
+    expect(OnlineEvalConfigSchema.safeParse({ ...source, evaluators: undefined }).success).toBe(
       false,
     );
-    expect(
-      OnlineEvalConfigSchema.safeParse({
-        ...source,
-        evaluators: undefined,
-        clusteringConfig: { frequencies: ["DAILY"] },
-      }).success,
-    ).toBe(false);
-    expect(
-      OnlineEvalConfigSchema.safeParse({
-        ...source,
-        evaluators: undefined,
-        insights: ["Latency"],
-        clusteringConfig: { frequencies: ["DAILY"] },
-      }).success,
-    ).toBe(true);
   });
   it("limits online evaluations to ten evaluators", () => {
     const source = { ...base, agent: "agent" };

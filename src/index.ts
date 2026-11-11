@@ -2,6 +2,7 @@ import { homedir } from "os";
 import { join } from "path";
 
 import { CoreClient } from "./core";
+import { detectProjectFormat, enclosingProjectRoot } from "./core/project/fsUtils";
 import { createRuntimeShellOpener } from "./core/runtimeShell";
 import {
   createApplicationSignalsClient,
@@ -19,10 +20,16 @@ import { runWithExitCode } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
+import { shouldRecordCommandFailure } from "./telemetry/commandOutcome";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
 import { NpmCliVersionManager, printUpdateNotice } from "./cliVersionManager";
 import { CliVersionManagerKey } from "./handlers/keys";
+import { disableCwdExecutableSearch } from "./io/exec";
+
+disableCwdExecutableSearch();
+// Suppress only the AWS SDK's Node.js version support warning before constructing clients.
+process.env.AWS_SDK_JS_NODE_VERSION_SUPPORT_WARNING_DISABLED = "true";
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -72,6 +79,12 @@ process.exit(
     const globalConfig = await globalConfigAccessor.get();
     try {
       rootLogger.info(`running CLI`);
+      const projectRoot = enclosingProjectRoot(process.cwd());
+      if (projectRoot) {
+        commandRunMetricEvent.setAttributes({
+          project_format: await detectProjectFormat(projectRoot),
+        });
+      }
 
       // factories (rather than instances) lets CoreClient build one client per
       // region on demand.
@@ -104,7 +117,7 @@ process.exit(
       await rootHandler.route(argv, context);
     } catch (e) {
       const error = AgentCoreCLIError.fromError(e);
-      if (error.exitCode !== 0) {
+      if (shouldRecordCommandFailure(error)) {
         rootLogger.child({ error: error.json() }).error();
         commandRunMetricEvent.setAttributes({
           exit_reason: "failure",

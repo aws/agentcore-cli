@@ -10,6 +10,7 @@ import {
   parseJsonObjectFlag,
   parseTags,
   resolveResource,
+  tagsFlag,
 } from "./utils";
 
 describe("structured JSON flags", () => {
@@ -26,34 +27,19 @@ describe("structured JSON flags", () => {
 });
 
 describe("parseTags", () => {
-  test("returns undefined for undefined input", () => {
-    expect(parseTags(undefined)).toBeUndefined();
-  });
-
-  test("returns undefined for empty array", () => {
-    expect(parseTags([])).toBeUndefined();
-  });
-
-  test("parses a single key=value pair", () => {
-    expect(parseTags(["env=prod"])).toEqual({ env: "prod" });
-  });
-
-  test("parses multiple key=value pairs", () => {
-    expect(parseTags(["env=prod", "team=agentcore"])).toEqual({
-      env: "prod",
-      team: "agentcore",
-    });
-  });
-
-  test("handles values containing equals signs", () => {
-    expect(parseTags(["config=a=b=c"])).toEqual({ config: "a=b=c" });
-  });
-
-  test("parses a JSON object", () => {
-    expect(parseTags(['{"env":"prod","team":"agentcore"}'])).toEqual({
-      env: "prod",
-      team: "agentcore",
-    });
+  test.each([
+    ["undefined input", undefined, undefined],
+    ["an empty array", [], undefined],
+    ["one key=value pair", ["env=prod"], { env: "prod" }],
+    [
+      "multiple key=value pairs",
+      ["env=prod", "team=agentcore"],
+      { env: "prod", team: "agentcore" },
+    ],
+    ["equals signs in values", ["config=a=b=c"], { config: "a=b=c" }],
+    ["a JSON object", ['{"env":"prod","team":"agentcore"}'], { env: "prod", team: "agentcore" }],
+  ] as const)("parses %s", (_label, values, expected) => {
+    expect(parseTags(values ? [...values] : values)).toEqual(expected);
   });
 
   test("rejects invalid JSON", () => {
@@ -74,6 +60,32 @@ describe("parseTags", () => {
 
   test("rejects bare value without equals", () => {
     expect(() => parseTags(["noequals"])).toThrow("expected key=value");
+  });
+
+  test.each([
+    ["reserved keys", ["aws:managed=true"], "Invalid key in record"],
+    ["blank keys", [" =value"], "Invalid key in record"],
+    ["invalid key characters", ["team#name=value"], "Invalid key in record"],
+    ["values over 256 characters", [`key=${"v".repeat(257)}`], "256 characters or less"],
+    [
+      "more than 50 tags",
+      Array.from({ length: 51 }, (_, index) => `key${index}=value`),
+      "Maximum 50 tags",
+    ],
+  ])("rejects %s", (_label, values, message) => {
+    expect(() => parseTags(values)).toThrow(message);
+  });
+});
+
+describe("tagsFlag", () => {
+  test("provides the shared schema, description, help, and optional group", () => {
+    const result = tagsFlag({ group: "Configuration:" });
+
+    expect(result.name).toBe("tags");
+    expect(result.description).toBe("tags as repeated key=value entries or one JSON object");
+    expect(result.help).toContain("Repeat --tags for key=value entries");
+    expect(result.group).toBe("Configuration:");
+    expect(result.schema.safeParse(["team=agentcore"]).success).toBe(true);
   });
 });
 

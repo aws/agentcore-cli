@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "logStreamName": "evaluation-results-bugbash725_MyOnlineEval-x7cbMK8W2z",
+      "timestamp": 1781115098820,
+      "message": "{\"resource\":{\"attributes\":{\"aws.service.type\":\"gen_ai_agent\",\"aws.local.service\":\"bugbash725_MyAgent.DEFAULT\",\"service.name\":\"bugbash725_MyAgent.DEFAULT\"}},\"traceId\":\"0123456789abcdef0123456789abcdef\",\"timeUnixNano\":1781114199904331579,\"observedTimeUnixNano\":1781115098820963246,\"severityNumber\":9,\"name\":\"gen_ai.evaluation.result\",\"attributes\":{\"gen_ai.evaluation.name\":\"Builtin.Correctness\",\"session.id\":\"00000000-0000-4000-8000-000000000001\",\"gen_ai.response.id\":\"0123456789abcdef0123456789abcdef\",\"gen_ai.evaluation.score.value\":1.0,\"gen_ai.evaluation.explanation\":\"The question asks what 10 times 7 is. The correct answer is 70. The candidate response states '10 times 7 is 70.' which is factually correct.\",\"gen_ai.evaluation.score.label\":\"Perfectly Correct\",\"aws.bedrock_agentcore.online_evaluation_config.arn\":\"arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/bugbash725_MyOnlineEval-x7cbMK8W2z\",\"aws.bedrock_agentcore.online_evaluation_config.name\":\"bugbash725_MyOnlineEval\",\"aws.bedrock_agentcore.evaluator.arn\":\"arn:aws:bedrock-agentcore:::evaluator/Builtin.Correctness\",\"aws.bedrock_agentcore.evaluator.rating_scale\":\"Numerical\",\"aws.bedrock_agentcore.evaluation_level\":\"Trace\"},\"onlineEvaluationConfigId\":\"bugbash725_MyOnlineEval-x7cbMK8W2z\",\"service.name\":\"bugbash725_MyAgent.DEFAULT\",\"label\":\"Perfectly Correct\",\"_aws\":{\"Timestamp\":1781114199904,\"CloudWatchMetrics\":[{\"Namespace\":\"Bedrock-AgentCore/Evaluations\",\"Dimensions\":[[\"service.name\"],[\"label\",\"service.name\"],[\"service.name\",\"onlineEvaluationConfigId\"],[\"label\",\"service.name\",\"onlineEvaluationConfigId\"]],\"Metrics\":[{\"Name\":\"Builtin.Correctness\",\"Unit\":\"None\"}]}]},\"Builtin.Correctness\":1.0}",
+      "ingestionTime": 1781115098889,
+      "eventId": "39720193988040511357685805728500488452731795775606226944"
+    }
+  ],
+  "searchedLogStreams": [],
+  "nextToken": "Bxkq6kVGFtq2y_MoigeqscPOdhXVbhiVtLoAmXb5jCrRcpxvY0x9YUCxuwMruX42nCD2vfgcEZ8-w6UkBc3rJUj_43m6SYNpFrMlWtnITL0uATy60abGwUvdvO7YXfSbaCbiOfqQN0LCvGYJDRJr26lt0cMuO0GN0qdWRFMH0aS9AuFpCL9jYmMapb8WA_SDuq-Fw9OABOYW05vGFkEMzJXDFcv5q_K0TEg68FjoBUQehvVSOTZ82QA_lIHqaLzSMdI1FANF1ve7Q4OFWrjOXQVMuLCH7CvQx454AmcFtZA3qATL_KyPkWpHeitbYXd3hMrTN73A3z87n1pu99xxeg"
+}

@@ -37,9 +37,18 @@ Example:
 
   model: `(JSON: tagged union object)
 The model configuration for the harness. Supports Amazon Bedrock, OpenAI,
-Google Gemini, and LiteLLM providers. Exactly one of the following top-level
+Google Gemini, and a LiteLLM gateway. Exactly one of the following top-level
 keys can be set: bedrockModelConfig, openAiModelConfig, geminiModelConfig,
 liteLlmModelConfig. When omitted, the service default model is used.
+
+For LiteLLM, supply your gateway's apiBase URL and configured model alias.
+The CLI prefixes the alias with litellm_proxy/ to route through your gateway.
+An alias already carrying that prefix is kept unchanged. Supply apiKeyArn
+for the gateway API key; do not supply an upstream provider key. The CLI
+requires this credential for the LiteLLM proxy SDK path.
+Routing overrides in additionalParams (model, api_base, base_url,
+custom_llm_provider, use_litellm_proxy, fallbacks) are rejected by the CLI.
+Configure routing and fallbacks on the gateway instead.
 
 JSON syntax:
   {
@@ -70,9 +79,9 @@ JSON syntax:
       "topK": integer                   // 0 - 500
     },
     "liteLlmModelConfig": {
-      "modelId": "string",              // [required] e.g. "anthropic/..."
-      "apiKeyArn": "string",
-      "apiBase": "string",              // provider API base URL
+      "modelId": "string",              // [required] gateway model alias
+      "apiKeyArn": "string",            // [required by CLI] gateway credential
+      "apiBase": "string",              // [required by CLI] gateway URL
       "maxTokens": integer,
       "temperature": float,
       "topP": float,
@@ -81,7 +90,8 @@ JSON syntax:
   }
 
 Example:
-  --model '{"bedrockModelConfig":{"modelId":"global.anthropic.claude-sonnet-5-5"}}'`,
+  --model '{"bedrockModelConfig":{"modelId":"global.anthropic.claude-sonnet-5-5"}}'
+  --model '{"liteLlmModelConfig":{"modelId":"my-model","apiBase":"https://gateway.example.com/v1","apiKeyArn":"arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/apikeycredentialprovider/model-proxy"}}'`,
 
   tools: `(JSON: list of objects)
 The tools available to the agent: remote MCP servers, AgentCore Gateway,
@@ -304,13 +314,4 @@ JSON syntax:
 
 Example:
   --authorizer-configuration '{"customJWTAuthorizer":{"discoveryUrl":"https://idp.example.com/.well-known/openid-configuration","allowedAudience":["my-app"]}}'`,
-
-  tags: `(repeated key=value or JSON: map of string to string)
-Tags to apply to the harness resource. Repeat --tags for key=value entries, or
-provide one JSON object. Up to 50 entries; keys up to 128 characters, values
-up to 256.
-
-Example:
-  --tags team=ml-platform --tags env=dev
-  --tags '{"team":"ml-platform","env":"dev"}'`,
 };

@@ -1,7 +1,7 @@
 name: canary
 on:
   schedule:
-    - cron: "*/20 * * * *"
+    - cron: "10,40 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -13,19 +13,20 @@ permissions:
   contents: read
 
 jobs:
-  # Resolve the commit hash for the latest published @rc version.
+  # Resolve the commit hash for npm's latest published version.
   resolve_release:
-    runs-on: ubuntu-latest
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-      - name: Resolve latest RC release commit
+      - name: Resolve latest stable release commit
         id: resolve
         run: |
-          version="$(npm view @aws/agentcore@rc version)"
+          version="$(npm view @aws/agentcore@latest version)"
           tag_ref="refs/tags/v${version}"
           # Resolve annotated tags to their commit hash when needed.
           ref="$(git ls-remote https://github.com/aws/agentcore-cli.git "${tag_ref}" "${tag_ref}^{}" | awk -v tag_ref="${tag_ref}" '
@@ -34,17 +35,50 @@ jobs:
             END { if (!found && tag_sha != "") print tag_sha }
           ')"
           if [[ -z "${ref}" ]]; then
-            echo "::error::No upstream tag found for @aws/agentcore@rc version ${version}"
+            echo "::error::No upstream tag found for @aws/agentcore@latest version ${version}"
             exit 1
           fi
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
   e2e:
     needs: resolve_release
     uses: ./.github/workflows/e2e-test.yml
     with:
       ref: ${{ needs.resolve_release.outputs.ref }}
+      npmVersion: ${{ needs.resolve_release.outputs.version }}
       tags: canary
       linuxOnly: true
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+
+  heartbeat:
+    needs: [resolve_release, e2e]
+    # A cancelled run emits no failure sample; the alarm may still breach on missing data.
+    if: ${{ !cancelled() }}
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          unset-current-credentials: true
+      - name: Emit canary heartbeat
+        env:
+          RESOLVE_RESULT: ${{ needs.resolve_release.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          status=failure
+          if [[ "$RESOLVE_RESULT" == "success" && "$E2E_RESULT" == "success" ]]; then
+            status=success
+          fi
+          bash .github/scripts/emit-canary-heartbeat.sh "$status"

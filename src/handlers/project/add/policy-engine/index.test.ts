@@ -75,6 +75,19 @@ describe("project add policy-engine", () => {
     );
   });
 
+  test("writes a hyphenated target with underscores in the deployed name", async () => {
+    const projectRoot = await inProject();
+    await writeFile(
+      join(projectRoot, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "prod-us1", account: "111122223333", region: "us-east-1" }]),
+    );
+    const name = `E${"x".repeat(28)}`;
+
+    await expect(run(["add", "policy-engine", "--name", name])).rejects.toThrow(
+      `Policy Engine deployed name 'TestProject_prod_us1_${name}' is 50 characters. The maximum is 48.`,
+    );
+  });
+
   test.each([
     ["defaults to enforce", [], "ENFORCE"],
     ["honors --attach-mode log-only", ["--attach-mode", "log-only"], "LOG_ONLY"],

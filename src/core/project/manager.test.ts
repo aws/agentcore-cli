@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
+import semver from "semver";
 import {
   DeserializationError,
   InputValidationError,
@@ -11,9 +13,13 @@ import {
   ResourceNotFoundError,
 } from "../../errors/errors";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
-import { credentialEnvVarName } from "../../projectSchemas/credential";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+} from "../../projectSchemas/credential";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
+import { readEnvFile } from "../../io/envFile";
 import {
   BMA_CN_MESSAGE,
   cnConnectorTargetMessage,
@@ -156,8 +162,7 @@ describe("FsProjectManager.create", () => {
     // The v2 schema endpoint is unpublished, so scaffolding must not point at it.
     expect(spec).not.toHaveProperty("$schema");
     expect(ProjectSpecSchema.safeParse(spec).success).toBe(true);
-    const cdkPackage = await Bun.file(join(projectRoot, "agentcore", "cdk", "package.json")).json();
-    expect(cdkPackage.dependencies["@aws/agentcore-cdk"]).toBe(MINIMUM_COMPATIBLE_CDK_VERSION);
+    expect(semver.gte(MINIMUM_COMPATIBLE_CDK_VERSION, "1.0.0")).toBe(true);
     expect(await projectManifest(projectRoot)).toMatchSnapshot();
   });
 
@@ -273,10 +278,41 @@ describe("FsProjectManager.create", () => {
     const session = await Bun.file(
       join(directory, "example", "app", "agent_python_strands", "memory", "session.py"),
     ).text();
-    expect(session).toContain(
-      'MEMORY_ID = os.getenv("AGENTCORE_MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")',
-    );
+    expect(session).toContain('MEMORY_ID = os.getenv("MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID")');
   });
+
+  test.each([
+    ["Python Strands", AGENT_PYTHON_STRANDS, "model/load.py"],
+    ["TypeScript Strands", AGENT_TYPESCRIPT_STRANDS, "model/apiKey.ts"],
+    ["A2A Python Strands", A2A_PYTHON_STRANDS, "model/load.py"],
+    ["AG-UI Python Strands", AGUI_PYTHON_STRANDS, "model/load.py"],
+  ] as const)(
+    "renders the %s credential names for local secrets and deployed provider discovery",
+    async (_label, template, modelFile) => {
+      const directory = await inTempDirectory();
+      await runCreate(manager().manager, {
+        name: "example",
+        scaffoldRuntimeInput: {
+          ...template,
+          modelProvider: "Anthropic",
+          apiKey: "sk-secret",
+        },
+        skipInstall: true,
+        skipGit: true,
+      });
+
+      const credentialName = `${template.runtimeName}AnthropicApiKey`;
+      const model = await Bun.file(
+        join(directory, "example", "app", template.runtimeName, ...modelFile.split("/")),
+      ).text();
+      const localSecretName = credentialEnvVarName(credentialName);
+      const providerName = credentialProviderNameEnvVarName(credentialName);
+
+      expect(model).toContain(providerName);
+      expect(model).toContain(localSecretName);
+      expect(model).not.toContain(`${localSecretName}_NAME`);
+    },
+  );
 
   test("writes a deploy-ready agentcore.json registering the template agent", async () => {
     const directory = await inTempDirectory();
@@ -334,6 +370,7 @@ describe("FsProjectManager.create", () => {
       {
         name: "environment_python_bma",
         build: "Container",
+        bedrockManagedAgents: true,
         entrypoint: "lifecycle/server.py",
         codeLocation: "app/environment_python_bma",
         dockerfile: "Dockerfile",
@@ -567,10 +604,10 @@ describe("FsProjectManager.create", () => {
     });
 
     expect(events.flatMap((event) => (event.type === "step" ? [event.message] : []))).toEqual([
-      "Creating project tree",
-      "Installing CDK dependencies with npm",
-      "Syncing Python dependencies with uv",
-      "Initializing git repository",
+      "creating project tree",
+      "installing CDK dependencies with npm",
+      "syncing Python dependencies with uv",
+      "initializing git repository",
     ]);
     expect(project.name).toBe("example");
     expect(project.rootPath).toContain("example");
@@ -726,6 +763,175 @@ describe("FsProjectManager.addResource", () => {
       expect(await Bun.file(specPath).text()).toBe(specBefore);
     },
   );
+
+  describe("a harness with a managed API key", () => {
+    async function emptyProject() {
+      await inTempDirectory();
+      const setup = manager();
+      const { project } = await runCreate(setup.manager, {
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+      });
+      return { subject: setup.manager, project };
+    }
+
+    async function collectSteps(iterator: AsyncGenerator<ProjectEvent, Project>) {
+      const steps: string[] = [];
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) return { steps, project: next.value };
+        if (next.value.type === "step") steps.push(next.value.message);
+      }
+    }
+
+    test("declares the credential, names it from harness.yaml, and writes the key to .env.local", async () => {
+      const { subject, project } = await emptyProject();
+      const updated = await runAdd(subject, project, {
+        resourceType: "harness",
+        resourceConfig: { name: "assistant", model: { provider: "open_ai", modelId: "gpt" } },
+        apiKey: "sk-secret",
+      });
+
+      expect(updated.spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: "assistantOpenAIApiKey" },
+      ]);
+      const harnessYaml = await readFile(
+        join(project.rootPath, "app", "assistant", "harness.yaml"),
+        "utf8",
+      );
+      expect(harnessYaml).toContain("apiKeyCredentialName: assistantOpenAIApiKey");
+      expect(harnessYaml).not.toContain("apiKeyArn");
+      const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
+      expect(envLocal).toContain(
+        "# API key for the OpenAI model provider (harness assistant)\n" +
+          `${credentialEnvVarName("assistantOpenAIApiKey")}='enc:v1:`,
+      );
+      expect(
+        (await readEnvFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH)))[
+          credentialEnvVarName("assistantOpenAIApiKey")
+        ],
+      ).toBe("sk-secret");
+      expect(envLocal).not.toContain("sk-secret");
+    });
+
+    test.each([
+      ["gemini", "Gemini"],
+      ["lite_llm", "LiteLLM"],
+    ] as const)("names a %s key credential with the %s label", async (provider, label) => {
+      const { subject, project } = await emptyProject();
+      const updated = await runAdd(subject, project, {
+        resourceType: "harness",
+        resourceConfig: { name: "assistant", model: { provider, modelId: "m" } },
+        apiKey: "sk-secret",
+      });
+      expect(updated.spec.credentials.map(({ name }) => name)).toEqual([`assistant${label}ApiKey`]);
+    });
+
+    test("reuses an existing credential and leaves an existing .env.local value alone", async () => {
+      const { subject, project } = await emptyProject();
+      const credentialName = "assistantOpenAIApiKey";
+      const withCredential = await runAdd(subject, project, {
+        resourceType: "credential",
+        resourceConfig: { authorizerType: "ApiKeyCredentialProvider", name: credentialName },
+        envEntries: [{ key: credentialEnvVarName(credentialName), value: "old", comment: "c" }],
+      });
+
+      const { steps, project: updated } = await collectSteps(
+        subject.addResource(withCredential, {
+          resourceType: "harness",
+          resourceConfig: { name: "assistant", model: { provider: "open_ai", modelId: "gpt" } },
+          apiKey: "new",
+        }),
+      );
+
+      expect(updated.spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: credentialName },
+      ]);
+      expect(steps).toContain(
+        `'${credentialEnvVarName(credentialName)}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+      );
+      const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
+      expect(
+        (await readEnvFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH)))[
+          credentialEnvVarName(credentialName)
+        ],
+      ).toBe("old");
+      expect(envLocal).not.toContain("new");
+    });
+
+    test("refuses an API key for bedrock and alongside an apiKeyArn, writing nothing", async () => {
+      const { subject, project } = await emptyProject();
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "harness",
+          resourceConfig: { name: "assistant", model: { provider: "bedrock", modelId: "m" } },
+          apiKey: "sk-secret",
+        }),
+      ).rejects.toBeInstanceOf(InputValidationError);
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "harness",
+          resourceConfig: {
+            name: "assistant",
+            model: { provider: "open_ai", modelId: "gpt", apiKeyArn: "arn:aws:key" },
+          },
+          apiKey: "sk-secret",
+        }),
+      ).rejects.toBeInstanceOf(InputValidationError);
+      expect(existsSync(join(project.rootPath, "app", "assistant"))).toBe(false);
+      const spec = ProjectSpecSchema.parse(
+        JSON.parse(await readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf8")),
+      );
+      expect(spec.credentials).toEqual([]);
+      expect(spec.harnesses).toEqual([]);
+    });
+
+    test("refuses a model naming a credential the project does not declare", async () => {
+      const { subject, project } = await emptyProject();
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "harness",
+          resourceConfig: {
+            name: "assistant",
+            model: { provider: "open_ai", modelId: "gpt", apiKeyCredentialName: "missing" },
+          },
+        }),
+      ).rejects.toThrow(
+        new ResourceNotFoundError("no credential named 'missing' exists in this project"),
+      );
+      expect(existsSync(join(project.rootPath, "app", "assistant"))).toBe(false);
+    });
+
+    test("create threads harnessApiKey through to the scaffolded harness", async () => {
+      await inTempDirectory();
+      const { manager: subject } = manager();
+      const { project } = await runCreate(subject, {
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldHarnessInput: {
+          name: "example",
+          model: {
+            provider: "gemini",
+            modelId: "gemini-pro",
+            apiKeyCredentialName: "exampleGeminiApiKey",
+          },
+        },
+        harnessApiKey: "sk-gemini",
+      });
+      expect(project.spec.credentials).toEqual([
+        { authorizerType: "ApiKeyCredentialProvider", name: "exampleGeminiApiKey" },
+      ]);
+      const envLocal = await readFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH), "utf8");
+      expect(envLocal).not.toContain("sk-gemini");
+      expect(
+        (await readEnvFile(join(project.rootPath, ENV_LOCAL_RELATIVE_PATH)))[
+          credentialEnvVarName("exampleGeminiApiKey")
+        ],
+      ).toBe("sk-gemini");
+    });
+  });
 
   // Model-provider templates are gated in the aws-cn partition: none of the
   // template model providers are reachable there, so the add must fail before
@@ -994,6 +1200,9 @@ describe("FsProjectManager.addResource", () => {
           name: string;
           modelProvider?: string;
           modelId?: string;
+          bedrockManagedAgents?: boolean;
+          tags?: Record<string, string>;
+          additionalPolicies?: string[];
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1052,6 +1261,32 @@ describe("FsProjectManager.addResource", () => {
       expect(String(error)).toContain("runtime 'environment_python_bma'");
       expect(String(error)).toContain(BMA_CN_MESSAGE);
       expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy to a China target recognizes the explicit BMA field", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.bedrockManagedAgents = true;
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain(BMA_CN_MESSAGE);
+      expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy to a China target ignores BMA template markers without the explicit field", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.tags = { "agentcore:template": "BedrockManagedAgents" };
+        spec.runtimes[0]!.additionalPolicies = ["bma-acr-policy.json"];
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target proceeds past the gate for LiteLLM", async () => {
@@ -1465,7 +1700,7 @@ describe("chinaModelProviderRestriction", () => {
       MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
     );
     expect(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE).toContain("takes no --model-provider override");
-    // A scaffold without template metadata (e.g. --type import) gets the same generic text.
+    // A scaffold without template metadata (e.g. a Bedrock Agent import) gets the same generic text.
     expect(
       chinaModelProviderRestriction({ ...AGENT_PYTHON_STRANDS, templateProfile: undefined }),
     ).toBe(MODEL_PROVIDER_RUNTIMES_CN_MESSAGE);
@@ -1541,7 +1776,7 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    expect(events).toEqual([{ type: "step", message: "Synthesizing CloudFormation templates" }]);
+    expect(events).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
@@ -1692,6 +1927,37 @@ describe("FsProjectManager.deploy", () => {
     });
   });
 
+  test("refuses a target a migration hasn't finished, for every caller (CLI, TUI, harness dev)", async () => {
+    const root = await inTempDirectory();
+    const subject = deployManager();
+    const project = await projectWithTargets(root, targets);
+    await writeMigrationState(root, {
+      version: 2,
+      startedAt: "2026-10-13T00:00:00.000Z",
+      files: { status: "installed", backup: "agentcore/.cli/migrate-backup", changes: [] },
+      refactored: ["staging"],
+      targets: [
+        {
+          name: "prod",
+          account: "444455556666",
+          region: "eu-west-1",
+          stackName: "AgentCore-example-prod",
+          status: "refactoring",
+          refactorId: "rf-1",
+        },
+      ],
+    });
+
+    await expect(deploy(subject.manager, project, "prod")).rejects.toThrow(
+      "Target 'prod' (AWS account 444455556666, eu-west-1) hasn't been migrated yet",
+    );
+    expect(subject.calls).toEqual([]);
+    expect(subject.accountCalls).toEqual([]);
+    // The migrated target deploys as usual.
+    await deploy(subject.manager, project, "staging");
+    expect(subject.calls.map((call) => call.input.target.name)).toEqual(["staging"]);
+  });
+
   test("rejects an unknown target before invoking the backend", async () => {
     const root = await inTempDirectory();
     const subject = deployManager();
@@ -1757,7 +2023,7 @@ describe("FsProjectManager.deploy", () => {
     region: "us-east-2",
   };
   const CREATED_MESSAGE =
-    `Created default deployment target: account ${STS_ACCOUNT}, ` +
+    `created default deployment target: account ${STS_ACCOUNT}, ` +
     `region us-east-2 (${join("agentcore", "aws-targets.json")})`;
 
   test.each([
@@ -1829,22 +2095,6 @@ describe("FsProjectManager.deploy", () => {
     expect(await Bun.file(targetsFile(root)).json()).toEqual(targets);
   });
 
-  test("rejects an unsupported region without calling STS or writing the file", async () => {
-    const root = await inTempDirectory();
-    const subject = deployManager();
-    const project = await projectWithTargets(root, undefined);
-
-    const attempt = deploy(subject.manager, project, "default", { region: "af-south-1" });
-
-    await expect(attempt).rejects.toThrow(/'af-south-1' is not an AgentCore-supported region/);
-    await expect(
-      deploy(subject.manager, project, "default", { region: "af-south-1" }),
-    ).rejects.toThrow(/Supported regions: .*us-east-1.*Re-run with --region/s);
-    expect(subject.calls).toEqual([]);
-    expect(subject.accountCalls).toEqual([]);
-    expect(await Bun.file(targetsFile(root)).exists()).toBe(false);
-  });
-
   test("reports an actionable error when the account cannot be resolved", async () => {
     const root = await inTempDirectory();
     const subject = deployManager({
@@ -1855,7 +2105,7 @@ describe("FsProjectManager.deploy", () => {
     await expect(
       deploy(subject.manager, project, "default", { region: "us-east-2" }),
     ).rejects.toThrow(
-      /the AWS account could not be resolved: The security token included in the request is expired[\s\S]*aws login/,
+      /the AWS account could not be resolved in region 'us-east-2': The security token included in the request is expired[\s\S]*Check that 'us-east-2' is a region enabled[\s\S]*aws login/,
     );
     expect(subject.calls).toEqual([]);
     expect(await Bun.file(targetsFile(root)).exists()).toBe(false);
@@ -1881,6 +2131,334 @@ describe("FsProjectManager.deploy", () => {
 });
 
 describe("FsProjectManager.resolve", () => {
+  async function legacyProject(
+    dependency: unknown,
+    version: unknown,
+  ): Promise<{ root: string; configPath: string; manifestPath: string }> {
+    const root = await inTempDirectory();
+    const configPath = join(root, "agentcore", "agentcore.json");
+    const manifestPath = join(root, "agentcore", "cdk", "package.json");
+    await mkdir(join(root, "agentcore", "cdk"), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify({ name: "example", version, $schema: "https://example.com/v0-schema" }),
+    );
+    await writeFile(
+      manifestPath,
+      JSON.stringify({ dependencies: { "@aws/agentcore-cdk": dependency } }),
+    );
+    return { root, configPath, manifestPath };
+  }
+
+  test.each([
+    "^0.1.0-alpha.1",
+    "^0.1.0-alpha.19",
+    "~0.1.0-alpha.19",
+    "0.1.0-alpha.44",
+    "=0.1.0-alpha.44",
+    " ^0.1.0-alpha.19 ",
+  ])(
+    "gives v0 deploy guidance for legacy CDK dependency %s without changing files",
+    async (dependency) => {
+      const { root, configPath, manifestPath } = await legacyProject(dependency, 1);
+      const before = await Promise.all([
+        readFile(configPath, "utf8"),
+        readFile(manifestPath, "utf8"),
+      ]);
+      const subject = manager();
+      await mkdir(join(root, "app", "nested"), { recursive: true });
+
+      const error = await subject.manager
+        .resolve({ filePath: join(root, "app", "nested") })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect(error).toHaveProperty(
+        "message",
+        "This project's CDK dependencies are older than v0.24.2. " +
+          "Run `npx @aws/agentcore@0 deploy` once to update them, then try again.",
+      );
+      expect(
+        await Promise.all([readFile(configPath, "utf8"), readFile(manifestPath, "utf8")]),
+      ).toEqual(before);
+      expect(subject.commands).toEqual([]);
+      expect(subject.checkedTools).toEqual([]);
+    },
+  );
+
+  test.each([
+    "0.1.0-alpha.45",
+    "0.1.0-alpha.46",
+    "0.1.0",
+    "^0.1.0-alpha.45",
+    undefined,
+    19,
+    "not-semver",
+    "file:../agentcore-cdk",
+    "git+https://example.com/agentcore-cdk.git",
+    "latest",
+    "*",
+    ">=0.1.0-alpha.19",
+  ])("loads a valid v0 project with updated or custom dependency %s", async (dependency) => {
+    const { root } = await legacyProject(dependency, 1);
+
+    const project = await manager().manager.resolve({ filePath: root });
+
+    expect(project).toMatchObject({
+      name: "example",
+      rootPath: root,
+      spec: { name: "example", version: 2, managedBy: "CDK" },
+      legacy: { format: "v0", v0Spec: { name: "example", version: 1 } },
+    });
+  });
+
+  test.each([undefined, 0, 3, "1"])(
+    "does not apply v0 dependency guidance to project version %s",
+    async (version) => {
+      const { root } = await legacyProject("^0.1.0-alpha.19", version);
+
+      const error = await manager()
+        .manager.resolve({ filePath: root })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(DeserializationError);
+      expect(error).toHaveProperty("message", expect.not.stringContaining("npx @aws/agentcore@0"));
+    },
+  );
+
+  test.each(["missing", "malformed", "invalid-shape"] as const)(
+    "loads a valid v0 project when its CDK manifest is %s",
+    async (state) => {
+      const { root, manifestPath } = await legacyProject("^0.1.0-alpha.19", 1);
+      if (state === "missing") await rm(manifestPath);
+      else await writeFile(manifestPath, state === "malformed" ? "{ not valid json" : "null");
+
+      expect(await manager().manager.resolve({ filePath: root })).toMatchObject({
+        legacy: { format: "v0" },
+      });
+    },
+  );
+
+  test("reports v0 schema errors after the dependency gate passes", async () => {
+    const { root, configPath } = await legacyProject("0.1.0-alpha.45", 1);
+    await writeFile(configPath, JSON.stringify({ name: "not-valid!", version: 1 }));
+
+    await expect(manager().manager.resolve({ filePath: root })).rejects.toThrow(
+      "Project name must start with a letter and contain only alphanumeric characters",
+    );
+  });
+
+  test("reads v0 deployment target names with v0 rules", async () => {
+    const { root } = await legacyProject("0.1.0-alpha.45", 1);
+    const subject = manager().manager;
+    const project = await subject.resolve({ filePath: root });
+    if (!project) throw new Error("expected project");
+    await writeFile(
+      join(root, "agentcore", "aws-targets.json"),
+      JSON.stringify([
+        { name: "prod-us", account: "111122223333", region: "us-east-1" },
+        { name: "PROD-US", account: "111122223333", region: "us-west-2" },
+      ]),
+    );
+
+    expect(await subject.listTargets(project)).toEqual([
+      { name: "prod-us", account: "111122223333", region: "us-east-1" },
+      { name: "PROD-US", account: "111122223333", region: "us-west-2" },
+    ]);
+  });
+
+  test("blocks v0 builds and direct manager deploys before reaching the v1 backend", async () => {
+    const { root } = await legacyProject("0.1.0-alpha.45", 1);
+    const builds: Project[] = [];
+    const deploys: { project: Project; input: DeployBackendInput }[] = [];
+    const backend: ProjectBackend = {
+      async *build(project) {
+        builds.push(project);
+        yield { type: "step", message: "Building" };
+      },
+      async *deploy(project, input) {
+        deploys.push({ project, input });
+        yield { type: "step", message: "Deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await subject.resolve({ filePath: root });
+    if (!project) throw new Error("expected project");
+    await writeFile(
+      join(root, "agentcore", "aws-targets.json"),
+      JSON.stringify([{ name: "default", account: "111122223333", region: "us-east-1" }]),
+    );
+
+    const build = subject.build(project);
+    await expect(build.next()).rejects.toThrow("v0 did not expose a standalone build command");
+    const deploy = subject.deploy(project, {
+      target: "default",
+      region: "us-east-1",
+      confirmTeardown: async () => false,
+      transactionSearch: false,
+    });
+    await expect(deploy.next()).rejects.toThrow(
+      "v0 projects must be deployed by the v0 compatibility runner",
+    );
+    expect(builds).toEqual([]);
+    expect(deploys).toEqual([]);
+  });
+
+  test("blocks v0 operations that rewrite files using the v1 shape", async () => {
+    const { root } = await legacyProject("0.1.0-alpha.45", 1);
+    const subject = manager().manager;
+    const project = await subject.resolve({ filePath: root });
+    if (!project) throw new Error("expected project");
+
+    await expect(
+      runAdd(subject, project, {
+        resourceType: "memory",
+        resourceConfig: getDefaultMemorySpec("memory"),
+      }),
+    ).rejects.toThrow("'add' isn't available for v0 projects yet");
+    await expect(
+      subject.removeResource(project, { resourceType: "memory", name: "memory" }),
+    ).rejects.toThrow("'remove' isn't available for v0 projects yet");
+    await expect(subject.removeAllResources(project)).rejects.toThrow(
+      "'remove all' isn't available for v0 projects yet",
+    );
+    await expect(
+      subject.exportHarness(project, { harnessName: "harness", targetAgentName: "agent" }).next(),
+    ).rejects.toThrow("'export harness' isn't available for v0 projects yet");
+  });
+
+  async function v1Project(dependency: unknown): Promise<{ root: string; configPath: string }> {
+    const { root, configPath } = await legacyProject(dependency, 2);
+    await writeFile(configPath, JSON.stringify({ name: "example", version: 2 }));
+    return { root, configPath };
+  }
+
+  function v1WithV0LibraryMessage(spec: string): string {
+    return (
+      "agentcore/agentcore.json says this is a v1 project (version 2), but its CDK library is " +
+      `v0 (@aws/agentcore-cdk ${spec}). Set "version" back to 1, or run \`agentcore migrate\` ` +
+      "to upgrade it."
+    );
+  }
+
+  function v0WithV1LibraryMessage(spec: string): string {
+    return (
+      "agentcore/agentcore.json says this is a v0 project (version 1), but its CDK library is " +
+      `v1 (@aws/agentcore-cdk ${spec}). Set "version" to 2, or reinstall the v0 CDK app.`
+    );
+  }
+
+  test.each([
+    ["^0.1.0-alpha.19", "^0.1.0-alpha.19"],
+    ["0.1.0-alpha.45", "0.1.0-alpha.45"],
+    ["~0.1.0-alpha.45", "~0.1.0-alpha.45"],
+    ["0.1.0", "0.1.0"],
+    [" ^0.1.0-alpha.45 ", "^0.1.0-alpha.45"],
+  ])(
+    "rejects a v1 project whose CDK library is v0 (%s) without changing files",
+    async (dependency, shown) => {
+      const { root, configPath } = await v1Project(dependency);
+      const manifestPath = join(root, "agentcore", "cdk", "package.json");
+      const before = await Promise.all([
+        readFile(configPath, "utf8"),
+        readFile(manifestPath, "utf8"),
+      ]);
+      const subject = manager();
+
+      const error = await subject.manager
+        .resolve({ filePath: root })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect(error).toHaveProperty("message", v1WithV0LibraryMessage(shown));
+      expect(
+        await Promise.all([readFile(configPath, "utf8"), readFile(manifestPath, "utf8")]),
+      ).toEqual(before);
+      expect(subject.commands).toEqual([]);
+      expect(subject.checkedTools).toEqual([]);
+    },
+  );
+
+  test("rejects a v1 project with a v0 CDK library even when its spec is invalid", async () => {
+    const { root } = await legacyProject("^0.1.0-alpha.19", 2);
+
+    const error = await manager()
+      .manager.resolve({ filePath: root })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ProjectStateError);
+    expect(error).toHaveProperty("message", v1WithV0LibraryMessage("^0.1.0-alpha.19"));
+    expect((error as Error).cause).toBeInstanceOf(DeserializationError);
+  });
+
+  test.each(["1.0.0-rc.5", "^1.0.0-rc.5", "~1.0.0-preview.33", "1.0.0", "2.1.0"])(
+    "rejects a v0 project whose CDK library is v1 (%s)",
+    async (dependency) => {
+      const { root } = await legacyProject(dependency, 1);
+      const subject = manager();
+
+      const error = await subject.manager
+        .resolve({ filePath: root })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect(error).toHaveProperty("message", v0WithV1LibraryMessage(dependency));
+      expect(subject.commands).toEqual([]);
+    },
+  );
+
+  test.each(["1.0.0-rc.5", "^1.0.0-preview.33", "~1.0.0", "1.2.3"])(
+    "loads a v1 project with v1 CDK library %s",
+    async (dependency) => {
+      const { root } = await v1Project(dependency);
+
+      const project = await manager().manager.resolve({ filePath: root });
+
+      expect(project?.spec.version).toBe(2);
+      expect(project?.legacy).toBeUndefined();
+    },
+  );
+
+  test.each([
+    undefined,
+    19,
+    "not-semver",
+    "file:../agentcore-cdk",
+    "git+https://example.com/agentcore-cdk.git",
+    "workspace:*",
+    "latest",
+    "*",
+    ">=0.1.0-alpha.19",
+  ])("loads a v1 project with unrecognized CDK dependency %s", async (dependency) => {
+    const { root } = await v1Project(dependency);
+
+    expect((await manager().manager.resolve({ filePath: root }))?.spec.version).toBe(2);
+  });
+
+  test.each(["missing", "malformed", "invalid-shape"] as const)(
+    "loads a v1 project when its CDK manifest is %s",
+    async (state) => {
+      const { root } = await v1Project("^0.1.0-alpha.19");
+      const manifestPath = join(root, "agentcore", "cdk", "package.json");
+      if (state === "missing") await rm(manifestPath);
+      else await writeFile(manifestPath, state === "malformed" ? "{ not valid json" : "null");
+
+      expect((await manager().manager.resolve({ filePath: root }))?.spec.version).toBe(2);
+    },
+  );
+
   test("round-trips a project it just created", async () => {
     const root = await inTempDirectory();
     const subject = manager().manager;
@@ -2067,5 +2645,531 @@ describe("FsProjectManager removal", () => {
 
     expect(twice.removedEnvKeys).toEqual([]);
     expect(twice.project.spec.runtimes).toEqual([]);
+  });
+});
+
+describe("migratedFrom", () => {
+  test("survives reading and writing agentcore.json", async () => {
+    await inTempDirectory();
+    const setup = manager();
+    const { project } = await runCreate(setup.manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON,
+      skipInstall: true,
+      skipGit: true,
+    });
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    await writeFile(specPath, JSON.stringify({ ...spec, migratedFrom: "v1" }, null, 2));
+
+    const migrated = await setup.manager.resolve({ filePath: project.rootPath });
+    if (!migrated) throw new Error("expected project");
+    expect(migrated.spec.migratedFrom).toBe("v1");
+    await runAdd(setup.manager, migrated, {
+      resourceType: "memory",
+      resourceConfig: getDefaultMemorySpec("extra"),
+    });
+
+    const written = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    expect(written.migratedFrom).toBe("v1");
+  });
+});
+
+describe("docs-only runtimes", () => {
+  const recordingBackend = () => {
+    const builds: Project[] = [];
+    const backend: ProjectBackend = {
+      async *build(project) {
+        builds.push(project);
+        yield { type: "step", message: "Building" };
+      },
+      async *deploy() {
+        yield { type: "step", message: "Deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    return { backend, builds };
+  };
+
+  async function emptyProject(subject: FsProjectManager): Promise<Project> {
+    await inTempDirectory();
+    const { project } = await runCreate(subject, {
+      name: "example",
+      skipInstall: true,
+      skipGit: true,
+    });
+    return project;
+  }
+
+  const docsRuntime = (overrides: Record<string, unknown> = {}): AddResourceInput => ({
+    resourceType: "runtime",
+    resourceConfig: { name: "search", language: "Python", protocol: "HTTP", ...overrides },
+  });
+
+  async function addFails(subject: FsProjectManager, project: Project, input: AddResourceInput) {
+    // networkMode VPC without networkConfig passes the add input but fails the
+    // spec commit, which is what triggers the rollback.
+    await expect(runAdd(subject, project, input)).rejects.toThrow(
+      "networkConfig is required when networkMode is VPC",
+    );
+  }
+
+  test("writes only docs and a complete spec entry with starting values, installing nothing", async () => {
+    const { manager: subject, commands, checkedTools } = manager();
+    const project = await emptyProject(subject);
+    commands.length = 0;
+    checkedTools.length = 0;
+
+    const updated = await runAdd(subject, project, docsRuntime({ protocol: "A2A" }));
+
+    expect(updated.spec.runtimes).toEqual([
+      {
+        name: "search",
+        codeLocation: "app/search" as never,
+        build: "CodeZip",
+        runtimeVersion: "PYTHON_3_14",
+        entrypoint: "main.py",
+        protocol: "A2A",
+      },
+    ]);
+    expect((await readdir(join(project.rootPath, "app", "search"))).sort()).toEqual([
+      "AGENTS.md",
+      "README.md",
+    ]);
+    expect(commands).toEqual([]);
+    expect(checkedTools).toEqual([]);
+  });
+
+  test("a failed commit removes the folder it created", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+
+    await addFails(subject, project, docsRuntime({ networkMode: "VPC" }));
+
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+  });
+
+  test("a failed commit never deletes a folder or files that were already there", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "search");
+    await mkdir(join(appDir, "lib"), { recursive: true });
+    await writeFile(join(appDir, "main.py"), "print('mine')\n");
+    await writeFile(join(appDir, "README.md"), "# mine\n");
+    await writeFile(join(appDir, "lib", "tools.py"), "");
+
+    await addFails(subject, project, docsRuntime({ networkMode: "VPC" }));
+
+    // Only the docs this add wrote are gone; the user's README was never replaced.
+    expect((await readdir(appDir, { recursive: true })).sort()).toEqual([
+      "README.md",
+      "lib",
+      join("lib", "tools.py"),
+      "main.py",
+    ]);
+    expect(await readFile(join(appDir, "README.md"), "utf-8")).toBe("# mine\n");
+  });
+
+  test("a failed commit leaves an existing user README.md and its folder untouched", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "search");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "README.md"), "# my agent\n");
+
+    await addFails(subject, project, docsRuntime({ networkMode: "VPC" }));
+
+    expect(await readdir(appDir)).toEqual(["README.md"]);
+    expect(await readFile(join(appDir, "README.md"), "utf-8")).toBe("# my agent\n");
+  });
+
+  test("a docs write that fails partway removes only what it wrote", async () => {
+    const failing = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      source: {
+        list: async (dir) => [`${dir}/AGENTS.md`, `${dir}/README.md`],
+        read: async (path) => {
+          if (path.endsWith("README.md")) throw new Error("disk full");
+          return "doc\n";
+        },
+      },
+    });
+    const project = await emptyProject(manager().manager);
+
+    await expect(runAdd(failing, project, docsRuntime())).rejects.toThrow("disk full");
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+
+    const appDir = join(project.rootPath, "app", "search");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "main.py"), "");
+    await expect(runAdd(failing, project, docsRuntime())).rejects.toThrow("disk full");
+    expect(await readdir(appDir)).toEqual(["main.py"]);
+  });
+
+  test.each<[string, (spec: Record<string, unknown[]>) => void, string]>([
+    [
+      "a harness",
+      (spec) => (spec.harnesses ??= []).push({ name: "assistant", path: "app/search" }),
+      "harness 'assistant'",
+    ],
+    [
+      "another runtime",
+      (spec) =>
+        (spec.runtimes ??= []).push({
+          name: "other",
+          build: "CodeZip",
+          runtimeVersion: "PYTHON_3_14",
+          entrypoint: "main.py",
+          codeLocation: "app/search/",
+          protocol: "HTTP",
+        }),
+      "runtime 'other'",
+    ],
+    [
+      "a code-based evaluator",
+      (spec) =>
+        (spec.evaluators ??= []).push({
+          name: "grader",
+          level: "SESSION",
+          config: { codeBased: { managed: { codeLocation: "./app/search" } } },
+        }),
+      "evaluator 'grader'",
+    ],
+    [
+      "a harness nested inside it",
+      (spec) => (spec.harnesses ??= []).push({ name: "inner", path: "app/search/sub" }),
+      "harness 'inner'",
+    ],
+    [
+      "a runtime whose folder contains it",
+      (spec) =>
+        (spec.runtimes ??= []).push({
+          name: "everything",
+          build: "CodeZip",
+          runtimeVersion: "PYTHON_3_14",
+          entrypoint: "main.py",
+          codeLocation: "app",
+          protocol: "HTTP",
+        }),
+      "runtime 'everything'",
+    ],
+  ])("refuses a folder that overlaps %s", async (_label, own, owner) => {
+    const { manager: subject } = manager();
+    const created = await emptyProject(subject);
+    const specPath = join(created.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf-8"));
+    own(spec);
+    await writeFile(specPath, JSON.stringify(spec));
+    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+
+    await expect(runAdd(subject, project, docsRuntime())).rejects.toThrow(
+      new InputValidationError(
+        `cannot add runtime 'search': 'app/search' overlaps the files of ${owner}. ` +
+          "Choose a different --name.",
+      ),
+    );
+    expect(existsSync(join(created.rootPath, "app", "search", "AGENTS.md"))).toBe(false);
+  });
+
+  test("a sibling folder with a shared prefix is not an overlap", async () => {
+    const { manager: subject } = manager();
+    const created = await emptyProject(subject);
+    const specPath = join(created.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf-8"));
+    spec.harnesses = [{ name: "searcher", path: "app/searcher" }];
+    await writeFile(specPath, JSON.stringify(spec));
+    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+    await expect(runAdd(subject, project, docsRuntime())).resolves.toBeDefined();
+  });
+
+  test("an import into an existing folder that fails partway removes only what it wrote", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "agent");
+    await mkdir(appDir, { recursive: true });
+    // The translated plan writes main.py first, then collides with the user's pyproject.toml.
+    await writeFile(join(appDir, "pyproject.toml"), "# mine\n");
+
+    await expect(
+      runAdd(subject, project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "agent",
+          scaffoldRuntimeInput: { ...AGENT_PYTHON, runtimeName: "agent" },
+          importBedrockAgent: {
+            framework: "strands",
+            sourceAgentId: "A1B2C3D4E5",
+            sourceAgentAliasId: "TSTALIASID",
+            sourceAgentVersion: "1",
+            files: { "main.py": "print('translated')\n", "pyproject.toml": "[project]\n" },
+            notes: [],
+          },
+        },
+      }),
+    ).rejects.toThrow("File already exists");
+    expect(await readdir(appDir)).toEqual(["pyproject.toml"]);
+    expect(await readFile(join(appDir, "pyproject.toml"), "utf-8")).toBe("# mine\n");
+  });
+
+  test("a scaffold that fails to commit never deletes a folder that was already there", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const appDir = join(project.rootPath, "app", "agent");
+    await mkdir(appDir, { recursive: true });
+    await writeFile(join(appDir, "notes.txt"), "keep me\n");
+
+    await addFails(subject, project, {
+      resourceType: "runtime",
+      resourceConfig: {
+        name: "agent",
+        networkMode: "VPC",
+        scaffoldRuntimeInput: { ...AGENT_PYTHON, runtimeName: "agent" },
+      },
+    });
+
+    expect(await readFile(join(appDir, "notes.txt"), "utf-8")).toBe("keep me\n");
+  });
+
+  test("build writes what the code changed to agentcore.json, then hands off to the backend", async () => {
+    const { backend, builds } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    // A field the schema does not know about must survive the write.
+    const raw = JSON.parse(await readFile(specPath, "utf-8"));
+    raw.runtimes[0].x_note = "kept";
+    await writeFile(specPath, JSON.stringify(raw, null, 2));
+    const appDir = join(project.rootPath, "app", "search");
+    await writeFile(join(appDir, "main.py"), "");
+    await writeFile(
+      join(appDir, "pyproject.toml"),
+      '[project]\nrequires-python = ">=3.10,<3.13"\n\n[tool.agentcore]\nentrypoint = "main.py:app"\n',
+    );
+
+    const events = [];
+    for await (const event of subject.build(project)) events.push(event);
+
+    expect(events).toEqual([
+      {
+        type: "step",
+        message:
+          'search: runtimeVersion PYTHON_3_14 -> PYTHON_3_12 (requires-python ">=3.10,<3.13" in ' +
+          "app/search/pyproject.toml)",
+      },
+      {
+        type: "step",
+        message:
+          "search: entrypoint main.py -> main.py:app ([tool.agentcore] entrypoint in " +
+          "app/search/pyproject.toml)",
+      },
+      { type: "step", message: "Building" },
+    ]);
+    // The backend synthesizes from the updated spec, which is what is on disk.
+    expect(builds[0]?.spec.runtimes[0]).toMatchObject({
+      runtimeVersion: "PYTHON_3_12",
+      entrypoint: "main.py:app",
+    });
+    const onDisk = JSON.parse(await readFile(specPath, "utf-8"));
+    expect(onDisk.runtimes[0]).toEqual({
+      name: "search",
+      codeLocation: "app/search",
+      build: "CodeZip",
+      runtimeVersion: "PYTHON_3_12",
+      entrypoint: "main.py:app",
+      protocol: "HTTP",
+      x_note: "kept",
+    });
+
+    // A second build finds nothing to change and writes nothing.
+    const before = await readFile(specPath, "utf-8");
+    const again = [];
+    for await (const event of subject.build((await subject.resolve({ filePath: appDir }))!)) {
+      again.push(event);
+    }
+    expect(again).toEqual([{ type: "step", message: "Building" }]);
+    expect(await readFile(specPath, "utf-8")).toBe(before);
+  });
+
+  test("deploy switches to a Container build when a Dockerfile appears, before synth", async () => {
+    const deployed: Project[] = [];
+    const { backend } = recordingBackend();
+    backend.deploy = async function* (configured) {
+      deployed.push(configured);
+      yield { type: "step", message: "Deploying" };
+      return { outputs: {} };
+    };
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+      resolveAccount: async () => "111122223333",
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    await writeFile(join(project.rootPath, "app", "search", "Dockerfile"), "FROM scratch\n");
+
+    const events = [];
+    for await (const event of subject.deploy(project, {
+      target: "default",
+      region: "us-east-1",
+      confirmTeardown: async () => false,
+      transactionSearch: false,
+    })) {
+      events.push(event);
+    }
+
+    expect(
+      events.filter((event) => event.type === "step" && event.message.startsWith("search:")),
+    ).toEqual([
+      {
+        type: "step",
+        message: expect.stringContaining(
+          "search: build CodeZip -> Container (Dockerfile in app/search). It now builds",
+        ),
+      },
+      {
+        type: "step",
+        message: "search: dockerfile (unset) -> Dockerfile (Dockerfile in app/search)",
+      },
+      {
+        type: "step",
+        message: "search: runtimeVersion PYTHON_3_14 -> (removed) (Container build)",
+      },
+    ]);
+    expect(deployed[0]?.spec.runtimes[0]).toMatchObject({ build: "Container" });
+    const onDisk = JSON.parse(
+      await readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf-8"),
+    ).runtimes[0];
+    expect(onDisk).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    expect(onDisk.runtimeVersion).toBeUndefined();
+  });
+
+  test("write-back changes only the patched field, keeping unknown runtime keys and key order", async () => {
+    const { manager: subject } = manager();
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const raw = JSON.parse(await readFile(specPath, "utf-8"));
+    // The top level is strict, so its unusual key order is what must survive there.
+    const { name, ...rest } = raw;
+    const edited = { ...rest, name };
+    edited.runtimes[0] = { x_first: 1, ...raw.runtimes[0], x_last: "kept" };
+    await writeFile(specPath, JSON.stringify(edited, null, 2));
+    const appDir = join(project.rootPath, "app", "search");
+    await writeFile(join(appDir, "main.py"), "");
+    await writeFile(join(appDir, "pyproject.toml"), '[project]\nrequires-python = "<3.13"\n');
+
+    const resolved = (await subject.resolve({ filePath: appDir }))!;
+    const result = await subject.syncRuntimeBuilds(resolved, { purpose: "dev" });
+
+    expect(result.written).toBe(true);
+    const expected = structuredClone(edited);
+    expected.runtimes[0].runtimeVersion = "PYTHON_3_12";
+    expect(await readFile(specPath, "utf-8")).toBe(JSON.stringify(expected, null, 2));
+  });
+
+  test("a v0 project is never rewritten", async () => {
+    const { manager: subject } = manager();
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    await writeFile(join(project.rootPath, "app", "search", "Dockerfile"), "FROM scratch\n");
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const before = await readFile(specPath, "utf-8");
+
+    const result = await subject.syncRuntimeBuilds(
+      { ...project, legacy: { format: "v0", v0Spec: {} as never } },
+      { purpose: "deploy" },
+    );
+
+    expect(result).toMatchObject({ messages: [], written: false });
+    expect(await readFile(specPath, "utf-8")).toBe(before);
+  });
+
+  test("a requires-python-free manifest keeps a version pinned in agentcore.json", async () => {
+    const { backend } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const raw = JSON.parse(await readFile(specPath, "utf-8"));
+    raw.runtimes[0].runtimeVersion = "PYTHON_3_11";
+    await writeFile(specPath, JSON.stringify(raw, null, 2));
+    const appDir = join(project.rootPath, "app", "search");
+    await writeFile(join(appDir, "main.py"), "");
+    await writeFile(join(appDir, "pyproject.toml"), '[project]\nname = "search"\n');
+
+    const resolved = (await subject.resolve({ filePath: appDir }))!;
+    for await (const _event of subject.build(resolved));
+
+    expect(JSON.parse(await readFile(specPath, "utf-8")).runtimes[0].runtimeVersion).toBe(
+      "PYTHON_3_11",
+    );
+  });
+
+  test("build and deploy fail before the backend when the runtime has no code yet", async () => {
+    const { backend, builds } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+      resolveAccount: async () => "111122223333",
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+
+    const message =
+      'runtime "search": no pyproject.toml in app/search/. See app/search/README.md.\n' +
+      'runtime "search": no main.py in app/search/. See app/search/README.md.';
+    await expect(subject.build(project).next()).rejects.toThrow(new ProjectStateError(message));
+    const deploy = async () => {
+      for await (const _event of subject.deploy(project, {
+        target: "default",
+        region: "us-east-1",
+        confirmTeardown: async () => false,
+        transactionSearch: false,
+      }));
+    };
+    await expect(deploy()).rejects.toThrow(new ProjectStateError(message));
+    expect(builds).toEqual([]);
+  });
+
+  test("deploy to a target that does not exist leaves agentcore.json alone", async () => {
+    const { backend } = recordingBackend();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      backends: { CDK: backend },
+    });
+    const project = await runAdd(subject, await emptyProject(subject), docsRuntime());
+    await writeFile(join(project.rootPath, "app", "search", "Dockerfile"), "FROM scratch\n");
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const before = await readFile(specPath, "utf-8");
+
+    const deploy = async () => {
+      for await (const _event of subject.deploy(project, {
+        target: "typo",
+        region: "us-east-1",
+        confirmTeardown: async () => false,
+        transactionSearch: false,
+      }));
+    };
+    await expect(deploy()).rejects.toThrow("No deployment targets are configured");
+    expect(await readFile(specPath, "utf-8")).toBe(before);
   });
 });

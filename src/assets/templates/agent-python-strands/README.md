@@ -13,6 +13,13 @@ file defines a Starlette ASGI app with the Strands Agent SDK running within.
 
 `model/load.py` instantiates the chosen model provider.
 
+## Memory
+
+The template provisions semantic and episodic memory. `memory/session.py` retrieves up to three
+semantic facts for the actor and five episodes for the current session. The default
+`relevance_score=0.0` selects results by `top_k` without score filtering. To opt into score
+filtering, increase `relevance_score` in the retrieval configuration.
+
 ## Input Validation
 
 Validate invocation input before forwarding it to Strands. Keep plain prompts typed as strings. If the app accepts a
@@ -37,7 +44,8 @@ Provide either `prompt` or `messages`. The `session_id` is not in the body — i
 
 | Variable | Required | Description |
 | --- | --- | --- |
-{{#if identityProviders.[0]}}| `{{identityProviders.[0].envVarName}}` | Yes | {{modelProvider}} API key (local) or Identity provider name (deployed) |
+{{#if identityProviders.[0]}}| `{{identityProviders.[0].envVarName}}` | Local only | {{modelProvider}} API key read from `.env.local` |
+| `{{identityProviders.[0].providerNameEnvVarName}}` | Deployed only | Identity provider name injected by deployment |
 {{/if}}| `LOCAL_DEV` | No | Set to `1` to use `.env.local` instead of AgentCore Identity |
 
 # Developing locally

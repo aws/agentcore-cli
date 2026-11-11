@@ -20,6 +20,7 @@ export function createConfigBundleHandler(core: Core, io: AppIO): Router {
     .handler(createListConfigBundlesHandler(core))
     .handler(createUpdateConfigBundleHandler(core, io))
     .handler(createDeleteConfigBundleHandler(core))
+    .commandSection("resources")
     .handler(createConfigBundleVersionHandler(core, io));
 }
 

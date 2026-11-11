@@ -1,0 +1,813 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "maxproj",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "team": "x"
+  },
+  "runtimes": [
+    {
+      "name": "agentA",
+      "description": "A",
+      "build": "CodeZip",
+      "entrypoint": "main.py:app",
+      "codeLocation": "app/agentA",
+      "runtimeVersion": "PYTHON_3_13",
+      "envVars": [
+        {
+          "name": "FOO",
+          "value": "bar"
+        }
+      ],
+      "networkMode": "VPC",
+      "networkConfig": {
+        "subnets": [
+          "subnet-0123456789abcdef0"
+        ],
+        "securityGroups": [
+          "sg-0123456789abcdef0"
+        ],
+        "vpcId": "vpc-0123456789abcdef0"
+      },
+      "instrumentation": {
+        "enableOtel": false
+      },
+      "protocol": "HTTP",
+      "requestHeaderAllowlist": [
+        "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Foo",
+        "Authorization"
+      ],
+      "executionRoleArn": "arn:aws:iam::123456789012:role/r",
+      "additionalPolicies": [
+        "policies/extra.json"
+      ],
+      "authorizerType": "CUSTOM_JWT",
+      "authorizerConfiguration": {
+        "customJwtAuthorizer": {
+          "discoveryUrl": "https://idp.example.com/.well-known/openid-configuration",
+          "allowedAudience": [
+            "aud"
+          ],
+          "allowedClients": [
+            "cli"
+          ],
+          "allowedScopes": [
+            "read"
+          ],
+          "customClaims": [
+            {
+              "inboundTokenClaimName": "groups",
+              "inboundTokenClaimValueType": "STRING_ARRAY",
+              "authorizingClaimMatchValue": {
+                "claimMatchOperator": "CONTAINS_ANY",
+                "claimMatchValue": {
+                  "matchValueStringList": [
+                    "admin"
+                  ]
+                }
+              }
+            }
+          ],
+          "privateEndpoint": {
+            "managedVpcResource": {
+              "vpcIdentifier": "vpc-0123456789abcdef0",
+              "subnetIds": [
+                "subnet-0123456789abcdef0"
+              ],
+              "endpointIpAddressType": "IPV4",
+              "securityGroupIds": [
+                "sg-0123456789abcdef0"
+              ],
+              "tags": {
+                "a": "b"
+              },
+              "routingDomain": "idp.example.com"
+            }
+          },
+          "privateEndpointOverrides": [
+            {
+              "domain": "other.example.com",
+              "privateEndpoint": {
+                "managedVpcResource": {
+                  "vpcIdentifier": "vpc-0123456789abcdef0",
+                  "subnetIds": [
+                    "subnet-0123456789abcdef0"
+                  ],
+                  "endpointIpAddressType": "IPV6"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "tags": {
+        "r": "1"
+      },
+      "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 28800
+      },
+      "filesystemConfigurations": [
+        {
+          "sessionStorage": {
+            "mountPath": "/mnt/data"
+          }
+        },
+        {
+          "efsAccessPoint": {
+            "accessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0",
+            "mountPath": "/mnt/efs"
+          }
+        },
+        {
+          "s3FilesAccessPoint": {
+            "accessPointArn": "arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef0/access-point/fsap-0123456789abcdef0",
+            "mountPath": "/mnt/s3"
+          }
+        }
+      ],
+      "endpoints": {
+        "prod": {
+          "version": 1,
+          "description": "p"
+        }
+      },
+      "connections": [
+        {
+          "id": "mem1",
+          "to": {
+            "type": "memory",
+            "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/m-1",
+            "namespaces": [
+              "/x"
+            ]
+          },
+          "access": "read",
+          "description": "d"
+        },
+        {
+          "to": {
+            "type": "gateway",
+            "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g-1",
+            "outboundAuth": {
+              "oauth": {
+                "providerArn": "arn:p",
+                "scopes": [
+                  "s"
+                ],
+                "grantType": "CLIENT_CREDENTIALS",
+                "customParameters": {
+                  "k": "v"
+                }
+              }
+            }
+          }
+        },
+        {
+          "to": {
+            "type": "gateway",
+            "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/g-2",
+            "outboundAuth": {
+              "awsIam": {}
+            }
+          }
+        },
+        {
+          "to": {
+            "type": "runtime",
+            "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/r-1",
+            "exec": true
+          },
+          "access": "readwrite"
+        },
+        {
+          "to": {
+            "type": "browser",
+            "arn": "arn:aws:bedrock-agentcore:us-east-1:aws:browser/aws.browser.v1"
+          }
+        },
+        {
+          "to": {
+            "type": "codeInterpreter"
+          }
+        }
+      ]
+    },
+    {
+      "name": "agentB",
+      "build": "Container",
+      "entrypoint": "main.py",
+      "codeLocation": "app/agentB",
+      "dockerfile": "docker/Dockerfile",
+      "buildContextPath": "app",
+      "customDockerBuildArgs": {
+        "PIP_INDEX": "x"
+      },
+      "protocol": "MCP",
+      "authorizerType": "AWS_IAM"
+    },
+    {
+      "name": "agentC",
+      "build": "CodeZip",
+      "entrypoint": "index.ts",
+      "codeLocation": "app/agentC",
+      "runtimeVersion": "NODE_22",
+      "protocol": "A2A",
+      "networkMode": "PUBLIC"
+    },
+    {
+      "name": "agentD",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/agentD",
+      "runtimeVersion": "PYTHON_3_14",
+      "protocol": "AGUI"
+    }
+  ],
+  "memories": [
+    {
+      "name": "mem1",
+      "eventExpiryDuration": 30,
+      "strategies": [
+        {
+          "type": "SEMANTIC",
+          "name": "sem",
+          "description": "d",
+          "namespaceTemplates": [
+            "/users/{actorId}/facts"
+          ]
+        },
+        {
+          "type": "SUMMARIZATION",
+          "namespaces": [
+            "/summaries/{actorId}/{sessionId}"
+          ]
+        },
+        {
+          "type": "USER_PREFERENCE"
+        },
+        {
+          "type": "EPISODIC",
+          "namespaces": [
+            "/episodes/{actorId}/{sessionId}"
+          ],
+          "reflectionNamespaces": [
+            "/episodes/{actorId}"
+          ]
+        }
+      ],
+      "indexedKeys": [
+        {
+          "key": "topic",
+          "type": "STRING"
+        }
+      ],
+      "tags": {
+        "m": "1"
+      },
+      "encryptionKeyArn": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+      "executionRoleArn": "arn:aws:iam::123456789012:role/m",
+      "streamDeliveryResources": {
+        "resources": [
+          {
+            "kinesis": {
+              "dataStreamArn": "arn:aws:kinesis:us-east-1:1:stream/s",
+              "contentConfigurations": [
+                {
+                  "type": "MEMORY_RECORDS",
+                  "level": "FULL_CONTENT"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mem2",
+      "eventExpiryDuration": 7
+    }
+  ],
+  "knowledgeBases": [
+    {
+      "type": "AgentCoreKnowledgeBase",
+      "name": "kb-docs",
+      "description": "kb",
+      "dataSources": [
+        {
+          "type": "S3",
+          "uri": "s3://my-bucket/docs"
+        },
+        {
+          "type": "CONFLUENCE",
+          "connectorConfigFile": "kb/confluence.json"
+        }
+      ],
+      "gateway": "gw1"
+    }
+  ],
+  "credentials": [
+    {
+      "authorizerType": "ApiKeyCredentialProvider",
+      "name": "openaiKey"
+    },
+    {
+      "authorizerType": "OAuthCredentialProvider",
+      "name": "my-oauth",
+      "discoveryUrl": "https://idp.example.com/.well-known/openid-configuration",
+      "scopes": [
+        "read"
+      ],
+      "vendor": "CustomOauth2",
+      "usage": "outbound"
+    },
+    {
+      "authorizerType": "OAuthCredentialProvider",
+      "name": "gw1-oauth",
+      "discoveryUrl": "https://idp.example.com/.well-known/openid-configuration",
+      "vendor": "CustomOauth2",
+      "managed": true,
+      "usage": "inbound"
+    },
+    {
+      "authorizerType": "PaymentCredentialProvider",
+      "name": "coinbaseCred",
+      "provider": "CoinbaseCDP"
+    },
+    {
+      "authorizerType": "PaymentCredentialProvider",
+      "name": "stripeCred",
+      "provider": "StripePrivy"
+    }
+  ],
+  "evaluators": [
+    {
+      "name": "evalNum",
+      "level": "SESSION",
+      "description": "d",
+      "config": {
+        "llmAsAJudge": {
+          "modelProvider": "Bedrock",
+          "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "instructions": "Rate {context}",
+          "ratingScale": {
+            "numerical": [
+              {
+                "value": 1,
+                "label": "bad",
+                "definition": "b"
+              },
+              {
+                "value": 5,
+                "label": "good",
+                "definition": "g"
+              }
+            ]
+          }
+        }
+      },
+      "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+      "tags": {
+        "e": "1"
+      }
+    },
+    {
+      "name": "evalCat",
+      "level": "TRACE",
+      "config": {
+        "llmAsAJudge": {
+          "modelProvider": "OpenResponses",
+          "model": "gpt-4o",
+          "instructions": "Rate {context}",
+          "ratingScale": {
+            "categorical": [
+              {
+                "label": "yes",
+                "definition": "y"
+              },
+              {
+                "label": "no",
+                "definition": "n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "evalCode",
+      "level": "TOOL_CALL",
+      "config": {
+        "codeBased": {
+          "managed": {
+            "codeLocation": "evals/code"
+          }
+        }
+      }
+    },
+    {
+      "name": "evalExt",
+      "level": "SESSION",
+      "config": {
+        "codeBased": {
+          "external": {
+            "lambdaArn": "arn:aws:lambda:us-east-1:123456789012:function:f"
+          }
+        }
+      }
+    }
+  ],
+  "onlineEvalConfigs": [
+    {
+      "name": "oe1",
+      "agent": "agentA",
+      "endpoint": "prod",
+      "evaluators": [
+        "evalNum",
+        "Builtin.Helpfulness",
+        "arn:aws:x"
+      ],
+      "samplingRate": 10,
+      "description": "d",
+      "enableOnCreate": true,
+      "tags": {
+        "o": "1"
+      }
+    },
+    {
+      "name": "oe2",
+      "logGroupNames": [
+        "/aws/x"
+      ],
+      "serviceNames": [
+        "svc"
+      ],
+      "insights": [
+        "i1"
+      ],
+      "clusteringConfig": {
+        "frequencies": [
+          "DAILY"
+        ]
+      },
+      "samplingRate": 0.5
+    }
+  ],
+  "agentCoreGateways": [
+    {
+      "name": "gw1",
+      "resourceName": "gw1-res",
+      "protocolType": "MCP",
+      "description": "g",
+      "authorizerType": "CUSTOM_JWT",
+      "authorizerConfiguration": {
+        "customJwtAuthorizer": {
+          "discoveryUrl": "https://idp.example.com/.well-known/openid-configuration",
+          "allowedClients": [
+            "c"
+          ]
+        }
+      },
+      "enableSemanticSearch": false,
+      "exceptionLevel": "DEBUG",
+      "policyEngineConfiguration": {
+        "policyEngineName": "pe1",
+        "mode": "ENFORCE"
+      },
+      "executionRoleArn": "arn:aws:iam::123456789012:role/gw",
+      "tags": {
+        "g": "1"
+      },
+      "targets": [
+        {
+          "name": "lambdaPy",
+          "targetType": "lambda",
+          "toolDefinitions": [
+            {
+              "name": "t1",
+              "description": "d",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "a"
+                ]
+              },
+              "outputSchema": {
+                "type": "string"
+              }
+            }
+          ],
+          "compute": {
+            "host": "Lambda",
+            "implementation": {
+              "language": "Python",
+              "path": "tools/t1",
+              "handler": "handler.main"
+            },
+            "pythonVersion": "PYTHON_3_12",
+            "timeout": 30,
+            "memorySize": 512,
+            "iamPolicy": {
+              "Version": "2012-10-17",
+              "Statement": [],
+              "Id": "x"
+            }
+          },
+          "outboundAuth": {
+            "type": "OAUTH",
+            "credentialName": "my-oauth",
+            "scopes": [
+              "read"
+            ]
+          }
+        },
+        {
+          "name": "lambdaTs",
+          "targetType": "lambda",
+          "toolDefinitions": [
+            {
+              "name": "t2",
+              "description": "d",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "compute": {
+            "host": "Lambda",
+            "implementation": {
+              "language": "TypeScript",
+              "path": "tools/t2",
+              "handler": "index.handler"
+            },
+            "nodeVersion": "NODE_20"
+          }
+        },
+        {
+          "name": "mcpExt",
+          "targetType": "mcpServer",
+          "endpoint": "https://mcp.example.com/mcp",
+          "outboundAuth": {
+            "type": "NONE"
+          }
+        },
+        {
+          "name": "openapi",
+          "targetType": "openApiSchema",
+          "schemaSource": {
+            "inline": {
+              "path": "schemas/api.json"
+            }
+          },
+          "outboundAuth": {
+            "type": "API_KEY",
+            "credentialName": "openaiKey"
+          }
+        },
+        {
+          "name": "smithy",
+          "targetType": "smithyModel",
+          "schemaSource": {
+            "s3": {
+              "uri": "s3://b/model.json",
+              "bucketOwnerAccountId": "123456789012"
+            }
+          }
+        },
+        {
+          "name": "apigw",
+          "targetType": "apiGateway",
+          "apiGateway": {
+            "restApiId": "abc123",
+            "stage": "prod",
+            "apiGatewayToolConfiguration": {
+              "toolFilters": [
+                {
+                  "filterPath": "/pets",
+                  "methods": [
+                    "GET"
+                  ]
+                }
+              ],
+              "toolOverrides": [
+                {
+                  "name": "listPets",
+                  "path": "/pets",
+                  "method": "GET",
+                  "description": "d"
+                }
+              ]
+            }
+          },
+          "outboundAuth": {
+            "type": "API_KEY",
+            "credentialName": "openaiKey"
+          }
+        },
+        {
+          "name": "lfa",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:us-east-1:123456789012:function:f",
+            "toolSchemaFile": "tools/schema.json"
+          }
+        },
+        {
+          "name": "kbconn",
+          "targetType": "connector",
+          "connectorId": "bedrock-knowledge-bases",
+          "configurations": [
+            {
+              "name": "Retrieve",
+              "description": "d",
+              "parameterValues": {
+                "knowledgeBaseId": "kb-docs"
+              },
+              "parameterOverrides": [
+                {
+                  "path": "/x",
+                  "description": "d",
+                  "visible": false
+                }
+              ]
+            },
+            {
+              "name": "AgenticRetrieveStream",
+              "parameterValues": {
+                "retrievers": [
+                  {
+                    "configuration": {
+                      "knowledgeBase": {
+                        "knowledgeBaseId": "ABCDEFGHIJ"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "websearch",
+          "targetType": "connector",
+          "connectorId": "web-search"
+        }
+      ]
+    },
+    {
+      "name": "gw2",
+      "protocolType": "None",
+      "authorizerType": "AWS_IAM",
+      "targets": [
+        {
+          "name": "httprt",
+          "targetType": "httpRuntime",
+          "httpRuntime": {
+            "runtime": "agentA",
+            "runtimeEndpoint": "prod"
+          },
+          "outboundAuth": {
+            "type": "OAUTH",
+            "credentialName": "my-oauth"
+          }
+        },
+        {
+          "name": "pt-iam",
+          "targetType": "passthrough",
+          "passthrough": {
+            "endpoint": "https://api.example.com:443/v1",
+            "protocolType": "INFERENCE",
+            "stickinessConfiguration": {
+              "identifier": "x-session",
+              "timeout": 3600
+            }
+          },
+          "outboundAuth": {
+            "type": "GATEWAY_IAM_ROLE",
+            "service": "bedrock",
+            "region": "us-east-1"
+          }
+        },
+        {
+          "name": "pt-jwt",
+          "targetType": "passthrough",
+          "passthrough": {
+            "endpoint": "https://api.example.com"
+          },
+          "outboundAuth": {
+            "type": "JWT_PASSTHROUGH"
+          }
+        }
+      ]
+    }
+  ],
+  "policyEngines": [
+    {
+      "name": "pe1",
+      "description": "d",
+      "encryptionKeyArn": "arn:k",
+      "tags": {
+        "p": "1"
+      },
+      "policies": [
+        {
+          "name": "pol1",
+          "description": "d",
+          "statement": "permit(principal, action, resource);",
+          "sourceFile": "policies/p.cedar",
+          "validationMode": "IGNORE_ALL_FINDINGS",
+          "enforcementMode": "LOG_ONLY",
+          "authorizationPhase": "RETURN_OUTPUT"
+        },
+        {
+          "name": "pol2",
+          "statement": "forbid(principal, action, resource);"
+        }
+      ]
+    }
+  ],
+  "configBundles": [
+    {
+      "name": "cb1",
+      "type": "ConfigurationBundle",
+      "description": "d",
+      "components": {
+        "{{runtime:agentA}}": {
+          "configuration": {
+            "systemPrompt": "hi"
+          }
+        }
+      },
+      "branchName": "main",
+      "commitMessage": "init",
+      "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+    }
+  ],
+  "harnesses": [
+    {
+      "name": "h1",
+      "path": "app/h1"
+    }
+  ],
+  "payments": [
+    {
+      "name": "pm1",
+      "authorizerType": "AWS_IAM",
+      "connectors": [
+        {
+          "name": "cb_manual",
+          "provider": "CoinbaseCDP",
+          "provisionMode": "MANUAL",
+          "credentialName": "coinbaseCred"
+        },
+        {
+          "name": "cb_quick",
+          "provider": "CoinbaseCDP",
+          "provisionMode": "QUICK_CREATE"
+        },
+        {
+          "name": "stripe1",
+          "provider": "StripePrivy",
+          "credentialName": "stripeCred"
+        }
+      ],
+      "description": "Payment manager one",
+      "autoPayment": false,
+      "defaultSpendLimit": "25.00",
+      "paymentToolAllowlist": [
+        "pay"
+      ],
+      "networkPreferences": [
+        "base"
+      ]
+    },
+    {
+      "name": "pm2",
+      "authorizerType": "CUSTOM_JWT",
+      "authorizerConfiguration": {
+        "customJWTAuthorizer": {
+          "discoveryUrl": "https://idp.example.com/.well-known/openid-configuration",
+          "allowedClients": [
+            "c"
+          ],
+          "allowedAudience": [
+            "a"
+          ],
+          "allowedScopes": [
+            "read write"
+          ]
+        }
+      }
+    }
+  ],
+  "abTests": [],
+  "datasets": [],
+  "capacityProviders": []
+}

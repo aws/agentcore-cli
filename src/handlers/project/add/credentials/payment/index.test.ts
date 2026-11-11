@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expectError } from "../../../../../testing";
 import { createPaymentProjectTestHarness } from "../../payment-test-support";
 import { InputValidationError } from "../../../../../errors";
+import { readEnvFile } from "../../../../../io/envFile";
 
 const { cleanup, inProject, projectSpec, run } =
   createPaymentProjectTestHarness("payment-credential");
@@ -92,8 +93,11 @@ describe("project add credentials payment", () => {
     ]);
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
     expect(env).toContain("AGENTCORE_CREDENTIAL_COINBASE_PROD_API_KEY_ID='api-key-id'");
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_COINBASE_PROD_API_KEY_SECRET='${apiKeySecret}'`);
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_COINBASE_PROD_WALLET_SECRET='${walletSecret}'`);
+    expect(env).not.toContain(apiKeySecret);
+    expect(env).not.toContain(walletSecret);
+    const decrypted = await readEnvFile(join(projectRoot, "agentcore", ".env.local"));
+    expect(decrypted.AGENTCORE_CREDENTIAL_COINBASE_PROD_API_KEY_SECRET).toBe(apiKeySecret);
+    expect(decrypted.AGENTCORE_CREDENTIAL_COINBASE_PROD_WALLET_SECRET).toBe(walletSecret);
   });
 
   test("normalizes Coinbase key whitespace before persistence", async () => {
@@ -124,8 +128,9 @@ describe("project add credentials payment", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_COINBASE_PADDED_API_KEY_SECRET='${apiKeySecret}'`);
-    expect(env).toContain(`AGENTCORE_CREDENTIAL_COINBASE_PADDED_WALLET_SECRET='${walletSecret}'`);
+    const decrypted = await readEnvFile(join(projectRoot, "agentcore", ".env.local"));
+    expect(decrypted.AGENTCORE_CREDENTIAL_COINBASE_PADDED_API_KEY_SECRET).toBe(apiKeySecret);
+    expect(decrypted.AGENTCORE_CREDENTIAL_COINBASE_PADDED_WALLET_SECRET).toBe(walletSecret);
     expect(env).not.toContain(`'  ${apiKeySecret}  '`);
   });
 
@@ -150,9 +155,11 @@ describe("project add credentials payment", () => {
     ]);
 
     const env = await Bun.file(join(projectRoot, "agentcore", ".env.local")).text();
-    expect(env).toContain(
-      `AGENTCORE_CREDENTIAL_STRIPE_PROD_AUTHORIZATION_PRIVATE_KEY='${privateKey}'`,
-    );
+    expect(
+      (await readEnvFile(join(projectRoot, "agentcore", ".env.local")))
+        .AGENTCORE_CREDENTIAL_STRIPE_PROD_AUTHORIZATION_PRIVATE_KEY,
+    ).toBe(privateKey);
+    expect(env).not.toContain(privateKey);
     expect(env).not.toContain("wallet-auth:");
   });
 

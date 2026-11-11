@@ -93,6 +93,22 @@ describe("StrandsBedrockAgentTranslator", () => {
     expect(plan.files["IMPORT_NOTES.md"]).toContain("Strands guardrail");
   });
 
+  test("retrieves semantic and episodic memory without a default score filter", () => {
+    const memory = new StrandsBedrockAgentTranslator(snapshot(), request).translate().files[
+      "memory.py"
+    ]!;
+
+    expect(memory).toContain(
+      'f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.0)',
+    );
+    expect(memory).toContain(
+      'f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.0)',
+    );
+    expect(memory.match(/RetrievalConfig\(/g)).toHaveLength(2);
+    expect(memory).not.toContain("/preferences");
+    expect(memory).not.toContain("/summaries/");
+  });
+
   test("pins a code-interpreter dependency that can coexist with strands-agents 1.x", () => {
     const pyproject = new StrandsBedrockAgentTranslator(snapshot(), request).translate().files[
       "pyproject.toml"
@@ -389,7 +405,7 @@ test.each([
     }).translate();
 
     expect(plan.files[file]).toContain(
-      `MEMORY_ID = os.getenv("AGENTCORE_MEMORY_${"A".repeat(42)}MEMORY_ID")`,
+      `MEMORY_ID = os.getenv("MEMORY_${"A".repeat(42)}MEMORY_ID")`,
     );
   },
 );

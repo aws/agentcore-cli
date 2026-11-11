@@ -7,12 +7,16 @@ import { useTuiUpdate } from "../components/TuiUpdateContext";
 import { glyphs } from "../components/ui/_core.js";
 import type { ScreenProps } from "./types";
 import { LoadingFrame, useProjectDetected } from "./project/ProjectGate";
+import { V0ProjectDetectedKey } from "./project/context";
+import { V0_PROJECT_TUI_BANNER } from "./project/v0Notice";
 
 const NO_PROJECT_HINTS = { create: `${glyphs.leftArrow} start here` };
 const ROOT_CLI_SECTION_COMMANDS = ["update"];
-const NO_PROJECT_ALERT = "No project detected - create a new project to get started";
+const NO_PROJECT_ALERT = "no project detected - create a new project to get started";
+// migrate is a one-off command-line upgrade of a v0 project; it is never a menu entry.
+const ALWAYS_HIDDEN_OPTIONS = ["migrate"];
 // build is a step deploy already runs; it stays a command but not a menu entry.
-const PROJECT_HIDDEN_OPTIONS = ["create", "build"];
+const PROJECT_HIDDEN_OPTIONS = ["create", "build", ...ALWAYS_HIDDEN_OPTIONS];
 const PROJECT_REQUIRED_OPTIONS = [
   "dev",
   "deploy",
@@ -25,7 +29,7 @@ const PROJECT_REQUIRED_OPTIONS = [
   "export",
   "build",
 ];
-const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS];
+const NO_PROJECT_HIDDEN_OPTIONS = [...PROJECT_REQUIRED_OPTIONS, ...ALWAYS_HIDDEN_OPTIONS];
 
 export interface RootScreenProps extends ScreenProps {
   inProject?: boolean;
@@ -34,6 +38,7 @@ export interface RootScreenProps extends ScreenProps {
 export function RootScreen({ inProject, ...props }: RootScreenProps) {
   const projectDetected = useProjectDetected(props.core, inProject);
   const updateState = useTuiUpdate();
+  const v0Project = props.ctx.value(V0ProjectDetectedKey) === true;
   if (projectDetected.data === undefined) {
     const command = resolveCommand(props.ctx.require(CommandKey), ["agentcore"]);
     return (
@@ -58,7 +63,10 @@ export function RootScreen({ inProject, ...props }: RootScreenProps) {
           ? { update: `· update to install ${updateState.latestVersion}` }
           : undefined
       }
-      alert={projectDetected.data ? undefined : NO_PROJECT_ALERT}
+      alert={
+        v0Project ? V0_PROJECT_TUI_BANNER : projectDetected.data ? undefined : NO_PROJECT_ALERT
+      }
+      alertVariant={v0Project ? "warning" : "info"}
       hiddenOptions={projectDetected.data ? PROJECT_HIDDEN_OPTIONS : NO_PROJECT_HIDDEN_OPTIONS}
     />
   );

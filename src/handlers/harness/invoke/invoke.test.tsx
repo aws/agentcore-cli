@@ -1,4 +1,4 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, spyOn } from "bun:test";
 import type {
   InvokeHarnessRequest,
   InvokeHarnessStreamOutput,
@@ -16,13 +16,15 @@ import {
   waitFor,
 } from "../../../testing";
 import { InputValidationError } from "../../../errors";
+import * as tui from "../../../tui";
+import { HarnessInvokeLaunchContextKey } from "./launchContext";
 
 // Command-flow tests for `harness invoke`, driven through the real root handler
 // exactly as the CLI runs it. Unlike the get/list suites these use a
 // TestCoreClient rather than recorded fixtures: the invoke response is an
 // AsyncIterable stream, which the fixture serialization cannot capture.
 
-const ARN = "arn:aws:bedrock-agentcore:us-west-2:123:harness/MyHarness-abc123";
+const ARN = "arn:aws:bedrock-agentcore:us-west-2:123456789012:harness/MyHarness-abc123";
 
 const GET_RESPONSE = {
   harness: { harnessId: "MyHarness-abc123", harnessName: "MyHarness", arn: ARN },
@@ -126,9 +128,68 @@ describe("harness invoke", () => {
     // Omitting --qualifier targets the DEFAULT endpoint explicitly.
     expect(request.qualifier).toBe("DEFAULT");
     expect(request.messages).toEqual([{ role: "user", content: [{ text: "hi" }] }]);
+    expect(request.runtimeUserId).toBeUndefined();
     expect(request.runtimeSessionId!.length).toBeGreaterThanOrEqual(33);
     expect(request.runtimeSessionId!.length).toBeLessThanOrEqual(100);
     expect((invoke.args[1] as { region: string }).region).toBe("us-west-2");
+  });
+
+  test("looks up a CUSTOM_JWT harness before invoking with a bearer token", async () => {
+    const { core } = await run(
+      ["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi", "--bearer-token", "-"],
+      (core) =>
+        core.harness.setGetResponse({
+          harness: {
+            ...GET_RESPONSE.harness,
+            authorizerConfiguration: {
+              customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+            },
+          },
+        } as GetHarnessResponse),
+      testIO({ stdin: "secret-token\n" }),
+    );
+    expect(core.harness.calls.find((call) => call.method === "getHarness")?.args[0]).toBe(
+      "MyHarness-abc123",
+    );
+    expect(core.harness.calls.find((call) => call.method === "invokeHarness")?.args[0]).toEqual(
+      expect.objectContaining({ harnessArn: ARN, bearerToken: "secret-token" }),
+    );
+  });
+
+  test("requires a bearer token for a CUSTOM_JWT harness", async () => {
+    await expect(
+      run(["harness", "invoke", "--id", "MyHarness-abc123", "--prompt", "hi"], (core) =>
+        core.harness.setGetResponse({
+          harness: {
+            ...GET_RESPONSE.harness,
+            authorizerConfiguration: {
+              customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
+            },
+          },
+        } as GetHarnessResponse),
+      ),
+    ).rejects.toThrow("CUSTOM_JWT Harness requires --bearer-token");
+  });
+
+  test("rejects a bearer token for an IAM harness", async () => {
+    await expect(
+      run([
+        "harness",
+        "invoke",
+        "--id",
+        "MyHarness-abc123",
+        "--prompt",
+        "hi",
+        "--bearer-token",
+        "secret-token",
+      ]),
+    ).rejects.toThrow("IAM Harness does not accept --bearer-token");
+  });
+
+  test("--bearer-token requires a one-shot prompt", async () => {
+    await expect(
+      run(["harness", "invoke", "--id", "MyHarness-abc123", "--bearer-token", "secret-token"]),
+    ).rejects.toThrow("--prompt");
   });
 
   test("--session-id is passed through and echoed in the output", async () => {
@@ -142,11 +203,46 @@ describe("harness invoke", () => {
       "hi",
       "--session-id",
       sessionId,
+      "--user-id",
+      "user-123",
     ]);
 
     const invoke = core.harness.calls.find((c) => c.method === "invokeHarness")!;
-    expect((invoke.args[0] as InvokeHarnessRequest).runtimeSessionId).toBe(sessionId);
+    const request = invoke.args[0] as InvokeHarnessRequest;
+    expect(request.runtimeSessionId).toBe(sessionId);
+    expect(request.runtimeUserId).toBe("user-123");
+    expect(request.actorId).toBeUndefined();
     expect(JSON.parse(stdout).sessionId).toBe(sessionId);
+  });
+
+  test("passes --user-id to the TUI without a prompt", async () => {
+    const render = spyOn(tui, "renderTuiAt").mockResolvedValue(undefined);
+    try {
+      const { core } = await run([
+        "harness",
+        "invoke",
+        "--id",
+        "MyHarness-abc123",
+        "--user-id",
+        "user-123",
+        "--qualifier",
+        "prod",
+        "--session-id",
+        "custom-session-id-that-is-long-enough",
+      ]);
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(render.mock.calls[0]![0]).toBe(
+        "/agentcore/harness/invoke/MyHarness-abc123/custom-session-id-that-is-long-enough?qualifier=prod",
+      );
+      expect(render.mock.calls[0]![1].value(HarnessInvokeLaunchContextKey)).toEqual({
+        harnessId: "MyHarness-abc123",
+        userId: "user-123",
+      });
+      expect(core.harness.calls).toEqual([]);
+    } finally {
+      render.mockRestore();
+    }
   });
 
   test("--session-id shorter than 33 characters is rejected", async () => {
@@ -190,9 +286,6 @@ describe("harness invoke", () => {
     await expectError(run(["harness", "invoke", "--prompt", "hi"]), /--id/, InputValidationError);
   });
 
-  // Without --prompt (and outside JSON mode) the handler opens the interactive
-  // chat instead — that path is covered by the screen tests, since the test IO
-  // streams cannot host an Ink render.
   test("errors when --prompt is omitted in JSON mode", async () => {
     await expect(run(["harness", "invoke", "--id", "MyHarness-abc123", "--json"])).rejects.toThrow(
       /--prompt/,

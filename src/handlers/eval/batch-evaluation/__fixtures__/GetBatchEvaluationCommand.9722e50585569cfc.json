@@ -1,0 +1,59 @@
+{
+  "batchEvaluationId": "cli_logs_missing_spans_20261013-c5290ec8b4",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_missing_spans_20261013-c5290ec8b4",
+  "batchEvaluationName": "cli_logs_missing_spans_20261013",
+  "status": "FAILED",
+  "createdAt": {
+    "$date": "2026-10-13T16:28:39.096Z"
+  },
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "CliEvalBugbash.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/cli-eval-errors-20261013"
+      ],
+      "filterConfig": {
+        "sessionIds": [
+          "cli-error-session-1",
+          "cli-error-session-2"
+        ]
+      }
+    }
+  },
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/evaluations/batch-evaluations/results/default",
+      "logStreamName": "run-cli_logs_missing_spans_20261013-c5290ec8b4",
+      "metricsNamespace": "Bedrock-AgentCore/Evaluations",
+      "resultDestination": "DEDICATED_LOG_GROUP"
+    }
+  },
+  "evaluationResults": {
+    "numberOfSessionsCompleted": 0,
+    "numberOfSessionsInProgress": 0,
+    "numberOfSessionsFailed": 2,
+    "totalNumberOfSessions": 2,
+    "numberOfSessionsIgnored": 0,
+    "evaluatorSummaries": [
+      {
+        "evaluatorId": "Builtin.Helpfulness",
+        "statistics": {},
+        "totalEvaluated": 0,
+        "totalFailed": 2
+      }
+    ]
+  },
+  "errorDetails": [
+    "All 2 sessions failed during batch evaluation."
+  ],
+  "updatedAt": {
+    "$date": "2026-10-13T16:29:42.078Z"
+  }
+}

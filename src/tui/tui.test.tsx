@@ -1,4 +1,6 @@
 import { test, expect, describe } from "bun:test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Command } from "commander";
 import { createRootHandler } from "../handlers";
 import { ExitCode, InputValidationError, InvalidEnvironmentError } from "../errors";
@@ -14,7 +16,9 @@ import {
   ttyTestIO,
   tick,
   waitFor,
+  inTempDirectory,
 } from "../testing";
+import { V0_PROJECT_MIGRATION_MESSAGE, V0_PROJECT_TUI_BANNER } from "../handlers/project/v0Notice";
 
 describe("renderJson", () => {
   test("pretty-prints a value as indented JSON to the given writer", () => {
@@ -125,7 +129,7 @@ describe("TUI handoff", () => {
       ({
         name: "test-project",
         rootPath: process.cwd(),
-        spec: { runtimes: [] } as unknown as Project["spec"],
+        spec: { runtimes: [], harnesses: [] } as unknown as Project["spec"],
       }) as Project;
     const { streams, stdin } = ttyTestIO();
     const root = createRootHandler(core, {
@@ -142,7 +146,7 @@ describe("TUI handoff", () => {
     await waitFor(() => streams.stdout().includes("/ dev"));
     stdin.write("\r");
 
-    // The project has no runtimes, so dev's own validation fails: proof the
+    // The project has no agents, so dev's own validation fails: proof the
     // TUI handed off to the dev command rather than showing its help.
     const error = await routePromise.catch((error) => error);
     expect(error).toBeInstanceOf(InputValidationError);
@@ -233,7 +237,32 @@ describe("TUI resize", () => {
 
 describe("TUI launch", () => {
   const CREATE_ROW = "create a new project";
-  const BANNER = "No project detected - create a new project to get started";
+  const BANNER = "no project detected - create a new project to get started";
+
+  test("a v0 project shows compatibility mode and repeats migration guidance after exit", async () => {
+    const { path, cleanup } = await inTempDirectory("agentcore-v0-tui-");
+    try {
+      await mkdir(join(path, "agentcore"));
+      await writeFile(join(path, "agentcore", "agentcore.json"), '{"name":"Legacy","version":1}\n');
+      const core = new TestCoreClient();
+      const { streams, stdin } = ttyTestIO();
+      const root = createRootHandler(core, {
+        io: streams.io,
+        logger: createSilentLogger(),
+        globalConfigAccessor: new TestGlobalConfigAccessor(),
+      });
+
+      const routePromise = root.route(["node", "agentcore"]);
+      await waitFor(() => streams.stdout().includes(V0_PROJECT_TUI_BANNER));
+      stdin.write(String.fromCharCode(3));
+      await routePromise;
+
+      expect(streams.stderr()).toContain(V0_PROJECT_MIGRATION_MESSAGE);
+      expect(streams.stderr().match(new RegExp(V0_PROJECT_MIGRATION_MESSAGE, "g"))).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
 
   test("an unrelated TUI command does not resolve the current project", async () => {
     const core = new TestCoreClient();
@@ -269,7 +298,7 @@ describe("TUI launch", () => {
       globalConfigAccessor: new TestGlobalConfigAccessor(),
     });
     const routePromise = root.route(["node", "agentcore"]);
-    await waitFor(() => streams.stdout().includes("read/write global config values"));
+    await waitFor(() => streams.stdout().includes("check for and install CLI updates"));
     stdin.write(String.fromCharCode(3));
     await routePromise;
     return streams.stdout();
@@ -279,7 +308,10 @@ describe("TUI launch", () => {
     const out = await launchRootMenu(undefined);
     expect(out.indexOf(BANNER)).toBeGreaterThan(-1);
     expect(out.indexOf(BANNER)).toBeLessThan(out.indexOf(CREATE_ROW));
-    for (const hidden of ["add project resources", "deploy the project to AWS"]) {
+    for (const hidden of [
+      "add project resources",
+      "build and deploy project resources to an AWS target",
+    ]) {
       expect(out).not.toContain(hidden);
     }
     expect(out).toContain("evaluate and optimize");
@@ -291,7 +323,10 @@ describe("TUI launch", () => {
     expect(out).not.toContain(BANNER);
     for (const shown of [
       "add project resources",
-      "deploy the project to AWS",
+      "develop and test project agents",
+      "build and deploy project resources to an AWS target",
+      "inspect deployed project resources for an AWS target",
+      "manage config-defined agents and their versions",
       "evaluate and optimize",
     ]) {
       expect(out).toContain(shown);

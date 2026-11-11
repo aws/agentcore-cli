@@ -5,8 +5,12 @@
 Workflows are organized into two roles:
 
 ```
-Orchestrators (ci.yml, release-prepare.yml, release-main-and-preview.yml)
-Jobs          (verify.yml)
+Orchestrators (ci.yml, canary.yml, canary-v0.yml, prerelease.yml, release-prepare.yml,
+               release-main-and-preview.yml, pr-automation.yml, codeql.yml,
+               release.yml, slack-issue-notification.yml,
+               slack-open-prs-notification.yml,
+               workflow-metrics.yml)
+Jobs          (verify.yml, e2e-test.yml)
 ```
 
 **Orchestrators** respond to events and coordinate work. They define _when_ and
@@ -23,8 +27,18 @@ An orchestrator calls jobs via `workflow_call`.
 
 ```
 ci.yml
-  `-- verify.yml     (one job per platform: static checks on Linux, then bundle,
-                      package, compile, smoke test and unit tests)
+  |-- verify.yml     (one job per platform: static checks on Linux, then bundle,
+  |                   package, compile, smoke test and unit tests)
+  `-- e2e-test.yml   (deploys and invokes real AgentCore resources)
+
+canary.yml (scheduled)
+  |-- resolves @aws/agentcore@latest and its matching Git tag
+  |-- e2e-test.yml (tests the installed npm package with the tagged test suite)
+  `-- emit-canary-heartbeat.sh
+
+canary-v0.yml (scheduled)
+  |-- runs legacy v0 smoke test
+  `-- emit-canary-heartbeat.sh
 
 release-prepare.yml (version bump, vended CDK pin, release PR)
 
@@ -32,8 +46,9 @@ release-main-and-preview.yml (npm publish and GitHub release when a release PR m
   `-- verify.yml
 ```
 
-`verify.yml` appears in both orchestrators. This is the point — write once,
-compose freely.
+`verify.yml` and `e2e-test.yml` each appear in two orchestrators. Push CI builds
+the CLI from source for E2E, while the canary installs the resolved npm version.
+Both use the same E2E test runner.
 
 ## Naming Convention
 
@@ -46,8 +61,8 @@ compose freely.
 Dispatch `release-prepare` with a bump and a channel, review the release PR it opens, merge it.
 `release-publish` then publishes the merged package.json version.
 
-Publishing listens for pushes to `refactor`, not PR events. It looks up the pushed commit's
-associated PRs and proceeds only when that exact commit
+Publishing listens for pushes to `v1.x`, not PR events. It looks up the pushed
+commit's associated PRs and proceeds only when that exact commit
 is the merge of a `release/v*` PR opened by `agentcore-devx-automation[bot]` (account ID
 `282717993`) from this repository into the target branch. Manually opened release PRs,
 ordinary merges, fork PRs, and pushes without a matching release PR skip verification and
@@ -58,11 +73,10 @@ and `release-main-and-preview.yml` with the `npm-publish` environment as a trust
 job exchanges its GitHub OIDC token for a short-lived npm token. There is no npm secret in the repository.
 npm checks the filename of the top-level workflow and the environment, so the publish step must stay in
 `release-main-and-preview.yml` under `npm-publish` rather than move into a reusable workflow. The name is
-shared with main's release workflow on purpose: each branch runs its own copy.
+shared with the v0 release workflow on `v0.x`: each branch runs its own copy.
 
-The prepare job uses `aws-release-4-core`, the check-release and publish jobs use `ubuntu-latest`. The `release-main-and-preview.yml`
-allowlist currently covers `refactor` only. After the workflow lands on `main`, have a
-runner-group administrator add its `main` entry before switching the publish branch filter.
+The prepare job uses `aws-release-4-core`, the check-release and publish jobs use `ubuntu-latest`.
+The `release-main-and-preview.yml` runner group must allow `v1.x`.
 The allowlist is scoped to workflow paths and branches; renaming a workflow also requires an
 update. Keep PR-triggered workflows and the verification matrix off this release-only pool.
 
@@ -95,7 +109,8 @@ leakage in downstream steps.
 Every job declares the least privilege it needs. Most only require
 `permissions: { contents: read }`.
 
-### Bun throughout
+### Package managers
 
-All jobs use `oven-sh/setup-bun@v2` and `bun install --frozen-lockfile`. The
-lockfile is enforced to keep CI deterministic.
+V1 builds use a SHA-pinned `oven-sh/setup-bun` v2 action and `bun install --frozen-lockfile`.
+The PR tarball job uses npm for v0 PRs and Bun for v1 PRs, based on the
+checked-out branch's lockfile. Both install paths enforce their lockfile.

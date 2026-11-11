@@ -1,10 +1,14 @@
+import { dirname, relative } from "node:path";
 import z from "zod";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors";
 import { createHandler, flag, ProjectKey } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
+import { runWithProgress } from "../../../tui/progress";
 import { JsonKey } from "../../keys";
 import { AgentNameSchema } from "../../../projectSchemas/runtime";
-import { formatExportNotes } from "../../../core/project/templates/export";
+import { ProjectNameSchema } from "../../../projectSchemas/project";
+import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
+import { defaultExportProjectName } from "../../../core/project/fsUtils";
 import { assertMutuallyExclusiveFlags, coreOptsFromCtx } from "../../utils";
 import type { ExportHarnessInput } from "../types";
 import type { ExportProjectResourceConfig } from "./types";
@@ -14,8 +18,13 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
   createHandler({
     name: "harness",
     description:
-      "convert a managed harness into a code-defined harness with the Strands Harness SDK",
+      "convert a managed harness into a code-defined harness with the Strands Harness SDK, creating a project if needed",
     flags: [
+      flag(
+        "project-name",
+        "name of the project to create when exporting outside a project",
+        ProjectNameSchema.optional(),
+      ),
       flag("name", "the name of an in-project harness to export", z.string().optional()),
       flag(
         "arn",
@@ -31,55 +40,63 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
     handle: async (ctx, flags) => {
       assertMutuallyExclusiveFlags(flags, ["name", "arn"], { exactlyOne: true });
 
-      // withProject has already resolved and validated the enclosing project —
-      // before any service fetch, so a broken project fails fast.
-      const project = ctx.require(ProjectKey);
+      const project = ctx.value(ProjectKey);
       const jsonOutput = ctx.require(JsonKey);
-
-      let input: ExportHarnessInput;
-      if (flags.arn) {
-        config.io.stderr.write(`Fetching harness from the service\n`);
-        const harnessId = harnessIdFromArn(flags.arn);
-        // The ARN names the region the harness lives in and takes precedence over
-        // the CLI's resolved region, so service fetches never drift to ambient config.
-        const coreOpts = coreOptsFromCtx(ctx);
-        const region = regionFromHarnessArn(flags.arn);
-        const response = await config.core.harness.getHarness(harnessId, { ...coreOpts, region });
-        if (!response.harness) {
-          throw new ResourceNotFoundError(`no harness exists for '${flags.arn}'`);
-        }
-        const { spec, systemPrompt, notes, modelAdditionalParams } = mapServiceHarnessToSpec(
-          response.harness,
+      if (project && flags["project-name"]) {
+        throw new InputValidationError(
+          "--project-name is only available outside an existing project",
         );
-        input = {
-          prefetched: { spec, systemPrompt, notes, modelAdditionalParams },
-          targetAgentName: resolveTargetAgentName(flags["target-agent-name"], spec.name),
-        };
-      } else {
-        input = {
-          harnessName: flags.name!,
-          targetAgentName: resolveTargetAgentName(flags["target-agent-name"], flags.name!),
-        };
       }
 
-      // Progress goes to stderr, keeping stdout for machine output. Driven by
-      // hand because the result is the generator's return value.
-      const exportRun = config.projectManager.exportHarness(project, input);
-      let next = await exportRun.next();
-      while (!next.done) {
-        if (next.value.type === "step") config.io.stderr.write(`${next.value.message}\n`);
-        next = await exportRun.next();
-      }
-      const result = next.value;
-
-      config.io.stderr.write(
-        `Exported harness '${result.harnessName}' to runtime agent '${result.agentName}' (${result.agentPath})\n`,
-      );
-      for (const line of formatExportNotes(result.notes, result.notesPath)) {
-        config.io.stderr.write(`${line.text}\n`);
-      }
-      config.io.stderr.write(
-        "Next steps: review the generated code, then `agentcore build` and `agentcore deploy`\n",
+      const result = await runWithProgress(
+        (async function* () {
+          let input: ExportHarnessInput;
+          if (flags.arn) {
+            const harnessId = harnessIdFromArn(flags.arn);
+            // The ARN's region takes precedence over the CLI's resolved region.
+            const coreOpts = coreOptsFromCtx(ctx);
+            const region = regionFromHarnessArn(flags.arn);
+            yield { type: "step" as const, message: "Fetching harness from the service" };
+            const response = await config.core.harness.getHarness(harnessId, {
+              ...coreOpts,
+              region,
+            });
+            if (!response.harness) {
+              throw new ResourceNotFoundError(`no harness exists for '${flags.arn}'`);
+            }
+            const { spec, systemPrompt, notes, modelAdditionalParams } = mapServiceHarnessToSpec(
+              response.harness,
+            );
+            const projectName = project
+              ? undefined
+              : (flags["project-name"] ?? defaultExportProjectName(spec.name));
+            input = {
+              projectName,
+              prefetched: {
+                spec,
+                systemPrompt,
+                notes,
+                modelAdditionalParams,
+                sourceArn: flags.arn,
+              },
+              targetAgentName: resolveTargetAgentName(
+                flags["target-agent-name"],
+                spec.name,
+                projectName,
+              ),
+            };
+          } else {
+            input = {
+              harnessName: flags.name!,
+              targetAgentName: resolveTargetAgentName(flags["target-agent-name"], flags.name!),
+            };
+          }
+          return yield* config.projectManager.exportHarness(project, input);
+        })(),
+        {
+          io: config.io,
+          interactive: jsonOutput ? false : undefined,
+        },
       );
 
       if (jsonOutput) {
@@ -90,17 +107,44 @@ export const createExportHarnessHandler = (config: ExportProjectResourceConfig) 
           notesPath: result.notesPath,
           notes: result.notes,
         });
+        return;
       }
+
+      const agentPath = relative(process.cwd(), result.agentPath);
+      config.io.stderr.write(
+        `exported harness '${result.harnessName}' to runtime agent '${result.agentName}' (${agentPath})\n`,
+      );
+      const reviewNotes =
+        result.notes.length > 0
+          ? ` (${result.notes.length} manual follow-up${result.notes.length === 1 ? "" : "s"} in EXPORT_NOTES.md)`
+          : "";
+      const changeDirectory = project
+        ? ""
+        : `  cd ${relative(process.cwd(), dirname(dirname(result.agentPath)))}\n`;
+      config.io.stderr.write(
+        `next steps:\n  review the generated code in ${agentPath}${reviewNotes}\n${changeDirectory}  agentcore deploy\n`,
+      );
     },
   });
 
 /** Default the target agent name to `<harnessName>Agent` and validate it. */
-function resolveTargetAgentName(flagValue: string | undefined, harnessName: string): string {
-  const targetAgentName = flagValue ?? `${harnessName}Agent`;
+function resolveTargetAgentName(
+  flagValue: string | undefined,
+  harnessName: string,
+  projectName?: string,
+): string {
+  // New projects deploy under <project>_default_<agent>, whose physical name is capped at 48.
+  const budget = projectName ? 48 - projectName.length - DEFAULT_TARGET_NAME.length - 2 : 48;
+  const targetAgentName = flagValue ?? `${harnessName.slice(0, budget - "Agent".length)}Agent`;
   const parsed = AgentNameSchema.safeParse(targetAgentName);
   if (!parsed.success) {
     throw new InputValidationError(
       `invalid --target-agent-name "${targetAgentName}": ${parsed.error.issues[0]?.message ?? "invalid name"}`,
+    );
+  }
+  if (targetAgentName.length > budget) {
+    throw new InputValidationError(
+      `--target-agent-name "${targetAgentName}" must fit within ${budget} characters for project "${projectName}"`,
     );
   }
   return parsed.data;

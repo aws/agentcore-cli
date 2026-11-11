@@ -4,7 +4,7 @@ import { InputValidationError } from "../../../../errors";
 import { JsonRendererKey } from "../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../io";
 import type { Core } from "../../../types";
-import { coreOptsFromCtx, parseTags } from "../../../utils";
+import { coreOptsFromCtx, parseTags, tagsFlag } from "../../../utils";
 import { SCHEMA_TYPE_ALIASES, datasetSchemaType } from "../schemaTypes";
 import { looksLikePath, resolveDatasetSource, sourceFlag } from "../source";
 
@@ -22,7 +22,7 @@ export const createCreateDatasetHandler = (core: Core, io: AppIO) =>
       ),
       flag("description", "a description of the dataset", z.string().optional()),
       flag("kms-key-arn", "customer managed KMS key ARN for dataset data", z.string().optional()),
-      flag("tags", "tags as key=value (repeatable) or JSON object", z.array(z.string()).optional()),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       const source = new SourceResolver({ stdin: io.stdin });

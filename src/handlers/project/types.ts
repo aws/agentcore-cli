@@ -7,7 +7,11 @@ import { MemorySchema } from "../../projectSchemas/memory";
 import type { EvaluatorSchema, EvaluationLevel } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
-import type { ImportBedrockAgentInput, RuntimeResourceConfig } from "./add/runtime/types";
+import type {
+  ImportBedrockAgentInput,
+  RuntimeDocsConfig,
+  RuntimeResourceConfig,
+} from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
@@ -16,6 +20,7 @@ import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/poli
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
 import type { AwsCredentialProvider } from "../../core/types";
+import type { LegacyProjectInfo } from "../../core/project/legacy/types";
 import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
 type CreateProjectInputBase = {
@@ -163,6 +168,12 @@ export type CreateProjectInput = CreateProjectInputBase &
     | {
         /** The harness the created project declares (the default create path). */
         scaffoldHarnessInput: ScaffoldHarnessInput;
+        /**
+         * The harness model's API key, already read from its source. Stored in
+         * agentcore/.env.local under a project credential the model names; never
+         * written to the spec.
+         */
+        harnessApiKey?: string;
         scaffoldRuntimeInput?: undefined;
         importBedrockAgent?: undefined;
       }
@@ -210,6 +221,8 @@ export type DeployProjectInput = {
   confirmTeardown: TeardownConfirmationHandler;
   /** Whether to enable CloudWatch Transaction Search on deploy (from global config). */
   transactionSearch?: boolean;
+  /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
+  skipBootstrap?: boolean;
 };
 
 export type DeployResult = {
@@ -321,6 +334,8 @@ export type Project = {
   rootPath: string;
   /** The spec of the project (agentcore.json loaded into memory) */
   spec: z.infer<typeof ProjectSpecSchema>;
+  /** Present when a v0 project was translated into the current in-memory shape. */
+  legacy?: LegacyProjectInfo;
 };
 
 /** A line to add to agentcore/.env.local. Secret values travel here, never in the spec. */
@@ -344,15 +359,37 @@ export type AddResourceOptions = {
   region?: string;
 };
 
+export type SyncRuntimeBuildsInput = {
+  /** dev runs a JavaScript entrypoint and installs Node dependencies itself; deploy needs both. */
+  purpose: "dev" | "deploy";
+  /** Only these runtimes; every runtime when omitted. */
+  runtimeNames?: string[];
+};
+
+export type SyncRuntimeBuildsResult = {
+  /** The project with its runtimes as now written to agentcore.json. */
+  project: Project;
+  /** What changed, then any warnings; empty when nothing changed. */
+  messages: string[];
+  /** Whether agentcore.json was rewritten. */
+  written: boolean;
+};
+
 /** Discriminated union input for {@link ProjectManager.addResource}. */
 export type AddResourceInput =
   | {
       resourceType: "harness";
       resourceConfig: z.input<typeof HarnessSpecSchema>;
+      /**
+       * The model's API key, already read from its source. Stored in
+       * agentcore/.env.local under a project credential the model names
+       * (`apiKeyCredentialName`); never written to the spec.
+       */
+      apiKey?: string;
     }
   | {
       resourceType: "runtime";
-      resourceConfig: RuntimeResourceConfig;
+      resourceConfig: RuntimeResourceConfig | RuntimeDocsConfig;
     }
   | {
       resourceType: "credential";
@@ -365,10 +402,6 @@ export type AddResourceInput =
     }
   | {
       resourceType: "online-eval";
-      resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
-    }
-  | {
-      resourceType: "online-insight";
       resourceConfig: z.input<typeof OnlineEvalConfigSchema>;
     }
   | {
@@ -425,6 +458,8 @@ export type ProjectResource = AddResourceInput["resourceType"];
 
 /** Input for {@link ProjectManager.exportHarness}. */
 export type ExportHarnessInput = {
+  /** Name of the project created when exporting outside an existing project. */
+  projectName?: string;
   /** Name of an in-project harness. Mutually exclusive with `prefetched`. */
   harnessName?: string;
   /** A harness spec + system prompt fetched from the service (the `--arn` path). */
@@ -433,6 +468,7 @@ export type ExportHarnessInput = {
     systemPrompt?: string;
     notes?: ExportNote[];
     modelAdditionalParams?: Record<string, unknown>;
+    sourceArn?: string;
   };
   /** Name of the runtime agent to generate. */
   targetAgentName: string;
@@ -466,7 +502,6 @@ export type RemoveResourceInput =
         | "credential"
         | "config-bundle"
         | "online-eval"
-        | "online-insight"
         | "memory"
         | "evaluator"
         | "gateway"
@@ -516,6 +551,17 @@ export interface ProjectManager {
 
   /** Compile the project's CDK app and synthesize its CloudFormation templates. */
   build(project: Project): AsyncGenerator<ProjectEvent, void>;
+
+  /**
+   * Re-derives runtime build settings (build, dockerfile, runtimeVersion,
+   * entrypoint) from each runtime's code and writes changed fields back to
+   * agentcore.json. Throws when a runtime's folder is missing what its build
+   * needs. build and deploy run it before synth; dev before starting runtimes.
+   */
+  syncRuntimeBuilds(
+    project: Project,
+    input: SyncRuntimeBuildsInput,
+  ): Promise<SyncRuntimeBuildsResult>;
 
   /** Deploy the project to one of its configured AWS targets. */
   deploy(project: Project, input: DeployProjectInput): AsyncGenerator<ProjectEvent, DeployResult>;
@@ -585,10 +631,11 @@ export interface ProjectManager {
    * Convert a harness into an editable Strands runtime agent: render the agent
    * code under app/<targetAgentName>/, register the runtime in agentcore.json
    * (the source harness entry is kept), and write EXPORT_NOTES.md for anything
-   * that could not be mapped mechanically.
+   * that could not be mapped mechanically. Without a project, a prefetched
+   * service harness is exported into a new project named after that harness.
    */
   exportHarness(
-    project: Project,
+    project: Project | undefined,
     input: ExportHarnessInput,
   ): AsyncGenerator<ProjectEvent, ExportHarnessResult>;
 }

@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 // Test preload: pin ANSI color OFF so rendered Ink frames are deterministic.
 //
 // chalk/supports-color decides whether Ink emits color escape codes from
@@ -19,3 +23,8 @@ process.env.FORCE_COLOR = "0";
 process.env.WT_SESSION ??= "bun-test";
 
 process.env.AGENTCORE_TELEMETRY_DISABLED = "1";
+
+const secretDirectory = mkdtempSync(join(tmpdir(), "agentcore-test-secrets-"));
+process.env.AGENTCORE_CONFIG_DIR = secretDirectory;
+process.env.AGENTCORE_DISABLE_KEYCHAIN = "1";
+process.once("exit", () => rmSync(secretDirectory, { recursive: true, force: true }));

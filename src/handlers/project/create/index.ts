@@ -2,12 +2,11 @@ import { createHash } from "node:crypto";
 import z from "zod";
 import { createHandler, flag, PlatformKey, type Middleware } from "../../../router";
 import { assertProjectPathFits } from "./pathLimit";
-import { SourceResolver, type AppIO } from "../../../io";
+import { type AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
-  RUNTIME_TEMPLATE_SHORTCUTS,
   formatTemplateParameterHelp,
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
@@ -25,11 +24,15 @@ import {
   HarnessSpecSchema,
   type HarnessModelProvider,
 } from "../../../projectSchemas/harness";
-import { InputValidationError } from "../../../errors";
+import { InputValidationError, RegionUnsupportedFeatureError } from "../../../errors";
 import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
 import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import { chinaModelProviderRestriction } from "../../../core/project/manager";
+import { isChinaRegion } from "../../../core/partition";
+import { harnessApiKeyCredentialName } from "../../../core/project/templates/harness";
+import { toLiteLlmGatewayModel } from "../../harness/liteLlmGateway";
 
 type CreateProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -42,20 +45,7 @@ const MODEL_PROVIDER_FLAG_VALUES = [
   "anthropic",
   "openai_compatible",
 ] as const;
-// `add runtime` parses its provider through ModelProviderSchema, which takes `litellm`/`openai` in
-// any case; create accepts the same spellings so a command copied from one works in the other.
-const MODEL_PROVIDER_FLAG_ALIASES: Record<string, (typeof MODEL_PROVIDER_FLAG_VALUES)[number]> = {
-  litellm: "lite_llm",
-  openai: "open_ai",
-  "openai-compatible": "openai_compatible",
-  openaicompatible: "openai_compatible",
-};
-const ModelProviderFlagSchema = z.preprocess((value) => {
-  if (typeof value !== "string") return value;
-  const lower = value.toLowerCase();
-  return MODEL_PROVIDER_FLAG_ALIASES[lower] ?? lower;
-}, z.enum(MODEL_PROVIDER_FLAG_VALUES));
-type ModelProviderFlag = z.infer<typeof ModelProviderFlagSchema>;
+type ModelProviderFlag = (typeof MODEL_PROVIDER_FLAG_VALUES)[number];
 
 export const DEFAULT_CREATE_RUNTIME_NAME = "agent";
 
@@ -68,6 +58,44 @@ export function createNextStep(scaffoldsRuntime: boolean): string {
   return scaffoldsRuntime ? "agentcore dev" : "agentcore deploy";
 }
 
+/**
+ * The next steps after creating an empty project, shared by the flag path and
+ * the wizard: it has nothing to run or deploy yet, so they point at
+ * `agentcore add`. Harnesses are left out in China regions, where they are not
+ * available.
+ */
+export function emptyProjectNextSteps(name: string, china: boolean): string[] {
+  const steps: [string, string][] = [
+    ...(china
+      ? []
+      : [["agentcore add harness", "add a config-based agent: pick a model, prompt, and tools"]]),
+    ["agentcore add runtime", "add a code-based agent you write yourself"],
+    [
+      "agentcore add --help",
+      "see everything else you can add (memory, gateways, credentials, ...)",
+    ],
+    ["agentcore deploy", "deploy to AWS once the project has resources"],
+  ] as [string, string][];
+  const width = Math.max(...steps.map(([command]) => command.length)) + 2;
+  return [
+    `cd ${name}`,
+    ...steps.map(([command, description]) => `${command.padEnd(width)}${description}`),
+  ];
+}
+
+export const EMPTY_PROJECT_SUMMARY = "it has no agents or other resources yet.";
+
+/** The full message printed after creating an empty project. */
+export function emptyProjectCreatedMessage(name: string, china: boolean): string {
+  return [
+    `created empty project '${name}' in ./${name}. ${EMPTY_PROJECT_SUMMARY}`,
+    "",
+    "next steps:",
+    ...emptyProjectNextSteps(name, china).map((step) => `  ${step}`),
+    "",
+  ].join("\n");
+}
+
 export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =>
   createHandler({
     name: "create",
@@ -77,33 +105,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       flag("name", "name of the project to create", ProjectNameSchema),
       flag(
         "template",
-        "the template to scaffold the Runtime from; some templates also accept --model-provider/--api-key",
-        z.enum(PROJECT_TEMPLATE_NAMES).optional(),
+        "the template to scaffold the Runtime from",
+        z.enum(PROJECT_TEMPLATE_NAMES).default(EMPTY_TEMPLATE_NAME),
         { help: formatTemplateParameterHelp({ includeEmpty: true }) },
-      ),
-      flag(
-        "model-provider",
-        "model provider for templates that support it: bedrock, anthropic, open_ai (or openai), " +
-          "openai_compatible, gemini, or lite_llm (or litellm)",
-        ModelProviderFlagSchema.optional(),
-      ),
-      flag(
-        "model-id",
-        "model id for the scaffolded Runtime code, overriding the provider's default " +
-          "(required with openai_compatible, and with litellm in China regions)",
-        z.string().min(1).optional(),
-      ),
-      flag(
-        "api-key",
-        "API key for non-Bedrock providers: '-' for stdin, 'file://path' for file",
-        z.string().optional(),
-        { sensitive: true },
-      ),
-      flag(
-        "api-base",
-        "base URL of the endpoint for --model-provider openai_compatible (required with it, " +
-          "not accepted with other providers)",
-        z.string().url().optional(),
       ),
       flag(
         "skip-install",
@@ -121,51 +125,40 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
 
       const template = flags["template"];
-      const modelProviderFlag = flags["model-provider"];
-      const apiKeyFlag = flags["api-key"];
-
-      const runtimeCodeFlags = (
-        ["model-provider", "model-id", "api-key", "api-base"] as const
-      ).filter((flagName) => flags[flagName] !== undefined);
-      if (runtimeCodeFlags.length > 0) {
-        if (template === undefined || template === EMPTY_TEMPLATE_NAME) {
-          throw new InputValidationError(
-            `--${runtimeCodeFlags[0]} only applies to runtime templates`,
-          );
-        }
-        if (!RUNTIME_TEMPLATE_SHORTCUTS[template].supportsModelProviderOverride) {
-          throw new InputValidationError(
-            `--${runtimeCodeFlags[0]} is not valid with the ${template} template`,
-          );
-        }
-      }
-
       const base = {
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
       };
 
-      let createInput: CreateProjectInput;
-      if (template === undefined) {
-        createInput = { ...base, scaffoldHarnessInput: resolveScaffoldHarnessInput({ name }) };
-      } else if (template === EMPTY_TEMPLATE_NAME) {
-        createInput = { ...base };
-      } else {
-        const source = new SourceResolver({ stdin: config.io.stdin });
-        const apiKey = await source.resolveSecret("api-key", apiKeyFlag);
-        const scaffoldRuntimeInput = resolveRuntimeTemplateShortcut(template, {
-          runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
-          modelProvider: resolveRuntimeModelProvider(modelProviderFlag),
-          modelId: flags["model-id"],
-          apiKey,
-          apiBase: flags["api-base"],
-        });
-        createInput = { ...base, scaffoldRuntimeInput };
-      }
+      const createInput: CreateProjectInput =
+        template === EMPTY_TEMPLATE_NAME
+          ? base
+          : {
+              ...base,
+              scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, {
+                runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
+              }),
+            };
 
       const region = ctx.require(RegionKey);
-      validateCreateRegionSupport(createInput, region);
+      try {
+        validateCreateRegionSupport(createInput, region);
+      } catch (error) {
+        // The shared China messages name the model flags, which create does not take.
+        if (
+          error instanceof RegionUnsupportedFeatureError &&
+          createInput.scaffoldRuntimeInput !== undefined &&
+          error.message === chinaModelProviderRestriction(createInput.scaffoldRuntimeInput)
+        ) {
+          throw new RegionUnsupportedFeatureError(
+            `${error.message} 'agentcore create' takes no model flags: run 'agentcore create' ` +
+              "interactively to choose the model provider.",
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       const stripped = stripCreateRegionUnavailableDefaults(createInput, region);
       if (stripped !== undefined) config.io.stderr.write(`${stripped}\n`);
 
@@ -183,9 +176,13 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
           project: projectReference(project),
         },
         () => {
-          config.io.stderr.write(`Created project '${name}' in ./${name}\n`);
+          if (template === EMPTY_TEMPLATE_NAME) {
+            config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
+            return;
+          }
+          config.io.stderr.write(`created project '${name}' in ./${name}\n`);
           config.io.stderr.write(
-            `Next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+            `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
           );
         },
       );
@@ -197,22 +194,46 @@ type HarnessPathFlagValues = {
   "model-provider"?: ModelProviderFlag;
   "model-id"?: string;
   "api-key-arn"?: string;
+  /**
+   * Where the managed API key comes from ('-', 'file://path'). Only its presence
+   * matters here: the model then names the project credential the key is stored
+   * under. The caller reads the key itself and passes it as harnessApiKey.
+   */
+  "api-key"?: string;
   "api-base"?: string;
 };
 
 // The harness input validates against the same schema `agentcore add harness`
 // uses, before any file is written; the manager then scaffolds it through the
-// same addResource path. Exported so the TUI create wizard builds its harness
-// input through the exact same translation as the flag-driven path.
+// same addResource path. Exported for the TUI create wizard, the only path that
+// scaffolds a harness at create time.
 export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): ScaffoldHarnessInput {
   const provider = resolveHarnessModelProvider(flags["model-provider"]);
+  const name = defaultHarnessNameFor(flags["name"]);
+  const managedApiKey = flags["api-key"] !== undefined;
+  if (managedApiKey && provider === "bedrock") {
+    throw new InputValidationError(
+      "--api-key is not supported for the bedrock model provider; Bedrock uses the harness role. " +
+        "Pass --model-provider open_ai, gemini, or lite_llm",
+    );
+  }
+  if (managedApiKey && flags["api-key-arn"] !== undefined) {
+    throw new InputValidationError(
+      "give either an API key or an API key credential provider ARN, not both",
+    );
+  }
 
   const input: ScaffoldHarnessInput = {
-    name: defaultHarnessNameFor(flags["name"]),
+    name,
     model: {
       provider,
-      modelId: flags["model-id"] ?? HARNESS_DEFAULT_MODEL_IDS[provider],
+      modelId:
+        flags["model-id"] ?? (provider === "lite_llm" ? "" : HARNESS_DEFAULT_MODEL_IDS[provider]),
       apiKeyArn: flags["api-key-arn"],
+      ...(managedApiKey &&
+        provider !== "bedrock" && {
+          apiKeyCredentialName: harnessApiKeyCredentialName(name, provider),
+        }),
       apiBase: flags["api-base"],
     },
   };
@@ -220,6 +241,9 @@ export function resolveScaffoldHarnessInput(flags: HarnessPathFlagValues): Scaff
   const result = HarnessSpecSchema.safeParse(input);
   if (!result.success)
     throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  if (input.model.provider === "lite_llm") {
+    input.model = toLiteLlmGatewayModel(input.model);
+  }
   return input;
 }
 
@@ -258,10 +282,4 @@ function resolveHarnessModelProvider(
       `the '${providerFlag}' model provider is not supported for harness projects`,
     );
   return provider;
-}
-
-function resolveRuntimeModelProvider(
-  providerFlag: ModelProviderFlag | undefined,
-): ModelProvider | undefined {
-  return providerFlag === undefined ? undefined : MODEL_PROVIDERS[providerFlag].runtime;
 }

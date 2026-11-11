@@ -37,7 +37,7 @@ type AddProjectResourceResultOptions = {
 };
 
 /**
- The L3 deploys `<project><sep><target><sep><name>` and fails at synth past the service cap. This fails at add time using the longest declared target, or "default" when none is declared yet.
+ The L3 deploys `<project><sep><target><sep><name>` and fails at synth past the service cap. This fails at add time using the longest declared target, or "default" when none is declared yet. With the `_` separator the L3 writes the target's hyphens as underscores, which keeps the length.
 **/
 export function requireDeployedNameFits(
   kind: string,
@@ -50,7 +50,8 @@ export function requireDeployedNameFits(
   const longest = [DEFAULT_TARGET_NAME, ...targets.map((target) => target.name)].reduce((a, b) =>
     b.length > a.length ? b : a,
   );
-  const deployed = [projectName, longest, name].join(separator);
+  const target = separator === "_" ? longest.replaceAll("-", "_") : longest;
+  const deployed = [projectName, target, name].join(separator);
   if (deployed.length <= maxLength) return;
   throw new InputValidationError(
     `${kind} deployed name '${deployed}' is ${deployed.length} characters. The maximum is ${maxLength}. The deployed name is <project>${separator}<target>${separator}<name>, checked with the longest declared target '${longest}'. Shorten the ${kind.toLowerCase()} name.`,

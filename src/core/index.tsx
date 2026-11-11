@@ -7,6 +7,7 @@ import { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
 import { EvalClient } from "./eval";
 import { GatewayClient } from "./gateway";
 import { HarnessClient } from "./harness";
+import type { OpenHarnessShell } from "./harnessShell";
 import { IdentityClient } from "./identity";
 import { MemoryClient } from "./memory";
 import { PaymentClient } from "./payment";
@@ -31,6 +32,8 @@ import type { Logger } from "../logging";
 import type { ProjectManager } from "../handlers/project/types";
 import { FsProjectManager } from "./project";
 import { BedrockAgentImporter, type CoreBedrockAgentImporter } from "./project/bedrockAgentImport";
+import { FsProjectMigrator } from "./project/migrate";
+import type { ProjectMigrator } from "../handlers/project/migrate/types";
 
 export type {
   AwsClients,
@@ -58,7 +61,9 @@ type CoreClientConfig = {
   newSessionId?: () => string;
   now?: () => number;
   bedrockAgentImporter?: CoreBedrockAgentImporter;
+  projectMigrator?: ProjectMigrator;
   openRuntimeShell?: OpenRuntimeShell;
+  openHarnessShell?: OpenHarnessShell;
 };
 
 // CoreClient is the single entry point to the Bedrock AgentCore APIs. It owns the
@@ -82,7 +87,7 @@ export class CoreClient implements AwsClients {
   private logger: Logger;
 
   // Feature-scoped sub-clients. Access as e.g. `coreClient.harness.getHarness(...)`.
-  readonly harness: HarnessClient = new HarnessClient(this);
+  readonly harness: HarnessClient;
   readonly identity: IdentityClient = new IdentityClient(this);
   readonly memory: MemoryClient = new MemoryClient(this);
   readonly runtime: RuntimeClient;
@@ -94,6 +99,7 @@ export class CoreClient implements AwsClients {
 
   readonly projectManager: ProjectManager;
   readonly bedrockAgentImporter: CoreBedrockAgentImporter;
+  readonly projectMigrator: ProjectMigrator;
   readonly fetch: CoreFetch;
 
   constructor(config: CoreClientConfig) {
@@ -107,6 +113,7 @@ export class CoreClient implements AwsClients {
     const fetch = config.fetch ?? globalThis.fetch;
     const cloudWatch = new CloudWatchClient(this);
     this.fetch = fetch;
+    this.harness = new HarnessClient(this, config.openHarnessShell);
     this.runtime = new RuntimeClient(
       this,
       fetch,
@@ -141,6 +148,15 @@ export class CoreClient implements AwsClients {
         ),
     });
     this.bedrockAgentImporter = config.bedrockAgentImporter ?? new BedrockAgentImporter();
+    // Shares the CloudFormation client factory, so stack reads go through the same
+    // record/replay seam as deploy.
+    this.projectMigrator =
+      config.projectMigrator ??
+      new FsProjectMigrator({
+        logger: this.logger.child({ module: "projectMigrator" }),
+        createCloudFormationClient: config.createCloudFormationClient,
+        identity: this.identity,
+      });
   }
 
   // control returns the control-plane client for `config`, creating and caching it

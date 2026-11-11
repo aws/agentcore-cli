@@ -56,18 +56,6 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
         },
         {
           "namespaceTemplates": [
-            "/users/{actorId}/preferences",
-          ],
-          "type": "USER_PREFERENCE",
-        },
-        {
-          "namespaceTemplates": [
-            "/summaries/{actorId}/{sessionId}",
-          ],
-          "type": "SUMMARIZATION",
-        },
-        {
-          "namespaceTemplates": [
             "/episodes/{actorId}/{sessionId}",
           ],
           "reflectionNamespaceTemplates": [
@@ -124,18 +112,6 @@ exports[`FsProjectManager.create snapshots the Strands TypeScript project manife
             "/users/{actorId}/facts",
           ],
           "type": "SEMANTIC",
-        },
-        {
-          "namespaceTemplates": [
-            "/users/{actorId}/preferences",
-          ],
-          "type": "USER_PREFERENCE",
-        },
-        {
-          "namespaceTemplates": [
-            "/summaries/{actorId}/{sessionId}",
-          ],
-          "type": "SUMMARIZATION",
         },
         {
           "namespaceTemplates": [
@@ -196,18 +172,6 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
             "/users/{actorId}/facts",
           ],
           "type": "SEMANTIC",
-        },
-        {
-          "namespaceTemplates": [
-            "/users/{actorId}/preferences",
-          ],
-          "type": "USER_PREFERENCE",
-        },
-        {
-          "namespaceTemplates": [
-            "/summaries/{actorId}/{sessionId}",
-          ],
-          "type": "SUMMARIZATION",
         },
         {
           "namespaceTemplates": [

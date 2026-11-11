@@ -40,14 +40,28 @@ A project holds either kind of agent, or both:
   AgentCore runs for you.
 - A **Runtime** is agent code you own, scaffolded from a template and deployed for you.
 
-Create a Harness project, deploy it, and send a prompt:
+Create a project, add a Harness to it, deploy it, and send a prompt:
 
 ```bash
-agentcore create --name MyAssistant
-cd MyAssistant
+agentcore create --name MyProject
+cd MyProject
+agentcore add harness --name MyAssistant
 agentcore deploy
 agentcore invoke --harness MyAssistant --prompt "Hey, what can you do for me?"
 ```
+
+To invoke a CUSTOM_JWT Harness, supply AWS credentials for the Harness lookup and pipe a
+bearer token for the invocation:
+
+```bash
+printf '%s' "$JWT" | agentcore invoke \
+  --harness MyAssistant-AbCdEf1234 \
+  --region us-east-1 --bearer-token - --prompt "Hello"
+```
+
+The same flags work with `agentcore harness invoke --id <harness-id>`. You can also select a
+Harness by ARN with `agentcore invoke --harness <harness-arn>`, but the CLI still looks up
+its configuration before invoking it. `--bearer-token file://<path>` reads a token from a file.
 
 To start from code you own instead, pick a template (`agentcore create --help` lists them):
 
@@ -55,20 +69,36 @@ To start from code you own instead, pick a template (`agentcore create --help` l
 agentcore create --name MyAgent --template agent-python-strands
 ```
 
-Templates that take a model provider (`agent-python-strands` and its `-container` variant,
-`a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) also accept
-`--model-provider` (`bedrock`, `anthropic`, `open_ai`, `openai_compatible`, `gemini`, `lite_llm`;
-`openai` and `litellm` are accepted too; LiteLLM is Python-only), `--model-id`, and
-`--api-key file://<path>`; the API key is kept in `agentcore/.env.local` and provisioned as an
-AgentCore Identity credential on deploy. `openai_compatible` is the OpenAI client pointed at any
-OpenAI-compatible endpoint (DeepSeek, Qwen, a self-hosted vLLM, …): it requires
-`--api-base <url>` and `--model-id <model>`, since nothing is known about the endpoint until you
-name it, while `open_ai` always calls api.openai.com and takes neither. A self-hosted endpoint that
-ignores authentication still needs an `--api-key` file; any placeholder value works.
+`agentcore create --template` scaffolds the template with its default model provider (Amazon
+Bedrock for the model-backed templates). To use another provider, run `agentcore create` with no
+flags: for templates that take a model provider (`agent-python-strands` and its `-container`
+variant, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) the wizard asks
+for the provider (Amazon Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or
+LiteLLM, which is Python-only), the model id, and an API-key file. The API key is kept in
+`agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy.
 
-Run `agentcore create` with no flags for a guided setup; for those templates the wizard asks the
-same provider, model id, and API-key-file questions. Either way, run it outside any existing
-project.
+To bring your own code into a project instead, add a runtime for it:
+
+```bash
+agentcore add runtime --name search --language python   # or --language typescript
+```
+
+`add runtime` doesn't generate code. It creates `app/search/` with a `README.md` and an
+`AGENTS.md` describing what the code has to provide for the chosen `--protocol` (`HTTP` by
+default, or `MCP`, `A2A`, `AGUI`), and registers the runtime in `agentcore.json` with starting
+values (a CodeZip build on the latest Python or Node.js, entrypoint `main.py` or `main.js`). If
+`app/search/` already exists, your files are left alone and only the missing docs are added.
+
+`agentcore dev`, `agentcore build`, and `agentcore deploy` then update `agentcore.json` from the
+code and print what changed. Adding a `Dockerfile` to the folder switches the runtime to a
+container build. `requires-python` in `pyproject.toml` or `engines.node` in `package.json`
+constrains the runtime version: it changes only when the range excludes the current one, and then
+to the highest version the range allows. The Python entrypoint comes from `[tool.agentcore]
+entrypoint` in `pyproject.toml`; TypeScript is always bundled from `main.ts` (a `package.json`
+`"main"` of `main.ts` or `main.js` agrees with that, and any other value is ignored with a
+warning). Where the code doesn't say, the value in `agentcore.json` is kept.
+
+Run `agentcore create` outside any existing project.
 
 ## Projects
 
@@ -77,16 +107,27 @@ resources, and `agentcore/cdk/`, the AWS CDK app that deploys them. Deployment t
 and region each — live in `agentcore/aws-targets.json`. Project commands find the project by walking
 up from the current directory.
 
+`agentcore dev` runs runtimes locally or deploys harnesses and prints invoke guidance.
+Use `--mode browser` for Agent Inspector, `--skip-deploy` to reuse deployed harnesses,
+and `--agent <name>` to choose an agent in mixed projects.
+
+New payment credentials receive provider names that payment connectors can reference.
+An existing payment credential keeps the provider ARN recorded for its deployment
+target. If that ARN is incompatible with a manual connector, deploy stops before
+provisioning anything. Add a payment credential under a different name and point
+the connector to it; the old provider remains until you remove its credential
+from the project and deploy each affected target.
+
 ## Commands
 
-| Command                                                          | Purpose                                                                  |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `create`, `add`, `remove`, `export`                              | Create a project, add or remove its resources, export a resource to code |
-| `dev`, `build`, `deploy`, `status`                               | Run locally, build, deploy, and check what is deployed                   |
-| `invoke`, `log`, `traces`                                        | Talk to deployed agents and inspect their logs and traces                |
-| `runtime`, `harness`, `gateway`, `memory`, `identity`, `payment` | Inspect and manage deployed resources, with or without a project         |
-| `eval`                                                           | Evaluate agents, manage datasets and configurations, and run experiments |
-| `feedback`, `config`, `update`                                   | Send feedback, read and write CLI settings, update the CLI               |
+| Command                                                          | Purpose                                                                                        |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `create`, `add`, `remove`, `export`, `migrate`                   | Create a project, add or remove its resources, export a resource to code, migrate a v0 project |
+| `dev`, `build`, `deploy`, `status`                               | Run locally, build, deploy, and check what is deployed                                         |
+| `invoke`, `logs`, `traces`                                       | Talk to deployed agents and inspect their logs and traces                                      |
+| `runtime`, `harness`, `gateway`, `memory`, `identity`, `payment` | Inspect and manage deployed resources, with or without a project                               |
+| `eval`                                                           | Evaluate agents, manage datasets and configurations, and run experiments                       |
+| `feedback`, `config`, `update`                                   | Send feedback, read and write CLI settings, update the CLI                                     |
 
 In a terminal, a command run without flags opens its interactive flow; pass flags and it runs
 non-interactively. `--help` on any command lists its subcommands and flags, and the

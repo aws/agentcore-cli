@@ -19,7 +19,7 @@ function sdkSession(
 ): RuntimeShellSdkSession & { closed: number } {
   return {
     sessionId: "server-session",
-    reconnected: false,
+    shellId: "server-shell",
     kicked: false,
     exitCode: 0,
     closed: 0,
@@ -82,6 +82,23 @@ describe("createRuntimeShellOpener", () => {
       },
     ]);
     expect(result.runtimeSessionId).toBe("server-session");
+    expect(result.shellId).toBe("server-shell");
+  });
+
+  test("a requested shell ID reaches the SDK", async () => {
+    const opens: RuntimeShellSdkOpenInput[] = [];
+    const opener = createRuntimeShellOpener({
+      createClient: () => ({
+        openShell: async (input) => {
+          opens.push(input);
+          return sdkSession();
+        },
+      }),
+    });
+
+    await opener({ ...REQUEST, shellId: "saved-shell" }, { region: "us-west-2" });
+
+    expect(opens[0]?.shellId).toBe("saved-shell");
   });
 
   test("uses OAuth auth for a bearer token", async () => {
@@ -103,12 +120,9 @@ describe("createRuntimeShellOpener", () => {
     ]);
   });
 
-  test("preserves the SDK reconnect outcome callback", async () => {
+  test("passes the reconnect callback through to the SDK", async () => {
     const opens: RuntimeShellSdkOpenInput[] = [];
-    const outcomes: boolean[] = [];
-    const onReconnect = async (reconnected: boolean) => {
-      outcomes.push(reconnected);
-    };
+    const onReconnect = async () => {};
     const opener = createRuntimeShellOpener({
       createClient: () => ({
         openShell: async (input) => {
@@ -120,10 +134,8 @@ describe("createRuntimeShellOpener", () => {
     });
 
     await opener({ ...REQUEST, onReconnect }, { region: "us-west-2" });
-    await opens[0]?.reconnectConfig?.onReconnect?.(false);
 
     expect(opens[0]?.reconnectConfig?.onReconnect).toBe(onReconnect);
-    expect(outcomes).toEqual([false]);
   });
 
   test("translates stdout and stderr frames and delegates writes", async () => {
@@ -204,9 +216,9 @@ describe("createRuntimeShellOpener", () => {
     expect(delays).toEqual([250, 500]);
   });
 
-  test("does not retry a non-retryable failure", async () => {
+  test.each([400, 403])("does not retry or translate an HTTP %s rejection", async (statusCode) => {
     let attempts = 0;
-    const failure = new Error("Server rejected WebSocket connection: HTTP 403");
+    const failure = new Error(`Server rejected WebSocket connection: HTTP ${statusCode}`);
     const opener = createRuntimeShellOpener({
       createClient: () => ({
         openShell: async () => {

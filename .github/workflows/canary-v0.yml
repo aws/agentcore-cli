@@ -1,0 +1,118 @@
+name: canary(v0)
+
+on:
+  schedule:
+    - cron: "25,55 * * * *"
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region for deployment
+        default: us-east-1
+
+concurrency:
+  group: canary-v0
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AGENTCORE_TELEMETRY_DISABLED: "1"
+
+jobs:
+  resolve_release:
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+      - name: Resolve latest published v0 release
+        id: resolve
+        run: |
+          # npm view with a major-version range returns every matching version.
+          version="$(npm view @aws/agentcore@0 version --json | jq -r '.[]' | sort -V | tail -n 1)"
+          if [[ -z "$version" ]]; then
+            echo "::error::No stable @aws/agentcore@0 version found"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  canary:
+    needs: resolve_release
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 30
+    steps:
+      # Use the test harness from the same release as the published CLI.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/v${{ needs.resolve_release.outputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20.x"
+          cache: npm
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@amazon.com"
+          git config --global user.name "CI"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+          unset-current-credentials: true
+      - name: Get AWS account ID
+        id: aws
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - name: Install resolved v0 CLI
+        env:
+          RELEASE_VERSION: ${{ needs.resolve_release.outputs.version }}
+        run: |
+          npm install -g "@aws/agentcore@${RELEASE_VERSION}"
+          agentcore --version
+      - name: Run v0 canary smoke test
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
+          AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+        run: npx vitest run --project e2e e2e-tests/strands-bedrock.test.ts --retry 1
+
+  heartbeat:
+    needs: [resolve_release, canary]
+    if: ${{ !cancelled() }}
+    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      # Use the emitter from this branch; the canary job checks out the v0 release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch E2E role from Secrets Manager
+        uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
+        with:
+          role-arn: ${{ secrets.WORKFLOW_SECRETS_READER_ROLE_ARN }}
+          repo: E2E_AWS_ROLE_ARN
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          unset-current-credentials: true
+      - name: Emit v0 canary heartbeat
+        env:
+          RESOLVE_RESULT: ${{ needs.resolve_release.result }}
+          CANARY_RESULT: ${{ needs.canary.result }}
+        run: |
+          status=failure
+          if [[ "$RESOLVE_RESULT" == "success" && "$CANARY_RESULT" == "success" ]]; then
+            status=success
+          fi
+          bash .github/scripts/emit-canary-heartbeat.sh "$status" AgentCoreCLI/Canary-v0

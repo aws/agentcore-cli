@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 
 /** The project spec, relative to the project root. */
 export const PROJECT_SPEC_RELATIVE_PATH = join("agentcore", "agentcore.json");
@@ -21,9 +23,32 @@ export function enclosingProjectRoot(directory: string): string | undefined {
   }
 }
 
+/** Classifies the project header without requiring either project schema to parse. */
+export async function detectProjectFormat(rootPath: string): Promise<"v0" | "v1" | "unknown"> {
+  try {
+    const contents = await readFile(projectSpecPath(rootPath), "utf8");
+    const header = z.object({ version: z.unknown().optional() }).safeParse(JSON.parse(contents));
+    if (!header.success) return "unknown";
+    if (header.data.version === 1) return "v0";
+    if (header.data.version === 2) return "v1";
+  } catch {
+    // Leave unreadable or malformed specs to normal project validation.
+  }
+  return "unknown";
+}
+
+/** Checks the project header without requiring the v1 project schema to parse. */
+export async function isV0Project(rootPath: string): Promise<boolean> {
+  return (await detectProjectFormat(rootPath)) === "v0";
+}
+
 export function toPythonPackageName(name: string): string {
   return name
     .replace(/[^a-zA-Z0-9._-]/g, "-")
     .replace(/^[^a-zA-Z0-9]+/, "")
     .replace(/[^a-zA-Z0-9]+$/, "");
+}
+
+export function defaultExportProjectName(harnessName: string): string {
+  return `Export${harnessName.replace(/_/g, "")}`.slice(0, 23);
 }

@@ -14,7 +14,7 @@ import type {
 } from "../../../../projectSchemas/gateway";
 import { createHandler, flag, ProjectKey } from "../../../../router";
 import { formatZodError } from "../../../../router/schema";
-import { parseJsonFlag, parseTags } from "../../../utils";
+import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
@@ -138,7 +138,7 @@ export const createAddGatewayHandler = (config: AddProjectResourceConfig) =>
         z.enum(["log-only", "enforce"]).optional(),
       ),
       flag("exception-level", "exception detail level: debug", z.enum(["debug"]).optional()),
-      flag("tags", "tags as repeated key=value or a JSON object", z.array(z.string()).optional()),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       if (

@@ -59,6 +59,7 @@ import type {
   GetDatasetResponse,
   ListConfigurationBundlesResponse,
   ListConfigurationBundleVersionsResponse,
+  VersionFilter,
   ListDatasetsResponse,
   GetEvaluatorResponse,
   GetOnlineEvaluationConfigResponse,
@@ -122,6 +123,7 @@ import type {
   CoreHarnessClient,
   CreateHarnessInput,
   ResolvedHarnessRuntime,
+  HarnessShellRequest,
 } from "../handlers/harness/types";
 import type {
   CoreGatewayClient,
@@ -182,8 +184,6 @@ import type {
   CreateTargetBasedABTestInput,
   CreateDatasetInput,
   CreateOnlineEvalInput,
-  CreateOnlineInsightInput,
-  UpdateOnlineInsightInput,
   DatasetUpdateResult,
   DatasetUpdateProgressEvent,
   EvaluateInput,
@@ -194,7 +194,6 @@ import type {
   GetTracesInput,
   LlmAsAJudgeUpdate,
   SessionTrace,
-  StartBatchInsightsInput,
   StartBatchEvaluationInput,
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
@@ -214,6 +213,8 @@ import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager, type ProjectBackend } from "../core/project";
+import { FsProjectMigrator } from "../core/project/migrate";
+import type { ProjectMigrator } from "../handlers/project/migrate/types";
 import type {
   BedrockAgentImportPlan,
   BedrockAgentImportRequest,
@@ -376,6 +377,7 @@ async function* events<T>(items: T[]): AsyncGenerator<T> {
 }
 
 const DEFAULT_RUNTIME_INVOKE_RESPONSE: RuntimeInvokeResponse = {
+  kind: "stream",
   statusCode: 200,
   contentType: "application/json",
   body: events([]),
@@ -410,6 +412,16 @@ export class TestHarnessClient implements CoreHarnessClient {
   private updateEndpointResponse: UpdateHarnessEndpointResponse = DEFAULT_UPDATE_ENDPOINT_RESPONSE;
   private deleteEndpointResponse: DeleteHarnessEndpointResponse = DEFAULT_DELETE_ENDPOINT_RESPONSE;
   private resolvedRuntime: ResolvedHarnessRuntime = DEFAULT_RESOLVED_HARNESS_RUNTIME;
+  private shellSession: RuntimeShellSession = {
+    runtimeSessionId: "harness-session-012345678901234567890123",
+    shellId: "harness-shell",
+    kicked: false,
+    exitCode: 0,
+    send: async () => {},
+    resize: async () => {},
+    close: async () => {},
+    async *[Symbol.asyncIterator]() {},
+  };
   private error?: Error;
 
   // setListResponse sets what listHarnesses resolves to (when not erroring).
@@ -418,6 +430,20 @@ export class TestHarnessClient implements CoreHarnessClient {
   setListResponse(response: ListHarnessesResponse, forNextToken?: string): this {
     this.listResponses.set(forNextToken, response);
     return this;
+  }
+
+  setShellSession(session: RuntimeShellSession): this {
+    this.shellSession = session;
+    return this;
+  }
+
+  async openHarnessShell(
+    request: HarnessShellRequest,
+    options: CoreOptions,
+  ): Promise<RuntimeShellSession> {
+    this.calls.push({ method: "openHarnessShell", args: [request, options] });
+    if (this.error) throw this.error;
+    return this.shellSession;
   }
 
   // setGetResponse sets what getHarness resolves to (when not erroring).
@@ -721,6 +747,7 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   private execStreams: AsyncIterable<InvokeAgentRuntimeCommandStreamOutput>[] = [];
   private shellSession: RuntimeShellSession = {
     runtimeSessionId: "runtime-session-012345678901234567890123",
+    shellId: "runtime-shell",
     kicked: false,
     exitCode: 0,
     send: async () => {},
@@ -826,6 +853,7 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   ): Promise<RuntimeInvokeResponse> {
     this.calls.push({ method: "invokeRuntime", args: [request, options, signal] });
     if (this.error) throw this.error;
+    if (this.invokeResponse.kind === "rejected") return this.invokeResponse;
     return {
       ...this.invokeResponse,
       body: this.invokeBodies.shift() ?? this.invokeResponse.body,
@@ -1344,6 +1372,8 @@ export class TestGatewayClient implements CoreGatewayClient {
 
 type TestCoreClientOptions = {
   logger?: Logger;
+  /** Defaults to the real migrator, which reads the project on disk and runs git. */
+  projectMigrator?: ProjectMigrator;
   json?: ReadWriteJson;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   createCloudFormationClient?: CreateCloudFormationClient;
@@ -1604,6 +1634,13 @@ export class TestPaymentClient implements CorePaymentClient {
 export class TestEvalClient implements CoreEvalClient {
   // calls records every invocation in order, for assertions.
   readonly calls: RecordedCall[] = [];
+  logSource: LogSource = { logGroupName: "/test/eval/results" };
+
+  async resourceOnlineEvaluationLogSource(id: string, options: CoreOptions) {
+    this.calls.push({ method: "resourceOnlineEvaluationLogSource", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.logSource;
+  }
 
   // List responses are keyed by the nextToken that requests them (undefined =
   // the first page), so tests can serve multi-page listings.
@@ -1662,7 +1699,6 @@ export class TestEvalClient implements CoreEvalClient {
   // simulates a CloudWatch read failure surfaced as `resultsError`.
   private batchEvalGetResponse: GetBatchEvaluationResponse = DEFAULT_GET_BATCH_EVAL_RESPONSE;
   private batchEvalListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
-  private batchInsightsListResponses = new Map<string | undefined, ListBatchEvaluationsResponse>();
   private abTestGetResponse: GetABTestResponse = DEFAULT_GET_ABTEST_RESPONSE;
   private abTestListResponses = new Map<string | undefined, ListABTestsResponse>();
   private abTestUpdateResponse: UpdateABTestResponse = DEFAULT_UPDATE_ABTEST_RESPONSE;
@@ -1875,16 +1911,6 @@ export class TestEvalClient implements CoreEvalClient {
     return this;
   }
 
-  // setBatchInsightsListResponse sets what listBatchInsights resolves to (when
-  // not erroring). Pass `forNextToken` to serve a later logical Insights page.
-  setBatchInsightsListResponse(
-    response: ListBatchEvaluationsResponse,
-    forNextToken?: string,
-  ): this {
-    this.batchInsightsListResponses.set(forNextToken, response);
-    return this;
-  }
-
   // setBatchEvalResults sets the per-session results getBatchEvaluation merges in
   // (when results are requested, the job is terminal, and it has a CloudWatch
   // output config).
@@ -2060,17 +2086,6 @@ export class TestEvalClient implements CoreEvalClient {
     return { detail };
   }
 
-  async getBatchInsights(id: string, options: CoreOptions): Promise<BatchEvaluationDetail> {
-    this.calls.push({ method: "getBatchInsights", args: [id, options] });
-    if (this.error) throw this.error;
-
-    const detail: BatchEvaluationDetail = { ...this.batchEvalGetResponse };
-    if (!detail.insights?.length) {
-      throw new InputValidationError(`batch evaluation "${id}" is not a batch insights run`);
-    }
-    return detail;
-  }
-
   async listBatchEvaluations(
     nextToken: string | undefined,
     maxResults: number | undefined,
@@ -2092,20 +2107,6 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "stopBatchEvaluation", args: [id, options] });
     if (this.error) throw this.error;
     return this.stopBatchEvalResponse;
-  }
-
-  async listBatchInsights(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListBatchEvaluationsResponse> {
-    this.calls.push({ method: "listBatchInsights", args: [nextToken, maxResults, options] });
-    if (this.error) throw this.error;
-    const response =
-      this.batchInsightsListResponses.get(nextToken) ??
-      this.batchInsightsListResponses.get(undefined) ??
-      DEFAULT_LIST_BATCH_EVALS_RESPONSE;
-    return { ...response, batchEvaluations: response.batchEvaluations ?? [] };
   }
 
   async getABTest(id: string, options: CoreOptions): Promise<GetABTestResponse> {
@@ -2167,15 +2168,6 @@ export class TestEvalClient implements CoreEvalClient {
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse> {
     this.calls.push({ method: "startBatchEvaluation", args: [input, options] });
-    if (this.error) throw this.error;
-    return this.startBatchEvalResponse;
-  }
-
-  async startBatchInsights(
-    input: StartBatchInsightsInput,
-    options: CoreOptions,
-  ): Promise<StartBatchEvaluationResponse> {
-    this.calls.push({ method: "startBatchInsights", args: [input, options] });
     if (this.error) throw this.error;
     return this.startBatchEvalResponse;
   }
@@ -2284,66 +2276,6 @@ export class TestEvalClient implements CoreEvalClient {
     return this.onlineEvalDeleteResponse;
   }
 
-  async createOnlineInsight(
-    input: CreateOnlineInsightInput,
-    options: CoreOptions,
-  ): Promise<CreateOnlineEvaluationConfigResponse> {
-    this.calls.push({ method: "createOnlineInsight", args: [input, options] });
-    if (this.error) throw this.error;
-    return this.onlineEvalCreateResponse;
-  }
-
-  async updateOnlineInsight(
-    id: string,
-    update: UpdateOnlineInsightInput,
-    options: CoreOptions,
-  ): Promise<UpdateOnlineEvaluationConfigResponse> {
-    this.calls.push({ method: "updateOnlineInsight", args: [id, update, options] });
-    if (this.error) throw this.error;
-    return this.onlineEvalUpdateResponse;
-  }
-
-  async getOnlineInsight(
-    id: string,
-    options: CoreOptions,
-  ): Promise<GetOnlineEvaluationConfigResponse> {
-    this.calls.push({ method: "getOnlineInsight", args: [id, options] });
-    if (this.error) throw this.error;
-    return this.onlineEvalGetResponse;
-  }
-
-  async listOnlineInsights(
-    nextToken: string | undefined,
-    maxResults: number | undefined,
-    options: CoreOptions,
-  ): Promise<ListOnlineEvaluationConfigsResponse> {
-    this.calls.push({ method: "listOnlineInsights", args: [nextToken, maxResults, options] });
-    if (this.error) throw this.error;
-    return this.onlineEvalListResponses.get(nextToken) ?? { onlineEvaluationConfigs: [] };
-  }
-
-  async setOnlineInsightExecutionStatus(
-    id: string,
-    executionStatus: "ENABLED" | "DISABLED",
-    options: CoreOptions,
-  ): Promise<UpdateOnlineEvaluationConfigResponse> {
-    this.calls.push({
-      method: "setOnlineInsightExecutionStatus",
-      args: [id, executionStatus, options],
-    });
-    if (this.error) throw this.error;
-    return this.onlineEvalUpdateResponse;
-  }
-
-  async deleteOnlineInsight(
-    id: string,
-    options: CoreOptions,
-  ): Promise<DeleteOnlineEvaluationConfigResponse> {
-    this.calls.push({ method: "deleteOnlineInsight", args: [id, options] });
-    if (this.error) throw this.error;
-    return this.onlineEvalDeleteResponse;
-  }
-
   async createConfigurationBundle(
     input: CreateConfigurationBundleInput,
     options: CoreOptions,
@@ -2404,10 +2336,13 @@ export class TestEvalClient implements CoreEvalClient {
     nextToken: string | undefined,
     maxResults: number | undefined,
     options: CoreOptions,
+    filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse> {
     this.calls.push({
       method: "listConfigurationBundleVersions",
-      args: [id, nextToken, maxResults, options],
+      args: filter
+        ? [id, nextToken, maxResults, options, filter]
+        : [id, nextToken, maxResults, options],
     });
     if (this.error) throw this.error;
     return (
@@ -2614,6 +2549,7 @@ export class TestCoreClient implements Core {
     throw new Error("TestCoreClient.fetch is not configured; set it in the test that needs it");
   }) as unknown as CoreFetch;
   readonly projectManager: ProjectManager;
+  readonly projectMigrator: ProjectMigrator;
 
   // Commands the project manager would have run (npm install, git init, ...),
   // recorded instead of spawned so tests stay fast and hermetic.
@@ -2641,6 +2577,13 @@ export class TestCoreClient implements Core {
   };
 
   constructor(options?: TestCoreClientOptions) {
+    this.projectMigrator =
+      options?.projectMigrator ??
+      new FsProjectMigrator({
+        logger: options?.logger ?? createSilentLogger(),
+        // Tests that reach AWS reads pass their own migrator with fake seams.
+        createCloudFormationClient: options?.createCloudFormationClient,
+      });
     this.projectManager = new FsProjectManager({
       logger: options?.logger ?? createSilentLogger(),
       createCloudFormationClient: options?.createCloudFormationClient,

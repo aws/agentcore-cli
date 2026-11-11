@@ -1,0 +1,1501 @@
+{
+ "Description": "AgentCore stack for CompatRef deployed to default (us-east-1)",
+ "Resources": {
+  "ApplicationMemoryAgent1MemoryServiceRole069B32EF": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": "123456789012"
+        },
+        "ArnLike": {
+         "aws:SourceArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:memory/CompatRef_agent1Memory*"
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/MemoryAgent1Memory/Resource/ServiceRole/Resource"
+   }
+  },
+  "ApplicationMemoryAgent1MemoryMemory16C002F9": {
+   "Type": "AWS::BedrockAgentCore::Memory",
+   "Properties": {
+    "EventExpiryDuration": 30,
+    "MemoryExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationMemoryAgent1MemoryServiceRole069B32EF",
+      "Arn"
+     ]
+    },
+    "MemoryStrategies": [
+     {
+      "SemanticMemoryStrategy": {
+       "Name": "agent1Memory_Semantic",
+       "NamespaceTemplates": [
+        "/users/{actorId}/facts"
+       ]
+      }
+     },
+     {
+      "UserPreferenceMemoryStrategy": {
+       "Name": "agent1Memory_Userpreference",
+       "NamespaceTemplates": [
+        "/users/{actorId}/preferences"
+       ]
+      }
+     },
+     {
+      "SummaryMemoryStrategy": {
+       "Name": "agent1Memory_Summarization",
+       "NamespaceTemplates": [
+        "/summaries/{actorId}/{sessionId}"
+       ]
+      }
+     },
+     {
+      "EpisodicMemoryStrategy": {
+       "Name": "agent1Memory_Episodic",
+       "NamespaceTemplates": [
+        "/episodes/{actorId}/{sessionId}"
+       ],
+       "ReflectionConfiguration": {
+        "NamespaceTemplates": [
+         "/episodes/{actorId}"
+        ]
+       }
+      }
+     }
+    ],
+    "Name": "CompatRef_agent1Memory",
+    "Tags": {
+     "agentcore:created-by": "agentcore-cli",
+     "agentcore:project-name": "CompatRef"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/MemoryAgent1Memory/Resource/Memory"
+   }
+  },
+  "ApplicationEvaluatorRefjudgeB84BC6F1": {
+   "Type": "AWS::BedrockAgentCore::Evaluator",
+   "Properties": {
+    "EvaluatorConfig": {
+     "LlmAsAJudge": {
+      "Instructions": "Rate the session. Context: {context}",
+      "ModelConfig": {
+       "BedrockEvaluatorModelConfig": {
+        "InferenceConfig": {
+         "MaxTokens": 4096,
+         "Temperature": 0
+        },
+        "ModelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+       }
+      },
+      "RatingScale": {
+       "Numerical": [
+        {
+         "Definition": "Fails to meet expectations",
+         "Label": "Poor",
+         "Value": 1
+        },
+        {
+         "Definition": "Partially meets expectations",
+         "Label": "Fair",
+         "Value": 2
+        },
+        {
+         "Definition": "Meets expectations",
+         "Label": "Good",
+         "Value": 3
+        },
+        {
+         "Definition": "Exceeds expectations",
+         "Label": "Very Good",
+         "Value": 4
+        },
+        {
+         "Definition": "Far exceeds expectations",
+         "Label": "Excellent",
+         "Value": 5
+        }
+       ]
+      }
+     }
+    },
+    "EvaluatorName": "CompatRef_refjudge",
+    "Level": "SESSION",
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefjudge/Resource/Resource"
+   }
+  },
+  "ApplicationEvaluatorRefcodeLambdaRole91F4F9D8": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Execution role for code-based evaluator: refcode",
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefcode/LambdaRole/Resource"
+   }
+  },
+  "ApplicationEvaluatorRefcodeCustomPolicy07D71B240": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:*:logs:*:*:log-group:/aws/lambda/*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationEvaluatorRefcodeCustomPolicy07D71B240",
+    "Roles": [
+     {
+      "Ref": "ApplicationEvaluatorRefcodeLambdaRole91F4F9D8"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefcode/CustomPolicy0/Resource"
+   }
+  },
+  "ApplicationEvaluatorRefcodeFunctionAC701828": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Architectures": [
+     "arm64"
+    ],
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "a73bbed718a1825e1454726fea814d69ae91ea9fcfd2d35f2b3c7b65f67bf8a7.zip"
+    },
+    "FunctionName": "CompatRef-eval-refcode",
+    "Handler": "lambda_function.handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "ApplicationEvaluatorRefcodeLambdaRole91F4F9D8",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.12",
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ],
+    "Timeout": 60
+   },
+   "DependsOn": [
+    "ApplicationEvaluatorRefcodeLambdaRole91F4F9D8"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefcode/Function/Resource"
+   }
+  },
+  "ApplicationEvaluatorRefcodeFunctionLogGroup7073449F": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": {
+     "Fn::Join": [
+      "",
+      [
+       "/aws/lambda/",
+       {
+        "Ref": "ApplicationEvaluatorRefcodeFunctionAC701828"
+       }
+      ]
+     ]
+    },
+    "RetentionInDays": 731,
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefcode/Function/LogGroup/Resource"
+   }
+  },
+  "ApplicationEvaluatorRefcodeFunctionBedrockAgentCoreEvaluatorInvokeE8AA0D2E": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApplicationEvaluatorRefcodeFunctionAC701828",
+      "Arn"
+     ]
+    },
+    "Principal": "bedrock-agentcore.amazonaws.com",
+    "SourceAccount": "123456789012",
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "ApplicationEvaluatorRefcodeD65DBAE2",
+      "EvaluatorArn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefcode/Function/BedrockAgentCoreEvaluatorInvoke"
+   }
+  },
+  "ApplicationEvaluatorRefcodeD65DBAE2": {
+   "Type": "AWS::BedrockAgentCore::Evaluator",
+   "Properties": {
+    "EvaluatorConfig": {
+     "CodeBased": {
+      "LambdaConfig": {
+       "LambdaArn": {
+        "Fn::GetAtt": [
+         "ApplicationEvaluatorRefcodeFunctionAC701828",
+         "Arn"
+        ]
+       },
+       "LambdaTimeoutInSeconds": 60
+      }
+     }
+    },
+    "EvaluatorName": "CompatRef_refcode",
+    "Level": "SESSION",
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/EvaluatorRefcode/Resource/Resource"
+   }
+  },
+  "ApplicationPolicyEngineRefpe843FA582": {
+   "Type": "AWS::BedrockAgentCore::PolicyEngine",
+   "Properties": {
+    "Name": "CompatRef_refpe",
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/PolicyEngineRefpe/Resource/Resource"
+   }
+  },
+  "ApplicationPolicyEngineRefpePolicyrefpol6B84A474": {
+   "Type": "AWS::BedrockAgentCore::Policy",
+   "Properties": {
+    "Definition": {
+     "Policy": {
+      "Statement": "permit(principal, action, resource is AgentCore::Gateway);"
+     }
+    },
+    "EnforcementMode": "ACTIVE",
+    "Name": "refpol",
+    "PolicyEngineId": {
+     "Fn::GetAtt": [
+      "ApplicationPolicyEngineRefpe843FA582",
+      "PolicyEngineId"
+     ]
+    },
+    "ValidationMode": "IGNORE_ALL_FINDINGS"
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/PolicyEngineRefpe/Policyrefpol"
+   }
+  },
+  "ApplicationRuntimeAgent1RuntimeExecutionRole37F71038": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": "123456789012"
+        },
+        "ArnLike": {
+         "aws:SourceArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/CompatRef_agent1*"
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Execution role for Bedrock Agent Core Runtime",
+    "MaxSessionDuration": 28800,
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/RuntimeAgent1/Runtime/Resource/ExecutionRole/Resource"
+   }
+  },
+  "ApplicationRuntimeAgent1RuntimeExecutionRoleDefaultPolicyC2FC8CDC": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:CreateLogGroup",
+        "logs:DescribeLogStreams"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/bedrock-agentcore/runtimes/*",
+       "Sid": "LogGroupAccess"
+      },
+      {
+       "Action": "logs:DescribeLogGroups",
+       "Effect": "Allow",
+       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:*",
+       "Sid": "DescribeLogGroups"
+      },
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*",
+       "Sid": "LogStreamAccess"
+      },
+      {
+       "Action": [
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+        "xray:PutTelemetryRecords",
+        "xray:PutTraceSegments"
+       ],
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "XRayAccess"
+      },
+      {
+       "Action": "cloudwatch:PutMetricData",
+       "Condition": {
+        "StringEquals": {
+         "cloudwatch:namespace": "bedrock-agentcore"
+        }
+       },
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "CloudWatchMetrics"
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:GetWorkloadAccessToken",
+        "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+        "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default",
+        "arn:aws:bedrock-agentcore:us-east-1:123456789012:workload-identity-directory/default/workload-identity/*"
+       ],
+       "Sid": "GetAgentAccessToken"
+      },
+      {
+       "Action": [
+        "bedrock:CountTokens",
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:bedrock:*:123456789012:inference-profile/*",
+        "arn:aws:bedrock:*::foundation-model/*"
+       ]
+      },
+      {
+       "Action": [
+        "logs:FilterLogEvents",
+        "logs:GetLogEvents",
+        "logs:PutResourcePolicy"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/bedrock-agentcore/runtimes/*"
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:CreateConfigurationBundle",
+        "bedrock-agentcore:DeleteConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundleVersion",
+        "bedrock-agentcore:ListConfigurationBundleVersions",
+        "bedrock-agentcore:ListConfigurationBundles",
+        "bedrock-agentcore:UpdateConfigurationBundle"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:bedrock-agentcore:*:*:configuration-bundle/*"
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:ListMemoryRecords",
+        "bedrock-agentcore:RetrieveMemoryRecords"
+       ],
+       "Condition": {
+        "StringLike": {
+         "bedrock-agentcore:namespace": [
+          "/users/*/facts",
+          "/users/*/preferences",
+          "/summaries/*/*",
+          "/episodes/*/*"
+         ]
+        }
+       },
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ApplicationMemoryAgent1MemoryMemory16C002F9",
+         "MemoryArn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:ListMemoryRecords",
+        "bedrock-agentcore:RetrieveMemoryRecords"
+       ],
+       "Condition": {
+        "StringLike": {
+         "bedrock-agentcore:namespacePath": [
+          "/users/*/facts",
+          "/users/*/preferences",
+          "/summaries/*/*",
+          "/episodes/*/*"
+         ]
+        }
+       },
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ApplicationMemoryAgent1MemoryMemory16C002F9",
+         "MemoryArn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:CreateEvent",
+        "bedrock-agentcore:DeleteEvent",
+        "bedrock-agentcore:DeleteMemoryRecord",
+        "bedrock-agentcore:GetEvent",
+        "bedrock-agentcore:GetMemory",
+        "bedrock-agentcore:GetMemoryRecord",
+        "bedrock-agentcore:ListActors",
+        "bedrock-agentcore:ListEvents",
+        "bedrock-agentcore:ListSessions"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ApplicationMemoryAgent1MemoryMemory16C002F9",
+         "MemoryArn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "s3:GetBucket*",
+        "s3:GetObject*",
+        "s3:List*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:s3:::cdk-hnb659fds-assets-123456789012-us-east-1",
+        "arn:aws:s3:::cdk-hnb659fds-assets-123456789012-us-east-1/*"
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationRuntimeAgent1RuntimeExecutionRoleDefaultPolicyC2FC8CDC",
+    "Roles": [
+     {
+      "Ref": "ApplicationRuntimeAgent1RuntimeExecutionRole37F71038"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/RuntimeAgent1/Runtime/Resource/ExecutionRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApplicationRuntimeAgent1Runtime0F7E9C1B": {
+   "Type": "AWS::BedrockAgentCore::Runtime",
+   "Properties": {
+    "AgentRuntimeArtifact": {
+     "CodeConfiguration": {
+      "Code": {
+       "S3": {
+        "Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+        "Prefix": "5ec32564b5a3ad3cf2520cff699bd6e5e839c6e7261cafd0cbd00b73cae6f2d5.zip"
+       }
+      },
+      "EntryPoint": [
+       "opentelemetry-instrument",
+       "main.py"
+      ],
+      "Runtime": "PYTHON_3_14"
+     }
+    },
+    "AgentRuntimeName": "CompatRef_agent1",
+    "Description": "AgentCore Runtime: CompatRef_agent1",
+    "EnvironmentVariables": {
+     "AGENTCORE_MEMORY_AGENT1MEMORY_ID": {
+      "Fn::GetAtt": [
+       "ApplicationMemoryAgent1MemoryMemory16C002F9",
+       "MemoryId"
+      ]
+     },
+     "AGENTCORE_MEMORY_AGENT1MEMORY_ARN": {
+      "Fn::GetAtt": [
+       "ApplicationMemoryAgent1MemoryMemory16C002F9",
+       "MemoryArn"
+      ]
+     },
+     "AGENTCORE_GATEWAY_REFGW_URL": {
+      "Fn::Join": [
+       "",
+       [
+        {
+         "Fn::GetAtt": [
+          "ApplicationGatewayRefgw1FB17FC1",
+          "GatewayUrl"
+         ]
+        },
+        "/mcp"
+       ]
+      ]
+     },
+     "AGENTCORE_GATEWAY_REFGW_ARN": {
+      "Fn::GetAtt": [
+       "ApplicationGatewayRefgw1FB17FC1",
+       "GatewayArn"
+      ]
+     },
+     "AGENTCORE_GATEWAY_REFGW_AUTH_TYPE": "NONE"
+    },
+    "LifecycleConfiguration": {},
+    "NetworkConfiguration": {
+     "NetworkMode": "PUBLIC"
+    },
+    "ProtocolConfiguration": "HTTP",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationRuntimeAgent1RuntimeExecutionRole37F71038",
+      "Arn"
+     ]
+    },
+    "Tags": {
+     "agentcore:created-by": "agentcore-cli",
+     "agentcore:project-name": "CompatRef"
+    }
+   },
+   "DependsOn": [
+    "ApplicationRuntimeAgent1RuntimeExecutionRoleDefaultPolicyC2FC8CDC",
+    "ApplicationRuntimeAgent1RuntimeExecutionRole37F71038"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/RuntimeAgent1/Runtime/Resource/Resource"
+   }
+  },
+  "ApplicationConfigBundleRefcbComponents4EDA5741": {
+   "Type": "Custom::AWSCDKCfnJson",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "AWSCDKCfnUtilsProviderCustomResourceProviderHandlerCF82AA57",
+      "Arn"
+     ]
+    },
+    "Value": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"",
+       {
+        "Fn::GetAtt": [
+         "ApplicationRuntimeAgent1Runtime0F7E9C1B",
+         "AgentRuntimeArn"
+        ]
+       },
+       "\":{\"Configuration\":{\"k\":\"v\"}}}"
+      ]
+     ]
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/ConfigBundleRefcb/Components/Resource/Default"
+   }
+  },
+  "ApplicationConfigBundleRefcb9FCFB8E4": {
+   "Type": "AWS::BedrockAgentCore::ConfigurationBundle",
+   "Properties": {
+    "BranchName": "mainline",
+    "BundleName": "CompatRef_refcb",
+    "Components": {
+     "Fn::GetAtt": [
+      "ApplicationConfigBundleRefcbComponents4EDA5741",
+      "Value"
+     ]
+    },
+    "CreatedBy": {
+     "Name": "user"
+    },
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/ConfigBundleRefcb/Resource"
+   }
+  },
+  "ApplicationOnlineEvalRefoecExecutionRole1AA01064": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": "123456789012",
+         "aws:ResourceAccount": "123456789012"
+        },
+        "ArnLike": {
+         "aws:SourceArn": [
+          "arn:aws:bedrock-agentcore:us-east-1:123456789012:evaluator/*",
+          "arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/*"
+         ]
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Execution role for Bedrock AgentCore Online Evaluation",
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/OnlineEvalRefoec/Resource/ExecutionRole/Resource"
+   }
+  },
+  "ApplicationOnlineEvalRefoecExecutionRoleDefaultPolicy8C2E5D2C": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "logs:DescribeLogGroups",
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "CloudWatchLogDescribeStatement"
+      },
+      {
+       "Action": [
+        "logs:GetQueryResults",
+        "logs:StartQuery"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:logs:us-east-1:123456789012:log-group:aws/spans",
+        "arn:aws:logs:us-east-1:123456789012:log-group:aws/spans:*",
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:aws:logs:us-east-1:123456789012:log-group:/aws/bedrock-agentcore/runtimes/",
+           {
+            "Fn::GetAtt": [
+             "ApplicationRuntimeAgent1Runtime0F7E9C1B",
+             "AgentRuntimeId"
+            ]
+           },
+           "-DEFAULT"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:aws:logs:us-east-1:123456789012:log-group:/aws/bedrock-agentcore/runtimes/",
+           {
+            "Fn::GetAtt": [
+             "ApplicationRuntimeAgent1Runtime0F7E9C1B",
+             "AgentRuntimeId"
+            ]
+           },
+           "-DEFAULT:*"
+          ]
+         ]
+        }
+       ],
+       "Sid": "CloudWatchLogQueryStatement"
+      },
+      {
+       "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/bedrock-agentcore/evaluations/*",
+       "Sid": "CloudWatchLogWriteStatement"
+      },
+      {
+       "Action": [
+        "logs:DescribeIndexPolicies",
+        "logs:PutIndexPolicy"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:logs:us-east-1:123456789012:log-group:aws/spans",
+        "arn:aws:logs:us-east-1:123456789012:log-group:aws/spans:*"
+       ],
+       "Sid": "CloudWatchIndexPolicyStatement"
+      },
+      {
+       "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        "arn:aws:bedrock:*:123456789012:inference-profile/*",
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:*::foundation-model/*"
+          ]
+         ]
+        }
+       ],
+       "Sid": "BedrockInvokeStatement"
+      },
+      {
+       "Action": [
+        "cloudwatch:GenerateQuery",
+        "cloudwatch:GenerateQueryResultsSummary"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "lambda:GetFunction",
+        "lambda:InvokeFunction"
+       ],
+       "Effect": "Allow",
+       "Resource": "arn:aws:lambda:us-east-1:123456789012:function:*"
+      },
+      {
+       "Action": "bedrock-agentcore:GetOnlineEvaluationConfig",
+       "Effect": "Allow",
+       "Resource": "arn:aws:bedrock-agentcore:us-east-1:123456789012:online-evaluation-config/CompatRef_refoec-*"
+      },
+      {
+       "Action": "bedrock-agentcore:StartBatchEvaluation",
+       "Effect": "Allow",
+       "Resource": "arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationOnlineEvalRefoecExecutionRoleDefaultPolicy8C2E5D2C",
+    "Roles": [
+     {
+      "Ref": "ApplicationOnlineEvalRefoecExecutionRole1AA01064"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/OnlineEvalRefoec/Resource/ExecutionRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApplicationOnlineEvalRefoec9D19D97C": {
+   "Type": "AWS::BedrockAgentCore::OnlineEvaluationConfig",
+   "Properties": {
+    "DataSourceConfig": {
+     "CloudWatchLogs": {
+      "LogGroupNames": [
+       {
+        "Fn::Join": [
+         "",
+         [
+          "/aws/bedrock-agentcore/runtimes/",
+          {
+           "Fn::GetAtt": [
+            "ApplicationRuntimeAgent1Runtime0F7E9C1B",
+            "AgentRuntimeId"
+           ]
+          },
+          "-DEFAULT"
+         ]
+        ]
+       }
+      ],
+      "ServiceNames": [
+       "CompatRef_agent1.DEFAULT"
+      ]
+     }
+    },
+    "EvaluationExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationOnlineEvalRefoecExecutionRole1AA01064",
+      "Arn"
+     ]
+    },
+    "Evaluators": [
+     {
+      "EvaluatorId": {
+       "Fn::GetAtt": [
+        "ApplicationEvaluatorRefjudgeB84BC6F1",
+        "EvaluatorId"
+       ]
+      }
+     }
+    ],
+    "ExecutionStatus": "ENABLED",
+    "OnlineEvaluationConfigName": "CompatRef_refoec",
+    "Rule": {
+     "SamplingConfig": {
+      "SamplingPercentage": 10
+     },
+     "SessionConfig": {
+      "SessionTimeoutMinutes": 5
+     }
+    },
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "DependsOn": [
+    "ApplicationOnlineEvalRefoecExecutionRoleDefaultPolicy8C2E5D2C",
+    "ApplicationOnlineEvalRefoecExecutionRole1AA01064",
+    "ApplicationRuntimeAgent1RuntimeExecutionRoleDefaultPolicyC2FC8CDC",
+    "ApplicationRuntimeAgent1RuntimeExecutionRole37F71038",
+    "ApplicationRuntimeAgent1Runtime0F7E9C1B"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/OnlineEvalRefoec/Resource/Resource"
+   }
+  },
+  "ApplicationGatewayRefgwServiceRole669D3EE1": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": "123456789012"
+        },
+        "ArnLike": {
+         "aws:SourceArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/CompatRef-refgw*"
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Service role for Bedrock AgentCore Gateway CompatRef-refgw",
+    "Tags": [
+     {
+      "Key": "agentcore:created-by",
+      "Value": "agentcore-cli"
+     },
+     {
+      "Key": "agentcore:project-name",
+      "Value": "CompatRef"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/GatewayRefgw/Resource/ServiceRole/Resource"
+   }
+  },
+  "ApplicationGatewayRefgw1FB17FC1": {
+   "Type": "AWS::BedrockAgentCore::Gateway",
+   "Properties": {
+    "AuthorizerType": "NONE",
+    "Description": "Gateway for refgw",
+    "Name": "CompatRef-refgw",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationGatewayRefgwServiceRole669D3EE1",
+      "Arn"
+     ]
+    },
+    "Tags": {
+     "agentcore:created-by": "agentcore-cli",
+     "agentcore:project-name": "CompatRef"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/GatewayRefgw/Resource/Resource"
+   }
+  },
+  "ApplicationGatewayRefgwTargetRemoteC0E25011": {
+   "Type": "AWS::BedrockAgentCore::GatewayTarget",
+   "Properties": {
+    "Description": "External MCP server: remote",
+    "GatewayIdentifier": {
+     "Fn::GetAtt": [
+      "ApplicationGatewayRefgw1FB17FC1",
+      "GatewayIdentifier"
+     ]
+    },
+    "Name": "remote",
+    "TargetConfiguration": {
+     "Mcp": {
+      "McpServer": {
+       "Endpoint": "https://knowledge-mcp.global.api.aws"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/Application/GatewayRefgw/Resource/TargetRemote/Resource"
+   }
+  },
+  "AWSCDKCfnUtilsProviderCustomResourceProviderRoleFE0EE867": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/AWSCDKCfnUtilsProviderCustomResourceProvider/Role"
+   }
+  },
+  "AWSCDKCfnUtilsProviderCustomResourceProviderHandlerCF82AA57": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "3fc3a788e8730811e7ec758fb84134e1e24877f8248901484d1e046dee803b5a.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "__entrypoint__.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "AWSCDKCfnUtilsProviderCustomResourceProviderRoleFE0EE867",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs24.x"
+   },
+   "DependsOn": [
+    "AWSCDKCfnUtilsProviderCustomResourceProviderRoleFE0EE867"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/AWSCDKCfnUtilsProviderCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.3fc3a788e8730811e7ec758fb84134e1e24877f8248901484d1e046dee803b5a",
+    "aws:asset:property": "Code"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/+VW24rbMBD9ltVjUdSSQKF5S3a3S0svIcmbWZaJNHG0saWgS9JU+N+LZTm3lpY22zawD8ajc2Y0NwlNl3Vfv2GvrmBjO1wsO4WcsTBxwJcUNvYhzFAYzZeQo3JcG2ThI5babDPygtCT755ez1VD09s1FB6cNtkhuUPpSBeSb29VLhVmLX0I7td07JWT5V4trWvxWqu5zL0BJ7UaeiUK3LsegkX6WRVSYcKkTha7vX5M0ztwuIHtUfAJa7kpmBxddsI2aEUllCyMdYFZIGCtL1EMt6QfyMpIxeUKigHn2itH+tFHo1MbDHgdR4Srip5jTYlAy41c7SBKSlCQo4iVlWhJPwtH2HZgkvV9dO4c8MW7WKSGJ/2Y8q/JJw77ywStlVrdpGYn3UBAiKketQ52cYSzE/j5vv+VvViTv8I+4Un60+TOPEUX269LafG/OwDNC6ILTE9QFojQ3JeYttp3dKprte8afQLX3n/PIqY7ceCwdmqPqvBc4edexYPxp6K29wDWorNsUP+o7bGh50t09UCzH0kKKGcCWHjrVTzyWSDzJH6CEtPFMM2w1F4TwxfSIXfe7BRiVaO4gHqAMmnFtWiJegft27tWxhFvIr/iwZVqo4iJoCllfK0rWujcsvBB53dG+1UWSJHEXYyNfatRVTRmPXGQS5XHGc27lXe19N7WDrx1uhyj1d5wPBrRWvBEZ2T0WgqMA2FFlRbIHu3LdbfLuj3WvXq0UnZSnVgaLr8BNaSa9RgLAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "AgentCore-CompatRef-default/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "ApplicationRuntimeAgent1RuntimeIdOutputE975D7E3": {
+   "Description": "Runtime ID for: agent1",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeAgent1Runtime0F7E9C1B",
+     "AgentRuntimeId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-agent1-RuntimeId"
+   }
+  },
+  "ApplicationRuntimeAgent1RuntimeArnOutput0D38885F": {
+   "Description": "Runtime ARN for: agent1",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeAgent1Runtime0F7E9C1B",
+     "AgentRuntimeArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-agent1-RuntimeArn"
+   }
+  },
+  "ApplicationRuntimeAgent1RoleArnOutputB80B1317": {
+   "Description": "Execution Role ARN for: agent1",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeAgent1RuntimeExecutionRole37F71038",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-agent1-RoleArn"
+   }
+  },
+  "ApplicationMemoryAgent1MemoryIdOutput9E3F487A": {
+   "Description": "Memory ID for: agent1Memory",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationMemoryAgent1MemoryMemory16C002F9",
+     "MemoryId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Memory-agent1Memory-Id"
+   }
+  },
+  "ApplicationMemoryAgent1MemoryArnOutputF4907ADC": {
+   "Description": "Memory ARN for: agent1Memory",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationMemoryAgent1MemoryMemory16C002F9",
+     "MemoryArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Memory-agent1Memory-Arn"
+   }
+  },
+  "ApplicationMemoryIds538D889E": {
+   "Description": "Memory IDs for the project",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationMemoryAgent1MemoryMemory16C002F9",
+     "MemoryId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-MemoryIds"
+   }
+  },
+  "ApplicationMemoryNames676588DB": {
+   "Description": "Memory names for the project",
+   "Value": "agent1Memory",
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-MemoryNames"
+   }
+  },
+  "ApplicationEvaluatorRefjudgeIdOutput267F4A20": {
+   "Description": "Evaluator ID for: refjudge",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationEvaluatorRefjudgeB84BC6F1",
+     "EvaluatorId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Evaluator-refjudge-Id"
+   }
+  },
+  "ApplicationEvaluatorRefjudgeArnOutputB07F6169": {
+   "Description": "Evaluator ARN for: refjudge",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationEvaluatorRefjudgeB84BC6F1",
+     "EvaluatorArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Evaluator-refjudge-Arn"
+   }
+  },
+  "ApplicationEvaluatorRefcodeIdOutput5B188AAE": {
+   "Description": "Evaluator ID for: refcode",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationEvaluatorRefcodeD65DBAE2",
+     "EvaluatorId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Evaluator-refcode-Id"
+   }
+  },
+  "ApplicationEvaluatorRefcodeArnOutput4333BD8F": {
+   "Description": "Evaluator ARN for: refcode",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationEvaluatorRefcodeD65DBAE2",
+     "EvaluatorArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Evaluator-refcode-Arn"
+   }
+  },
+  "ApplicationOnlineEvalRefoecIdOutput25E346E7": {
+   "Description": "Online evaluation config ID for: refoec",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationOnlineEvalRefoec9D19D97C",
+     "OnlineEvaluationConfigId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-OnlineEval-refoec-Id"
+   }
+  },
+  "ApplicationOnlineEvalRefoecArnOutput3A042A59": {
+   "Description": "Online evaluation config ARN for: refoec",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationOnlineEvalRefoec9D19D97C",
+     "OnlineEvaluationConfigArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-OnlineEval-refoec-Arn"
+   }
+  },
+  "ApplicationPolicyEngineRefpeIdOutput39686D9A": {
+   "Description": "Policy Engine ID for: refpe",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationPolicyEngineRefpe843FA582",
+     "PolicyEngineId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-PolicyEngine-refpe-Id"
+   }
+  },
+  "ApplicationPolicyEngineRefpeArnOutputE984417A": {
+   "Description": "Policy Engine ARN for: refpe",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationPolicyEngineRefpe843FA582",
+     "PolicyEngineArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-PolicyEngine-refpe-Arn"
+   }
+  },
+  "ApplicationPolicyRefpeRefpolIdOutputEA2A24E1": {
+   "Description": "Policy ID for: refpe/refpol",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationPolicyEngineRefpePolicyrefpol6B84A474",
+     "PolicyId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Policy-refpe-refpol-Id"
+   }
+  },
+  "ApplicationPolicyRefpeRefpolArnOutputC01C4870": {
+   "Description": "Policy ARN for: refpe/refpol",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationPolicyEngineRefpePolicyrefpol6B84A474",
+     "PolicyArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Policy-refpe-refpol-Arn"
+   }
+  },
+  "ApplicationConfigBundleRefcbIdOutputEDC96682": {
+   "Description": "ConfigBundle ID for: refcb",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationConfigBundleRefcb9FCFB8E4",
+     "BundleId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-ConfigBundle-refcb-Id"
+   }
+  },
+  "ApplicationConfigBundleRefcbArnOutputF7EBB9BE": {
+   "Description": "ConfigBundle ARN for: refcb",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationConfigBundleRefcb9FCFB8E4",
+     "BundleArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-ConfigBundle-refcb-Arn"
+   }
+  },
+  "ApplicationConfigBundleRefcbVersionIdOutput8E4C36AB": {
+   "Description": "ConfigBundle VersionId for: refcb",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationConfigBundleRefcb9FCFB8E4",
+     "VersionId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-ConfigBundle-refcb-VersionId"
+   }
+  },
+  "ApplicationGatewayRefgwIdOutput5A9064E3": {
+   "Description": "Gateway ID for: refgw",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationGatewayRefgw1FB17FC1",
+     "GatewayIdentifier"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Gateway-refgw-Id"
+   }
+  },
+  "ApplicationGatewayRefgwArnOutput234C2E43": {
+   "Description": "Gateway ARN for: refgw",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationGatewayRefgw1FB17FC1",
+     "GatewayArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Gateway-refgw-Arn"
+   }
+  },
+  "ApplicationGatewayRefgwUrlOutputD6C4D3B8": {
+   "Description": "Gateway URL for: refgw",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationGatewayRefgw1FB17FC1",
+     "GatewayUrl"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-Gateway-refgw-Url"
+   }
+  },
+  "ApplicationGatewayTargetRemoteIdOutputCE104075": {
+   "Description": "Gateway Target ID for: remote (gateway: refgw)",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationGatewayRefgwTargetRemoteC0E25011",
+     "TargetId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-CompatRef-default-GatewayTarget-remote-Id"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

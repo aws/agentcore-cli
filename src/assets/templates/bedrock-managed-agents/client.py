@@ -2,7 +2,9 @@
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from aws_bedrock_token_generator import provide_token
 from openai import NotFoundError, OpenAI
@@ -12,6 +14,36 @@ WORKSPACE_DIRECTORY = "/home/app/workspace"
 CAPABILITY_DIRECTORIES = ["/opt/bma/plugins"]
 TURN_END = ("completed", "failed", "cancelled")
 TOOL_CALLS = ("mcp_call", "function_call", "web_search_call")
+
+
+def mcp_server_url(gateway_url: str) -> str:
+    """Turn a bare Gateway origin into its MCP endpoint."""
+    parsed = urlsplit(gateway_url)
+    if parsed.path not in ("", "/"):
+        return gateway_url
+    return urlunsplit(parsed._replace(path="/mcp"))
+
+
+def deployed_session_role(runtime_arn: str) -> str:
+    """Find the CDK-managed session role deployed alongside this Runtime."""
+    project_root = Path(__file__).resolve().parents[2]
+    state_path = project_root / "agentcore" / ".cli" / "deployed-state.json"
+    try:
+        state = json.loads(state_path.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Cannot read {state_path}: {error}") from error
+
+    matches = []
+    for target in state.get("targets", {}).values():
+        session = target.get("resources", {}).get("bmaSession") or {}
+        if runtime_arn in session.get("runtimeArns", []):
+            matches.append(session["roleArn"])
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected one deployed BMA session role for {runtime_arn}, found {len(matches)}. "
+            "Run agentcore deploy, or give --role-arn."
+        )
+    return matches[0]
 
 
 def show(data: dict[str, Any]) -> None:
@@ -44,7 +76,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--gateway",
-        help="The Gateway URL from the output of `agentcore deploy`.",
+        help="The Gateway URL from `agentcore deploy`; a bare origin uses its /mcp endpoint.",
+    )
+    parser.add_argument(
+        "--role-arn",
+        help="Use this BMA session role instead of the CDK-managed role for the Runtime.",
     )
     parser.add_argument("--delete", action="store_true", help="Delete the session.")
     parser.add_argument("--raw", action="store_true", help="Print events as JSON.")
@@ -67,6 +103,12 @@ def main() -> None:
             else:
                 if session["environment"].get("runtime_arn") != args.runtime:
                     raise ValueError(f"Session {session_id} uses another ACR.")
+
+        if not session_id and not args.role_arn:
+            try:
+                args.role_arn = deployed_session_role(args.runtime)
+            except ValueError as error:
+                parser.error(str(error))
 
         if session_id:
             # BMA opens the stream only with stream=true, and the SDK does not send it.
@@ -92,7 +134,7 @@ def main() -> None:
                         "server_label": "team_tools",
                         "required": True,
                         "connection_origin": "service",
-                        "transport": {"type": "http", "server_url": args.gateway},
+                        "transport": {"type": "http", "server_url": mcp_server_url(args.gateway)},
                     }
                 ]
                 args.input += (
@@ -110,6 +152,7 @@ def main() -> None:
                 },
                 input=args.input,
                 stream=True,
+                extra_body={"role_arn": args.role_arn},
             )
 
         with events:

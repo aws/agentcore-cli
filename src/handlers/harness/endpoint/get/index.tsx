@@ -9,7 +9,7 @@ export const createGetEndpointHandler = (core: Core) =>
     name: "get",
     description: "get a harness endpoint",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("qualifier", "the endpoint name (qualifier)", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {

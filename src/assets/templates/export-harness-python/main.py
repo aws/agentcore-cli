@@ -42,14 +42,13 @@ from strands.agent.conversation_manager.null_conversation_manager import NullCon
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from harness_runtime import InvocationBudget, LimitExceeded, build_session_agent
 from model.load import load_model
-{{#if remoteMcpTools}}
-from mcp_client.client import get_all_remote_mcp_clients
-{{/if}}
-{{#unless remoteMcpTools}}
+{{#if (or gatewayTools remoteMcpTools)}}
+from mcp_client.client import get_all_mcp_clients
+{{else}}
 {{#unless isExportHarness}}
 from mcp_client.client import get_streamable_http_mcp_client
 {{/unless}}
-{{/unless}}
+{{/if}}
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
@@ -62,12 +61,9 @@ import os
 app = BedrockAgentCoreApp()
 log = app.logger
 
-{{#if remoteMcpTools}}
+{{#if (or gatewayTools remoteMcpTools)}}
 # Define MCP clients for all configured MCP servers (gateways and/or remote MCP)
-mcp_clients = []
-{{#if remoteMcpTools}}
-mcp_clients += get_all_remote_mcp_clients()
-{{/if}}
+mcp_clients = get_all_mcp_clients()
 {{else}}
 {{#unless isExportHarness}}
 # Define a Streamable HTTP MCP Client
@@ -186,7 +182,7 @@ def list_files(path: str) -> str:
 tools.extend([file_read, file_write, list_files])
 {{/unless}}{{/if}}
 
-{{#if remoteMcpTools}}
+{{#if (or gatewayTools remoteMcpTools)}}
 # Add MCP clients to tools
 for mcp_client in mcp_clients:
     if mcp_client:

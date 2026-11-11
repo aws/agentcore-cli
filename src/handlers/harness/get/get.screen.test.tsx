@@ -78,7 +78,7 @@ describe("harness hub screen", () => {
     expect(r.lastFrame()).toMatch(/failureReason\s+Execution role is unavailable/);
   });
 
-  test("lists the harness actions", async () => {
+  test("lists the harness actions and opens its shell endpoint picker", async () => {
     const { r } = hubScreen();
 
     await waitForText(r.lastFrame, "detail");
@@ -88,6 +88,12 @@ describe("harness hub screen", () => {
     expect(frame).toContain("versions");
     expect(frame).toContain("invoke");
     expect(frame).toContain("exec");
+    expect(frame).toContain("shell");
+    for (let press = 0; press < 6; press++) await r.press("down");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose an endpoint to open a shell");
+    await r.press("escape");
+    await waitForText(r.lastFrame, "agentcore → harness → get → MyHarness-abc123");
     r.unmount();
   });
 
@@ -282,10 +288,9 @@ function markedLines(frame: string | undefined): string[] {
   return (frame ?? "").split("\n").filter((line) => line.includes("❯"));
 }
 
-// The action list has six entries, so five downs reach `update` and the sixth
-// crosses into the tree.
+// The shell action is last, followed by the linked-resource tree.
 async function focusTree(r: ReturnType<typeof renderScreen>, row = 0) {
-  for (let press = 0; press < 6 + row; press++) await r.press("down");
+  for (let press = 0; press < 7 + row; press++) await r.press("down");
 }
 
 describe("harness hub linked resources", () => {
@@ -327,15 +332,15 @@ describe("harness hub linked resources", () => {
     const { r } = linkedHubScreen();
 
     await waitForText(r.lastFrame, "linked resources");
-    for (let press = 0; press < 5; press++) await r.press("down");
+    for (let press = 0; press < 6; press++) await r.press("down");
     expect(markedLines(r.lastFrame())).toHaveLength(1);
-    expect(markedLines(r.lastFrame())[0]).toContain("update");
+    expect(markedLines(r.lastFrame())[0]).toContain("shell");
 
     await r.press("down");
     let marked = markedLines(r.lastFrame());
     expect(marked).toHaveLength(1);
     expect(marked[0]).toContain("runtime");
-    expect(marked[0]).not.toContain("update");
+    expect(marked[0]).not.toContain("shell");
 
     // Down again moves within the tree, not the action list.
     await r.press("down");
@@ -347,7 +352,7 @@ describe("harness hub linked resources", () => {
     await r.press("up");
     marked = markedLines(r.lastFrame());
     expect(marked).toHaveLength(1);
-    expect(marked[0]).toContain("update");
+    expect(marked[0]).toContain("shell");
     r.unmount();
   });
 

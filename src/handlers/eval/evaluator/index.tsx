@@ -14,11 +14,12 @@ export function createEvaluatorHandler(core: Core, io: AppIO): Router {
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
-    .handler(createLlmAsAJudgeHandler(core, io))
-    .handler(createCodeBasedHandler(core, io))
     .handler(createGetEvaluatorHandler(core))
     .handler(createListEvaluatorsHandler(core))
-    .handler(createDeleteEvaluatorHandler(core));
+    .handler(createDeleteEvaluatorHandler(core))
+    .commandSection("resources")
+    .handler(createLlmAsAJudgeHandler(core, io))
+    .handler(createCodeBasedHandler(core, io));
 }
 
 export { EvaluatorScreen } from "./screen.tsx";

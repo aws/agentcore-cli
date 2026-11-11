@@ -15,5 +15,8 @@ node_modules/
 agentcore/.cli/*
 !agentcore/.cli/deployed-state.json
 
+# AgentCore build cache (CodeZip dependency staging)
+agentcore/.cache/
+
 # CDK
 agentcore/cdk/cdk.out/

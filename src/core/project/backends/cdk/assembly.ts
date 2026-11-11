@@ -41,6 +41,15 @@ const StackTemplateSchema = z
   })
   .passthrough();
 
+/**
+ * The command that synthesizes a project's vended CDK app (run in its
+ * `agentcore/cdk` directory) into a cloud assembly at `outputDirectory`. Builds
+ * the app first, through its `cdk` npm script.
+ */
+export function synthCommand(outputDirectory: string): string[] {
+  return ["npm", "run", "cdk", "--", "synth", "--quiet", "--output", outputDirectory];
+}
+
 /** The synthesized stack a deploy selected, and where its template lives. */
 export type StackArtifact = {
   /** Artifact id the CDK Toolkit selects the stack by. */

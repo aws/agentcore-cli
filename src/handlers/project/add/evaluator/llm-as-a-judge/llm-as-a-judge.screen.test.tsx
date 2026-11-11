@@ -41,7 +41,7 @@ async function reachModelStep(screen: RenderScreenResult, name: string): Promise
 }
 
 async function finishFromInstructions(screen: RenderScreenResult): Promise<void> {
-  await waitForText(screen.lastFrame, "how should the judge score it?");
+  await waitForText(screen.lastFrame, "how should the judge score responses?");
   await screen.write(INSTRUCTIONS);
   await screen.press("ctrl+d");
   await waitForText(screen.lastFrame, "which rating scale?");
@@ -75,8 +75,13 @@ describe("project add evaluator llm-as-a-judge wizard", () => {
     await waitForText(screen.lastFrame, DEFAULT_JUDGE_MODEL);
     await screen.press("return");
 
-    await waitForText(screen.lastFrame, "how should the judge score it?");
+    await waitForText(screen.lastFrame, "how should the judge score responses?");
     expect(screen.lastFrame()).toContain("{context}");
+    expect(screen.lastFrame()).toContain("for example:");
+    expect(screen.lastFrame()).toContain(
+      "Rate how well the agent resolved the user's request.\n   Conversation: {context}",
+    );
+    expect(screen.lastFrame()).not.toContain("enter for a new line");
     expect(screen.lastFrame()).toContain("[ctrl+d] continue");
     await screen.write("Rate the response: {assistant_turn}");
     await screen.press("return");
@@ -208,7 +213,7 @@ describe("project add evaluator llm-as-a-judge wizard", () => {
     await reachModelStep(screen, "judge");
     await screen.press("return");
     await screen.press("return");
-    await waitForText(screen.lastFrame, "how should the judge score it?");
+    await waitForText(screen.lastFrame, "how should the judge score responses?");
 
     await screen.press("ctrl+d");
 

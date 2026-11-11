@@ -1,25 +1,36 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
-import { UserCancellationError } from "../../../errors/errors";
+import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
+import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
+import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
+import {
+  LegacyDeployError,
+  LegacyDeployWarningExit,
+  ProjectStateError,
+  UserCancellationError,
+} from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
+  CommandRunMetricEventKey,
   createHandler,
   flag,
   GlobalConfigAccessorKey,
   ProjectKey,
+  type Context,
   type Middleware,
 } from "../../../router";
 import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
-import { JsonKey, RegionKey } from "../../keys";
+import { JsonKey, RegionExplicitKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
 import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
-type DeployProjectHandlerConfig = {
+export type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
   io: AppIO;
   middlewares?: Middleware[];
+  runV0Deploy?: V0DeployRunner;
 };
 
 /** The command both entry points suggest once a deploy succeeds. */
@@ -32,8 +43,8 @@ export function deployedMessage(
   result: DeployResult,
 ): string {
   return result.tornDown
-    ? `Removed project '${project.name}' from target '${targetName}'`
-    : `Deployed project '${project.name}' to target '${targetName}'`;
+    ? `removed project '${project.name}' from target '${targetName}'`
+    : `deployed project '${project.name}' to target '${targetName}'`;
 }
 
 /**
@@ -54,8 +65,8 @@ export function teardownQuestion(
 export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =>
   createHandler({
     name: "deploy",
-    description: "deploy the project to AWS",
-    middlewares: config.middlewares,
+    description: "build and deploy project resources to an AWS target",
+    middlewares: [withV0Deploy(config), ...(config.middlewares ?? [])],
     flags: [
       flag(
         "target",
@@ -68,11 +79,32 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         "confirm removing the target's stack when the project declares nothing to deploy",
         z.boolean().default(false),
       ),
+      flag(
+        "skip-bootstrap",
+        "do not check or create the CDK bootstrap stack; use when the target's account " +
+          "is bootstrapped by someone else (e.g. CloudFormation StackSets)",
+        z.boolean().default(false),
+      ),
     ],
     handle: async (ctx, flags) => {
       // withProject has already resolved the enclosing project.
       const project = ctx.require(ProjectKey);
+      recordProjectResourceCounts(ctx, project);
       const jsonOutput = ctx.require(JsonKey);
+      if (project.legacy) {
+        await delegateV0Deploy(
+          config,
+          ctx,
+          {
+            projectRoot: project.rootPath,
+            target: flags.target,
+            yes: flags.yes,
+            json: jsonOutput,
+          },
+          flags["skip-bootstrap"],
+        );
+        return;
+      }
       const canPrompt =
         !flags.yes &&
         !jsonOutput &&
@@ -97,6 +129,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         region: ctx.require(RegionKey),
         confirmTeardown,
         transactionSearch: globalConfig.transactionSearch,
+        skipBootstrap: flags["skip-bootstrap"],
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.
@@ -117,9 +150,123 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         ctx.require(JsonRendererKey).renderJson({ message, ...result });
         return;
       }
-      if (!result.tornDown) config.io.stderr.write(`Next step:\n  ${DEPLOY_NEXT_STEP}\n`);
+      if (!result.tornDown) config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
+
+export function recordProjectResourceCounts(ctx: Context, project: Project): void {
+  const { spec } = project;
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({
+    project_runtime_count: spec.runtimes.length,
+    project_memory_count: spec.memories.length,
+    project_knowledge_base_count: spec.knowledgeBases.length,
+    project_credential_count: spec.credentials.length,
+    project_evaluator_count: spec.evaluators.length,
+    project_online_eval_config_count: spec.onlineEvalConfigs.length,
+    project_gateway_count: spec.agentCoreGateways.length,
+    project_tool_runtime_count: spec.toolRuntimes?.length ?? 0,
+    project_policy_engine_count: spec.policyEngines.length,
+    project_config_bundle_count: spec.configBundles.length,
+    project_harness_count: spec.harnesses.length,
+    project_payment_manager_count: spec.payments?.length ?? 0,
+    project_gateway_target_count: spec.agentCoreGateways.reduce(
+      (count, gateway) => count + gateway.targets.length,
+      0,
+    ),
+    project_policy_count: spec.policyEngines.reduce(
+      (count, engine) => count + engine.policies.length,
+      0,
+    ),
+    project_runtime_endpoint_count: spec.runtimes.reduce(
+      (count, runtime) => count + Object.keys(runtime.endpoints ?? {}).length,
+      0,
+    ),
+    project_payment_connector_count:
+      spec.payments?.reduce((count, manager) => count + manager.connectors.length, 0) ?? 0,
+    project_memory_strategy_count: spec.memories.reduce(
+      (count, memory) => count + memory.strategies.length,
+      0,
+    ),
+    project_knowledge_base_data_source_count: spec.knowledgeBases.reduce(
+      (count, knowledgeBase) => count + knowledgeBase.dataSources.length,
+      0,
+    ),
+  });
+}
+
+/**
+ * Direct deploy must detect v0 before withProject parses it. This lets the v0
+ * deployer repair projects whose CDK dependency predates the translated view.
+ */
+function withV0Deploy(config: DeployProjectHandlerConfig): Middleware {
+  return (handler) => ({
+    name: () => handler.name(),
+    description: () => handler.description(),
+    flags: () => handler.flags(),
+    arguments: () => handler.arguments(),
+    doesSupportTui: () => handler.doesSupportTui(),
+    children: () => handler.children(),
+    handle: async (ctx, flags, args) => {
+      const projectRoot = enclosingProjectRoot(process.cwd());
+      if (projectRoot && (await isV0Project(projectRoot))) {
+        await delegateV0Deploy(
+          config,
+          ctx,
+          {
+            projectRoot,
+            target: flags.target as string,
+            yes: flags.yes as boolean,
+            json: ctx.require(JsonKey),
+          },
+          flags["skip-bootstrap"] as boolean,
+        );
+        return;
+      }
+      await handler.handle(ctx, flags, args);
+    },
+  });
+}
+
+async function delegateV0Deploy(
+  config: DeployProjectHandlerConfig,
+  ctx: Context,
+  input: Parameters<V0DeployRunner>[0],
+  skipBootstrap: boolean,
+): Promise<void> {
+  // Unlike --region, this can't be dropped with a warning: v0 has no such option
+  // and auto-bootstraps under --yes, the very mutation the flag forbids.
+  if (skipBootstrap) {
+    throw new ProjectStateError(
+      "--skip-bootstrap isn't available for v0 projects. " +
+        "Run `agentcore migrate` to use it with the v1 deploy.",
+    );
+  }
+  // A migration stopped while writing the files leaves a v0 spec beside a v1 CDK
+  // app; the v0 deployer mustn't deploy that.
+  await assertNoPendingMigration(input.projectRoot, input.target);
+  // --region is a v1 global flag that still resolves (and defaults) for every
+  // command, but v0 deploys have no such flag -- they resolve region entirely
+  // from aws-targets.json's saved target, falling back to AWS_REGION or the AWS
+  // profile. An explicitly passed --region is otherwise silently discarded on
+  // this path, trading what used to be a loud "unknown option" failure for an
+  // invisible no-op; warn regardless of --json since stderr is informational,
+  // not part of the JSON contract.
+  if (ctx.value(RegionExplicitKey)) {
+    config.io.stderr.write(
+      "--region is ignored for v0 projects; v0 uses the target's region from " +
+        "aws-targets.json, or AWS_REGION / your AWS profile.\n",
+    );
+  }
+  if (!input.json) {
+    config.io.stderr.write(
+      "This is a v0 project; running the latest v0 AgentCore CLI deploy in compatibility mode.\n",
+    );
+  }
+  const exitCode = await (config.runV0Deploy ?? runV0Deploy)(input);
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({ legacy_deploy_exit_code: exitCode });
+  if (exitCode === 2) throw new LegacyDeployWarningExit();
+  if (exitCode !== 0) throw new LegacyDeployError(exitCode);
+}
 
 /**
  * True when the spec declares none of the resources `removeAllResources`

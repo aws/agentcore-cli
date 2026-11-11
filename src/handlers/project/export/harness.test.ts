@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AgentCoreCLIError } from "../../../errors";
 import { createRootHandler } from "../../index";
@@ -11,17 +11,27 @@ import {
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  type TestIOOptions,
 } from "../../../testing";
 
 const HARNESS_ARN = "arn:aws:bedrock-agentcore:us-west-2:111122223333:harness/h-abc123";
 
-function testExportCommand() {
+function serviceHarness(harnessName = "RemoteHarness") {
+  return {
+    harness: {
+      harnessName,
+      model: { bedrockModelConfig: { modelId: "us.amazon.nova-lite-v1:0" } },
+    },
+  } as never;
+}
+
+function testExportCommand(ioOptions: TestIOOptions = {}) {
   const core = new TestCoreClient();
   // A fresh root per invocation, so wiring-time state (e.g. the add router's
   // pinned cwd) always reflects the directory the test has cd'd into. The core
   // client is shared so mock responses and recorded calls span invocations.
   const route = (args: string[]) => {
-    const io = testIO({});
+    const io = testIO(ioOptions);
     const root = createRootHandler(core, {
       io: io.io,
       globalConfigAccessor: new TestGlobalConfigAccessor(),
@@ -124,7 +134,7 @@ describe("project export harness handler", () => {
   });
 
   test("exports an in-project harness to a buildable runtime and registers it", async () => {
-    const subject = testExportCommand();
+    const subject = testExportCommand({ isTTY: true });
     const projectRoot = await inProjectWithHarness(subject);
 
     await subject.run(["--name", "exportme"]);
@@ -163,8 +173,13 @@ describe("project export harness handler", () => {
     });
 
     expect(subject.io.stderr()).toContain(
-      "Exported harness 'exportme' to runtime agent 'exportmeAgent'",
+      `next steps:\n  review the generated code in ${join("app", "exportmeAgent")}\n  agentcore deploy`,
     );
+    expect(subject.io.stderr()).not.toContain("agentcore build");
+    expect(subject.io.stderr()).toContain(
+      `exported harness 'exportme' to runtime agent 'exportmeAgent' (${join("app", "exportmeAgent")})\nnext steps:`,
+    );
+    expect(subject.io.stderr()).toContain("✓ writing EXPORT_NOTES.md");
     expect(subject.io.stdout()).toBe("");
   });
 
@@ -214,7 +229,7 @@ describe("project export harness handler", () => {
   });
 
   test("emits a machine-readable summary with --json", async () => {
-    const subject = testExportCommand();
+    const subject = testExportCommand({ isTTY: true });
     const projectRoot = await inProjectWithHarness(subject);
 
     await subject.run(["--name", "exportme", "--json"]);
@@ -226,6 +241,11 @@ describe("project export harness handler", () => {
       notesPath: join(projectRoot, "app", "exportmeAgent", "EXPORT_NOTES.md"),
       notes: [],
     });
+    expect(subject.io.stderr()).not.toContain("next steps:");
+    expect(subject.io.stderr()).not.toContain("exported harness");
+    expect(subject.io.stderr()).toContain("writing EXPORT_NOTES.md");
+    expect(subject.io.stderr()).not.toContain(String.fromCharCode(0x1b));
+    expect(subject.io.stderr()).not.toContain("✓");
   });
 
   test("exports a service harness by ARN, fetching from the ARN's region", async () => {
@@ -262,17 +282,15 @@ describe("project export harness handler", () => {
     expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toContain(
       "exported_arn",
     );
+    expect(subject.io.stderr()).toContain(
+      `exported harness 'remote_harness' to runtime agent 'exported_arn' (${join("app", "exported_arn")})`,
+    );
   });
 
   test("defaults the --arn target name from the fetched harness name", async () => {
     const subject = testExportCommand();
     const projectRoot = await inProjectWithHarness(subject);
-    subject.core.harness.setGetResponse({
-      harness: {
-        harnessName: "remote_harness",
-        model: { bedrockModelConfig: { modelId: "us.amazon.nova-lite-v1:0" } },
-      },
-    } as never);
+    subject.core.harness.setGetResponse(serviceHarness("remote_harness"));
 
     await subject.run(["--arn", HARNESS_ARN]);
 
@@ -333,12 +351,172 @@ describe("project export harness handler", () => {
     expect(existsSync(join(projectRoot, "app", "remote_containerAgent", "Dockerfile"))).toBe(false);
   });
 
-  test("validates the project before fetching from the service", async () => {
+  test.each([
+    [undefined, "ExportRemoteHarness"],
+    ["ChosenProject", "ChosenProject"],
+  ])("creates an export project with name override %s", async (override, projectName) => {
     const subject = testExportCommand();
-    cleanups.push((await inTempDirectory()).cleanup); // not a project
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    subject.core.harness.setGetResponse(serviceHarness());
 
-    await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow(/No AgentCore project found/);
+    await subject.run([
+      "--arn",
+      HARNESS_ARN,
+      "--region",
+      "us-east-1",
+      "--json",
+      ...(override ? ["--project-name", override] : []),
+    ]);
+
+    const projectRoot = join(path, projectName);
+    const agentPath = join(projectRoot, "app", "RemoteHarnessAgent");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.name).toBe(projectName);
+    expect(spec.harnesses).toEqual([]);
+    expect(await Bun.file(join(projectRoot, "agentcore", "aws-targets.json")).json()).toEqual([
+      { name: "default", account: "111122223333", region: "us-west-2" },
+    ]);
+    expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual([
+      "RemoteHarnessAgent",
+    ]);
+    expect(existsSync(join(agentPath, "main.py"))).toBe(true);
+    expect(existsSync(join(projectRoot, "agentcore", "cdk", "package.json"))).toBe(true);
+    expect(subject.core.projectCommands).toEqual(
+      expect.arrayContaining([
+        {
+          command: ["npm", "install", "--loglevel=http"],
+          cwd: join(projectRoot, "agentcore", "cdk"),
+        },
+        { command: ["git", "init"], cwd: projectRoot },
+        { command: ["uv", "sync"], cwd: agentPath },
+      ]),
+    );
+    expect(subject.core.harness.calls).toEqual([
+      {
+        method: "getHarness",
+        args: ["h-abc123", expect.objectContaining({ region: "us-west-2" })],
+      },
+    ]);
+    expect(JSON.parse(subject.io.stdout())).toMatchObject({
+      harnessName: "RemoteHarness",
+      agentName: "RemoteHarnessAgent",
+      agentPath,
+    });
+    expect(subject.io.stderr()).not.toContain("next steps:");
+    expect(process.cwd()).toBe(path);
+  });
+
+  test.each([
+    ["remote_harness", "Exportremoteharness", "customAgent"],
+    ["RemoteHarnessWithAVeryLongName", "ExportRemoteHarnessWith", undefined],
+  ])(
+    "creates deployable default names for harness %s",
+    async (harnessName, projectName, agentName) => {
+      const subject = testExportCommand();
+      const { path, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      subject.core.harness.setGetResponse(serviceHarness(harnessName));
+
+      await subject.run([
+        "--arn",
+        HARNESS_ARN,
+        ...(agentName ? ["--target-agent-name", agentName] : []),
+      ]);
+
+      const projectRoot = join(path, projectName);
+      const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+      expect(spec.name).toBe(projectName);
+      const generatedName = spec.runtimes[0].name;
+      expect(`${projectName}_default_${generatedName}`.length).toBeLessThanOrEqual(48);
+      expect(existsSync(join(projectRoot, "app", generatedName, "main.py"))).toBe(true);
+      expect(subject.io.stderr()).toContain(`  cd ${projectName}\n`);
+    },
+  );
+
+  test("does not modify an existing destination directory", async () => {
+    const subject = testExportCommand();
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const destination = join(path, "ExportRemoteHarness");
+    await mkdir(destination);
+    await writeFile(join(destination, "keep.txt"), "customer content");
+    subject.core.harness.setGetResponse(serviceHarness());
+
+    await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow(/already exists/);
+
+    expect(await readdir(destination)).toEqual(["keep.txt"]);
+    expect(await readFile(join(destination, "keep.txt"), "utf8")).toBe("customer content");
+    expect(subject.core.projectCommands).toEqual([]);
+  });
+
+  test("requires a project for --name and explains how to export a service harness", async () => {
+    const subject = testExportCommand();
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+
+    await expect(subject.run(["--name", "exportme"])).rejects.toThrow(
+      /--name requires an AgentCore project.*--arn/,
+    );
+
     expect(subject.core.harness.calls).toEqual([]);
+    expect(await readdir(path)).toEqual([]);
+  });
+
+  test("rejects a project-name override inside an existing project", async () => {
+    const subject = testExportCommand();
+    await inProjectWithHarness(subject);
+    await expect(subject.run(["--arn", HARNESS_ARN, "--project-name", "Other"])).rejects.toThrow(
+      /only available outside/,
+    );
+    expect(subject.core.harness.calls).toEqual([]);
+  });
+
+  test("validates an existing project before fetching from the service", async () => {
+    const subject = testExportCommand();
+    const projectRoot = await inProjectWithHarness(subject);
+    await writeFile(join(projectRoot, "agentcore", "agentcore.json"), "{ invalid json");
+
+    await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow();
+
+    expect(subject.core.harness.calls).toEqual([]);
+  });
+
+  test.each([
+    ["service harness is missing", {}, /no harness exists/],
+    ["service fetch fails", new Error("Access denied"), /Access denied/],
+    [
+      "service response cannot be mapped",
+      { harness: { harnessName: "RemoteHarness", model: {} } },
+      /no recognized model configuration/,
+    ],
+  ] as const)("does not create a project when the %s", async (_failure, response, error) => {
+    const subject = testExportCommand();
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    if (response instanceof Error) subject.core.harness.setError(response);
+    else subject.core.harness.setGetResponse(response as never);
+
+    await expect(subject.run(["--arn", HARNESS_ARN])).rejects.toThrow(error);
+
+    expect(await readdir(path)).toEqual([]);
+    expect(subject.core.projectCommands).toEqual([]);
+  });
+
+  test.each([
+    [["--target-agent-name", "9bad"], /invalid --target-agent-name/],
+    [["--target-agent-name", "RuntimeNameThatDoesNotFitTheNewProject"], /must fit within/],
+    [["--project-name", "9bad"], /Project name/],
+  ])("does not create a project for invalid naming %j", async (flags, error) => {
+    const subject = testExportCommand();
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    subject.core.harness.setGetResponse(serviceHarness());
+
+    await expect(subject.run(["--arn", HARNESS_ARN, ...flags])).rejects.toThrow(error);
+
+    expect(await readdir(path)).toEqual([]);
+    expect(subject.core.projectCommands).toEqual([]);
   });
 
   test("rejects a malformed --arn before calling the service", async () => {

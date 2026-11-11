@@ -1,0 +1,76 @@
+{
+  "batchEvaluationId": "cli_logs_mixed_retry_20261013-356d56c3e2",
+  "batchEvaluationArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_mixed_retry_20261013-356d56c3e2",
+  "batchEvaluationName": "cli_logs_mixed_retry_20261013",
+  "status": "COMPLETED_WITH_ERRORS",
+  "createdAt": "2026-10-13T16:30:57.517Z",
+  "evaluators": [
+    {
+      "evaluatorId": "Builtin.Helpfulness"
+    }
+  ],
+  "dataSourceConfig": {
+    "cloudWatchLogs": {
+      "serviceNames": [
+        "CliEvalBugbash.DEFAULT"
+      ],
+      "logGroupNames": [
+        "/aws/bedrock-agentcore/cli-eval-errors-20261013"
+      ],
+      "filterConfig": {
+        "sessionIds": [
+          "cli-success-session",
+          "cli-error-session-1"
+        ]
+      }
+    }
+  },
+  "outputConfig": {
+    "cloudWatchConfig": {
+      "logGroupName": "/aws/bedrock-agentcore/cli-eval-custom-results-20261013",
+      "logStreamName": "run-cli_logs_mixed_retry_20261013-356d56c3e2",
+      "metricsNamespace": "Bedrock-AgentCore/Evaluations",
+      "resultDestination": "DEDICATED_LOG_GROUP"
+    }
+  },
+  "evaluationResults": {
+    "numberOfSessionsCompleted": 1,
+    "numberOfSessionsInProgress": 0,
+    "numberOfSessionsFailed": 1,
+    "totalNumberOfSessions": 2,
+    "numberOfSessionsIgnored": 0,
+    "evaluatorSummaries": [
+      {
+        "evaluatorId": "Builtin.Helpfulness",
+        "statistics": {
+          "averageScore": 0.83
+        },
+        "totalEvaluated": 1,
+        "totalFailed": 1
+      }
+    ]
+  },
+  "errorDetails": [
+    "1 of 2 sessions failed during batch evaluation."
+  ],
+  "updatedAt": "2026-10-13T16:32:00.790Z",
+  "results": [
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "cli-error-session-1",
+      "traceId": "11111111111111111111111111111111",
+      "error": "Session span data is incomplete. Span with ID: 1111111111111111 and name: invoke_agent Strands Agents is missing a corresponding log event. Please retry the request with the complete span data",
+      "errorType": "LogEventMissingException"
+    },
+    {
+      "evaluatorId": "Builtin.Helpfulness",
+      "level": "Trace",
+      "sessionId": "cli-success-session",
+      "traceId": "22222222222222222222222222222222",
+      "score": 0.83,
+      "label": "Very Helpful",
+      "explanation": "The user asked to use add_numbers to calculate 19 + 23 and reply with the result. The tool returned 42 as the output. The assistant faithfully relayed the tool's result, directly answering the user's request in a clear and concise manner. Per instructions, tool output takes priority over the assistant's own knowledge, so the correctness of 19+23=42 mathematically is not to be judged against the tool result; the assistant correctly reported what the tool returned. This directly satisfies the user's goal of getting the result communicated back to them, with no unnecessary detours or confusion. It is a straightforward, complete answer to a simple request, though it doesn't go beyond what was asked (no extra insight or anticipation of further needs), so it fits 'Very Helpful' rather than 'Above and Beyond'."
+    }
+  ]
+}

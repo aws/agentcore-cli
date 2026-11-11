@@ -12,7 +12,9 @@ import type { Project, ProjectEvent } from "../../../../handlers/project/types";
 import { ProjectSpecSchema } from "../../../../projectSchemas/project";
 import type { CoreOptions } from "../../../types";
 import { EnvLocalFile } from "../../envLocal";
+import { v0Fixture } from "../../legacy/fixtures-test-support";
 import {
+  assertPaymentConnectorCredentials,
   createCredentialProvisioner,
   createCredentialRemover,
   orphanedCredentials,
@@ -58,7 +60,11 @@ const COINBASE = {
  */
 const OPENAI_PROVIDER = "example_dev_openai-key";
 const OAUTH_PROVIDER = "example_dev_my-oauth";
-const WALLET_PROVIDER = "example_dev_wallet";
+const WALLET_PROVIDER = "example-dev-wallet-02961cdcdac06c7f";
+const OLD_WALLET_PROVIDER = "example_dev_wallet";
+const PAY_PROVIDER = "example-dev-pay-a5e6e3eef03187be";
+const paymentArn = (name: string) =>
+  `arn:aws:bedrock-agentcore:us-east-1:123456789012:token-vault/default/paymentcredentialprovider/${name}`;
 
 const tempDirectories: string[] = [];
 afterEach(async () => {
@@ -77,6 +83,21 @@ async function project(credentials: unknown[], envLocal?: string): Promise<Proje
     name: "example",
     rootPath,
     spec: ProjectSpecSchema.parse({ name: "example", version: 2, credentials }),
+  };
+}
+
+/** The same project after `agentcore migrate` converted it from v0. */
+async function migratedProject(credentials: unknown[], envLocal?: string): Promise<Project> {
+  const base = await project(credentials, envLocal);
+  return { ...base, spec: { ...base.spec, migratedFrom: "v1" } };
+}
+
+/** The same project loaded from a v0 `agentcore.json`. */
+async function legacyProject(credentials: unknown[], envLocal?: string): Promise<Project> {
+  const v0Spec = v0Fixture("baseline.json");
+  return {
+    ...(await project(credentials, envLocal)),
+    legacy: { format: "v0", v0Spec },
   };
 }
 
@@ -275,8 +296,9 @@ async function collect(
 async function run(
   provision: CredentialProvisioner,
   input: Project,
+  target: CredentialProvisionInput = INPUT,
 ): Promise<{ events: ProjectEvent[]; result: DeployedCredentials }> {
-  const generator = provision(input, INPUT);
+  const generator = provision(input, target);
   const events: ProjectEvent[] = [];
   while (true) {
     const next = await generator.next();
@@ -340,12 +362,21 @@ describe("createCredentialProvisioner", () => {
 
   test("creates an API key provider under the target-scoped name, recorded under the spec name", async () => {
     const subject = account();
-    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n");
+    const input = await project([API_KEY]);
+    const file = new EnvLocalFile(input.rootPath);
+    await file.insertIfNew([
+      { key: "AGENTCORE_CREDENTIAL_OPENAI_KEY", value: "sk-live", comment: "API key" },
+    ]);
+    expect(await Bun.file(file.path).text()).not.toContain("sk-live");
+    await writeFile(
+      file.path,
+      (await Bun.file(file.path).text()) + "SOME_API_KEY=enc:v1:unrelated\n",
+    );
 
     const { events, result } = await run(subject.provision, input);
 
     expect(events).toEqual([
-      { type: "step", message: `Preparing credential provider '${OPENAI_PROVIDER}'` },
+      { type: "step", message: `preparing credential provider '${OPENAI_PROVIDER}'` },
     ]);
     expect(subject.contents()).toEqual({
       [OPENAI_PROVIDER]: {
@@ -357,6 +388,13 @@ describe("createCredentialProvisioner", () => {
     expect(result).toEqual({
       "openai-key": recordedAs("ApiKeyCredentialProvider", CREATED_OPENAI),
     });
+  });
+
+  test("refuses an unreadable encrypted secret before calling Identity", async () => {
+    const subject = account();
+    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='enc:v1:broken'\n");
+    await expect(run(subject.provision, input)).rejects.toThrow(/Could not decrypt/);
+    expect(subject.optionsSeen).toEqual([]);
   });
 
   test("creates an API key provider from a Secrets Manager reference", async () => {
@@ -391,7 +429,10 @@ describe("createCredentialProvisioner", () => {
       {},
       { AGENTCORE_CREDENTIAL_OPENAI_KEY: "sk-from-env", HOME: "/should/not/matter" },
     );
-    const input = await project([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-from-file'\n");
+    const input = await project(
+      [API_KEY],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY=enc:v1:broken\nSOME_API_KEY=enc:v1:unrelated\n",
+    );
 
     await run(subject.provision, input);
 
@@ -680,8 +721,80 @@ describe("createCredentialProvisioner", () => {
     });
   });
 
+  test("uses a connector-compatible name for a new credential containing underscores", async () => {
+    const subject = account();
+    const input = await project(
+      [{ ...COINBASE, name: "wallet_us" }],
+      "AGENTCORE_CREDENTIAL_WALLET_US_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_US_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_US_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    await run(subject.provision, input, { ...INPUT, targetName: "dev-stage" });
+
+    const [name] = Object.keys(subject.contents());
+    expect(name).toMatch(/^example-dev-stage-wallet-us-[a-f0-9]{16}$/);
+    expect(name).toMatch(/^[a-zA-Z0-9.-]+$/);
+  });
+
+  test("reuses the recorded physical name of an existing payment provider", async () => {
+    const arn = paymentArn(OLD_WALLET_PROVIDER);
+    const subject = account({ [OLD_WALLET_PROVIDER]: { credentialProviderArn: arn } });
+    const input = await project([COINBASE]);
+
+    const { result } = await run(subject.provision, input, {
+      ...INPUT,
+      recorded: { wallet: { credentialProviderArn: arn } },
+    });
+
+    expect(Object.keys(subject.contents())).toEqual([OLD_WALLET_PROVIDER]);
+    expect(result.wallet?.credentialProviderArn).toBe(arn);
+    expect(subject.contents()[OLD_WALLET_PROVIDER]?.operation).toBeUndefined();
+  });
+
+  test("fails before writing when an old payment provider is not recorded for the target", async () => {
+    const oldProvider = { credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER) };
+    const subject = account({ [OLD_WALLET_PROVIDER]: oldProvider });
+    const input = await project(
+      [API_KEY, COINBASE],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    await expect(run(subject.provision, input)).rejects.toThrow(
+      `Payment credential 'wallet' has no provider recorded for target 'dev' in ` +
+        `agentcore/.cli/deployed-state.json, but provider '${OLD_WALLET_PROVIDER}' exists in AWS. ` +
+        `Restore the target's deployed-state.json entry, or delete that provider if unused, ` +
+        `then re-deploy.`,
+    );
+    expect(subject.contents()).toEqual({ [OLD_WALLET_PROVIDER]: oldProvider });
+  });
+
+  test("keeps normalized payment names distinct after the display prefix is truncated", async () => {
+    const names = ["w".repeat(127) + "x", "w".repeat(127) + "y"];
+    const processEnv = Object.fromEntries(
+      names.flatMap((name) => [
+        [`AGENTCORE_CREDENTIAL_${name.toUpperCase()}_API_KEY_ID`, "key-1"],
+        [`AGENTCORE_CREDENTIAL_${name.toUpperCase()}_API_KEY_SECRET`, "key-secret"],
+        [`AGENTCORE_CREDENTIAL_${name.toUpperCase()}_WALLET_SECRET`, "wallet-secret"],
+      ]),
+    );
+    const subject = account({}, {}, processEnv);
+    const input = await project(names.map((name) => ({ ...COINBASE, name })));
+
+    await run(subject.provision, input);
+
+    const physicalNames = Object.keys(subject.contents());
+    expect(physicalNames).toHaveLength(2);
+    expect(new Set(physicalNames).size).toBe(2);
+    expect(physicalNames.every((name) => name.length <= 128)).toBe(true);
+    expect(physicalNames.every((name) => /^[a-zA-Z0-9.-]+$/.test(name))).toBe(true);
+  });
+
   test("updates an existing StripePrivy payment provider", async () => {
-    const subject = account({ example_dev_pay: { credentialProviderArn: "arn:existing" } });
+    const subject = account({ [PAY_PROVIDER]: { credentialProviderArn: "arn:existing" } });
     const input = await project(
       [{ authorizerType: "PaymentCredentialProvider", name: "pay", provider: "StripePrivy" }],
       "AGENTCORE_CREDENTIAL_PAY_APP_ID='app-1'\n" +
@@ -692,9 +805,9 @@ describe("createCredentialProvisioner", () => {
 
     await run(subject.provision, input);
 
-    expect(subject.contents()["example_dev_pay"]?.operation).toBe("updated");
-    expect(subject.configFor("example_dev_pay")).toEqual({
-      name: "example_dev_pay",
+    expect(subject.contents()[PAY_PROVIDER]?.operation).toBe("updated");
+    expect(subject.configFor(PAY_PROVIDER)).toEqual({
+      name: PAY_PROVIDER,
       credentialProviderVendor: "StripePrivy",
       providerConfigurationInput: {
         stripePrivyConfiguration: {
@@ -875,7 +988,7 @@ describe("createCredentialProvisioner rollback", () => {
     expect(error.message).toBe(`create ${OTHER_PROVIDER} failed`);
     const messages = stepMessages(events);
     expect(messages).toContain(
-      `Removing credential provider '${OPENAI_PROVIDER}' this deploy created`,
+      `removing credential provider '${OPENAI_PROVIDER}' this deploy created`,
     );
     expect(messages[messages.length - 1]).toMatch(
       new RegExp(
@@ -903,6 +1016,45 @@ describe("orphanedCredentials", () => {
       { name: "openai-key", authorizerType: "ApiKeyCredentialProvider" },
     ]);
   });
+
+  test("retains an old payment provider while declared and identifies it when removed", async () => {
+    const recorded = {
+      wallet: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER),
+      }),
+    };
+    const input = await project([COINBASE]);
+
+    expect(orphanedCredentials(recorded, input.spec.credentials)).toEqual([]);
+    expect(orphanedCredentials(recorded, [])).toEqual([
+      {
+        name: "wallet",
+        authorizerType: "PaymentCredentialProvider",
+        physicalName: OLD_WALLET_PROVIDER,
+      },
+    ]);
+  });
+});
+
+test("a manual connector can reuse a compatible recorded payment ARN", async () => {
+  const input = await project([COINBASE]);
+  input.spec = ProjectSpecSchema.parse({
+    ...input.spec,
+    payments: [
+      {
+        name: "MyPayments",
+        connectors: [{ name: "Coinbase", provider: "CoinbaseCDP", credentialName: "wallet" }],
+      },
+    ],
+  });
+
+  expect(() =>
+    assertPaymentConnectorCredentials(input, "dev", {
+      wallet: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: paymentArn("manually-created-wallet"),
+      }),
+    }),
+  ).not.toThrow();
 });
 
 describe("createCredentialRemover", () => {
@@ -931,9 +1083,9 @@ describe("createCredentialRemover", () => {
     ]);
     expect(subject.contents()).toEqual({});
     expect(stepMessages(events)).toEqual([
-      `Removing credential provider '${OPENAI_PROVIDER}'`,
-      `Removing credential provider '${OAUTH_PROVIDER}'`,
-      `Removing credential provider '${WALLET_PROVIDER}'`,
+      `removing credential provider '${OPENAI_PROVIDER}'`,
+      `removing credential provider '${OAUTH_PROVIDER}'`,
+      `removing credential provider '${WALLET_PROVIDER}'`,
     ]);
     expect(subject.optionsSeen).toEqual([OPTIONS, OPTIONS, OPTIONS]);
   });
@@ -945,8 +1097,28 @@ describe("createCredentialRemover", () => {
     const { events } = await remove(subject, [COINBASE]);
 
     expect(events).toEqual([
-      { type: "step", message: `Removing credential provider '${WALLET_PROVIDER}'` },
+      { type: "step", message: `removing credential provider '${WALLET_PROVIDER}'` },
     ]);
+  });
+
+  test("deletes the recorded old physical name after the credential is removed", async () => {
+    const subject = account({
+      [OLD_WALLET_PROVIDER]: { credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER) },
+      [WALLET_PROVIDER]: { credentialProviderArn: paymentArn(WALLET_PROVIDER) },
+    });
+    const removed = orphanedCredentials(
+      {
+        wallet: recordedAs("PaymentCredentialProvider", {
+          credentialProviderArn: paymentArn(OLD_WALLET_PROVIDER),
+        }),
+      },
+      [],
+    );
+
+    await remove(subject, removed);
+
+    expect(subject.deleted).toEqual([{ kind: "payment", name: OLD_WALLET_PROVIDER }]);
+    expect(Object.keys(subject.contents())).toEqual([WALLET_PROVIDER]);
   });
 
   test("reports a provider it could not delete, naming the command that deletes its kind", async () => {
@@ -965,5 +1137,152 @@ describe("createCredentialRemover", () => {
       ),
     );
     expect(subject.contents()).toEqual({ [OPENAI_PROVIDER]: existing });
+  });
+});
+
+describe("projects migrated from v0", () => {
+  test("keep the bare credential name v0 created the provider under", async () => {
+    const existing = { credentialProviderArn: "arn:apikey:openai-key" };
+    const subject = account({ "openai-key": existing });
+
+    const { result } = await run(
+      subject.provision,
+      await migratedProject([API_KEY], "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n"),
+    );
+
+    expect(Object.keys(subject.contents())).toEqual(["openai-key"]);
+    expect(subject.contents()["openai-key"]?.operation).toBe("updated");
+    expect(result["openai-key"]?.credentialProviderArn).toBe("arn:apikey:openai-key");
+  });
+
+  test("a new target deploys when another target uses the bare payment provider", async () => {
+    const oldProvider = { credentialProviderArn: paymentArn("wallet") };
+    const subject = account({ wallet: oldProvider });
+    const input = await migratedProject(
+      [COINBASE],
+      "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='key-secret'\n" +
+        "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-secret'\n",
+    );
+
+    const { result } = await run(subject.provision, input, {
+      ...INPUT,
+      targetName: "prod",
+    });
+
+    expect(subject.contents().wallet).toEqual(oldProvider);
+    expect(result.wallet?.credentialProviderArn).toMatch(
+      /^arn:payment:example-prod-wallet-[a-f0-9]{16}$/,
+    );
+  });
+
+  test("never delete API key or OAuth providers, which v0 projects may share", async () => {
+    const subject = account({ "openai-key": { credentialProviderArn: "arn:apikey:openai-key" } });
+
+    await collect(
+      createCredentialRemover(subject.client)(await migratedProject([]), {
+        ...INPUT,
+        providers: [API_KEY],
+      }),
+    );
+
+    expect(subject.deleted).toEqual([]);
+    expect(Object.keys(subject.contents())).toEqual(["openai-key"]);
+  });
+});
+
+describe("v0 projects", () => {
+  // The v0 CLI named every provider by the bare credential name, and the agent code it
+  // deployed looks providers up by that name, so a v0 project keeps it.
+  const COINBASE_ENV =
+    "AGENTCORE_CREDENTIAL_WALLET_API_KEY_ID='key-1'\n" +
+    "AGENTCORE_CREDENTIAL_WALLET_API_KEY_SECRET='secret-1'\n" +
+    "AGENTCORE_CREDENTIAL_WALLET_WALLET_SECRET='wallet-1'\n";
+
+  test("creates providers under the bare credential name, recorded under the spec name", async () => {
+    const subject = account();
+    const input = await legacyProject(
+      [API_KEY, COINBASE],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + COINBASE_ENV,
+    );
+
+    const { events, result } = await run(subject.provision, input);
+
+    expect(stepMessages(events)).toEqual([
+      "preparing credential provider 'openai-key'",
+      "preparing credential provider 'wallet'",
+    ]);
+    expect(Object.keys(subject.contents())).toEqual(["openai-key", "wallet"]);
+    expect(subject.configFor("openai-key")).toEqual({ name: "openai-key", apiKey: "sk-live" });
+    expect(result).toEqual({
+      "openai-key": recordedAs("ApiKeyCredentialProvider", {
+        credentialProviderArn: "arn:apikey:openai-key",
+        clientSecretArn: "arn:secret:openai-key",
+      }),
+      wallet: recordedAs("PaymentCredentialProvider", {
+        credentialProviderArn: "arn:payment:wallet",
+      }),
+    });
+  });
+
+  test("updates the provider v0 created rather than creating a scoped one", async () => {
+    const subject = account({ "my-oauth": { credentialProviderArn: "arn:oauth:my-oauth" } });
+    const input = await legacyProject(
+      [OAUTH],
+      "AGENTCORE_CREDENTIAL_MY_OAUTH_CLIENT_SECRET='rotated'\n",
+    );
+
+    const { result } = await run(subject.provision, input);
+
+    expect(Object.keys(subject.contents())).toEqual(["my-oauth"]);
+    expect(subject.contents()["my-oauth"]?.operation).toBe("updated");
+    expect(result["my-oauth"]?.credentialProviderArn).toBe("arn:oauth:my-oauth");
+  });
+
+  test("reuses the provider v0 created when no secret is available locally", async () => {
+    const existing = { credentialProviderArn: "arn:apikey:openai-key" };
+    const subject = account({ "openai-key": existing });
+
+    const { result } = await run(subject.provision, await legacyProject([API_KEY]));
+
+    expect(subject.contents()).toEqual({ "openai-key": existing });
+    expect(result).toEqual({ "openai-key": recordedAs("ApiKeyCredentialProvider", existing) });
+  });
+
+  test("rolls back a provider it created under the bare name", async () => {
+    const subject = account({}, { createFailsFor: "wallet" });
+    const input = await legacyProject(
+      [API_KEY, COINBASE],
+      "AGENTCORE_CREDENTIAL_OPENAI_KEY='sk-live'\n" + COINBASE_ENV,
+    );
+
+    await runFailing(subject.provision, input);
+
+    expect(subject.deleted).toEqual([{ kind: "apikey", name: "openai-key" }]);
+  });
+
+  test("never deletes API key or OAuth providers, which v0 projects may share", async () => {
+    const subject = account({
+      "openai-key": { credentialProviderArn: "arn:apikey:openai-key" },
+      "my-oauth": { credentialProviderArn: "arn:oauth:my-oauth" },
+      wallet: { credentialProviderArn: "arn:payment:wallet" },
+    });
+    const input = await legacyProject([]);
+
+    const { events } = await collect(
+      createCredentialRemover(subject.client)(input, {
+        ...INPUT,
+        providers: [API_KEY, OAUTH, COINBASE],
+      }),
+    );
+
+    // Payment providers are removed as v0's teardown removed them, by the bare name.
+    expect(subject.deleted).toEqual([{ kind: "payment", name: "wallet" }]);
+    expect(Object.keys(subject.contents())).toEqual(["openai-key", "my-oauth"]);
+    expect(stepMessages(events)).toEqual([
+      "Leaving credential provider 'openai-key' in place: v0 projects can share it",
+      "Leaving credential provider 'my-oauth' in place: v0 projects can share it",
+      "removing credential provider 'wallet'",
+    ]);
   });
 });

@@ -123,25 +123,37 @@ export function credentialEnvVarName(credentialName: string, suffix = ""): strin
 }
 
 /**
- * The suffixes the CLI appends to a credential's base variable to name one of its
- * fields — both the secret-bearing ones and the readable identifiers.
+ * Derives the discovery variable @aws/agentcore-cdk sets to the deployed Identity provider name.
+ *
+ * This intentionally does not share {@link CREDENTIAL_ENV_PREFIX}: local credential material keeps
+ * the `AGENTCORE_CREDENTIAL_` prefix, while deployed provider-name discovery uses the v0
+ * `CREDENTIAL_<NAME>_NAME` contract restored by aws/agentcore-l3-cdk-constructs#418.
  */
-const CREDENTIAL_FIELD_SUFFIXES = [
+export function credentialProviderNameEnvVarName(credentialName: string): string {
+  return `CREDENTIAL_${credentialName.replace(/[.-]/g, "_").toUpperCase()}_NAME`;
+}
+
+export const CREDENTIAL_SECRET_SUFFIXES = [
   "_CLIENT_SECRET",
   "_API_KEY_SECRET",
   "_APP_SECRET",
   "_WALLET_SECRET",
   "_AUTHORIZATION_PRIVATE_KEY",
-  // Identifiers rather than secrets. `_CLIENT_ID` is no longer written — an OAuth
-  // client id lives in agentcore.json — but deploy still reads it for projects
-  // created before that move, so a name that produces it is still a hazard.
+] as const;
+
+export const CREDENTIAL_REFERENCE_SUFFIXES = [
   "_CLIENT_ID",
   "_API_KEY_ID",
   "_APP_ID",
   "_AUTHORIZATION_ID",
-  // The provider name discovery variable every runtime receives.
   "_NAME",
 ] as const;
+
+/**
+ * The suffixes the CLI appends to a credential's base variable to name one of its
+ * fields — both the secret-bearing ones and the readable identifiers.
+ */
+const CREDENTIAL_FIELD_SUFFIXES = [...CREDENTIAL_SECRET_SUFFIXES, ...CREDENTIAL_REFERENCE_SUFFIXES];
 
 /**
  * Reports the field suffix a credential name ends in, if any.

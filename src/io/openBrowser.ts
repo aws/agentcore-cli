@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnCommand } from "./exec";
 
 export type BrowserOpener = (url: string) => Promise<void>;
 
@@ -16,7 +16,7 @@ export const openBrowser: BrowserOpener = (url) => {
         : ["xdg-open", [url]];
 
   return new Promise((resolve) => {
-    const child = spawn(command!, args, { stdio: "ignore", detached: true });
+    const child = spawnCommand(command!, args, { stdio: "ignore", detached: true });
     child.on("error", () => resolve());
     child.on("spawn", () => {
       child.unref();

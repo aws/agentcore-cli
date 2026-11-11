@@ -21,6 +21,16 @@ describe("project custom validation", () => {
     }
   });
 
+  test('accepts migratedFrom "v1" (the v0 CLI\'s schema version) and nothing else', () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, migratedFrom: "v1" }).migratedFrom).toBe(
+      "v1",
+    );
+    expect(ProjectSpecSchema.parse(minimalProject).migratedFrom).toBeUndefined();
+    for (const migratedFrom of ["v0", "v2", 1, ""]) {
+      expect(ProjectSpecSchema.safeParse({ ...minimalProject, migratedFrom }).success).toBe(false);
+    }
+  });
+
   test("requires an explicit project version", () => {
     expect(ProjectSpecSchema.safeParse({ name: "project" }).success).toBe(false);
   });

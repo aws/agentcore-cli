@@ -192,6 +192,25 @@ describe("InteractiveTerminal", () => {
     expect(s.rawModes).toEqual([true, false]);
   });
 
+  test("intercepts Ctrl+] when detach is enabled and restores terminal state", async () => {
+    const s = subject();
+    const peer = new FakePeer();
+    const terminal = new InteractiveTerminal({
+      io: s.io,
+      onDetach: () => peer.close(),
+      onResize: () => () => {},
+    });
+    activeTerminals.push(terminal);
+    const running = terminal.run(peer);
+
+    s.stdin.write(Uint8Array.from([0x03, 0x1d, 0x61]));
+
+    await expect(running).resolves.toBe("detached");
+    expect(peer.sent).toEqual([Uint8Array.from([0x03])]);
+    expect(peer.closed).toBe(1);
+    expect(s.rawModes).toEqual([true, false]);
+  });
+
   test("closes the peer and restores terminal state when aborted", async () => {
     const s = subject();
     const peer = new FakePeer();

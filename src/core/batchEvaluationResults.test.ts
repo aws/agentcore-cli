@@ -109,3 +109,93 @@ test("parseEvaluationLogEvent warns on and skips an unparseable line", () => {
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("unparseable");
 });
+
+test.each([
+  [
+    "standard error without evaluator",
+    {
+      "error.type": "LogEventMissingException",
+      "error.message": "Session span data is incomplete.",
+    },
+    { errorType: "LogEventMissingException", error: "Session span data is incomplete." },
+  ],
+  [
+    "standard error with evaluator",
+    {
+      "gen_ai.evaluation.name": "Builtin.Helpfulness",
+      "error.type": "EvaluationException",
+      "error.message": "Evaluation failed.",
+    },
+    {
+      evaluatorId: "Builtin.Helpfulness",
+      errorType: "EvaluationException",
+      error: "Evaluation failed.",
+    },
+  ],
+  [
+    "legacy error",
+    {
+      "gen_ai.evaluation.name": "Builtin.Helpfulness",
+      "gen_ai.evaluation.error": "Evaluator failed.",
+    },
+    { evaluatorId: "Builtin.Helpfulness", error: "Evaluator failed." },
+  ],
+  [
+    "unnamed legacy error",
+    { "gen_ai.evaluation.error": "Evaluator failed." },
+    { error: "Evaluator failed." },
+  ],
+  ["type only", { "error.type": "EvaluationException" }, { errorType: "EvaluationException" }],
+  ["message only", { "error.message": "Evaluation failed." }, { error: "Evaluation failed." }],
+  [
+    "standard message takes precedence",
+    { "error.message": "Standard message.", "gen_ai.evaluation.error": "Legacy message." },
+    { error: "Standard message." },
+  ],
+] as const)("parseEvaluationLogEvent retains %s and scope", (_name, attrs, expected) => {
+  const result = parseEvaluationLogEvent(
+    JSON.stringify({
+      name: "gen_ai.evaluation.result",
+      traceId: "trace-1",
+      spanId: "span-1",
+      attributes: {
+        ...attrs,
+        "session.id": "session-1",
+        "aws.bedrock_agentcore.evaluation_level": "Trace",
+        "gen_ai.tool.name": "lookup",
+      },
+    }),
+    createSilentLogger(),
+  );
+  expect(result).toEqual({
+    evaluatorId: undefined,
+    score: undefined,
+    label: undefined,
+    explanation: undefined,
+    error: undefined,
+    errorType: undefined,
+    ...expected,
+    traceId: "trace-1",
+    spanId: "span-1",
+    sessionId: "session-1",
+    level: "Trace",
+    toolName: "lookup",
+  });
+});
+
+test.each(
+  [
+    null,
+    [],
+    "control message",
+    { attributes: null },
+    { attributes: [] },
+    { attributes: "invalid" },
+    { name: "application.error", attributes: { "error.message": "Unrelated error." } },
+    { attributes: { "error.type": "UnrelatedException" } },
+    { name: "gen_ai.evaluation.result", attributes: { "error.message": 42, "error.type": {} } },
+    { name: "gen_ai.evaluation.result", attributes: {} },
+  ].map((value) => ({ value })),
+)("parseEvaluationLogEvent skips non-evaluation or malformed data: %j", ({ value }) => {
+  expect(parseEvaluationLogEvent(JSON.stringify(value), createSilentLogger())).toBeNull();
+});

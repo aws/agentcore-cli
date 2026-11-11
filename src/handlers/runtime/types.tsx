@@ -32,7 +32,7 @@ export type RuntimeInvokeRequest = {
   baggage?: string;
 };
 
-export type RuntimeInvokeResponse = {
+export type RuntimeInvokeResponseMetadata = {
   statusCode: number;
   contentType: string;
   runtimeSessionId?: string;
@@ -42,15 +42,29 @@ export type RuntimeInvokeResponse = {
   traceParent?: string;
   traceState?: string;
   baggage?: string;
+};
+
+export type RuntimeInvokeStreamResponse = RuntimeInvokeResponseMetadata & {
+  kind: "stream";
   body: AsyncIterable<Uint8Array>;
 };
+
+export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
+  kind: "rejected";
+  error: {
+    requestId?: string;
+  };
+};
+
+export type RuntimeInvokeResponse = RuntimeInvokeStreamResponse | RuntimeInvokeRejectedResponse;
 
 export type RuntimeShellRequest = {
   runtimeArn: string;
   qualifier: string;
   runtimeSessionId?: string;
+  shellId?: string;
   bearerToken?: string;
-  onReconnect?: (reconnected: boolean) => void | Promise<void>;
+  onReconnect?: () => void | Promise<void>;
 };
 
 export type RuntimeShellFrame =
@@ -58,6 +72,7 @@ export type RuntimeShellFrame =
 
 export interface RuntimeShellSession extends AsyncIterable<RuntimeShellFrame> {
   readonly runtimeSessionId: string;
+  readonly shellId: string;
   readonly kicked: boolean;
   readonly exitCode: number | null;
   send(data: Uint8Array): Promise<void>;

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type {
+  HarnessGatewayOutboundAuth,
   HarnessMemoryRef,
   HarnessMemoryRetrievalConfig,
   HarnessSkill,
@@ -14,12 +15,21 @@ import type {
   HarnessTruncationConfig,
 } from "../../../projectSchemas/harness";
 import type { ProjectSpecSchema } from "../../../projectSchemas/project";
-import { credentialEnvVarName, type Credential } from "../../../projectSchemas/credential";
+import {
+  ConnectionSchema,
+  connectionTokenFor,
+  type Connection,
+} from "../../../projectSchemas/connections";
+import {
+  credentialEnvVarName,
+  credentialProviderNameEnvVarName,
+  type Credential,
+} from "../../../projectSchemas/credential";
 import { memoryEnvVarName, type Memory } from "../../../projectSchemas/memory";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import { InputValidationError } from "../../../errors/errors";
 import { toPythonPackageName } from "../fsUtils";
-import { resourceNameFromArn } from "../../arn";
+import { parseArn, resourceNameFromArn, serviceIdFromArn } from "../../arn";
 
 type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
 
@@ -29,12 +39,6 @@ export const EXPORT_NOTES_FILENAME = "EXPORT_NOTES.md";
 export interface ExportNote {
   category: string;
   message: string;
-}
-
-/** A single rendered output line + a tone the caller maps to its own styling. */
-export interface ExportNoteLine {
-  text: string;
-  tone: "warn" | "dim";
 }
 
 /** Everything the mapper needs; all reads are done by the caller. */
@@ -202,12 +206,12 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
         ? String(memory.retrievalConfig.relevanceScore)
         : undefined,
     actorId: memory.actorId,
-    // Gateways are never exported as code (see resolveTools); the template still
-    // needs the keys so its conditionals resolve.
     // Tools. Empty collections become undefined: the template's custom `or`/
     // `some` helpers use JS truthiness, where [] is truthy, unlike `{{#if}}`.
     inlineFunctionTools: undefinedIfEmpty(tools.inlineFunctionTools),
     remoteMcpTools: undefinedIfEmpty(tools.remoteMcpTools),
+    gatewayTools: undefinedIfEmpty(tools.gatewayTools),
+    gatewayAuthTypes: [...new Set(tools.gatewayTools.map(({ authType }) => authType))],
     // Built-in tools and plugins. Plain arrays: {{#if}} treats an empty one as false, and
     // safeJson renders it as [].
     builtinTools: namesOf("tool"),
@@ -258,7 +262,9 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     ...(spec.lifecycleConfig && { lifecycleConfiguration: spec.lifecycleConfig }),
     ...(filesystemConfigurations.length > 0 && { filesystemConfigurations }),
     ...(additionalPolicies.length > 0 && { additionalPolicies }),
-    ...(spec.connections?.length && { connections: spec.connections }),
+    ...((spec.connections?.length || tools.connections.length) && {
+      connections: [...(spec.connections ?? []), ...tools.connections],
+    }),
     ...(spec.tags && { tags: spec.tags }),
     // NOTE: the harness's executionRoleArn is deliberately NOT carried over. The
     // exported agent is a new runtime that needs its own CDK-managed role so the
@@ -322,7 +328,11 @@ function resolveModel(
     modelTopP: model.topP !== undefined ? String(model.topP) : undefined,
     modelTopK: model.topK !== undefined ? String(model.topK) : undefined,
     hasIdentity: false,
-    identityProviders: [] as { name: string; envVarName: string }[],
+    identityProviders: [] as {
+      name: string;
+      envVarName: string;
+      providerNameEnvVarName: string;
+    }[],
   };
 
   switch (model.provider) {
@@ -388,10 +398,12 @@ function resolveModel(
     case "gemini": {
       context.modelProvider = model.provider === "open_ai" ? "OpenAI" : "Gemini";
       context.strandsExtras = model.provider === "open_ai" ? "openai" : "gemini";
-      // The schema guarantees apiKeyArn for these providers.
+      // The schema guarantees apiKeyArn or apiKeyCredentialName for these providers.
       attachIdentityProvider(
         context,
-        model.apiKeyArn!,
+        model.apiKeyCredentialName !== undefined
+          ? { credentialName: model.apiKeyCredentialName }
+          : { arn: model.apiKeyArn! },
         model.provider,
         projectSpec,
         credentials,
@@ -403,10 +415,12 @@ function resolveModel(
       context.modelProvider = "LiteLLM";
       context.strandsExtras = "litellm";
       if (model.apiBase) context.litellmApiBase = model.apiBase;
-      if (model.apiKeyArn) {
+      if (model.apiKeyCredentialName !== undefined || model.apiKeyArn) {
         attachIdentityProvider(
           context,
-          model.apiKeyArn,
+          model.apiKeyCredentialName !== undefined
+            ? { credentialName: model.apiKeyCredentialName }
+            : { arn: model.apiKeyArn! },
           model.provider,
           projectSpec,
           credentials,
@@ -450,35 +464,53 @@ function hasBedrockCachePoint(params: Record<string, unknown> | undefined): bool
 }
 
 /**
- * Wire a non-Bedrock model's API key through AgentCore Identity: derive the
- * credential-provider name from the token-vault ARN, reference it from the
- * generated load.py, and register a credential entry so deploy grants access.
+ * Wire a non-Bedrock model's API key through AgentCore Identity: take the
+ * project credential the model names, or derive the credential-provider name
+ * from the token-vault ARN, reference it from the generated load.py, and
+ * register a credential entry so deploy grants access.
  */
 function attachIdentityProvider(
   context: Record<string, unknown>,
-  apiKeyArn: string,
+  apiKey: { arn: string } | { credentialName: string },
   provider: string,
   projectSpec: ProjectSpec,
   credentials: Credential[],
   notes: ExportNote[],
 ): void {
-  // ARN form: arn:aws:bedrock-agentcore:<region>:<acct>:token-vault/<vault>/apikeycredentialprovider/<name>
-  const arnNameMatch = /\/apikeycredentialprovider\/([^/]+)$/.exec(apiKeyArn);
-  const credentialName = arnNameMatch ? arnNameMatch[1]! : `${projectSpec.name}${provider}ApiKey`;
+  let credentialName: string;
+  if ("credentialName" in apiKey) {
+    credentialName = apiKey.credentialName;
+  } else {
+    // ARN form: arn:aws:bedrock-agentcore:<region>:<acct>:token-vault/<vault>/apikeycredentialprovider/<name>
+    const arnNameMatch = /\/apikeycredentialprovider\/([^/]+)$/.exec(apiKey.arn);
+    credentialName = arnNameMatch ? arnNameMatch[1]! : `${projectSpec.name}${provider}ApiKey`;
+  }
   const envVarName = credentialEnvVarName(credentialName);
+  const providerNameEnvVarName = credentialProviderNameEnvVarName(credentialName);
 
   context.hasIdentity = true;
-  context.identityProviders = [{ name: credentialName, envVarName }];
+  context.identityProviders = [{ name: credentialName, envVarName, providerNameEnvVarName }];
 
   const exists = projectSpec.credentials.some((c) => c.name === credentialName);
   if (!exists) {
     credentials.push({ authorizerType: "ApiKeyCredentialProvider", name: credentialName });
   }
+  if ("credentialName" in apiKey) {
+    notes.push({
+      category: MODEL_API_KEY_NOTE_CATEGORY,
+      message:
+        `The harness model authenticates with the project credential "${credentialName}"; the ` +
+        `exported agent uses the same credential. ${exists ? "" : `A credential entry named "${credentialName}" was added to agentcore.json. `}` +
+        `Deploy provisions it from ${envVarName} in agentcore/.env.local, so make sure that ` +
+        `variable holds your key. \`agentcore dev\` reads the same variable.`,
+    });
+    return;
+  }
   notes.push({
     category: MODEL_API_KEY_NOTE_CATEGORY,
     message:
       `The harness model authenticates with the AgentCore Identity API-key provider ` +
-      `"${credentialName}" (${apiKeyArn}). A credential entry named "${credentialName}" was ` +
+      `"${credentialName}" (${apiKey.arn}). A credential entry named "${credentialName}" was ` +
       `added to agentcore.json. Deploy creates a provider for it scoped to the project and ` +
       `target, so add ${envVarName}=<your-key> to agentcore/.env.local before the first ` +
       `deploy. \`agentcore dev\` reads the same variable.`,
@@ -585,6 +617,16 @@ interface ToolsResolution {
       pythonName: string;
     }[];
   }[];
+  gatewayTools: {
+    name: string;
+    pythonName: string;
+    urlEnvVarName: string;
+    authType: "AWS_IAM" | "NONE" | "OAUTH";
+    oauth?: { providerName: string; scopes: string[]; customParameters?: Record<string, string> };
+    toolPatterns?: string[];
+  }[];
+  /** Runtime connections that make deploy grant gateway access and set each tool's URL variable. */
+  connections: Connection[];
 }
 
 function resolveTools(
@@ -598,8 +640,11 @@ function resolveTools(
   const result: ToolsResolution = {
     inlineFunctionTools: [],
     remoteMcpTools: [],
+    gatewayTools: [],
+    connections: [],
   };
 
+  const connectionTokens = new Set((spec.connections ?? []).map(connectionTokenFor));
   for (const tool of spec.tools) {
     const allowed =
       tool.type === "inline_function"
@@ -676,15 +721,71 @@ function resolveTools(
         break;
       }
       case "agentcore_gateway": {
-        const cfg = configOf(tool, "agentCoreGateway") as { gatewayArn?: string } | undefined;
-        notes.push({
-          category: GATEWAY_TOOL_NOTE_CATEGORY,
-          message:
-            `The gateway tool "${tool.name}"${cfg?.gatewayArn ? ` (${cfg.gatewayArn})` : ""} was ` +
-            `not exported: gateway URL discovery, outbound auth, and IAM wiring are managed by ` +
-            `the harness runtime. To keep these tools, connect an MCP client to the gateway in ` +
-            `mcp_client/client.py and grant the runtime role bedrock-agentcore:InvokeGateway on ` +
-            `the gateway (or its OAuth token flow) before deploying.`,
+        const cfg = configOf(tool, "agentCoreGateway") as
+          { gatewayArn: string; outboundAuth?: HarnessGatewayOutboundAuth } | undefined;
+        if (!cfg) break;
+        const skip = (reason: string) =>
+          notes.push({
+            category: GATEWAY_TOOL_NOTE_CATEGORY,
+            message:
+              `The gateway tool "${tool.name}" (${cfg.gatewayArn}) was not exported: ${reason} ` +
+              `Connect to the gateway in mcp_client/client.py yourself, and add a gateway ` +
+              `connection to this runtime in agentcore.json so deploy grants access to it.`,
+          });
+        const auth = cfg.outboundAuth ?? { awsIam: {} };
+        if ("oauth" in auth && auth.oauth.grantType === "USER_FEDERATION") {
+          skip(
+            "it uses the OAuth grant type USER_FEDERATION, which needs a user consent flow the " +
+              "exported agent does not have.",
+          );
+          break;
+        }
+        const parsed = ConnectionSchema.safeParse({
+          id: tool.name,
+          to: {
+            type: "gateway",
+            arn: cfg.gatewayArn,
+            outboundAuth:
+              "oauth" in auth
+                ? { oauth: { ...auth.oauth, grantType: "CLIENT_CREDENTIALS" } }
+                : auth,
+          },
+        });
+        if (!parsed.success) {
+          skip(
+            `the runtime connection it needs is invalid ` +
+              `(${parsed.error.issues.map((issue) => issue.message).join(", ")}).`,
+          );
+          break;
+        }
+        const token = connectionTokenFor(parsed.data);
+        if (connectionTokens.has(token)) {
+          skip(
+            `another gateway tool or connection on this harness already uses the environment ` +
+              `variable prefix GATEWAY_${token}.`,
+          );
+          break;
+        }
+        connectionTokens.add(token);
+        const urlEnvVarName = `GATEWAY_${token}_URL`;
+        const oauth = "oauth" in auth ? auth.oauth : undefined;
+        result.connections.push(parsed.data);
+        envEntries.push({
+          key: urlEnvVarName,
+          value: gatewayUrl(cfg.gatewayArn),
+          comment: `URL of gateway tool "${tool.name}" for agentcore dev (deploy sets it on the runtime)`,
+        });
+        result.gatewayTools.push({
+          name: tool.name,
+          pythonName: stablePythonIdentifier(tool.name),
+          urlEnvVarName,
+          authType: oauth ? "OAUTH" : "none" in auth ? "NONE" : "AWS_IAM",
+          oauth: oauth && {
+            providerName: resourceNameFromArn(oauth.providerArn),
+            scopes: oauth.scopes,
+            customParameters: oauth.customParameters,
+          },
+          toolPatterns: serverToolPatterns(tool.name, allowedPatterns),
         });
         break;
       }
@@ -715,6 +816,13 @@ function resolveTools(
   }
 
   return result;
+}
+
+/** The MCP endpoint of a gateway, as @aws/agentcore-cdk derives it from the ARN at deploy. */
+function gatewayUrl(gatewayArn: string): string {
+  const { partition, region } = parseArn(gatewayArn)!;
+  const suffix = partition === "aws-cn" ? "amazonaws.com.cn" : "amazonaws.com";
+  return `https://${serviceIdFromArn(gatewayArn)}.gateway.bedrock-agentcore.${region}.${suffix}/mcp`;
 }
 
 /**
@@ -1054,7 +1162,7 @@ function fnmatch(pattern: string, str: string): boolean {
 }
 
 // ============================================================================
-// EXPORT_NOTES.md + display formatting
+// EXPORT_NOTES.md
 // ============================================================================
 
 /** Render the EXPORT_NOTES.md content written into the exported agent's directory. */
@@ -1086,27 +1194,4 @@ export function buildExportNotesMarkdown(
 
   lines.push("");
   return lines.join("\n");
-}
-
-/**
- * Format export notes into styled lines for the export success path. Pure so the
- * CLI (and a future TUI screen) render identical wording.
- */
-export function formatExportNotes(notes: ExportNote[], notesFileHint: string): ExportNoteLine[] {
-  if (notes.length === 0) {
-    return [{ text: `No manual follow-up required. (Details: ${notesFileHint})`, tone: "dim" }];
-  }
-
-  const label = notes.length === 1 ? "note" : "notes";
-  const lines: ExportNoteLine[] = [
-    { text: `${notes.length} export ${label} requiring manual follow-up:`, tone: "warn" },
-  ];
-  for (const note of notes) {
-    lines.push({ text: `  - ${note.category}`, tone: "warn" });
-    for (const messageLine of note.message.split("\n")) {
-      lines.push({ text: `    ${messageLine}`, tone: "dim" });
-    }
-  }
-  lines.push({ text: `These notes are also saved to ${notesFileHint}`, tone: "dim" });
-  return lines;
 }

@@ -34,7 +34,18 @@ export class FsTreeNode {
     return true;
   }
 
-  async write(dest: string): Promise<void> {
+  /**
+   * Writes the tree under `dest`, returning the paths of the files it wrote. An
+   * existing file is an error, unless `skipExisting` is set: then it is left
+   * untouched and not reported as written. `written`, when given, is filled as
+   * each file is written, so a caller still knows what was created if a later
+   * write fails.
+   */
+  async write(
+    dest: string,
+    options: { skipExisting?: boolean; written?: string[] } = {},
+  ): Promise<string[]> {
+    const written = options.written ?? [];
     await this.walk(async (node, path) => {
       if (node.isDir) {
         await mkdir(path, { recursive: true });
@@ -42,12 +53,23 @@ export class FsTreeNode {
       }
 
       if (existsSync(path)) {
+        if (options.skipExisting) return true;
         throw new ProjectStateError(`File already exists: ${path}`);
       }
 
-      await writeFile(path, await node.bytes!());
+      try {
+        // "wx" refuses to clobber a file created after the check above.
+        await writeFile(path, await node.bytes!(), { flag: "wx" });
+      } catch (error) {
+        if (options.skipExisting && (error as NodeJS.ErrnoException).code === "EEXIST") {
+          return true;
+        }
+        throw error;
+      }
+      written.push(path);
       return true;
     }, dest);
+    return written;
   }
 
   static createFile(name: string, bytes: () => Promise<string>): FsTreeNode {

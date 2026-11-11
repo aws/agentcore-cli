@@ -5,3 +5,5 @@ export { withLogging } from "./withLogging";
 export { withGlobalConfigAccessor } from "./withGlobalConfigAccessor";
 export { withPlatform } from "./withPlatform";
 export { withProject } from "./withProject";
+export { withV0ProjectGuard } from "./withV0ProjectGuard";
+export { withV0ProjectNotice } from "./withV0ProjectNotice";

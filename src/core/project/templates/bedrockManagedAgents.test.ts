@@ -151,10 +151,17 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(client).toContain('base_url=f"https://bedrock-mantle.{region}.api.aws/openai/v1"');
   expect(client).toContain('WORKSPACE_DIRECTORY = "/home/app/workspace"');
   expect(client).toContain('CAPABILITY_DIRECTORIES = ["/opt/bma/plugins"]');
+  expect(client).toContain("deployed-state.json");
+  expect(client).toContain('"bmaSession"');
+  expect(client).toContain('extra_body={"role_arn": args.role_arn}');
+  expect(client).not.toContain("boto3");
   expect(client).toContain('"type": "aws_bedrock_agentcore"');
   expect(client).toContain('"runtime_qualifier": "DEFAULT"');
   expect(client).toContain('"workspace_directory": WORKSPACE_DIRECTORY');
   expect(client).toContain('"capability_directories": CAPABILITY_DIRECTORIES');
+  expect(client).toContain('if parsed.path not in ("", "/"):');
+  expect(client).toContain('parsed._replace(path="/mcp")');
+  expect(client).toContain('"server_url": mcp_server_url(args.gateway)');
   expect(client).toContain("stream=True");
   expect(client).toContain('extra_query={"stream": "true"}');
 

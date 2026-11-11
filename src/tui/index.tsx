@@ -14,9 +14,16 @@ import {
 import type { AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
-import { ProjectDetectedKey } from "../handlers/project/context";
+import {
+  ProjectDetectedKey,
+  V0ProjectDetectedKey,
+  V0ProjectNoticeStateKey,
+} from "../handlers/project/context";
+import { V0_PROJECT_MIGRATION_MESSAGE } from "../handlers/project/v0Notice";
+import { enclosingProjectRoot, isV0Project } from "../core/project/fsUtils";
 import { ExitCode, InvalidEnvironmentError } from "../errors";
 import { TuiExitMessageKey } from "./exitMessage";
+import { TuiExitErrorKey } from "./exitError";
 import { createResizeGate } from "./resize";
 import { TuiHandoffKey, handoffArgs } from "./handoff";
 
@@ -65,10 +72,18 @@ export async function renderTuiAt(
   }
 
   let exitMessage: string | undefined;
+  let exitError: Error | undefined;
   let handoff: string[] | undefined;
   let tuiContext = ctx;
+  let v0Project = ctx.value(V0ProjectDetectedKey);
+  if (v0Project === undefined) {
+    const rootPath = enclosingProjectRoot(process.cwd());
+    v0Project = rootPath !== undefined && (await isV0Project(rootPath));
+  }
+  tuiContext = tuiContext.withValue(V0ProjectDetectedKey, v0Project);
   if (isRootMenuPath(path)) {
     const projectDetected =
+      v0Project ||
       ctx.value(ProjectKey) !== undefined ||
       (await core.projectManager.resolve({
         filePath: process.cwd(),
@@ -76,6 +91,9 @@ export async function renderTuiAt(
     tuiContext = tuiContext.withValue(ProjectDetectedKey, projectDetected);
   }
   tuiContext = tuiContext
+    .withValue(TuiExitErrorKey, (error) => {
+      exitError = error;
+    })
     .withValue(TuiExitMessageKey, (message) => {
       exitMessage = message;
     })
@@ -86,6 +104,9 @@ export async function renderTuiAt(
   // alternateScreen switches the terminal to its alternate buffer so the TUI
   // takes over the screen and the prior scrollback is restored on exit (like Vim).
   const queryClient = new QueryClient();
+
+  const noticeState = ctx.value(V0ProjectNoticeStateKey);
+  if (noticeState) noticeState.enteredTui = true;
 
   const resizeGate = createResizeGate(io.stdout);
   const { waitUntilExit } = render(
@@ -103,7 +124,12 @@ export async function renderTuiAt(
     await waitUntilExit();
   } finally {
     resizeGate.dispose();
+    if (v0Project) {
+      io.stderr.write(`${V0_PROJECT_MIGRATION_MESSAGE}\n`);
+    }
   }
+  // Ink handles Ctrl+C before invoking screen input handlers.
+  if (exitError !== undefined) throw exitError;
   if (exitMessage !== undefined) {
     io.stdout.write(exitMessage.endsWith("\n") ? exitMessage : `${exitMessage}\n`);
   }

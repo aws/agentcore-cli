@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ProjectStateError } from "../../../errors/errors";
@@ -53,6 +53,21 @@ describe("FsTreeNode.write", () => {
     await tree.write(directory);
 
     await expect(tree.write(directory)).rejects.toBeInstanceOf(ProjectStateError);
+  });
+
+  test("with skipExisting, leaves existing files alone and reports only what it wrote", async () => {
+    const directory = await inTempDirectory();
+    await writeFile(join(directory, "README.md"), "mine\n");
+    const tree = FsTreeNode.createDirectory(".", [
+      FsTreeNode.createFile("README.md", async () => "generated\n"),
+      FsTreeNode.createFile("AGENTS.md", async () => "generated\n"),
+    ]);
+
+    const written = await tree.write(directory, { skipExisting: true });
+
+    expect(written).toEqual([join(directory, "AGENTS.md")]);
+    expect(await readFile(join(directory, "README.md"), "utf8")).toBe("mine\n");
+    expect(await readFile(join(directory, "AGENTS.md"), "utf8")).toBe("generated\n");
   });
 });
 

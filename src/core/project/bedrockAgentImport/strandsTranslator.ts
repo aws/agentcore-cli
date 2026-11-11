@@ -248,10 +248,8 @@ function generateStrandsMemoryModule(request: BedrockAgentImportRequest): string
   const retrievalConfig =
     request.memory === "longAndShortTerm"
       ? `    retrieval_config = {
-        f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.5),
-        f"/users/{actor_id}/preferences": RetrievalConfig(top_k=3, relevance_score=0.5),
-        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.5),
-        f"/summaries/{actor_id}": RetrievalConfig(top_k=3, relevance_score=0.5),
+        f"/users/{actor_id}/facts": RetrievalConfig(top_k=3, relevance_score=0.0),
+        f"/episodes/{actor_id}/{session_id}": RetrievalConfig(top_k=5, relevance_score=0.0),
     }
 `
       : "    retrieval_config = {}\n";

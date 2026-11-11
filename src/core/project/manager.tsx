@@ -1,12 +1,14 @@
 import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import semver from "semver";
 import type {
   AddResourceOptions,
   AddResourceInput,
   CreateProjectInput,
   DeployProjectInput,
   DeployResult,
+  EnvLocalEntry,
   ExportHarnessInput,
   ExportHarnessResult,
   ResolveDeployedResourceInput,
@@ -21,6 +23,8 @@ import type {
   ProjectManager,
   ProjectEvent,
   ProjectResource,
+  SyncRuntimeBuildsInput,
+  SyncRuntimeBuildsResult,
   RemoveResourceInput,
   RemoveResourceResult,
   RemoveResourcesResult,
@@ -40,7 +44,12 @@ import {
 import { withOutputEvents } from "./events";
 import { defaultSource, type AssetSource } from "./source";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
-import { getHarnessTemplateResolver, validateHarnessTemplateSource } from "./templates/harness";
+import {
+  HARNESS_API_KEY_PROVIDER_LABELS,
+  getHarnessTemplateResolver,
+  harnessApiKeyCredentialName,
+  validateHarnessTemplateSource,
+} from "./templates/harness";
 import { createProjectTree } from "./templates/project";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -55,6 +64,7 @@ import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project"
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import {
   CredentialSchema,
+  credentialEnvVarName,
   credentialEnvironmentVariableNames,
 } from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
@@ -63,7 +73,8 @@ import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config"
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
-import { enclosingProjectRoot, projectSpecPath } from "./fsUtils";
+import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
+import { parseArn } from "../arn";
 import {
   AgentCoreCLIError,
   DeserializationError,
@@ -81,30 +92,76 @@ import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
-  AgentCoreRegionSchema,
   AwsDeploymentTargetSchema,
   AwsDeploymentTargetsSchema,
   DEFAULT_TARGET_NAME,
   type AwsDeploymentTarget,
 } from "../../projectSchemas/aws-targets";
-import type { RuntimeResourceConfig } from "../../handlers/project/add/runtime/types";
+import { V0AwsDeploymentTargetsSchema } from "../../projectSchemas/v0";
+import {
+  isRuntimeDocsConfig,
+  type RuntimeResourceConfig,
+} from "../../handlers/project/add/runtime/types";
+import { buildDocsRuntimeSpec, runtimeDocsTree } from "./templates/runtimeDocs";
 import type { TemplateRenderer } from "./templates/types";
 import { HandlebarsTemplateRenderer } from "./templates/renderer";
 import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
-import { isBmaRuntime } from "../../handlers/project/bma";
+import { projectFormat, type ProjectFormat } from "./legacy/detect";
+import { loadLegacyProject } from "./legacy/load";
+import { assertV1Project } from "./legacy/writeGate";
+import { assertNoPendingMigration } from "./migrate/journal";
+import { prepareRuntimes } from "./runtimeBuild";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
 const NODE_INSTALL_HINT = "Install Node.js: https://nodejs.org/";
 const UV_INSTALL_HINT = "Install uv: https://docs.astral.sh/uv/getting-started/installation/";
+// v0.24.2 introduced dependency syncing with this exact CDK pin.
+const MINIMUM_V0_CDK_VERSION = "0.1.0-alpha.45";
+
+interface CdkDependency {
+  /** As written in package.json, trimmed. */
+  spec: string;
+  version: string;
+}
+
+function v0DependencyWarning(dependency: CdkDependency | undefined): string | undefined {
+  if (!dependency || !semver.lt(dependency.version, MINIMUM_V0_CDK_VERSION)) return undefined;
+  return (
+    "This project's CDK dependencies are older than v0.24.2. " +
+    "Run `npx @aws/agentcore@0 deploy` once to update them, then try again."
+  );
+}
+
+/** Rejects a project whose agentcore.json format and vended CDK library major disagree. */
+function assertCdkLibraryMatches(
+  format: ProjectFormat,
+  dependency: CdkDependency | undefined,
+  cause?: unknown,
+): void {
+  if (!dependency) return;
+  const library: ProjectFormat = semver.major(dependency.version) >= 1 ? "v1" : "v0";
+  if (library === format) return;
+
+  const declared = `@aws/agentcore-cdk ${dependency.spec}`;
+  throw new ProjectStateError(
+    format === "v1"
+      ? "agentcore/agentcore.json says this is a v1 project (version 2), but its CDK library is " +
+          `v0 (${declared}). Set "version" back to 1, or run \`agentcore migrate\` to upgrade it.`
+      : "agentcore/agentcore.json says this is a v0 project (version 1), but its CDK library is " +
+          `v1 (${declared}). Set "version" to 2, or reinstall the v0 CDK app.`,
+    { cause },
+  );
+}
 
 /**
+
  * Shown when a runtime template hardwired to an unreachable model provider
  * targets a China (aws-cn) region and takes no --model-provider override
- * (langchain, vercel, `--type import`). Amazon Bedrock, Anthropic, OpenAI, and
+ * (langchain, vercel, a Bedrock Agent import). Amazon Bedrock, Anthropic, OpenAI, and
  * Gemini cannot be called from China regions; LiteLLM can route to a reachable
  * provider and OpenAICompatible points the OpenAI client at a reachable endpoint.
  */
@@ -386,12 +443,47 @@ export class FsProjectManager implements ProjectManager {
     if (!rootPath) return undefined;
 
     const configPath = projectSpecPath(rootPath);
-    const spec = await this.json.read(configPath, ProjectSpecSchema);
-    return {
-      name: spec.name,
-      rootPath,
-      spec,
-    };
+    const cdkDependency = await this.declaredCdkDependency(rootPath);
+    try {
+      const spec = await this.json.read(configPath, ProjectSpecSchema);
+      assertCdkLibraryMatches("v1", cdkDependency);
+      return {
+        name: spec.name,
+        rootPath,
+        spec,
+      };
+    } catch (error) {
+      if (error instanceof DeserializationError) {
+        const header = await this.json
+          .read(configPath, z.object({ version: z.unknown().optional() }))
+          .catch(() => undefined);
+        if (projectFormat(header) === "v0") {
+          const warning = v0DependencyWarning(cdkDependency);
+          if (warning) throw new ProjectStateError(warning, { cause: error });
+          assertCdkLibraryMatches("v0", cdkDependency, error);
+          return loadLegacyProject(rootPath, this.json);
+        }
+        // An invalid v1 spec on a v0 CDK app is almost always a hand-bumped version.
+        if (header?.version === 2) assertCdkLibraryMatches("v1", cdkDependency, error);
+      }
+      throw error;
+    }
+  }
+
+  /** The `@aws/agentcore-cdk` dependency the vended CDK app declares, if it is a plain semver. */
+  private async declaredCdkDependency(rootPath: string): Promise<CdkDependency | undefined> {
+    const manifest = await this.json
+      .read(
+        join(rootPath, "agentcore", "cdk", "package.json"),
+        z.object({ dependencies: z.record(z.string(), z.unknown()).optional() }),
+      )
+      .catch(() => undefined);
+    const declared = manifest?.dependencies?.["@aws/agentcore-cdk"];
+    if (typeof declared !== "string") return undefined;
+
+    const spec = declared.trim();
+    const version = semver.valid(spec.replace(/^[~^=]/, ""));
+    return version ? { spec, version } : undefined;
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
@@ -419,11 +511,11 @@ export class FsProjectManager implements ProjectManager {
     // Validate required tools exist before starting creation flow
     await this.checkCreateDependencies(input);
 
-    yield { type: "step", message: "Creating project tree" };
+    yield { type: "step", message: "creating project tree" };
     await projectTree.write(destination);
 
     if (envEntries.length > 0) {
-      yield { type: "step", message: "Writing model provider API key to agentcore/.env.local" };
+      yield { type: "step", message: "writing model provider API key to agentcore/.env.local" };
       await new EnvLocalFile(destination).insertIfNew(envEntries);
     }
 
@@ -440,13 +532,14 @@ export class FsProjectManager implements ProjectManager {
       yield* this.addResource(scaffolded, {
         resourceType: "harness",
         resourceConfig: input.scaffoldHarnessInput,
+        apiKey: input.harnessApiKey,
       });
     }
 
     // A failed step leaves the scaffolded files in place; the error carries the
     // failing command, its directory, and its output.
     if (!input.skipInstall) {
-      yield { type: "step", message: "Installing CDK dependencies with npm" };
+      yield { type: "step", message: "installing CDK dependencies with npm" };
       yield* this.run(NPM_INSTALL, join(destination, "agentcore", "cdk"), npmProgressLine);
 
       if (scaffoldRuntimeInput) {
@@ -463,7 +556,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     if (!input.skipGit) {
-      yield { type: "step", message: "Initializing git repository" };
+      yield { type: "step", message: "initializing git repository" };
       yield* this.run(["git", "init"], destination);
     }
 
@@ -495,10 +588,11 @@ export class FsProjectManager implements ProjectManager {
     input: AddResourceInput,
     options: AddResourceOptions = {},
   ): AsyncGenerator<ProjectEvent, Project> {
+    assertV1Project(project, "add");
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const projectSpecKey = toProjectSpecKey(input.resourceType);
 
-    yield { type: "step", message: `Reading project spec file at '${agentCoreSpecPath}'` };
+    yield { type: "step", message: `reading project spec file at '${agentCoreSpecPath}'` };
     const projectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
     const existingResources = projectSpec[projectSpecKey] ?? [];
@@ -585,7 +679,8 @@ export class FsProjectManager implements ProjectManager {
             : cnUnsupportedResourceMessage(input.resourceType),
         );
       }
-      if (input.resourceType === "runtime") {
+      // A docs-only runtime has no scaffolded code to gate; its code is the user's.
+      if (input.resourceType === "runtime" && !isRuntimeDocsConfig(input.resourceConfig)) {
         const scaffold = input.resourceConfig.scaffoldRuntimeInput;
         if (scaffold.framework === "bma") {
           throw new RegionUnsupportedFeatureError(BMA_CN_MESSAGE);
@@ -603,35 +698,149 @@ export class FsProjectManager implements ProjectManager {
 
     switch (input.resourceType) {
       case "harness": {
-        yield { type: "step", message: `Scaffolding harness in project` };
-        const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
-        scaffoldedPaths.push(outputPath);
+        const harnessName = input.resourceConfig.name;
+        const model = input.resourceConfig.model;
+        let resourceConfig = input.resourceConfig;
+        // A managed API key is stored the way a runtime's is: a project
+        // credential the model names, its secret in .env.local, provisioned
+        // on deploy before synth resolves the name to its ARN.
+        let harnessEnvEntries: EnvLocalEntry[] = [];
+        if (input.apiKey !== undefined) {
+          if (model.provider === "bedrock") {
+            throw new InputValidationError(
+              'an API key is not supported for the "bedrock" model provider; Bedrock uses the harness role',
+            );
+          }
+          if (model.apiKeyArn !== undefined) {
+            throw new InputValidationError(
+              "an API key cannot be combined with the model's apiKeyArn; give one or the other",
+            );
+          }
+          const credentialName = harnessApiKeyCredentialName(harnessName, model.provider);
+          resourceConfig = {
+            ...resourceConfig,
+            model: { ...model, apiKeyCredentialName: credentialName },
+          };
+          if (!projectSpec.credentials.some((credential) => credential.name === credentialName)) {
+            projectSpec.credentials.push({
+              authorizerType: "ApiKeyCredentialProvider",
+              name: credentialName,
+            });
+          }
+          harnessEnvEntries = [
+            {
+              key: credentialEnvVarName(credentialName),
+              value: input.apiKey,
+              comment: `API key for the ${HARNESS_API_KEY_PROVIDER_LABELS[model.provider]} model provider (harness ${harnessName})`,
+            },
+          ];
+        }
+        const credentialName = resourceConfig.model.apiKeyCredentialName;
+        if (credentialName !== undefined) {
+          const credential = projectSpec.credentials.find(
+            (candidate) => candidate.name === credentialName,
+          );
+          if (!credential) {
+            throw new ResourceNotFoundError(
+              `no credential named '${credentialName}' exists in this project`,
+            );
+          }
+          if (credential.authorizerType !== "ApiKeyCredentialProvider") {
+            throw new InputValidationError(
+              `credential '${credentialName}' is a ${credential.authorizerType}, not an ApiKeyCredentialProvider`,
+            );
+          }
+        }
+
+        yield { type: "step", message: `scaffolding harness in project` };
+        const outputPath = join(project.rootPath, "app", harnessName);
+        // Rollback removes only what this add created, never a folder the user already had.
+        if (!existsSync(outputPath)) scaffoldedPaths.push(outputPath);
 
         const resolver = getHarnessTemplateResolver({
           assetSource: this.assetSource,
           templateRenderer: this.templateRenderer,
         });
-        const result = await resolver.resolve(input.resourceConfig);
+        const result = await resolver.resolve(resourceConfig);
         await result.tree.write(dirname(outputPath));
         if (result.spec.harnesses) projectSpec.harnesses.push(...result.spec.harnesses);
+        if (harnessEnvEntries.length > 0) {
+          envFile = new EnvLocalFile(project.rootPath);
+          yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
+          const { skipped } = await envFile.insertIfNew(harnessEnvEntries);
+          for (const key of skipped) {
+            yield {
+              type: "step",
+              message: `'${key}' already exists in ${ENV_LOCAL_RELATIVE_PATH}; left unchanged`,
+            };
+          }
+        }
         break;
       }
       case "runtime": {
-        await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
-        yield { type: "step", message: "Scaffolding runtime in project" };
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
-        scaffoldedPaths.push(outputPath);
+        // The folder may hold the user's own code, but never another resource's.
+        const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
+        if (owner !== undefined) {
+          throw new InputValidationError(
+            `cannot add runtime '${input.resourceConfig.name}': 'app/${input.resourceConfig.name}' ` +
+              `overlaps the files of ${owner}. Choose a different --name.`,
+          );
+        }
+        // Rollback removes only what this add created, never a folder the user already had.
+        const folderExisted = existsSync(outputPath);
+        if (isRuntimeDocsConfig(input.resourceConfig)) {
+          const relativeFolder = `app/${input.resourceConfig.name}`;
+          yield { type: "step", message: `writing runtime docs to '${relativeFolder}'` };
+          const tree = await runtimeDocsTree(
+            { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
+            input.resourceConfig,
+          );
+          // Tracked as each file is written, so a write that fails partway is
+          // cleaned up too (only what this add created).
+          const written: string[] = [];
+          if (!folderExisted) scaffoldedPaths.push(outputPath);
+          try {
+            await tree.write(dirname(outputPath), { skipExisting: true, written });
+          } catch (err) {
+            await this.discardStaged(folderExisted ? written : [outputPath]);
+            throw err;
+          }
+          if (folderExisted) scaffoldedPaths.push(...written);
+          for (const child of tree.children) {
+            if (!written.includes(join(outputPath, child.name))) {
+              yield {
+                type: "step",
+                message: `'${relativeFolder}/${child.name}' already exists; left unchanged`,
+              };
+            }
+          }
+          projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          break;
+        }
 
+        await this.checkRuntimeDependency(input.resourceConfig.scaffoldRuntimeInput);
+        yield { type: "step", message: "scaffolding runtime in project" };
+        if (!folderExisted) scaffoldedPaths.push(outputPath);
+
+        // Tracked as each file is written, so a failed write into an existing
+        // folder removes only what it wrote, and a new folder goes entirely.
+        const scaffoldWritten: string[] = [];
         const { spec, envEntries } = await this.scaffoldRuntimeResources(
           outputPath,
           input.resourceConfig,
-        );
+          scaffoldWritten,
+        ).catch(async (err: unknown) => {
+          await this.discardStaged(folderExisted ? scaffoldWritten : [outputPath]);
+          throw err;
+        });
+        if (folderExisted) scaffoldedPaths.push(...scaffoldWritten);
         if (spec.runtimes) projectSpec.runtimes.push(...spec.runtimes);
         if (spec.memories) projectSpec.memories.push(...spec.memories);
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
         if (envEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
-          yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+          yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
           const { skipped } = await envFile.insertIfNew(envEntries);
           for (const key of skipped) {
             yield {
@@ -652,7 +861,7 @@ export class FsProjectManager implements ProjectManager {
         projectSpec.credentials.push(credential);
         if (input.envEntries?.length) {
           envFile = new EnvLocalFile(project.rootPath);
-          yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+          yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
           const { skipped } = await envFile.insertIfNew(input.envEntries);
           for (const key of skipped) {
             yield {
@@ -667,8 +876,7 @@ export class FsProjectManager implements ProjectManager {
         projectSpec.configBundles.push(parseResource(ConfigBundleSchema, input.resourceConfig));
         break;
       }
-      case "online-eval":
-      case "online-insight": {
+      case "online-eval": {
         projectSpec.onlineEvalConfigs.push(
           parseResource(OnlineEvalConfigSchema, input.resourceConfig),
         );
@@ -680,7 +888,7 @@ export class FsProjectManager implements ProjectManager {
       }
       case "evaluator": {
         if (input.scaffold) {
-          yield { type: "step", message: "Scaffolding evaluator in project" };
+          yield { type: "step", message: "scaffolding evaluator in project" };
           const outputPath = join(project.rootPath, "app", input.scaffold.name);
           if (existsSync(outputPath))
             throw new InputValidationError(
@@ -774,7 +982,7 @@ export class FsProjectManager implements ProjectManager {
       }
     }
 
-    yield { type: "step", message: `Updating project spec file at '${agentCoreSpecPath}'` };
+    yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
 
     let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
     try {
@@ -789,14 +997,7 @@ export class FsProjectManager implements ProjectManager {
         `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
       await Promise.all([
-        ...scaffoldedPaths.map((p) =>
-          rm(p, { recursive: true, force: true }).catch((e) => {
-            const error = AgentCoreCLIError.fromError(e);
-            this.logger
-              .child({ errorName: error.name, errorMessage: error.message })
-              .warn(`failed to clean up ${p}`);
-          }),
-        ),
+        this.discardStaged(scaffoldedPaths),
         envFile?.rollback().catch((e) => {
           const error = AgentCoreCLIError.fromError(e);
           this.logger
@@ -813,6 +1014,20 @@ export class FsProjectManager implements ProjectManager {
     };
   }
 
+  /** Best-effort removal of paths an add created; failures are logged, not thrown. */
+  private async discardStaged(paths: string[]): Promise<void> {
+    await Promise.all(
+      paths.map((p) =>
+        rm(p, { recursive: true, force: true }).catch((e) => {
+          const error = AgentCoreCLIError.fromError(e);
+          this.logger
+            .child({ errorName: error.name, errorMessage: error.message })
+            .warn(`failed to clean up ${p}`);
+        }),
+      ),
+    );
+  }
+
   private getProjectSpecPath(project: Project): string {
     return projectSpecPath(project.rootPath);
   }
@@ -821,6 +1036,7 @@ export class FsProjectManager implements ProjectManager {
     project: Project,
     input: RemoveResourceInput,
   ): Promise<RemoveResourceResult> {
+    assertV1Project(project, "remove");
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -946,6 +1162,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async removeAllResources(project: Project): Promise<RemoveResourcesResult> {
+    assertV1Project(project, "remove all");
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
@@ -1013,13 +1230,47 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async *exportHarness(
-    project: Project,
+    project: Project | undefined,
     input: ExportHarnessInput,
   ): AsyncGenerator<ProjectEvent, ExportHarnessResult> {
+    if (project) assertV1Project(project, "export harness");
+    if (!project) {
+      if (!input.prefetched) {
+        throw new ProjectStateError(
+          "--name requires an AgentCore project. Use --arn to export a deployed harness into a new project.",
+        );
+      }
+      const projectName = input.projectName ?? defaultExportProjectName(input.prefetched.spec.name);
+      const destination = join(process.cwd(), projectName);
+      const source = input.prefetched.sourceArn ? parseArn(input.prefetched.sourceArn) : undefined;
+      const sourceTargets = source
+        ? AwsDeploymentTargetsSchema.parse([
+            {
+              name: DEFAULT_TARGET_NAME,
+              account: source.account,
+              region: source.region,
+            },
+          ])
+        : undefined;
+      if (existsSync(destination)) {
+        throw new InputValidationError(
+          `the export project directory '${destination}' already exists; ` +
+            "run export inside an existing AgentCore project or choose a different working directory",
+        );
+      }
+      project = yield* this.create({ name: projectName });
+      if (sourceTargets) {
+        await this.json.write(
+          join(project.rootPath, "agentcore", "aws-targets.json"),
+          sourceTargets,
+        );
+      }
+    }
+
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const { targetAgentName } = input;
 
-    yield { type: "step", message: `Reading project spec file at '${agentCoreSpecPath}'` };
+    yield { type: "step", message: `reading project spec file at '${agentCoreSpecPath}'` };
     const projectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
     // Resolve the harness spec + system prompt: from the prefetched service
@@ -1047,7 +1298,7 @@ export class FsProjectManager implements ProjectManager {
       harnessDir = join(project.rootPath, entry.path);
       yield {
         type: "step",
-        message: `Reading harness configuration from '${join(entry.path, "harness.yaml")}'`,
+        message: `reading harness configuration from '${join(entry.path, "harness.yaml")}'`,
       };
       const harnessPath = join(harnessDir, "harness.yaml");
       const parsed = HarnessYamlSchema.safeParse(await readYamlFile(harnessPath));
@@ -1101,7 +1352,7 @@ export class FsProjectManager implements ProjectManager {
 
     yield {
       type: "step",
-      message: `Mapping harness '${harnessName}' to the Strands runtime template`,
+      message: `mapping harness '${harnessName}' to the Strands runtime template`,
     };
     const plan = mapHarnessToExportPlan({
       harnessName,
@@ -1113,7 +1364,7 @@ export class FsProjectManager implements ProjectManager {
       modelAdditionalParams: input.prefetched?.modelAdditionalParams,
     });
 
-    yield { type: "step", message: `Rendering agent code at 'app/${targetAgentName}'` };
+    yield { type: "step", message: `rendering agent code at 'app/${targetAgentName}'` };
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource: this.assetSource },
       { assetDir: "templates/export-harness-python" },
@@ -1143,7 +1394,7 @@ export class FsProjectManager implements ProjectManager {
         await writeFile(join(agentDir, fileName), `${JSON.stringify(policyDoc, null, 2)}\n`);
       }
 
-      yield { type: "step", message: `Writing ${EXPORT_NOTES_FILENAME}` };
+      yield { type: "step", message: `writing ${EXPORT_NOTES_FILENAME}` };
       const notesPath = join(agentDir, EXPORT_NOTES_FILENAME);
       await writeFile(
         notesPath,
@@ -1157,7 +1408,7 @@ export class FsProjectManager implements ProjectManager {
 
       if (plan.envEntries.length > 0) {
         envFile = new EnvLocalFile(project.rootPath);
-        yield { type: "step", message: `Updating secrets file at '${envFile.path}'` };
+        yield { type: "step", message: `updating secrets file at '${envFile.path}'` };
         const { skipped } = await envFile.insertIfNew(plan.envEntries);
         for (const key of skipped) {
           yield {
@@ -1167,7 +1418,7 @@ export class FsProjectManager implements ProjectManager {
         }
       }
 
-      yield { type: "step", message: `Updating project spec file at '${agentCoreSpecPath}'` };
+      yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
       projectSpec.runtimes.push(plan.runtime);
       for (const credential of plan.credentials) {
         if (!projectSpec.credentials.some((candidate) => candidate.name === credential.name)) {
@@ -1209,7 +1460,11 @@ export class FsProjectManager implements ProjectManager {
     };
   }
 
-  private async scaffoldRuntimeResources(outputPath: string, input: RuntimeResourceConfig) {
+  private async scaffoldRuntimeResources(
+    outputPath: string,
+    input: RuntimeResourceConfig,
+    written: string[] = [],
+  ) {
     const resolver = getRuntimeTemplateResolver(
       { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
       input,
@@ -1218,12 +1473,62 @@ export class FsProjectManager implements ProjectManager {
       throw new InputValidationError(`unable to find template that matches given parameters`);
 
     const result = await resolver.resolve(input);
-    await result.tree.write(dirname(outputPath));
+    await result.tree.write(dirname(outputPath), { written });
     return { spec: result.spec, envEntries: result.envEntries ?? [] };
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
-    yield* this.backendFor(project).build(project);
+    assertV1Project(project, "build");
+    // Half-written project files from an interrupted `agentcore migrate` must not
+    // be synced or synthesized; build has no target, so only that state stops it.
+    await assertNoPendingMigration(project.rootPath);
+    const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
+    for (const message of synced.messages) yield { type: "step", message };
+    yield* this.backendFor(project).build(synced.project);
+  }
+
+  public async syncRuntimeBuilds(
+    project: Project,
+    input: SyncRuntimeBuildsInput,
+  ): Promise<SyncRuntimeBuildsResult> {
+    // A v0 project's agentcore.json has the v0 shape and is never rewritten here.
+    if (project.legacy) return { project, messages: [], written: false };
+    const runtimes = input.runtimeNames
+      ? project.spec.runtimes.filter((runtime) => input.runtimeNames!.includes(runtime.name))
+      : project.spec.runtimes;
+    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose);
+    if (prepared.changed.length === 0) {
+      return { project, messages: prepared.messages, written: false };
+    }
+
+    // Patch the raw file rather than re-serializing the parsed spec, so fields
+    // the schema does not know about, and the order of every key, survive.
+    const specPath = this.getProjectSpecPath(project);
+    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+    const rawRuntimes = Array.isArray(raw.runtimes) ? [...(raw.runtimes as unknown[])] : [];
+    for (const { runtime, changes } of prepared.changed) {
+      const index = rawRuntimes.findIndex(
+        (entry) => (entry as { name?: unknown } | null)?.name === runtime.name,
+      );
+      if (index < 0) continue;
+      const entry: Record<string, unknown> = { ...(rawRuntimes[index] as object) };
+      for (const { field, to } of changes) {
+        if (to === undefined) delete entry[field];
+        else entry[field] = to;
+      }
+      rawRuntimes[index] = entry;
+    }
+    const updated = { ...raw, runtimes: rawRuntimes };
+    const parsed = ProjectSpecSchema.safeParse(updated);
+    if (!parsed.success) {
+      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+    }
+    await this.json.write(specPath, updated);
+    return {
+      project: { ...project, spec: parsed.data },
+      messages: prepared.messages,
+      written: true,
+    };
   }
 
   // Resolves the named target from aws-targets.json before handing off, so the
@@ -1233,6 +1538,10 @@ export class FsProjectManager implements ProjectManager {
     project: Project,
     input: DeployProjectInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
+    assertV1Project(project, "deploy");
+    // A target `agentcore migrate` hasn't finished with still has its v0 logical
+    // IDs; every deploy path (CLI, TUI, harness dev) comes through here.
+    await assertNoPendingMigration(project.rootPath, input.target);
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     const fileExists = existsSync(targetsPath);
     const targets = await this.listTargets(project);
@@ -1248,7 +1557,7 @@ export class FsProjectManager implements ProjectManager {
       yield {
         type: "step",
         message:
-          `Created default deployment target: account ${target.account}, ` +
+          `created default deployment target: account ${target.account}, ` +
           `region ${target.region} (${join("agentcore", "aws-targets.json")})`,
       };
     }
@@ -1272,13 +1581,21 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    // Synth reads agentcore.json, so it is brought up to date with the code
+    // first; only once the target is known, so a bad --target rewrites nothing.
+    const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
+    for (const message of synced.messages) yield { type: "step", message };
+    project = synced.project;
+
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor
     // harnesses (not part of the China launch). Runtimes without a persisted
     // modelProvider (BYO, provider-free, hand-edited, or scaffolded by an
     // older CLI) cannot be classified and only get an informational note.
     if (isChinaRegion(target.region)) {
-      const bmaRuntimes = project.spec.runtimes.filter(isBmaRuntime);
+      const bmaRuntimes = project.spec.runtimes.filter(
+        (runtime) => runtime.bedrockManagedAgents === true,
+      );
       if (bmaRuntimes.length > 0) {
         throw new RegionUnsupportedFeatureError(
           `Cannot deploy to China region ${target.region}: ` +
@@ -1369,6 +1686,7 @@ export class FsProjectManager implements ProjectManager {
       target,
       confirmTeardown: input.confirmTeardown,
       transactionSearch: input.transactionSearch,
+      skipBootstrap: input.skipBootstrap,
     });
   }
 
@@ -1378,7 +1696,10 @@ export class FsProjectManager implements ProjectManager {
   public async listTargets(project: Project): Promise<AwsDeploymentTarget[]> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     if (!existsSync(targetsPath)) return [];
-    return this.json.read(targetsPath, AwsDeploymentTargetsSchema);
+    return this.json.read(
+      targetsPath,
+      project.legacy ? V0AwsDeploymentTargetsSchema : AwsDeploymentTargetsSchema,
+    );
   }
 
   public async resolveTarget(
@@ -1434,7 +1755,10 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<AwsDeploymentTarget> {
     const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
     const targets = existsSync(targetsPath)
-      ? await this.json.read(targetsPath, AwsDeploymentTargetsSchema)
+      ? await this.json.read(
+          targetsPath,
+          project.legacy ? V0AwsDeploymentTargetsSchema : AwsDeploymentTargetsSchema,
+        )
       : [];
     if (targets.length === 0) {
       throw new ProjectStateError(
@@ -1464,26 +1788,19 @@ export class FsProjectManager implements ProjectManager {
     targetsPath: string,
     region: string,
   ): Promise<AwsDeploymentTarget> {
-    const supportedRegion = AgentCoreRegionSchema.safeParse(region);
-    if (!supportedRegion.success) {
-      throw new InputValidationError(
-        `Cannot create the default deployment target for project '${project.name}': ` +
-          `'${region}' is not an AgentCore-supported region.\n` +
-          `Supported regions: ${AgentCoreRegionSchema.options.join(", ")}.\n` +
-          `Re-run with --region <region> or set AWS_REGION to one of them.`,
-      );
-    }
-
     let account: string;
     try {
-      account = await this.resolveAccount(supportedRegion.data);
+      account = await this.resolveAccount(region);
     } catch (error) {
       const cause = AgentCoreCLIError.fromError(error);
       throw new InvalidEnvironmentError(
         `Cannot create the default deployment target for project '${project.name}' because ` +
-          `the AWS account could not be resolved: ${cause.message}\n` +
-          `Sign in with 'aws login' (or set AWS_PROFILE or credential environment variables) ` +
-          `and re-run 'agentcore deploy'.`,
+          `the AWS account could not be resolved in region '${region}': ${cause.message}\n` +
+          // With no region allowlist, a mistyped or not-enabled region surfaces here as an STS
+          // failure, so the hint names the region before suggesting credentials.
+          `Check that '${region}' is a region enabled for your account (--region or AWS_REGION), ` +
+          `and sign in with 'aws login' (or set AWS_PROFILE or credential environment variables), ` +
+          `then re-run 'agentcore deploy'.`,
         { cause: error },
       );
     }
@@ -1491,7 +1808,7 @@ export class FsProjectManager implements ProjectManager {
     const entry = AwsDeploymentTargetSchema.safeParse({
       name: DEFAULT_TARGET_NAME,
       account,
-      region: supportedRegion.data,
+      region,
     });
     if (!entry.success) {
       throw new MalformedServiceResponseError(
@@ -1558,11 +1875,11 @@ export class FsProjectManager implements ProjectManager {
     if (input && !templateManagesDependencies(resolveRuntimeTemplateProfile(input))) return;
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
-      yield { type: "step", message: "Syncing Python dependencies with uv" };
+      yield { type: "step", message: "syncing Python dependencies with uv" };
       yield* this.run(["uv", "sync"], appDir);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
-      yield { type: "step", message: "Installing Node dependencies with npm" };
+      yield { type: "step", message: "installing Node dependencies with npm" };
       yield* this.run(NPM_INSTALL, appDir, npmProgressLine);
     }
   }
@@ -1581,7 +1898,7 @@ export class FsProjectManager implements ProjectManager {
       if (!existsSync(join(appDir, manifest)) || existsSync(join(appDir, lockfile))) {
         continue;
       }
-      yield { type: "step", message: `Generating ${lockfile} for container build` };
+      yield { type: "step", message: `generating ${lockfile} for container build` };
       try {
         yield* this.run(command, appDir);
       } catch {
@@ -1637,7 +1954,6 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "config-bundle":
       return "configBundles";
     case "online-eval":
-    case "online-insight":
       return "onlineEvalConfigs";
     case "memory":
       return "memories";
@@ -1655,6 +1971,50 @@ function toProjectSpecKey(resourceType: ProjectResource) {
     case "runtime-endpoint":
       return "runtimes";
   }
+}
+
+/**
+ * The resource whose files live in `folder` (a runtime's codeLocation, a
+ * harness's path, or a managed code-based evaluator's codeLocation), if any.
+ */
+function appFolderOwner(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  rootPath: string,
+  folder: string,
+): string | undefined {
+  const owners: [string, string | undefined][] = [
+    ...spec.runtimes.map((runtime): [string, string] => [
+      `runtime '${runtime.name}'`,
+      runtime.codeLocation,
+    ]),
+    ...spec.harnesses.map((harness): [string, string] => [
+      `harness '${harness.name}'`,
+      harness.path,
+    ]),
+    ...spec.evaluators.map((evaluator): [string, string | undefined] => [
+      `evaluator '${evaluator.name}'`,
+      evaluator.config.codeBased?.managed?.codeLocation,
+    ]),
+  ];
+  // The same folder, one inside the other, or one containing the other (a
+  // codeLocation of `app`) all mean the two resources would share files.
+  const overlaps = (location: string) => {
+    const owned = resolve(rootPath, location);
+    const target = resolve(folder);
+    return owned === target || isInside(owned, target) || isInside(target, owned);
+  };
+  return owners.find(([, location]) => location !== undefined && overlaps(location))?.[0];
+}
+
+/** Whether `path` is strictly inside `dir`. */
+function isInside(path: string, dir: string): boolean {
+  const relativePath = relative(dir, path);
+  return (
+    relativePath !== "" &&
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${sep}`) &&
+    !isAbsolute(relativePath)
+  );
 }
 
 /** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */

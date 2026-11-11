@@ -56,7 +56,6 @@ export function handleResources(deps: InspectorDeps): HttpResponse {
       name: config.name,
       agent: config.agent,
       evaluators: config.evaluators,
-      insights: config.insights,
       samplingRate: config.samplingRate,
       description: config.description,
       logGroupNames: config.logGroupNames,

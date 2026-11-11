@@ -987,9 +987,9 @@ describe("TextAreaField with json", () => {
       submitted = blob;
     });
 
-    await waitFor(() => (d.lastFrame() ?? "").includes(`for example  ${EXAMPLE}`), 1000);
+    await waitFor(() => (d.lastFrame() ?? "").includes(`for example:\n   ${EXAMPLE}`), 1000);
     await d.write('{"ok":');
-    expect(d.lastFrame()).toContain(`for example  ${EXAMPLE}`);
+    expect(d.lastFrame()).toContain(`for example:\n   ${EXAMPLE}`);
     await d.press("return");
     await d.write("true}");
     await d.press("ctrl+d");

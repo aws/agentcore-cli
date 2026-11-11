@@ -207,6 +207,7 @@ describe("Runtime invoke routing", () => {
         runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
       })
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
@@ -328,6 +329,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
@@ -371,6 +373,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
@@ -398,6 +401,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
@@ -475,6 +479,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async (request) => {
       requests.push(request);
       return {
+        kind: "stream" as const,
         statusCode: 200,
         contentType: "text/plain",
         body:
@@ -509,6 +514,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         runtimeSessionId: "returned-runtime",
@@ -545,6 +551,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/event-stream",
         runtimeSessionId: "returned-runtime",
@@ -581,6 +588,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType,
         body: responseBody(body),
@@ -609,6 +617,29 @@ describe("Runtime invoke JSON console", () => {
 
     await waitForText(screen.lastFrame, "NetworkError");
     await waitForText(screen.lastFrame, "connection failed");
+    expect(screen.lastFrame()).toContain("failed · 0 bytes");
+  });
+
+  test("shows a rejected response without treating it as streamed output", async () => {
+    const core = new TestCoreClient();
+    core.runtime
+      .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        kind: "rejected",
+        statusCode: 401,
+        contentType: "application/json",
+        error: {
+          requestId: "request-123",
+        },
+      });
+    const screen = renderScreen(CONSOLE_PATH, { core });
+
+    await waitForText(screen.lastFrame, "Ready");
+    await screen.write("{}");
+    await screen.press("return");
+
+    await waitForText(screen.lastFrame, "Runtime invocation failed · HTTP 401");
+    expect(screen.lastFrame()).toContain("Request ID: request-123");
     expect(screen.lastFrame()).toContain("failed · 0 bytes");
   });
 
@@ -658,6 +689,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: (async function* () {
@@ -683,6 +715,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: responseBody(Buffer.from(response)),
@@ -711,6 +744,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async (request) => {
       requests.push(request);
       return {
+        kind: "stream" as const,
         statusCode: 200,
         contentType: "text/event-stream",
         runtimeSessionId: "returned-runtime",
@@ -761,6 +795,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async (request) => {
       requests.push(request);
       return {
+        kind: "stream" as const,
         statusCode: 200,
         contentType: "application/json",
         body: responseBody(Buffer.from('{"ok":true}')),
@@ -812,6 +847,7 @@ describe("Runtime invoke JSON console", () => {
         runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
       })
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         runtimeSessionId: "returned-runtime",
@@ -850,6 +886,7 @@ describe("Runtime invoke JSON console", () => {
     expect(screen.lastFrame()).toContain("MCP session ID: Not set");
 
     core.runtime.setInvokeResponse({
+      kind: "stream",
       statusCode: 200,
       contentType: "text/plain",
       body: responseBody(Buffer.from("new response")),
@@ -891,6 +928,7 @@ describe("Runtime invoke JSON console", () => {
         runtimeEndpoints: [endpoint({ name: nextQualifier, id: nextQualifier })],
       })
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "text/plain",
         body: responseBody(Buffer.from("ok")),
@@ -935,6 +973,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "application/json",
         body: responseBody(Buffer.from(raw)),
@@ -959,6 +998,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime
       .setGetResponse({ agentRuntimeArn: RUNTIME_ARN } as GetAgentRuntimeResponse)
       .setInvokeResponse({
+        kind: "stream",
         statusCode: 200,
         contentType: "application/octet-stream",
         body: (async function* () {
@@ -1003,6 +1043,7 @@ describe("Runtime invoke JSON console", () => {
     core.runtime.invokeRuntime = async (_request, _options, nextSignal) => {
       signal = nextSignal;
       return {
+        kind: "stream" as const,
         statusCode: 200,
         contentType: "text/event-stream",
         runtimeSessionId: "interrupted-runtime",

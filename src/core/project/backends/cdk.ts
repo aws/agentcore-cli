@@ -32,17 +32,21 @@ import type {
 import { createCloudFormationClient } from "../../factories";
 import type { AwsCredentials, CreateCloudFormationClient } from "../../types";
 import {
+  assertPaymentConnectorCredentials,
   createCredentialProvisioner,
   createCredentialRemover,
   orphanedCredentials,
+  providerRefFromRecorded,
   type CredentialProviderCalls,
   type CredentialProviderRef,
   type CredentialProvisioner,
   type CredentialRemover,
+  type DeployedCredentials,
 } from "./cdk/credentials";
 import {
   countDeployableResources,
   stackArtifactForTarget,
+  synthCommand,
   type StackArtifact,
 } from "./cdk/assembly";
 import {
@@ -100,6 +104,12 @@ function unresolvedCredentialName(error: unknown): string | undefined {
 // Payment output keys drop underscores the same way AgentCorePayments' toCdkId does.
 function cdkId(name: string): string {
   return name.replace(/_/g, "");
+}
+
+function stackExportName(stackName: string, ...parts: string[]): string {
+  return [stackName, ...parts]
+    .map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, ""))
+    .join("-");
 }
 
 function findDeployedResourceId(
@@ -214,31 +224,19 @@ export class CdkBackend implements ProjectBackend {
       yield { type: "warning", message: compatibilityWarning };
     }
 
-    yield { type: "step", message: "Synthesizing CloudFormation templates" };
+    yield { type: "step", message: "synthesizing CloudFormation templates" };
     try {
       yield* withOutputEvents((emit) => {
         // Chunks still go to the debug log whole; the splitter reassembles them
         // into lines for the live progress tail.
         const lines = createLineSplitter(emit);
-        return this.runner(
-          [
-            "npm",
-            "run",
-            "cdk",
-            "--",
-            "synth",
-            "--quiet",
-            "--output",
-            this.assemblyDirectory(project),
-          ],
-          {
-            cwd: this.cdkDirectory(project),
-            onOutput: (chunk) => {
-              this.logger.debug(chunk);
-              lines.push(chunk);
-            },
+        return this.runner(synthCommand(this.assemblyDirectory(project)), {
+          cwd: this.cdkDirectory(project),
+          onOutput: (chunk) => {
+            this.logger.debug(chunk);
+            lines.push(chunk);
           },
-        ).finally(() => lines.flush());
+        }).finally(() => lines.flush());
       });
     } catch (error) {
       const credentialName = explainUndeployedCredentials
@@ -264,7 +262,7 @@ export class CdkBackend implements ProjectBackend {
     input: DeployBackendInput,
   ): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
-    yield { type: "step", message: `Verifying AWS account ${target.account}` };
+    yield { type: "step", message: `verifying AWS account ${target.account}` };
     const credentials = await this.credentialsForTarget(target);
 
     // Fail on local setup errors (missing toolchain/deps) and malformed state
@@ -278,6 +276,7 @@ export class CdkBackend implements ProjectBackend {
     const recorded =
       (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
         ?.credentials ?? {};
+    assertPaymentConnectorCredentials(project, target.name, recorded);
     const orphaned = orphanedCredentials(recorded, project.spec.credentials);
 
     // Credential providers aren't stack resources; the synthesized app reads their
@@ -286,6 +285,7 @@ export class CdkBackend implements ProjectBackend {
       credentials,
       region: target.region,
       targetName: target.name,
+      recorded,
     });
     // Recorded every deploy (even when empty) so dropping the last credential
     // from the spec clears the stale entry instead of leaving it advertised.
@@ -302,7 +302,7 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options, orphaned });
+      return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
     }
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
@@ -310,44 +310,49 @@ export class CdkBackend implements ProjectBackend {
     // deploy on it either — spans are best-effort, so any setup error just skips.
     // Opt out entirely via the spec.
     if (input.transactionSearch !== false) {
-      yield { type: "step", message: "Enabling CloudWatch Transaction Search" };
+      yield { type: "step", message: "enabling CloudWatch Transaction Search" };
       try {
         await this.enableTransactionSearch(target, credentials);
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
-        yield { type: "step", message: `Skipping Transaction Search: ${detail}` };
+        yield { type: "step", message: `skipping Transaction Search: ${detail}` };
       }
     }
 
-    const bootstrap = await this.bootstrap(target.region, credentials);
-    this.logger
-      .child({
-        account: target.account,
-        region: target.region,
-        bootstrapState: bootstrap.kind,
-        ...("version" in bootstrap && { bootstrapVersion: bootstrap.version }),
-      })
-      .debug("checked CDK bootstrap stack");
+    // A bootstrap stack provisioned outside the CLI (StackSets, an org tool) has
+    // its own name, so the probe would miss it and bootstrapping would collide
+    // with the resources it already owns. CDK's own version check still runs.
+    if (!input.skipBootstrap) {
+      const bootstrap = await this.bootstrap(target.region, credentials);
+      this.logger
+        .child({
+          account: target.account,
+          region: target.region,
+          bootstrapState: bootstrap.kind,
+          ...("version" in bootstrap && { bootstrapVersion: bootstrap.version }),
+        })
+        .debug("checked CDK bootstrap stack");
 
-    if (bootstrap.kind !== "current") {
-      const environment = `aws://${target.account}/${target.region}`;
-      yield { type: "step", message: `Bootstrapping ${environment}` };
-      const template = await this.loadBootstrapTemplate();
-      try {
-        yield* this.runCdk(
-          {
-            kind: "bootstrap",
-            environments: [environment],
-            ...(template && { templateFile: template.path }),
-          },
-          options,
-        );
-      } finally {
-        await template?.cleanup();
+      if (bootstrap.kind !== "current") {
+        const environment = `aws://${target.account}/${target.region}`;
+        yield { type: "step", message: `bootstrapping ${environment}` };
+        const template = await this.loadBootstrapTemplate();
+        try {
+          yield* this.runCdk(
+            {
+              kind: "bootstrap",
+              environments: [environment],
+              ...(template && { templateFile: template.path }),
+            },
+            options,
+          );
+        } finally {
+          await template?.cleanup();
+        }
       }
     }
 
-    yield { type: "step", message: `Deploying ${artifact.id} (usually takes a few minutes)` };
+    yield { type: "step", message: `deploying ${artifact.id} (usually takes a few minutes)` };
     const { outputs, stackArn } = yield* this.runCdk(
       { kind: "deploy", stackArtifactId: artifact.id },
       options,
@@ -365,7 +370,36 @@ export class CdkBackend implements ProjectBackend {
     // Persist the deployed stack's ARN so later commands read live resource state
     // from CloudFormation. Merged per target, so deploying one target never drops
     // another's recorded state.
-    await updateTargetState(this.json, project.rootPath, target.name, { stackArn });
+    await updateTargetState(this.json, project.rootPath, target.name, {
+      stackArn,
+      resources: { bmaSession: undefined },
+    });
+
+    const bmaRuntimes = project.spec.runtimes.filter(
+      (runtime) => runtime.bedrockManagedAgents === true,
+    );
+    if (bmaRuntimes.length > 0) {
+      const stack = await this.describeStack(target.region, credentials, stackArn);
+      const output = (...parts: string[]) =>
+        stack?.Outputs?.find(
+          (entry) => entry.ExportName === stackExportName(stack.StackName ?? "", ...parts),
+        )?.OutputValue;
+      const roleArn = output("BmaSessionRoleArn");
+      const runtimeArns: string[] = [];
+      for (const runtime of bmaRuntimes) {
+        const arn = output(runtime.name, "RuntimeArn");
+        if (arn) runtimeArns.push(arn);
+      }
+      if (!roleArn || runtimeArns.length !== bmaRuntimes.length) {
+        throw new MalformedServiceResponseError(
+          `The deployed stack '${stack?.StackName ?? artifact.stackName}' is missing BMA session role or runtime ARN outputs. ` +
+            "Update @aws/agentcore-cdk in agentcore/cdk/package.json to a version with BMA session role support and deploy again.",
+        );
+      }
+      await updateTargetState(this.json, project.rootPath, target.name, {
+        resources: { bmaSession: { roleArn, runtimeArns } },
+      });
+    }
 
     // After the stack update, since a resource in it may have been using the provider
     // until this deploy removed the reference.
@@ -402,6 +436,7 @@ export class CdkBackend implements ProjectBackend {
     input,
     options,
     orphaned,
+    recorded,
   }: {
     project: Project;
     artifact: StackArtifact;
@@ -409,6 +444,7 @@ export class CdkBackend implements ProjectBackend {
     options: CdkRunOptions;
     /** Providers recorded for this target before the deploy that the spec no longer declares. */
     orphaned: CredentialProviderRef[];
+    recorded: DeployedCredentials;
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
@@ -434,7 +470,7 @@ export class CdkBackend implements ProjectBackend {
       );
     }
 
-    yield { type: "step", message: `Removing stack ${artifact.stackName}` };
+    yield { type: "step", message: `removing stack ${artifact.stackName}` };
     yield* this.runCdk({ kind: "destroy", stackArtifactId: artifact.id }, options);
     // After the stack, since a resource in it may still be using the provider. The
     // declared credentials are included because `agentcore remove all` empties the spec
@@ -443,7 +479,12 @@ export class CdkBackend implements ProjectBackend {
       credentials: options.credentials,
       region: target.region,
       targetName: target.name,
-      providers: [...orphaned, ...project.spec.credentials],
+      providers: [
+        ...orphaned,
+        ...project.spec.credentials.map((credential) =>
+          providerRefFromRecorded(credential, recorded),
+        ),
+      ],
     });
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };
@@ -541,10 +582,8 @@ export class CdkBackend implements ProjectBackend {
     const byExportName = (...parts: string[]) => {
       if (!stack?.StackName) return undefined;
       // The CDK library builds every ExportName through this shared helper
-      // https://github.com/aws/agentcore-l3-cdk-constructs/blob/main/src/cdk/logical-ids.ts#L84
-      const want = [stack.StackName, ...parts]
-        .map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, ""))
-        .join("-");
+      // https://github.com/aws/agentcore-l3-cdk-constructs/blob/v1.x/src/cdk/logical-ids.ts#L84
+      const want = stackExportName(stack.StackName, ...parts);
       return stack.Outputs?.find((output) => output.ExportName === want)?.OutputValue;
     };
 

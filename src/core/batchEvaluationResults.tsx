@@ -43,9 +43,9 @@ export function parseEvaluationLogEvent(
   message: string,
   logger: Logger,
 ): BatchEvaluationResultEntry | null {
-  let parsed: Record<string, unknown>;
+  let value: unknown;
   try {
-    parsed = JSON.parse(message) as Record<string, unknown>;
+    value = JSON.parse(message);
   } catch {
     // Swallow rather than throw: CloudWatch result streams interleave non-JSON
     // control lines with the evaluation records, so one unparseable line is
@@ -54,11 +54,20 @@ export function parseEvaluationLogEvent(
     logger.warn("skipping unparseable batch-evaluation result log line");
     return null;
   }
-  const attrs = (parsed["attributes"] ?? {}) as Record<string, unknown>;
-  const evaluatorId = attrs["gen_ai.evaluation.name"] as string | undefined;
-  if (!evaluatorId) return null;
-
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const parsed = value as Record<string, unknown>;
+  const attributes = parsed["attributes"];
+  if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) return null;
+  const attrs = attributes as Record<string, unknown>;
   const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+  const evaluatorId = str(attrs["gen_ai.evaluation.name"]);
+  const error = str(attrs["error.message"]) ?? str(attrs["gen_ai.evaluation.error"]);
+  const errorType = str(attrs["error.type"]);
+  // Failures before scoring may have no evaluator name. Only accept unnamed
+  // errors from evaluation result records, not unrelated application errors.
+  if (!evaluatorId && !(parsed["name"] === "gen_ai.evaluation.result" && (error || errorType))) {
+    return null;
+  }
   // Keys are read verbatim as the recorded stream emits them: scores, level,
   // session id, and tool name under `attributes`; traceId/spanId at the top
   // level. If AgentCore renames one, the corresponding field goes undefined and
@@ -73,6 +82,7 @@ export function parseEvaluationLogEvent(
     score: attrs["gen_ai.evaluation.score.value"] as number | undefined,
     label: str(attrs["gen_ai.evaluation.score.label"]),
     explanation: str(attrs["gen_ai.evaluation.explanation"]),
-    error: str(attrs["gen_ai.evaluation.error"]),
+    error,
+    errorType,
   };
 }

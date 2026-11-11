@@ -9,7 +9,7 @@ export const createGetVersionHandler = (core: Core) =>
     name: "get",
     description: "get a specific version of a harness",
     flags: [
-      flag("id", "the ID of the harness", z.string().min(1).max(48)),
+      flag("id", "the ID of the harness", z.string().min(1).max(51)),
       flag("version", "the harness version to get", z.string().min(1)),
     ],
     handle: async (ctx, flags) => {

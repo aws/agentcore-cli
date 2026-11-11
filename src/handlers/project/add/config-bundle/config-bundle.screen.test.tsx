@@ -230,9 +230,9 @@ describe("project add config-bundle wizard", () => {
 
     // A placeholder would vanish on the first keystroke; the example must not,
     // because that is when the shape is most needed.
-    expect(screen.lastFrame()).toContain(`for example  ${COMPONENTS_EXAMPLE}`);
+    expect(screen.lastFrame()).toContain(`for example:\n   ${COMPONENTS_EXAMPLE}`);
     await screen.write('{"pri');
-    expect(screen.lastFrame()).toContain(`for example  ${COMPONENTS_EXAMPLE}`);
+    expect(screen.lastFrame()).toContain(`for example:\n   ${COMPONENTS_EXAMPLE}`);
     screen.unmount();
   });
 

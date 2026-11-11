@@ -1,12 +1,11 @@
-import { useEffect, useRef } from "react";
-import { useApp, useStderr, useStdin, useStdout } from "ink";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { RuntimeEndpointPicker } from "../../../components/RuntimeEndpointPicker";
 import { RuntimePicker } from "../../../components/RuntimePicker";
-import { Spinner } from "../../../components/ui/spinner";
-import { SilentCLIError } from "../../../errors";
+import { ShellHandoff } from "../../../components/ShellHandoff";
+import { TuiExitErrorKey } from "../../../tui/exitError";
 import type { ScreenProps } from "../../types";
 import { RuntimeShellLaunchContextKey } from "./launchContext";
+import { runtimeShellErrorHint } from "./error";
 import { runRuntimeShell } from "./operation";
 
 type RuntimeShellLocationState = {
@@ -64,73 +63,22 @@ export function RuntimeShellScreen(props: ScreenProps) {
     );
   }
 
+  const launch = props.ctx.value(RuntimeShellLaunchContextKey);
   return (
-    <RuntimeShellHandoff
-      {...props}
-      runtimeId={runtimeId}
-      qualifier={qualifier}
+    <ShellHandoff
+      label={`Opening shell for ${runtimeId} (${qualifier})...`}
       returnPath={locationState?.returnPath}
+      errorHint={runtimeShellErrorHint}
+      setExitError={props.ctx.value(TuiExitErrorKey)}
+      run={(io) =>
+        runRuntimeShell({
+          ...props,
+          io,
+          runtimeId,
+          qualifier,
+          launchContext: launch?.runtimeId === runtimeId ? launch : undefined,
+        })
+      }
     />
   );
-}
-
-function RuntimeShellHandoff({
-  ctx,
-  core,
-  runtimeId,
-  qualifier,
-  returnPath,
-}: ScreenProps & { runtimeId: string; qualifier: string; returnPath?: string }) {
-  const { exit, suspendTerminal } = useApp();
-  const { stdin } = useStdin();
-  const { stdout } = useStdout();
-  const { stderr } = useStderr();
-  const navigate = useNavigate();
-  const requested = useRef(false);
-  const launchContext = ctx.value(RuntimeShellLaunchContextKey);
-  const initialContext = launchContext?.runtimeId === runtimeId ? launchContext : undefined;
-
-  useEffect(() => {
-    if (requested.current) return;
-    requested.current = true;
-    void (async () => {
-      try {
-        await suspendTerminal(() =>
-          runRuntimeShell({
-            ctx,
-            core,
-            io: { stdin, stdout, stderr },
-            runtimeId,
-            qualifier,
-            launchContext: initialContext,
-          }),
-        );
-      } catch (error) {
-        if (returnPath === undefined || !(error instanceof SilentCLIError)) {
-          exit(error);
-          return;
-        }
-      }
-      if (returnPath === undefined) {
-        exit();
-      } else {
-        navigate(returnPath, { replace: true });
-      }
-    })();
-  }, [
-    core,
-    ctx,
-    exit,
-    initialContext,
-    navigate,
-    qualifier,
-    returnPath,
-    runtimeId,
-    stderr,
-    stdin,
-    stdout,
-    suspendTerminal,
-  ]);
-
-  return <Spinner label={`Opening shell for ${runtimeId} (${qualifier})...`} />;
 }

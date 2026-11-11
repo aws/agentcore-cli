@@ -6,11 +6,18 @@ import { FormRadioGroup, type FormRadioOption } from "../../components/FormRadio
 import { FormTextInput } from "../../components/FormTextInput";
 import { darkTheme } from "../../components/ui/_core.js";
 import { useKeyHints, useWizard } from "../../components/wizard";
+import { SourceResolver } from "../../io";
 import {
   HARNESS_DEFAULT_MODEL_IDS,
+  harnessModelIdHelp,
   type HarnessModelProvider,
   type HarnessModelSchema,
 } from "../../projectSchemas/harness";
+import {
+  liteLlmGatewayModelId,
+  liteLlmGatewayModelIdSchema,
+  liteLlmGatewayUrlSchema,
+} from "../harness/liteLlmGateway";
 
 const theme = darkTheme;
 
@@ -22,7 +29,12 @@ const theme = darkTheme;
 
 export interface HarnessModelConfig {
   modelId: string;
-  apiKeyArn: string;
+  /**
+   * Either `file://<path>` of a file holding the key (stored in
+   * agentcore/.env.local and provisioned on deploy) or the ARN of an existing
+   * API-key credential provider.
+   */
+  apiKey: string;
   apiBase: string;
 }
 
@@ -43,22 +55,22 @@ const MODEL_PROVIDERS: {
   {
     provider: "bedrock",
     label: "bedrock",
-    description: "Anthropic Claude and other models on Amazon Bedrock",
+    description: "an Amazon Bedrock model or inference profile",
   },
   {
     provider: "open_ai",
     label: "openai",
-    description: "an OpenAI model using an API-key credential ARN",
+    description: "an OpenAI model using an API key",
   },
   {
     provider: "gemini",
     label: "gemini",
-    description: "a Google Gemini model using an API-key credential ARN",
+    description: "a Google Gemini model using an API key",
   },
   {
     provider: "lite_llm",
     label: "litellm",
-    description: "a third-party provider through LiteLLM",
+    description: "your LiteLLM gateway",
   },
 ];
 
@@ -70,7 +82,11 @@ export function emptyHarnessModel(): HarnessModelValues {
     configs: Object.fromEntries(
       MODEL_PROVIDERS.map(({ provider }) => [
         provider,
-        { modelId: HARNESS_DEFAULT_MODEL_IDS[provider], apiKeyArn: "", apiBase: "" },
+        {
+          modelId: provider === "lite_llm" ? "" : HARNESS_DEFAULT_MODEL_IDS[provider],
+          apiKey: "",
+          apiBase: "",
+        },
       ]),
     ) as Record<HarnessModelProvider, HarnessModelConfig>,
   };
@@ -84,30 +100,58 @@ function selectedConfig(values: HarnessModelValues): HarnessModelConfig {
   return values.configs[values.provider];
 }
 
+// The API key answer, trimmed; blank (and anything for Bedrock) is no answer.
+function apiKeyAnswer(values: HarnessModelValues): string | undefined {
+  if (values.provider === "bedrock") return undefined;
+  return selectedConfig(values).apiKey.trim() || undefined;
+}
+
 // toHarnessModelInput is the answer as the flag path would state it: trimmed,
 // the optional fields left out when blank, and the API base kept to the one
-// provider that takes it. Both wizards run the result through
-// HarnessSpecSchema, so they refuse what the flags refuse.
+// provider that takes it. An ARN answer is the model's apiKeyArn; a file://
+// answer is not part of the model (see harnessModelApiKeySource). Both wizards
+// run the result through HarnessSpecSchema, so they refuse what the flags refuse.
 export function toHarnessModelInput(values: HarnessModelValues): HarnessModelInput {
   const config = selectedConfig(values);
   const apiBase = config.apiBase.trim();
+  const apiKey = apiKeyAnswer(values);
   return {
     provider: values.provider,
-    modelId: config.modelId.trim(),
-    apiKeyArn: config.apiKeyArn.trim() || undefined,
+    modelId:
+      values.provider === "lite_llm"
+        ? liteLlmGatewayModelId(config.modelId)
+        : config.modelId.trim(),
+    apiKeyArn: apiKey?.startsWith(API_KEY_ARN_PREFIX) ? apiKey : undefined,
     apiBase: values.provider === "lite_llm" && apiBase !== "" ? apiBase : undefined,
   };
+}
+
+// harnessModelApiKeySource is the file:// source of a managed API key, or
+// undefined when the answer is an ARN or blank. The wizards read it at submit
+// with the same SourceResolver the --api-key flag uses, and the manager stores
+// the key as a project credential the model names.
+export function harnessModelApiKeySource(values: HarnessModelValues): string | undefined {
+  const apiKey = apiKeyAnswer(values);
+  return apiKey?.startsWith(API_KEY_FILE_PREFIX) ? apiKey : undefined;
+}
+
+// resolveHarnessModelApiKey reads the managed key from its file:// source, the
+// way resolveRuntimeModelApiKey does for the code-based model step. A screen
+// has no stdin to offer, so only file:// sources resolve.
+export function resolveHarnessModelApiKey(values: HarnessModelValues): Promise<string | undefined> {
+  return new SourceResolver({}).resolveSecret("api-key", harnessModelApiKeySource(values));
 }
 
 // harnessModelSummary is the review's account of the model: provider and ID
 // always, the credential and endpoint rows only when they were given.
 export function harnessModelSummary(values: HarnessModelValues): Record<string, string> {
   const model = toHarnessModelInput(values);
+  const apiKey = apiKeyAnswer(values);
   return {
     provider: providerLabel(values.provider),
     model: model.modelId,
-    ...(model.apiKeyArn !== undefined && { "API key ARN": model.apiKeyArn }),
-    ...(model.apiBase !== undefined && { "Custom API base URL": model.apiBase }),
+    ...(apiKey !== undefined && { "API key": apiKey }),
+    ...(model.apiBase !== undefined && { "Gateway API base URL": model.apiBase }),
   };
 }
 
@@ -122,6 +166,26 @@ interface ModelField {
   placeholder: string;
   required: boolean;
   requiredError: string;
+  pattern?: RegExp;
+  patternError?: string;
+  schema?: z.ZodType<string>;
+}
+
+const API_KEY_FILE_PREFIX = "file://";
+const API_KEY_ARN_PREFIX = "arn:";
+const API_KEY_PATTERN = /^(file:\/\/|arn:).+/;
+const API_KEY_PATTERN_ERROR =
+  "enter a file:// path to the key or a credential provider ARN; inline secrets are not accepted";
+
+function fieldError(field: ModelField, value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return field.required ? field.requiredError : null;
+  if (field.pattern && !field.pattern.test(trimmed)) return field.patternError ?? null;
+  if (field.schema) {
+    const result = field.schema.safeParse(trimmed);
+    if (!result.success) return result.error.issues[0]!.message;
+  }
+  return null;
 }
 
 function modelFields(provider: HarnessModelProvider): ModelField[] {
@@ -130,40 +194,46 @@ function modelFields(provider: HarnessModelProvider): ModelField[] {
       key: "modelId",
       name: "model ID",
       helpText:
-        provider === "bedrock"
-          ? "a Bedrock model or inference profile ID"
-          : `the ${providerLabel(provider)} model to use`,
-      placeholder: HARNESS_DEFAULT_MODEL_IDS[provider],
+        provider === "lite_llm"
+          ? "the model alias configured in your LiteLLM gateway"
+          : harnessModelIdHelp(
+              provider,
+              provider === "bedrock"
+                ? "a Bedrock model or inference profile ID"
+                : `the ${providerLabel(provider)} model to use`,
+            ),
+      placeholder: provider === "lite_llm" ? "my-model" : HARNESS_DEFAULT_MODEL_IDS[provider],
       required: true,
       requiredError: `enter a model ID for ${providerLabel(provider)}`,
+      schema: provider === "lite_llm" ? liteLlmGatewayModelIdSchema : undefined,
     },
   ];
 
   if (provider !== "bedrock") {
+    const gateway = provider === "lite_llm";
     fields.push({
-      key: "apiKeyArn",
-      name: "API key ARN",
-      helpText:
-        provider === "lite_llm"
-          ? "optional · an AgentCore Identity API-key credential provider ARN"
-          : "an AgentCore Identity API-key credential provider ARN",
-      placeholder:
-        provider === "lite_llm"
-          ? "optional"
-          : "arn:aws:bedrock-agentcore:…:token-vault/…/apikeycredentialprovider/…",
-      required: provider !== "lite_llm",
-      requiredError: `enter an API key ARN for ${providerLabel(provider)}`,
+      key: "apiKey",
+      name: "API key",
+      helpText: gateway
+        ? "gateway API key via file://<path> or a credential provider ARN"
+        : "file://<path> to the key file, or a credential provider ARN",
+      placeholder: "file://./api-key.txt",
+      required: true,
+      requiredError: `enter the API key file or credential provider ARN for ${providerLabel(provider)}`,
+      pattern: API_KEY_PATTERN,
+      patternError: API_KEY_PATTERN_ERROR,
     });
   }
 
   if (provider === "lite_llm") {
     fields.push({
       key: "apiBase",
-      name: "Custom API base URL",
-      helpText: "optional · leave blank to use the model provider's default endpoint",
+      name: "Gateway API base URL",
+      helpText: "the endpoint of your LiteLLM gateway",
       placeholder: "https://…",
-      required: false,
-      requiredError: "",
+      required: true,
+      requiredError: "enter the LiteLLM gateway API base URL",
+      schema: liteLlmGatewayUrlSchema,
     });
   }
 
@@ -276,20 +346,21 @@ export function HarnessModelField({
     }
     if (key.return) {
       const field = fields[focusedField]!;
-      if (field.required && config[field.key].trim() === "") {
-        setError(field.requiredError);
+      const fieldMessage = fieldError(field, config[field.key]);
+      if (fieldMessage !== null) {
+        setError(fieldMessage);
         return;
       }
       if (focusedField < fields.length - 1) {
         setFocusedField(focusedField + 1);
         return;
       }
-      const missing = fields.findIndex(
-        (candidate) => candidate.required && config[candidate.key].trim() === "",
+      const invalid = fields.findIndex(
+        (candidate) => fieldError(candidate, config[candidate.key]) !== null,
       );
-      if (missing >= 0) {
-        setFocusedField(missing);
-        setError(fields[missing]!.requiredError);
+      if (invalid >= 0) {
+        setFocusedField(invalid);
+        setError(fieldError(fields[invalid]!, config[fields[invalid]!.key]));
         return;
       }
       advance();
@@ -312,7 +383,7 @@ export function HarnessModelField({
       >
         <FormRadioGroup
           key="provider"
-          helpText="choose a model provider"
+          helpText="choose a model gateway"
           options={options}
           focusedIndex={focusedField === null ? providerIndex : undefined}
           selectedIndex={providerIndex}

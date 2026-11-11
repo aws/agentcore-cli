@@ -5,7 +5,7 @@ import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import { isValidEvaluatorModelId } from "../../../../../projectSchemas/evaluator";
 import type { Core } from "../../../../types";
-import { coreOptsFromCtx, parseTags } from "../../../../utils";
+import { coreOptsFromCtx, parseTags, tagsFlag } from "../../../../utils";
 import {
   buildEvaluatorModelConfig,
   modelProviderFlag,
@@ -34,11 +34,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
       ),
       ratingScaleFlag,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
-      flag(
-        "tags",
-        "tags as repeated key=value entries or a JSON object",
-        z.array(z.string()).optional(),
-      ),
+      tagsFlag(),
     ],
     handle: async (ctx, flags) => {
       // An omitted provider defaults to Bedrock, matching the old CLI.

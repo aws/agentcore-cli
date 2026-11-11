@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "timestamp": 1791908816416,
+      "message": "{\"resource\":{\"attributes\":{\"aws.service.type\":\"gen_ai_agent\",\"aws.local.service\":\"unknown\",\"service.name\":\"unknown\"}},\"timeUnixNano\":1791908816416864651,\"observedTimeUnixNano\":1791908816416864651,\"severityNumber\":17,\"name\":\"gen_ai.evaluation.result\",\"attributes\":{\"session.id\":\"cli-error-session-1\",\"error.type\":\"JobProcessorCustomerException\",\"error.message\":\"No spans were found for the session. Verify sessionId and that spans exist in CloudWatch Logs within the configured time range. sessionId=cli-error-session-1\",\"error\":1,\"aws.bedrock_agentcore.evaluation_job.arn\":\"arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_errors_20261013-0ce8bc1c19\",\"aws.bedrock_agentcore.evaluation_job.name\":\"cli_logs_errors_20261013\",\"aws.bedrock_agentcore.evaluation_job.run_id\":\"cli_logs_errors_20261013-0ce8bc1c19\",\"aws.bedrock_agentcore.evaluation_level\":\"Session\"},\"evaluationJobId\":\"arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_errors_20261013-0ce8bc1c19\",\"runId\":\"cli_logs_errors_20261013-0ce8bc1c19\"}",
+      "ingestionTime": 1791908816434
+    },
+    {
+      "timestamp": 1791908816990,
+      "message": "{\"resource\":{\"attributes\":{\"aws.service.type\":\"gen_ai_agent\",\"aws.local.service\":\"unknown\",\"service.name\":\"unknown\"}},\"timeUnixNano\":1791908816990527629,\"observedTimeUnixNano\":1791908816990527629,\"severityNumber\":17,\"name\":\"gen_ai.evaluation.result\",\"attributes\":{\"session.id\":\"cli-error-session-2\",\"error.type\":\"JobProcessorCustomerException\",\"error.message\":\"No spans were found for the session. Verify sessionId and that spans exist in CloudWatch Logs within the configured time range. sessionId=cli-error-session-2\",\"error\":1,\"aws.bedrock_agentcore.evaluation_job.arn\":\"arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_errors_20261013-0ce8bc1c19\",\"aws.bedrock_agentcore.evaluation_job.name\":\"cli_logs_errors_20261013\",\"aws.bedrock_agentcore.evaluation_job.run_id\":\"cli_logs_errors_20261013-0ce8bc1c19\",\"aws.bedrock_agentcore.evaluation_level\":\"Session\"},\"evaluationJobId\":\"arn:aws:bedrock-agentcore:us-east-1:123456789012:batch-evaluate/cli_logs_errors_20261013-0ce8bc1c19\",\"runId\":\"cli_logs_errors_20261013-0ce8bc1c19\"}",
+      "ingestionTime": 1791908817009
+    }
+  ],
+  "nextForwardToken": "f/39960901946694431602003071097048778476685763281800921088/s",
+  "nextBackwardToken": "b/39960901933893803858046493413112439451357795578818527232/s"
+}

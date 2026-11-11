@@ -1,34 +1,9 @@
 import { z } from "zod";
 import { uniqueBy } from "./zod-util";
 
-// Keep in sync with https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html
-// and with the library copy at agentcore-l3-cdk-constructs/src/schema/schemas/aws-targets.ts.
-export const AgentCoreRegionSchema = z.enum([
-  "ap-northeast-1",
-  "ap-northeast-2",
-  "ap-south-1",
-  "ap-south-2",
-  "ap-southeast-1",
-  "ap-southeast-2",
-  "ap-southeast-5",
-  "ap-southeast-7",
-  "ca-central-1",
-  "cn-north-1",
-  "cn-northwest-1",
-  "eu-central-1",
-  "eu-north-1",
-  "eu-south-1",
-  "eu-south-2",
-  "eu-west-1",
-  "eu-west-2",
-  "eu-west-3",
-  "sa-east-1",
-  "us-east-1",
-  "us-east-2",
-  "us-west-1",
-  "us-west-2",
-  "us-gov-west-1",
-]);
+// Accepts any region: AgentCore availability changes faster than CLI releases, so a
+// region without AgentCore is left for CloudFormation to reject at deploy time.
+export const AgentCoreRegionSchema = z.string().trim().min(1, "Region must not be empty");
 
 /**
  * The target `agentcore deploy` uses when --target is omitted. Only this target
@@ -42,11 +17,11 @@ export const DeploymentTargetNameSchema = z
   .min(1)
   .max(64)
   /**
-   Letters and digits only: the target is the middle segment of every deployed resource name, so a separator inside it would make two targets compose the same name.
+   The v0 CLI's rule, so v0 targets such as `prod-us` keep working. The target is the middle segment of deployed resource names (`<project><sep><target><sep><name>`). Where the separator is `_` because the service disallows `-` (Runtime, Memory, Harness, ...), the CDK library writes the target's hyphens as underscores; `-` and `/` separated names (Gateway, ECR, Lambda, ...) and the `AgentCore-<project>-<target>` stack name keep them.
   **/
   .regex(
-    /^[a-zA-Z][a-zA-Z0-9]*$/,
-    "Name must start with a letter and contain only letters and digits",
+    /^[a-zA-Z][a-zA-Z0-9-]*$/,
+    "Name must start with a letter and contain only letters, digits, and hyphens",
   )
   .describe("Unique identifier for the deployment target");
 

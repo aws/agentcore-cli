@@ -22,7 +22,12 @@ import { ResourceDetailScreen } from "../../../components/ResourceDetailScreen";
 
 // The actions offered for a harness, in menu order. Each routes into the
 // corresponding flow with the harness preselected.
-const ACTIONS: { name: string; description: string; to: (id: string) => string }[] = [
+const ACTIONS: {
+  name: string;
+  description: string;
+  to: (id: string) => string;
+  returnsToDetails?: boolean;
+}[] = [
   {
     name: "detail",
     description: "show the full JSON definition",
@@ -52,6 +57,12 @@ const ACTIONS: { name: string; description: string; to: (id: string) => string }
     name: "update",
     description: "update this harness",
     to: (id) => `/agentcore/harness/update/${id}`,
+  },
+  {
+    name: "shell",
+    description: "open an interactive terminal",
+    to: (id) => `/agentcore/harness/shell/${encodeURIComponent(id)}`,
+    returnsToDetails: true,
   },
 ];
 
@@ -314,7 +325,10 @@ export function HarnessGetScreen(props: ScreenProps) {
           ? ACTIONS.map((action) => ({
               name: action.name,
               description: action.description,
-              onSelect: () => navigate(action.to(harnessId)),
+              onSelect: () =>
+                navigate(action.to(harnessId), {
+                  state: action.returnsToDetails ? { returnOnEscape: true } : undefined,
+                }),
             }))
           : []
       }

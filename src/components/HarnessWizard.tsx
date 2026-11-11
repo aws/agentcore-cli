@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useWindowSize } from "./ui/useWindowSize";
 import type {
@@ -8,7 +8,7 @@ import type {
   UpdateHarnessRequest,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { CreateHarnessInput } from "../handlers/harness/types";
-import { DEFAULT_HARNESS_MODEL } from "../projectSchemas/harness";
+import { DEFAULT_HARNESS_MODEL, harnessModelIdHelp } from "../projectSchemas/harness";
 import type { ScreenProps } from "../handlers/types";
 import { coreOptsFromCtx } from "../handlers/utils";
 import { Layout } from "./Layout";
@@ -20,10 +20,16 @@ import { FormTextArea } from "./FormTextArea";
 import { Stepper, type Step } from "./ui/stepper";
 import { Spinner } from "./ui/spinner";
 import { CodeBlock } from "./ui/code-block";
-import { ScrollView } from "ink-scroll-view";
+import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { darkTheme, glyphs } from "./ui/_core.js";
 import { Divider } from "./ui/divider/Divider.js";
 import { KeyValueTable } from "./KeyValueTable.js";
+import {
+  liteLlmGatewayModelId,
+  liteLlmGatewayModelIdSchema,
+  liteLlmGatewayUrlSchema,
+  toHarnessGatewayModel,
+} from "../handlers/harness/liteLlmGateway";
 
 const theme = darkTheme;
 
@@ -173,9 +179,9 @@ function toModelConfiguration(values: HarnessFormValues): CreateHarnessInput["mo
     case "litellm":
       return {
         liteLlmModelConfig: {
-          modelId: model.modelId,
-          apiKeyArn: model.apiKeyArn || undefined,
-          apiBase: model.apiBase || undefined,
+          modelId: liteLlmGatewayModelId(model.modelId),
+          apiKeyArn: model.apiKeyArn.trim() || undefined,
+          apiBase: model.apiBase.trim() || undefined,
         },
       };
   }
@@ -288,7 +294,7 @@ export function HarnessWizard({
   const steps: Step[] = useMemo(() => {
     const all: Step[] = [
       { key: "name", title: "name" },
-      { key: "model", title: "model provider" },
+      { key: "model", title: "model gateway" },
       { key: "memory", title: "memory" },
       { key: "tools", title: "tools" },
       { key: "prompt", title: "prompt" },
@@ -324,7 +330,9 @@ export function HarnessWizard({
     setPhase({ kind: "submitting" });
     try {
       if (mode === "create") {
-        const response = await core.harness.createHarness(toCreateInput(values), opts);
+        const input = toCreateInput(values);
+        input.model = toHarnessGatewayModel(input.model);
+        const response = await core.harness.createHarness(input, opts);
         setPhase({
           kind: "success",
           harnessId: response.harness?.harnessId ?? "",
@@ -333,10 +341,9 @@ export function HarnessWizard({
           arn: response.harness?.arn,
         });
       } else {
-        const response = await core.harness.updateHarness(
-          toUpdateRequest(harnessId!, values, initialValues),
-          opts,
-        );
+        const request = toUpdateRequest(harnessId!, values, initialValues);
+        request.model = toHarnessGatewayModel(request.model);
+        const response = await core.harness.updateHarness(request, opts);
         setPhase({
           kind: "success",
           harnessId: response.harness?.harnessId ?? harnessId!,
@@ -358,7 +365,7 @@ export function HarnessWizard({
 
   return (
     <Layout breadcrumb={breadcrumb} description={description} keyHints={keyHints}>
-      <Box flexDirection="column">
+      <Box flexDirection="column" flexGrow={1} minHeight={0}>
         <Box paddingX={1}>
           <Stepper
             steps={steps}
@@ -374,6 +381,7 @@ export function HarnessWizard({
             stepKey={stepKey}
             mode={mode}
             values={values}
+            initial={initialValues}
             patch={patch}
             request={request}
             onNext={next}
@@ -450,6 +458,7 @@ interface WizardStepProps {
   stepKey: string;
   mode: "create" | "update";
   values: HarnessFormValues;
+  initial: HarnessFormValues;
   patch: (update: Partial<HarnessFormValues>) => void;
   request: unknown;
   onNext: () => void;
@@ -461,6 +470,7 @@ function WizardStep({
   stepKey,
   mode,
   values,
+  initial,
   patch,
   request,
   onNext,
@@ -482,6 +492,7 @@ function WizardStep({
         <ModelStep
           mode={mode}
           value={values.model}
+          initial={initial.model}
           onChange={(model) => patch({ model })}
           onNext={onNext}
           onBack={onBack}
@@ -570,6 +581,7 @@ interface ModelField {
   // from the request when left empty.
   required: boolean;
   requiredError: string;
+  validate?: (value: string) => string | undefined;
 }
 
 // MODEL_PROVIDERS mirrors the API's HarnessModelConfiguration union: one row
@@ -590,12 +602,12 @@ const MODEL_PROVIDERS: {
   {
     kind: "bedrock",
     label: "bedrock",
-    description: "Anthropic Claude and other models on Amazon Bedrock",
+    description: "an Amazon Bedrock model or inference profile",
     fields: [
       {
         key: "modelId",
         name: "model ID",
-        helpText: "a Bedrock model or inference profile ID",
+        helpText: harnessModelIdHelp("bedrock", "a Bedrock model or inference profile ID"),
         placeholder: DEFAULT_HARNESS_MODEL.modelId,
         required: true,
         requiredError: "enter a Bedrock model or inference profile ID",
@@ -610,7 +622,7 @@ const MODEL_PROVIDERS: {
       {
         key: "modelId",
         name: "model ID",
-        helpText: "the Gemini model to use",
+        helpText: harnessModelIdHelp("gemini", "the Gemini model to use"),
         placeholder: "gemini-3.8-flash",
         required: true,
         requiredError: "enter a Gemini model ID",
@@ -633,7 +645,7 @@ const MODEL_PROVIDERS: {
       {
         key: "modelId",
         name: "model ID",
-        helpText: "the OpenAI model to use",
+        helpText: harnessModelIdHelp("open_ai", "the OpenAI model to use"),
         placeholder: "gpt-6.1-sol",
         required: true,
         requiredError: "enter an OpenAI model ID",
@@ -651,31 +663,33 @@ const MODEL_PROVIDERS: {
   {
     kind: "litellm",
     label: "litellm",
-    description: "a third-party provider through LiteLLM",
+    description: "your LiteLLM gateway",
     fields: [
       {
         key: "modelId",
         name: "model ID",
-        helpText: "the LiteLLM model identifier (provider/model)",
-        placeholder: "anthropic/claude-sonnet-5-5",
+        helpText: "the model alias configured in your LiteLLM gateway",
+        placeholder: "my-model",
         required: true,
-        requiredError: "enter a LiteLLM model identifier",
+        requiredError: "enter the model alias configured in your LiteLLM gateway",
+        validate: (value) => liteLlmGatewayModelIdSchema.safeParse(value).error?.issues[0]?.message,
       },
       {
         key: "apiKeyArn",
         name: "API key ARN",
-        helpText: "optional · an AgentCore Identity API-key credential provider ARN",
+        helpText: "an AgentCore Identity credential provider ARN for your gateway API key",
         placeholder: "arn:aws:bedrock-agentcore:…:token-vault/…",
-        required: false,
-        requiredError: "",
+        required: true,
+        requiredError: "enter a gateway API-key credential provider ARN",
       },
       {
         key: "apiBase",
-        name: "Custom API base URL",
-        helpText: "optional · leave blank to use the model provider's default endpoint",
+        name: "Gateway API base URL",
+        helpText: "the endpoint of your LiteLLM gateway",
         placeholder: "https://…",
-        required: false,
-        requiredError: "",
+        required: true,
+        requiredError: "enter the LiteLLM gateway API base URL",
+        validate: (value) => liteLlmGatewayUrlSchema.safeParse(value).error?.issues[0]?.message,
       },
     ],
   },
@@ -684,12 +698,14 @@ const MODEL_PROVIDERS: {
 function ModelStep({
   mode,
   value,
+  initial,
   onChange,
   onNext,
   onBack,
 }: {
   mode: "create" | "update";
   value: HarnessFormValues["model"];
+  initial: HarnessFormValues["model"];
   onChange: (value: HarnessFormValues["model"]) => void;
   onNext: () => void;
   onBack: () => void;
@@ -705,13 +721,49 @@ function ModelStep({
   // radio list has focus.
   const [focusedField, setFocusedField] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollViewRef>(null);
+  const revealFocusedField = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    if (focusedField === null) {
+      scroll.scrollTo(0);
+      return;
+    }
+    const position = scroll.getItemPosition(focusedField + 1);
+    if (!position) return;
+    const offset = scroll.getScrollOffset();
+    const viewport = scroll.getViewportHeight();
+    const bottom = position.top + position.height;
+    if (position.top < offset) scroll.scrollTo(position.top);
+    else if (bottom > offset + viewport) {
+      scroll.scrollTo(Math.min(position.top, bottom - viewport));
+    }
+  }, [focusedField]);
+  useLayoutEffect(revealFocusedField, [revealFocusedField]);
+  // Unchanged legacy configurations must not block updates to unrelated fields.
+  const unchanged = mode === "update" && JSON.stringify(value) === JSON.stringify(initial);
+  const fieldError = (field: ModelField) =>
+    unchanged
+      ? undefined
+      : field.required && value[field.key].trim() === ""
+        ? field.requiredError
+        : field.validate?.(value[field.key]);
 
   // select switches provider. In create, a model ID still at the previous
   // provider's default is swapped for the next provider's, so the Bedrock
   // default never lands in another provider's field.
   const select = (kind: ModelKind) => {
     const untouched = mode === "create" && value.modelId === defaultModelId(value.kind);
-    onChange({ ...value, kind, ...(untouched ? { modelId: defaultModelId(kind) } : {}) });
+    const gatewayChanged = kind !== value.kind && (kind === "litellm" || value.kind === "litellm");
+    onChange({
+      ...value,
+      kind,
+      ...(gatewayChanged
+        ? { modelId: defaultModelId(kind), apiKeyArn: "", apiBase: "" }
+        : untouched
+          ? { modelId: defaultModelId(kind) }
+          : {}),
+    });
     setError(null);
   };
 
@@ -754,8 +806,9 @@ function ModelStep({
     }
     if (key.return) {
       const field = provider.fields[focusedField]!;
-      if (field.required && value[field.key].trim() === "") {
-        setError(field.requiredError);
+      const message = fieldError(field);
+      if (message) {
+        setError(message);
         return;
       }
       if (focusedField < provider.fields.length - 1) {
@@ -763,12 +816,10 @@ function ModelStep({
         return;
       }
       // Last field: every required field must be filled before moving on.
-      const missing = provider.fields.findIndex(
-        (other) => other.required && value[other.key].trim() === "",
-      );
+      const missing = provider.fields.findIndex((other) => fieldError(other) !== undefined);
       if (missing >= 0) {
         setFocusedField(missing);
-        setError(provider.fields[missing]!.requiredError);
+        setError(fieldError(provider.fields[missing]!)!);
         return;
       }
       onNext();
@@ -781,37 +832,47 @@ function ModelStep({
   }));
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <FormRadioGroup
-        name="choose a model provider"
-        helpText="the provider and model that will power the harness"
-        options={rows}
-        focusedIndex={focusedField === null ? index : undefined}
-        selectedIndex={index}
-      />
-      {focusedField !== null &&
-        provider.fields.map((field, i) => (
-          <FormTextInput
-            key={`${provider.kind}.${field.key}`}
-            name={field.name}
-            helpText={field.helpText}
-            placeholder={field.placeholder}
-            errorText=""
-            value={value[field.key]}
-            onChange={(next) => {
-              onChange({ ...value, [field.key]: next });
-              setError(null);
-            }}
-            focused={focusedField === i}
-          />
-        ))}
-      {error && <Text color={theme.colors.error}>{error}</Text>}
-      {provider.kind !== "default" && (
-        <Text color={theme.colors.primary}>
-          pass additional params with flags, e.g.,{" "}
-          <Text color={theme.colors.primary}>agentcore harness create --name …</Text>
-        </Text>
-      )}
+    <Box flexDirection="column" paddingX={1} flexGrow={1} minHeight={0}>
+      <ScrollView
+        ref={scrollRef}
+        flexGrow={1}
+        minHeight={0}
+        onItemHeightChange={revealFocusedField}
+        onViewportSizeChange={revealFocusedField}
+      >
+        <FormRadioGroup
+          key="provider"
+          name="choose a model gateway"
+          helpText="the route and model that will power the harness"
+          options={rows}
+          focusedIndex={focusedField === null ? index : undefined}
+          selectedIndex={index}
+        />
+        {focusedField !== null &&
+          provider.fields.map((field, i) => (
+            <Box key={`${provider.kind}.${field.key}`} flexDirection="column">
+              <FormTextInput
+                name={field.name}
+                helpText={field.helpText}
+                placeholder={field.placeholder}
+                errorText=""
+                value={value[field.key]}
+                onChange={(next) => {
+                  onChange({ ...value, [field.key]: next });
+                  setError(null);
+                }}
+                focused={focusedField === i}
+              />
+              {error && focusedField === i && <Text color={theme.colors.error}>{error}</Text>}
+            </Box>
+          ))}
+        {provider.kind !== "default" && (
+          <Text color={theme.colors.primary}>
+            pass additional params with flags, e.g.,{" "}
+            <Text color={theme.colors.primary}>agentcore harness create --name …</Text>
+          </Text>
+        )}
+      </ScrollView>
     </Box>
   );
 }
