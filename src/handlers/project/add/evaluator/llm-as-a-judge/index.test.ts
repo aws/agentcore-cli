@@ -341,6 +341,55 @@ describe("project add evaluator llm-as-a-judge", () => {
     ]);
   });
 
+  test("reads a multiDimensional rating scale from a file:// source", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const multiDimensional = [
+      {
+        dimensionName: "Accuracy",
+        dimensionInstruction: "Is the answer correct?",
+        dimensionRatingScale: {
+          numerical: [
+            { value: 1, label: "Poor", definition: "Has errors" },
+            { value: 5, label: "Good", definition: "Fully correct" },
+          ],
+        },
+      },
+      {
+        dimensionName: "Tone",
+        dimensionInstruction: "Is the tone professional?",
+        dimensionRatingScale: {
+          categorical: [
+            { label: "Pass", definition: "Professional" },
+            { label: "Fail", definition: "Not professional" },
+          ],
+        },
+      },
+    ];
+    const scalePath = join(projectRoot, "dims.json");
+    await writeFile(scalePath, JSON.stringify({ multiDimensional }));
+
+    await run([
+      "add",
+      "evaluator",
+      "llm-as-a-judge",
+      "--name",
+      "SupportQuality",
+      "--level",
+      "TRACE",
+      "--model",
+      MODEL,
+      "--instructions",
+      "Rate the reply. {context}",
+      "--rating-scale",
+      `file://${scalePath}`,
+    ]);
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    const evaluator = spec.evaluators.find((e: { name: string }) => e.name === "SupportQuality");
+    expect(evaluator.config.llmAsAJudge.ratingScale).toEqual({ multiDimensional });
+  });
+
   test("persists description, kms key, and tags", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -532,6 +581,53 @@ describe("project add evaluator llm-as-a-judge", () => {
         "--rating-scale",
         '{"numerical":[],"categorical":[]}',
       ],
+    ],
+    [
+      "--rating-scale sets numerical and multiDimensional",
+      [
+        "--name",
+        "x",
+        "--level",
+        "SESSION",
+        "--model",
+        MODEL,
+        "--instructions",
+        "i",
+        "--rating-scale",
+        JSON.stringify({
+          numerical: [{ value: 1, label: "Poor", definition: "x" }],
+          multiDimensional: [
+            {
+              dimensionName: "Tone",
+              dimensionInstruction: "Is the tone professional?",
+              dimensionRatingScale: { categorical: [{ label: "Pass", definition: "x" }] },
+            },
+          ],
+        }),
+      ],
+      "exactly one of numerical, categorical, or multiDimensional",
+    ],
+    [
+      "--rating-scale is a bare dimension list",
+      [
+        "--name",
+        "x",
+        "--level",
+        "SESSION",
+        "--model",
+        MODEL,
+        "--instructions",
+        "i",
+        "--rating-scale",
+        JSON.stringify([
+          {
+            dimensionName: "Tone",
+            dimensionInstruction: "Is the tone professional?",
+            dimensionRatingScale: { categorical: [{ label: "Pass", definition: "x" }] },
+          },
+        ]),
+      ],
+      'wrap a dimension list as {"multiDimensional": [...]}',
     ],
     [
       "no rating scale",
