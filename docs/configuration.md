@@ -614,6 +614,36 @@ Deployment target
 | `account`     | Yes      | AWS account ID (12 digits)              |
 | `region`      | Yes      | AWS region                              |
 
+### Deploying one target
+
+`agentcore deploy --target dev` synthesizes only the `dev` stack. Other targets do not need credential providers in
+`.cli/deployed-state.json` before `dev` can deploy. Running CDK directly without a target selection still synthesizes
+all configured targets.
+
+Existing projects retain their generated CDK source when the CLI is upgraded. To enable target-scoped synthesis in an
+existing project, update `agentcore/cdk/bin/cdk.ts`: immediately before the stack-construction loop, read and validate
+the target passed by the CLI:
+
+```typescript
+const selectedTargets = process.env.AGENTCORE_SYNTH_TARGETS;
+let synthTargets = targets;
+if (selectedTargets !== undefined) {
+  const targetNames: unknown = JSON.parse(selectedTargets);
+  if (!Array.isArray(targetNames) || targetNames.length === 0 || targetNames.some(name => typeof name !== 'string')) {
+    throw new Error('AGENTCORE_SYNTH_TARGETS must be a non-empty JSON array of target names');
+  }
+  for (const name of targetNames) {
+    if (!targets.some(target => target.name === name)) {
+      throw new Error(`Deployment target "${name}" not found in agentcore/aws-targets.json`);
+    }
+  }
+  synthTargets = targets.filter(target => targetNames.includes(target.name));
+}
+```
+
+Then change `for (const target of targets)` to `for (const target of synthTargets)`. The CLI rebuilds the CDK project
+before deploying. Keep any custom logic in your CDK app intact.
+
 ### Supported Regions
 
 See [AgentCore Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html) for the

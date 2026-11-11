@@ -163,6 +163,9 @@ export interface CdkToolkitWrapperOptions {
    */
   projectDir?: string;
 
+  /** Deployment targets to synthesize. Omit to synthesize all configured targets. */
+  targetNames?: string[];
+
   /**
    * Optional IO host for customizing message/request handling.
    */

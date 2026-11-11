@@ -148,6 +148,8 @@ export interface PreflightOptions {
   skipIdentityCheck?: boolean;
   /** Target selected by the TUI. Falls back to the first configured target when omitted. */
   selectedTarget?: AwsDeploymentTarget;
+  /** Targets to construct during synthesis, including multi-select deployments. */
+  targetNames?: string[];
   /**
    * Preview mode (diff): the managed-dependency sync runs check-only, computing the plan and a
    * future-tense notice without writing package.json or running npm install. Previews must never
@@ -226,6 +228,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     isInteractive = false,
     skipIdentityCheck = false,
     selectedTarget,
+    targetNames,
     dependencySyncCheckOnly = false,
   } = options;
 
@@ -610,6 +613,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           const synthResult = await synthesizeCdk(preflightContext.cdkProject, {
             ioHost: switchableIoHost.ioHost,
             previousWrapper: wrapperRef.current,
+            targetNames: targetNames ?? (target ? [target.name] : undefined),
           });
           wrapperRef.current = synthResult.toolkitWrapper;
           setCdkToolkitWrapper(synthResult.toolkitWrapper);
@@ -713,6 +717,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     teardownConfirmed,
     restoreRegionEnv,
     selectedTarget,
+    targetNames,
   ]);
 
   // Handle identity-setup phase (after user provides credentials)
@@ -749,6 +754,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           const synthResult = await synthesizeCdk(context.cdkProject, {
             ioHost: switchableIoHost.ioHost,
             previousWrapper: wrapperRef.current,
+            targetNames: targetNames ?? [selectedTarget?.name ?? context.awsTargets[0]!.name],
           });
           wrapperRef.current = synthResult.toolkitWrapper;
           setCdkToolkitWrapper(synthResult.toolkitWrapper);
@@ -998,6 +1004,7 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
           const synthResult = await synthesizeCdk(context.cdkProject, {
             ioHost: switchableIoHost.ioHost,
             previousWrapper: wrapperRef.current,
+            targetNames: targetNames ?? [selectedTarget?.name ?? context.awsTargets[0]!.name],
           });
           wrapperRef.current = synthResult.toolkitWrapper;
           setCdkToolkitWrapper(synthResult.toolkitWrapper);
@@ -1079,7 +1086,16 @@ export function useCdkPreflight(options: PreflightOptions): PreflightResult {
     };
 
     void runIdentitySetup();
-  }, [phase, context, skipIdentitySetup, runtimeCredentials, logger, switchableIoHost.ioHost, selectedTarget]);
+  }, [
+    phase,
+    context,
+    skipIdentitySetup,
+    runtimeCredentials,
+    logger,
+    switchableIoHost.ioHost,
+    selectedTarget,
+    targetNames,
+  ]);
 
   // Handle bootstrapping phase
   useEffect(() => {
