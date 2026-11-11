@@ -18,7 +18,7 @@ export function createOnlineEvalHandler(core: Core, io: AppIO): Router {
     .default(renderTui(core, io))
     .supportedTuiCommands("get", "list")
     .handler(createCreateOnlineEvalHandler(core, io))
-    .handler(createGetOnlineEvalHandler(core, io))
+    .handler(createGetOnlineEvalHandler(core))
     .handler(createListOnlineEvalHandler(core))
     .handler(createUpdateOnlineEvalHandler(core, io))
     .handler(createPauseOnlineEvalHandler(core))

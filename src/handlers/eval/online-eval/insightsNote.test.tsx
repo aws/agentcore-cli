@@ -39,55 +39,6 @@ const getCalls = (core: TestCoreClient) =>
   core.eval.calls.filter((c) => c.method === "getOnlineEvaluationConfig");
 
 describe("online-eval Insights note", () => {
-  test("get prints the note on stderr and leaves --json stdout unchanged", async () => {
-    const core = new TestCoreClient();
-    core.eval.setOnlineEvalGetResponse(config());
-    const io = await run(core, ["get", "--id", ID, "--json"]);
-    expect(io.stderr()).toBe(NOTE);
-    expect(JSON.parse(io.stdout()).onlineEvaluationConfigId).toBe(ID);
-  });
-
-  test("get prints nothing extra when the config has no FailureAnalysis", async () => {
-    const core = new TestCoreClient();
-    core.eval.setOnlineEvalGetResponse(
-      config({ evaluators: [{ evaluatorId: "Builtin.Helpfulness" }] }),
-    );
-    const io = await run(core, ["get", "--id", ID]);
-    expect(io.stderr()).toBe("");
-  });
-
-  test("get also recognizes FailureAnalysis listed as an insight", async () => {
-    const core = new TestCoreClient();
-    core.eval.setOnlineEvalGetResponse(
-      config({ evaluators: [], insights: [{ insightId: "Builtin.FailureAnalysis" }] }),
-    );
-    const io = await run(core, ["get", "--id", ID]);
-    expect(io.stderr()).toBe(NOTE);
-  });
-
-  test("get names a placeholder when the source has no service name", async () => {
-    const core = new TestCoreClient();
-    core.eval.setOnlineEvalGetResponse(config({ dataSourceConfig: undefined }));
-    const io = await run(core, ["get", "--id", ID]);
-    expect(io.stderr()).toContain("--application-name <application-name>");
-  });
-
-  test("logs prints the note before streaming", async () => {
-    const core = new TestCoreClient();
-    core.eval.setOnlineEvalGetResponse(config());
-    const io = await run(core, ["logs", "--id", ID]);
-    expect(io.stderr()).toStartWith(NOTE);
-  });
-
-  test("logs still streams when the config lookup for the note fails", async () => {
-    const core = new TestCoreClient();
-    core.eval.getOnlineEvaluationConfig = async () => {
-      throw new Error("throttled");
-    };
-    const io = await run(core, ["logs", "--id", ID]);
-    expect(io.stderr()).toBe(`Streaming logs for online-eval ${ID}... (Ctrl+C to stop)`);
-  });
-
   test("create looks the config up only when FailureAnalysis is among the evaluators", async () => {
     const core = new TestCoreClient();
     core.eval.setOnlineEvalCreateResponse({ onlineEvaluationConfigId: ID } as never);
@@ -103,19 +54,14 @@ describe("online-eval Insights note", () => {
     expect(withFa.stderr()).toBe(NOTE);
   });
 
-  test("update checks the stored evaluators when --evaluators is absent", async () => {
+  test.each<[string, string[]]>([
+    ["get", ["get", "--id", ID]],
+    ["update", ["update", "--id", ID, "--description", "new"]],
+    ["logs", ["logs", "--id", ID]],
+  ])("%s prints no note", async (_, args) => {
     const core = new TestCoreClient();
     core.eval.setOnlineEvalGetResponse(config());
-    const io = await run(core, ["update", "--id", ID, "--description", "new"]);
-    expect(getCalls(core).length).toBe(1);
-    expect(io.stderr()).toBe(NOTE);
-  });
-
-  test("update skips the lookup when --evaluators drops FailureAnalysis", async () => {
-    const core = new TestCoreClient();
-    core.eval.setOnlineEvalGetResponse(config());
-    const io = await run(core, ["update", "--id", ID, "--evaluators", "Builtin.Helpfulness"]);
-    expect(getCalls(core)).toEqual([]);
-    expect(io.stderr()).toBe("");
+    const io = await run(core, args);
+    expect(io.stderr()).not.toContain("Insights");
   });
 });

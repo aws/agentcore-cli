@@ -43,3 +43,16 @@ export async function noteInsightsForConfig(
   }
   noteInsights(io, config);
 }
+
+// `add` only writes agentcore.json, so the Insights exist only after a deploy.
+export function insightsAfterDeployNote(
+  evaluators: readonly string[],
+  serviceNames: readonly string[] | undefined,
+): string | undefined {
+  if (!evaluators.includes(FAILURE_ANALYSIS)) return undefined;
+  const app = serviceNames?.[0] ?? "<application-name>";
+  return (
+    `note: Insights from ${FAILURE_ANALYSIS} become available after you deploy.\n` +
+    `      Then run: agentcore eval insight list --application-name ${app}`
+  );
+}
