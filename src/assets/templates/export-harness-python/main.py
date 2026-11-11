@@ -7,8 +7,8 @@ from strands.tools.tools import PythonAgentTool
 from strands.types.tools import ToolResult, ToolUse
 {{/if}}
 from strands.types.exceptions import EventLoopException
-{{#if (or hasShell hasWebFetch)}}
-from strands.vended_tools import {{#if hasShell}}make_shell{{#if hasWebFetch}}, {{/if}}{{/if}}{{#if hasWebFetch}}make_web_fetch{{/if}}
+{{#if hasWebFetch}}
+from strands.vended_tools import make_web_fetch
 {{/if}}
 {{#if harnessFileTools}}
 from strands_harness.tools import {{#each harnessFileTools}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
@@ -40,7 +40,7 @@ from strands.agent.conversation_manager.summarizing_conversation_manager import 
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 {{/if}}
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from harness_runtime import InvocationBudget, LimitExceeded, build_session_agent
+from harness_runtime import InvocationBudget, LimitExceeded, build_session_agent{{#if hasShell}}, make_managed_shell{{/if}}
 from model.load import load_model
 {{#if (or gatewayTools remoteMcpTools)}}
 from mcp_client.client import get_all_mcp_clients
@@ -117,7 +117,7 @@ tools.append(add_numbers)
 {{#if builtinTools}}
 # Built-in tools selected by allowedTools.
 {{#if hasShell}}
-tools.append(make_shell())
+tools.append(make_managed_shell())
 {{/if}}
 {{#each harnessFileTools}}
 tools.append({{this}})

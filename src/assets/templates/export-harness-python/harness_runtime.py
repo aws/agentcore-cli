@@ -2,9 +2,19 @@
 
 {{#if hasContextOffloader}}
 import hashlib
+{{/if}}
+{{#if hasShell}}
+import json
+{{/if}}
+{{#if hasContextOffloader}}
 import os
 import tempfile
+{{/if}}
+{{#if (or hasContextOffloader hasShell)}}
 
+{{/if}}
+{{#if hasShell}}
+from strands import SandboxTimeoutError, ToolContext, tool
 {{/if}}
 from strands.hooks import AfterModelCallEvent, BeforeModelCallEvent, HookProvider
 {{#if hasContextOffloader}}
@@ -19,6 +29,9 @@ from strands.types.exceptions import EventLoopException
 {{/if}}
 {{#if hasContextOffloader}}
 from strands.vended_plugins.context_offloader import ContextOffloader
+{{/if}}
+{{#if hasShell}}
+from strands.vended_tools import make_shell
 {{/if}}
 from strands_harness import create_harness
 {{#if hasSubagent}}
@@ -110,6 +123,40 @@ class _BudgetHook(HookProvider):
         budget = event.invocation_state.get("budget")
         if budget is not None and event.stop_response is not None:
             budget.after_model_call(event.stop_response.message.get("metadata") or {})
+{{#if hasShell}}
+
+
+def make_managed_shell():
+    """The vended shell tool with the harness runtime's 300 s default timeout and result keys.
+
+    It re-declares the vended signature and forwards every call, so the vended error and timeout
+    handling still apply; only the default and the result keys (stdout, stderr, exit_code, also in
+    the description) differ. A timeout stays a failed result with exit code 124.
+    """
+    vended = make_shell()
+    description = vended.tool_spec["description"].replace("output (stdout), error (stderr),", "stdout, stderr,")
+
+    @tool(name=vended.tool_name, description=description, context="tool_context")
+    async def shell(command: str, tool_context: ToolContext, timeout: int = 300) -> dict:
+        """Executes a shell command and returns its output and exit code.
+
+        Args:
+            command: The shell command to execute.
+            tool_context: Injected by the framework. Not user-facing.
+            timeout: Timeout in seconds (default: 300).
+        """
+        try:
+            result = await vended(command, tool_context, timeout)
+        except SandboxTimeoutError as error:
+            # The vended tool appended its partial-output JSON as the message's second line; replace that line.
+            message = str(error).split("\n", 1)[0]
+            partial = {"stdout": error.stdout, "stderr": error.stderr, "exit_code": 124}
+            error.args = (f"{message}\n{json.dumps(partial)}",)
+            raise
+        return {"stdout": result["output"], "stderr": result["error"], "exit_code": result["exit_code"]}
+
+    return shell
+{{/if}}
 {{#if hasContextOffloader}}
 
 

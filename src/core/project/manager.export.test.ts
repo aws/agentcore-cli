@@ -166,6 +166,35 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(pyproject).toContain('"strands-agents >= 1.63.0, < 2.0.0"');
   });
 
+  test("wraps the vended shell with the harness runtime's timeout default and result keys", async () => {
+    const { manager: subject } = manager();
+    const render = async (allowedTools: string[]) => {
+      const project = await projectWithHarness(subject, { allowedTools });
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      return {
+        main: await Bun.file(join(result.agentPath, "main.py")).text(),
+        runtime: await Bun.file(join(result.agentPath, "harness_runtime.py")).text(),
+      };
+    };
+
+    const withShell = await render(["shell"]);
+    expect(withShell.main).toContain("tools.append(make_managed_shell())");
+    expect(withShell.main).not.toContain("make_shell(");
+    expect(withShell.runtime).toContain(
+      "async def shell(command: str, tool_context: ToolContext, timeout: int = 300) -> dict:",
+    );
+    expect(withShell.runtime).toContain(
+      'return {"stdout": result["output"], "stderr": result["error"], "exit_code": result["exit_code"]}',
+    );
+    // A timeout's partial output uses the same keys.
+    expect(withShell.runtime).toContain(
+      'partial = {"stdout": error.stdout, "stderr": error.stderr, "exit_code": 124}',
+    );
+    const withoutShell = await render(["read"]);
+    expect(withoutShell.main).not.toContain("shell");
+    expect(withoutShell.runtime).not.toContain("shell");
+  });
+
   test("reports usage per model call unless a subagent can add to it", async () => {
     const { manager: subject } = manager();
     const render = async (allowedTools: string[]) => {
