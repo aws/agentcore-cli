@@ -44,14 +44,19 @@ import type {
   ABTestExecutionStatus,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteDatasetGenerationResponse,
   DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetDatasetGenerationResponse,
   GetRecommendationResponse,
+  ListDatasetGenerationsResponse,
   ListRecommendationsResponse,
   ListBatchEvaluationsResponse,
   RecommendationConfig,
   RecommendationStatus,
   RecommendationType,
+  StartDatasetGenerationRequest,
+  StartDatasetGenerationResponse,
   StartRecommendationResponse,
   StartBatchEvaluationResponse,
   StopBatchEvaluationResponse,
@@ -239,6 +244,7 @@ export type CreateTargetBasedABTestInput = {
 };
 
 export type CreateDatasetInput = CreateDatasetRequest;
+export type StartDatasetGenerationInput = Omit<StartDatasetGenerationRequest, "clientToken">;
 export type StartRecommendationInput = {
   name: string;
   description?: string;
@@ -410,6 +416,27 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListRecommendationsResponse>;
   deleteRecommendation(id: string, options: CoreOptions): Promise<DeleteRecommendationResponse>;
+
+  startDatasetGeneration(
+    input: StartDatasetGenerationInput,
+    options: CoreOptions,
+  ): Promise<StartDatasetGenerationResponse>;
+  getDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<GetDatasetGenerationResponse>;
+  listDatasetGenerations(
+    datasetId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetGenerationsResponse>;
+  deleteDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetGenerationResponse>;
 
   // getBatchEvaluation returns the service-side job and, unless `includeResults`
   // is false, the per-session results read from its per-job CloudWatch stream once

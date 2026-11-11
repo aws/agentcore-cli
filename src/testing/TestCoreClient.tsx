@@ -93,8 +93,10 @@ import type {
   CreateABTestResponse,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteDatasetGenerationResponse,
   DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetDatasetGenerationResponse,
   GetRecommendationResponse,
   GetEventInput,
   GetEventOutput,
@@ -109,6 +111,7 @@ import type {
   ListActorsInput,
   ListActorsOutput,
   ListBatchEvaluationsResponse,
+  ListDatasetGenerationsResponse,
   ListEventsInput,
   ListEventsOutput,
   ListMemoryRecordsInput,
@@ -118,6 +121,7 @@ import type {
   ListSessionsOutput,
   RecommendationStatus,
   StartBatchEvaluationResponse,
+  StartDatasetGenerationResponse,
   StartRecommendationResponse,
   StopBatchEvaluationResponse,
   GetAgentInsightResponse,
@@ -201,6 +205,7 @@ import type {
   LlmAsAJudgeUpdate,
   SessionTrace,
   StartBatchEvaluationInput,
+  StartDatasetGenerationInput,
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -372,6 +377,12 @@ const DEFAULT_LIST_RECOMMENDATIONS_RESPONSE: ListRecommendationsResponse = {
   recommendationSummaries: [],
 };
 const DEFAULT_DELETE_RECOMMENDATION_RESPONSE = {} as DeleteRecommendationResponse;
+const DEFAULT_START_DATASET_GENERATION_RESPONSE = {} as StartDatasetGenerationResponse;
+const DEFAULT_GET_DATASET_GENERATION_RESPONSE = {} as GetDatasetGenerationResponse;
+const DEFAULT_LIST_DATASET_GENERATIONS_RESPONSE: ListDatasetGenerationsResponse = {
+  datasetGenerations: [],
+};
+const DEFAULT_DELETE_DATASET_GENERATION_RESPONSE = {} as DeleteDatasetGenerationResponse;
 const DEFAULT_UPDATE_DATASET_RESULT: DatasetUpdateResult = {
   datasetId: "dataset-orders-abc123",
   added: 0,
@@ -1665,6 +1676,16 @@ export class TestEvalClient implements CoreEvalClient {
   private recommendationListResponses = new Map<string | undefined, ListRecommendationsResponse>();
   private deleteRecommendationResponse: DeleteRecommendationResponse =
     DEFAULT_DELETE_RECOMMENDATION_RESPONSE;
+  private startDatasetGenerationResponse: StartDatasetGenerationResponse =
+    DEFAULT_START_DATASET_GENERATION_RESPONSE;
+  private getDatasetGenerationResponse: GetDatasetGenerationResponse =
+    DEFAULT_GET_DATASET_GENERATION_RESPONSE;
+  private datasetGenerationListResponses = new Map<
+    string | undefined,
+    ListDatasetGenerationsResponse
+  >();
+  private deleteDatasetGenerationResponse: DeleteDatasetGenerationResponse =
+    DEFAULT_DELETE_DATASET_GENERATION_RESPONSE;
   // Online-eval responses, keyed the same way: listOnlineEvaluationConfigs pages
   // by nextToken, the rest are single canned values.
   private onlineEvalListResponses = new Map<
@@ -1784,6 +1805,29 @@ export class TestEvalClient implements CoreEvalClient {
 
   setDeleteRecommendationResponse(response: DeleteRecommendationResponse): this {
     this.deleteRecommendationResponse = response;
+    return this;
+  }
+
+  setStartDatasetGenerationResponse(response: StartDatasetGenerationResponse): this {
+    this.startDatasetGenerationResponse = response;
+    return this;
+  }
+
+  setGetDatasetGenerationResponse(response: GetDatasetGenerationResponse): this {
+    this.getDatasetGenerationResponse = response;
+    return this;
+  }
+
+  setListDatasetGenerationsResponse(
+    response: ListDatasetGenerationsResponse,
+    forNextToken?: string,
+  ): this {
+    this.datasetGenerationListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setDeleteDatasetGenerationResponse(response: DeleteDatasetGenerationResponse): this {
+    this.deleteDatasetGenerationResponse = response;
     return this;
   }
 
@@ -2070,6 +2114,56 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteRecommendation", args: [id, options] });
     if (this.error) throw this.error;
     return this.deleteRecommendationResponse;
+  }
+
+  async startDatasetGeneration(
+    input: StartDatasetGenerationInput,
+    options: CoreOptions,
+  ): Promise<StartDatasetGenerationResponse> {
+    this.calls.push({ method: "startDatasetGeneration", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.startDatasetGenerationResponse;
+  }
+
+  async getDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<GetDatasetGenerationResponse> {
+    this.calls.push({ method: "getDatasetGeneration", args: [datasetId, generationId, options] });
+    if (this.error) throw this.error;
+    return this.getDatasetGenerationResponse;
+  }
+
+  async listDatasetGenerations(
+    datasetId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetGenerationsResponse> {
+    this.calls.push({
+      method: "listDatasetGenerations",
+      args: [datasetId, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.datasetGenerationListResponses.get(nextToken) ??
+      this.datasetGenerationListResponses.get(undefined) ??
+      DEFAULT_LIST_DATASET_GENERATIONS_RESPONSE
+    );
+  }
+
+  async deleteDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetGenerationResponse> {
+    this.calls.push({
+      method: "deleteDatasetGeneration",
+      args: [datasetId, generationId, options],
+    });
+    if (this.error) throw this.error;
+    return this.deleteDatasetGenerationResponse;
   }
 
   async getBatchEvaluation(
