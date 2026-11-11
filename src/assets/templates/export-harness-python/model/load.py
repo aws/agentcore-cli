@@ -72,12 +72,12 @@ from strands.models import CacheConfig
 from strands.models.bedrock import BedrockModel
 
 
-def load_model() -> BedrockModel:
+def load_model({{#if bedrockPromptCaching}}*, prompt_caching: bool = True{{/if}}) -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
     return BedrockModel(
 {{#if bedrockPromptCaching}}
         # Cache the system prompt and tool definitions automatically.
-        cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True),
+        cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True) if prompt_caching else None,
 {{/if}}
         model_id="{{#if modelId}}{{modelId}}{{else}}global.anthropic.claude-sonnet-5-5{{/if}}",
 {{#if modelMaxTokens}}
@@ -93,6 +93,17 @@ def load_model() -> BedrockModel:
         additional_args=json.loads({{pyJsonStr modelAdditionalParams}}),
 {{/if}}
     )
+{{#if bedrockPromptCaching}}
+
+
+def load_aux_model() -> BedrockModel:
+    """The model for the agent's side calls, such as conversation summaries: this model, uncached.
+
+    A summary request shares no prefix with later requests, so caching it would only bill its input
+    as a cache write that is never read.
+    """
+    return load_model(prompt_caching=False)
+{{/if}}
 {{/if}}
 {{/if}}
 {{#if (eq modelProvider "OpenAI")}}

@@ -144,6 +144,33 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
     expect(loadModel).toContain('model_id="us.anthropic.claude-3-haiku-20240307-v1:0"');
     expect(loadModel).not.toContain("CacheConfig");
+    // Nothing is cached, so side calls keep the agent's model.
+    expect(loadModel).not.toContain("load_aux_model");
+    expect(await Bun.file(join(result.agentPath, "main.py")).text()).not.toContain("aux_model");
+  });
+
+  test("makes side calls such as summaries on an uncached copy of a prompt-cached model", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      model: { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-5-5" },
+      truncation: { strategy: "summarization" },
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
+    expect(loadModel).toContain("def load_model(*, prompt_caching: bool = True) -> BedrockModel:");
+    expect(loadModel).toContain(
+      'cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True) if prompt_caching else None,',
+    );
+    expect(loadModel).toContain("def load_aux_model() -> BedrockModel:");
+    expect(loadModel).toContain("return load_model(prompt_caching=False)");
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("from model.load import load_model, load_aux_model\n");
+    expect(main).toMatch(/model=load_model\(\),\n\s+aux_model=load_aux_model\(\),/);
+    // A subagent on the parent's model also summarizes on the parent's uncached copy.
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("aux_model=None if spec.model else parent.aux_model,");
   });
 
   test("renders only the builtins and plugins allowedTools selects", async () => {
@@ -473,8 +500,10 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     );
     expect(session).not.toContain("/preferences");
     expect(session).not.toContain("/summaries/");
-    expect(await Bun.file(join(result.agentPath, "main.py")).text()).toContain(
-      "from memory.session import get_memory_session_manager",
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("from memory.session import get_memory_session_manager");
+    expect(main).toMatch(
+      /model=load_model\(\),\n\s+aux_model=load_aux_model\(\),\n\s+session_manager=/,
     );
     expect(result.notes).toEqual([]);
   });
@@ -879,6 +908,9 @@ describe("FsProjectManager.exportHarness generated Python", () => {
   // Every template branch must render to valid Python; Handlebars cannot check that.
   const variants: Record<string, Record<string, unknown> & { withProjectMemory?: boolean }> = {
     default: {},
+    "model without prompt caching": {
+      model: { provider: "bedrock", modelId: "anthropic.claude-3-haiku-20240307-v1:0" },
+    },
     "no builtins or plugins": { allowedTools: ["exa"] },
     "subagent without builtins": { allowedTools: ["subagent"] },
     "subagent with limits": { maxIterations: 3, maxTokens: 64, timeoutSeconds: 5 },

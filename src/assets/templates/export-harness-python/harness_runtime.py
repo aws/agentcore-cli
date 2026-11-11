@@ -349,6 +349,8 @@ def _add_subagent_tool(parent, *, session_id, skill_plugins, make_conversation_m
             plugin_tools=plugin_tools,
             plugins=_plugins(session_id, plugin_tools, skill_plugins),
             model=spec.model or parent.model,
+            # A child on the parent's model also shares its uncached side-call model (summaries).
+            aux_model=None if spec.model else parent.aux_model,
             instructions=spec.instructions,
             tools=[tool for name, tool in inheritable.items() if name in selected],
             conversation_manager=make_conversation_manager(),

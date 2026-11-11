@@ -41,7 +41,7 @@ from strands.agent.conversation_manager.null_conversation_manager import NullCon
 {{/if}}
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from harness_runtime import InvocationBudget, LimitExceeded{{#if builtinToolRenames}}, RenamedTool{{/if}}, build_session_agent{{#if hasShell}}, make_managed_shell{{/if}}
-from model.load import load_model
+from model.load import load_model{{#if bedrockPromptCaching}}, load_aux_model{{/if}}
 {{#if (or gatewayTools remoteMcpTools)}}
 from mcp_client.client import get_all_mcp_clients
 {{else}}
@@ -235,6 +235,9 @@ def agent_factory():
                 session_id=session_id,
                 make_conversation_manager=_make_conversation_manager,
                 model=load_model(),
+                {{#if bedrockPromptCaching}}
+                aux_model=load_aux_model(),
+                {{/if}}
                 session_manager=get_memory_session_manager(session_id, _actor_id),
                 {{#if systemPromptText}}
                 system_prompt=DEFAULT_SYSTEM_PROMPT,
@@ -265,6 +268,9 @@ def agent_factory():
             session_id=session_id,
             make_conversation_manager=_make_conversation_manager,
             model=load_model(),
+            {{#if bedrockPromptCaching}}
+            aux_model=load_aux_model(),
+            {{/if}}
             {{#if systemPromptText}}
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             {{/if}}
