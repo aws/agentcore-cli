@@ -318,6 +318,39 @@ describe("mapHarnessToExportPlan model mapping", () => {
     }
   });
 
+  test("gives the read tool no media for Bedrock Converse OpenAI models", () => {
+    const withoutMedia = (model: Record<string, unknown>, allowedTools?: string[]) =>
+      plan({ spec: harness({ model, ...(allowedTools && { allowedTools }) }) }).context
+        .readWithoutMedia;
+    for (const modelId of [
+      "openai.gpt-oss-120b-1:0",
+      "us.openai.gpt-oss-20b-1:0",
+      "global.openai.gpt-oss-120b-1:0",
+      "bedrock/openai.gpt-oss-120b-1:0",
+      "arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-oss-120b-1:0",
+      "arn:aws:bedrock:us-west-2:111122223333:inference-profile/us.openai.gpt-oss-120b-1:0",
+    ]) {
+      expect(withoutMedia({ provider: "bedrock", modelId })).toBe(true);
+    }
+    for (const model of [
+      { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-5-5" },
+      // Mantle serves OpenAI models through the OpenAI APIs, not Converse.
+      { provider: "bedrock", modelId: "openai.gpt-oss-120b", apiFormat: "chat_completions" },
+      // An application inference profile's id names no model.
+      {
+        provider: "bedrock",
+        modelId: "arn:aws:bedrock:us-east-1:111122223333:application-inference-profile/a1b2c3",
+      },
+      { provider: "lite_llm", modelId: "bedrock/openai.gpt-oss-120b-1:0" },
+    ]) {
+      expect(withoutMedia(model)).toBe(false);
+    }
+    // Without the read tool there is nothing to change.
+    const oss = { provider: "bedrock", modelId: "openai.gpt-oss-120b-1:0" };
+    expect(withoutMedia(oss, ["shell"])).toBe(false);
+    expect(withoutMedia(oss, ["file_operations"])).toBe(true);
+  });
+
   test("adds the web-fetch extra only when web_fetch is allowed", () => {
     expect(plan({}).context.strandsExtras).toBe("web-fetch");
     expect(

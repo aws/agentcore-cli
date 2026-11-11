@@ -11,7 +11,7 @@ from strands.types.exceptions import EventLoopException
 from strands.vended_tools import make_web_fetch
 {{/if}}
 {{#if harnessFileTools}}
-from strands_harness.tools import {{#each harnessFileTools}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+from strands_harness.tools import {{#each harnessFileTools}}{{#if (eq this "read")}}{{#if ../readWithoutMedia}}make_read{{else}}read{{/if}}{{else}}{{this}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}
 {{/if}}
 {{#if hasSkillsFetcher}}
 from strands import AgentSkills
@@ -119,6 +119,10 @@ tools.append(add_numbers)
 {{#if builtinToolRenames}}
 # As in the harness runtime, a built-in tool that shares its name with another tool is
 # registered as builtin_<name>.
+{{/if}}
+{{#if readWithoutMedia}}
+# This model rejects image and document blocks, so read describes those files in text instead.
+read = make_read(media=False)
 {{/if}}
 {{#if hasShell}}
 tools.append({{#if builtinToolRenames.shell}}RenamedTool(make_managed_shell(), "{{builtinToolRenames.shell}}"){{else}}make_managed_shell(){{/if}})

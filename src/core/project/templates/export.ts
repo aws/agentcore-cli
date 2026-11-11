@@ -231,6 +231,8 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     harnessFileTools: builtins
       .filter((builtin) => "alias" in builtin && builtin.alias === "file_operations")
       .map(({ name }) => name),
+    // A model that rejects media blocks gets a read tool that describes images and documents.
+    readWithoutMedia: isEnabled("read") && !supportsToolMedia(spec),
     pluginToolNames: namesOf("plugin"),
     hasShell: isEnabled("shell"),
     hasWebFetch: isEnabled("web_fetch"),
@@ -310,6 +312,30 @@ function isBedrockMantleModel(spec: HarnessSpec): boolean {
     spec.model.provider === "bedrock" &&
     (spec.model.apiFormat === "responses" || spec.model.apiFormat === "chat_completions")
   );
+}
+
+/** Inference-profile prefixes a Bedrock model id may carry before its model family. */
+const BEDROCK_REGION_PREFIXES = ["global.", "us.", "eu.", "apac.", "au.", "jp."];
+
+/**
+ * Whether the model accepts the image and document blocks the read tool returns. As in the hosted
+ * harness, only Bedrock Converse's OpenAI family is known to reject them. A Bedrock ARN is judged
+ * by its last path segment, so an application inference profile, whose id names no model, keeps
+ * media.
+ */
+function supportsToolMedia(spec: HarnessSpec): boolean {
+  if (spec.model.provider !== "bedrock" || isBedrockMantleModel(spec)) return true;
+  const modelId = spec.model.modelId;
+  let name: string;
+  if (modelId.startsWith("arn:") && modelId.includes(":bedrock:")) {
+    name = modelId.slice(modelId.lastIndexOf("/") + 1);
+  } else {
+    const separator = modelId.indexOf("/");
+    if (separator >= 0 && modelId.slice(0, separator) !== "bedrock") return true;
+    name = modelId.slice(separator + 1);
+  }
+  const region = BEDROCK_REGION_PREFIXES.find((prefix) => name.startsWith(prefix));
+  return !name.slice(region?.length ?? 0).startsWith("openai.");
 }
 
 /**

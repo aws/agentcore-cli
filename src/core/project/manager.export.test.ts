@@ -191,6 +191,20 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(pyproject).toContain('"strands-agents >= 1.63.0, < 2.0.0"');
   });
 
+  test("builds a read tool without media for a model that rejects media blocks", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      model: { provider: "bedrock", modelId: "openai.gpt-oss-120b-1:0" },
+      allowedTools: ["read", "write"],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("from strands_harness.tools import make_read, write\n");
+    expect(main).toContain("read = make_read(media=False)\ntools.append(read)\n");
+  });
+
   test("wraps the vended shell with the harness runtime's timeout default and result keys", async () => {
     const { manager: subject } = manager();
     const render = async (allowedTools: string[]) => {
@@ -941,6 +955,16 @@ describe("FsProjectManager.exportHarness generated Python", () => {
         name,
         config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
       })),
+    },
+    "renamed read tool without media": {
+      model: { provider: "bedrock", modelId: "openai.gpt-oss-120b-1:0" },
+      tools: [
+        {
+          type: "inline_function",
+          name: "read",
+          config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+        },
+      ],
     },
   };
 
