@@ -310,13 +310,16 @@ describe("build", () => {
       dockerfile: "Dockerfile",
       buildContextPath: "docker" as ProjectRuntime["buildContextPath"],
       customDockerBuildArgs: { FOO: "bar" },
+      containerBuildRoleArn: "arn:aws:iam::111122223333:role/Build",
+      containerBuildHandlerRoleArn: "arn:aws:iam::111122223333:role/Handler",
     });
     expect(() => prepareRuntimes(root, [container], "deploy")).toThrow(
       new ProjectStateError(
         'runtime "search": no Dockerfile in docker/, and agentcore.json says this is a ' +
           "Container build. Add the Dockerfile, or deploy the code directly: in agentcore.json, " +
           'set "build": "CodeZip", remove "dockerfile", "buildContextPath", ' +
-          '"customDockerBuildArgs", and add "runtimeVersion" (for example "PYTHON_3_14"). ' +
+          '"customDockerBuildArgs", "containerBuildRoleArn", "containerBuildHandlerRoleArn", ' +
+          'and add "runtimeVersion" (for example "PYTHON_3_14"). ' +
           "See app/search/README.md.",
       ),
     );

@@ -66,6 +66,76 @@ async function runtimeOf(projectRoot: string, name: string) {
 }
 
 describe("project add runtime", () => {
+  const buildRoles = {
+    containerBuildRoleArn: "arn:aws:iam::111122223333:role/Build",
+    containerBuildHandlerRoleArn: "arn:aws:iam::111122223333:role/Handler",
+  };
+  test.each(["python", "typescript"])(
+    "%s retains supplied roles and starts with a Container build",
+    async (language) => {
+      const { projectRoot, cleanup } = await initProject();
+      cleanups.push(cleanup);
+      const executionRoleArn = "arn:aws:iam::111122223333:role/Runtime";
+      await run([
+        "add",
+        "runtime",
+        "--name",
+        "worker",
+        "--language",
+        language,
+        "--role-arn",
+        executionRoleArn,
+        "--container-build-role-arn",
+        buildRoles.containerBuildRoleArn,
+        "--container-build-handler-role-arn",
+        buildRoles.containerBuildHandlerRoleArn,
+      ]);
+      const runtime = await runtimeOf(projectRoot, "worker");
+      expect(runtime).toMatchObject({
+        ...buildRoles,
+        executionRoleArn,
+        build: "Container",
+        dockerfile: "Dockerfile",
+      });
+      expect(runtime.runtimeVersion).toBeUndefined();
+      const appDir = join(projectRoot, "app", "worker");
+      expect((await readdir(appDir)).sort()).toEqual(["AGENTS.md", "README.md"]);
+      const readme = await Bun.file(join(appDir, "README.md")).text();
+      expect(readme).toContain("registered this runtime as a Container build");
+      expect(readme).toContain("containerBuildRoleArn");
+      expect(readme).not.toContain("{{");
+      expect(await Bun.file(join(appDir, "AGENTS.md")).text()).toContain(
+        "Add a `Dockerfile` for this Container runtime",
+      );
+    },
+  );
+
+  test.each([
+    ["--container-build-role-arn", "containerBuildRoleArn"],
+    ["--container-build-handler-role-arn", "containerBuildHandlerRoleArn"],
+  ])("%s also works independently", async (flagName, field) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const arn = "arn:aws:iam::111122223333:role/team/Build";
+    await run(["add", "runtime", "--name", "worker", "--language", "python", flagName!, arn]);
+    expect(await runtimeOf(projectRoot, "worker")).toMatchObject({
+      build: "Container",
+      [field!]: arn,
+    });
+  });
+
+  test.each(["--container-build-role-arn", "--container-build-handler-role-arn"])(
+    "%s rejects invalid role ARNs without writing a runtime",
+    async (flagName) => {
+      const { projectRoot, cleanup } = await initProject();
+      cleanups.push(cleanup);
+      await expect(
+        run(["add", "runtime", "--name", "worker", "--language", "python", flagName, "invalid"]),
+      ).rejects.toThrow("Must be an IAM role ARN");
+      expect((await specOf(projectRoot)).runtimes ?? []).toEqual([]);
+    },
+  );
+
   const allInfrastructureFlags = [
     "--description",
     "Configured runtime",
@@ -342,6 +412,19 @@ describe("project add runtime --agent-id (Bedrock Agent import)", () => {
     "--region",
     "us-east-1",
   ];
+
+  test("rejects build roles for CodeZip Bedrock Agent imports", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
+    await expect(
+      run([...importArgs, "--container-build-role-arn", "arn:aws:iam::111122223333:role/Build"], {
+        core,
+      }),
+    ).rejects.toThrow("only allowed for Container builds");
+    expect((await specOf(projectRoot)).runtimes ?? []).toEqual([]);
+  });
 
   test("scaffolds owned runtime code translated from the selected agent version", async () => {
     const { projectRoot, cleanup } = await initProject();

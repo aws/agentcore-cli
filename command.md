@@ -313,6 +313,8 @@ add a Runtime to the current project
 - `--filesystem-configurations <filesystem-configurations>`: filesystem mount configurations (JSON)
 - `--role-arn <role-arn>`: IAM role ARN that provides permissions for the Runtime
 - `--additional-policies <additional-policies...>`: additional IAM policy ARNs or policy document paths for the execution role
+- `--container-build-role-arn <container-build-role-arn>`: existing CodeBuild execution role; selects a Container build (permissions managed externally)
+- `--container-build-handler-role-arn <container-build-handler-role-arn>`: existing build-handler Lambda role; selects a Container build (permissions managed externally)
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
 - `--request-header-allowlist <request-header-allowlist...>`: request headers to pass through to the Runtime

@@ -10,6 +10,8 @@ const RuntimeInfraConfigSchema = z.object({
   name: ProjectRuntimeSchema.shape.name,
   description: ProjectRuntimeSchema.shape.description,
   executionRoleArn: ProjectRuntimeSchema.shape.executionRoleArn,
+  containerBuildRoleArn: ProjectRuntimeSchema.shape.containerBuildRoleArn,
+  containerBuildHandlerRoleArn: ProjectRuntimeSchema.shape.containerBuildHandlerRoleArn,
   additionalPolicies: ProjectRuntimeSchema.shape.additionalPolicies,
   envVars: ProjectRuntimeSchema.shape.envVars,
   networkMode: ProjectRuntimeSchema.shape.networkMode,
@@ -27,6 +29,16 @@ export const RuntimeResourceConfigSchema = RuntimeInfraConfigSchema.extend({
   scaffoldRuntimeInput: ScaffoldRuntimeInputSchema,
   /** Present when runtime files were translated from a Bedrock Agent version. */
   importBedrockAgent: ImportBedrockAgentInputSchema.optional(),
+}).superRefine((runtime, ctx) => {
+  for (const field of ["containerBuildRoleArn", "containerBuildHandlerRoleArn"] as const) {
+    if (runtime[field] && runtime.scaffoldRuntimeInput.build !== "Container") {
+      ctx.addIssue({
+        code: "custom",
+        message: `${field} is only allowed for Container builds`,
+        path: [field],
+      });
+    }
+  }
 });
 export type RuntimeResourceConfig = z.infer<typeof RuntimeResourceConfigSchema>;
 

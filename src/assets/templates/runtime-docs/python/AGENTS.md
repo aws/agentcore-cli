@@ -76,8 +76,13 @@ in more detail.
 - Do not edit `agentcore/agentcore.json` unless the user asks. Set the build
   settings in the code instead (`Dockerfile`, `requires-python`,
   `[tool.agentcore] entrypoint`); the CLI updates `agentcore.json` from them.
+{{#if containerBuildRoles}}
+- Add a `Dockerfile` for this Container runtime. The user supplied externally
+  managed container-build roles; preserve them in `agentcore.json`.
+{{else}}
 - Do not add a `Dockerfile` unless the user wants a container build.
   Adding one switches this runtime to container mode.
+{{/if}}
 {{#if (or (eq protocol "HTTP") (eq protocol "A2A") (eq protocol "AGUI"))}}
 - If you implement `/ping` yourself, do not set `time_of_last_update` to the
   current time on every ping; only change it when the status changes.

@@ -1,0 +1,242 @@
+--- a/dist/cdk/constructs/components/container/ContainerBuildProject.d.ts
++++ b/dist/cdk/constructs/components/container/ContainerBuildProject.d.ts
+@@ -45,11 +45,12 @@
+      * (each is triggered by its own custom resource), so this is purely a project-reuse optimization —
+      * there is no requirement that they share a VPC.
+      */
+-    static getOrCreate(scope: Construct, networkConfig?: BuildNetworkConfig): ContainerBuildProject;
++    static getOrCreate(scope: Construct, networkConfig?: BuildNetworkConfig, executionRoleArn?: string): ContainerBuildProject;
+     readonly project: codebuild.Project;
+-    readonly role: iam.Role;
++    readonly role: iam.IRole;
++    readonly executionRoleArn?: string;
+     readonly networkConfig?: BuildNetworkConfig;
+-    constructor(scope: Construct, id: string, networkConfig?: BuildNetworkConfig);
++    constructor(scope: Construct, id: string, networkConfig?: BuildNetworkConfig, executionRoleArn?: string);
+     /**
+      * Grant the build project permission to push to a specific ECR repository.
+      */
+--- a/dist/cdk/constructs/components/container/ContainerBuildProject.js
++++ b/dist/cdk/constructs/components/container/ContainerBuildProject.js
+@@ -96,7 +96,7 @@
+      * (each is triggered by its own custom resource), so this is purely a project-reuse optimization —
+      * there is no requirement that they share a VPC.
+      */
+-    static getOrCreate(scope, networkConfig) {
++    static getOrCreate(scope, networkConfig, executionRoleArn) {
+         const stack = cdk.Stack.of(scope);
+         // The public (no-VPC) build keeps the original fixed id so existing deployed container stacks see
+         // no resource replacement on upgrade. VPC builds are net-new, so a config-derived id suffix has no
+@@ -104,32 +104,41 @@
+         const id = networkConfig ? `ContainerBuildProject-${networkConfigHash(networkConfig)}` : 'ContainerBuildProject';
+         const existing = stack.node.tryFindChild(id);
+         if (existing) {
++            if (existing.executionRoleArn !== executionRoleArn) {
++                throw new Error('Conflicting containerBuildRoleArn values for a shared CodeBuild project. All runtimes and harnesses sharing a build network must use the same role configuration.');
++            }
+             return existing;
+         }
+-        return new ContainerBuildProject(stack, id, networkConfig);
++        return new ContainerBuildProject(stack, id, networkConfig, executionRoleArn);
+     }
+     project;
+     role;
+     networkConfig;
+-    constructor(scope, id, networkConfig) {
++    executionRoleArn;
++    constructor(scope, id, networkConfig, executionRoleArn) {
+         super(scope, id);
+         this.networkConfig = networkConfig;
++        this.executionRoleArn = executionRoleArn;
+         const partition = cdk.Stack.of(this).partition;
+         const region = cdk.Stack.of(this).region;
+         const account = cdk.Stack.of(this).account;
+-        this.role = new iam.Role(this, 'ContainerBuildExecutionRole', {
+-            assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
+-        });
+-        // ECR auth token (must be * per AWS API — does not support resource-level permissions)
+-        this.role.addToPolicy(new iam.PolicyStatement({
+-            actions: ['ecr:GetAuthorizationToken'],
+-            resources: ['*'],
+-        }));
+-        // CloudWatch Logs for build logs
+-        this.role.addToPolicy(new iam.PolicyStatement({
+-            actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+-            resources: [`arn:${partition}:logs:${region}:${account}:log-group:/aws/codebuild/*`],
+-        }));
++        this.role = executionRoleArn
++            ? iam.Role.fromRoleArn(this, 'ContainerBuildExecutionRole', executionRoleArn, { mutable: false })
++            : new iam.Role(this, 'ContainerBuildExecutionRole', {
++                assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
++            });
++        if (!executionRoleArn) {
++            // ECR auth token (must be * per AWS API — does not support resource-level permissions)
++            this.role.addToPrincipalPolicy(new iam.PolicyStatement({
++                actions: ['ecr:GetAuthorizationToken'],
++                resources: ['*'],
++            }));
++            // CloudWatch Logs for build logs
++            this.role.addToPrincipalPolicy(new iam.PolicyStatement({
++                actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
++                resources: [`arn:${partition}:logs:${region}:${account}:log-group:/aws/codebuild/*`],
++            }));
++        }
+         // Pass an imported (immutable) role to the Project so CDK doesn't auto-add
+         // policies that reference the project name, which would create a circular
+         // dependency when we add DependsOn below.
+@@ -179,28 +188,30 @@
+             // only fires when a full ec2.IVpc is passed to the L2 prop). The project also
+             // uses an imported immutable role, so we add the EC2 permissions CodeBuild
+             // needs to create its VPC network interface to the real (mutable) role.
+-            this.role.addToPolicy(new iam.PolicyStatement({
+-                actions: [
+-                    'ec2:CreateNetworkInterface',
+-                    'ec2:DescribeNetworkInterfaces',
+-                    'ec2:DeleteNetworkInterface',
+-                    'ec2:DescribeSubnets',
+-                    'ec2:DescribeSecurityGroups',
+-                    'ec2:DescribeDhcpOptions',
+-                    'ec2:DescribeVpcs',
+-                ],
+-                resources: ['*'],
+-            }));
+-            this.role.addToPolicy(new iam.PolicyStatement({
+-                actions: ['ec2:CreateNetworkInterfacePermission'],
+-                resources: [`arn:${partition}:ec2:${region}:${account}:network-interface/*`],
+-                conditions: {
+-                    StringEquals: {
+-                        'ec2:AuthorizedService': 'codebuild.amazonaws.com',
+-                        'ec2:Subnet': networkConfig.subnets.map(s => `arn:${partition}:ec2:${region}:${account}:subnet/${s}`),
+-                    },
+-                },
+-            }));
++            if (!executionRoleArn) {
++                this.role.addToPrincipalPolicy(new iam.PolicyStatement({
++                    actions: [
++                        'ec2:CreateNetworkInterface',
++                        'ec2:DescribeNetworkInterfaces',
++                        'ec2:DeleteNetworkInterface',
++                        'ec2:DescribeSubnets',
++                        'ec2:DescribeSecurityGroups',
++                        'ec2:DescribeDhcpOptions',
++                        'ec2:DescribeVpcs',
++                    ],
++                    resources: ['*'],
++                }));
++                this.role.addToPrincipalPolicy(new iam.PolicyStatement({
++                    actions: ['ec2:CreateNetworkInterfacePermission'],
++                    resources: [`arn:${partition}:ec2:${region}:${account}:network-interface/*`],
++                    conditions: {
++                        StringEquals: {
++                            'ec2:AuthorizedService': 'codebuild.amazonaws.com',
++                            'ec2:Subnet': networkConfig.subnets.map(s => `arn:${partition}:ec2:${region}:${account}:subnet/${s}`),
++                        },
++                    },
++                }));
++            }
+         }
+         this.project.node.addDependency(this.role);
+     }
+@@ -208,7 +219,7 @@
+      * Grant the build project permission to push to a specific ECR repository.
+      */
+     grantPushTo(repository) {
+-        repository.grantPullPush(this.role);
++        if (!this.executionRoleArn) repository.grantPullPush(this.role);
+     }
+ }
+ exports.ContainerBuildProject = ContainerBuildProject;
+--- a/dist/cdk/constructs/components/container/ContainerImageBuilder.d.ts
++++ b/dist/cdk/constructs/components/container/ContainerImageBuilder.d.ts
+@@ -3,6 +3,8 @@
+ import type { Asset } from 'aws-cdk-lib/aws-s3-assets';
+ import { Construct } from 'constructs';
+ export interface ContainerImageBuilderProps {
++    /** Existing immutable Lambda execution role; the caller supplies permissions. */
++    executionRoleArn?: string;
+     /**
+      * The shared CodeBuild project used for building container images.
+      */
+--- a/dist/cdk/constructs/components/container/ContainerImageBuilder.js
++++ b/dist/cdk/constructs/components/container/ContainerImageBuilder.js
+@@ -59,6 +59,7 @@
+         const { buildProject, sourceAsset, repository, dockerfile, buildArgs } = props;
+         const hasBuildArgs = buildArgs !== undefined && Object.keys(buildArgs).length > 0;
+         const handler = new lambda.Function(this, 'ContainerBuildHandler', {
++            ...(props.executionRoleArn && { role: iam.Role.fromRoleArn(this, 'BuildHandlerRole', props.executionRoleArn, { mutable: false }) }),
+             runtime: lambda.Runtime.NODEJS_22_X,
+             handler: 'index.handler',
+             code: lambda.Code.fromInline(container_build_handler_1.CONTAINER_BUILD_HANDLER_CODE),
+@@ -73,10 +74,10 @@
+             };
+             // The L1 override bypasses CDK's automatic VPC-access grant; attach the
+             // managed policy that lets the Lambda manage its ENI in the VPC.
+-            handler.role?.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole'));
++            if (!props.executionRoleArn) handler.role?.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole'));
+         }
+         // Grant Lambda permission to trigger builds and read results
+-        handler.addToRolePolicy(new iam.PolicyStatement({
++        if (!props.executionRoleArn) handler.addToRolePolicy(new iam.PolicyStatement({
+             actions: ['codebuild:StartBuild', 'codebuild:BatchGetBuilds'],
+             resources: [buildProject.project.projectArn],
+         }));
+--- a/dist/cdk/constructs/l3/RuntimeEnvironment.js
++++ b/dist/cdk/constructs/l3/RuntimeEnvironment.js
+@@ -61,12 +61,13 @@
+                 name: spec.name,
+             });
+             // Get or create the shared build project (one per distinct network config) at stack level
+-            const buildProject = ContainerBuildProject_1.ContainerBuildProject.getOrCreate(this, buildNetwork);
++            const buildProject = ContainerBuildProject_1.ContainerBuildProject.getOrCreate(this, buildNetwork, spec.containerBuildRoleArn);
+             buildProject.grantPushTo(ecrRepo.repository);
+             // Grant CodeBuild read access to source asset
+-            sourceAsset.asset.grantRead(buildProject.role);
++            if (!spec.containerBuildRoleArn) sourceAsset.asset.grantRead(buildProject.role);
+             const builder = new ContainerImageBuilder_1.ContainerImageBuilder(this, 'ContainerImageBuilder', {
+                 buildProject,
++                executionRoleArn: spec.containerBuildHandlerRoleArn,
+                 sourceAsset,
+                 repository: ecrRepo,
+                 // dockerfile is resolved relative to the build context (the source asset root), which
+--- a/dist/schema/schemas/agent-env.d.ts
++++ b/dist/schema/schemas/agent-env.d.ts
+@@ -266,6 +266,8 @@
+         }, z.core.$strict>>;
+     }, z.core.$strip>>;
+     executionRoleArn: z.ZodOptional<z.ZodString>;
++    containerBuildRoleArn: z.ZodOptional<z.ZodString>;
++    containerBuildHandlerRoleArn: z.ZodOptional<z.ZodString>;
+     additionalPolicies: z.ZodOptional<z.ZodArray<z.ZodString>>;
+     bedrockManagedAgents: z.ZodOptional<z.ZodBoolean>;
+     tags: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+--- a/dist/schema/schemas/agent-env.js
++++ b/dist/schema/schemas/agent-env.js
+@@ -341,6 +341,8 @@
+     authorizerConfiguration: auth_1.AuthorizerConfigSchema.optional(),
+     /** ARN of an existing IAM execution role to use instead of creating a new one. */
+     executionRoleArn: zod_1.z.string().optional(),
++    containerBuildRoleArn: zod_1.z.string().max(2048).regex(/^arn:[^:]+:iam::[0-9]{12}:role\/[^\s]+$/).optional(),
++    containerBuildHandlerRoleArn: zod_1.z.string().max(2048).regex(/^arn:[^:]+:iam::[0-9]{12}:role\/[^\s]+$/).optional(),
+     /**
+      * Additional IAM policies attached to the runtime execution role. Each entry is either a
+      * managed-policy ARN (attached directly) or a `.json` policy-document file path relative to
+@@ -440,7 +442,7 @@
+     }
+     // Container-only fields. If adding more, extend this list (and consider consolidating into a
+     // containerConfig object — see the networkConfig pattern).
+-    for (const field of ['dockerfile', 'buildContextPath', 'customDockerBuildArgs']) {
++    for (const field of ['dockerfile', 'buildContextPath', 'customDockerBuildArgs', 'containerBuildRoleArn', 'containerBuildHandlerRoleArn']) {
+         if (data.build !== 'Container' && data[field]) {
+             ctx.addIssue({
+                 code: zod_1.z.ZodIssueCode.custom,
+--- a/dist/schema/schemas/agentcore-project.d.ts
++++ b/dist/schema/schemas/agentcore-project.d.ts
+@@ -369,6 +369,8 @@
+             }, z.core.$strict>>;
+         }, z.core.$strip>>;
+         executionRoleArn: z.ZodOptional<z.ZodString>;
++        containerBuildRoleArn: z.ZodOptional<z.ZodString>;
++        containerBuildHandlerRoleArn: z.ZodOptional<z.ZodString>;
+         additionalPolicies: z.ZodOptional<z.ZodArray<z.ZodString>>;
+         bedrockManagedAgents: z.ZodOptional<z.ZodBoolean>;
+         tags: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
