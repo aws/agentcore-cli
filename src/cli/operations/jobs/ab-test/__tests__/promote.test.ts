@@ -1,24 +1,43 @@
+import { ConfigIO } from '../../../../../lib';
 import type { ABTestJobRecord } from '../../shared/types';
+import { MAX_CONFIG_BUNDLE_DATA_BYTES } from '../constants';
+import { abTestHandler } from '../handler';
 import { promoteABTestConfig } from '../promote';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock ConfigIO — vi.hoisted ensures these are available before the hoisted vi.mock runs
-const { mockReadProjectSpec, mockWriteProjectSpec, mockReadDeployedState, mockGetConfigurationBundleVersion } =
-  vi.hoisted(() => ({
-    mockReadProjectSpec: vi.fn(),
-    mockWriteProjectSpec: vi.fn(),
-    mockReadDeployedState: vi.fn(),
-    mockGetConfigurationBundleVersion: vi.fn(),
-  }));
+const {
+  mockReadProjectSpec,
+  mockWriteProjectSpec,
+  mockReadDeployedState,
+  mockGetConfigurationBundleVersion,
+  mockGetABTest,
+  mockUpdateABTest,
+} = vi.hoisted(() => ({
+  mockReadProjectSpec: vi.fn(),
+  mockWriteProjectSpec: vi.fn(),
+  mockReadDeployedState: vi.fn(),
+  mockGetConfigurationBundleVersion: vi.fn(),
+  mockGetABTest: vi.fn(),
+  mockUpdateABTest: vi.fn(),
+}));
 
-vi.mock('../../../../../lib', () => {
+vi.mock('../../../../../lib', async importOriginal => {
   class MockConfigIO {
     readProjectSpec = mockReadProjectSpec;
     writeProjectSpec = mockWriteProjectSpec;
     readDeployedState = mockReadDeployedState;
   }
-  return { ConfigIO: MockConfigIO };
+  return { ...(await importOriginal<Record<string, unknown>>()), ConfigIO: MockConfigIO };
 });
+
+vi.mock('../../../../aws/agentcore-ab-tests', () => ({
+  getABTest: mockGetABTest,
+  updateABTest: mockUpdateABTest,
+  createABTest: vi.fn(),
+  deleteABTest: vi.fn(),
+  listABTests: vi.fn(),
+}));
 
 vi.mock('../../../../aws/agentcore-config-bundles', () => ({
   getConfigurationBundleVersion: mockGetConfigurationBundleVersion,
@@ -123,7 +142,7 @@ function makeBundleDeployedState() {
 
 describe('promoteABTestConfig (record-driven)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockWriteProjectSpec.mockResolvedValue(undefined);
   });
 
@@ -388,6 +407,77 @@ describe('promoteABTestConfig (record-driven)', () => {
   // BUG-4: promote must validate the winner is applicable BEFORE stopping the test. The dry-run
   // path returns the same promoted/detail as a real run but never writes agentcore.json.
   describe('dry run (pre-stop preflight)', () => {
+    it.each(['escaping', 'multiple-components'])('counts JSON overhead across %s', async kind => {
+      mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
+      mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+      const components =
+        kind === 'escaping'
+          ? { 'arn:runtime': { configuration: { systemPrompt: '"'.repeat(1800) } } }
+          : {
+              'arn:runtime-a': { configuration: { systemPrompt: 'x'.repeat(1600) } },
+              'arn:runtime-b': { configuration: { systemPrompt: 'y'.repeat(1600) } },
+            };
+      mockGetConfigurationBundleVersion.mockResolvedValue({ components });
+      const result = await promoteABTestConfig(
+        baseRecord({
+          variants: [
+            { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+            { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+          ],
+        }),
+        true
+      );
+      expect(result.promoted).toBe(false);
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+
+    it('preserves unrelated edits made between preflight and applying the winner', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
+      mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+      mockGetConfigurationBundleVersion.mockResolvedValue({
+        components: { 'arn:runtime': { configuration: { systemPrompt: 'NEW' } } },
+      });
+      const record = baseRecord({
+        variants: [
+          { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+          { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+        ],
+      });
+      const preflight = await promoteABTestConfig(record, true);
+      const current = { ...makeConfigBundleProject(), description: 'concurrent unrelated edit' };
+      mockReadProjectSpec.mockResolvedValue(current);
+      await preflight.apply!();
+      expect(mockWriteProjectSpec).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'concurrent unrelated edit' })
+      );
+    });
+
+    it('does not overwrite a bundle changed while stopping and reports the stopped state', async () => {
+      const project = makeConfigBundleProject();
+      mockReadProjectSpec.mockResolvedValue(project);
+      mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+      mockGetConfigurationBundleVersion.mockResolvedValue({
+        components: { 'arn:runtime': { configuration: { systemPrompt: 'NEW' } } },
+      });
+      mockGetABTest.mockResolvedValue({ executionStatus: 'RUNNING' });
+      mockUpdateABTest.mockImplementation(() => {
+        project.configBundles[0]!.components['{{runtime:r}}'].configuration.systemPrompt = 'user edit';
+        return Promise.resolve({});
+      });
+      const result = await abTestHandler.promote(
+        baseRecord({
+          variants: [
+            { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+            { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+          ],
+        }),
+        new ConfigIO()
+      );
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.message).toContain('is stopped');
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+      expect(project.configBundles[0]!.components['{{runtime:r}}'].configuration.systemPrompt).toBe('user edit');
+    });
     it('returns promoted=true without writing for a valid target-based promote', async () => {
       mockReadProjectSpec.mockResolvedValue(makeTargetBasedProject());
       const record = baseRecord({
@@ -427,9 +517,12 @@ describe('promoteABTestConfig (record-driven)', () => {
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
     });
 
-    it('returns promoted=true without writing (or fetching) for a valid config-bundle promote', async () => {
+    it('fetches and validates a valid config-bundle winner without writing during preflight', async () => {
       mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
       mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+      mockGetConfigurationBundleVersion.mockResolvedValue({
+        components: { 'arn:runtime': { configuration: { systemPrompt: 'NEW' } } },
+      });
       const record = baseRecord({
         mode: 'config-bundle',
         variants: [
@@ -440,9 +533,107 @@ describe('promoteABTestConfig (record-driven)', () => {
 
       const result = await promoteABTestConfig(record, true);
       expect(result.promoted).toBe(true);
-      // dry-run must not touch the service or write the spec
-      expect(mockGetConfigurationBundleVersion).not.toHaveBeenCalled();
+      expect(mockGetConfigurationBundleVersion).toHaveBeenCalledTimes(1);
       expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('rejects oversized UTF-8 components without mutation (dryRun=%s)', async dryRun => {
+      const project = makeConfigBundleProject();
+      const original = structuredClone(project);
+      mockReadProjectSpec.mockResolvedValue(project);
+      mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+      const components = { 'arn:runtime': { configuration: { systemPrompt: '界'.repeat(1400) } } };
+      expect(JSON.stringify(components).length).toBeLessThan(MAX_CONFIG_BUNDLE_DATA_BYTES);
+      mockGetConfigurationBundleVersion.mockResolvedValue({ components });
+      const record = baseRecord({
+        variants: [
+          { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+          { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+        ],
+      });
+      const result = await promoteABTestConfig(record, dryRun);
+      expect(result.promoted).toBe(false);
+      expect(result.promotionDetail).toContain('bytes');
+      expect(result.promotionDetail).not.toContain('界');
+      expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+      expect(project).toEqual(original);
+    });
+
+    it.each([MAX_CONFIG_BUNDLE_DATA_BYTES, MAX_CONFIG_BUNDLE_DATA_BYTES + 1])(
+      'checks the serialized Data.Value boundary at %s bytes',
+      async bytes => {
+        const components = { 'arn:runtime': { configuration: { systemPrompt: '' } } };
+        const overhead = Buffer.byteLength(
+          JSON.stringify({ Value: { 'arn:runtime': { Configuration: { systemPrompt: '' } } } })
+        );
+        components['arn:runtime'].configuration.systemPrompt = 'x'.repeat(bytes - overhead);
+        mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
+        mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+        mockGetConfigurationBundleVersion.mockResolvedValue({ components });
+        const record = baseRecord({
+          variants: [
+            { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+            { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+          ],
+        });
+        const result = await promoteABTestConfig(record, true);
+        expect(result.promoted).toBe(bytes === MAX_CONFIG_BUNDLE_DATA_BYTES);
+        expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['oversized', 'fetch-failed'])(
+      'leaves the running test and config untouched when preflight is %s',
+      async failure => {
+        mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
+        mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+        if (failure === 'fetch-failed')
+          mockGetConfigurationBundleVersion.mockRejectedValue(new Error('cannot read winner'));
+        else
+          mockGetConfigurationBundleVersion.mockResolvedValue({
+            components: { 'arn:runtime': { configuration: { systemPrompt: 'x'.repeat(5000) } } },
+          });
+        const record = baseRecord({
+          variants: [
+            { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+            { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+          ],
+        });
+        const result = await abTestHandler.promote(record, new ConfigIO());
+        expect(result.success).toBe(false);
+        expect(mockGetABTest).not.toHaveBeenCalled();
+        expect(mockUpdateABTest).not.toHaveBeenCalled();
+        expect(mockWriteProjectSpec).not.toHaveBeenCalled();
+      }
+    );
+
+    it('applies the same preflight payload exactly once after stopping the test', async () => {
+      mockReadProjectSpec.mockResolvedValue(makeConfigBundleProject());
+      mockReadDeployedState.mockResolvedValue(makeBundleDeployedState());
+      mockGetConfigurationBundleVersion
+        .mockResolvedValueOnce({
+          components: { 'arn:runtime': { configuration: { systemPrompt: 'validated winner' } } },
+        })
+        .mockRejectedValueOnce(new Error('must not refetch after stopping'));
+      mockGetABTest.mockResolvedValue({ executionStatus: 'RUNNING' });
+      mockUpdateABTest.mockResolvedValue({});
+      const record = baseRecord({
+        variants: [
+          { name: 'C', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v1' },
+          { name: 'T1', weight: 50, bundleArn: BUNDLE_ARN, bundleVersion: 'v2' },
+        ],
+      });
+      const result = await abTestHandler.promote(record, new ConfigIO());
+      expect(result.success).toBe(true);
+      expect(mockGetConfigurationBundleVersion).toHaveBeenCalledTimes(1);
+      expect(mockUpdateABTest).toHaveBeenCalledTimes(1);
+      expect(mockWriteProjectSpec).toHaveBeenCalledTimes(1);
+      expect(mockGetConfigurationBundleVersion.mock.invocationCallOrder[0]).toBeLessThan(
+        mockUpdateABTest.mock.invocationCallOrder[0]!
+      );
+      expect(mockUpdateABTest.mock.invocationCallOrder[0]).toBeLessThan(
+        mockWriteProjectSpec.mock.invocationCallOrder[0]!
+      );
     });
 
     it('returns promoted=false without writing when control/treatment are different bundles (dry-run)', async () => {

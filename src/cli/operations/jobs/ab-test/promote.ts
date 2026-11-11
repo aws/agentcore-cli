@@ -4,6 +4,7 @@ import { getConfigurationBundleVersion } from '../../../aws/agentcore-config-bun
 import { resolveComponentKeyForJsonPath } from '../recommendation/build-config';
 import { regionFromArn } from '../shared/region';
 import type { ABTestJobRecord, ABTestVariantSummary } from '../shared/types';
+import { MAX_CONFIG_BUNDLE_DATA_BYTES } from './constants';
 
 /** Extract the bundle id (the ARN's resource suffix) from a configuration-bundle ARN. */
 function bundleIdFromArn(arn: string): string | undefined {
@@ -44,6 +45,8 @@ export interface PromoteABTestResult {
   promoted: boolean;
   mode?: string;
   promotionDetail: string;
+  /** Apply the already-fetched and validated config-bundle winner after stopping the test. */
+  apply?: () => Promise<void>;
 }
 
 /** Reverse-resolve a deployed config-bundle ARN to its spec name (the key in configBundles[]). */
@@ -218,28 +221,54 @@ export async function promoteABTestConfig(record: ABTestJobRecord, dryRun = fals
 
   // Fetch the winning (treatment) version's components from the service and adopt them locally.
   // A subsequent `agentcore deploy` version-bumps the bundle (lineage handled server-side).
-  if (!dryRun) {
-    const region = regionFromArn(treatment.bundleArn) ?? regionFromArn(record.arn);
-    if (!region) {
-      return { promoted: false, mode, promotionDetail: 'Could not determine region for the config bundle.' };
-    }
-    const winning = await getConfigurationBundleVersion({
-      region,
-      bundleId,
-      versionId: treatment.bundleVersion,
-    });
-    // Service keys components by resolved ARN; restore the bundle's portable {{runtime:...}}
-    // placeholders so the committed config stays cross-account/region portable.
-    controlBundle.components = restorePlaceholderKeys(
-      winning.components as Record<string, unknown>,
-      controlBundle.components as Record<string, unknown>,
-      deployedState
-    ) as typeof controlBundle.components;
-    await configIO.writeProjectSpec(project);
+  const region = regionFromArn(treatment.bundleArn) ?? regionFromArn(record.arn);
+  if (!region) {
+    return { promoted: false, mode, promotionDetail: 'Could not determine region for the config bundle.' };
   }
+  const winning = await getConfigurationBundleVersion({ region, bundleId, versionId: treatment.bundleVersion });
+  // Match the pinned CDK construct's PascalCase mapping. Measure service-resolved ARN keys,
+  // not shorter local placeholders, and include Data.Value serialization overhead.
+  const cfnComponents = Object.fromEntries(
+    Object.entries(winning.components).map(([key, value]) => [
+      resolveComponentKeyForJsonPath(key, deployedState),
+      { Configuration: (value as { configuration: unknown }).configuration },
+    ])
+  );
+  const dataBytes = Buffer.byteLength(JSON.stringify({ Value: cfnComponents }), 'utf8');
+  if (dataBytes > MAX_CONFIG_BUNDLE_DATA_BYTES) {
+    return {
+      promoted: false,
+      mode,
+      promotionDetail:
+        `Config bundle "${controlName}" needs ${dataBytes} bytes of CfnJson response data, exceeding the ` +
+        `${MAX_CONFIG_BUNDLE_DATA_BYTES}-byte conservative deployment budget (the 4096-byte response also ` +
+        'contains CloudFormation metadata). Reduce the winning configuration before promoting. No configuration was written.',
+    };
+  }
+  const components = restorePlaceholderKeys(
+    winning.components as Record<string, unknown>,
+    controlBundle.components as Record<string, unknown>,
+    deployedState
+  ) as typeof controlBundle.components;
+  const expectedComponents = JSON.stringify(controlBundle.components);
+  const apply = async () => {
+    // Stopping may take time. Preserve unrelated edits made while waiting and do not
+    // overwrite a bundle the user changed after preflight.
+    const currentProject = await configIO.readProjectSpec();
+    const currentBundle = currentProject.configBundles?.find(bundle => bundle.name === controlName);
+    if (!currentBundle || JSON.stringify(currentBundle.components) !== expectedComponents) {
+      throw new Error(
+        `Config bundle "${controlName}" changed after preflight; no configuration was written. Retry promotion.`
+      );
+    }
+    currentBundle.components = components;
+    await configIO.writeProjectSpec(currentProject);
+  };
+  if (!dryRun) await apply();
   return {
     promoted: true,
     mode,
     promotionDetail: `Config bundle "${controlName}" updated to the winning version ${treatment.bundleVersion}.`,
+    ...(dryRun && { apply }),
   };
 }
