@@ -12,9 +12,7 @@ import tempfile
 {{/if}}
 {{#if (or hasContextOffloader hasShell)}}
 
-{{/if}}
-{{#if hasShell}}
-from strands import SandboxTimeoutError, ToolContext, tool
+from strands import {{#if hasShell}}SandboxTimeoutError, {{/if}}ToolContext, tool
 {{/if}}
 from strands.hooks import AfterModelCallEvent, BeforeModelCallEvent, HookProvider
 {{#if hasContextOffloader}}
@@ -37,6 +35,9 @@ from strands_harness import create_harness
 {{#if hasSubagent}}
 from strands_harness.tools import Choice, make_subagent
 from strands_harness.tools.subagent import GENERALIST
+{{/if}}
+{{#if hasContextOffloader}}
+from typing_extensions import TypedDict
 {{/if}}
 
 # Tools vended by the enabled built-in plugins.
@@ -161,20 +162,85 @@ def make_managed_shell():
 
 
 _OFFLOAD_ROOT = os.path.join(tempfile.gettempdir(), "agent", "offloaded")
+_RETRIEVAL_TOOL = "retrieve_context"
+# Bounds one exempt result: 2x the Agent Skills spec's < 5,000-token SKILL.md guidance; larger ones get a preview.
+_EXEMPT_MAX_TOKENS = 10_000
 
 
-def _make_context_offloader(session_id):
-    """Offload large tool results to disk per session, with a tool to read them back.
+class LineRange(TypedDict):
+    """A span of lines to retrieve (1-indexed, inclusive)."""
 
-    Entries are never evicted: a preview in the conversation must stay retrievable for as long
-    as the session lasts. A subagent reuses its parent's session storage.
+    start: int
+    end: int
+
+
+class _ContextOffloader(ContextOffloader):
+    """``ContextOffloader`` whose retrieval tool is ``retrieve_context``, as in the harness runtime."""
+
+    @property
+    def tools(self):
+        # The SDK drops its disabled tool only in ``init_agent``; hide it before that too.
+        return [agent_tool for agent_tool in super().tools if agent_tool.tool_name == _RETRIEVAL_TOOL]
+
+    @tool(name=_RETRIEVAL_TOOL, context=True)
+    async def retrieve_context(
+        self,
+        reference: str,
+        tool_context: ToolContext,
+        pattern: str | None = None,
+        line_range: LineRange | None = None,
+        context_lines: int | None = None,
+    ) -> dict | str:
+        """Retrieve content that was offloaded from context.
+
+        When a tool result was too large to keep in context, it was stored and replaced with a preview and a
+        reference. Use this tool with that reference to access the original content.
+
+        Options:
+          - pattern: regex/keyword to find matching lines with context
+          - line_range: { start, end } to read a specific span
+          - Without pattern/line_range: returns the full original content (use sparingly)
+
+        Examples:
+          {"reference": "tu_abc123_0", "pattern": "error"}
+          {"reference": "tu_abc123_0", "line_range": {"start": 10, "end": 25}}
+          {"reference": "tu_abc123_0"}
+
+        Args:
+            reference: The reference key from the offload placeholder.
+            pattern: Regex or keyword to grep for. Returns matching lines with context.
+            line_range: Line range to extract (1-indexed, inclusive).
+            context_lines: Lines of context around each match (default: 5).
+            tool_context: Injected by the framework.
+        """
+        return await self.retrieve_offloaded_content(
+            reference=reference,
+            tool_context=tool_context,
+            pattern=pattern,
+            line_range=line_range,
+            context_lines=context_lines,
+        )
+
+
+def _make_context_offloader(session_id, exempt_tools):
+    """Offload large tool results to disk per session, with ``retrieve_context`` to read them back.
+
+    Results above 1500 tokens are offloaded with a 750-token preview, except those of
+    ``retrieve_context`` (which is included) and those of ``exempt_tools`` up to 10,000 tokens.
+    Entries are never evicted: a preview in the conversation must stay retrievable for as long as
+    the session lasts. A subagent reuses its parent's session storage.
     """
+    exempt = frozenset(exempt_tools)
     session_key = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
-    return ContextOffloader(
+    return _ContextOffloader(
         storage=LocalFileStorage(os.path.join(_OFFLOAD_ROOT, session_key)),
         max_result_tokens=1500,
         preview_tokens=750,
-        include_retrieval_tool=True,
+        include_retrieval_tool=False,
+        # The SDK only exempts its own retrieval tool; a retrieval must never be offloaded again.
+        should_offload=lambda tool_name, token_count, **kwargs: (
+            tool_name != _RETRIEVAL_TOOL and (tool_name not in exempt or token_count > _EXEMPT_MAX_TOKENS)
+        ),
         evict_after_cycles=None,
     )
 {{/if}}
@@ -200,12 +266,14 @@ def _create_harness_agent(*, plugin_tools, plugins, **kwargs):
 
 
 def _plugins(session_id, plugin_tools, skill_plugins):
-    """The agent's plugins: its skills, plus the context offloader when its tool is enabled."""
-    plugins = list(skill_plugins or [])
+    """The agent's plugins: the context offloader when its tool is enabled, then its skills."""
+    plugins = []
     {{#if hasContextOffloader}}
-    if "retrieve_offloaded_content" in plugin_tools:
-        plugins.append(_make_context_offloader(session_id))
+    if _RETRIEVAL_TOOL in plugin_tools:
+        # Skill instructions must reach the model whole, not as a preview (up to the exempt ceiling).
+        plugins.append(_make_context_offloader(session_id, exempt_tools=["skills"] if skill_plugins else []))
     {{/if}}
+    plugins.extend(skill_plugins or [])
     return plugins
 {{#if hasSubagent}}
 

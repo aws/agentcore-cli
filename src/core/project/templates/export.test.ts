@@ -473,7 +473,8 @@ describe("mapHarnessToExportPlan tools", () => {
     const unrestricted = plan({});
     expect(unrestricted.context).toMatchObject({
       builtinTools: ["shell", "read", "write", "edit", "web_fetch"],
-      pluginToolNames: ["todo_write", "retrieve_offloaded_content"],
+      pluginToolNames: ["todo_write", "retrieve_context"],
+      hasContextOffloader: true,
       hasSubagent: true,
     });
 
@@ -656,12 +657,21 @@ describe("mapHarnessToExportPlan allowedTools selection", () => {
   test("selects plugins and the subagent by the tool names they vend", () => {
     const { context } = plan({
       spec: harness({
-        allowedTools: ["todo_write", "retrieve_offloaded_content", "@builtin/subagent"],
+        allowedTools: ["todo_write", "retrieve_context", "@builtin/subagent"],
       }),
     });
     expect(context.builtinTools).toEqual([]);
-    expect(context.pluginToolNames).toEqual(["todo_write", "retrieve_offloaded_content"]);
+    expect(context.pluginToolNames).toEqual(["todo_write", "retrieve_context"]);
+    expect(context.hasContextOffloader).toBe(true);
     expect(context.hasSubagent).toBe(true);
+  });
+
+  test("selects the context offloader by retrieve_context only", () => {
+    const offloads = (allowedTools: string[]) =>
+      plan({ spec: harness({ allowedTools }) }).context.hasContextOffloader;
+    expect(offloads(["retrieve_*"])).toBe(true);
+    // The hosted harness renamed the tool from retrieve_offloaded_content without an alias.
+    expect(offloads(["retrieve_offloaded_content"])).toBe(false);
   });
 
   test("keeps an MCP server that @server or * allows and drops it otherwise", () => {

@@ -221,7 +221,7 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     pluginToolNames: namesOf("plugin"),
     hasShell: isEnabled("shell"),
     hasWebFetch: isEnabled("web_fetch"),
-    hasContextOffloader: isEnabled("retrieve_offloaded_content"),
+    hasContextOffloader: isEnabled("retrieve_context"),
     hasSubagent: isEnabled("subagent"),
     // Skills
     hasSkillsFetcher: skills.hasSkillsFetcher,
@@ -852,7 +852,8 @@ function gatewayUrl(gatewayArn: string): string {
 /**
  * The harness's built-in tools, the tools its built-in plugins vend, and the subagent tool. Each
  * is enabled by an allowedTools selector naming it; `file_operations` still grants the
- * read/write/edit tools that replaced it.
+ * read/write/edit tools that replaced it. The context offloader is enabled by its retrieval tool,
+ * `retrieve_context`, as in the harness runtime.
  */
 const BUILTINS = [
   { name: "shell", kind: "tool" },
@@ -861,7 +862,7 @@ const BUILTINS = [
   { name: "edit", kind: "tool", alias: "file_operations" },
   { name: "web_fetch", kind: "tool" },
   { name: "todo_write", kind: "plugin" },
-  { name: "retrieve_offloaded_content", kind: "plugin" },
+  { name: "retrieve_context", kind: "plugin" },
   { name: "subagent", kind: "subagent" },
 ] as const;
 

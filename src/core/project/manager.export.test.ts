@@ -121,9 +121,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(main).toContain("SummarizingConversationManager(**");
     const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
     expect(runtime).toContain("from strands_harness import create_harness");
-    expect(runtime).toContain(
-      '_PLUGIN_TOOL_NAMES = frozenset(["todo_write","retrieve_offloaded_content"])',
-    );
+    expect(runtime).toContain('_PLUGIN_TOOL_NAMES = frozenset(["todo_write","retrieve_context"])');
     expect(runtime).toContain("evict_after_cycles=None");
     expect(runtime).toContain("def _add_subagent_tool(");
     const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
@@ -193,6 +191,26 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const withoutShell = await render(["read"]);
     expect(withoutShell.main).not.toContain("shell");
     expect(withoutShell.runtime).not.toContain("shell");
+  });
+
+  test("offloads large tool results behind retrieve_context and keeps skills whole", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      allowedTools: ["retrieve_context"],
+      skills: [{ s3Uri: "s3://skills-bucket/team/" }],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain('_PLUGIN_TOOL_NAMES = frozenset(["retrieve_context"])');
+    expect(runtime).toContain("@tool(name=_RETRIEVAL_TOOL, context=True)");
+    expect(runtime).toContain("include_retrieval_tool=False,");
+    // A retrieval is never offloaded again, and a skill up to 10,000 tokens stays whole.
+    expect(runtime).toContain(
+      "tool_name != _RETRIEVAL_TOOL and (tool_name not in exempt or token_count > _EXEMPT_MAX_TOKENS)",
+    );
+    expect(runtime).toContain('exempt_tools=["skills"] if skill_plugins else []');
   });
 
   test("reports usage per model call unless a subagent can add to it", async () => {
