@@ -165,6 +165,12 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
   const namesOf = (kind: Builtin["kind"]) =>
     builtins.filter((builtin) => builtin.kind === kind).map(({ name }) => name);
   const skills = resolveSkills(spec, credentials, notes);
+  const toolNames = allocateToolNames(namesOf("tool"), tools.inlineFunctionTools, [
+    ...namesOf("plugin"),
+    ...(isEnabled("subagent") ? [SUBAGENT_TOOL] : []),
+    // Fetched skills register the AgentSkills tool at runtime.
+    ...(skills.hasFetchedSkills ? [SKILLS_TOOL] : []),
+  ]);
   for (const [file, doc] of Object.entries(skills.policyFiles)) policyFiles[file] = doc;
   if (model.policyFile) policyFiles[model.policyFile.name] = model.policyFile.doc;
   additionalPolicies.push(...Object.keys(policyFiles));
@@ -208,13 +214,20 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     actorId: memory.actorId,
     // Tools. Empty collections become undefined: the template's custom `or`/
     // `some` helpers use JS truthiness, where [] is truthy, unlike `{{#if}}`.
-    inlineFunctionTools: undefinedIfEmpty(tools.inlineFunctionTools),
+    inlineFunctionTools: undefinedIfEmpty(
+      tools.inlineFunctionTools.map((tool, index) => ({
+        ...tool,
+        registeredName: toolNames.inline[index]!,
+      })),
+    ),
     remoteMcpTools: undefinedIfEmpty(tools.remoteMcpTools),
     gatewayTools: undefinedIfEmpty(tools.gatewayTools),
     gatewayAuthTypes: [...new Set(tools.gatewayTools.map(({ authType }) => authType))],
     // Built-in tools and plugins. Plain arrays: {{#if}} treats an empty one as false, and
-    // safeJson renders it as [].
-    builtinTools: namesOf("tool"),
+    // safeJson renders it as []. builtinTools holds registered names; builtinToolRenames maps
+    // each renamed builtin to its registered name.
+    builtinTools: toolNames.builtins,
+    builtinToolRenames: toolNames.builtinRenames,
     harnessFileTools: builtins
       .filter((builtin) => "alias" in builtin && builtin.alias === "file_operations")
       .map(({ name }) => name),
@@ -875,6 +888,110 @@ function resolveBuiltins(allowedPatterns: string[]): Builtin[] {
       isBuiltinIncluded(builtin.name, allowedPatterns) ||
       ("alias" in builtin && isBuiltinIncluded(builtin.alias, allowedPatterns)),
   );
+}
+
+const SUBAGENT_TOOL = "subagent";
+const SKILLS_TOOL = "skills";
+/** Bedrock's tool-name limit. */
+const TOOL_NAME_LIMIT = 64;
+
+/**
+ * The model-facing names of the agent's builtin and inline function tools, allocated by the
+ * harness runtime's rules so that a customer tool sharing a builtin's name (read, web-fetch, ...)
+ * renames both instead of failing agent construction. `reserved` names (the plugin tools, the
+ * subagent tool and the skills tool) are never renamed; a tool sharing one is.
+ *
+ * Names are fixed at export time, which differs from the harness runtime in three corner cases.
+ * MCP and gateway tool names are only known at runtime and take no part: a server tool whose
+ * prefixed name equals one of these names still fails agent construction, and the MCP tools the
+ * runtime loads before an inline function shift the index hashed into a second-pass suffix. And
+ * `skills` is reserved whenever the harness fetches skills, even if none resolve at runtime.
+ */
+function allocateToolNames(
+  builtinTools: string[],
+  inlineFunctionTools: { name: string }[],
+  reserved: string[],
+): { builtins: string[]; inline: string[]; builtinRenames?: Record<string, string> } {
+  const names = allocateRootNames(
+    [
+      ...builtinTools.map((name) => ({ namespace: "builtin", name })),
+      ...inlineFunctionTools.map(({ name }) => ({ namespace: name, name })),
+    ],
+    new Set(reserved),
+  );
+  const builtins = names.slice(0, builtinTools.length);
+  const renamed = builtinTools.flatMap((name, index) =>
+    builtins[index] === name ? [] : [[name, builtins[index]!] as const],
+  );
+  return {
+    builtins,
+    inline: names.slice(builtinTools.length),
+    builtinRenames: renamed.length > 0 ? Object.fromEntries(renamed) : undefined,
+  };
+}
+
+/** The identity Strands' tool registry compares: dashes and underscores are equal. */
+function registryKey(name: string): string {
+  return name.replaceAll("-", "_");
+}
+
+function withHashSuffix(name: string, identity: string): string {
+  const suffix = `_${createHash("sha256").update(identity).digest("hex").slice(0, 8)}`;
+  return `${name.slice(0, TOOL_NAME_LIMIT - suffix.length)}${suffix}`;
+}
+
+/**
+ * Allocate unique names, in order. A name shared with another tool or a reserved name becomes
+ * `<namespace>_<name>`, cut to 64 characters. A registry identity still shared after that gets a
+ * hash of `<namespace>/<original>/<index>`, and any remaining clash a hash of `.../<attempt>`.
+ */
+function allocateNames(tools: { namespace: string; name: string }[], reserved: Set<string>) {
+  const reservedKeys = [...reserved].map(registryKey);
+  const counts = (names: string[]) => {
+    const counted = new Map<string, number>();
+    for (const key of [...names.map(registryKey), ...reservedKeys]) {
+      counted.set(key, (counted.get(key) ?? 0) + 1);
+    }
+    return counted;
+  };
+  const originalCounts = counts(tools.map(({ name }) => name));
+  const candidates = tools.map(({ namespace, name }) =>
+    ((originalCounts.get(registryKey(name)) ?? 0) > 1 ? `${namespace}_${name}` : name).slice(
+      0,
+      TOOL_NAME_LIMIT,
+    ),
+  );
+  const candidateCounts = counts(candidates);
+  const used = new Set(reservedKeys);
+  return tools.map(({ namespace, name }, index) => {
+    let candidate = candidates[index]!;
+    if ((candidateCounts.get(registryKey(candidate)) ?? 0) > 1) {
+      candidate = withHashSuffix(candidate, `${namespace}/${name}/${index}`);
+    }
+    for (let attempt = 0; used.has(registryKey(candidate)); attempt++) {
+      candidate = withHashSuffix(candidate, `${namespace}/${name}/${index}/${attempt}`);
+    }
+    used.add(registryKey(candidate));
+    return candidate;
+  });
+}
+
+/**
+ * {@link allocateNames}, with the skills tool reserved the way the harness runtime reserves it:
+ * only a tool that would otherwise take the name `skills` is renamed, so no other name changes.
+ */
+function allocateRootNames(
+  tools: { namespace: string; name: string }[],
+  reserved: Set<string>,
+): string[] {
+  const previous = allocateNames(
+    tools,
+    new Set([...reserved].filter((name) => name !== SKILLS_TOOL)),
+  );
+  if (!reserved.has(SKILLS_TOOL) || !previous.includes(SKILLS_TOOL)) return previous;
+  const retained = previous.filter((name) => name !== SKILLS_TOOL);
+  const replacements = allocateNames(tools, new Set([...reserved, ...retained]));
+  return previous.map((name, index) => (name === SKILLS_TOOL ? replacements[index]! : name));
 }
 
 function undefinedIfEmpty<T>(values: T[]): T[] | undefined {

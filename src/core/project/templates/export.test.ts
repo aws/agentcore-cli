@@ -368,6 +368,7 @@ describe("mapHarnessToExportPlan tools", () => {
     expect(result.context.inlineFunctionTools).toEqual([
       {
         name: "get_weather",
+        registeredName: "get_weather",
         description: "Get the weather",
         inputSchema: { type: "object", properties: { city: { type: "string" } } },
       },
@@ -722,6 +723,83 @@ describe("mapHarnessToExportPlan allowedTools selection", () => {
       )?.map((tool) => tool.name);
     expect(names(["@lookup"])).toEqual(["lookup"]);
     expect(names(["lookup"])).toBeUndefined();
+  });
+});
+
+describe("mapHarnessToExportPlan tool names", () => {
+  const inline = (name: string) => ({
+    type: "inline_function",
+    name,
+    config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+  });
+  const names = (spec: Record<string, unknown>) => {
+    const { context } = plan({ spec: harness(spec) });
+    return {
+      builtinTools: context.builtinTools,
+      builtinToolRenames: context.builtinToolRenames,
+      inline: (context.inlineFunctionTools as { name: string; registeredName: string }[]).map(
+        ({ name, registeredName }) => [name, registeredName],
+      ),
+    };
+  };
+
+  test.each([
+    ["shell", "shell", "builtin_shell", "shell_shell"],
+    ["read", "read", "builtin_read", "read_read"],
+    ["write", "write", "builtin_write", "write_write"],
+    ["edit", "edit", "builtin_edit", "edit_edit"],
+    ["web_fetch", "web_fetch", "builtin_web_fetch", "web_fetch_web_fetch"],
+    // The tool registry treats "-" and "_" alike.
+    ["web-fetch", "web_fetch", "builtin_web_fetch", "web-fetch_web-fetch"],
+  ])(
+    "renames both the builtin and a customer tool named %p",
+    (name, builtin, builtinName, customerName) => {
+      const result = names({ tools: [inline(name)] });
+      expect(result.builtinToolRenames).toEqual({ [builtin]: builtinName });
+      expect(result.builtinTools).toContain(builtinName);
+      expect(result.builtinTools).not.toContain(builtin);
+      expect(result.inline).toEqual([[name, customerName]]);
+    },
+  );
+
+  test.each([
+    ["todo_write", "todo_write_todo_write"],
+    ["retrieve_context", "retrieve_context_retrieve_context"],
+    ["subagent", "subagent_subagent"],
+  ])("renames only a customer tool named after the %p tool", (name, customerName) => {
+    const result = names({ tools: [inline(name)] });
+    expect(result.builtinToolRenames).toBeUndefined();
+    expect(result.builtinTools).toEqual(["shell", "read", "write", "edit", "web_fetch"]);
+    expect(result.inline).toEqual([[name, customerName]]);
+  });
+
+  test("renames a customer tool named skills only when the agent fetches skills", () => {
+    const skills = [{ s3Uri: "s3://skills-bucket/team/" }];
+    expect(names({ tools: [inline("skills")], skills }).inline).toEqual([
+      ["skills", "skills_skills"],
+    ]);
+    expect(names({ tools: [inline("skills")] }).inline).toEqual([["skills", "skills"]]);
+  });
+
+  test("keeps a customer tool's name when allowedTools leaves out the builtin it matches", () => {
+    expect(names({ tools: [inline("shell")], allowedTools: ["read", "@shell"] })).toEqual({
+      builtinTools: ["read"],
+      builtinToolRenames: undefined,
+      inline: [["shell", "shell"]],
+    });
+  });
+
+  test("hashes names that still collide after the namespace prefix, as the harness runtime does", () => {
+    expect(
+      names({ tools: [inline("read"), inline("builtin_read"), inline("read_read")] }),
+    ).toMatchObject({
+      builtinToolRenames: { read: "builtin_read_918eaa31" },
+      inline: [
+        ["read", "read_read_4d363eb0"],
+        ["builtin_read", "builtin_read_dba9b9de"],
+        ["read_read", "read_read_e2616851"],
+      ],
+    });
   });
 });
 

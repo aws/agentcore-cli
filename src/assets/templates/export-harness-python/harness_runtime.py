@@ -25,6 +25,9 @@ from strands.tools.mcp import MCPAgentTool
 {{#if (or maxIterations maxTokens)}}
 from strands.types.exceptions import EventLoopException
 {{/if}}
+{{#if builtinToolRenames}}
+from strands.types.tools import AgentTool
+{{/if}}
 {{#if hasContextOffloader}}
 from strands.vended_plugins.context_offloader import ContextOffloader
 {{/if}}
@@ -124,6 +127,50 @@ class _BudgetHook(HookProvider):
         budget = event.invocation_state.get("budget")
         if budget is not None and event.stop_response is not None:
             budget.after_model_call(event.stop_response.message.get("metadata") or {})
+{{#if builtinToolRenames}}
+
+
+class RenamedTool(AgentTool):
+    """Expose a tool under another model-facing name without mutating it.
+
+    As in the harness runtime, a built-in tool that shares its name with another tool is
+    registered as builtin_<name>.
+    """
+
+    def __init__(self, tool, name):
+        super().__init__()
+        self._tool = tool
+        self._name = name
+
+    @property
+    def tool_name(self):
+        return self._name
+
+    @property
+    def tool_spec(self):
+        return {**self._tool.tool_spec, "name": self._name}
+
+    @property
+    def tool_type(self):
+        return self._tool.tool_type
+
+    @property
+    def supports_hot_reload(self):
+        return self._tool.supports_hot_reload
+
+    @property
+    def is_dynamic(self):
+        return self._tool.is_dynamic
+
+    def mark_dynamic(self):
+        self._tool.mark_dynamic()
+
+    def get_display_properties(self):
+        return {**self._tool.get_display_properties(), "Name": self._name}
+
+    def stream(self, tool_use, invocation_state, **kwargs):
+        return self._tool.stream(tool_use, invocation_state, **kwargs)
+{{/if}}
 {{#if hasShell}}
 
 

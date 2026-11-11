@@ -40,7 +40,7 @@ from strands.agent.conversation_manager.summarizing_conversation_manager import 
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 {{/if}}
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from harness_runtime import InvocationBudget, LimitExceeded, build_session_agent{{#if hasShell}}, make_managed_shell{{/if}}
+from harness_runtime import InvocationBudget, LimitExceeded{{#if builtinToolRenames}}, RenamedTool{{/if}}, build_session_agent{{#if hasShell}}, make_managed_shell{{/if}}
 from model.load import load_model
 {{#if (or gatewayTools remoteMcpTools)}}
 from mcp_client.client import get_all_mcp_clients
@@ -92,14 +92,14 @@ def _make_inline_tool(name: str, spec: dict) -> PythonAgentTool:
 
 {{#each inlineFunctionTools}}
 _INLINE_SPEC_{{snakeCase name}} = {
-    "name": "{{name}}",
+    "name": "{{registeredName}}",
     "description": {{safeJson description}},
     "inputSchema": {"json": json.loads({{pyJsonStr inputSchema}}) },
 }
-tools.append(_make_inline_tool("{{name}}", _INLINE_SPEC_{{snakeCase name}}))
+tools.append(_make_inline_tool("{{registeredName}}", _INLINE_SPEC_{{snakeCase name}}))
 {{/each}}
 
-_INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}} }
+_INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{registeredName}}"{{#unless @last}}, {{/unless}}{{/each}} }
 
 {{else}}
 _INLINE_FUNCTION_NAMES = set()
@@ -116,14 +116,18 @@ tools.append(add_numbers)
 {{/if}}
 {{#if builtinTools}}
 # Built-in tools selected by allowedTools.
+{{#if builtinToolRenames}}
+# As in the harness runtime, a built-in tool that shares its name with another tool is
+# registered as builtin_<name>.
+{{/if}}
 {{#if hasShell}}
-tools.append(make_managed_shell())
+tools.append({{#if builtinToolRenames.shell}}RenamedTool(make_managed_shell(), "{{builtinToolRenames.shell}}"){{else}}make_managed_shell(){{/if}})
 {{/if}}
 {{#each harnessFileTools}}
-tools.append({{this}})
+tools.append({{#if (lookup ../builtinToolRenames this)}}RenamedTool({{this}}, "{{lookup ../builtinToolRenames this}}"){{else}}{{this}}{{/if}})
 {{/each}}
 {{#if hasWebFetch}}
-tools.append(make_web_fetch(mode="markdown"))
+tools.append({{#if builtinToolRenames.web_fetch}}RenamedTool(make_web_fetch(mode="markdown"), "{{builtinToolRenames.web_fetch}}"){{else}}make_web_fetch(mode="markdown"){{/if}})
 {{/if}}
 {{/if}}
 {{#if needsOs}}{{#unless isExportHarness}}

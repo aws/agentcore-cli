@@ -259,6 +259,38 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(client).toContain('prefix="exa"');
   });
 
+  test("registers customer tools that share a builtin's name under distinct names", async () => {
+    const { manager: subject } = manager();
+    const inline = (name: string) => ({
+      type: "inline_function",
+      name,
+      config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+    });
+    const project = await projectWithHarness(subject, {
+      tools: [inline("shell"), inline("read"), inline("web-fetch"), inline("subagent")],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain('tools.append(RenamedTool(make_managed_shell(), "builtin_shell"))');
+    expect(main).toContain('tools.append(RenamedTool(read, "builtin_read"))');
+    expect(main).toContain("tools.append(write)\n");
+    expect(main).toContain(
+      'tools.append(RenamedTool(make_web_fetch(mode="markdown"), "builtin_web_fetch"))',
+    );
+    expect(main).toContain('tools.append(_make_inline_tool("read_read", _INLINE_SPEC_read))');
+    expect(main).toContain(
+      '_INLINE_FUNCTION_NAMES = { "shell_shell", "read_read", "web-fetch_web-fetch", "subagent_subagent" }',
+    );
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("class RenamedTool(AgentTool):");
+    // The subagent inherits the builtins under their registered names.
+    expect(runtime).toContain(
+      '_SUBAGENT_BUILTIN_TOOL_NAMES = frozenset(["builtin_shell","builtin_read","write","edit","builtin_web_fetch"])',
+    );
+  });
+
   test("counts an inline function turn's usage when handing the call off", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {
@@ -870,6 +902,13 @@ describe("FsProjectManager.exportHarness generated Python", () => {
           config: { remoteMcp: { url: "https://mcp.exa.ai/mcp" } },
         },
       ],
+    },
+    "inline functions sharing builtin names": {
+      tools: ["shell", "read", "web_fetch"].map((name) => ({
+        type: "inline_function",
+        name,
+        config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+      })),
     },
   };
 
