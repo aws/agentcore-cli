@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { Project } from "../../../handlers/project/types";
 import { type HttpRequestHandler, startHttpServer } from "../../../io/httpServer";
+import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { parseAgentEvent } from "./invocations";
 import { ServerFarm, fakeSupervisor, post, runningAgent } from "./testkit";
 import type { InspectorDeps } from "./types";
@@ -265,5 +267,127 @@ describe("AGUI agent invocation", () => {
     const response = await post(url, "/invocations", { agentName: "orders" });
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ success: false, error: "prompt is required" });
+  });
+});
+
+describe("deployed Runtime invocation", () => {
+  const project: Project = {
+    name: "Demo",
+    rootPath: "/workspace/demo",
+    spec: ProjectSpecSchema.parse({
+      name: "Demo",
+      version: 2,
+      runtimes: [
+        {
+          name: "orders",
+          build: "CodeZip",
+          entrypoint: "main.py",
+          codeLocation: "app/orders",
+          runtimeVersion: "PYTHON_3_14",
+        },
+        {
+          name: "chat",
+          build: "CodeZip",
+          entrypoint: "main.py",
+          codeLocation: "app/chat",
+          runtimeVersion: "PYTHON_3_14",
+          protocol: "A2A",
+        },
+      ],
+    }),
+  };
+
+  function streamOf(...chunks: string[]): AsyncIterable<Uint8Array> {
+    return (async function* () {
+      for (const chunk of chunks) yield new TextEncoder().encode(chunk);
+    })();
+  }
+
+  async function deployedInspector(invokeDeployedRuntime?: InspectorDeps["invokeDeployedRuntime"]) {
+    // A running local agent proves ?target=deployed never falls back to it.
+    const local = await farm.serve(sseAgent([JSON.stringify({ text: "local" })]));
+    return farm.inspector({
+      supervisor: fakeSupervisor({ agents: [runningAgent("orders", local.port)] }),
+      project,
+      invokeDeployedRuntime,
+    });
+  }
+
+  test("forwards the request to the deployed Runtime and normalizes its SSE", async () => {
+    const calls: { name: string; payload: unknown; sessionId: string; userId?: string }[] = [];
+    const { url } = await deployedInspector(async (name, request) => {
+      calls.push({
+        name,
+        payload: JSON.parse(new TextDecoder().decode(request.payload)),
+        sessionId: request.sessionId,
+        userId: request.userId,
+      });
+      return {
+        statusCode: 200,
+        contentType: "text/event-stream",
+        body: streamOf(`data: ${JSON.stringify({ text: "deployed" })}\n\n`),
+      };
+    });
+
+    const body = { agentName: "orders", prompt: "hi", sessionId: "session-42", userId: "u1" };
+    const response = await post(url, "/invocations?target=deployed", body);
+
+    expect(response.headers.get("x-session-id")).toBe("session-42");
+    expect(await response.text()).toBe(`data: ${JSON.stringify("deployed")}\n\n`);
+    expect(calls).toEqual([
+      { name: "orders", payload: body, sessionId: "session-42", userId: "u1" },
+    ]);
+  });
+
+  test.each([
+    {
+      name: "a missing agentName",
+      body: { prompt: "hi" },
+      status: 400,
+      error: "agentName is required",
+    },
+    {
+      name: "an unknown Runtime",
+      body: { agentName: "nope", prompt: "hi" },
+      status: 404,
+      error: 'Runtime "nope" not found',
+    },
+    {
+      name: "a non-HTTP Runtime",
+      body: { agentName: "chat", prompt: "hi" },
+      status: 400,
+      error: "Invoking a deployed A2A agent is not supported yet.",
+    },
+  ])("rejects $name", async ({ body, status, error }) => {
+    const { url } = await deployedInspector(async () => {
+      throw new Error("must not be called");
+    });
+    const response = await post(url, "/invocations?target=deployed", body);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ success: false, error });
+  });
+
+  test("returns 409 when deployed invocation is not wired", async () => {
+    const { url } = await deployedInspector();
+    const response = await post(url, "/invocations?target=deployed", {
+      agentName: "orders",
+      prompt: "hi",
+    });
+    expect(response.status).toBe(409);
+  });
+
+  test("returns 502 with the cause when the deployed invocation fails", async () => {
+    const { url } = await deployedInspector(async () => {
+      throw new Error("AccessDenied");
+    });
+    const response = await post(url, "/invocations?target=deployed", {
+      agentName: "orders",
+      prompt: "hi",
+    });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: "Deployed invocation failed: AccessDenied",
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import z from "zod";
 import { createInspectorHandler } from "../../../core/dev/inspector/server";
-import type { InspectorDeps } from "../../../core/dev/inspector/types";
+import type { InspectorDeploymentLookup, InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
 import { projectSpecPath } from "../../../core/project/fsUtils";
@@ -25,9 +25,11 @@ import { JsonRendererKey, type JsonRenderer } from "../../../tui";
 import { JsonKey, RegionKey } from "../../keys";
 import { coreOptsFromCtx } from "../../utils";
 import type { CoreHarnessClient } from "../../harness/types";
+import { invokeRuntimeTarget } from "../../runtime/invoke/operation";
+import type { CoreRuntimeClient } from "../../runtime/types";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import { createDeployProjectHandler, DEPLOY_NEXT_STEP } from "../deploy";
-import type { Project, ProjectManager } from "../types";
+import type { Project, ProjectManager, ResolvedProjectResources } from "../types";
 import { BMA_TEMPLATE_NAME, isBmaRuntime } from "../bma";
 import type { DevEnvironmentLoader } from "./environment";
 import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
@@ -54,6 +56,8 @@ export type DevProjectHandlerConfig = {
   /** Re-resolves the project after a config change to pick up runtime edits. */
   projectManager: ProjectManager;
   harness: Pick<CoreHarnessClient, "getHarness" | "invokeHarness">;
+  /** Invokes deployed Runtimes when the Inspector's Local/Deployed switch is on Deployed. */
+  runtime: CoreRuntimeClient;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
   /** Runs the final v0 deployer when harness dev is opened from a v0 project. */
@@ -71,6 +75,30 @@ function otelEnvForRuntime(
 
 function supportsLocalDev(runtime: ProjectRuntime): boolean {
   return !isBmaRuntime(runtime);
+}
+
+// Resolving deployment status reads the target's stack, and the Inspector
+// fetches resources on every view, so one lookup is shared until refreshed.
+function createDeploymentStatus(resolve: () => Promise<ResolvedProjectResources>): {
+  get: () => Promise<InspectorDeploymentLookup>;
+  refresh: () => void;
+} {
+  let cached: Promise<InspectorDeploymentLookup> | undefined;
+  return {
+    get: () =>
+      (cached ??= resolve().then(({ resources }) => {
+        const states = new Map(
+          resources.map(({ resourceType, name, deploymentState }) => [
+            `${resourceType}/${name}`,
+            deploymentState,
+          ]),
+        );
+        return (resourceType, name) => states.get(`${resourceType}/${name}`);
+      })),
+    refresh: () => {
+      cached = undefined;
+    },
+  };
 }
 
 /** An agent's own output, always tagged with the agent that produced it. */
@@ -300,6 +328,11 @@ async function runHarnessDev({
             },
             project: inspectorProject,
             assets: config.inspectorAssets,
+            deploymentStatus: createDeploymentStatus(() =>
+              config.projectManager.resolveProjectResources(project, {
+                target: deploymentTarget,
+              }),
+            ).get,
             invokeHarness: async (name, input, requestSignal) => {
               const deployed = await config.projectManager.resolveDeployedResource(project, {
                 target: deploymentTarget,
@@ -466,6 +499,13 @@ async function runRuntimeDev({
           return;
         }
 
+        // Runtime dev has no --target, so the Inspector's deployed view is the default target.
+        let currentProject = synced.project;
+        const deploymentStatus = createDeploymentStatus(() =>
+          config.projectManager.resolveProjectResources(currentProject, {
+            target: DEFAULT_TARGET_NAME,
+          }),
+        );
         const uiPort = (await findFreePort(UI_DEFAULT_PORT, input.uiPort, config.checkPort, signal))
           .port;
         const server = await config.startServer(
@@ -475,6 +515,36 @@ async function runRuntimeDev({
             assets: config.inspectorAssets,
             project: { ...synced.project, spec: { ...synced.project.spec, harnesses: [] } },
             selectedAgent: input.agent,
+            deploymentStatus: deploymentStatus.get,
+            invokeDeployedRuntime: async (name, request, requestSignal) => {
+              const deployed = await config.projectManager.resolveDeployedResource(currentProject, {
+                target: DEFAULT_TARGET_NAME,
+                resourceType: "runtime",
+                name,
+              });
+              const response = await invokeRuntimeTarget(
+                config.runtime,
+                {
+                  runtimeId: deployed.id,
+                  payload: request.payload,
+                  accept: "text/event-stream, */*",
+                  runtimeSessionId: request.sessionId,
+                  runtimeUserId: request.userId,
+                },
+                {
+                  ...coreOptsFromCtx(ctx),
+                  region: deployed.target.region,
+                  credentials: deployed.credentialProvider,
+                },
+                AbortSignal.any([requestSignal, signal]),
+              );
+              if (response.kind === "rejected") {
+                throw new AgentCoreCLIError(
+                  `Runtime '${name}' rejected the invocation (HTTP ${response.statusCode})`,
+                );
+              }
+              return response;
+            },
           }),
           { port: uiPort, signal },
         );
@@ -512,6 +582,8 @@ async function runRuntimeDev({
           supervisor.setRuntimes(
             synced.project.spec.runtimes.filter(({ name }) => runtimeNames.includes(name)),
           );
+          currentProject = synced.project;
+          deploymentStatus.refresh();
           const quiet = ownWritePending && !synced.written && synced.messages.length === 0;
           ownWritePending = synced.written;
           if (!quiet) {
