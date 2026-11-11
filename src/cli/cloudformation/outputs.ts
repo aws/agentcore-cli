@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import type {
   AgentCoreDeployedState,
   CapacityProviderDeployedState,
@@ -33,7 +34,11 @@ export function omitPaymentAuthorizationOutputs(outputs: StackOutputs): StackOut
  * Fetch CloudFormation stack outputs.
  */
 export async function getStackOutputs(region: string, stackName: string): Promise<StackOutputs> {
-  const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
+  const cfn = new CloudFormationClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
   const resp = await cfn.send(new DescribeStacksCommand({ StackName: stackName }));
   const stack = resp.Stacks?.[0];
   if (!stack) {

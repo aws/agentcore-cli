@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../aws';
 import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-cloudformation';
 
@@ -51,7 +52,11 @@ export interface StackStatusResult {
  * - If the stack is in a failed state, deployment may require manual intervention
  */
 export async function checkStackStatus(region: string, stackName: string): Promise<StackStatusResult> {
-  const cfn = new CloudFormationClient({ region, credentials: getCredentialProvider() });
+  const cfn = new CloudFormationClient({
+    region,
+    credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
+  });
 
   try {
     const resp = await cfn.send(new DescribeStacksCommand({ StackName: stackName }));

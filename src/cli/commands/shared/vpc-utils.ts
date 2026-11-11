@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { SECURITY_GROUP_ID_PATTERN, SUBNET_ID_PATTERN, VPC_ID_PATTERN } from '../../../schema/constants';
 import { getCredentialProvider } from '../../aws/account';
 import { DescribeSubnetsCommand, EC2Client } from '@aws-sdk/client-ec2';
@@ -75,7 +76,7 @@ export function validateVpcId(value: string): true | string {
  * silently misconfigure the build. Throws a clear error naming ec2:DescribeSubnets on failure.
  */
 export async function resolveVpcIdFromSubnets(subnetIds: string[], region: string): Promise<string> {
-  const ec2 = new EC2Client({ region, credentials: getCredentialProvider() });
+  const ec2 = new EC2Client({ region, credentials: getCredentialProvider(), requestHandler: getProxyRequestHandler() });
   let subnets: { SubnetId?: string; VpcId?: string }[];
   try {
     const resp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: subnetIds }));

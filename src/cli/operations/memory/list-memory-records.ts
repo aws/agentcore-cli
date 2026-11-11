@@ -1,5 +1,6 @@
 import { ResourceNotFoundError, ValidationError, toError } from '../../../lib';
 import type { Result } from '../../../lib/result';
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../../aws';
 import { BedrockAgentCoreClient, ListMemoryRecordsCommand } from '@aws-sdk/client-bedrock-agentcore';
 
@@ -57,6 +58,7 @@ export async function listMemoryRecords(options: ListMemoryRecordsOptions): Prom
   const client = new BedrockAgentCoreClient({
     region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   try {

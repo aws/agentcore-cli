@@ -1,5 +1,6 @@
 import { ResourceNotFoundError, ValidationError, toError } from '../../../lib';
 import type { Result } from '../../../lib/result';
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { getCredentialProvider } from '../../aws';
 import type { MemoryRecordEntry } from './list-memory-records';
 import { BedrockAgentCoreClient, RetrieveMemoryRecordsCommand } from '@aws-sdk/client-bedrock-agentcore';
@@ -53,6 +54,7 @@ export async function retrieveMemoryRecords(
   const client = new BedrockAgentCoreClient({
     region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   try {

@@ -11,6 +11,7 @@ import {
   toError,
 } from '../../lib';
 import type { Result } from '../../lib/result';
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import type {
   AgentEnvSpec,
   BuildType,
@@ -437,7 +438,11 @@ export class AgentPrimitive extends BasePrimitive<AddAgentOptions, RemovableReso
               let agentVpcId: string | undefined;
               if (agentSubnetIds && agentSubnetIds.length > 0) {
                 try {
-                  const ec2 = new EC2Client({ region: awsRegion, credentials: getCredentialProvider() });
+                  const ec2 = new EC2Client({
+                    region: awsRegion,
+                    credentials: getCredentialProvider(),
+                    requestHandler: getProxyRequestHandler(),
+                  });
                   const subnetResp = await ec2.send(new DescribeSubnetsCommand({ SubnetIds: agentSubnetIds }));
                   agentVpcId = subnetResp.Subnets?.[0]?.VpcId;
                 } catch {

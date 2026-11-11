@@ -12,6 +12,7 @@
  */
 import { ConfigIO, JobNotFoundError, ResourceNotFoundError, toError } from '../../../../lib';
 import type { Result } from '../../../../lib/result';
+import { getProxyRequestHandler } from '../../../../lib/utils/aws-proxy';
 import {
   deleteBatchEvaluation,
   generateClientToken,
@@ -40,7 +41,7 @@ async function fetchResultsFromCloudWatch(
   logGroupName: string,
   logStreamName: string
 ): Promise<BatchEvaluationResultEntry[]> {
-  const client = new CloudWatchLogsClient({ region });
+  const client = new CloudWatchLogsClient({ region, requestHandler: getProxyRequestHandler() });
   const response = await client.send(new GetLogEventsCommand({ logGroupName, logStreamName, startFromHead: true }));
 
   const results: BatchEvaluationResultEntry[] = [];

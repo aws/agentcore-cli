@@ -5,6 +5,7 @@
  * Extracted from the legacy post-deploy-ab-tests.ts so the AB-test job handler's create()
  * can own role + ARN resolution at start time (the config-as-code deploy path is removed).
  */
+import { getProxyRequestHandler } from '../../../../lib/utils/aws-proxy';
 import type { AgentCoreProjectSpec, DeployedResourceState } from '../../../../schema';
 import { getCredentialProvider } from '../../../aws/account';
 import type { ABTestEvaluationConfig, ABTestVariant } from '../../../aws/agentcore-ab-tests';
@@ -56,7 +57,7 @@ export interface CreateABTestRoleOptions {
 export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): Promise<string> {
   const { region, projectName, testName, gatewayArn } = options;
   const credentials = getCredentialProvider();
-  const iamClient = new IAMClient({ region, credentials });
+  const iamClient = new IAMClient({ region, credentials, requestHandler: getProxyRequestHandler() });
 
   // Account id from gateway ARN: arn:aws:bedrock-agentcore:REGION:ACCOUNT:gateway/ID
   const accountId = gatewayArn.split(':')[4] ?? '*';
@@ -181,7 +182,7 @@ export async function getOrCreateABTestRole(options: CreateABTestRoleOptions): P
 /** Best-effort role cleanup: delete the inline policy then the role. */
 export async function deleteABTestRole(region: string, roleArn: string): Promise<void> {
   const credentials = getCredentialProvider();
-  const iamClient = new IAMClient({ region, credentials });
+  const iamClient = new IAMClient({ region, credentials, requestHandler: getProxyRequestHandler() });
   const roleName = roleNameFromArn(roleArn);
 
   try {

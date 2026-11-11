@@ -1,4 +1,5 @@
 import { AwsCredentialsError, ValidationError } from '../../lib/errors/types.js';
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import type { AwsDeploymentTarget } from '../../schema';
 import { getAwsLoginGuidance } from '../external-requirements/checks';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
@@ -27,6 +28,7 @@ export async function detectAccount(): Promise<string | null> {
     const client = new STSClient({
       credentials: getCredentialProvider(),
       region,
+      requestHandler: getProxyRequestHandler(),
     });
     const response = await client.send(new GetCallerIdentityCommand({}));
     return response.Account ?? null;

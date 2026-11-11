@@ -2,6 +2,7 @@
  * AWS SDK v3 wrapper for fetching Bedrock Agent configurations.
  * Port of the starter toolkit's agent_info.py.
  */
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from './account';
 import type {
   ActionGroupInfo,
@@ -29,15 +30,19 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import yaml from 'js-yaml';
 
 function createBedrockAgentClient(region: string): BedrockAgentClient {
-  return new BedrockAgentClient({ credentials: getCredentialProvider(), region });
+  return new BedrockAgentClient({
+    credentials: getCredentialProvider(),
+    region,
+    requestHandler: getProxyRequestHandler(),
+  });
 }
 
 function createBedrockClient(region: string): BedrockClient {
-  return new BedrockClient({ credentials: getCredentialProvider(), region });
+  return new BedrockClient({ credentials: getCredentialProvider(), region, requestHandler: getProxyRequestHandler() });
 }
 
 function createS3Client(region: string): S3Client {
-  return new S3Client({ credentials: getCredentialProvider(), region });
+  return new S3Client({ credentials: getCredentialProvider(), region, requestHandler: getProxyRequestHandler() });
 }
 
 /**

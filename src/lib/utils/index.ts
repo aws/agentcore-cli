@@ -1,4 +1,5 @@
 export { detectAwsAccount } from './aws-account';
+export { getProxyHttpsAgent, getProxyRequestHandler } from './aws-proxy';
 export { SecureCredentials } from './credentials';
 export { getEnvPath, readEnvFile, writeEnvFile, getEnvVar, setEnvVar, removeEnvVars } from './env';
 export { isWindows } from './platform';

@@ -1,3 +1,4 @@
+import { getProxyRequestHandler } from '../../lib/utils/aws-proxy';
 import { getCredentialProvider } from './account';
 import {
   BedrockAgentCoreControlClient,
@@ -36,6 +37,7 @@ export async function startPolicyGeneration(
   const client = new BedrockAgentCoreControlClient({
     region: options.region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   const command = new StartPolicyGenerationCommand({
@@ -60,6 +62,7 @@ export async function getPolicyGeneration(options: GetPolicyGenerationOptions): 
   const client = new BedrockAgentCoreControlClient({
     region: options.region,
     credentials: getCredentialProvider(),
+    requestHandler: getProxyRequestHandler(),
   });
 
   // Use the SDK waiter to poll until generation completes

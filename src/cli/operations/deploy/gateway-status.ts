@@ -1,6 +1,7 @@
 /**
  * Query gateway target sync statuses after deployment.
  */
+import { getProxyRequestHandler } from '../../../lib/utils/aws-proxy';
 import { BedrockAgentCoreControlClient, ListGatewayTargetsCommand } from '@aws-sdk/client-bedrock-agentcore-control';
 
 export interface TargetSyncStatus {
@@ -29,7 +30,7 @@ export function formatTargetStatus(status: string): string {
  */
 export async function getGatewayTargetStatuses(gatewayId: string, region: string): Promise<TargetSyncStatus[]> {
   try {
-    const client = new BedrockAgentCoreControlClient({ region });
+    const client = new BedrockAgentCoreControlClient({ region, requestHandler: getProxyRequestHandler() });
     const response = await client.send(
       new ListGatewayTargetsCommand({ gatewayIdentifier: gatewayId, maxResults: 100 })
     );
