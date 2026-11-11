@@ -236,6 +236,51 @@ describe("gateway custom validation", () => {
       }).success,
     ).toBe(true);
   });
+  it("places a passthrough API key where, and with the prefix, the target names", () => {
+    const github = {
+      name: "github",
+      targetType: "passthrough",
+      passthrough: { endpoint: "https://api.github.com", protocolType: "CUSTOM" },
+    };
+    const apiKey = { type: "API_KEY", credentialName: "githubToken" };
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({ ...github, outboundAuth: apiKey }).success,
+    ).toBe(true);
+    expect(
+      AgentCoreGatewayTargetSchema.safeParse({
+        ...github,
+        outboundAuth: {
+          ...apiKey,
+          location: "HEADER",
+          parameterName: "Authorization",
+          prefix: "Bearer",
+        },
+      }).success,
+    ).toBe(true);
+    for (const placement of [
+      { location: "BODY" },
+      { parameterName: "x".repeat(65) },
+      { prefix: "x".repeat(65) },
+    ]) {
+      expect(
+        AgentCoreGatewayTargetSchema.safeParse({
+          ...github,
+          outboundAuth: { ...apiKey, ...placement },
+        }).success,
+      ).toBe(false);
+    }
+    const oauthWithName = AgentCoreGatewayTargetSchema.safeParse({
+      ...github,
+      outboundAuth: {
+        type: "OAUTH",
+        credentialName: "githubOauth",
+        parameterName: "Authorization",
+      },
+    });
+    expect(oauthWithName.error?.issues.map(({ message }) => message)).toEqual([
+      "location, parameterName and prefix are only valid with API_KEY outbound auth.",
+    ]);
+  });
   it("requires JWT configuration when a gateway selects CUSTOM_JWT", () => {
     const gateway = { name: "gateway", targets: [] };
     expect(

@@ -55,6 +55,9 @@ export const OutboundAuthSchema = z
     scopes: z.array(z.string()).optional(),
     service: z.string().min(1).max(64).optional(),
     region: z.string().min(1).max(32).optional(),
+    location: z.enum(["HEADER", "QUERY_PARAMETER"]).optional(),
+    parameterName: z.string().min(1).max(64).optional(),
+    prefix: z.string().min(1).max(64).optional(),
   })
   .strict();
 export type OutboundAuth = z.infer<typeof OutboundAuthSchema>;
@@ -88,7 +91,7 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   connector: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
   passthrough: {
     authRequired: true,
-    validAuthTypes: ["GATEWAY_IAM_ROLE", "OAUTH", "JWT_PASSTHROUGH"],
+    validAuthTypes: ["GATEWAY_IAM_ROLE", "OAUTH", "JWT_PASSTHROUGH", "API_KEY"],
     iamRoleFallback: false,
   },
 };
@@ -426,6 +429,18 @@ export const AgentCoreGatewayTargetSchema = z
         ctx.addIssue({
           code: "custom",
           message: "service and region are only valid with GATEWAY_IAM_ROLE outbound auth.",
+          path: ["outboundAuth"],
+        });
+      }
+      if (
+        data.outboundAuth?.type !== "API_KEY" &&
+        (data.outboundAuth?.location !== undefined ||
+          data.outboundAuth?.parameterName !== undefined ||
+          data.outboundAuth?.prefix !== undefined)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "location, parameterName and prefix are only valid with API_KEY outbound auth.",
           path: ["outboundAuth"],
         });
       }
