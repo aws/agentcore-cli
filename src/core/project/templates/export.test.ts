@@ -18,6 +18,7 @@ import {
   LITELLM_NO_API_KEY_NOTE_CATEGORY,
   MALFORMED_S3_SKILL_NOTE_CATEGORY,
   MCP_HEADER_CREDS_NOTE_CATEGORY,
+  MCP_TOOL_NAME_NOTE_CATEGORY,
   MEMORY_ARN_NOTE_CATEGORY,
   MEMORY_MANAGED_NOTE_CATEGORY,
   MEMORY_MESSAGES_COUNT_NOTE_CATEGORY,
@@ -833,6 +834,64 @@ describe("mapHarnessToExportPlan tool names", () => {
         ["read_read", "read_read_e2616851"],
       ],
     });
+  });
+});
+
+describe("mapHarnessToExportPlan MCP tool name notes", () => {
+  const server = (name: string) => ({
+    type: "remote_mcp",
+    name,
+    config: { remoteMcp: { url: "https://mcp.example.com/mcp" } },
+  });
+  const collisionNotes = (spec: Record<string, unknown>) =>
+    plan({ spec: harness(spec) }).notes.filter(
+      (note) => note.category === MCP_TOOL_NAME_NOTE_CATEGORY,
+    );
+
+  test.each([
+    ["web", "fetch", "web_fetch"],
+    ["todo", "write", "todo_write"],
+    ["retrieve", "context", "retrieve_context"],
+  ])("notes that server %p's tool %p would share the %p tool's name", (serverName, tool, taken) => {
+    const notes = collisionNotes({ tools: [server(serverName)] });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.message).toContain(`The remote MCP server "${serverName}"`);
+    expect(notes[0]!.message).toContain(`named "${tool}" would share a name`);
+    expect(notes[0]!.message).toContain(`agent's "${taken}" tool`);
+  });
+
+  test("counts inline function names and treats dashes and underscores alike", () => {
+    const inline = {
+      type: "inline_function",
+      name: "orders_lookup",
+      config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+    };
+    const notes = collisionNotes({ tools: [inline, server("orders")] });
+    expect(notes.map((note) => note.message)).toEqual([
+      expect.stringContaining(`named "lookup" would share a name with the agent's "orders_lookup"`),
+    ]);
+    expect(collisionNotes({ tools: [server("web-fetch")] })).toEqual([]);
+    expect(collisionNotes({ tools: [server("retrieve-context")] })).toEqual([]);
+    expect(collisionNotes({ tools: [server("todo-x")] })).toEqual([]);
+    expect(
+      collisionNotes({ tools: [{ ...inline, name: "orders-lookup" }, server("orders")] }),
+    ).toHaveLength(1);
+  });
+
+  test("leaves out tools and servers that cannot collide", () => {
+    expect(collisionNotes({ tools: [server("exa")] })).toEqual([]);
+    // The builtin is not enabled.
+    expect(collisionNotes({ tools: [server("web")], allowedTools: ["@web"] })).toEqual([]);
+    // allowedTools loads no tool of the server that could collide.
+    expect(
+      collisionNotes({ tools: [server("web")], allowedTools: ["web_fetch", "@web/search"] }),
+    ).toEqual([]);
+    expect(
+      collisionNotes({ tools: [server("web")], allowedTools: ["web_fetch", "@web/fetch"] }),
+    ).toHaveLength(1);
+    expect(
+      collisionNotes({ tools: [server("web")], allowedTools: ["web_fetch", "@web/web_f*"] }),
+    ).toHaveLength(1);
   });
 });
 

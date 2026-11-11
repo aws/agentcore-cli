@@ -99,6 +99,7 @@ export const AWS_SKILLS_NOTE_CATEGORY =
 export const MALFORMED_S3_SKILL_NOTE_CATEGORY =
   "S3 skill URI is malformed — no S3 read permission generated";
 export const MCP_HEADER_CREDS_NOTE_CATEGORY = "MCP tool header credentials";
+export const MCP_TOOL_NAME_NOTE_CATEGORY = "MCP tool names can collide with other tools";
 export const LITELLM_NO_API_KEY_NOTE_CATEGORY = "LiteLLM model may require an API key";
 export const MODEL_API_KEY_NOTE_CATEGORY = "Model API key credential referenced";
 export const CONTAINER_IMAGE_NOTE_CATEGORY = "Container image not carried over";
@@ -165,12 +166,22 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
   const namesOf = (kind: Builtin["kind"]) =>
     builtins.filter((builtin) => builtin.kind === kind).map(({ name }) => name);
   const skills = resolveSkills(spec, credentials, notes);
-  const toolNames = allocateToolNames(namesOf("tool"), tools.inlineFunctionTools, [
+  const reservedToolNames = [
     ...namesOf("plugin"),
     ...(isEnabled("subagent") ? [SUBAGENT_TOOL] : []),
     // Fetched skills register the AgentSkills tool at runtime.
     ...(skills.hasFetchedSkills ? [SKILLS_TOOL] : []),
-  ]);
+  ];
+  const toolNames = allocateToolNames(
+    namesOf("tool"),
+    tools.inlineFunctionTools,
+    reservedToolNames,
+  );
+  noteMcpToolNameCollisions(
+    tools.remoteMcpTools,
+    [...toolNames.builtins, ...toolNames.inline, ...reservedToolNames],
+    notes,
+  );
   for (const [file, doc] of Object.entries(skills.policyFiles)) policyFiles[file] = doc;
   if (model.policyFile) policyFiles[model.policyFile.name] = model.policyFile.doc;
   additionalPolicies.push(...Object.keys(policyFiles));
@@ -929,7 +940,8 @@ const TOOL_NAME_LIMIT = 64;
  *
  * Names are fixed at export time, which differs from the harness runtime in three corner cases.
  * MCP and gateway tool names are only known at runtime and take no part: a server tool whose
- * prefixed name equals one of these names still fails agent construction, and the MCP tools the
+ * prefixed name equals one of these names still fails agent construction (export notes report the
+ * remote MCP servers that can, see {@link noteMcpToolNameCollisions}), and the MCP tools the
  * runtime loads before an inline function shift the index hashed into a second-pass suffix. And
  * `skills` is reserved whenever the harness fetches skills, even if none resolve at runtime.
  */
@@ -954,6 +966,45 @@ function allocateToolNames(
     inline: names.slice(builtinTools.length),
     builtinRenames: renamed.length > 0 ? Object.fromEntries(renamed) : undefined,
   };
+}
+
+/**
+ * Note each remote MCP server that could offer a tool under a name the agent already uses. A
+ * server's tools register as `<server>_<tool>` and are only known once it connects, so export
+ * cannot rename them as the harness runtime does, and Strands rejects the duplicate name when it
+ * builds the agent. A tool the server's allowedTools patterns leave out is not loaded, so it
+ * cannot collide.
+ */
+function noteMcpToolNameCollisions(
+  servers: ToolsResolution["remoteMcpTools"],
+  takenNames: string[],
+  notes: ExportNote[],
+): void {
+  for (const server of servers) {
+    const prefix = `${registryKey(server.name)}_`;
+    const collisions = takenNames.flatMap((name) => {
+      if (name.length <= prefix.length || !registryKey(name).startsWith(prefix)) return [];
+      const tool = name.slice(prefix.length);
+      const loaded =
+        server.toolPatterns === undefined ||
+        server.toolPatterns.some(
+          (pattern) => fnmatch(pattern, tool) || fnmatch(pattern, `${server.name}_${tool}`),
+        );
+      return loaded ? [{ name, tool }] : [];
+    });
+    if (collisions.length === 0) continue;
+    const list = (values: string[]) => values.map((value) => `"${value}"`).join(", ");
+    notes.push({
+      category: MCP_TOOL_NAME_NOTE_CATEGORY,
+      message:
+        `The remote MCP server "${server.name}" registers its tools as "${server.name}_<tool>", ` +
+        `so a tool it offers named ${list(collisions.map(({ tool }) => tool))} would share a name ` +
+        `with the agent's ${list(collisions.map(({ name }) => name))} tool. Strands rejects ` +
+        `duplicate tool names (treating "-" and "_" alike), so the agent could not be built and ` +
+        `every invocation would fail; the harness renamed such tools instead. If the server offers ` +
+        `such a tool, change the server's prefix or filter the tool out in mcp_client/client.py.`,
+    });
+  }
 }
 
 /** The identity Strands' tool registry compares: dashes and underscores are equal. */
