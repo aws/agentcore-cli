@@ -1,4 +1,5 @@
 import { CONFIG_DIR } from '../../../lib';
+import { getDeploymentFailureDetails } from '../../cloudformation/deployment-failure';
 import { CDK_APP_ENTRY, CDK_PROJECT_DIR } from '../../constants';
 import { isChangesetInProgressError } from '../../errors';
 import type { CdkToolkitWrapperOptions, DeployOptions, DestroyOptions, DiffOptions, ListOptions } from './types';
@@ -240,6 +241,8 @@ export class CdkToolkitWrapper {
     const maxRetries = 3;
     const baseDelayMs = 5000; // 5 seconds base delay
     let lastError: Error | null = null;
+    // CloudFormation timestamps have second precision. Ignore failures from older deployments.
+    const startedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -263,6 +266,23 @@ export class CdkToolkitWrapper {
         }
 
         // For other errors or final retry, throw immediately
+        const region = this.options.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+        const patterns = options.stacks?.patterns;
+        const stackNames = patterns
+          ? patterns.filter(name => !['?', '*', '[', ']'].some(character => name.includes(character)))
+          : (this.synthesizedAssembly?.cloudAssembly.stacks.map(stack => stack.stackName) ?? []);
+        if (region && stackNames.length > 0) {
+          try {
+            lastError.message += await getDeploymentFailureDetails(
+              stackNames,
+              region,
+              startedAt,
+              this.options.profile ?? process.env.AWS_PROFILE
+            );
+          } catch {
+            // Diagnostics must never replace the original error or prevent caller cleanup.
+          }
+        }
         throw lastError;
       }
     }

@@ -131,6 +131,13 @@ agentcore deploy -y --json           # JSON output
 | `--diff`          | Show CDK diff without deploying               |
 | `--json`          | JSON output                                   |
 
+After a deployment failure, the CLI makes a best-effort, read-only `DescribeStackEvents` lookup for recent failures on
+the selected stack(s) and includes their resource IDs and reasons in the final error, without requiring `--verbose`. The
+lookup uses the deployment region/profile, is limited to five event pages and ten reasons, and has a ten-second request
+deadline. It does not replace the original error if access is denied, the stack was deleted, or events are not yet
+available. A manual `aws cloudformation describe-stack-events` command is also provided. Nested-stack events are not
+recursively fetched.
+
 ### status
 
 Check deployment status and resource details.
