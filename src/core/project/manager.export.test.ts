@@ -131,8 +131,8 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
       'cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True)',
     );
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents[web-fetch] >= 1.62.0, < 2.0.0"');
-    expect(pyproject).toContain('"strands-harness == 0.1.2"');
+    expect(pyproject).toContain('"strands-agents[web-fetch] >= 1.63.0, < 2.0.0"');
+    expect(pyproject).toContain('"strands-harness >= 0.3.3, < 0.4.0"');
   });
 
   test("renders only the builtins and plugins allowedTools selects", async () => {
@@ -150,7 +150,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(runtime).not.toContain("make_subagent");
     expect(runtime).not.toContain("ContextOffloader");
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents >= 1.62.0, < 2.0.0"');
+    expect(pyproject).toContain('"strands-agents >= 1.63.0, < 2.0.0"');
   });
 
   test("reports usage per model call unless a subagent can add to it", async () => {
@@ -446,7 +446,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["temperature"] = 0.2');
     expect(loadModel).toContain('params["top_p"] = 0.8');
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents[openai,web-fetch] >= 1.62.0, < 2.0.0"');
+    expect(pyproject).toContain('"strands-agents[openai,web-fetch] >= 1.63.0, < 2.0.0"');
     expect(pyproject).not.toContain('"openai ~= 1.0.0"');
   });
 
@@ -473,7 +473,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["top_p"] = 0.9');
     expect(loadModel).toContain('params["top_k"] = 20');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[gemini,web-fetch] >= 1.62.0, < 2.0.0"',
+      '"strands-agents[gemini,web-fetch] >= 1.63.0, < 2.0.0"',
     );
   });
 
@@ -498,7 +498,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["top_p"] = 0.7');
     expect(loadModel).toContain('json.loads("{\\"max_retries\\":2}")');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[litellm,web-fetch] >= 1.62.0, < 2.0.0"',
+      '"strands-agents[litellm,web-fetch] >= 1.63.0, < 2.0.0"',
     );
   });
 
@@ -518,7 +518,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(main).toContain("from strands import AgentSkills");
     expect(main).toContain('SlidingWindowConversationManager(**{"window_size":12}, per_turn=True)');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[web-fetch] >= 1.62.0, < 2.0.0"',
+      '"strands-agents[web-fetch] >= 1.63.0, < 2.0.0"',
     );
   });
 
