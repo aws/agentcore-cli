@@ -297,6 +297,7 @@ export const COMMAND_SCHEMAS = {
   'resume.online-insights': PauseResumeOnlineEvalAttrs,
   'traces.list': NoAttrs,
   'traces.get': NoAttrs,
+  'traces.compare': NoAttrs,
   'evals.history': NoAttrs,
   import: NoAttrs,
   'import.runtime': NoAttrs,
