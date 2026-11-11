@@ -104,7 +104,6 @@ import {
   GetAgentInsightCommand,
   ListAgentInsightsCommand,
   UpdateAgentInsightCommand,
-  type AgentInsightArchiveStatus,
   type GetAgentInsightResponse,
   type ListAgentInsightsResponse,
   type UpdateAgentInsightResponse,
@@ -152,6 +151,7 @@ import type {
   GetBatchEvaluationResult,
   GetTracesInput,
   ListAgentInsightsInput,
+  UpdateAgentInsightInput,
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   SessionTrace,
@@ -1217,15 +1217,11 @@ export class EvalClient implements CoreEvalClient {
       .send(new GetAgentInsightCommand({ applicationName, agentInsightId }));
   }
 
-  async setAgentInsightArchiveStatus(
-    applicationName: string,
-    agentInsightId: string,
-    archiveStatus: AgentInsightArchiveStatus,
+  async updateAgentInsight(
+    input: UpdateAgentInsightInput,
     options: CoreOptions,
   ): Promise<UpdateAgentInsightResponse> {
-    return this.clients
-      .data(toClientConfig(options))
-      .send(new UpdateAgentInsightCommand({ applicationName, agentInsightId, archiveStatus }));
+    return this.clients.data(toClientConfig(options)).send(new UpdateAgentInsightCommand(input));
   }
 
   async listAgentInsightStores(

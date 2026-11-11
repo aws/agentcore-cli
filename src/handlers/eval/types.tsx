@@ -352,14 +352,21 @@ export type DatasetUpdateProgressEvent = {
 export type ListAgentInsightsInput = {
   applicationName?: string;
   batchEvaluationId?: string;
+  archiveStatus?: AgentInsightArchiveStatus;
   nextToken?: string;
   maxResults?: number;
 };
 
-// The service rejects an update that sets both or neither.
-export type AgentInsightStoreUpdate =
-  | { enablementStatus: AgentInsightStoreEnablementStatus }
-  | { encryptionConfiguration: AgentInsightStoreEncryptionConfiguration };
+export type UpdateAgentInsightInput = {
+  applicationName: string;
+  agentInsightId: string;
+  archiveStatus: AgentInsightArchiveStatus;
+};
+
+export type AgentInsightStoreUpdate = {
+  enablementStatus?: AgentInsightStoreEnablementStatus;
+  encryptionConfiguration?: AgentInsightStoreEncryptionConfiguration;
+};
 
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
 // handlers depend on. It is declared here, next to the handlers that consume it,
@@ -583,10 +590,8 @@ export interface CoreEvalClient {
     agentInsightId: string,
     options: CoreOptions,
   ): Promise<GetAgentInsightResponse>;
-  setAgentInsightArchiveStatus(
-    applicationName: string,
-    agentInsightId: string,
-    archiveStatus: AgentInsightArchiveStatus,
+  updateAgentInsight(
+    input: UpdateAgentInsightInput,
     options: CoreOptions,
   ): Promise<UpdateAgentInsightResponse>;
   listAgentInsightStores(

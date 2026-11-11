@@ -10,7 +10,7 @@ export const createListInsightStoresHandler = (core: Core) =>
     description: "list Agent Insight Stores",
     flags: [
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
-      flag("max-results", "maximum number of items to return", z.number().optional()),
+      flag("max-results", "maximum number of items to return (1-100)", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
       ctx

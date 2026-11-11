@@ -20,14 +20,11 @@ export const createUpdateInsightHandler = (core: Core) =>
       ),
     ],
     handle: async (ctx, flags) => {
-      const { applicationName, agentInsightId } = InsightTarget.resolve(flags);
       ctx
         .require(JsonRendererKey)
         .renderJson(
-          await core.eval.setAgentInsightArchiveStatus(
-            applicationName,
-            agentInsightId,
-            flags["archive-status"],
+          await core.eval.updateAgentInsight(
+            { ...InsightTarget.resolve(flags), archiveStatus: flags["archive-status"] },
             coreOptsFromCtx(ctx),
           ),
         );

@@ -120,7 +120,6 @@ import type {
   StartBatchEvaluationResponse,
   StartRecommendationResponse,
   StopBatchEvaluationResponse,
-  AgentInsightArchiveStatus,
   GetAgentInsightResponse,
   ListAgentInsightsResponse,
   UpdateAgentInsightResponse,
@@ -207,6 +206,7 @@ import type {
   UpdateOnlineEvalInput,
   AgentInsightStoreUpdate,
   ListAgentInsightsInput,
+  UpdateAgentInsightInput,
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
@@ -2492,16 +2492,11 @@ export class TestEvalClient implements CoreEvalClient {
     return this.insightGetResponse;
   }
 
-  async setAgentInsightArchiveStatus(
-    applicationName: string,
-    agentInsightId: string,
-    archiveStatus: AgentInsightArchiveStatus,
+  async updateAgentInsight(
+    input: UpdateAgentInsightInput,
     options: CoreOptions,
   ): Promise<UpdateAgentInsightResponse> {
-    this.calls.push({
-      method: "setAgentInsightArchiveStatus",
-      args: [applicationName, agentInsightId, archiveStatus, options],
-    });
+    this.calls.push({ method: "updateAgentInsight", args: [input, options] });
     if (this.error) throw this.error;
     return this.insightUpdateResponse;
   }

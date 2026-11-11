@@ -4,6 +4,8 @@ import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx } from "../../../utils";
 
+const ARCHIVE_STATUSES = ["ACTIVE", "ARCHIVED"] as const;
+
 // The service requires at least one of --application-name or
 // --batch-evaluation-id; its error is relayed unchanged.
 export const createListInsightsHandler = (core: Core) =>
@@ -21,8 +23,13 @@ export const createListInsightsHandler = (core: Core) =>
         "list the Insights a batch evaluation produced",
         z.string().min(1).optional(),
       ),
+      flag(
+        "archive-status",
+        `list only Insights in this archive state (${ARCHIVE_STATUSES.join(" | ")})`,
+        z.enum(ARCHIVE_STATUSES).optional(),
+      ),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
-      flag("max-results", "maximum number of items to return", z.number().optional()),
+      flag("max-results", "maximum number of items to return (1-50)", z.number().optional()),
     ],
     handle: async (ctx, flags) => {
       ctx.require(JsonRendererKey).renderJson(
@@ -30,6 +37,7 @@ export const createListInsightsHandler = (core: Core) =>
           {
             applicationName: flags["application-name"],
             batchEvaluationId: flags["batch-evaluation-id"],
+            archiveStatus: flags["archive-status"],
             nextToken: flags["next-token"],
             maxResults: flags["max-results"],
           },

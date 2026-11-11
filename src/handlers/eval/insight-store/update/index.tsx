@@ -1,9 +1,8 @@
 import z from "zod";
-import { InputValidationError } from "../../../../errors";
 import { createHandler, flag } from "../../../../router";
 import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
-import { assertMutuallyExclusiveFlags, coreOptsFromCtx } from "../../../utils";
+import { coreOptsFromCtx } from "../../../utils";
 import type { AgentInsightStoreUpdate } from "../../types";
 
 const ENABLEMENT_STATUSES = ["ENABLED", "DISABLED"] as const;
@@ -15,31 +14,15 @@ type UpdateFlags = {
   "kms-key-arn"?: string;
 };
 
+// The service validates the combination, so this only shapes the request.
 export function resolveStoreUpdate(flags: UpdateFlags): AgentInsightStoreUpdate {
-  assertMutuallyExclusiveFlags(flags, ["enablement-status", "encryption-mode"], {
-    exactlyOne: true,
-  });
   const mode = flags["encryption-mode"];
   const kmsKeyArn = flags["kms-key-arn"];
-  if (mode === undefined) {
-    if (kmsKeyArn !== undefined) {
-      throw new InputValidationError(
-        "'--kms-key-arn' requires '--encryption-mode CUSTOMER_MANAGED_KMS'",
-      );
-    }
-    return { enablementStatus: flags["enablement-status"]! };
-  }
-  if (mode === "CUSTOMER_MANAGED_KMS" && kmsKeyArn === undefined) {
-    throw new InputValidationError(
-      "'--encryption-mode CUSTOMER_MANAGED_KMS' requires '--kms-key-arn'",
-    );
-  }
-  if (mode === "AWS_OWNED_KMS_KEY" && kmsKeyArn !== undefined) {
-    throw new InputValidationError(
-      "'--kms-key-arn' cannot be used with '--encryption-mode AWS_OWNED_KMS_KEY'",
-    );
-  }
-  return { encryptionConfiguration: { mode, kmsKeyArn } };
+  return {
+    enablementStatus: flags["enablement-status"],
+    encryptionConfiguration:
+      mode === undefined && kmsKeyArn === undefined ? undefined : { mode, kmsKeyArn },
+  };
 }
 
 export const createUpdateInsightStoreHandler = (core: Core) =>
@@ -60,7 +43,7 @@ export const createUpdateInsightStoreHandler = (core: Core) =>
       ),
       flag(
         "kms-key-arn",
-        "the customer managed KMS key ARN (only with --encryption-mode CUSTOMER_MANAGED_KMS)",
+        "the customer managed KMS key ARN (with --encryption-mode CUSTOMER_MANAGED_KMS)",
         z.string().min(1).optional(),
       ),
     ],

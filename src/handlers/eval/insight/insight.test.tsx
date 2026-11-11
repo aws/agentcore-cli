@@ -100,12 +100,46 @@ describe("eval insight flag rules", () => {
     expect(core.eval.calls[0]?.args[0]).toEqual({
       applicationName: APPLICATION,
       batchEvaluationId: undefined,
+      archiveStatus: undefined,
       nextToken: undefined,
       maxResults: undefined,
     });
   });
 
+  test("list sends --archive-status", async () => {
+    const core = new TestCoreClient();
+    await run(["list", "--application-name", APPLICATION, "--archive-status", "ARCHIVED"], core);
+    expect(core.eval.calls[0]?.args[0]).toMatchObject({ archiveStatus: "ARCHIVED" });
+  });
+
+  test("update sends the target and archive status", async () => {
+    const core = new TestCoreClient();
+    await run(
+      [
+        "update",
+        "--application-name",
+        APPLICATION,
+        "--id",
+        INSIGHT_ID,
+        "--archive-status",
+        "ARCHIVED",
+      ],
+      core,
+    );
+    expect(core.eval.calls[0]?.method).toBe("updateAgentInsight");
+    expect(core.eval.calls[0]?.args[0]).toEqual({
+      applicationName: APPLICATION,
+      agentInsightId: INSIGHT_ID,
+      archiveStatus: "ARCHIVED",
+    });
+  });
+
   test.each<[string, string[], string]>([
+    [
+      "list with an unknown archive status",
+      ["list", "--archive-status", "DELETED"],
+      "--archive-status",
+    ],
     ["get without --application-name", ["get", "--id", INSIGHT_ID], "--application-name"],
     ["get without --id", ["get", "--application-name", APPLICATION], "--id"],
     [

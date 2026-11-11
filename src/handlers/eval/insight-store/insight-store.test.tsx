@@ -15,6 +15,7 @@ import {
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  waitFor,
 } from "../../../testing";
 import { createRootHandler } from "../../index";
 
@@ -41,19 +42,24 @@ async function run(args: string[], core: CoreClient | TestCoreClient = createFix
   return io;
 }
 
+const SETTLE_TIMEOUT_MS = 10 * 60_000;
+const POLL_INTERVAL_MS = 10_000;
+
 // Outside the fixture boundary on purpose: polling through the recording client
 // would overwrite the get fixture with a later state than the get golden shows.
 async function waitUntilSettled(): Promise<void> {
   if (!isRecording()) return;
   const client = new BedrockAgentCoreControlClient({ region: REGION });
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const store = await client.send(
-      new GetAgentInsightStoreCommand({ agentInsightStoreId: STORE_ID }),
-    );
-    if (store.status !== "UPDATING") return;
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
-  }
-  throw new Error(`${STORE_ID} did not leave UPDATING`);
+  await waitFor(
+    async () => {
+      const store = await client.send(
+        new GetAgentInsightStoreCommand({ agentInsightStoreId: STORE_ID }),
+      );
+      return store.status !== "UPDATING";
+    },
+    SETTLE_TIMEOUT_MS,
+    POLL_INTERVAL_MS,
+  );
 }
 
 describe("eval insight-store command hierarchy", () => {
@@ -110,62 +116,69 @@ describe("eval insight-store", () => {
   });
 });
 
-describe("eval insight-store update flag rules", () => {
+describe("eval insight-store update flags", () => {
   const base = ["update", "--id", STORE_ID];
 
   test.each<[string, string[], string]>([
-    ["neither change", [], "specify exactly one of --enablement-status, --encryption-mode"],
+    ["a missing --id", ["update", "--enablement-status", "ENABLED"], "--id"],
     [
-      "both changes",
-      ["--enablement-status", "ENABLED", "--encryption-mode", "AWS_OWNED_KMS_KEY"],
-      "specify exactly one of --enablement-status, --encryption-mode",
+      "an unknown enablement status",
+      [...base, "--enablement-status", "OFF"],
+      "--enablement-status",
     ],
-    [
-      "a customer managed key without its ARN",
-      ["--encryption-mode", "CUSTOMER_MANAGED_KMS"],
-      "'--encryption-mode CUSTOMER_MANAGED_KMS' requires '--kms-key-arn'",
-    ],
-    [
-      "an ARN with the AWS owned key",
-      ["--encryption-mode", "AWS_OWNED_KMS_KEY", "--kms-key-arn", "arn:aws:kms:us-west-2:1:key/k"],
-      "'--kms-key-arn' cannot be used with '--encryption-mode AWS_OWNED_KMS_KEY'",
-    ],
-    [
-      "an ARN without --encryption-mode",
-      ["--enablement-status", "ENABLED", "--kms-key-arn", "arn:aws:kms:us-west-2:1:key/k"],
-      "'--kms-key-arn' requires '--encryption-mode CUSTOMER_MANAGED_KMS'",
-    ],
-    ["an unknown enablement status", ["--enablement-status", "OFF"], "--enablement-status"],
-    ["an unknown encryption mode", ["--encryption-mode", "KMS"], "--encryption-mode"],
+    ["an unknown encryption mode", [...base, "--encryption-mode", "KMS"], "--encryption-mode"],
+    ["an empty --kms-key-arn", [...base, "--kms-key-arn", ""], "--kms-key-arn"],
   ])("rejects %s before any AWS call", async (_, args, message) => {
     const core = new TestCoreClient();
-    await expectError(run([...base, ...args], core), message, InputValidationError);
+    await expectError(run(args, core), message, InputValidationError);
     expect(core.eval.calls).toEqual([]);
   });
 
-  test("rejects a missing --id before any AWS call", async () => {
+  test.each<[string, string[], object]>([
+    ["no change", [], { enablementStatus: undefined, encryptionConfiguration: undefined }],
+    [
+      "only the enablement status",
+      ["--enablement-status", "DISABLED"],
+      { enablementStatus: "DISABLED", encryptionConfiguration: undefined },
+    ],
+    [
+      "only the encryption mode",
+      ["--encryption-mode", "AWS_OWNED_KMS_KEY"],
+      {
+        enablementStatus: undefined,
+        encryptionConfiguration: { mode: "AWS_OWNED_KMS_KEY", kmsKeyArn: undefined },
+      },
+    ],
+    [
+      "both changes, to enable a disabled Store on a new key",
+      [
+        "--enablement-status",
+        "ENABLED",
+        "--encryption-mode",
+        "CUSTOMER_MANAGED_KMS",
+        "--kms-key-arn",
+        "arn:aws:kms:us-west-2:123456789012:key/1234abcd",
+      ],
+      {
+        enablementStatus: "ENABLED",
+        encryptionConfiguration: {
+          mode: "CUSTOMER_MANAGED_KMS",
+          kmsKeyArn: "arn:aws:kms:us-west-2:123456789012:key/1234abcd",
+        },
+      },
+    ],
+    [
+      "a key ARN without a mode",
+      ["--kms-key-arn", "arn:aws:kms:us-west-2:1:key/k"],
+      {
+        enablementStatus: undefined,
+        encryptionConfiguration: { mode: undefined, kmsKeyArn: "arn:aws:kms:us-west-2:1:key/k" },
+      },
+    ],
+  ])("passes %s to the service unchanged", async (_, args, update) => {
     const core = new TestCoreClient();
-    await expectError(
-      run(["update", "--enablement-status", "ENABLED"], core),
-      "--id",
-      InputValidationError,
-    );
-    expect(core.eval.calls).toEqual([]);
-  });
-
-  test("sends only the enablement status when no encryption flag is given", async () => {
-    const core = new TestCoreClient();
-    await run([...base, "--enablement-status", "DISABLED"], core);
+    await run([...base, ...args], core);
     expect(core.eval.calls[0]?.method).toBe("updateAgentInsightStore");
-    expect(core.eval.calls[0]?.args[1]).toEqual({ enablementStatus: "DISABLED" });
-  });
-
-  test("sends a customer managed key with its ARN", async () => {
-    const core = new TestCoreClient();
-    const arn = "arn:aws:kms:us-west-2:123456789012:key/1234abcd";
-    await run([...base, "--encryption-mode", "CUSTOMER_MANAGED_KMS", "--kms-key-arn", arn], core);
-    expect(core.eval.calls[0]?.args[1]).toEqual({
-      encryptionConfiguration: { mode: "CUSTOMER_MANAGED_KMS", kmsKeyArn: arn },
-    });
+    expect(core.eval.calls[0]?.args[1]).toEqual(update);
   });
 });
