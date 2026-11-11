@@ -19,7 +19,7 @@ import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { readEnvFile } from "../../../io/envFile";
-import { APP_CODE_RETAINED_NOTICE } from "./notice";
+import { APP_CODE_RETAINED_NOTICE, BOX_GATEWAY_STAYS_NOTICE } from "./notice";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -689,5 +689,84 @@ describe("project remove all", () => {
     await run(["remove", "all", "--yes"]);
 
     expect((await projectSpec(projectRoot)).runtimes).toEqual([]);
+  });
+});
+
+describe("project remove in a Box project", () => {
+  async function boxProject(): Promise<string> {
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "gateway-target",
+      "--gateway",
+      "box",
+      "--name",
+      "weather",
+      "--endpoint",
+      "https://weather.example.com/mcp",
+    ]);
+    return projectRoot;
+  }
+
+  test("add gateway-target --gateway box writes the extension entry", async () => {
+    const projectRoot = await boxProject();
+
+    const spec = await projectSpec(projectRoot);
+    expect(spec.box).toEqual({});
+    expect(spec.agentCoreGateways).toMatchObject([
+      { name: "box", authorizerType: "AWS_IAM", targets: [{ name: "weather" }] },
+    ]);
+  });
+
+  test("remove gateway-target of the last target removes the entry", async () => {
+    const projectRoot = await boxProject();
+
+    await run(["remove", "gateway-target", "--gateway", "box", "--name", "weather"]);
+
+    const spec = await projectSpec(projectRoot);
+    expect(spec.agentCoreGateways).toEqual([]);
+    expect(spec.box).toEqual({});
+  });
+
+  test.each([[[]], [["--json"]]])(
+    "remove gateway --name box %j says that the Box gateway stays",
+    async (extra) => {
+      const projectRoot = await boxProject();
+
+      const { io } = await run(["remove", "gateway", "--name", "box", ...extra]);
+
+      expect(io.stderr()).toContain(BOX_GATEWAY_STAYS_NOTICE);
+      const spec = await projectSpec(projectRoot);
+      expect(spec.agentCoreGateways).toEqual([]);
+      expect(spec.box).toEqual({});
+    },
+  );
+
+  test("remove gateway --name box in a project without the marker says nothing more", async () => {
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+    const { box: _box, ...spec } = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, spec);
+    await run(["add", "gateway", "--name", "box"]);
+
+    const { io } = await run(["remove", "gateway", "--name", "box"]);
+
+    expect(io.stderr()).not.toContain(BOX_GATEWAY_STAYS_NOTICE);
+    expect(await projectSpec(projectRoot)).not.toHaveProperty("box");
+  });
+
+  test("remove all removes the marker with the gateway entries", async () => {
+    const projectRoot = await boxProject();
+
+    await run(["remove", "all", "--yes"]);
+
+    const spec = await projectSpec(projectRoot);
+    expect(spec).not.toHaveProperty("box");
+    expect(spec.agentCoreGateways).toEqual([]);
   });
 });

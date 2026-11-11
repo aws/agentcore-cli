@@ -61,7 +61,13 @@ import {
 import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
-import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
+import {
+  BOX_GATEWAY_NAME,
+  isBoxExtensionEntry,
+  ProjectSpecSchema,
+  type ManagedBy,
+} from "../../projectSchemas/project";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import {
   CredentialSchema,
@@ -91,6 +97,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -946,9 +953,21 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway-target": {
-        const gatewayIndex = projectSpec.agentCoreGateways.findIndex(
+        let gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
         );
+        // In a Box project the L3 owns the Box gateway, so the entry that holds its targets
+        // comes and goes with them. It states AWS_IAM: the write-back would fill in NONE.
+        if (gatewayIndex < 0 && isBoxExtensionEntry(projectSpec, { name: input.gatewayName })) {
+          gatewayIndex =
+            projectSpec.agentCoreGateways.push(
+              parseResource(AgentCoreGatewaySchema, {
+                name: BOX_GATEWAY_NAME,
+                authorizerType: "AWS_IAM",
+                targets: [],
+              }),
+            ) - 1;
+        }
         if (gatewayIndex < 0) {
           throw new ResourceNotFoundError(
             `no gateway named '${input.gatewayName}' exists in this project`,
@@ -1088,7 +1107,12 @@ export class FsProjectManager implements ProjectManager {
       const gateway = gateways[gatewayIndex]!;
       const targets = gateway.targets.filter((target) => target.name !== input.name);
       removed = targets.length !== gateway.targets.length;
-      gateways[gatewayIndex] = { ...gateway, targets };
+      // The Box gateway stays without its entry, so the file shows only what the user added.
+      if (isBoxExtensionEntry(existingProjectSpec, gateway) && targets.length === 0) {
+        gateways.splice(gatewayIndex, 1);
+      } else {
+        gateways[gatewayIndex] = { ...gateway, targets };
+      }
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
     } else if (input.resourceType === "payment-connector") {
       const payments = [...(existingProjectSpec.payments ?? [])];
@@ -1181,8 +1205,11 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
+    // The Box marker goes too: the L3 makes the Box gateway from it, and `remove all` removes
+    // every resource, so the next deploy reaches the teardown confirmation as before.
+    const { box: _box, ...rest } = existingProjectSpec;
     const newSpec = {
-      ...existingProjectSpec,
+      ...rest,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1686,6 +1713,7 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
+      confirmBoxGatewayDeletion: input.confirmBoxGatewayDeletion,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
     });
@@ -1709,6 +1737,14 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<AwsDeploymentTarget | undefined> {
     const targets = await this.listTargets(project);
     return targets.find((candidate) => candidate.name === input.target);
+  }
+
+  public async recordedBoxGateway(
+    project: Project,
+    input: ResolveTargetInput,
+  ): Promise<string | undefined> {
+    const state = await readDeployedState(this.json, project.rootPath);
+    return state.targets[input.target]?.resources?.boxGateway?.name;
   }
 
   public async resolveDeployedResource(

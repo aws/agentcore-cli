@@ -8,7 +8,12 @@ import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
 import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
-import { APP_CODE_RETAINED_NOTICE, shouldShowAppCodeNotice } from "./notice";
+import { isBoxExtensionEntry } from "../../../projectSchemas/project";
+import {
+  APP_CODE_RETAINED_NOTICE,
+  BOX_GATEWAY_STAYS_NOTICE,
+  shouldShowAppCodeNotice,
+} from "./notice";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -157,6 +162,11 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
 
       const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
+      // On stderr in both modes, like the .env.local lines: a --json caller still needs to know
+      // that the gateway itself is not deleted.
+      if (resource === "gateway" && isBoxExtensionEntry(project.spec, { name })) {
+        config.io.stderr.write(`${BOX_GATEWAY_STAYS_NOTICE}\n`);
+      }
       const showAppCodeNotice = shouldShowAppCodeNotice(resource);
       renderResult<ProjectMutationResult>(
         ctx,
