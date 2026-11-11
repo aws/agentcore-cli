@@ -400,6 +400,35 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(result.notes).toEqual([]);
   });
 
+  test("uses the default session when the request has no session id", async () => {
+    // The runtime's request context reports a missing session header as session_id=None, so a
+    // getattr default alone would pass None on.
+    const fallback = 'session_id = getattr(context, "session_id", None) or "default-session"';
+    const { manager: subject } = manager();
+    const plain = await drain(
+      subject.exportHarness(await projectWithHarness(subject), exportInput()),
+    );
+    expect(await Bun.file(join(plain.agentPath, "main.py")).text()).toContain(fallback);
+
+    let project = await projectWithHarness(subject, {
+      memory: { mode: "existing", name: "chat_history" },
+    });
+    project = await drain(
+      subject.addResource(project, {
+        resourceType: "memory",
+        resourceConfig: {
+          name: "chat_history",
+          eventExpiryDuration: 30,
+          strategies: [{ type: "SEMANTIC" }],
+        },
+      }),
+    );
+    const withMemory = await drain(subject.exportHarness(project, exportInput()));
+    const main = await Bun.file(join(withMemory.agentPath, "main.py")).text();
+    expect(main).toContain(fallback);
+    expect(main).toContain('user_id = getattr(context, "user_id", None) or "default-user"');
+  });
+
   test.each([0, 0.7])(
     "renders relevanceScore=%p and notes messagesCount",
     async (relevanceScore) => {

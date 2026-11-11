@@ -374,15 +374,15 @@ async def invoke(payload, context):
 {{/if}}
 
 {{#if hasMemory}}
-    session_id = getattr(context, 'session_id', 'default-session')
+    session_id = getattr(context, "session_id", None) or "default-session"
     {{#if actorId}}
     user_id = "{{actorId}}"
     {{else}}
-    user_id = getattr(context, 'user_id', 'default-user')
+    user_id = getattr(context, "user_id", None) or "default-user"
     {{/if}}
     agent = get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{else}}
-    session_id = getattr(context, 'session_id', 'default-session')
+    session_id = getattr(context, "session_id", None) or "default-session"
     agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{/if}}
 
