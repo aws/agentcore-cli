@@ -135,6 +135,19 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(pyproject).toContain('"strands-harness >= 0.3.3, < 0.4.0"');
   });
 
+  test("loads a Bedrock model that rejects cache points without prompt caching", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      model: { provider: "bedrock", modelId: "us.anthropic.claude-3-haiku-20240307-v1:0" },
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
+    expect(loadModel).toContain('model_id="us.anthropic.claude-3-haiku-20240307-v1:0"');
+    expect(loadModel).not.toContain("CacheConfig");
+  });
+
   test("renders only the builtins and plugins allowedTools selects", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, { allowedTools: ["shell", "read"] });

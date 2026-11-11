@@ -290,6 +290,34 @@ describe("mapHarnessToExportPlan model mapping", () => {
     );
   });
 
+  test("does not cache prompts for Bedrock Claude generations that reject cache points", () => {
+    const caches = (modelId: string) =>
+      plan({ spec: harness({ model: { provider: "bedrock", modelId } }) }).context
+        .bedrockPromptCaching;
+    for (const modelId of [
+      "anthropic.claude-3-haiku-20240307-v1:0",
+      "us.anthropic.claude-3-sonnet-20240229-v1:0",
+      "eu.anthropic.claude-3-5-sonnet-20240620-v1:0",
+      "anthropic.claude-3-opus-20240229-v1:0",
+      "anthropic.claude-instant-v1",
+      "anthropic.claude-v2:1",
+      // Matched anywhere and case-insensitively, so model and inference-profile ARNs match too.
+      "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+      "arn:aws:bedrock:us-west-2:111122223333:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "US.ANTHROPIC.CLAUDE-3-HAIKU-20240307-V1:0",
+    ]) {
+      expect(caches(modelId)).toBe(false);
+    }
+    for (const modelId of [
+      "global.anthropic.claude-sonnet-5-5",
+      "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      "anthropic.claude-3-5-haiku-20241022-v1:0",
+      "us.amazon.nova-lite-v1:0",
+    ]) {
+      expect(caches(modelId)).toBe(true);
+    }
+  });
+
   test("adds the web-fetch extra only when web_fetch is allowed", () => {
     expect(plan({}).context.strandsExtras).toBe("web-fetch");
     expect(

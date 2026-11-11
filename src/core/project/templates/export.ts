@@ -338,10 +338,12 @@ function resolveModel(
   switch (model.provider) {
     case "bedrock": {
       context.modelProvider = "Bedrock";
-      // Bedrock Converse models cache the system prompt and tools unless the parameters already
-      // place a cache point.
+      // Bedrock Converse models cache the system prompt and tools unless the model rejects cache
+      // points or the parameters already place one.
       context.bedrockPromptCaching =
-        !isBedrockMantleModel(spec) && !hasBedrockCachePoint(additionalParams);
+        !isBedrockMantleModel(spec) &&
+        !rejectsBedrockCachePoints(model.modelId) &&
+        !hasBedrockCachePoint(additionalParams);
       if (isBedrockMantleModel(spec)) {
         context.bedrockMantle = true;
         context.strandsExtras = "openai";
@@ -442,6 +444,28 @@ function resolveModel(
       return { context };
     }
   }
+}
+
+/**
+ * Bedrock Claude generations that reject cache points, though Strands caches any Claude model id.
+ * The same list the hosted harness uses.
+ */
+const BEDROCK_CLAUDE_WITHOUT_CACHING = [
+  "anthropic.claude-3-haiku-",
+  "anthropic.claude-3-sonnet-",
+  "anthropic.claude-3-5-sonnet-",
+  "anthropic.claude-3-opus-",
+  "anthropic.claude-instant-",
+  "anthropic.claude-v2",
+];
+
+/**
+ * Whether a Bedrock model rejects cache points. Matched anywhere in the id, case-insensitively, so
+ * regional inference-profile ids and model ARNs match too.
+ */
+function rejectsBedrockCachePoints(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return BEDROCK_CLAUDE_WITHOUT_CACHING.some((family) => id.includes(family));
 }
 
 /**
