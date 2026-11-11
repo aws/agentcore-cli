@@ -105,6 +105,25 @@ scoped to the deploying account via an `aws:ResourceAccount` condition. Permissi
 — a KB pointed at `s3://bucket/foo/` can read all of `bucket`. Split into separate buckets if you need prefix-level
 isolation.
 
+#### S3 documents encrypted with a customer-managed KMS key
+
+Set `kmsKeyArn` on the S3 data source in `agentcore/agentcore.json`, then deploy:
+
+```json
+{
+  "type": "S3",
+  "uri": "s3://my-corpus-bucket/manuals/",
+  "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+}
+```
+
+The generated stack grants the KB service role `kms:Decrypt` on that key, restricted to calls through S3 in the key's
+region. Sources without `kmsKeyArn` do not receive KMS permissions. The key policy must also permit the service role to
+use the key.
+
+Existing projects need the updated generated `cdk/bin/cdk.ts`, `cdk/lib/cdk-stack.ts`, and `cdk/lib/project-spec.ts`.
+Preserve any custom stack changes when updating those files.
+
 ### Non-S3 connector sources
 
 For Web Crawler, Confluence, SharePoint, OneDrive, and Google Drive, you supply a JSON connector-config file. Templates

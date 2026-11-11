@@ -53,6 +53,8 @@ export interface AgentCoreStackProps extends StackProps {
    * The AgentCore project specification containing agents, memories, and credentials.
    */
   spec: AgentCoreProjectSpec;
+  /** KMS keys encrypting S3 source documents, keyed by knowledge base name. */
+  knowledgeBaseKmsKeys?: Record<string, string[]>;
   /**
    * The MCP specification containing gateways and servers.
    */
@@ -124,6 +126,23 @@ export class AgentCoreStack extends Stack {
       appProps.credentials = credentials;
     }
     this.application = new AgentCoreApplication(this, 'Application', appProps as any);
+
+    for (const [name, keyArns] of Object.entries(props.knowledgeBaseKmsKeys ?? {})) {
+      const knowledgeBase = this.application.knowledgeBases.get(name);
+      if (!knowledgeBase) {
+        throw new Error(`Cannot grant S3 decryption permissions to unknown knowledge base '${name}'`);
+      }
+      for (const keyArn of new Set(keyArns)) {
+        const keyRegion = keyArn.split(':')[3] || this.region;
+        knowledgeBase.role.addToPolicy(
+          new iam.PolicyStatement({
+            actions: ['kms:Decrypt'],
+            resources: [keyArn],
+            conditions: { StringEquals: { 'kms:ViaService': `s3.${keyRegion}.${this.urlSuffix}` } },
+          })
+        );
+      }
+    }
 
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
