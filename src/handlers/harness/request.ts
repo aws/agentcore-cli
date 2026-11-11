@@ -2,13 +2,16 @@ import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-contr
 import { InputValidationError, SourceResolutionError } from "../../errors";
 import { SourceResolver } from "../../io";
 
+export const isHarnessArn = (value: string | undefined): value is string =>
+  value?.match(/^arn:[^:]+:bedrock-agentcore:[^:]+:\d{12}:harness\/.+$/) != null;
+
 export function resolveHarnessArn(
   detail: GetHarnessResponse,
   bearerToken: string | undefined,
 ): string {
   const harness = detail.harness;
   const harnessArn = harness?.arn;
-  if (!harnessArn?.match(/^arn:[^:]+:bedrock-agentcore:[^:]+:\d{12}:harness\/.+$/)) {
+  if (!isHarnessArn(harnessArn)) {
     throw new InputValidationError("Harness returned an invalid ARN");
   }
   const authorizer = harness?.authorizerConfiguration;

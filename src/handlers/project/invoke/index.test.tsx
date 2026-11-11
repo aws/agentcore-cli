@@ -24,6 +24,7 @@ import {
   waitFor,
 } from "../../../testing";
 import * as tui from "../../../tui";
+import type { CoreInvokeHarnessRequest } from "../../harness/types";
 import { createRootHandler } from "../../index";
 import { RegionKey } from "../../keys";
 
@@ -221,33 +222,31 @@ describe("invoke", () => {
     },
   );
 
-  test("looks up a Harness selected by ARN before a bearer invocation", async () => {
-    const subject = await routedCommand(
-      ["--harness", arn(`harness/${HARNESS_ID}`), "--prompt", "hi", "--bearer-token", "jwt"],
+  test("invokes a Harness ARN with a bearer token without a GetHarness lookup", async () => {
+    const harnessArn = arn(`harness/${HARNESS_ID}`);
+    const { core } = await run(
+      ["--harness", harnessArn, "--prompt", "hi", "--qualifier", "prod", "--bearer-token", "jwt"],
       undefined,
     );
-    subject.core.harness.setGetResponse({
-      harness: {
-        arn: arn(`harness/${HARNESS_ID}`),
-        authorizerConfiguration: {
-          customJWTAuthorizer: { discoveryUrl: "https://idp.example.test" },
-        },
-      },
-    } as GetHarnessResponse);
 
-    await subject.route();
+    expect(core.harness.calls.map((call) => call.method)).toEqual(["invokeHarness"]);
+    const [request, options] = core.harness.calls[0]!.args as [
+      CoreInvokeHarnessRequest,
+      { region: string },
+    ];
+    expect(request).toEqual(
+      expect.objectContaining({ harnessArn, qualifier: "prod", bearerToken: "jwt" }),
+    );
+    expect(options.region).toBe(TARGET.region);
+  });
 
-    expect(subject.core.harness.calls.find((call) => call.method === "getHarness")?.args[0]).toBe(
-      HARNESS_ID,
+  test("still looks up a Harness ARN invoked without a bearer token", async () => {
+    const { core } = await run(
+      ["--harness", arn(`harness/${HARNESS_ID}`), "--prompt", "hi"],
+      undefined,
     );
-    expect(
-      subject.core.harness.calls.find((call) => call.method === "invokeHarness")?.args[0],
-    ).toEqual(
-      expect.objectContaining({
-        harnessArn: arn(`harness/${HARNESS_ID}`),
-        bearerToken: "jwt",
-      }),
-    );
+
+    expect(core.harness.calls.map((call) => call.method)).toEqual(["getHarness", "invokeHarness"]);
   });
 
   test.each([
