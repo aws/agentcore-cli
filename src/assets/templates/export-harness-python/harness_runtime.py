@@ -300,12 +300,15 @@ def make_managed_shell():
 
     The vended local sandbox runs ``sh -c "cd <cwd> && <command>"`` and returns once the output
     pipes close, and its timeout only fires while that shell still runs, so a background child that
-    inherits the pipes would hold the call open. On POSIX the command runs in ``_LocalShell``, which
-    ends the call once the shell exits. On every platform, a call still open shortly after its
-    timeout fails as that timeout does.
+    inherits the pipes would hold the call open. On POSIX a call on an agent without a sandbox of its
+    own runs in ``_LocalShell``, which ends the call once the shell exits. A sandbox configured on the
+    agent (Docker, SSH, ...) runs the command, as with the vended tool. On every platform, a call
+    still open shortly after its timeout fails as that timeout does.
     """
+    # Reads the agent's sandbox at call time, as the vended tool does.
+    vended = make_shell()
     # Windows keeps the vended environment, which runs PowerShell.
-    vended = make_shell() if os.name == "nt" else make_shell(sandbox=_LocalShell())
+    local = None if os.name == "nt" else make_shell(sandbox=_LocalShell())
     description = vended.tool_spec["description"].replace("output (stdout), error (stderr),", "stdout, stderr,")
 
     @tool(name=vended.tool_name, description=description, context="tool_context")
@@ -319,8 +322,11 @@ def make_managed_shell():
         """
         # The grace lets the vended timeout, which keeps the partial output, end a foreground command.
         deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS
+        # Only the agent's host default is replaced; a subclass or any other sandbox was configured.
+        host_default = type(tool_context.agent.sandbox) is NotASandboxLocalEnvironment
+        run = local if local is not None and host_default else vended
         try:
-            result = await asyncio.wait_for(vended(command, tool_context, timeout), deadline)
+            result = await asyncio.wait_for(run(command, tool_context, timeout), deadline)
         except SandboxTimeoutError as error:
             # The vended tool appended its partial-output JSON as the message's second line; replace that line.
             message = str(error).split("\n", 1)[0]

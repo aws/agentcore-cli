@@ -250,7 +250,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
       "deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS",
     );
     expect(runtime).toContain(
-      "result = await asyncio.wait_for(vended(command, tool_context, timeout), deadline)",
+      "result = await asyncio.wait_for(run(command, tool_context, timeout), deadline)",
     );
     // The vended timeout subclasses TimeoutError, so it is caught first and keeps its partial output.
     const vendedTimeout = runtime.indexOf("except SandboxTimeoutError as error:");
@@ -280,9 +280,16 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     ]) {
       expect(runtime).toContain(line);
     }
-    // POSIX calls run in the local shell; Windows keeps the vended environment, which runs PowerShell.
+    // The agent's sandbox is read at call time, as by the vended tool. On POSIX the agent's host
+    // default is replaced by the local shell; Windows keeps the vended environment, which runs PowerShell.
+    expect(runtime).toContain("vended = make_shell()\n");
     expect(runtime).toContain(
-      'vended = make_shell() if os.name == "nt" else make_shell(sandbox=_LocalShell())',
+      'local = None if os.name == "nt" else make_shell(sandbox=_LocalShell())',
+    );
+    expect(runtime).not.toContain('vended = make_shell() if os.name == "nt"');
+    // A sandbox configured on the agent (Docker, SSH, a subclass of the host default) runs the command.
+    expect(runtime).toMatch(
+      /host_default = type\(tool_context\.agent\.sandbox\) is NotASandboxLocalEnvironment\n\s+run = local if local is not None and host_default else vended\n/,
     );
     const localShell = runtime.slice(
       runtime.indexOf("class _LocalShell(NotASandboxLocalEnvironment):"),
