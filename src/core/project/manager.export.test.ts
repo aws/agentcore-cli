@@ -243,10 +243,9 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
     expect(runtime).toContain("import asyncio\n");
     expect(runtime).toContain("import os\n");
-    // On POSIX a trailing & backgrounds only the caller's command, not the sandbox's cd list.
-    expect(runtime).toMatch(
-      /if os\.name != "nt":\n(\s+#.*\n)*\s+command = "\{ " \+ command \+ "\\n\}"/,
-    );
+    // The command reaches the shell as written: the local environment follows the shell's exit, so
+    // no wrapping is needed to keep a backgrounded command from holding the call open.
+    expect(runtime).not.toContain('command = "{ " + command');
     expect(runtime).toContain(
       "deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS",
     );
@@ -366,7 +365,10 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
       /metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n/,
     );
     expect(withSubagent.runtime).toContain(
-      "usage = {field: self.usage[field] - self.streamed_usage[field] for field in self.usage}",
+      "usage = {field: max(0, self.usage[field] - self.streamed_usage[field]) for field in self.usage}",
+    );
+    expect(withSubagent.runtime).toContain(
+      "latency_ms = max(0, self.latency_ms - self.streamed_latency_ms)",
     );
     expect(withSubagent.runtime).toMatch(
       /if not any\(usage\.values\(\)\) and not latency_ms:\n\s+return None\n/,

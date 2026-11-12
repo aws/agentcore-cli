@@ -127,8 +127,9 @@ class InvocationBudget:
 
         Added to the streamed frames, it brings the reported usage to the invocation total.
         """
-        usage = {field: self.usage[field] - self.streamed_usage[field] for field in self.usage}
-        latency_ms = self.latency_ms - self.streamed_latency_ms
+        # Never negative: a streamed frame the budget hook did not see must not reduce the total.
+        usage = {field: max(0, self.usage[field] - self.streamed_usage[field]) for field in self.usage}
+        latency_ms = max(0, self.latency_ms - self.streamed_latency_ms)
         if not any(usage.values()) and not latency_ms:
             return None
         usage = {field: count for field, count in usage.items() if count or field in _USAGE_FIELDS}
@@ -299,10 +300,9 @@ def make_managed_shell():
 
     The vended local sandbox runs ``sh -c "cd <cwd> && <command>"`` and returns once the output
     pipes close, and its timeout only fires while that shell still runs, so a background child that
-    inherits the pipes would hold the call open. On POSIX the command runs as a brace group (a
-    trailing ``&`` then backgrounds only what the caller wrote, not the whole ``cd`` list) in
-    ``_LocalShell``, which ends the call once the shell exits. On every platform, a call still open
-    shortly after its timeout fails as that timeout does.
+    inherits the pipes would hold the call open. On POSIX the command runs in ``_LocalShell``, which
+    ends the call once the shell exits. On every platform, a call still open shortly after its
+    timeout fails as that timeout does.
     """
     # Windows keeps the vended environment, which runs PowerShell.
     vended = make_shell() if os.name == "nt" else make_shell(sandbox=_LocalShell())
@@ -317,10 +317,6 @@ def make_managed_shell():
             tool_context: Injected by the framework. Not user-facing.
             timeout: Timeout in seconds (default: 300).
         """
-        if os.name != "nt":
-            # The newline ends a comment on the command's last line. Windows runs PowerShell, where
-            # braces would make an unexecuted script block.
-            command = "{ " + command + "\n}"
         # The grace lets the vended timeout, which keeps the partial output, end a foreground command.
         deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS
         try:
