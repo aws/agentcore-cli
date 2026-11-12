@@ -14,6 +14,17 @@ const lambdaCompute = {
   implementation: { language: "Python" as const, path: "tools", handler: "handler.main" },
   pythonVersion: "PYTHON_3_12" as const,
 };
+const githubPassthrough = {
+  name: "github",
+  targetType: "passthrough",
+  passthrough: { endpoint: "https://api.github.com", protocolType: "CUSTOM" },
+};
+const apiKeyAuth = { type: "API_KEY", credentialName: "githubToken" };
+const targetIssues = (target: object) =>
+  AgentCoreGatewayTargetSchema.safeParse(target).error?.issues.map(({ path, message }) => ({
+    path,
+    message,
+  }));
 describe("gateway custom validation", () => {
   it("binds compute runtime versions to implementation languages", () => {
     expect(
@@ -235,6 +246,121 @@ describe("gateway custom validation", () => {
         outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api" },
       }).success,
     ).toBe(true);
+  });
+  it.each([
+    ["passthrough with no API key placement", githubPassthrough, {}],
+    [
+      "passthrough with an Authorization Bearer header",
+      githubPassthrough,
+      { location: "HEADER", parameterName: "Authorization", prefix: "Bearer" },
+    ],
+    [
+      "openApiSchema with an API key query parameter",
+      {
+        name: "weather",
+        targetType: "openApiSchema",
+        schemaSource: { inline: { path: "openapi.json" } },
+      },
+      { location: "QUERY_PARAMETER", parameterName: "api_key" },
+    ],
+    [
+      "apiGateway with a custom API key header",
+      {
+        name: "pets",
+        targetType: "apiGateway",
+        apiGateway: {
+          restApiId: "api",
+          stage: "prod",
+          apiGatewayToolConfiguration: { toolFilters: [{ filterPath: "/*", methods: ["GET"] }] },
+        },
+      },
+      { parameterName: "X-Pets-Key" },
+    ],
+    [
+      "a query parameter name with a colon",
+      githubPassthrough,
+      { location: "QUERY_PARAMETER", parameterName: "api:key" },
+    ],
+    [
+      "a query parameter name with brackets",
+      githubPassthrough,
+      { location: "QUERY_PARAMETER", parameterName: "auth[token]" },
+    ],
+  ])("accepts %s", (_case, target, placement) => {
+    expect(
+      targetIssues({ ...target, outboundAuth: { ...apiKeyAuth, ...placement } }),
+    ).toBeUndefined();
+  });
+  it.each([
+    [
+      "an unknown API key location",
+      { location: "BODY" },
+      ["outboundAuth", "location"],
+      'Invalid option: expected one of "HEADER"|"QUERY_PARAMETER"',
+    ],
+    [
+      "a parameterName over 64 characters",
+      { parameterName: "x".repeat(65) },
+      ["outboundAuth", "parameterName"],
+      "Too big: expected string to have <=64 characters",
+    ],
+    [
+      "a query parameter name over 64 characters",
+      { location: "QUERY_PARAMETER", parameterName: "x".repeat(65) },
+      ["outboundAuth", "parameterName"],
+      "Too big: expected string to have <=64 characters",
+    ],
+    [
+      "a HEADER parameterName with a colon",
+      { location: "HEADER", parameterName: "Authorization: " },
+      ["outboundAuth", "parameterName"],
+      "A HEADER API key's parameterName must be an HTTP header name, with no spaces or colons.",
+    ],
+    [
+      "a parameterName with spaces when location defaults to HEADER",
+      { parameterName: "x api key" },
+      ["outboundAuth", "parameterName"],
+      "A HEADER API key's parameterName must be an HTTP header name, with no spaces or colons.",
+    ],
+    [
+      "an empty API key prefix",
+      { prefix: "" },
+      ["outboundAuth", "prefix"],
+      "Too small: expected string to have >=1 characters",
+    ],
+    [
+      "an API key prefix over 64 characters",
+      { prefix: "x".repeat(65) },
+      ["outboundAuth", "prefix"],
+      "Too big: expected string to have <=64 characters",
+    ],
+    [
+      "QUERY_PARAMETER without a parameterName",
+      { location: "QUERY_PARAMETER" },
+      ["outboundAuth", "parameterName"],
+      "An API key with location QUERY_PARAMETER requires a parameterName.",
+    ],
+  ])("rejects %s", (_case, placement, path, message) => {
+    expect(
+      targetIssues({ ...githubPassthrough, outboundAuth: { ...apiKeyAuth, ...placement } }),
+    ).toEqual([{ path, message }]);
+  });
+  it("rejects API key placement fields with non-API_KEY outbound auth", () => {
+    expect(
+      targetIssues({
+        ...githubPassthrough,
+        outboundAuth: {
+          type: "OAUTH",
+          credentialName: "githubOauth",
+          parameterName: "Authorization",
+        },
+      }),
+    ).toEqual([
+      {
+        path: ["outboundAuth"],
+        message: "location, parameterName and prefix are only valid with API_KEY outbound auth.",
+      },
+    ]);
   });
   it("requires JWT configuration when a gateway selects CUSTOM_JWT", () => {
     const gateway = { name: "gateway", targets: [] };
