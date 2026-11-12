@@ -4,7 +4,13 @@ import { JsonRendererKey } from "../../../../../tui";
 import { SourceResolver, type AppIO } from "../../../../../io";
 import type { Core } from "../../../../types";
 import { coreOptsFromCtx } from "../../../../utils";
-import { modelProviderFlag, ratingScaleFlag, resolveRatingScale } from "../sharedFlags";
+import {
+  inferenceFlags,
+  inferenceFromFlags,
+  modelProviderFlag,
+  ratingScaleFlag,
+  resolveRatingScale,
+} from "../sharedFlags";
 
 export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -24,6 +30,7 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
         z.string().optional(),
       ),
       ratingScaleFlag.optional(),
+      ...inferenceFlags,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
     ],
     handle: async (ctx, flags) => {
@@ -40,6 +47,9 @@ export const createLlmAsAJudgeUpdateHandler = (core: Core, io: AppIO) =>
           // existing provider (the enum schema already validated any value).
           modelProvider: flags["model-provider"],
           ratingScale,
+          // Undefined when no inference flag is passed, so the evaluator's
+          // current tuning is kept as is.
+          inference: inferenceFromFlags(flags),
           kmsKeyArn: flags["kms-key-arn"],
         },
         coreOptsFromCtx(ctx),

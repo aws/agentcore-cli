@@ -155,6 +155,11 @@ import { DatasetLoader } from "./eval/invokeDataset/load";
 import { runExamples } from "./eval/invokeDataset/run";
 import { renderJsonTemplate } from "./eval/invokeDataset/template";
 import type { RunContext } from "./eval/invokeDataset/example/types";
+import {
+  assertJudgeTemperature,
+  withBedrockInference,
+  withOpenResponsesInference,
+} from "./eval/judgeInference";
 import { isTerminalStatus, readEvaluationResults } from "./batchEvaluationResults";
 import { applyExampleIds, diffExamples, indexRemoteById, parseJsonl } from "./datasetDiff";
 import type { Addition } from "./datasetDiff";
@@ -343,17 +348,30 @@ export class EvalClient implements CoreEvalClient {
       );
     }
 
+    assertJudgeTemperature(targetProvider, update.inference?.temperature, { evaluatorId: id });
+
     // On a provider switch there is no same-provider tuning to keep, so start
     // from the OpenResponses deployment defaults (Bedrock supplies its own).
+    // Requested inference settings are overlaid on whichever base applies.
     const modelConfig: EvaluatorModelConfig =
       targetProvider === "OpenResponses"
         ? {
-            responsesEvaluatorModelConfig: {
-              ...(providerChanged ? { maxOutputTokens: 4096, temperature: 0 } : existingResponses),
-              modelId,
-            },
+            responsesEvaluatorModelConfig: withOpenResponsesInference(
+              {
+                ...(providerChanged
+                  ? { maxOutputTokens: 4096, temperature: 0 }
+                  : existingResponses),
+                modelId,
+              },
+              update.inference,
+            ),
           }
-        : { bedrockEvaluatorModelConfig: { ...(providerChanged ? {} : existingBedrock), modelId } };
+        : {
+            bedrockEvaluatorModelConfig: withBedrockInference(
+              { ...(providerChanged ? {} : existingBedrock), modelId },
+              update.inference,
+            ),
+          };
 
     const evaluatorConfig: EvaluatorConfig = {
       llmAsAJudge: {

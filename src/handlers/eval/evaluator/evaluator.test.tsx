@@ -6,6 +6,7 @@ import {
   expectError,
   fixtureFactories,
   matchGolden,
+  TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
@@ -39,10 +40,10 @@ const FIXTURE_LAMBDA_ARN =
 const FIXTURE_INSTRUCTIONS =
   "Judge from {context} whether the agent resolved the customer's request.";
 
-// The inference tuning seeded on the "tuned" evaluator. `--model` only carries a
-// model id, so the CLI cannot set inferenceConfig; it is seeded through the SDK
-// during recording purely to prove an update preserves it. temperature and topP
-// are mutually exclusive on this model, so only temperature is set.
+// The inference tuning seeded on the "tuned" evaluator. It is seeded through the
+// SDK during recording purely to prove an update that passes no inference flag
+// preserves it. temperature and topP are mutually exclusive on this model, so
+// only temperature is set.
 const TUNED_NAME = "agentcore_cli_eval_fixture_tuned";
 const TUNED_INFERENCE_CONFIG = { temperature: 0, maxTokens: 512 };
 
@@ -90,10 +91,9 @@ let llajId: string;
 let codeBasedId: string;
 let tunedId: string;
 
-// seedTunedEvaluator creates an evaluator carrying an inferenceConfig, which no
-// CLI flag can express, so the preservation test has something to preserve. It
-// runs against the live API in record mode only; on replay the id comes from the
-// recorded fixture below.
+// seedTunedEvaluator creates an evaluator carrying an inferenceConfig, so the
+// preservation test has something to preserve. It runs against the live API in
+// record mode only; on replay the id comes from the recorded fixture below.
 async function seedTunedEvaluator(): Promise<string> {
   const response = await createFixtureCore().eval.createEvaluator(
     {
@@ -505,6 +505,46 @@ describe("evaluator flag validation", () => {
     await expectError(run([...args, "--json"]), /--id/, InputValidationError);
   });
 
+  const CREATE_ARGS = [
+    "eval",
+    "evaluator",
+    "llm-as-a-judge",
+    "create",
+    "--name",
+    "x",
+    "--level",
+    "SESSION",
+    "--model",
+    "anthropic.claude-v2:1",
+    "--instructions",
+    "i",
+    "--rating-scale",
+    "pass-fail",
+  ];
+
+  test.each([
+    ["--max-tokens 0", ["--max-tokens", "0"], /max-tokens/],
+    ["a fractional --max-tokens", ["--max-tokens", "1.5"], /max-tokens/],
+    ["--top-p above 1", ["--top-p", "1.1"], /top-p/],
+    ["a negative --temperature", ["--temperature", "-0.1"], /temperature/],
+    ["--temperature above 2", ["--temperature", "2.5"], /temperature/],
+    [
+      "--temperature above 1 for the default Bedrock provider",
+      ["--temperature", "1.5"],
+      /invalid --temperature 1.5: the Bedrock judge accepts 0-1/,
+    ],
+  ] as const)("llm-as-a-judge create rejects %s", async (_label, extra, message) => {
+    await expectError(run([...CREATE_ARGS, ...extra]), message, InputValidationError);
+  });
+
+  test("llm-as-a-judge update rejects --top-p above 1 before reading the evaluator", async () => {
+    await expectError(
+      run(["eval", "evaluator", "llm-as-a-judge", "update", "--id", "x", "--top-p", "2"]),
+      /top-p/,
+      InputValidationError,
+    );
+  });
+
   test("rejects malformed custom rating scale JSON", async () => {
     await expect(
       run([
@@ -524,5 +564,134 @@ describe("evaluator flag validation", () => {
         "{not json",
       ]),
     ).rejects.toThrow(/Invalid JSON for option '--rating-scale'/);
+  });
+});
+
+// The inference flags are checked at the Core boundary with TestCoreClient
+// rather than with fixtures: a recording would need live evaluators, and the
+// merge into the SDK request is covered by src/core/evaluatorUpdate.test.ts.
+describe("llm-as-a-judge inference flags", () => {
+  async function runWith(core: TestCoreClient, args: string[]): Promise<void> {
+    const root = createRootHandler(core, {
+      io: testIO().io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await root.route(["node", "agentcore", ...args, "--region", REGION]);
+  }
+
+  function createdModelConfig(core: TestCoreClient): unknown {
+    const call = core.eval.calls.find((c) => c.method === "createEvaluator");
+    const request = call?.args[0] as
+      { evaluatorConfig: { llmAsAJudge: { modelConfig: unknown } } } | undefined;
+    return request?.evaluatorConfig.llmAsAJudge.modelConfig;
+  }
+
+  function updateInference(core: TestCoreClient): unknown {
+    const call = core.eval.calls.find((c) => c.method === "updateLlmAsAJudgeEvaluator");
+    expect(call).toBeDefined();
+    return (call?.args[1] as { inference?: unknown } | undefined)?.inference;
+  }
+
+  test("create sends the settings in the Bedrock inferenceConfig", async () => {
+    const core = new TestCoreClient();
+    await runWith(core, [
+      "eval",
+      "evaluator",
+      "llm-as-a-judge",
+      "create",
+      "--name",
+      LLAJ_NAME,
+      "--level",
+      "SESSION",
+      "--model",
+      "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "--instructions",
+      FIXTURE_INSTRUCTIONS,
+      "--rating-scale",
+      "1-5-quality",
+      "--max-tokens",
+      "1024",
+      "--temperature",
+      "0",
+    ]);
+
+    expect(createdModelConfig(core)).toEqual({
+      bedrockEvaluatorModelConfig: {
+        modelId: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        inferenceConfig: { maxTokens: 1024, temperature: 0 },
+      },
+    });
+  });
+
+  test("create accepts a temperature above 1 for an OpenResponses judge", async () => {
+    const core = new TestCoreClient();
+    await runWith(core, [
+      "eval",
+      "evaluator",
+      "llm-as-a-judge",
+      "create",
+      "--name",
+      OPEN_RESPONSES_NAME,
+      "--level",
+      "SESSION",
+      "--model-provider",
+      "OpenResponses",
+      "--model",
+      "openai.gpt-5.4",
+      "--instructions",
+      FIXTURE_INSTRUCTIONS,
+      "--rating-scale",
+      "1-5-quality",
+      "--temperature",
+      "1.5",
+      "--top-p",
+      "0.9",
+    ]);
+
+    expect(createdModelConfig(core)).toEqual({
+      responsesEvaluatorModelConfig: {
+        modelId: "openai.gpt-5.4",
+        maxOutputTokens: 4096,
+        temperature: 1.5,
+        topP: 0.9,
+      },
+    });
+  });
+
+  test("update passes only the inference flags it was given", async () => {
+    const core = new TestCoreClient();
+    await runWith(core, [
+      "eval",
+      "evaluator",
+      "llm-as-a-judge",
+      "update",
+      "--id",
+      "judge-0000000000",
+      "--top-p",
+      "0.8",
+    ]);
+
+    expect(updateInference(core)).toEqual({
+      maxTokens: undefined,
+      temperature: undefined,
+      topP: 0.8,
+    });
+  });
+
+  test("update without inference flags leaves the judge's tuning alone", async () => {
+    const core = new TestCoreClient();
+    await runWith(core, [
+      "eval",
+      "evaluator",
+      "llm-as-a-judge",
+      "update",
+      "--id",
+      "judge-0000000000",
+      "--instructions",
+      FIXTURE_INSTRUCTIONS,
+    ]);
+
+    expect(updateInference(core)).toBeUndefined();
   });
 });
