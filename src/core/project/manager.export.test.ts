@@ -317,6 +317,21 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(without.main).toMatch(/if "metadata" in event\["event"\]:\n\s+yield event/);
   });
 
+  test("reports what subagent calls added before an invocation fails", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["subagent"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    // Any error but cancellation or a closed stream, which cannot take another frame; the
+    // else branch reports it on success, so it is sent once.
+    expect(main).toMatch(
+      /\n {4}except Exception:\n(\s+#.*\n)*\s+metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n\s+raise\n {4}else:\n\s+metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n {4}finally:\n/,
+    );
+    expect(main.match(/budget\.unstreamed_metadata_event\(\)/g)).toHaveLength(2);
+  });
+
   test("renders a subagent with no builtin tools to inherit", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, { allowedTools: ["subagent"] });

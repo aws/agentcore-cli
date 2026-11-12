@@ -392,11 +392,18 @@ async def invoke(payload, context):
         else:
             if timeout_fired:
                 yield {"event": {"messageStop": {"stopReason": "timeout_exceeded"}}}
-        {{#if hasSubagent}}
+    {{#if hasSubagent}}
+    except Exception:
+        # A failed invocation still reports the usage its streamed frames did not carry.
         metadata = budget.unstreamed_metadata_event()
         if metadata is not None:
             yield metadata
-        {{/if}}
+        raise
+    else:
+        metadata = budget.unstreamed_metadata_event()
+        if metadata is not None:
+            yield metadata
+    {{/if}}
     finally:
         if watchdog_task is not None:
             watchdog_task.cancel()
