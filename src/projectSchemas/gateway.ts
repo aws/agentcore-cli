@@ -48,6 +48,9 @@ export const OutboundAuthTypeSchema = z.enum([
   "JWT_PASSTHROUGH",
 ]);
 export type OutboundAuthType = z.infer<typeof OutboundAuthTypeSchema>;
+// An HTTP token (RFC 9110 tchar), also safe as a query parameter name. Rejects spaces and
+// colons, so "Authorization: " fails validation instead of the CloudFormation deploy.
+const API_KEY_PARAMETER_NAME_PATTERN = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
 export const OutboundAuthSchema = z
   .object({
     type: OutboundAuthTypeSchema.default("NONE"),
@@ -56,7 +59,15 @@ export const OutboundAuthSchema = z
     service: z.string().min(1).max(64).optional(),
     region: z.string().min(1).max(32).optional(),
     location: z.enum(["HEADER", "QUERY_PARAMETER"]).optional(),
-    parameterName: z.string().min(1).max(64).optional(),
+    parameterName: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(
+        API_KEY_PARAMETER_NAME_PATTERN,
+        "parameterName must be a header or query parameter name, with no spaces or colons.",
+      )
+      .optional(),
     prefix: z.string().min(1).max(64).optional(),
   })
   .strict();
@@ -442,6 +453,16 @@ export const AgentCoreGatewayTargetSchema = z
           code: "custom",
           message: "location, parameterName and prefix are only valid with API_KEY outbound auth.",
           path: ["outboundAuth"],
+        });
+      }
+      if (
+        data.outboundAuth?.location === "QUERY_PARAMETER" &&
+        data.outboundAuth.parameterName === undefined
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "An API key with location QUERY_PARAMETER requires a parameterName.",
+          path: ["outboundAuth", "parameterName"],
         });
       }
     }
