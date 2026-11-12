@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import type {
@@ -28,6 +28,7 @@ import type {
   RemoveResourceInput,
   RemoveResourceResult,
   RemoveResourcesResult,
+  ScaffoldRuntimeInput,
 } from "../../handlers/project/types";
 import { RESOURCE_LABELS } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
@@ -51,6 +52,7 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { createProjectTree } from "./templates/project";
+import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -553,6 +555,10 @@ export class FsProjectManager implements ProjectManager {
       // Container builds install from a lockfile, so generate it even with no-install.
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
+    }
+
+    if (scaffoldRuntimeInput) {
+      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput);
     }
 
     if (!input.skipGit) {
@@ -1862,6 +1868,28 @@ export class FsProjectManager implements ProjectManager {
     } else {
       await this.checkTool("npm", NODE_INSTALL_HINT);
     }
+  }
+
+  /**
+   * Writes the boxy profile that runs the scaffolded agent into the project's
+   * `.box` folder, named after the project. An existing profile is the
+   * user's, so it is never overwritten.
+   */
+  private async *writeBoxProfile(
+    projectRoot: string,
+    projectName: string,
+    runtime: ScaffoldRuntimeInput,
+  ): AsyncGenerator<ProjectEvent, void> {
+    const text = renderBoxProfile(projectName, runtime);
+    if (text === undefined) return;
+    const path = boxProfilePath(projectRoot);
+    if (existsSync(path)) {
+      yield { type: "warning", message: `box profile ${path} already exists; left unchanged` };
+      return;
+    }
+    yield { type: "step", message: `writing box profile ${path}` };
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, text, { flag: "wx" });
   }
 
   /**
