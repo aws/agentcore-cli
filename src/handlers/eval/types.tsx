@@ -128,6 +128,16 @@ export type GetBatchEvaluationResult = {
   resultsError?: unknown;
 };
 
+// EvaluatorInferenceSettings tunes the judge model. Each field is optional, and
+// an unset one leaves the evaluator's current value (or the provider default) in
+// place. maxTokens maps to inferenceConfig.maxTokens on Bedrock and to
+// maxOutputTokens on OpenResponses.
+export type EvaluatorInferenceSettings = {
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+};
+
 // LlmAsAJudgeUpdate carries the fields a caller may change on an LLM-as-a-Judge
 // evaluator. Any field left undefined is preserved from the existing evaluator:
 // the AgentCore UpdateEvaluator API replaces the whole evaluatorConfig union, and
@@ -141,6 +151,8 @@ export type LlmAsAJudgeUpdate = {
   // portable between provider APIs.
   modelProvider?: EvaluatorModelProvider;
   ratingScale?: RatingScale;
+  // Overlaid on the judge's current tuning, field by field.
+  inference?: EvaluatorInferenceSettings;
   kmsKeyArn?: string;
 };
 
