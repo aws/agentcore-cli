@@ -46,6 +46,7 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
+import { BOX_PROFILE_FILE, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
@@ -607,6 +608,7 @@ describe("FsProjectManager.create", () => {
       "creating project tree",
       "installing CDK dependencies with npm",
       "syncing Python dependencies with uv",
+      expect.stringMatching(/^writing box profile .*[\\/]example[\\/]\.box[\\/]profile\.toml$/),
       "initializing git repository",
     ]);
     expect(project.name).toBe("example");
@@ -648,6 +650,60 @@ describe("FsProjectManager.create", () => {
         scaffoldRuntimeInput: AGENT_PYTHON,
       }),
     ).rejects.toBeInstanceOf(ProjectStateError);
+  });
+});
+
+describe("FsProjectManager.create box profile", () => {
+  test.each([
+    ["after installing", false],
+    ["with --skip-install", true],
+  ])("writes the box profile into the project's .box folder %s", async (_label, skipInstall) => {
+    const directory = await inTempDirectory();
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+      skipInstall,
+      skipGit: true,
+    });
+
+    const path = join(directory, "example", BOX_PROFILE_FILE);
+    expect(await readFile(path, "utf8")).toBe(renderBoxProfile("example", AGENT_PYTHON_STRANDS)!);
+    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("leaves an existing box profile unchanged", async () => {
+    const directory = await inTempDirectory();
+    const path = join(directory, "example", BOX_PROFILE_FILE);
+    await mkdir(join(directory, "example", ".box"), { recursive: true });
+    await writeFile(path, "# mine\n");
+
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(await readFile(path, "utf8")).toBe("# mine\n");
+    expect(events).toContainEqual({
+      type: "warning",
+      message: `box profile ${path} already exists; left unchanged`,
+    });
+  });
+
+  test.each([
+    ["a template with no box profile", AGENT_TYPESCRIPT_STRANDS],
+    ["an empty project", undefined],
+  ])("writes no box profile for %s", async (_label, runtime) => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      ...(runtime && { scaffoldRuntimeInput: runtime }),
+      skipInstall: true,
+      skipGit: true,
+    } as CreateProjectInput);
+
+    expect(existsSync(join(directory, "example", ".box"))).toBe(false);
   });
 });
 
