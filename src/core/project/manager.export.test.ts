@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import z from "zod";
 import { parse, stringify } from "yaml";
 import { FsProjectManager } from "./manager";
@@ -88,14 +89,402 @@ function exportInput(overrides: Partial<ExportHarnessInput> = {}): ExportHarness
 }
 
 describe("FsProjectManager.exportHarness rendered tree", () => {
-  test("an exported harness permits the framework version selected by the SDK integration", async () => {
+  test("an exported harness retains the SDK Strands integration", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject);
 
     const result = await drain(subject.exportHarness(project, exportInput()));
 
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents >= 1.62.0, < 2.0.0"');
+    expect(pyproject).toContain('"bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0"');
+  });
+
+  test("builds the agent with create_harness and the builtin tools and plugins", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    // A service harness that sets no prompt or truncation, so the harness defaults apply.
+    const spec = HarnessSpecSchema.parse({
+      name: "remote",
+      model: { provider: "bedrock", modelId: "global.anthropic.claude-opus-5-5" },
+    });
+
+    const result = await drain(
+      subject.exportHarness(project, { prefetched: { spec }, targetAgentName: "remoteAgent" }),
+    );
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("cache[session_id] = build_session_agent(");
+    expect(main).toContain("from strands_harness.tools import read, write, edit");
+    expect(main).toContain('tools.append(make_web_fetch(mode="markdown"))');
+    // No prompt set: create_harness applies the contract prompt.
+    expect(main).not.toContain("system_prompt=");
+    expect(main).toContain("SummarizingConversationManager(**");
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("from strands_harness import create_harness");
+    expect(runtime).toContain('_PLUGIN_TOOL_NAMES = frozenset(["todo_write","retrieve_context"])');
+    expect(runtime).toContain("evict_after_cycles=None");
+    expect(runtime).toContain("def _add_subagent_tool(");
+    const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
+    expect(loadModel).toContain(
+      'cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True)',
+    );
+    const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
+    expect(pyproject).toContain('"strands-agents[web-fetch] >= 1.63.0, < 2.0.0"');
+    expect(pyproject).toContain('"strands-harness >= 0.3.3, < 0.4.0"');
+  });
+
+  test("loads a Bedrock model that rejects cache points without prompt caching", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      model: { provider: "bedrock", modelId: "us.anthropic.claude-3-haiku-20240307-v1:0" },
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
+    expect(loadModel).toContain('model_id="us.anthropic.claude-3-haiku-20240307-v1:0"');
+    expect(loadModel).not.toContain("CacheConfig");
+    // Nothing is cached, so side calls keep the agent's model.
+    expect(loadModel).not.toContain("load_aux_model");
+    expect(await Bun.file(join(result.agentPath, "main.py")).text()).not.toContain("aux_model");
+  });
+
+  test("makes side calls such as summaries on an uncached copy of a prompt-cached model", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      model: { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-5-5" },
+      truncation: { strategy: "summarization" },
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const loadModel = await Bun.file(join(result.agentPath, "model", "load.py")).text();
+    expect(loadModel).toContain("def load_model(*, prompt_caching: bool = True) -> BedrockModel:");
+    expect(loadModel).toContain(
+      'cache_config=CacheConfig(strategy="auto", system_prompt_ttl=True, tools_ttl=True) if prompt_caching else None,',
+    );
+    expect(loadModel).toContain("def load_aux_model() -> BedrockModel:");
+    expect(loadModel).toContain("return load_model(prompt_caching=False)");
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("from model.load import load_model, load_aux_model\n");
+    expect(main).toMatch(/model=load_model\(\),\n\s+aux_model=load_aux_model\(\),/);
+    // A subagent on the parent's model also summarizes on the parent's uncached copy.
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("aux_model=None if spec.model else parent.aux_model,");
+  });
+
+  test("renders only the builtins and plugins allowedTools selects", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["shell", "read"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("system_prompt=DEFAULT_SYSTEM_PROMPT,");
+    expect(main).toContain("from strands_harness.tools import read\n");
+    expect(main).not.toContain("make_web_fetch");
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("_PLUGIN_TOOL_NAMES = frozenset([])");
+    expect(runtime).not.toContain("make_subagent");
+    expect(runtime).not.toContain("ContextOffloader");
+    const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
+    expect(pyproject).toContain('"strands-agents >= 1.63.0, < 2.0.0"');
+  });
+
+  test("builds a read tool without media for a model that rejects media blocks", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      model: { provider: "bedrock", modelId: "openai.gpt-oss-120b-1:0" },
+      allowedTools: ["read", "write"],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("from strands_harness.tools import make_read, write\n");
+    expect(main).toContain("read = make_read(media=False)\ntools.append(read)\n");
+  });
+
+  test("wraps the vended shell with the harness runtime's timeout default and result keys", async () => {
+    const { manager: subject } = manager();
+    const render = async (allowedTools: string[]) => {
+      const project = await projectWithHarness(subject, { allowedTools });
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      return {
+        main: await Bun.file(join(result.agentPath, "main.py")).text(),
+        runtime: await Bun.file(join(result.agentPath, "harness_runtime.py")).text(),
+      };
+    };
+
+    const withShell = await render(["shell"]);
+    expect(withShell.main).toContain("tools.append(make_managed_shell())");
+    expect(withShell.main).not.toContain("make_shell(");
+    expect(withShell.runtime).toContain(
+      "async def shell(command: str, tool_context: ToolContext, timeout: int = 300) -> dict:",
+    );
+    expect(withShell.runtime).toContain(
+      'return {"stdout": result["output"], "stderr": result["error"], "exit_code": result["exit_code"]}',
+    );
+    // A timeout's partial output uses the same keys.
+    expect(withShell.runtime).toContain(
+      'partial = {"stdout": error.stdout, "stderr": error.stderr, "exit_code": 124}',
+    );
+    const withoutShell = await render(["read"]);
+    expect(withoutShell.main).not.toContain("shell");
+    expect(withoutShell.runtime).not.toContain("shell");
+  });
+
+  test("keeps a background child from holding a shell call open past its timeout", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["shell"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("import asyncio\n");
+    expect(runtime).toContain("import os\n");
+    // The command reaches the shell as written: the local environment follows the shell's exit, so
+    // no wrapping is needed to keep a backgrounded command from holding the call open.
+    expect(runtime).not.toContain('command = "{ " + command');
+    expect(runtime).toContain(
+      "deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS",
+    );
+    expect(runtime).toContain(
+      "result = await asyncio.wait_for(run(command, tool_context, timeout), deadline)",
+    );
+    // The vended timeout subclasses TimeoutError, so it is caught first and keeps its partial output.
+    const vendedTimeout = runtime.indexOf("except SandboxTimeoutError as error:");
+    const deadlineTimeout = runtime.indexOf("except asyncio.TimeoutError:");
+    expect(vendedTimeout).toBeGreaterThan(-1);
+    expect(deadlineTimeout).toBeGreaterThan(vendedTimeout);
+    // Past the deadline the model sees the vended timeout's failed result, without output.
+    expect(runtime.slice(deadlineTimeout)).toMatch(
+      /error = SandboxTimeoutError\(timeout\)\n\s+partial = \{"stdout": "", "stderr": "", "exit_code": 124\}\n\s+error\.args = \(f"\{error\}\\n\{json\.dumps\(partial\)\}",\)\n\s+raise error from None\n/,
+    );
+  });
+
+  test("ends a shell call once its shell exits and kills what the command left running", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["shell"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    for (const line of [
+      "import contextlib\n",
+      "import shlex\n",
+      "import signal\n",
+      "from strands.sandbox import ExecutionResult\n",
+      "from strands.sandbox.not_a_sandbox_local_environment import NotASandboxLocalEnvironment\n",
+      "from strands.sandbox.posix_shell import build_shell_env_prefix\n",
+    ]) {
+      expect(runtime).toContain(line);
+    }
+    // The agent's sandbox is read at call time, as by the vended tool. On POSIX the agent's host
+    // default is replaced by the local shell; Windows keeps the vended environment, which runs PowerShell.
+    expect(runtime).toContain("vended = make_shell()\n");
+    expect(runtime).toContain(
+      'local = None if os.name == "nt" else make_shell(sandbox=_LocalShell())',
+    );
+    expect(runtime).not.toContain('vended = make_shell() if os.name == "nt"');
+    // A sandbox configured on the agent (Docker, SSH, a subclass of the host default) runs the command.
+    expect(runtime).toMatch(
+      /host_default = type\(tool_context\.agent\.sandbox\) is NotASandboxLocalEnvironment\n\s+run = local if local is not None and host_default else vended\n/,
+    );
+    const localShell = runtime.slice(
+      runtime.indexOf("class _LocalShell(NotASandboxLocalEnvironment):"),
+      runtime.indexOf("def make_managed_shell():"),
+    );
+    expect(localShell).toContain(
+      "async def execute_streaming(self, command, *, timeout=None, cwd=None, env=None, **kwargs):",
+    );
+    // The vended command line, in a process group that the shell leads.
+    expect(localShell).toContain(
+      'full_command = f"cd {shlex.quote(target_cwd)} && {build_shell_env_prefix(env)}{command}"',
+    );
+    expect(localShell).toContain("start_new_session=True,");
+    // The call follows the shell's exit, which the protocol reports whatever holds the pipes.
+    expect(runtime).toMatch(
+      /def process_exited\(self\):\n\s+if not self\.exited\.done\(\):\n\s+self\.exited\.set_result\(None\)\n/,
+    );
+    const exit = localShell.indexOf("await asyncio.wait([process.exited], timeout=timeout)");
+    // A timeout kills the whole group while the shell still runs.
+    expect(localShell.slice(exit)).toMatch(
+      /if not process\.exited\.done\(\):\n\s+timed_out = True\n\s+_kill_process_group\(transport\.get_pid\(\)\)\n\s+await process\.exited\n/,
+    );
+    // Once the shell exits, a background child holding the pipes delays the result by a second at most,
+    // and only then is what the command left running killed.
+    expect(runtime).toContain("_SHELL_PIPE_RELEASE_SECONDS = 1\n");
+    const release = localShell.indexOf(
+      "await asyncio.wait([process.pipes_closed], timeout=_SHELL_PIPE_RELEASE_SECONDS)",
+    );
+    const leftovers = localShell.indexOf("_kill_process_group(transport.get_pid())", release);
+    expect(exit).toBeGreaterThan(-1);
+    expect(release).toBeGreaterThan(exit);
+    expect(leftovers).toBeGreaterThan(release);
+    expect(runtime).toContain("os.killpg(pgid, signal.SIGKILL)");
+    expect(localShell).toContain("process.exited.add_done_callback(lambda _: transport.close())");
+    // A timeout keeps the vended error and partial output; otherwise the shell's own exit code counts.
+    expect(localShell).toContain(
+      "raise SandboxTimeoutError(timeout, process.text(1), process.text(2))",
+    );
+    expect(localShell).toContain("exit_code=128 - returncode if returncode < 0 else returncode,");
+  });
+
+  test("offloads large tool results behind retrieve_context and keeps skills whole", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      allowedTools: ["retrieve_context"],
+      skills: [{ s3Uri: "s3://skills-bucket/team/" }],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain('_PLUGIN_TOOL_NAMES = frozenset(["retrieve_context"])');
+    expect(runtime).toContain("@tool(name=_RETRIEVAL_TOOL, context=True)");
+    expect(runtime).toContain("include_retrieval_tool=False,");
+    // A retrieval is never offloaded again, and a skill up to 10,000 tokens stays whole.
+    expect(runtime).toContain(
+      "tool_name != _RETRIEVAL_TOOL and (tool_name not in exempt or token_count > _EXEMPT_MAX_TOKENS)",
+    );
+    expect(runtime).toContain('exempt_tools=["skills"] if skill_plugins else []');
+  });
+
+  test("reports usage per model call, then what subagent calls added", async () => {
+    const { manager: subject } = manager();
+    const render = async (allowedTools: string[]) => {
+      const project = await projectWithHarness(subject, { allowedTools });
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      return {
+        main: await Bun.file(join(result.agentPath, "main.py")).text(),
+        runtime: await Bun.file(join(result.agentPath, "harness_runtime.py")).text(),
+      };
+    };
+
+    const withSubagent = await render(["subagent"]);
+    // The agent's own calls stream their frames as they happen, as without a subagent.
+    expect(withSubagent.main).toMatch(
+      /if "metadata" in event\["event"\]:\n(\s+#.*\n)*\s+budget\.streamed\(event\["event"\]\["metadata"\]\)\n\s+yield event\n/,
+    );
+    // One more frame carries only the usage those frames did not, once there is any.
+    expect(withSubagent.main).toMatch(
+      /metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n/,
+    );
+    expect(withSubagent.runtime).toContain(
+      "usage = {field: max(0, self.usage[field] - self.streamed_usage[field]) for field in self.usage}",
+    );
+    expect(withSubagent.runtime).toContain(
+      "latency_ms = max(0, self.latency_ms - self.streamed_latency_ms)",
+    );
+    expect(withSubagent.runtime).toMatch(
+      /if not any\(usage\.values\(\)\) and not latency_ms:\n\s+return None\n/,
+    );
+    expect(withSubagent.runtime).not.toContain("def metadata_event(");
+    const without = await render(["shell"]);
+    expect(without.main).not.toContain("budget.streamed(");
+    expect(without.main).not.toContain("unstreamed_metadata_event");
+    expect(without.main).toMatch(/if "metadata" in event\["event"\]:\n\s+yield event/);
+  });
+
+  test("reports what subagent calls added before an invocation fails", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["subagent"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    // Any error but cancellation or a closed stream, which cannot take another frame; the
+    // else branch reports it on success, so it is sent once.
+    expect(main).toMatch(
+      /\n {4}except Exception:\n(\s+#.*\n)*\s+metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n\s+raise\n {4}else:\n\s+metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n {4}finally:\n/,
+    );
+    expect(main.match(/budget\.unstreamed_metadata_event\(\)/g)).toHaveLength(2);
+  });
+
+  test("renders a subagent with no builtin tools to inherit", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["subagent"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("_SUBAGENT_BUILTIN_TOOL_NAMES = frozenset([])");
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).not.toContain("# Built-in tools");
+    expect(main).not.toContain("from strands_harness.tools import");
+  });
+
+  test("prefixes MCP tools with their server name", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      tools: [
+        {
+          type: "remote_mcp",
+          name: "exa",
+          config: { remoteMcp: { url: "https://mcp.exa.ai/mcp" } },
+        },
+      ],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const client = await Bun.file(join(result.agentPath, "mcp_client", "client.py")).text();
+    expect(client).toContain('prefix="exa"');
+  });
+
+  test("registers customer tools that share a builtin's name under distinct names", async () => {
+    const { manager: subject } = manager();
+    const inline = (name: string) => ({
+      type: "inline_function",
+      name,
+      config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+    });
+    const project = await projectWithHarness(subject, {
+      tools: [inline("shell"), inline("read"), inline("web-fetch"), inline("subagent")],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain('tools.append(RenamedTool(make_managed_shell(), "builtin_shell"))');
+    expect(main).toContain('tools.append(RenamedTool(read, "builtin_read"))');
+    expect(main).toContain("tools.append(write)\n");
+    expect(main).toContain(
+      'tools.append(RenamedTool(make_web_fetch(mode="markdown"), "builtin_web_fetch"))',
+    );
+    expect(main).toContain('tools.append(_make_inline_tool("read_read", _INLINE_SPEC_read))');
+    expect(main).toContain(
+      '_INLINE_FUNCTION_NAMES = { "shell_shell", "read_read", "web-fetch_web-fetch", "subagent_subagent" }',
+    );
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("class RenamedTool(AgentTool):");
+    // The subagent inherits the builtins under their registered names.
+    expect(runtime).toContain(
+      '_SUBAGENT_BUILTIN_TOOL_NAMES = frozenset(["builtin_shell","builtin_read","write","edit","builtin_web_fetch"])',
+    );
+  });
+
+  test("counts an inline function turn's usage when handing the call off", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, {
+      tools: [
+        {
+          type: "inline_function",
+          name: "lookup",
+          config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+        },
+      ],
+    });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain('budget.after_model_call(event["event"]["metadata"])');
+    // With the subagent tool on, that turn's frame still streams, so the final frame leaves it out.
+    expect(main).toMatch(
+      /budget\.after_model_call\(event\["event"\]\["metadata"\]\)\n(\s+#.*\n)*\s+budget\.streamed\(event\["event"\]\["metadata"\]\)\n\s+yield event\n\s+if inline_handoff:\n\s+break\n/,
+    );
   });
 
   test("loads only the MCP tools allowedTools selects", async () => {
@@ -193,7 +582,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain("top_k");
   });
 
-  test("renders invocation-scoped native Strands limits without a custom hook", async () => {
+  test("enforces limits with one budget shared by the agent and its subagents", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {
       maxIterations: 3,
@@ -204,13 +593,16 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const result = await drain(subject.exportHarness(project, exportInput()));
 
     expect(existsSync(join(result.agentPath, "hooks"))).toBe(false);
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("if self.iterations > 3:");
+    expect(runtime).toContain('if self.usage["outputTokens"] >= 128:');
+    expect(runtime).toContain('LimitExceeded("max_iterations_exceeded")');
+    expect(runtime).toContain('LimitExceeded("max_output_tokens_exceeded")');
     const main = await Bun.file(join(result.agentPath, "main.py")).text();
-    expect(main).toContain('"turns": 3');
-    expect(main).toContain('"output_tokens": 128');
+    // The budget reaches subagents through the invocation state.
+    expect(main).toContain('invocation_state={"budget": budget}');
     expect(main).toContain("cancel_signal = threading.Event()");
-    expect(main).toContain("limits=limits");
-    expect(main).not.toContain("ExecutionLimitsHook");
-    expect(main).not.toContain("agent.cancel()");
+    expect(main).not.toContain("limits=");
   });
 
   test("leaves hooks/ and memory/ out of a plain export", async () => {
@@ -259,10 +651,41 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     );
     expect(session).not.toContain("/preferences");
     expect(session).not.toContain("/summaries/");
-    expect(await Bun.file(join(result.agentPath, "main.py")).text()).toContain(
-      "from memory.session import get_memory_session_manager",
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).toContain("from memory.session import get_memory_session_manager");
+    expect(main).toMatch(
+      /model=load_model\(\),\n\s+aux_model=load_aux_model\(\),\n\s+session_manager=/,
     );
     expect(result.notes).toEqual([]);
+  });
+
+  test("uses the default session when the request has no session id", async () => {
+    // The runtime's request context reports a missing session header as session_id=None, so a
+    // getattr default alone would pass None on.
+    const fallback = 'session_id = getattr(context, "session_id", None) or "default-session"';
+    const { manager: subject } = manager();
+    const plain = await drain(
+      subject.exportHarness(await projectWithHarness(subject), exportInput()),
+    );
+    expect(await Bun.file(join(plain.agentPath, "main.py")).text()).toContain(fallback);
+
+    let project = await projectWithHarness(subject, {
+      memory: { mode: "existing", name: "chat_history" },
+    });
+    project = await drain(
+      subject.addResource(project, {
+        resourceType: "memory",
+        resourceConfig: {
+          name: "chat_history",
+          eventExpiryDuration: 30,
+          strategies: [{ type: "SEMANTIC" }],
+        },
+      }),
+    );
+    const withMemory = await drain(subject.exportHarness(project, exportInput()));
+    const main = await Bun.file(join(withMemory.agentPath, "main.py")).text();
+    expect(main).toContain(fallback);
+    expect(main).toContain('user_id = getattr(context, "user_id", None) or "default-user"');
   });
 
   test.each([0, 0.7])(
@@ -324,7 +747,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["temperature"] = 0.2');
     expect(loadModel).toContain('params["top_p"] = 0.8');
     const pyproject = await Bun.file(join(result.agentPath, "pyproject.toml")).text();
-    expect(pyproject).toContain('"strands-agents[openai] >= 1.62.0, < 2.0.0"');
+    expect(pyproject).toContain('"strands-agents[openai,web-fetch] >= 1.63.0, < 2.0.0"');
     expect(pyproject).not.toContain('"openai ~= 1.0.0"');
   });
 
@@ -351,7 +774,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["top_p"] = 0.9');
     expect(loadModel).toContain('params["top_k"] = 20');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[gemini] >= 1.62.0, < 2.0.0"',
+      '"strands-agents[gemini,web-fetch] >= 1.63.0, < 2.0.0"',
     );
   });
 
@@ -376,7 +799,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(loadModel).toContain('params["top_p"] = 0.7');
     expect(loadModel).toContain('json.loads("{\\"max_retries\\":2}")');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents[litellm] >= 1.62.0, < 2.0.0"',
+      '"strands-agents[litellm,web-fetch] >= 1.63.0, < 2.0.0"',
     );
   });
 
@@ -396,8 +819,35 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(main).toContain("from strands import AgentSkills");
     expect(main).toContain('SlidingWindowConversationManager(**{"window_size":12}, per_turn=True)');
     expect(await Bun.file(join(result.agentPath, "pyproject.toml")).text()).toContain(
-      '"strands-agents >= 1.62.0, < 2.0.0"',
+      '"strands-agents[web-fetch] >= 1.63.0, < 2.0.0"',
     );
+  });
+
+  test("imports os only for the Git skill credential lookup", async () => {
+    const { manager: subject } = manager();
+    const render = async (harness: Record<string, unknown>) => {
+      const project = await projectWithHarness(subject, harness);
+      const result = await drain(subject.exportHarness(project, exportInput()));
+      return Bun.file(join(result.agentPath, "main.py")).text();
+    };
+
+    // Mounted storage is reached through the harness file tools, which need no os import.
+    const mounted = await render({ sessionStoragePath: "/mnt/data/" });
+    expect(mounted).not.toMatch(/^import os$/m);
+    const gitCredential = await render({
+      sessionStoragePath: "/mnt/data/",
+      skills: [
+        {
+          gitUrl: "https://github.com/example/skills.git",
+          auth: {
+            credentialArn:
+              "arn:aws:bedrock-agentcore:us-east-1:111122223333:token-vault/default/apikeycredentialprovider/GitKey",
+          },
+        },
+      ],
+    });
+    expect(gitCredential).toMatch(/^import os$/m);
+    expect(gitCredential).toContain('IdentityClient(os.environ.get("AWS_REGION"');
   });
 
   test("emits a CodeZip runtime with no container files", async () => {
@@ -451,6 +901,23 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 });
 
 describe("FsProjectManager.exportHarness side effects", () => {
+  test("leaves the system prompt to the harness default when the harness sets none", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    const dir = join(project.rootPath, "app", "assistant");
+    const configPath = join(dir, "harness.yaml");
+    const config = parse(await Bun.file(configPath).text());
+    delete config.systemPrompt;
+    await Bun.write(configPath, stringify(config));
+    await rm(join(dir, "system-prompt.md"), { force: true });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const main = await Bun.file(join(result.agentPath, "main.py")).text();
+    expect(main).not.toContain("DEFAULT_SYSTEM_PROMPT");
+    expect(main).not.toContain("system_prompt=");
+  });
+
   test.each(["inline", "file"] as const)(
     "exports the %s prompt and inline summary without rewriting YAML",
     async (source) => {
@@ -612,3 +1079,91 @@ function failingWriteJson() {
   };
   return { json, failNextWrite: () => (shouldFail = true) };
 }
+
+const hasPython = spawnSync("python3", ["--version"]).status === 0;
+
+describe("FsProjectManager.exportHarness generated Python", () => {
+  // Every template branch must render to valid Python; Handlebars cannot check that.
+  const variants: Record<string, Record<string, unknown> & { withProjectMemory?: boolean }> = {
+    default: {},
+    "model without prompt caching": {
+      model: { provider: "bedrock", modelId: "anthropic.claude-3-haiku-20240307-v1:0" },
+    },
+    "no builtins or plugins": { allowedTools: ["exa"] },
+    "subagent without builtins": { allowedTools: ["subagent"] },
+    "subagent with limits": { maxIterations: 3, maxTokens: 64, timeoutSeconds: 5 },
+    "session storage": { sessionStoragePath: "/mnt/data/" },
+    "memory and skills": {
+      memory: { mode: "existing", name: "chat_history" },
+      skills: [{ s3Uri: "s3://bucket/skills" }],
+      withProjectMemory: true,
+    },
+    "inline function and MCP": {
+      tools: [
+        {
+          type: "inline_function",
+          name: "lookup",
+          config: {
+            inlineFunction: { description: "Look up an order", inputSchema: { type: "object" } },
+          },
+        },
+        {
+          type: "remote_mcp",
+          name: "exa",
+          config: { remoteMcp: { url: "https://mcp.exa.ai/mcp" } },
+        },
+      ],
+    },
+    "inline functions sharing builtin names": {
+      tools: ["shell", "read", "web_fetch"].map((name) => ({
+        type: "inline_function",
+        name,
+        config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+      })),
+    },
+    "renamed read tool without media": {
+      model: { provider: "bedrock", modelId: "openai.gpt-oss-120b-1:0" },
+      tools: [
+        {
+          type: "inline_function",
+          name: "read",
+          config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+        },
+      ],
+    },
+  };
+
+  for (const [name, harness] of Object.entries(variants)) {
+    test.skipIf(!hasPython)(`compiles: ${name}`, async () => {
+      const { withProjectMemory, ...harnessConfig } = harness;
+      const { manager: subject } = manager();
+      let project = await projectWithHarness(subject, harnessConfig);
+      if (withProjectMemory) {
+        project = await drain(
+          subject.addResource(project, {
+            resourceType: "memory",
+            resourceConfig: {
+              name: "chat_history",
+              eventExpiryDuration: 30,
+              strategies: [{ type: "SEMANTIC" }],
+            },
+          }),
+        );
+      }
+
+      const result = await drain(subject.exportHarness(project, exportInput()));
+
+      const files = [
+        "main.py",
+        "harness_runtime.py",
+        join("model", "load.py"),
+        join("mcp_client", "client.py"),
+      ].map((file) => join(result.agentPath, file));
+      // A missing context value renders as `undefined`, which compiles but fails at import.
+      for (const file of files) expect(await Bun.file(file).text()).not.toContain("undefined");
+      const compiled = spawnSync("python3", ["-m", "py_compile", ...files], { encoding: "utf-8" });
+      expect(compiled.stderr).toBe("");
+      expect(compiled.status).toBe(0);
+    });
+  }
+});
