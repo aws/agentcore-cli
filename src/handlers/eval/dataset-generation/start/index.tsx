@@ -27,7 +27,7 @@ export const createStartDatasetGenerationHandler = (core: Core, io: AppIO) =>
         "generation-config",
         "where traces are read from and which become examples (JSON inline, file://<path>, or - for stdin)",
         z.string().min(1),
-        { help: generationConfigHelp },
+        { sensitive: true, help: generationConfigHelp },
       ),
     ],
     handle: async (ctx, flags) => {
