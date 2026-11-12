@@ -6,8 +6,8 @@ import { coreOptsFromCtx } from "../../../utils";
 
 const ARCHIVE_STATUSES = ["ACTIVE", "ARCHIVED"] as const;
 
-// The service requires at least one of --application-name or
-// --batch-evaluation-id; its error is relayed unchanged.
+// The service accepts at most one of --application-name or --batch-evaluation-id;
+// with neither, it lists across the account. Its error is relayed unchanged.
 export const createListInsightsHandler = (core: Core) =>
   createHandler({
     name: "list",
