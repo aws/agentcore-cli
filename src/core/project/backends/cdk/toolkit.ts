@@ -30,6 +30,11 @@ export type CdkRunOptions = {
    * whether or not a sink is given.
    */
   onOutput?: (line: string) => void;
+  /**
+   * Docker-compatible executable CDK builds and publishes image assets with. The
+   * Toolkit runs in-process and reads CDK_DOCKER, so it is set for the operation.
+   */
+  containerExecutable?: string;
 };
 
 export type CdkOutputs = Record<string, string>;
@@ -277,6 +282,8 @@ export function createCdkRunner(
       firstFailure ??= failure;
     });
     const loaded = await load(ioHost, options.region, options.credentials);
+    const previousCdkDocker = process.env.CDK_DOCKER;
+    if (options.containerExecutable) process.env.CDK_DOCKER = options.containerExecutable;
     try {
       return await performCdkOperation(loaded, operation, options);
     } catch (error) {
@@ -286,6 +293,9 @@ export function createCdkRunner(
           `(${firstFailure.status}): ${firstFailure.reason}`;
       }
       throw error;
+    } finally {
+      if (previousCdkDocker === undefined) delete process.env.CDK_DOCKER;
+      else process.env.CDK_DOCKER = previousCdkDocker;
     }
   };
 }

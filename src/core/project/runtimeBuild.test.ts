@@ -47,6 +47,22 @@ const pyproject = (requiresPython: string, extra = "") =>
 const packageJson = (fields: Record<string, unknown>) =>
   JSON.stringify({ name: "search", ...fields });
 
+test("build inference preserves an explicit ContainerLocal choice", async () => {
+  const root = await project({ "app/search/Dockerfile": "FROM scratch\n" });
+  const synced = syncRuntimeBuild(
+    runtime({ build: "ContainerLocal", runtimeVersion: undefined }),
+    root,
+  );
+  expect(synced.runtime.build).toBe("ContainerLocal");
+  expect(synced.runtime.dockerfile).toBe("Dockerfile");
+  expect(synced.runtime.runtimeVersion).toBeUndefined();
+  expect(prepareRuntimes(root, [synced.runtime], "deploy").runtimes[0]?.build).toBe(
+    "ContainerLocal",
+  );
+  // Auto-detection from a Dockerfile only ever selects the CodeBuild Container mode.
+  expect(syncRuntimeBuild(runtime({ build: "CodeZip" }), root).runtime.build).toBe("Container");
+});
+
 describe("runtimeVersion from requires-python", () => {
   test.each([
     [">=3.12", "PYTHON_3_14"],

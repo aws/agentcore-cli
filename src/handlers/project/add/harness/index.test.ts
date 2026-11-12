@@ -32,6 +32,119 @@ async function run(args: string[], opts?: { core?: TestCoreClient; stdin?: strin
 }
 
 describe("project add harness", () => {
+  test("persists --build-config with --dockerfile in harness.yaml", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dockerfile = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfile, "FROM scratch\n");
+    await run([
+      "add",
+      "harness",
+      "--name",
+      "local",
+      "--dockerfile",
+      dockerfile,
+      "--build-config",
+      '{"build":"ContainerLocal","customDockerBuildArgs":{"VERSION":"v1"}}',
+    ]);
+    const spec = parse(await Bun.file(join(projectRoot, "app", "local", "harness.yaml")).text());
+    expect(spec).toMatchObject({
+      build: "ContainerLocal",
+      dockerfile: "Dockerfile",
+      customDockerBuildArgs: { VERSION: "v1" },
+    });
+  });
+  test("accepts the Dockerfile from --build-config alone", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dockerfile = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfile, "FROM scratch\n");
+    await run([
+      "add",
+      "harness",
+      "--name",
+      "local",
+      "--build-config",
+      JSON.stringify({ build: "Container", dockerfile }),
+    ]);
+    const spec = parse(await Bun.file(join(projectRoot, "app", "local", "harness.yaml")).text());
+    expect(spec).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+  });
+  test.each<[string, string[], string]>([
+    [
+      "a Dockerfile from both --dockerfile and --build-config",
+      ["--dockerfile", "Dockerfile", "--build-config", '{"dockerfile":"Dockerfile"}'],
+      "--dockerfile and --build-config dockerfile both set the Dockerfile",
+    ],
+    [
+      "build CodeZip",
+      ["--dockerfile", "Dockerfile", "--build-config", '{"build":"CodeZip"}'],
+      "--build-config",
+    ],
+    [
+      "--dockerfile with a build context",
+      ["--dockerfile", "Dockerfile", "--build-config", '{"buildContextPath":"."}'],
+      "--dockerfile cannot be combined with --build-config buildContextPath",
+    ],
+    ["invalid JSON", ["--build-config", "{bad}"], "Invalid JSON for option '--build-config'"],
+    [
+      "a build without a Dockerfile",
+      ["--build-config", '{"build":"ContainerLocal"}'],
+      "build requires a Dockerfile",
+    ],
+  ])("rejects %s", async (_label, flags, message) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await Bun.write(join(projectRoot, "Dockerfile"), "FROM scratch\n");
+    const error = await run(["add", "harness", "--name", "local", ...flags]).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain(message);
+    expect(existsSync(join(projectRoot, "app", "local", "harness.yaml"))).toBe(false);
+  });
+  test("copies a Dockerfile-specific ignore file along with the Dockerfile, renamed to match", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dockerfile = join(projectRoot, "Agent.Dockerfile");
+    await Bun.write(dockerfile, "FROM scratch\n");
+    await Bun.write(`${dockerfile}.dockerignore`, "*.log\n");
+    await run(["add", "harness", "--name", "local", "--dockerfile", dockerfile]);
+    const harnessDir = join(projectRoot, "app", "local");
+    expect(await Bun.file(join(harnessDir, "Dockerfile")).text()).toBe("FROM scratch\n");
+    expect(await Bun.file(join(harnessDir, "Dockerfile.dockerignore")).text()).toBe("*.log\n");
+  });
+  test("accepts a Dockerfile-specific ignore file in an existing build context", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await Bun.write(join(projectRoot, "docker", "Agent.Dockerfile"), "FROM scratch\n");
+    await Bun.write(join(projectRoot, "docker", "Agent.Dockerfile.dockerignore"), "*.log\n");
+    await run([
+      "add",
+      "harness",
+      "--name",
+      "local",
+      "--build-config",
+      JSON.stringify({
+        build: "ContainerLocal",
+        dockerfile: "Agent.Dockerfile",
+        buildContextPath: "docker",
+      }),
+    ]);
+    const spec = parse(await Bun.file(join(projectRoot, "app", "local", "harness.yaml")).text());
+    expect(spec).toMatchObject({ dockerfile: "Agent.Dockerfile", buildContextPath: "docker" });
+    expect(existsSync(join(projectRoot, "app", "local", "Dockerfile.dockerignore"))).toBe(false);
+  });
+  test("without --build-config a --dockerfile harness records no build key", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dockerfile = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfile, "FROM scratch\n");
+    await run(["add", "harness", "--name", "plain", "--dockerfile", dockerfile]);
+    const spec = parse(await Bun.file(join(projectRoot, "app", "plain", "harness.yaml")).text());
+    expect(spec.build).toBeUndefined();
+    expect(spec.dockerfile).toBe("Dockerfile");
+  });
   const defaultModel = { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-5-5" };
 
   test.each<[string, string[], Record<string, unknown>]>([

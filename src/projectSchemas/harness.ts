@@ -1,8 +1,5 @@
-import {
-  MAX_CONTAINER_BUILD_SECURITY_GROUPS,
-  NetworkModeSchema,
-  isContainerBuild,
-} from "./constants";
+import { ProjectRuntimeSchema, BuildTypeSchema, isReservedBuildArgKey } from "./runtime";
+import { MAX_CONTAINER_BUILD_SECURITY_GROUPS, NetworkModeSchema } from "./constants";
 import {
   EfsAccessPointConfigSchema,
   LifecycleConfigurationSchema,
@@ -524,6 +521,9 @@ export const HarnessSpecSchema = z
         "containerUri must be an ECR image URI (12-digit private ECR or public.ecr.aws)",
       )
       .optional(),
+    build: BuildTypeSchema.exclude(["CodeZip"]).optional(),
+    buildContextPath: ProjectRuntimeSchema.shape.buildContextPath,
+    customDockerBuildArgs: ProjectRuntimeSchema.shape.customDockerBuildArgs,
     dockerfile: z.string().min(1).optional(),
     executionRoleArn: z.string().optional(),
     networkMode: NetworkModeSchema.optional(),
@@ -547,6 +547,37 @@ export const HarnessSpecSchema = z
     tags: TagsSchema.optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.build !== undefined && data.dockerfile === undefined) {
+      ctx.addIssue({ code: "custom", message: "build requires a Dockerfile", path: ["build"] });
+    }
+    for (const field of [
+      "build",
+      "dockerfile",
+      "buildContextPath",
+      "customDockerBuildArgs",
+    ] as const) {
+      if (data.containerUri !== undefined && data[field] !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${field} cannot be combined with containerUri`,
+          path: [field],
+        });
+      }
+    }
+    for (const field of ["buildContextPath", "customDockerBuildArgs"] as const) {
+      if (data[field] !== undefined && data.dockerfile === undefined) {
+        ctx.addIssue({ code: "custom", message: `${field} requires a Dockerfile`, path: [field] });
+      }
+    }
+    for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
+      if (isReservedBuildArgKey(key)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `customDockerBuildArgs key "${key}" is reserved by the build environment`,
+          path: ["customDockerBuildArgs", key],
+        });
+      }
+    }
     if (data.containerUri !== undefined && data.dockerfile !== undefined) {
       ctx.addIssue({
         code: "custom",
@@ -568,7 +599,12 @@ export const HarnessSpecSchema = z
         path: ["networkConfig"],
       });
     }
-    if (data.networkMode === "VPC" && data.dockerfile && !data.networkConfig?.vpcId) {
+    if (
+      data.networkMode === "VPC" &&
+      data.dockerfile &&
+      data.build !== "ContainerLocal" &&
+      !data.networkConfig?.vpcId
+    ) {
       ctx.addIssue({
         code: "custom",
         message:
@@ -578,7 +614,8 @@ export const HarnessSpecSchema = z
     }
     if (
       data.networkMode === "VPC" &&
-      isContainerBuild(data) &&
+      data.dockerfile !== undefined &&
+      data.build !== "ContainerLocal" &&
       data.networkConfig &&
       data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
