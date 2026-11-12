@@ -59,6 +59,7 @@ export function createProjectHandlers(
       projectManager,
       runV0Deploy: runLegacyDeploy,
       harness: core.harness,
+      runtime: core.runtime,
       io,
       middlewares: [withProjectMiddleware],
       runners: {

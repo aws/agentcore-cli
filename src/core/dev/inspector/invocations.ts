@@ -15,7 +15,7 @@ import {
   sseData,
   sseEvent,
 } from "./respond";
-import type { InspectorDeps } from "./types";
+import type { InspectorDeployedInvokeResponse, InspectorDeps } from "./types";
 
 export async function handleInvocations(
   deps: InspectorDeps,
@@ -30,6 +30,18 @@ export async function handleInvocations(
   const sessionId = asString(parsed?.sessionId) ?? randomUUID();
   const userId = asString(parsed?.userId);
   const signal = request.signal;
+
+  // The SPA's Local/Deployed switch sends ?target=deployed for the deployed Runtime.
+  if (new URL(request.url, "http://127.0.0.1").searchParams.get("target") === "deployed") {
+    return invokeDeployedRuntime({
+      deps,
+      agentName,
+      body: request.body,
+      sessionId,
+      userId,
+      signal,
+    });
+  }
 
   let running = agentName ? deps.supervisor.running(agentName) : undefined;
   if (!running) {
@@ -51,6 +63,43 @@ export async function handleInvocations(
     accept: "text/event-stream, */*",
     normalizeSse: true,
   });
+}
+
+async function invokeDeployedRuntime({
+  deps,
+  agentName,
+  body,
+  sessionId,
+  userId,
+  signal,
+}: {
+  deps: InspectorDeps;
+  agentName: string | undefined;
+  body: Buffer;
+  sessionId: string;
+  userId: string | undefined;
+  signal: AbortSignal;
+}): Promise<HttpResponse> {
+  if (!agentName?.trim()) return apiError(400, "agentName is required");
+  const runtime = deps.project?.spec.runtimes.find(({ name }) => name === agentName);
+  if (!runtime) return apiError(404, `Runtime "${agentName}" not found`);
+  const protocol = runtime.protocol ?? "HTTP";
+  if (protocol !== "HTTP") {
+    return apiError(400, `Invoking a deployed ${protocol} agent is not supported yet.`);
+  }
+  if (!deps.invokeDeployedRuntime) return apiError(409, "Deployed invocation is not available");
+
+  let response: InspectorDeployedInvokeResponse;
+  try {
+    response = await deps.invokeDeployedRuntime(
+      agentName,
+      { payload: body, sessionId, ...(userId !== undefined && { userId }) },
+      signal,
+    );
+  } catch (error) {
+    return apiError(502, `Deployed invocation failed: ${errorMessage(error)}`);
+  }
+  return agentResponse(response.statusCode, response.contentType, response.body, sessionId, true);
 }
 
 type HarnessOverrides = Partial<Omit<InvokeHarnessRequest, "systemPrompt">> & {
@@ -172,9 +221,9 @@ async function forwardInvocation(
   };
   if (userId) headers["x-amzn-bedrock-agentcore-runtime-user-id"] = userId;
 
-  let agentResponse: Response;
+  let upstream: Response;
   try {
-    agentResponse = await fetch(`http://127.0.0.1:${port}/invocations`, {
+    upstream = await fetch(`http://127.0.0.1:${port}/invocations`, {
       method: "POST",
       headers,
       body,
@@ -184,13 +233,28 @@ async function forwardInvocation(
     return apiError(502, `Agent server error: ${errorMessage(error)}`);
   }
 
-  const contentType = agentResponse.headers.get("content-type") ?? "text/plain";
-  const stream = iterateBody(agentResponse.body);
+  return agentResponse(
+    upstream.status,
+    upstream.headers.get("content-type") ?? "text/plain",
+    iterateBody(upstream.body),
+    sessionId,
+    options.normalizeSse,
+  );
+}
+
+// A local or deployed agent's reply, with its SSE frames reduced to text when normalizeSse is set.
+function agentResponse(
+  status: number,
+  contentType: string,
+  stream: AsyncIterable<Uint8Array>,
+  sessionId: string,
+  normalizeSse: boolean,
+): HttpResponse {
   return {
-    status: agentResponse.status,
+    status,
     headers: { "Content-Type": contentType, "x-session-id": sessionId },
     body:
-      options.normalizeSse && contentType.includes("text/event-stream")
+      normalizeSse && contentType.includes("text/event-stream")
         ? transformAgentSse(stream)
         : stream,
   };
