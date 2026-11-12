@@ -284,19 +284,37 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(runtime).toContain('exempt_tools=["skills"] if skill_plugins else []');
   });
 
-  test("reports usage per model call unless a subagent can add to it", async () => {
+  test("reports usage per model call, then what subagent calls added", async () => {
     const { manager: subject } = manager();
     const render = async (allowedTools: string[]) => {
       const project = await projectWithHarness(subject, { allowedTools });
       const result = await drain(subject.exportHarness(project, exportInput()));
-      return Bun.file(join(result.agentPath, "main.py")).text();
+      return {
+        main: await Bun.file(join(result.agentPath, "main.py")).text(),
+        runtime: await Bun.file(join(result.agentPath, "harness_runtime.py")).text(),
+      };
     };
 
     const withSubagent = await render(["subagent"]);
-    expect(withSubagent).toContain("metadata = budget.metadata_event()");
+    // The agent's own calls stream their frames as they happen, as without a subagent.
+    expect(withSubagent.main).toMatch(
+      /if "metadata" in event\["event"\]:\n(\s+#.*\n)*\s+budget\.streamed\(event\["event"\]\["metadata"\]\)\n\s+yield event\n/,
+    );
+    // One more frame carries only the usage those frames did not, once there is any.
+    expect(withSubagent.main).toMatch(
+      /metadata = budget\.unstreamed_metadata_event\(\)\n\s+if metadata is not None:\n\s+yield metadata\n/,
+    );
+    expect(withSubagent.runtime).toContain(
+      "usage = {field: self.usage[field] - self.streamed_usage[field] for field in self.usage}",
+    );
+    expect(withSubagent.runtime).toMatch(
+      /if not any\(usage\.values\(\)\) and not latency_ms:\n\s+return None\n/,
+    );
+    expect(withSubagent.runtime).not.toContain("def metadata_event(");
     const without = await render(["shell"]);
-    expect(without).not.toContain("budget.metadata_event()");
-    expect(without).toMatch(/if "metadata" in event\["event"\]:\n\s+yield event/);
+    expect(without.main).not.toContain("budget.streamed(");
+    expect(without.main).not.toContain("unstreamed_metadata_event");
+    expect(without.main).toMatch(/if "metadata" in event\["event"\]:\n\s+yield event/);
   });
 
   test("renders a subagent with no builtin tools to inherit", async () => {
@@ -378,6 +396,10 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 
     const main = await Bun.file(join(result.agentPath, "main.py")).text();
     expect(main).toContain('budget.after_model_call(event["event"]["metadata"])');
+    // With the subagent tool on, that turn's frame still streams, so the final frame leaves it out.
+    expect(main).toMatch(
+      /budget\.after_model_call\(event\["event"\]\["metadata"\]\)\n(\s+#.*\n)*\s+budget\.streamed\(event\["event"\]\["metadata"\]\)\n\s+yield event\n\s+if inline_handoff:\n\s+break\n/,
+    );
   });
 
   test("loads only the MCP tools allowedTools selects", async () => {

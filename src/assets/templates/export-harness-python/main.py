@@ -362,10 +362,10 @@ async def invoke(payload, context):
                         budget.after_model_call(event["event"]["metadata"])
                     {{/if}}
                     {{#if hasSubagent}}
-                    # Replaced by the invocation total, which includes subagent usage.
-                    {{else}}
-                    yield event
+                    # Subagent model calls stream no frames here; their usage follows at the end.
+                    budget.streamed(event["event"]["metadata"])
                     {{/if}}
+                    yield event
                     {{#if inlineFunctionTools}}
                     if inline_handoff:
                         break
@@ -393,7 +393,7 @@ async def invoke(payload, context):
             if timeout_fired:
                 yield {"event": {"messageStop": {"stopReason": "timeout_exceeded"}}}
         {{#if hasSubagent}}
-        metadata = budget.metadata_event()
+        metadata = budget.unstreamed_metadata_event()
         if metadata is not None:
             yield metadata
         {{/if}}

@@ -64,6 +64,17 @@ _USAGE_FIELDS = ("inputTokens", "outputTokens", "totalTokens")
 _CACHE_USAGE_FIELDS = ("cacheReadInputTokens", "cacheWriteInputTokens")
 
 
+def _add_call_usage(usage, metadata):
+    """Add a model call's token usage, from its metadata, to ``usage``; return its latency in ms."""
+    call_usage = metadata.get("usage")
+    if isinstance(call_usage, dict):
+        for field in _USAGE_FIELDS + _CACHE_USAGE_FIELDS:
+            if isinstance(call_usage.get(field), (int, float)):
+                usage[field] += int(call_usage[field])
+    latency_ms = (metadata.get("metrics") or {}).get("latencyMs")
+    return int(latency_ms) if isinstance(latency_ms, (int, float)) else 0
+
+
 class InvocationBudget:
     """One budget shared by the agent and every subagent it runs within an invocation.
 
@@ -73,9 +84,11 @@ class InvocationBudget:
 
     def __init__(self):
         self.iterations = 0
-        self.completed_calls = 0
         self.usage = dict.fromkeys(_USAGE_FIELDS + _CACHE_USAGE_FIELDS, 0)
         self.latency_ms = 0
+        # The part of the usage that metadata frames streamed to the caller already carried.
+        self.streamed_usage = dict.fromkeys(_USAGE_FIELDS + _CACHE_USAGE_FIELDS, 0)
+        self.streamed_latency_ms = 0
 
     def before_model_call(self):
         self.iterations += 1
@@ -93,24 +106,23 @@ class InvocationBudget:
         {{/if}}
 
     def after_model_call(self, metadata):
-        usage = metadata.get("usage")
-        if not isinstance(usage, dict):
-            return
-        for field in _USAGE_FIELDS + _CACHE_USAGE_FIELDS:
-            if isinstance(usage.get(field), (int, float)):
-                self.usage[field] += int(usage[field])
-        latency_ms = (metadata.get("metrics") or {}).get("latencyMs")
-        if isinstance(latency_ms, (int, float)):
-            self.latency_ms += int(latency_ms)
-        self.completed_calls += 1
+        self.latency_ms += _add_call_usage(self.usage, metadata)
 
-    def metadata_event(self):
-        """The invocation-total usage, reported once in place of per-call metadata."""
-        if not self.completed_calls:
+    def streamed(self, metadata):
+        """Note a model call's metadata frame that was streamed to the caller as is."""
+        self.streamed_latency_ms += _add_call_usage(self.streamed_usage, metadata)
+
+    def unstreamed_metadata_event(self):
+        """A metadata frame with the usage no streamed frame carried, such as subagent calls', or None.
+
+        Added to the streamed frames, it brings the reported usage to the invocation total.
+        """
+        usage = {field: self.usage[field] - self.streamed_usage[field] for field in self.usage}
+        latency_ms = self.latency_ms - self.streamed_latency_ms
+        if not any(usage.values()) and not latency_ms:
             return None
-        usage = {field: self.usage[field] for field in _USAGE_FIELDS}
-        usage.update({field: self.usage[field] for field in _CACHE_USAGE_FIELDS if self.usage[field]})
-        return {"event": {"metadata": {"usage": usage, "metrics": {"latencyMs": self.latency_ms}}}}
+        usage = {field: count for field, count in usage.items() if count or field in _USAGE_FIELDS}
+        return {"event": {"metadata": {"usage": usage, "metrics": {"latencyMs": latency_ms}}}}
 
 
 class _BudgetHook(HookProvider):
