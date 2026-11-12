@@ -239,6 +239,30 @@ describe("tool lifecycle", () => {
       result: '{"ok":true}\n[1,2]\n',
     });
   });
+
+  // On Bun the SDK decodes an integer beyond 2^53 in a document member to BigInt.
+  test("a BigInt in a json result chunk is written with every digit", () => {
+    const turn = fold([
+      messageStart,
+      toolStart,
+      blockStop(0),
+      messageStart,
+      {
+        contentBlockStart: {
+          contentBlockIndex: 0,
+          start: { toolResult: { toolUseId: "tu-1" } },
+        },
+      },
+      {
+        contentBlockDelta: {
+          contentBlockIndex: 0,
+          // DocumentType does not list bigint, but the decoded value can be one.
+          delta: { toolResult: [{ json: { ts: 1750000000000000001n } as never }] },
+        },
+      },
+    ]);
+    expect(turn.items[0]).toMatchObject({ result: '{"ts":1750000000000000001}\n' });
+  });
 });
 
 describe("turn completion", () => {

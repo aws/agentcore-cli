@@ -1,6 +1,6 @@
 import { type Middleware } from "../router";
 import { JsonRendererKey, renderJson } from "../tui";
-import type { AppIO } from "../io";
+import { stringifyJson, type AppIO } from "../io";
 
 // withJsonRenderer pins a JsonRenderer on the context, prewired to write to the
 // injected stdout. Handlers emit machine-readable output via
@@ -11,7 +11,7 @@ import type { AppIO } from "../io";
 export function withJsonRenderer(io: AppIO): Middleware {
   const renderer = {
     renderJson: (data: unknown) => renderJson(data, (line) => io.stdout.write(line + "\n")),
-    renderJsonLine: (data: unknown) => io.stdout.write(JSON.stringify(data) + "\n"),
+    renderJsonLine: (data: unknown) => io.stdout.write(stringifyJson(data) + "\n"),
   };
 
   return (h) => ({

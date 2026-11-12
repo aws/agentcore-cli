@@ -5,6 +5,7 @@ import type {
   InvokeHarnessStreamOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { HttpRequest, HttpResponse } from "../../../io/httpServer";
+import { stringifyJson } from "../../../io/jsonText";
 import {
   apiError,
   asString,
@@ -132,7 +133,7 @@ function harnessStreamEvent(event: InvokeHarnessStreamOutput): unknown {
       payload = {
         type: "toolResult",
         results: delta.toolResult.map((chunk) =>
-          chunk.json !== undefined ? { text: JSON.stringify(chunk.json) } : chunk,
+          chunk.json !== undefined ? { text: stringifyJson(chunk.json) } : chunk,
         ),
       };
     } else if (delta?.reasoningContent) {

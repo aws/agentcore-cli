@@ -22,6 +22,7 @@ export {
   type StreamProcessOptions,
 } from "./exec";
 export { FsReadWriteJson } from "./json";
+export { stringifyJson } from "./jsonText";
 export {
   InteractiveTerminal,
   type InteractiveTerminalConfig,

@@ -24,6 +24,12 @@ test("revives Dates nested inside arrays and objects", () => {
   expect(revived.harnesses[0]!.updatedAt.toISOString()).toBe("2026-01-02T03:04:05.000Z");
 });
 
+test("revives BigInt values as BigInt with every digit", () => {
+  const value = { spans: [{ startTimeUnixNano: 1750000000000000001n }] };
+  const revived = parse<typeof value>(stringify(value));
+  expect(revived.spans[0]!.startTimeUnixNano).toBe(1750000000000000001n);
+});
+
 test("stringify produces indented, human-readable JSON", () => {
   expect(stringify({ a: 1 })).toBe('{\n  "a": 1\n}');
 });
