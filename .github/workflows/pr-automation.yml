@@ -2,7 +2,7 @@ name: PR Automation
 
 on:
   pull_request_target:
-    branches: [v0.x, v1.x, "feat/**"]
+    branches: [v0.x, v1.x, box-integration, "feat/**"]
     types: [opened, reopened, edited, synchronize, labeled]
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ jobs:
     with:
       runner: codebuild
       pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
-      allowed_base_branches: '["v0.x","v1.x"]'
+      allowed_base_branches: '["v0.x","v1.x","box-integration"]'
     secrets: inherit
 
   harness-review:
@@ -113,7 +113,7 @@ jobs:
           fi
 
           case "$base_ref" in
-            v0.x|v1.x|feat/*) ;;
+            v0.x|v1.x|box-integration|feat/*) ;;
             *)
               echo "::error::Unsupported base branch: $base_ref"
               exit 1

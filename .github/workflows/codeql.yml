@@ -2,13 +2,13 @@ name: CodeQL
 
 on:
   push:
-    branches: [v0.x, v1.x]
+    branches: [v0.x, v1.x, box-integration]
   pull_request:
-    branches: [v0.x, v1.x, "feat/**"]
+    branches: [v0.x, v1.x, box-integration, "feat/**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/v0.x' && github.ref != 'refs/heads/v1.x' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/v0.x' && github.ref != 'refs/heads/v1.x' && github.ref != 'refs/heads/box-integration' }}
 
 jobs:
   analyze:
