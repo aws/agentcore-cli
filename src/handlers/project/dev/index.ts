@@ -229,6 +229,14 @@ function resolveAgentSelection(project: Project, agent?: string): AgentSelection
       `Agent '${agent}' was not found. Available agents: ${[...runtimes, ...harnesses].map(({ name }) => name).join(", ")}.`,
     );
   }
+  const prebuilt = selectedRuntimes.find((runtime) => runtime.containerUri !== undefined);
+  if (prebuilt) {
+    throw new InputValidationError(
+      `Runtime '${prebuilt.name}' uses a pre-built containerUri. ` +
+        "Deploy it with agentcore deploy, then use agentcore invoke. " +
+        "For local dev, select a runtime with local source using --agent <name>.",
+    );
+  }
   const supportedRuntimes = selectedRuntimes.filter(supportsLocalDev);
   if (!supportedRuntimes.length) {
     throw new NotImplementedError(

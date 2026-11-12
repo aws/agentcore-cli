@@ -8,6 +8,7 @@ export type ImportBedrockAgentInput = z.infer<typeof ImportBedrockAgentInputSche
 
 const RuntimeInfraConfigSchema = z.object({
   name: ProjectRuntimeSchema.shape.name,
+  containerUri: ProjectRuntimeSchema.shape.containerUri,
   description: ProjectRuntimeSchema.shape.description,
   executionRoleArn: ProjectRuntimeSchema.shape.executionRoleArn,
   additionalPolicies: ProjectRuntimeSchema.shape.additionalPolicies,
@@ -22,6 +23,11 @@ const RuntimeInfraConfigSchema = z.object({
   filesystemConfigurations: ProjectRuntimeSchema.shape.filesystemConfigurations,
   tags: ProjectRuntimeSchema.shape.tags,
 });
+
+/** JSON flag keys use the same names and validators as the persisted Runtime configuration. */
+export const RuntimeAdvancedConfigurationSchema = RuntimeInfraConfigSchema.omit({
+  name: true,
+}).strict();
 
 export const RuntimeResourceConfigSchema = RuntimeInfraConfigSchema.extend({
   scaffoldRuntimeInput: ScaffoldRuntimeInputSchema,

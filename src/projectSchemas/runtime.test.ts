@@ -19,6 +19,12 @@ const containerAgent = {
   entrypoint: "main.py",
   codeLocation: "./agent",
 };
+const privateContainerUri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/team/agent:latest";
+const publicContainerUri = "public.ecr.aws/example/agent@sha256:abc123";
+const prebuiltAgent = {
+  ...containerAgent,
+  containerUri: privateContainerUri,
+};
 const networkConfig = {
   subnets: ["subnet-0123456789abcdef0"],
   securityGroups: ["sg-0123456789abcdef0"],
@@ -84,6 +90,7 @@ describe("runtime custom validation", () => {
   });
   it("restricts container-only fields to container builds", () => {
     for (const field of [
+      { containerUri: privateContainerUri },
       { dockerfile: "Dockerfile" },
       { buildContextPath: "." },
       { customDockerBuildArgs: { KEY: "value" } },
@@ -91,6 +98,27 @@ describe("runtime custom validation", () => {
       expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, ...field }).success).toBe(false);
       expect(ProjectRuntimeSchema.safeParse({ ...containerAgent, ...field }).success).toBe(true);
     }
+  });
+  it.each([privateContainerUri, publicContainerUri])(
+    "accepts a supported pre-built ECR image URI: %s",
+    (containerUri) => {
+      expect(ProjectRuntimeSchema.safeParse({ ...prebuiltAgent, containerUri }).success).toBe(true);
+    },
+  );
+  it.each([
+    "docker.io/example/agent:latest",
+    "12345678901.dkr.ecr.us-east-1.amazonaws.com/agent:latest",
+    "123456789012.dkr.ecr.us-east-1.amazonaws.com/UPPERCASE:latest",
+    `${privateContainerUri}${"x".repeat(1025)}`,
+  ])("rejects an invalid pre-built image URI: %s", (containerUri) => {
+    expect(ProjectRuntimeSchema.safeParse({ ...prebuiltAgent, containerUri }).success).toBe(false);
+  });
+  it.each([
+    { dockerfile: "Dockerfile" },
+    { buildContextPath: "." },
+    { customDockerBuildArgs: { STAGE: "prod" } },
+  ])("rejects local build configuration with containerUri: %j", (field) => {
+    expect(ProjectRuntimeSchema.safeParse({ ...prebuiltAgent, ...field }).success).toBe(false);
   });
   it("rejects reserved build args and control characters", () => {
     expect(
@@ -150,6 +178,7 @@ describe("runtime custom validation", () => {
     expect(capped.success).toBe(false);
     expect(capped.error?.issues[0]?.path).toEqual(["networkConfig", "securityGroups"]);
     expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, ...vpc }).success).toBe(true);
+    expect(ProjectRuntimeSchema.safeParse({ ...prebuiltAgent, ...vpc }).success).toBe(true);
   });
   it("requires a VPC ID for container builds in VPC mode only", () => {
     const vpc = { networkMode: "VPC" as const, networkConfig };
@@ -166,6 +195,7 @@ describe("runtime custom validation", () => {
 
     // CodeZip never reaches CodeBuild, so it needs no VPC ID.
     expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, ...vpc }).success).toBe(true);
+    expect(ProjectRuntimeSchema.safeParse({ ...prebuiltAgent, ...vpc }).success).toBe(true);
     expect(ProjectRuntimeSchema.safeParse(containerAgent).success).toBe(true);
   });
 });
