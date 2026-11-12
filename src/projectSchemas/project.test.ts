@@ -409,16 +409,22 @@ describe("project custom validation", () => {
   });
 });
 
-describe("the Box marker", () => {
+describe("projectType", () => {
   test("is absent after a parse of a project without it, so a write-back adds no key", () => {
-    expect(ProjectSpecSchema.parse(minimalProject)).not.toHaveProperty("box");
+    expect(ProjectSpecSchema.parse(minimalProject)).not.toHaveProperty("projectType");
   });
 
-  test("accepts {}", () => {
-    expect(ProjectSpecSchema.parse({ ...minimalProject, box: {} }).box).toEqual({});
+  test('accepts "box"', () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, projectType: "box" }).projectType).toBe(
+      "box",
+    );
   });
 
-  test.each([[{ gateway: {} }], [true], [null]])("rejects %j", (box) => {
-    expect(ProjectSpecSchema.safeParse({ ...minimalProject, box }).success).toBe(false);
+  test.each([["Box"], ["standard"], [{}], [null]])("rejects %j", (projectType) => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, projectType }).success).toBe(false);
+  });
+
+  test("rejects the old box key", () => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, box: {} }).success).toBe(false);
   });
 });

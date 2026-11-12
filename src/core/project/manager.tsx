@@ -63,7 +63,9 @@ import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
   BOX_GATEWAY_NAME,
+  BOX_GATEWAY_TARGET_TYPE,
   isBoxExtensionEntry,
+  isBoxProject,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
@@ -915,6 +917,18 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
+        // KD6: in a Box project the name belongs to the Box gateway, in any letter case. The
+        // CDK library would refuse it at synth; refusing here keeps agentcore.json unchanged.
+        if (
+          isBoxProject(projectSpec) &&
+          input.resourceConfig.name.toLowerCase() === BOX_GATEWAY_NAME
+        ) {
+          throw new InputValidationError(
+            `the gateway name '${input.resourceConfig.name}' is reserved for the Box gateway in this ` +
+              `project. Give the gateway a different name. To add targets to the Box gateway, use ` +
+              `'agentcore add gateway-target --gateway ${BOX_GATEWAY_NAME}'.`,
+          );
+        }
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
       case "payment-manager": {
@@ -957,13 +971,23 @@ export class FsProjectManager implements ProjectManager {
           (gateway) => gateway.name === input.gatewayName,
         );
         // In a Box project the L3 owns the Box gateway, so the entry that holds its targets
-        // comes and goes with them. It states AWS_IAM: the write-back would fill in NONE.
-        if (gatewayIndex < 0 && isBoxExtensionEntry(projectSpec, { name: input.gatewayName })) {
+        // comes and goes with them. It states the gateway's true settings: the write-back would
+        // fill in authorizerType NONE, and the schema checks targets against protocolType.
+        const boxEntry = isBoxExtensionEntry(projectSpec, { name: input.gatewayName });
+        if (boxEntry && input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE) {
+          throw new InputValidationError(
+            `the Box gateway takes only passthrough targets, but target ` +
+              `'${input.resourceConfig.name}' is ${input.resourceConfig.targetType}. Pass ` +
+              `--target-configuration with "targetType": "passthrough".`,
+          );
+        }
+        if (gatewayIndex < 0 && boxEntry) {
           gatewayIndex =
             projectSpec.agentCoreGateways.push(
               parseResource(AgentCoreGatewaySchema, {
                 name: BOX_GATEWAY_NAME,
                 authorizerType: "AWS_IAM",
+                protocolType: "None",
                 targets: [],
               }),
             ) - 1;
@@ -1205,9 +1229,9 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
-    // The Box marker goes too: the L3 makes the Box gateway from it, and `remove all` removes
+    // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
     // every resource, so the next deploy reaches the teardown confirmation as before.
-    const { box: _box, ...rest } = existingProjectSpec;
+    const { projectType: _projectType, ...rest } = existingProjectSpec;
     const newSpec = {
       ...rest,
       runtimes: [],

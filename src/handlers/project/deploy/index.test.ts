@@ -764,7 +764,7 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
 
 describe("project deploy and the Box gateway", () => {
   const BOX_PROMPT =
-    `agentcore.json has no "box" marker, so this deploy will delete the Box gateway ` +
+    `agentcore.json has no "projectType": "box", so this deploy will delete the Box gateway ` +
     `'orders-default-box'. Continue? (y/N)`;
   const REQUEST = {
     projectName: "orders",
@@ -772,11 +772,11 @@ describe("project deploy and the Box gateway", () => {
     gatewayName: "orders-default-box",
   };
 
-  /** A Box project that lost its marker after a deploy recorded its Box gateway. */
+  /** A Box project that lost its projectType after a deploy recorded its Box gateway. */
   async function lostMarker(): Promise<string> {
     const projectRoot = await inProjectWithTargets();
     const specPath = join(projectRoot, "agentcore", "agentcore.json");
-    const { box: _box, ...spec } = JSON.parse(await readFile(specPath, "utf8"));
+    const { projectType: _projectType, ...spec } = JSON.parse(await readFile(specPath, "utf8"));
     await writeFile(specPath, JSON.stringify(spec));
     await mkdir(join(projectRoot, "agentcore", ".cli"), { recursive: true });
     await writeFile(
@@ -829,7 +829,7 @@ describe("project deploy and the Box gateway", () => {
     expect(await answer(subject)).toBe(false);
   });
 
-  test("does not ask in a project that kept its marker", async () => {
+  test("does not ask in a project that kept projectType", async () => {
     const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
     await inProjectWithTargets();
 
@@ -838,12 +838,12 @@ describe("project deploy and the Box gateway", () => {
     expect(subject.io.stderr()).not.toContain("(y/N)");
   });
 
-  test("a project with only the marker is a deploy, not a teardown", async () => {
+  test("a project with only projectType is a deploy, not a teardown", async () => {
     const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
     const projectRoot = await inProjectWithTargets();
     await writeFile(
       join(projectRoot, "agentcore", "agentcore.json"),
-      JSON.stringify({ name: "orders", version: 2, box: {} }),
+      JSON.stringify({ name: "orders", version: 2, projectType: "box" }),
     );
 
     await subject.run();

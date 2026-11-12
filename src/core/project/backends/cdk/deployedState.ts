@@ -48,7 +48,7 @@ const ResourceStateSchema = z
       .optional(),
     /**
      * The Box gateway the last deploy of a Box project created. A deploy reads it to find out
-     * that agentcore.json lost its "box" marker, which would delete the gateway.
+     * that agentcore.json lost its "projectType": "box", which would delete the gateway.
      */
     boxGateway: z.object({ name: z.string() }).passthrough().optional(),
     // The legacy deployer recorded the CloudFormation stack name

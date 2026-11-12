@@ -8,10 +8,10 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 
 /**
- * The Box marker (`"box": {}`) is written by `agentcore create` only. In a project with the
- * marker, the gateway entry named `box` holds the targets of the Box gateway, which the CDK library
- * makes from the marker, so the entry comes and goes with its targets. A project without the marker
- * behaves as before and never gets the marker.
+ * `"projectType": "box"` is written by `agentcore create` only. In a project with the
+ * Box project, the gateway entry named `box` holds the targets of the Box gateway, which the CDK
+ * library makes from the project type, so the entry comes and goes with its targets. A project
+ * without the field behaves as before and never gets it.
  */
 
 const tempDirectories: string[] = [];
@@ -104,6 +104,17 @@ const specOnDisk = async (project: Project) =>
     agentCoreGateways: { name: string; targets: { name: string }[] }[];
   };
 
+const boxTarget = (name: string): AddResourceInput => ({
+  resourceType: "gateway-target",
+  gatewayName: "box",
+  resourceConfig: {
+    name,
+    targetType: "passthrough",
+    passthrough: { endpoint: `https://${name}.example.com` },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api" },
+  } as never,
+});
+
 const mcpTarget = (name: string): AddResourceInput => ({
   resourceType: "gateway-target",
   gatewayName: "box",
@@ -115,11 +126,11 @@ const mcpTarget = (name: string): AddResourceInput => ({
 });
 
 describe("agentcore create", () => {
-  test('writes "box": {} into the new project', async () => {
+  test('writes "projectType": "box" into the new project', async () => {
     const project = await createdProject(subject());
 
-    expect((await specOnDisk(project)).box).toEqual({});
-    expect(project.spec.box).toEqual({});
+    expect((await specOnDisk(project)).projectType).toBe("box");
+    expect(project.spec.projectType).toBe("box");
   });
 });
 
@@ -128,30 +139,66 @@ describe("gateway targets in a Box project", () => {
     const manager = subject();
     let project = await createdProject(manager);
 
-    project = await drain(manager.addResource(project, mcpTarget("weather")));
-    project = await drain(manager.addResource(project, mcpTarget("search")));
+    project = await drain(manager.addResource(project, boxTarget("weather")));
+    project = await drain(manager.addResource(project, boxTarget("search")));
 
     const spec = await specOnDisk(project);
-    expect(spec.box).toEqual({});
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([
       {
         name: "box",
-        targets: [
-          { name: "weather", targetType: "mcpServer", endpoint: "https://weather.example.com/mcp" },
-          { name: "search", targetType: "mcpServer", endpoint: "https://search.example.com/mcp" },
-        ],
+        targets: ["weather", "search"].map((name) => ({
+          name,
+          targetType: "passthrough",
+          passthrough: { endpoint: `https://${name}.example.com`, protocolType: "CUSTOM" },
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api" },
+        })),
         authorizerType: "AWS_IAM",
         enableSemanticSearch: true,
         exceptionLevel: "NONE",
+        protocolType: "None",
       },
     ] as never);
   });
 
+  test("add gateway-target --gateway box refuses an MCP target and writes nothing", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const before = await specText(project);
+
+    await expect(drain(manager.addResource(project, mcpTarget("search")))).rejects.toThrow(
+      "the Box gateway takes only passthrough targets, but target 'search' is mcpServer.",
+    );
+    expect(await specText(project)).toBe(before);
+  });
+
+  test.each(["box", "BOX", "Box"])(
+    "add gateway --name %s is refused, because box is reserved for the Box gateway",
+    async (name) => {
+      const manager = subject();
+      const project = await createdProject(manager);
+      const before = await specText(project);
+
+      const add = drain(
+        manager.addResource(project, {
+          resourceType: "gateway",
+          resourceConfig: { name, targets: [], authorizerType: "NONE" } as never,
+        }),
+      );
+
+      await expect(add).rejects.toThrow(
+        `the gateway name '${name}' is reserved for the Box gateway in this project.`,
+      );
+      await expect(add).rejects.toThrow("agentcore add gateway-target --gateway box");
+      expect(await specText(project)).toBe(before);
+    },
+  );
+
   test("remove gateway-target keeps the entry until its last target goes", async () => {
     const manager = subject();
     let project = await createdProject(manager);
-    project = await drain(manager.addResource(project, mcpTarget("weather")));
-    project = await drain(manager.addResource(project, mcpTarget("search")));
+    project = await drain(manager.addResource(project, boxTarget("weather")));
+    project = await drain(manager.addResource(project, boxTarget("search")));
 
     project = (
       await manager.removeResource(project, {
@@ -171,38 +218,38 @@ describe("gateway targets in a Box project", () => {
     ).project;
     const spec = await specOnDisk(project);
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(spec.box).toEqual({});
+    expect(spec.projectType).toBe("box");
   });
 
-  test("remove gateway --name box removes the entry and its targets, and keeps the marker", async () => {
+  test("remove gateway --name box removes the entry and its targets, and keeps projectType", async () => {
     const manager = subject();
     let project = await createdProject(manager);
-    project = await drain(manager.addResource(project, mcpTarget("weather")));
+    project = await drain(manager.addResource(project, boxTarget("weather")));
 
     project = (await manager.removeResource(project, { resourceType: "gateway", name: "box" }))
       .project;
 
     const spec = await specOnDisk(project);
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(spec.box).toEqual({});
+    expect(spec.projectType).toBe("box");
   });
 
-  test("remove all removes the marker with every gateway entry", async () => {
+  test("remove all removes projectType with every gateway entry", async () => {
     const manager = subject();
     let project = await createdProject(manager);
-    project = await drain(manager.addResource(project, mcpTarget("weather")));
+    project = await drain(manager.addResource(project, boxTarget("weather")));
 
     const result = await manager.removeAllResources(project);
 
     const spec = await specOnDisk(result.project);
-    expect("box" in spec).toBe(false);
+    expect("projectType" in spec).toBe(false);
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(result.project.spec.box).toBeUndefined();
+    expect(result.project.spec.projectType).toBeUndefined();
   });
 });
 
-describe("a project without the Box marker", () => {
-  test("add gateway-target --gateway box fails as before and adds no marker", async () => {
+describe("a project without projectType", () => {
+  test("add gateway-target --gateway box fails as before and adds no projectType", async () => {
     const manager = subject();
     const project = await existingProject(manager);
 
@@ -236,7 +283,7 @@ describe("a project without the Box marker", () => {
     expect(spec.agentCoreGateways.map(({ name, targets }) => [name, targets])).toEqual([
       ["box", []],
     ]);
-    expect("box" in spec).toBe(false);
+    expect("projectType" in spec).toBe(false);
   });
 
   test("add and remove round trips leave agentcore.json as it was", async () => {
