@@ -59,9 +59,10 @@ printf '%s' "$JWT" | agentcore invoke \
   --region us-east-1 --bearer-token - --prompt "Hello"
 ```
 
-The same flags work with `agentcore harness invoke --id <harness-id>`. You can also select a
-Harness by ARN with `agentcore invoke --harness <harness-arn>`, but the CLI still looks up
-its configuration before invoking it. `--bearer-token file://<path>` reads a token from a file.
+The same flags work with `agentcore harness invoke --id <harness-id>`. To invoke without AWS
+credentials, select the Harness by ARN with `agentcore invoke --harness <harness-arn>`: the CLI
+skips the lookup and sends only the bearer token. `--bearer-token file://<path>` reads a token
+from a file.
 
 To start from code you own instead, pick a template (`agentcore create --help` lists them):
 
