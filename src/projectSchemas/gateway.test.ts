@@ -276,6 +276,16 @@ describe("gateway custom validation", () => {
       },
       { parameterName: "X-Pets-Key" },
     ],
+    [
+      "a query parameter name with a colon",
+      githubPassthrough,
+      { location: "QUERY_PARAMETER", parameterName: "api:key" },
+    ],
+    [
+      "a query parameter name with brackets",
+      githubPassthrough,
+      { location: "QUERY_PARAMETER", parameterName: "auth[token]" },
+    ],
   ])("accepts %s", (_case, target, placement) => {
     expect(
       targetIssues({ ...target, outboundAuth: { ...apiKeyAuth, ...placement } }),
@@ -295,16 +305,22 @@ describe("gateway custom validation", () => {
       "Too big: expected string to have <=64 characters",
     ],
     [
-      "a parameterName with a colon",
-      { parameterName: "Authorization: " },
+      "a query parameter name over 64 characters",
+      { location: "QUERY_PARAMETER", parameterName: "x".repeat(65) },
       ["outboundAuth", "parameterName"],
-      "parameterName must be a header or query parameter name, with no spaces or colons.",
+      "Too big: expected string to have <=64 characters",
     ],
     [
-      "a parameterName with spaces",
+      "a HEADER parameterName with a colon",
+      { location: "HEADER", parameterName: "Authorization: " },
+      ["outboundAuth", "parameterName"],
+      "A HEADER API key's parameterName must be an HTTP header name, with no spaces or colons.",
+    ],
+    [
+      "a parameterName with spaces when location defaults to HEADER",
       { parameterName: "x api key" },
       ["outboundAuth", "parameterName"],
-      "parameterName must be a header or query parameter name, with no spaces or colons.",
+      "A HEADER API key's parameterName must be an HTTP header name, with no spaces or colons.",
     ],
     [
       "an empty API key prefix",

@@ -48,9 +48,10 @@ export const OutboundAuthTypeSchema = z.enum([
   "JWT_PASSTHROUGH",
 ]);
 export type OutboundAuthType = z.infer<typeof OutboundAuthTypeSchema>;
-// An HTTP token (RFC 9110 tchar), also safe as a query parameter name. Rejects spaces and
-// colons, so "Authorization: " fails validation instead of the CloudFormation deploy.
-const API_KEY_PARAMETER_NAME_PATTERN = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
+// An HTTP header name (RFC 9110 token). Rejects spaces and colons, so "Authorization: " fails
+// validation instead of the CloudFormation deploy. Query parameter names have no such rule: any
+// character can be percent-encoded (RFC 3986), so they're only length-checked.
+const HTTP_HEADER_NAME_PATTERN = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
 export const OutboundAuthSchema = z
   .object({
     type: OutboundAuthTypeSchema.default("NONE"),
@@ -59,15 +60,7 @@ export const OutboundAuthSchema = z
     service: z.string().min(1).max(64).optional(),
     region: z.string().min(1).max(32).optional(),
     location: z.enum(["HEADER", "QUERY_PARAMETER"]).optional(),
-    parameterName: z
-      .string()
-      .min(1)
-      .max(64)
-      .regex(
-        API_KEY_PARAMETER_NAME_PATTERN,
-        "parameterName must be a header or query parameter name, with no spaces or colons.",
-      )
-      .optional(),
+    parameterName: z.string().min(1).max(64).optional(),
     prefix: z.string().min(1).max(64).optional(),
   })
   .strict();
@@ -462,6 +455,21 @@ export const AgentCoreGatewayTargetSchema = z
         ctx.addIssue({
           code: "custom",
           message: "An API key with location QUERY_PARAMETER requires a parameterName.",
+          path: ["outboundAuth", "parameterName"],
+        });
+      }
+      // location defaults to HEADER, so an unset location is checked as a header name.
+      const parameterName = data.outboundAuth?.parameterName;
+      if (
+        data.outboundAuth?.type === "API_KEY" &&
+        data.outboundAuth.location !== "QUERY_PARAMETER" &&
+        parameterName !== undefined &&
+        !HTTP_HEADER_NAME_PATTERN.test(parameterName)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "A HEADER API key's parameterName must be an HTTP header name, with no spaces or colons.",
           path: ["outboundAuth", "parameterName"],
         });
       }
