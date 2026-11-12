@@ -234,6 +234,36 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(withoutShell.runtime).not.toContain("shell");
   });
 
+  test("keeps a background child from holding a shell call open past its timeout", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["shell"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    expect(runtime).toContain("import asyncio\n");
+    expect(runtime).toContain("import os\n");
+    // On POSIX a trailing & backgrounds only the caller's command, not the sandbox's cd list.
+    expect(runtime).toMatch(
+      /if os\.name != "nt":\n(\s+#.*\n)*\s+command = "\{ " \+ command \+ "\\n\}"/,
+    );
+    expect(runtime).toContain(
+      "deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS",
+    );
+    expect(runtime).toContain(
+      "result = await asyncio.wait_for(vended(command, tool_context, timeout), deadline)",
+    );
+    // The vended timeout subclasses TimeoutError, so it is caught first and keeps its partial output.
+    const vendedTimeout = runtime.indexOf("except SandboxTimeoutError as error:");
+    const deadlineTimeout = runtime.indexOf("except asyncio.TimeoutError:");
+    expect(vendedTimeout).toBeGreaterThan(-1);
+    expect(deadlineTimeout).toBeGreaterThan(vendedTimeout);
+    // Past the deadline the model sees the vended timeout's failed result, without output.
+    expect(runtime.slice(deadlineTimeout)).toMatch(
+      /error = SandboxTimeoutError\(timeout\)\n\s+partial = \{"stdout": "", "stderr": "", "exit_code": 124\}\n\s+error\.args = \(f"\{error\}\\n\{json\.dumps\(partial\)\}",\)\n\s+raise error from None\n/,
+    );
+  });
+
   test("offloads large tool results behind retrieve_context and keeps skills whole", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {

@@ -1,13 +1,18 @@
 """Builds the agent the way the harness does, and bounds it by the invocation's limits."""
 
+{{#if hasShell}}
+import asyncio
+{{/if}}
 {{#if hasContextOffloader}}
 import hashlib
 {{/if}}
 {{#if hasShell}}
 import json
 {{/if}}
-{{#if hasContextOffloader}}
+{{#if (or hasContextOffloader hasShell)}}
 import os
+{{/if}}
+{{#if hasContextOffloader}}
 import tempfile
 {{/if}}
 {{#if (or hasContextOffloader hasShell)}}
@@ -174,12 +179,22 @@ class RenamedTool(AgentTool):
 {{#if hasShell}}
 
 
+# How long past its timeout a command may hold the call open before it is abandoned.
+_SHELL_DEADLINE_GRACE_SECONDS = 2
+
+
 def make_managed_shell():
     """The vended shell tool with the harness runtime's 300 s default timeout and result keys.
 
     It re-declares the vended signature and forwards every call, so the vended error and timeout
     handling still apply; only the default and the result keys (stdout, stderr, exit_code, also in
     the description) differ. A timeout stays a failed result with exit code 124.
+
+    The vended local sandbox runs ``sh -c "cd <cwd> && <command>"`` and returns once the output
+    pipes close, and its timeout only fires while that shell still runs. So that a background
+    child cannot hold a call open, the command runs as a brace group (a trailing ``&`` then
+    backgrounds only what the caller wrote, not the whole ``cd`` list), and a call still open
+    shortly after its timeout fails as that timeout does.
     """
     vended = make_shell()
     description = vended.tool_spec["description"].replace("output (stdout), error (stderr),", "stdout, stderr,")
@@ -193,14 +208,27 @@ def make_managed_shell():
             tool_context: Injected by the framework. Not user-facing.
             timeout: Timeout in seconds (default: 300).
         """
+        if os.name != "nt":
+            # The newline ends a comment on the command's last line. Windows runs PowerShell, where
+            # braces would make an unexecuted script block.
+            command = "{ " + command + "\n}"
+        # The grace lets the vended timeout, which keeps the partial output, end a foreground command.
+        deadline = None if timeout is None else timeout + _SHELL_DEADLINE_GRACE_SECONDS
         try:
-            result = await vended(command, tool_context, timeout)
+            result = await asyncio.wait_for(vended(command, tool_context, timeout), deadline)
         except SandboxTimeoutError as error:
             # The vended tool appended its partial-output JSON as the message's second line; replace that line.
             message = str(error).split("\n", 1)[0]
             partial = {"stdout": error.stdout, "stderr": error.stderr, "exit_code": 124}
             error.args = (f"{message}\n{json.dumps(partial)}",)
             raise
+        except asyncio.TimeoutError:
+            # The shell exited but a background child still holds its output pipes, so the vended
+            # timeout never fired; fail as it would, without the output the vended call never returned.
+            error = SandboxTimeoutError(timeout)
+            partial = {"stdout": "", "stderr": "", "exit_code": 124}
+            error.args = (f"{error}\n{json.dumps(partial)}",)
+            raise error from None
         return {"stdout": result["output"], "stderr": result["error"], "exit_code": result["exit_code"]}
 
     return shell
