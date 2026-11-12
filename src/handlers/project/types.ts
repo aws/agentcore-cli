@@ -215,7 +215,7 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
-/** A deploy that would delete the Box gateway, because agentcore.json lost its "box" marker. */
+/** A deploy that would delete the Box gateway, because agentcore.json lost its "projectType": "box". */
 export type BoxGatewayDeletionRequest = {
   projectName: string;
   targetName: string;

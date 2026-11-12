@@ -703,10 +703,13 @@ describe("project remove in a Box project", () => {
       "gateway-target",
       "--gateway",
       "box",
-      "--name",
-      "weather",
-      "--endpoint",
-      "https://weather.example.com/mcp",
+      "--target-configuration",
+      JSON.stringify({
+        name: "weather",
+        targetType: "passthrough",
+        passthrough: { endpoint: "https://weather.example.com" },
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api" },
+      }),
     ]);
     return projectRoot;
   }
@@ -715,9 +718,14 @@ describe("project remove in a Box project", () => {
     const projectRoot = await boxProject();
 
     const spec = await projectSpec(projectRoot);
-    expect(spec.box).toEqual({});
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toMatchObject([
-      { name: "box", authorizerType: "AWS_IAM", targets: [{ name: "weather" }] },
+      {
+        name: "box",
+        authorizerType: "AWS_IAM",
+        protocolType: "None",
+        targets: [{ name: "weather", targetType: "passthrough" }],
+      },
     ]);
   });
 
@@ -728,7 +736,7 @@ describe("project remove in a Box project", () => {
 
     const spec = await projectSpec(projectRoot);
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(spec.box).toEqual({});
+    expect(spec.projectType).toBe("box");
   });
 
   test.each([[[]], [["--json"]]])(
@@ -741,32 +749,32 @@ describe("project remove in a Box project", () => {
       expect(io.stderr()).toContain(BOX_GATEWAY_STAYS_NOTICE);
       const spec = await projectSpec(projectRoot);
       expect(spec.agentCoreGateways).toEqual([]);
-      expect(spec.box).toEqual({});
+      expect(spec.projectType).toBe("box");
     },
   );
 
-  test("remove gateway --name box in a project without the marker says nothing more", async () => {
+  test("remove gateway --name box in a project without projectType says nothing more", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
     cleanups.push(cleanup);
-    const { box: _box, ...spec } = await projectSpec(projectRoot);
+    const { projectType: _projectType, ...spec } = await projectSpec(projectRoot);
     await writeProjectSpec(projectRoot, spec);
     await run(["add", "gateway", "--name", "box"]);
 
     const { io } = await run(["remove", "gateway", "--name", "box"]);
 
     expect(io.stderr()).not.toContain(BOX_GATEWAY_STAYS_NOTICE);
-    expect(await projectSpec(projectRoot)).not.toHaveProperty("box");
+    expect(await projectSpec(projectRoot)).not.toHaveProperty("projectType");
   });
 
-  test("remove all removes the marker with the gateway entries", async () => {
+  test("remove all removes projectType with the gateway entries", async () => {
     const projectRoot = await boxProject();
 
     await run(["remove", "all", "--yes"]);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec).not.toHaveProperty("box");
+    expect(spec).not.toHaveProperty("projectType");
     expect(spec.agentCoreGateways).toEqual([]);
   });
 });

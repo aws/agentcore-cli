@@ -27,16 +27,20 @@ export const ProjectNameSchema = z
     message:
       "This name conflicts with a reserved package dependency. Please choose a different name.",
   });
-/** The Box marker. It has no settings yet, so its only value is `{}`. */
-export const BoxMarkerSchema = z.strictObject({});
+/** The kind of project. `box` is the only kind: a Box project gets the Box gateway. */
+export const ProjectTypeSchema = z.enum(["box"]);
+/** Whether the project is a Box project, so the CDK library makes the Box gateway. */
+export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /** The logical name of the Box gateway, and of the gateway entry that adds targets to it. */
 export const BOX_GATEWAY_NAME = "box";
+/** The only target type the Box gateway takes: it has no MCP interface (protocolType "None"). */
+export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
 /**
- * Whether a gateway entry only adds targets to the Box gateway: it is named `box` in a project
- * with the Box marker. Without the marker, a gateway named `box` is a normal gateway.
+ * Whether a gateway entry only adds targets to the Box gateway: it is named `box` in a Box
+ * project. In any other project, a gateway named `box` is a normal gateway.
  */
-export const isBoxExtensionEntry = (spec: { box?: unknown }, gateway: { name: string }) =>
-  spec.box !== undefined && gateway.name === BOX_GATEWAY_NAME;
+export const isBoxExtensionEntry = (spec: { projectType?: string }, gateway: { name: string }) =>
+  isBoxProject(spec) && gateway.name === BOX_GATEWAY_NAME;
 /**
  * The AWS name the CDK library gives the Box gateway: `<project>-<target>-box`. A project
  * migrated from v0 keeps v0's names, which have no target segment.
@@ -89,12 +93,13 @@ export const ProjectSpecSchema = z
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
     /**
-     * The Box marker. `agentcore create` writes it into every new project, and the CDK library
-     * then adds the Box gateway: logical name `box`, `AWS_IAM` auth. A gateway entry named `box`
-     * in such a project only adds targets to it. No default: the spec is written back to disk
-     * after each parse, so a default would add the marker to every existing project.
+     * `"box"` for a Box project. `agentcore create` writes it into every new project, and the CDK
+     * library then adds the Box gateway: logical name `box`, `AWS_IAM` auth, `protocolType: "None"`.
+     * A gateway entry named `box` in such a project only adds targets to it. No default: the spec
+     * is written back to disk after each parse, so a default would add the field to every
+     * existing project.
      */
-    box: BoxMarkerSchema.optional(),
+    projectType: ProjectTypeSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),
     memories: z.array(MemorySchema).default([]).superRefine(uniqueNames("memory")),
     knowledgeBases: z

@@ -11,7 +11,7 @@ import {
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import { declaresNoResources } from "../../../projectSchemas/project";
+import { declaresNoResources, isBoxProject } from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
   createHandler,
@@ -84,7 +84,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       flag(
         "yes",
         "confirm removing the target's stack when the project declares nothing to deploy, " +
-          'or the Box gateway when agentcore.json has lost its "box" marker',
+          'or the Box gateway when agentcore.json has lost its "projectType": "box"',
         z.boolean().default(false),
       ),
       flag(
@@ -294,8 +294,8 @@ async function delegateV0Deploy(
  * decides whether to ask the user before starting.
  */
 export function declaresNothingDeployable(project: Project): boolean {
-  // The Box marker alone deploys the Box gateway, so a Box project is never empty.
-  return project.spec.box === undefined && declaresNoResources(project.spec);
+  // A Box project deploys the Box gateway, so it is never empty.
+  return !isBoxProject(project.spec) && declaresNoResources(project.spec);
 }
 
 /**
@@ -334,7 +334,7 @@ async function resolveTeardownDecision(
 /** The question the deploy command asks before it deletes the Box gateway. */
 function boxGatewayDeletionQuestion(gatewayName: string): string {
   return (
-    `agentcore.json has no "box" marker, so this deploy will delete the Box gateway ` +
+    `agentcore.json has no "projectType": "box", so this deploy will delete the Box gateway ` +
     `'${gatewayName}'. Continue?`
   );
 }
@@ -352,7 +352,7 @@ async function resolveBoxGatewayDecision(
   canPrompt: boolean,
 ): Promise<BoxGatewayDeletionHandler> {
   if (confirmed) return async () => true;
-  if (canPrompt && project.spec.box === undefined && !declaresNoResources(project.spec)) {
+  if (canPrompt && !isBoxProject(project.spec) && !declaresNoResources(project.spec)) {
     const gatewayName = await config.projectManager.recordedBoxGateway(project, {
       target: targetName,
     });

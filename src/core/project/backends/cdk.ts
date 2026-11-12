@@ -23,7 +23,7 @@ import {
 import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
-import { boxGatewayName, declaresNoResources } from "../../../projectSchemas/project";
+import { boxGatewayName, declaresNoResources, isBoxProject } from "../../../projectSchemas/project";
 import type {
   DeployBackendInput,
   ProjectBackend,
@@ -372,13 +372,13 @@ export class CdkBackend implements ProjectBackend {
     // Persist the deployed stack's ARN so later commands read live resource state
     // from CloudFormation. Merged per target, so deploying one target never drops
     // another's recorded state.
-    // The Box gateway is recorded so that a later deploy can see a lost marker. A deploy
-    // without the marker clears the record: the stack no longer has the gateway.
+    // The Box gateway is recorded so that a later deploy can see a lost project type. A deploy
+    // without it clears the record: the stack no longer has the gateway.
     await updateTargetState(this.json, project.rootPath, target.name, {
       stackArn,
       resources: {
         bmaSession: undefined,
-        boxGateway: project.spec.box
+        boxGateway: isBoxProject(project.spec)
           ? { name: boxGatewayName(project.spec, target.name) }
           : undefined,
       },
@@ -437,7 +437,7 @@ export class CdkBackend implements ProjectBackend {
    * after `agentcore remove all`, and the teardown confirmation already covers every resource.
    */
   private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
-    if (project.spec.box || declaresNoResources(project.spec)) return;
+    if (isBoxProject(project.spec) || declaresNoResources(project.spec)) return;
     const { target } = input;
     const state = await readDeployedState(this.json, project.rootPath);
     const gatewayName = state.targets[target.name]?.resources?.boxGateway?.name;
@@ -449,9 +449,9 @@ export class CdkBackend implements ProjectBackend {
     });
     if (!confirmed) {
       throw new ProjectStateError(
-        `agentcore.json has no "box" marker, so this deploy would delete the Box gateway ` +
-          `'${gatewayName}'. Add "box": {} back to agentcore.json, or re-run with --yes to ` +
-          `delete the gateway.`,
+        `agentcore.json has no "projectType": "box", so this deploy would delete the Box ` +
+          `gateway '${gatewayName}'. Add "projectType": "box" back to agentcore.json, or re-run ` +
+          `with --yes to delete the gateway.`,
         { meta: { gatewayName } },
       );
     }

@@ -1546,9 +1546,9 @@ describe("CdkBackend.resolveProjectResources", () => {
 describe("CdkBackend.deploy and the Box gateway", () => {
   const MEMORY = { name: "recall", eventExpiryDuration: 30, strategies: [] };
   const LOST_MARKER_ERROR =
-    `agentcore.json has no "box" marker, so this deploy would delete the Box gateway ` +
-    `'example-default-box'. Add "box": {} back to agentcore.json, or re-run with --yes to ` +
-    `delete the gateway.`;
+    `agentcore.json has no "projectType": "box", so this deploy would delete the Box ` +
+    `gateway 'example-default-box'. Add "projectType": "box" back to agentcore.json, or re-run ` +
+    `with --yes to delete the gateway.`;
 
   async function boxProject(spec: Record<string, unknown>): Promise<Project> {
     const input = await project();
@@ -1568,7 +1568,7 @@ describe("CdkBackend.deploy and the Box gateway", () => {
   }
 
   test("records the Box gateway of a Box project after the deploy", async () => {
-    const input = await boxProject({ box: {} });
+    const input = await boxProject({ projectType: "box" });
     await writeAssembly(input, [TARGET.name]);
 
     await collectDeploy(harness().backend.deploy(input, deployInput()));
@@ -1580,7 +1580,7 @@ describe("CdkBackend.deploy and the Box gateway", () => {
   });
 
   test("records the v0 name, with no target segment, for a migrated project", async () => {
-    const input = await boxProject({ box: {}, migratedFrom: "v1" });
+    const input = await boxProject({ projectType: "box", migratedFrom: "v1" });
     await writeAssembly(input, [TARGET.name]);
 
     await collectDeploy(harness().backend.deploy(input, deployInput()));
@@ -1646,7 +1646,7 @@ describe("CdkBackend.deploy and the Box gateway", () => {
   });
 
   test("leaves a project with no resources to the teardown confirmation alone", async () => {
-    // The state after `agentcore remove all`: no marker and no resources.
+    // The state after `agentcore remove all`: no projectType and no resources.
     const input = await boxProject({});
     await recordBoxGateway(input);
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });

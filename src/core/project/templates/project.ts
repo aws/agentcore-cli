@@ -49,8 +49,8 @@ export async function createProjectTree(
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
-          // Only new projects get the Box marker; no other command adds it.
-          box: {},
+          // Only new projects are Box projects; no other command adds this field.
+          projectType: "box",
           ...mergeSpecEntries(templates.map(({ spec }) => spec)),
         }),
       ),
