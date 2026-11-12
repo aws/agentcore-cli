@@ -264,6 +264,67 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     );
   });
 
+  test("ends a shell call once its shell exits and kills what the command left running", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject, { allowedTools: ["shell"] });
+
+    const result = await drain(subject.exportHarness(project, exportInput()));
+
+    const runtime = await Bun.file(join(result.agentPath, "harness_runtime.py")).text();
+    for (const line of [
+      "import contextlib\n",
+      "import shlex\n",
+      "import signal\n",
+      "from strands.sandbox import ExecutionResult\n",
+      "from strands.sandbox.not_a_sandbox_local_environment import NotASandboxLocalEnvironment\n",
+      "from strands.sandbox.posix_shell import build_shell_env_prefix\n",
+    ]) {
+      expect(runtime).toContain(line);
+    }
+    // POSIX calls run in the local shell; Windows keeps the vended environment, which runs PowerShell.
+    expect(runtime).toContain(
+      'vended = make_shell() if os.name == "nt" else make_shell(sandbox=_LocalShell())',
+    );
+    const localShell = runtime.slice(
+      runtime.indexOf("class _LocalShell(NotASandboxLocalEnvironment):"),
+      runtime.indexOf("def make_managed_shell():"),
+    );
+    expect(localShell).toContain(
+      "async def execute_streaming(self, command, *, timeout=None, cwd=None, env=None, **kwargs):",
+    );
+    // The vended command line, in a process group that the shell leads.
+    expect(localShell).toContain(
+      'full_command = f"cd {shlex.quote(target_cwd)} && {build_shell_env_prefix(env)}{command}"',
+    );
+    expect(localShell).toContain("start_new_session=True,");
+    // The call follows the shell's exit, which the protocol reports whatever holds the pipes.
+    expect(runtime).toMatch(
+      /def process_exited\(self\):\n\s+if not self\.exited\.done\(\):\n\s+self\.exited\.set_result\(None\)\n/,
+    );
+    const exit = localShell.indexOf("await asyncio.wait([process.exited], timeout=timeout)");
+    // A timeout kills the whole group while the shell still runs.
+    expect(localShell.slice(exit)).toMatch(
+      /if not process\.exited\.done\(\):\n\s+timed_out = True\n\s+_kill_process_group\(transport\.get_pid\(\)\)\n\s+await process\.exited\n/,
+    );
+    // Once the shell exits, a background child holding the pipes delays the result by a second at most,
+    // and only then is what the command left running killed.
+    expect(runtime).toContain("_SHELL_PIPE_RELEASE_SECONDS = 1\n");
+    const release = localShell.indexOf(
+      "await asyncio.wait([process.pipes_closed], timeout=_SHELL_PIPE_RELEASE_SECONDS)",
+    );
+    const leftovers = localShell.indexOf("_kill_process_group(transport.get_pid())", release);
+    expect(exit).toBeGreaterThan(-1);
+    expect(release).toBeGreaterThan(exit);
+    expect(leftovers).toBeGreaterThan(release);
+    expect(runtime).toContain("os.killpg(pgid, signal.SIGKILL)");
+    expect(localShell).toContain("process.exited.add_done_callback(lambda _: transport.close())");
+    // A timeout keeps the vended error and partial output; otherwise the shell's own exit code counts.
+    expect(localShell).toContain(
+      "raise SandboxTimeoutError(timeout, process.text(1), process.text(2))",
+    );
+    expect(localShell).toContain("exit_code=128 - returncode if returncode < 0 else returncode,");
+  });
+
   test("offloads large tool results behind retrieve_context and keeps skills whole", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {

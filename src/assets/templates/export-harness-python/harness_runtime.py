@@ -2,6 +2,7 @@
 
 {{#if hasShell}}
 import asyncio
+import contextlib
 {{/if}}
 {{#if hasContextOffloader}}
 import hashlib
@@ -12,6 +13,10 @@ import json
 {{#if (or hasContextOffloader hasShell)}}
 import os
 {{/if}}
+{{#if hasShell}}
+import shlex
+import signal
+{{/if}}
 {{#if hasContextOffloader}}
 import tempfile
 {{/if}}
@@ -20,6 +25,11 @@ import tempfile
 from strands import {{#if hasShell}}SandboxTimeoutError, {{/if}}ToolContext, tool
 {{/if}}
 from strands.hooks import AfterModelCallEvent, BeforeModelCallEvent, HookProvider
+{{#if hasShell}}
+from strands.sandbox import ExecutionResult
+from strands.sandbox.not_a_sandbox_local_environment import NotASandboxLocalEnvironment
+from strands.sandbox.posix_shell import build_shell_env_prefix
+{{/if}}
 {{#if hasContextOffloader}}
 from strands.storage import LocalFileStorage
 {{/if}}
@@ -193,6 +203,91 @@ class RenamedTool(AgentTool):
 
 # How long past its timeout a command may hold the call open before it is abandoned.
 _SHELL_DEADLINE_GRACE_SECONDS = 2
+# How long a command's output pipes may stay open after its shell exits, as in the harness runtime.
+_SHELL_PIPE_RELEASE_SECONDS = 1
+
+
+class _ShellCommand(asyncio.SubprocessProtocol):
+    """Collects a command's output, and notes when its shell exits and when both output pipes close."""
+
+    def __init__(self):
+        loop = asyncio.get_running_loop()
+        self.exited = loop.create_future()
+        self.pipes_closed = loop.create_future()
+        self._output = {1: bytearray(), 2: bytearray()}
+        self._open_pipes = {1, 2}
+
+    def pipe_data_received(self, fd, data):
+        self._output[fd] += data
+
+    def pipe_connection_lost(self, fd, exc):
+        self._open_pipes.discard(fd)
+        if not self._open_pipes and not self.pipes_closed.done():
+            self.pipes_closed.set_result(None)
+
+    def process_exited(self):
+        if not self.exited.done():
+            self.exited.set_result(None)
+
+    def text(self, fd):
+        return self._output[fd].decode(errors="replace")
+
+
+def _kill_process_group(pgid):
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pgid, signal.SIGKILL)
+
+
+class _LocalShell(NotASandboxLocalEnvironment):
+    """The vended local environment on POSIX, except that a command is done once its shell exits.
+
+    The vended one returns when the output pipes close, so a background child that inherits them
+    (``./server &``) holds the call open, past its timeout too. As in the harness runtime, once the
+    shell exits the pipes get a moment for the last output and are then closed, and the shell's
+    process group is killed with whatever the command left running. The result keeps the output
+    and the shell's own exit code. The command line and the timeout are as in the vended
+    environment: a timeout kills the group and raises ``SandboxTimeoutError`` with the output so far.
+    """
+
+    async def execute_streaming(self, command, *, timeout=None, cwd=None, env=None, **kwargs):
+        target_cwd = cwd if cwd is not None else os.getcwd()
+        full_command = f"cd {shlex.quote(target_cwd)} && {build_shell_env_prefix(env)}{command}"
+        transport, process = await asyncio.get_running_loop().subprocess_exec(
+            _ShellCommand,
+            "sh",
+            "-c",
+            full_command,
+            stdin=None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            # The shell leads a new process group, so one kill reaches everything the command started.
+            start_new_session=True,
+        )
+        timed_out = False
+        try:
+            await asyncio.wait([process.exited], timeout=timeout)
+            if not process.exited.done():
+                timed_out = True
+                _kill_process_group(transport.get_pid())
+                await process.exited
+            # The exit is seen as it happens, whatever holds the pipes; a background child holding them
+            # delays the result by this much at most.
+            await asyncio.wait([process.pipes_closed], timeout=_SHELL_PIPE_RELEASE_SECONDS)
+        finally:
+            if not timed_out:
+                # What the command left running, or all of it if the call was cancelled.
+                _kill_process_group(transport.get_pid())
+            # Closing before asyncio has seen the shell exit would reap it ahead of asyncio's watcher.
+            process.exited.add_done_callback(lambda _: transport.close())
+        if timed_out:
+            raise SandboxTimeoutError(timeout, process.text(1), process.text(2))
+        returncode = transport.get_returncode()
+        yield ExecutionResult(
+            # A signal's negative return code becomes 128 + the signal, as in the vended environment.
+            exit_code=128 - returncode if returncode < 0 else returncode,
+            stdout=process.text(1),
+            stderr=process.text(2),
+        )
 
 
 def make_managed_shell():
@@ -203,12 +298,14 @@ def make_managed_shell():
     the description) differ. A timeout stays a failed result with exit code 124.
 
     The vended local sandbox runs ``sh -c "cd <cwd> && <command>"`` and returns once the output
-    pipes close, and its timeout only fires while that shell still runs. So that a background
-    child cannot hold a call open, the command runs as a brace group (a trailing ``&`` then
-    backgrounds only what the caller wrote, not the whole ``cd`` list), and a call still open
+    pipes close, and its timeout only fires while that shell still runs, so a background child that
+    inherits the pipes would hold the call open. On POSIX the command runs as a brace group (a
+    trailing ``&`` then backgrounds only what the caller wrote, not the whole ``cd`` list) in
+    ``_LocalShell``, which ends the call once the shell exits. On every platform, a call still open
     shortly after its timeout fails as that timeout does.
     """
-    vended = make_shell()
+    # Windows keeps the vended environment, which runs PowerShell.
+    vended = make_shell() if os.name == "nt" else make_shell(sandbox=_LocalShell())
     description = vended.tool_spec["description"].replace("output (stdout), error (stderr),", "stdout, stderr,")
 
     @tool(name=vended.tool_name, description=description, context="tool_context")
@@ -235,8 +332,9 @@ def make_managed_shell():
             error.args = (f"{message}\n{json.dumps(partial)}",)
             raise
         except asyncio.TimeoutError:
-            # The shell exited but a background child still holds its output pipes, so the vended
-            # timeout never fired; fail as it would, without the output the vended call never returned.
+            # The shell exited but a background child still holds its output pipes (in the vended
+            # environment; _LocalShell ends such calls itself), so the vended timeout never fired;
+            # fail as it would, without the output the vended call never returned.
             error = SandboxTimeoutError(timeout)
             partial = {"stdout": "", "stderr": "", "exit_code": 124}
             error.args = (f"{error}\n{json.dumps(partial)}",)
