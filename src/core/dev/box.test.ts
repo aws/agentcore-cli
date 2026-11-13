@@ -22,15 +22,14 @@ async function temp(prefix: string): Promise<string> {
   return directory;
 }
 
-/** A project named `Demo`, and a profiles folder that holds its box profile when `profiled`. */
+/** A project named `Demo` that holds its box profile in .box/profile.toml when `profiled`. */
 async function scene(profiled: boolean) {
   const projectRoot = await temp("agentcore-box-project-");
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
-  const profilesDirectory = await temp("agentcore-box-profiles-");
   if (profiled) {
-    await mkdir(join(profilesDirectory, "Demo"));
-    await writeFile(join(profilesDirectory, "Demo", "profile.toml"), "");
+    await mkdir(join(projectRoot, ".box"));
+    await writeFile(join(projectRoot, ".box", "profile.toml"), "");
   }
 
   const calls: { command: string[]; options: StreamProcessOptions }[] = [];
@@ -45,13 +44,17 @@ async function scene(profiled: boolean) {
       yield { type: "stdout", line: "fallback" };
     },
   };
-  const runner = new BoxDevRunner({ fallback, streamProcess, profilesDirectory });
+  const runner = new BoxDevRunner({ fallback, streamProcess });
   return { projectRoot, calls, fallbackRuns, runner };
 }
 
-function input(projectRoot: string, port = 8080): DevServerInput {
+function input(
+  projectRoot: string,
+  port = 8080,
+  protocol?: ProjectRuntime["protocol"],
+): DevServerInput {
   return {
-    runtime: { name: "agent", build: "CodeZip" } as ProjectRuntime,
+    runtime: { name: "agent", build: "CodeZip", protocol } as ProjectRuntime,
     projectRoot,
     port,
     env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318" },
@@ -71,11 +74,13 @@ describe("BoxDevRunner", () => {
 
     const events = await collect(runner.run(input(projectRoot)));
 
-    expect(calls.map(({ command }) => command)).toEqual([["box", "run", "Demo", "--no-banner"]]);
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["box", "run", ".box/profile.toml", "--no-banner"],
+    ]);
     expect(calls[0]!.options.cwd).toBe(projectRoot);
     expect(fallbackRuns).toEqual([]);
     expect(events).toEqual([
-      { type: "status", message: "Starting the agent in a box (box run Demo)" },
+      { type: "status", message: "Starting the agent in a box (box run .box/profile.toml)" },
       { type: "stdout", line: "Uvicorn running" },
     ]);
   });
@@ -108,6 +113,18 @@ describe("BoxDevRunner", () => {
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
+  });
+
+  test("expects the dev port of the runtime's protocol", async () => {
+    const { projectRoot, calls, runner } = await scene(true);
+
+    const error = await collect(runner.run(input(projectRoot, 8080, "MCP"))).catch(
+      (caught) => caught,
+    );
+
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain("listens on port 8000, but dev chose port 8080");
+    expect(calls).toEqual([]);
   });
 
   test("refuses a dev port the box does not listen on", async () => {
