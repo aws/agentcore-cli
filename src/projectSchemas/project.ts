@@ -15,6 +15,13 @@ import { uniqueBy } from "./zod-util";
 import { z } from "zod";
 export const ManagedBySchema = z.enum(["CDK"]).default("CDK");
 export type ManagedBy = z.infer<typeof ManagedBySchema>;
+/**
+ * The kind of project. `box` is the only kind: the CDK library adds the Box
+ * gateway (`box`, AWS_IAM, HTTP only) to a Box project. Matches the CDK
+ * library's ProjectTypeSchema.
+ */
+export const ProjectTypeSchema = z.enum(["box"]);
+export type ProjectType = z.infer<typeof ProjectTypeSchema>;
 export const ProjectNameSchema = z
   .string()
   .min(1, "Project name is required")
@@ -49,6 +56,14 @@ export const ProjectSpecSchema = z
     migratedFrom: z.literal("v1").optional(),
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
+    /**
+     * `"box"`, which `agentcore create` writes for a template that calls a
+     * model, makes the CDK library add the Box gateway; an
+     * `agentCoreGateways[]` entry named `box` only adds targets to it. No
+     * default: the CLI writes the parsed spec back, so a default would add the
+     * field to every existing project.
+     */
+    projectType: ProjectTypeSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),
     memories: z.array(MemorySchema).default([]).superRefine(uniqueNames("memory")),
     knowledgeBases: z

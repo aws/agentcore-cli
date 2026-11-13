@@ -279,7 +279,8 @@ describe("project deploy screen", () => {
       is_tui: true,
       project_runtime_count: 1,
       project_memory_count: 0,
-      project_gateway_count: 0,
+      // the box gateway entry that create declares.
+      project_gateway_count: 1,
       project_harness_count: 0,
     });
     r.unmount();

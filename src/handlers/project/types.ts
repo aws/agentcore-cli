@@ -15,7 +15,11 @@ import type {
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
-import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
+import {
+  AgentCoreGatewaySchema,
+  type AgentCoreGateway,
+  type AgentCoreGatewayTarget,
+} from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
@@ -81,6 +85,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
+    /** The Box gateway entry `agentcore create` declares, with `"projectType": "box"`, for the agent's outbound calls. */
+    boxGateway: AgentCoreGatewaySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),
