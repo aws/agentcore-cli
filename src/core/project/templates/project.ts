@@ -7,6 +7,7 @@ import type {
 } from "../../../handlers/project/add/runtime/types";
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
+import { BOX_CODEZIP_ENTRYPOINT, startsInBoxOnCodeZip } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
@@ -33,7 +34,9 @@ export async function createProjectTree(
     if (!resolver)
       throw new InputValidationError(`unable to find template that matches given parameters`);
 
-    templates.push(await resolver.resolve(runtimeConfig));
+    const template = await resolver.resolve(runtimeConfig);
+    if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
+    templates.push(template);
   }
 
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
@@ -73,6 +76,20 @@ export async function createProjectTree(
   ]);
 
   return { tree, envEntries };
+}
+
+/**
+ * Starts the runtime's agent in a box on a CodeZip deploy: start.py, the
+ * entry point, runs start.sh, which runs `box run` with what deploy stages.
+ * Create alone writes them, because only create writes the box profiles.
+ */
+function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
+  for (const name of [BOX_CODEZIP_ENTRYPOINT, "start.sh"]) {
+    template.tree.children.push(
+      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${name}`)),
+    );
+  }
+  for (const runtime of template.spec.runtimes ?? []) runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

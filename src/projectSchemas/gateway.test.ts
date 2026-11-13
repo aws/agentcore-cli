@@ -404,4 +404,16 @@ describe("gateway custom validation", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("rejects additionalPolicies beside an imported execution role", () => {
+    const gateway = { name: "gateway", targets: [], additionalPolicies: ["policy.json"] };
+
+    expect(AgentCoreGatewaySchema.safeParse(gateway).success).toBe(true);
+    const imported = AgentCoreGatewaySchema.safeParse({
+      ...gateway,
+      executionRoleArn: "arn:aws:iam::123456789012:role/mine",
+    });
+    expect(imported.success).toBe(false);
+    expect(imported.error?.issues[0]?.path).toEqual(["additionalPolicies"]);
+  });
 });
