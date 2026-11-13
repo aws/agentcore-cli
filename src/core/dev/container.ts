@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,6 +12,8 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
+import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
@@ -55,6 +57,22 @@ __pycache__
 **/.DS_Store
 agentcore/
 `;
+
+/**
+ * What box's Linux sandbox needs from the container: system calls and mounts
+ * that Docker's default seccomp and AppArmor profiles refuse, permission to
+ * mount, and a /proc with no covered paths, so box can mount a fresh one.
+ */
+const BOX_RUN_FLAGS = [
+  "--cap-add",
+  "SYS_ADMIN",
+  "--security-opt",
+  "seccomp=unconfined",
+  "--security-opt",
+  "apparmor=unconfined",
+  "--security-opt",
+  "systempaths=unconfined",
+];
 
 type ContainerTool = (typeof CONTAINER_TOOLS)[number];
 type ToolAvailable = typeof toolAvailable;
@@ -134,6 +152,7 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
+    const boxed = this.stageBox(input, context);
     const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
@@ -194,6 +213,7 @@ export class ContainerDevRunner implements DevRunner {
       // resolve everywhere and is harmless where the name already exists.
       "--add-host",
       "host.docker.internal:host-gateway",
+      ...(boxed ? BOX_RUN_FLAGS : []),
       ...awsMount,
       "--env-file",
       envFile,
@@ -214,6 +234,25 @@ export class ContainerDevRunner implements DevRunner {
         await rm(envFile, { force: true });
       }
     }
+  }
+
+  /**
+   * Stages box into the build context when the Dockerfile copies `.box-dist/`,
+   * with the project's box profile, and says whether it did. The image then
+   * runs `box run`, which needs BOX_RUN_FLAGS.
+   */
+  private stageBox(input: DevServerInput, context: string): boolean {
+    if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
+    const profile = boxProfilePath(input.projectRoot);
+    if (!existsSync(profile)) {
+      throw new ResourceNotFoundError(
+        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
+          `but its box profile ${profile} does not exist. Restore the profile that ` +
+          "`agentcore create` wrote.",
+      );
+    }
+    stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
+    return true;
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
