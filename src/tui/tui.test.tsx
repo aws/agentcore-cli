@@ -2,6 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Command } from "commander";
+import type { GetRecommendationResponse } from "@aws-sdk/client-bedrock-agentcore";
 import { createRootHandler } from "../handlers";
 import { ExitCode, InputValidationError, InvalidEnvironmentError } from "../errors";
 import { renderJson } from "./index";
@@ -25,6 +26,53 @@ describe("renderJson", () => {
     const lines: string[] = [];
     renderJson({ a: 1, b: ["x"] }, (line) => lines.push(line));
     expect(lines).toEqual(['{\n  "a": 1,\n  "b": [\n    "x"\n  ]\n}']);
+  });
+
+  // The SDK decodes integers beyond 2^53 inside document members to BigInt
+  // when the runtime's JSON.parse exposes source text, as Bun does.
+  test("writes a BigInt as a JSON number with every digit", () => {
+    const lines: string[] = [];
+    renderJson({ startTimeUnixNano: 1750000000000000001n, label: "1750000000000000001" }, (line) =>
+      lines.push(line),
+    );
+    expect(lines).toEqual([
+      '{\n  "startTimeUnixNano": 1750000000000000001,\n  "label": "1750000000000000001"\n}',
+    ]);
+  });
+});
+
+describe("--json output with integers beyond 2^53", () => {
+  test("`eval recommendation get --json` prints them as JSON numbers", async () => {
+    const io = testIO();
+    const core = new TestCoreClient();
+    core.eval.setGetRecommendationResponse({
+      recommendationId: "rec-1",
+      recommendationConfig: {
+        systemPromptRecommendationConfig: {
+          agentTraces: {
+            sessionSpans: [{ startTimeUnixNano: 1750000000000000001n }],
+          },
+        },
+      },
+    } as unknown as GetRecommendationResponse);
+    const root = createRootHandler(core, {
+      io: io.io,
+      logger: createSilentLogger(),
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+    });
+    await root.route([
+      "node",
+      "agentcore",
+      "eval",
+      "recommendation",
+      "get",
+      "--id",
+      "rec-1",
+      "--json",
+    ]);
+    const out = io.stdout();
+    expect(out).toContain('"startTimeUnixNano": 1750000000000000001');
+    expect(out).toContain('"recommendationId": "rec-1"');
   });
 });
 
