@@ -59,9 +59,9 @@ export const ProjectSpecSchema = z
     /**
      * `"box"`, which `agentcore create` writes for a template that calls a
      * model, makes the CDK library add the Box gateway; an
-     * `agentCoreGateways[]` entry named `box` only adds targets to it. No
-     * default: the CLI writes the parsed spec back, so a default would add the
-     * field to every existing project.
+     * `agentCoreGateways[]` entry named `box` only adds targets and
+     * `additionalPolicies` to it. No default: the CLI writes the parsed spec
+     * back, so a default would add the field to every existing project.
      */
     projectType: ProjectTypeSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),

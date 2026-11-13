@@ -6,7 +6,7 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
-import type { AgentCoreGateway } from "../../projectSchemas/gateway";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
@@ -30,7 +30,7 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 /**
  * The name of the Box gateway, which the CDK library adds to a project with
  * `"projectType": "box"`. The agentcore.json entry of this name only adds
- * targets to it.
+ * targets (and `additionalPolicies`) to it.
  */
 export const BOX_GATEWAY_NAME = "box";
 
@@ -78,6 +78,32 @@ export function getBoxGatewaySpec(options: { bedrockTarget: boolean }): AgentCor
           ]
         : []),
     ],
+  };
+}
+
+/**
+ * The name of the Box gateway's AgentCore target, which build and deploy add
+ * for a boxed agent's default Memory; also the name of the box route to it.
+ */
+export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
+
+/** The AgentCore data-plane host that the Box gateway's AgentCore target fronts. */
+export const BOX_GATEWAY_AGENTCORE_HOST = `bedrock-agentcore.${BOX_GATEWAY_BEDROCK_REGION}.amazonaws.com`;
+
+/**
+ * The Box gateway's passthrough target for the AgentCore data plane (Memory),
+ * signed with the gateway's role.
+ */
+export function getBoxGatewayAgentCoreTargetSpec(): AgentCoreGatewayTarget {
+  return {
+    name: BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: { endpoint: `https://${BOX_GATEWAY_AGENTCORE_HOST}`, protocolType: "CUSTOM" },
+    outboundAuth: {
+      type: "GATEWAY_IAM_ROLE",
+      service: "bedrock-agentcore",
+      region: BOX_GATEWAY_BEDROCK_REGION,
+    },
   };
 }
 
