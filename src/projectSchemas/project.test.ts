@@ -31,6 +31,16 @@ describe("project custom validation", () => {
     }
   });
 
+  test('accepts projectType "box" and nothing else, with no default', () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, projectType: "box" }).projectType).toBe(
+      "box",
+    );
+    expect("projectType" in ProjectSpecSchema.parse(minimalProject)).toBe(false);
+    for (const projectType of ["Box", "agent", 1, ""]) {
+      expect(ProjectSpecSchema.safeParse({ ...minimalProject, projectType }).success).toBe(false);
+    }
+  });
+
   test("requires an explicit project version", () => {
     expect(ProjectSpecSchema.safeParse({ name: "project" }).success).toBe(false);
   });
@@ -406,5 +416,25 @@ describe("project custom validation", () => {
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe("projectType", () => {
+  test("is absent after a parse of a project without it, so a write-back adds no key", () => {
+    expect(ProjectSpecSchema.parse(minimalProject)).not.toHaveProperty("projectType");
+  });
+
+  test('accepts "box"', () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, projectType: "box" }).projectType).toBe(
+      "box",
+    );
+  });
+
+  test.each([["Box"], ["standard"], [{}], [null]])("rejects %j", (projectType) => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, projectType }).success).toBe(false);
+  });
+
+  test("rejects the old box key", () => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, box: {} }).success).toBe(false);
   });
 });

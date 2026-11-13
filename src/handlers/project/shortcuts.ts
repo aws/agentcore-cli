@@ -6,7 +6,9 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { boxGatewayName } from "../../projectSchemas/project";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -26,11 +28,85 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   };
 }
 
+/** The name of the Bedrock model target in a runtime's Box gateway entry. */
+export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
+
 /**
- * The Bedrock region a boxed agent's model calls go to, fixed for now.
- * `create` does not know the deploy region (deploy resolves it, per target).
+ * The region of the Bedrock target, fixed for now. `create` does not know the
+ * deploy region (deploy resolves it, per target), so a project deployed
+ * elsewhere still calls Bedrock in this region until the target is edited in
+ * agentcore.json.
  */
-export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
+export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
+
+/**
+ * The entry that `agentcore create` declares for a runtime whose agent calls
+ * Bedrock: it adds a passthrough target for the Bedrock model endpoint to the
+ * runtime's Box gateway, `<runtime>-box`, which the CDK library makes for each
+ * runtime of a Box project. The entry has the settings `agentcore add
+ * gateway-target` gives one, which are the Box gateway's own. Another model
+ * provider's endpoint takes an API key that create has no credential for, so
+ * such an agent gets no entry.
+ */
+export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway {
+  const region = BOX_GATEWAY_BEDROCK_REGION;
+  return {
+    ...getBoxGatewayEntry(runtimeName),
+    targets: [
+      {
+        name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+        targetType: "passthrough",
+        passthrough: {
+          endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+          protocolType: "CUSTOM",
+        },
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+      },
+    ],
+  };
+}
+
+/**
+ * An entry for the runtime's Box gateway, `<runtime>-box`, with no targets yet. It has the
+ * settings `agentcore add gateway-target` gives one, which are the Box gateway's own.
+ */
+export function getBoxGatewayEntry(runtimeName: string): AgentCoreGateway {
+  return {
+    name: boxGatewayName(runtimeName),
+    protocolType: "None",
+    authorizerType: "AWS_IAM",
+    // The value the gateway schema fills in; it has no effect without MCP.
+    enableSemanticSearch: true,
+    exceptionLevel: "NONE",
+    targets: [],
+  };
+}
+
+/**
+ * The name of the Box gateway's AgentCore target, which build and deploy add
+ * for a boxed agent's default Memory; also the name of the box route to it.
+ */
+export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
+
+/** The AgentCore data-plane host that the Box gateway's AgentCore target fronts. */
+export const BOX_GATEWAY_AGENTCORE_HOST = `bedrock-agentcore.${BOX_GATEWAY_BEDROCK_REGION}.amazonaws.com`;
+
+/**
+ * The Box gateway's passthrough target for the AgentCore data plane (Memory),
+ * signed with the gateway's role.
+ */
+export function getBoxGatewayAgentCoreTargetSpec(): AgentCoreGatewayTarget {
+  return {
+    name: BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: { endpoint: `https://${BOX_GATEWAY_AGENTCORE_HOST}`, protocolType: "CUSTOM" },
+    outboundAuth: {
+      type: "GATEWAY_IAM_ROLE",
+      service: "bedrock-agentcore",
+      region: BOX_GATEWAY_BEDROCK_REGION,
+    },
+  };
+}
 
 /**
  * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
@@ -54,6 +130,11 @@ type RuntimeTemplateShortcut = {
   modelProvider?: ModelProvider;
   /** Ships with memory. */
   includesMemory: boolean;
+  /**
+   * Ships with the Box gateway: the project is a Box project, so the agent's
+   * outbound calls, including a model added later, have a gateway to go through.
+   */
+  includesBoxGateway: boolean;
   /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
   supportsModelProviderOverride: boolean;
   runtimeVersion?: NonNullable<ScaffoldRuntimeInput["runtimeVersion"]>;
@@ -75,6 +156,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     modelProvider: "Bedrock",
     includesMemory: false,
+    includesBoxGateway: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -86,6 +168,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    includesBoxGateway: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -98,6 +181,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    includesBoxGateway: true,
     supportsModelProviderOverride: true,
   },
   "agent-typescript-strands": {
@@ -109,6 +193,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    includesBoxGateway: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "NODE_22",
   },
@@ -120,6 +205,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "langchain",
     modelProvider: "Bedrock",
     includesMemory: false,
+    includesBoxGateway: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -131,6 +217,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "vercelai",
     modelProvider: "Bedrock",
     includesMemory: false,
+    includesBoxGateway: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "NODE_22",
   },
@@ -142,6 +229,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "bma",
     protocol: "HTTP",
     includesMemory: false,
+    includesBoxGateway: false,
     supportsModelProviderOverride: false,
     profile: BMA_TEMPLATE_PROFILE,
   },
@@ -153,6 +241,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     protocol: "MCP",
     includesMemory: false,
+    includesBoxGateway: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -165,6 +254,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     protocol: "A2A",
     modelProvider: "Bedrock",
     includesMemory: true,
+    includesBoxGateway: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -177,6 +267,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     protocol: "AGUI",
     modelProvider: "Bedrock",
     includesMemory: true,
+    includesBoxGateway: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -273,19 +364,26 @@ export function resolveRuntimeTemplateShortcut(
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
 
+  const modelProvider = template.supportsModelProviderOverride
+    ? (overrides?.modelProvider ?? template.modelProvider)
+    : template.modelProvider;
+
   const input = {
     runtimeName,
     build: template.build,
     language: template.language,
     framework: template.framework,
     protocol: template.protocol,
-    modelProvider: template.supportsModelProviderOverride
-      ? (overrides?.modelProvider ?? template.modelProvider)
-      : template.modelProvider,
+    modelProvider,
     ...(overrides?.modelId !== undefined && { modelId: overrides.modelId }),
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
+    // A template with no model provider (an MCP server, BMA) calls no model.
+    ...(modelProvider !== undefined &&
+      callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
+        boxGatewayEntry: getBoxGatewayBedrockEntry(runtimeName),
+      }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

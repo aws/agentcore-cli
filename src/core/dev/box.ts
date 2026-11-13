@@ -1,8 +1,13 @@
 import { existsSync } from "node:fs";
-import { InputValidationError } from "../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer } from "../../io";
-import { BOX_PROFILE_FILE, boxIngressPort, boxProfilePath } from "../project/templates/boxProfile";
+import {
+  BOX_PROFILE_FILE,
+  boxIngressPort,
+  boxProfilePath,
+  runsBoxStartScript,
+} from "../project/templates/boxProfile";
 
 type BoxDevRunnerConfig = {
   /** The runner used when the project has no box profile. */
@@ -28,6 +33,14 @@ export class BoxDevRunner implements DevRunner {
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
+      // start.py starts box on AgentCore Runtime, and runs no agent of its own.
+      if (runsBoxStartScript(input.runtime.entrypoint)) {
+        throw new ResourceNotFoundError(
+          `runtime "${input.runtime.name}" runs its agent in a box (entrypoint ` +
+            `${input.runtime.entrypoint}), but its box profile ${profile} does not exist. ` +
+            "Restore the profile that `agentcore create` wrote.",
+        );
+      }
       yield* this.fallback.run(input);
       return;
     }

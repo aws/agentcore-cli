@@ -18,7 +18,7 @@ import {
 import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
-import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { createGatewayProjectTestHarness, removeDefaultBoxGateway } from "../gateway-test-support";
 
 const { addGateway, cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness(
   "add-policy-engine-wizard",
@@ -36,6 +36,7 @@ async function nameStep(screen: RenderScreenResult, name: string): Promise<void>
 describe("project add policy-engine wizard", () => {
   test("in a project without Gateways it asks only for a name", async () => {
     const projectRoot = await inProject();
+    await removeDefaultBoxGateway(projectRoot);
     const screen = renderScreen("/agentcore/add/policy-engine");
 
     await waitForText(screen.lastFrame, "what should this Policy Engine be called?");
@@ -74,11 +75,15 @@ describe("project add policy-engine wizard", () => {
     await nameStep(screen, "Guardrails");
 
     await waitForText(screen.lastFrame, "attach it to any Gateways now?");
-    expect(screen.lastFrame()).toContain("❯ [ ] tools");
+    expect(screen.lastFrame()).toContain("❯ [ ] agent-box");
+    expect(screen.lastFrame()).toContain("[ ] tools");
     expect(screen.lastFrame()).toContain("[ ] search");
     // Nothing checked yet, so the mode question is not on screen.
     expect(screen.lastFrame()).not.toContain("Enforcement on those Gateways");
 
+    // Skip the agent-box gateway entry; attach to the two the test added.
+    await screen.press("down");
+    await waitForText(screen.lastFrame, "❯ [ ] tools");
     await screen.write(" ");
     await waitForText(screen.lastFrame, "[✓] tools");
     // Checking a Gateway reveals the mode beneath the list, with enforce
@@ -107,7 +112,9 @@ describe("project add policy-engine wizard", () => {
     await waitForText(screen.lastFrame, "added Policy Engine 'Guardrails'");
     expect(screen.lastFrame()).toContain("attached to 2 Gateways in log-only mode");
     const spec = await projectSpec(projectRoot);
-    for (const gateway of spec.agentCoreGateways) {
+    const [box, ...attached] = spec.agentCoreGateways;
+    expect(box.policyEngineConfiguration).toBeUndefined();
+    for (const gateway of attached) {
       expect(gateway.policyEngineConfiguration).toEqual({
         policyEngineName: "Guardrails",
         mode: "LOG_ONLY",
@@ -133,7 +140,7 @@ describe("project add policy-engine wizard", () => {
     expect(screen.lastFrame()).not.toContain("attached to");
     const spec = await projectSpec(projectRoot);
     expect(spec.policyEngines).toEqual([{ name: "Guardrails", policies: [] }]);
-    expect(spec.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
+    expect(spec.agentCoreGateways[1].policyEngineConfiguration).toBeUndefined();
     screen.unmount();
   }, 15000);
 
@@ -143,6 +150,8 @@ describe("project add policy-engine wizard", () => {
     const screen = renderScreen("/agentcore/add/policy-engine");
     await nameStep(screen, "Guardrails");
     await waitForText(screen.lastFrame, "attach it to any Gateways now?");
+    await screen.press("down");
+    await waitForText(screen.lastFrame, "❯ [ ] tools");
     await screen.write(" ");
     await screen.press("return");
     await waitForText(screen.lastFrame, "❯ ● enforce (default)");
@@ -189,6 +198,8 @@ describe("project add policy-engine wizard", () => {
 
   test("a rejected add reports itself and hands the form back", async () => {
     const projectRoot = await inProject();
+    // No Gateways, so the wizard goes from the name straight to review.
+    await removeDefaultBoxGateway(projectRoot);
     await run(["add", "policy-engine", "--name", "Guardrails"]);
     const screen = renderScreen("/agentcore/add/policy-engine");
     await nameStep(screen, "Guardrails");

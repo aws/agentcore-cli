@@ -10,6 +10,7 @@ import type {
   ResolvedDeployedResource,
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
+import { stageBoxCodeZip } from "./boxCodeZip";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -23,6 +24,12 @@ import {
 import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import {
+  boxGatewayAwsName,
+  declaresNoResources,
+  describeBoxGateways,
+  isBoxProject,
+} from "../../../projectSchemas/project";
 import type {
   DeployBackendInput,
   ProjectBackend,
@@ -149,6 +156,8 @@ export type CdkBackendConfig = {
   removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
+  /** The environment AGENTCORE_BOX_SOURCE is read from; process.env by default. */
+  processEnv?: NodeJS.ProcessEnv;
 };
 
 /** Builds and deploys projects through the scaffolded CDK app. */
@@ -167,9 +176,11 @@ export class CdkBackend implements ProjectBackend {
   private readonly removeCredentials: CredentialRemover;
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
+  private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
+    this.processEnv = config.processEnv ?? process.env;
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
@@ -211,6 +222,8 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    // The zip carries box, so it is staged before synth packages the code.
+    stageBoxCodeZip(project, this.processEnv);
   }
 
   private async *synthesize(
@@ -269,6 +282,7 @@ export class CdkBackend implements ProjectBackend {
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
+    await this.assertBoxGatewayKept(project, input);
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
@@ -370,9 +384,19 @@ export class CdkBackend implements ProjectBackend {
     // Persist the deployed stack's ARN so later commands read live resource state
     // from CloudFormation. Merged per target, so deploying one target never drops
     // another's recorded state.
+    // The Box gateways are recorded so that a later deploy can see a lost project type. A deploy
+    // without it clears the record: the stack no longer has the gateways.
     await updateTargetState(this.json, project.rootPath, target.name, {
       stackArn,
-      resources: { bmaSession: undefined },
+      resources: {
+        bmaSession: undefined,
+        boxGateways:
+          isBoxProject(project.spec) && project.spec.runtimes.length > 0
+            ? project.spec.runtimes.map((runtime) => ({
+                name: boxGatewayAwsName(project.spec, target.name, runtime.name),
+              }))
+            : undefined,
+      },
     });
 
     const bmaRuntimes = project.spec.runtimes.filter(
@@ -420,6 +444,35 @@ export class CdkBackend implements ProjectBackend {
     });
 
     return { outputs };
+  }
+
+  /**
+   * Stops a deploy that would delete the Box gateways because agentcore.json lost its
+   * "projectType": "box", unless the user confirms. A spec with no resources skips this: that is the state
+   * after `agentcore remove all`, and the teardown confirmation already covers every resource.
+   */
+  private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
+    if (isBoxProject(project.spec) || declaresNoResources(project.spec)) return;
+    const { target } = input;
+    const state = await readDeployedState(this.json, project.rootPath);
+    const gatewayNames = (state.targets[target.name]?.resources?.boxGateways ?? []).map(
+      ({ name }) => name,
+    );
+    if (gatewayNames.length === 0) return;
+    const confirmed = await input.confirmBoxGatewayDeletion?.({
+      projectName: project.name,
+      targetName: target.name,
+      gatewayNames,
+    });
+    if (!confirmed) {
+      const plural = gatewayNames.length === 1 ? "gateway" : "gateways";
+      throw new ProjectStateError(
+        `agentcore.json has no "projectType": "box", so this deploy would delete ` +
+          `${describeBoxGateways(gatewayNames)}. Add "projectType": "box" back to agentcore.json, ` +
+          `or re-run with --yes to delete the ${plural}.`,
+        { meta: { gatewayNames } },
+      );
+    }
   }
 
   /**

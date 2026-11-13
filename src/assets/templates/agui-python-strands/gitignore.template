@@ -39,3 +39,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Box, which agentcore deploy stages for AgentCore Runtime
+.box-dist/

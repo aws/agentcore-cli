@@ -17,6 +17,8 @@ exports[`FsProjectManager.create scaffolds the expected file tree into a fresh d
   "app/agent_python_minimal/README.md",
   "app/agent_python_minimal/main.py",
   "app/agent_python_minimal/pyproject.toml",
+  "app/agent_python_minimal/start.py",
+  "app/agent_python_minimal/start.sh",
 ]
 `;
 
@@ -44,6 +46,8 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
     "app/agent_python_strands/model/load.py",
     "app/agent_python_strands/parse.py",
     "app/agent_python_strands/pyproject.toml",
+    "app/agent_python_strands/start.py",
+    "app/agent_python_strands/start.sh",
   ],
   "memories": [
     {
@@ -72,7 +76,7 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
     {
       "build": "CodeZip",
       "codeLocation": "app/agent_python_strands",
-      "entrypoint": "main.py",
+      "entrypoint": "start.py",
       "modelProvider": "Bedrock",
       "name": "agent_python_strands",
       "protocol": "HTTP",
@@ -164,6 +168,8 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
     "app/a2a_python_strands/model/__init__.py",
     "app/a2a_python_strands/model/load.py",
     "app/a2a_python_strands/pyproject.toml",
+    "app/a2a_python_strands/start.py",
+    "app/a2a_python_strands/start.sh",
   ],
   "memories": [
     {
@@ -192,7 +198,7 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
     {
       "build": "CodeZip",
       "codeLocation": "app/a2a_python_strands",
-      "entrypoint": "main.py",
+      "entrypoint": "start.py",
       "modelProvider": "Bedrock",
       "name": "a2a_python_strands",
       "protocol": "A2A",
@@ -223,13 +229,15 @@ exports[`FsProjectManager.create snapshots the LangChain project manifest and ru
     "app/agent_python_langchain/model/__init__.py",
     "app/agent_python_langchain/model/load.py",
     "app/agent_python_langchain/pyproject.toml",
+    "app/agent_python_langchain/start.py",
+    "app/agent_python_langchain/start.sh",
   ],
   "memories": undefined,
   "runtimes": [
     {
       "build": "CodeZip",
       "codeLocation": "app/agent_python_langchain",
-      "entrypoint": "main.py",
+      "entrypoint": "start.py",
       "modelProvider": "Bedrock",
       "name": "agent_python_langchain",
       "protocol": "HTTP",
