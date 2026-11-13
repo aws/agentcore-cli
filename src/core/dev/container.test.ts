@@ -134,7 +134,7 @@ function containerName(projectRoot: string): string {
   return `agentcore-dev-hello_world-${hashString(resolve(projectRoot))}`;
 }
 
-function commandCall(calls: ProcessCall[], operation: "build" | "run"): ProcessCall {
+function commandCall(calls: ProcessCall[], operation: "build" | "run" | "stop"): ProcessCall {
   const call = calls.find(({ command }) => command[1] === operation);
   if (!call) throw new Error(`${operation} command was not called`);
   return call;
@@ -592,17 +592,14 @@ describe("ContainerDevRunner", () => {
       ["docker", "build", "-f"],
       ["docker", "run", "--rm"],
       ["docker", "stop", "-t"],
-      ["docker", "rm", "-f"],
     ]);
     expect(calls[0]?.command).toEqual(["docker", "rm", "-f", containerName(root)]);
-    // At shutdown the container gets a 2s grace period, then is removed.
+    // At shutdown the container gets a 2s grace period, then `run --rm` removes it.
     expect(calls[3]?.command).toEqual(["docker", "stop", "-t", "2", containerName(root)]);
-    expect(calls[4]?.command).toEqual(calls[0]!.command);
     expect(calls[0]?.options.signal).not.toBe(runInput.signal);
     expect(calls[1]?.options.signal).toBe(runInput.signal);
     expect(calls[2]?.options.signal).toBe(runInput.signal);
     expect(calls[3]?.options.signal).not.toBe(runInput.signal);
-    expect(calls[4]?.options.signal).not.toBe(runInput.signal);
   });
 
   test("cleans up when the container process fails", async () => {
@@ -618,7 +615,7 @@ describe("ContainerDevRunner", () => {
       "container failed",
     );
 
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(commandCall(calls, "stop")).toBeDefined();
   });
 
   test("cleans up when container execution is aborted", async () => {
@@ -639,7 +636,7 @@ describe("ContainerDevRunner", () => {
       collect(runner.run(input(root, projectRuntime, controller.signal))),
     ).rejects.toMatchObject({ name: "AbortError" });
 
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(commandCall(calls, "stop")).toBeDefined();
   });
 
   test("cleans up when the consumer stops iterating", async () => {
@@ -672,10 +669,10 @@ describe("ContainerDevRunner", () => {
     await iterator.return(undefined);
 
     expect(runIteratorClosed).toBe(true);
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(commandCall(calls, "stop")).toBeDefined();
   });
 
-  test("removes the container at shutdown even when stop fails", async () => {
+  test("says how to remove the container when stop fails at shutdown", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
     const { calls, runner } = harness({
@@ -683,12 +680,30 @@ describe("ContainerDevRunner", () => {
         command[1] === "stop" ? rejectedEvents(new Error("daemon is slow")) : [],
     });
 
-    await collect(runner.run(input(root, projectRuntime)));
+    const error = await collect(runner.run(input(root, projectRuntime))).catch((caught) => caught);
 
-    expect(calls.at(-1)?.command).toEqual(["docker", "rm", "-f", containerName(root)]);
+    expect(error).toBeInstanceOf(InvalidEnvironmentError);
+    expect((error as Error).message).toContain(
+      `Could not stop the dev container ${containerName(root)}`,
+    );
+    expect((error as Error).message).toContain(`'docker rm -f ${containerName(root)}'`);
+    expect(calls.at(-1)?.command[1]).toBe("stop");
   });
 
-  test("ignores stale and final cleanup failures", async () => {
+  test("treats a container that already exited as stopped", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { runner } = harness({
+      stream: (command) =>
+        command[1] === "stop"
+          ? rejectedEvents(new Error("Error response from daemon: No such container: x"))
+          : [],
+    });
+
+    await expect(collect(runner.run(input(root, projectRuntime)))).resolves.toBeDefined();
+  });
+
+  test("ignores a failed removal of a stale container", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
     const { calls, runner } = harness({
@@ -699,7 +714,7 @@ describe("ContainerDevRunner", () => {
 
     await expect(collect(runner.run(input(root, projectRuntime)))).resolves.toBeDefined();
     expect(commandCall(calls, "run")).toBeDefined();
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(1);
   });
 
   test("does not run a container after a failed build", async () => {

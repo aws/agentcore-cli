@@ -25,10 +25,12 @@ const AWS_ENV_KEYS = [
   "AWS_PROFILE",
 ] as const;
 // Each container command in cleanup gets this long. Finch sends every command through its VM,
-// so a 2s limit cut `rm` short and left the dev container running.
+// so a 2s limit cut cleanup short and left the dev container running.
 const CLEANUP_TIMEOUT_MS = 15_000;
 /** Seconds `stop` waits for the container to exit before it kills it. */
 const STOP_GRACE_SECONDS = 2;
+/** How Docker, Podman, and Finch report a container that does not exist. */
+const NO_SUCH_CONTAINER = /no such container/i;
 const DOCKERFILE_NAME = "Dockerfile";
 const CONTAINER_RUNTIME_INSTALL_HINT =
   "Install Docker (https://docs.docker.com/get-docker/), Podman (https://podman.io/), " +
@@ -120,7 +122,7 @@ export class ContainerDevRunner implements DevRunner {
     const projectId = hashString(resolve(input.projectRoot));
     const imageTag = `agentcore-dev/${sanitizeImageNameComponent(runtimeName)}-${projectId}`;
     const containerName = `agentcore-dev-${runtimeName}-${projectId}`;
-    await this.removeContainer(tool, containerName, context);
+    await this.removeStaleContainer(tool, containerName, context);
     input.signal.throwIfAborted();
 
     const buildArgs = input.runtime.customDockerBuildArgs ?? {};
@@ -207,7 +209,7 @@ export class ContainerDevRunner implements DevRunner {
       });
     } finally {
       try {
-        await this.removeContainer(tool, containerName, context, { stopFirst: true });
+        await this.stopContainer(tool, containerName, context);
       } finally {
         await rm(envFile, { force: true });
       }
@@ -249,34 +251,49 @@ export class ContainerDevRunner implements DevRunner {
   }
 
   /**
-   * Best-effort removal of the dev container. At shutdown it is stopped first (`stop -t 2`), so it
-   * gets a short grace period and is killed after that, then removed. Each step has its own
-   * timeout; a missing container or an unavailable daemon is safe to ignore.
+   * Best-effort removal of a dev container left over from an earlier run. A missing container and
+   * an unavailable daemon are both safe to ignore here.
    */
-  private async removeContainer(
+  private async removeStaleContainer(
     tool: ContainerTool,
     containerName: string,
     cwd: string,
-    options: { stopFirst?: boolean } = {},
   ): Promise<void> {
-    const steps = [
-      ...(options.stopFirst
-        ? [[tool, "stop", "-t", String(STOP_GRACE_SECONDS), containerName]]
-        : []),
-      [tool, "rm", "-f", containerName],
-    ];
-    for (const command of steps) {
-      try {
-        for await (const _event of this.streamProcess(command, {
-          cwd,
-          env: this.processEnv,
-          signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
-        })) {
-          // Best-effort cleanup intentionally discards command output.
-        }
-      } catch {
-        // A container that is already gone, or a slow or stopped daemon: try the next step.
-      }
+    try {
+      await this.runCleanupCommand([tool, "rm", "-f", containerName], cwd);
+    } catch {
+      // Nothing to remove, or a daemon that is down: the build reports the latter.
+    }
+  }
+
+  /**
+   * Stops the dev container at shutdown: `stop -t 2` gives it a short grace period, then kills it,
+   * and `run --rm` removes it. A container that already exited is gone already. Any other failure
+   * leaves it running, so it is thrown with the command that removes it.
+   */
+  private async stopContainer(tool: ContainerTool, containerName: string, cwd: string) {
+    try {
+      await this.runCleanupCommand(
+        [tool, "stop", "-t", String(STOP_GRACE_SECONDS), containerName],
+        cwd,
+      );
+    } catch (error) {
+      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return;
+      throw new InvalidEnvironmentError(
+        `Could not stop the dev container ${containerName}; it may still be running. ` +
+          `Remove it with '${tool} rm -f ${containerName}'.`,
+        { cause: error, meta: { tool, containerName } },
+      );
+    }
+  }
+
+  private async runCleanupCommand(command: string[], cwd: string): Promise<void> {
+    for await (const _event of this.streamProcess(command, {
+      cwd,
+      env: this.processEnv,
+      signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
+    })) {
+      // Cleanup output is not shown.
     }
   }
 }
