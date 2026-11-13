@@ -239,14 +239,14 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
 /**
  * The Strands container image's agent: the code and its venv are in /app,
  * where box starts, and the venv links to the image's own Python in
- * /usr/local.
+ * /usr/local. `agentcore dev` sets LOCAL_DEV and reloads it on edits.
  */
-function containerRunner(workloadPort: number): Runner {
+function containerRunner(workloadPort: number, dev: boolean): Runner {
   const appDir = "${{ workspace }}";
-  const { command, env } = serve("HTTP", appDir, workloadPort, true);
+  const { command, env } = serve("HTTP", appDir, workloadPort, dev);
   return {
     command,
-    env: { LOCAL_DEV: "1", ...env },
+    env: { ...(dev && { LOCAL_DEV: "1" }), ...env },
     // The image's Python loads its own native modules (lib-dynload) from /usr/local/lib, and the
     // system libraries they link, such as libssl, from the multiarch folder.
     read: [str(appDir), str("/usr/local/lib"), str(LINUX_LIBRARIES)],
@@ -297,9 +297,8 @@ export type BoxProfileTarget = "local" | "runtime";
  *   root and names no interpreter, only the folder of every uv-managed Python,
  *   so it is the same with and without `--skip-install`. The container
  *   template's runs in its dev image, in /app.
- * - `runtime`: what AgentCore Runtime runs from a CodeZip runtime's zip, with
- *   no reload, signed with the execution role. Build and deploy render it from
- *   agentcore.json with
+ * - `runtime`: what AgentCore Runtime runs, with no reload, signed with the
+ *   execution role. Build and deploy render it from agentcore.json with
  *   {@link renderRuntimeBoxProfile}; `runtimeRoutes` holds the routes they
  *   derive from it, as sections that start with a blank line.
  */
@@ -318,10 +317,11 @@ export function renderBoxProfile(
   const workloadPort = ingressPort + 1;
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
-  const runner = onRuntime
-    ? runtimeCodeZipRunner(protocol, workloadPort)
-    : container
-      ? containerRunner(workloadPort)
+  const codeZipOnRuntime = onRuntime && !container;
+  const runner = container
+    ? containerRunner(workloadPort, !onRuntime)
+    : onRuntime
+      ? runtimeCodeZipRunner(protocol, workloadPort)
       : codeZipRunner(protocol, appDir, workloadPort);
   // In an image or the Runtime's microVM, the port is reached on the machine's own address.
   const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
@@ -331,11 +331,13 @@ export function renderBoxProfile(
   const environment = { ...runner.env, PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" };
 
   // The optional sections, each empty or ending in a newline.
-  const header = onRuntime
+  const header = codeZipOnRuntime
     ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. start.sh fills in @CODE@, @PYTHON@, @PYTHON_PREFIX@ and the deployed resources' variables."
-    : container
-      ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-      : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
+    : onRuntime
+      ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. start.sh adds the deployed resources' variables."
+      : container
+        ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
+        : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
   const options = bedrock ? `[options]\nbedrock.region = ${str(region)}\n\n` : "";
   const envMarker = onRuntime ? `${AGENT_ENV_MARKER}\n` : "";
   const execComment = runner.execComment ?? "";
@@ -415,12 +417,13 @@ auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
 }
 
 /**
- * The AgentCore Runtime box profile of a CodeZip runtime that runs its agent
- * in a box, derived from agentcore.json: the runtime's protocol and model
+ * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
+ * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and, when the project has the runtime's default Memory, the route
  * its Memory calls take through the Box gateway. agentcore.json does not
- * record the framework, and the profile does not depend on it, so the input
- * names Strands, one of the frameworks that run in a box.
+ * record the framework, and the profile does not depend on it beyond the
+ * container case, so the input names Strands, one of the frameworks that run
+ * in a box.
  */
 export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
   const memory = spec.memories.some((entry) => entry.name === defaultMemoryName(runtime.name));

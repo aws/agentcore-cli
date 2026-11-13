@@ -1510,8 +1510,8 @@ export class FsProjectManager implements ProjectManager {
     project: Project,
   ): Promise<{ project: Project; messages: string[] }> {
     const spec = structuredClone(project.spec);
-    const messages = addBoxMemoryTarget(spec);
-    const policy = boxMemoryPolicy(spec);
+    const messages = addBoxMemoryTarget(spec, project.rootPath);
+    const policy = boxMemoryPolicy(spec, project.rootPath);
     if (policy) {
       const policyPath = join(project.rootPath, BOX_MEMORY_POLICY_FILE);
       if (!existsSync(policyPath)) messages.push(`writing ${BOX_MEMORY_POLICY_FILE}`);

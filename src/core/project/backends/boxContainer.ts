@@ -10,8 +10,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
+import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { isFile } from "../runtimeBuild";
+import { renderRuntimeBoxProfile, runsBoxStartScript } from "../templates/boxProfile";
 
 /** The folder a box image's Dockerfile copies box from, in the image's build context. */
 export const BOX_IMAGE_DIST = ".box-dist";
@@ -84,4 +86,36 @@ export function stageBoxImage(
   }
   cpSync(resources, join(dist, "resources"), { recursive: true });
   writeFileSync(join(dist, "profile.toml"), profileText);
+}
+
+/**
+ * Stages box for build and deploy into each container runtime whose
+ * Dockerfile copies `.box-dist/`, with the AgentCore Runtime profile rendered
+ * from agentcore.json. Returns the names of the runtimes it staged.
+ */
+export function stageBoxContainers(project: Project, env: NodeJS.ProcessEnv): string[] {
+  const runtimes = project.spec.runtimes.filter((runtime) =>
+    imageCopiesBox(project.rootPath, runtime),
+  );
+  for (const runtime of runtimes) {
+    stageBoxImage(
+      containerBuildContext(project.rootPath, runtime),
+      renderRuntimeBoxProfile(project.spec, runtime),
+      env,
+      runtime.name,
+    );
+  }
+  return runtimes.map((runtime) => runtime.name);
+}
+
+/**
+ * Whether a runtime runs its agent in a box on AgentCore Runtime: a CodeZip
+ * runtime whose entry point is the box start script, or a container runtime
+ * whose Dockerfile copies `.box-dist/`.
+ */
+export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): boolean {
+  return (
+    (runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint)) ||
+    imageCopiesBox(projectRoot, runtime)
+  );
 }

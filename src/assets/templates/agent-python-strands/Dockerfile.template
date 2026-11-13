@@ -29,6 +29,20 @@ RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
 USER bedrock_agentcore
 
+# box, its two helper programs (Linux arm64), box's packs, and the box profile, which dev, build and
+# deploy stage in .box-dist/: dev the project's .box/profile.toml, build and deploy the AgentCore
+# Runtime profile. start.sh runs box with the profile's path, outside /app, the workspace.
+USER root
+COPY .box-dist/box .box-dist/strands-box-sock-alias .box-dist/strands-box-contain-trampoline start.sh /opt/box/
+COPY .box-dist/resources/ /opt/box/resources/
+COPY .box-dist/profile.toml /opt/box/profile.toml
+# box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
+# /app/.box-dist is not the agent's, so it goes.
+RUN rm -rf /app/.box-dist \
+    && chmod 0755 /opt/box/start.sh \
+    && chown bedrock_agentcore:bedrock_agentcore /app
+USER bedrock_agentcore
+
 # AgentCore Runtime service contract ports
 # https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html
 # 8080: HTTP Mode
@@ -36,8 +50,5 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
-{{#if enableOtel}}
-CMD ["opentelemetry-instrument", "python", "-m", "{{entrypoint}}"]
-{{else}}
-CMD ["python", "-m", "{{entrypoint}}"]
-{{/if}}
+# start.sh starts box in /app; box listens on 8080 and runs the agent in its sandbox on 8081.
+ENTRYPOINT ["/opt/box/start.sh"]
