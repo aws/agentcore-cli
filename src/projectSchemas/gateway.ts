@@ -509,9 +509,19 @@ export const AgentCoreGatewaySchema = z
       .regex(/^arn:[^:]+:iam::\d{12}:role\/.+/, "Must be a valid IAM role ARN")
       .max(2048)
       .optional(),
+    /**
+     * IAM policies for the gateway's execution role: managed-policy ARNs, or `.json` policy
+     * files relative to the project root.
+     */
+    additionalPolicies: z.array(z.string().min(1)).optional(),
     tags: TagsSchema.optional(),
   })
   .strict()
+  .refine((data) => !(data.executionRoleArn && data.additionalPolicies?.length), {
+    message:
+      "additionalPolicies cannot be used with executionRoleArn: CDK cannot attach policies to an imported role",
+    path: ["additionalPolicies"],
+  })
   .refine(
     (data) => {
       if (data.authorizerType === "CUSTOM_JWT") {

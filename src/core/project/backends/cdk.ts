@@ -10,6 +10,8 @@ import type {
   ResolvedDeployedResource,
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
+import { stageBoxCodeZip } from "./boxCodeZip";
+import { stageBoxContainers } from "./boxContainer";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -149,6 +151,8 @@ export type CdkBackendConfig = {
   removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
+  /** The environment AGENTCORE_BOX_SOURCE is read from; process.env by default. */
+  processEnv?: NodeJS.ProcessEnv;
 };
 
 /** Builds and deploys projects through the scaffolded CDK app. */
@@ -167,9 +171,11 @@ export class CdkBackend implements ProjectBackend {
   private readonly removeCredentials: CredentialRemover;
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
+  private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
+    this.processEnv = config.processEnv ?? process.env;
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
@@ -211,6 +217,9 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    // The zip or the image carries box, so it is staged before synth packages the code.
+    stageBoxCodeZip(project, this.processEnv);
+    stageBoxContainers(project, this.processEnv);
   }
 
   private async *synthesize(

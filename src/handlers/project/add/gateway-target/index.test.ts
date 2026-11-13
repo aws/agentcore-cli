@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../../../errors";
 import { expectError } from "../../../../testing";
-import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { createGatewayProjectTestHarness, DEFAULT_BOX_GATEWAY } from "../gateway-test-support";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 const ENDPOINT = "https://mcp.example.com";
@@ -65,7 +65,7 @@ describe("project add gateway-target", () => {
       "DEFAULT",
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual([
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual([
       {
         name: "external",
         targetType: "mcpServer",
@@ -125,7 +125,7 @@ describe("project add gateway-target", () => {
       ]);
     }
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual(targets);
     expect(await Bun.file(join(projectRoot, "agentcore", "assets")).exists()).toBe(false);
   });
 
@@ -149,7 +149,7 @@ describe("project add gateway-target", () => {
       `file://${path}`,
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets[0]).toEqual(target);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets[0]).toEqual(target);
   });
 
   test("accepts configured IAM auth through --target-configuration", async () => {
@@ -188,7 +188,7 @@ describe("project add gateway-target", () => {
       ]);
     }
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual(targets);
   });
 
   test("rejects shortcut flags with complete Target JSON", async () => {
@@ -258,7 +258,7 @@ describe("project add gateway-target", () => {
       ]);
     }
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual(targets);
   });
 
   test("adds an OAuth-authenticated endpoint shortcut", async () => {
@@ -278,7 +278,7 @@ describe("project add gateway-target", () => {
       ),
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets[0].outboundAuth).toEqual({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets[0].outboundAuth).toEqual({
       type: "OAUTH",
       credentialName: "oauth",
       scopes: ["read", "write"],
@@ -433,7 +433,8 @@ describe("project add gateway-target", () => {
     }
 
     const gateways = (await projectSpec(projectRoot)).agentCoreGateways;
-    expect(gateways[0].targets).toHaveLength(1);
-    expect(gateways[1].targets).toHaveLength(0);
+    expect(gateways[0]).toEqual(DEFAULT_BOX_GATEWAY);
+    expect(gateways[1].targets).toHaveLength(1);
+    expect(gateways[2].targets).toHaveLength(0);
   });
 });

@@ -139,6 +139,45 @@ describe("project create", () => {
     expect(io.stderr()).toContain("next steps:\n  cd MyAgent\n  agentcore add harness");
   });
 
+  test.each([
+    ["agent-python-strands", ["bedrock"]],
+    ["agent-python-minimal", ["bedrock"]],
+    ["mcp-python-fastmcp", []],
+    ["empty", undefined],
+  ] as const)(
+    "create --template %s writes projectType box and the box gateway entry targets %j to agentcore.json",
+    async (template, targetNames) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await run([
+        "create",
+        "--name",
+        "BoxApp",
+        "--template",
+        template,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+      if (targetNames === undefined) {
+        expect(spec.agentCoreGateways ?? []).toEqual([]);
+        expect(spec.projectType).toBeUndefined();
+        return;
+      }
+      expect(spec.projectType).toBe("box");
+      expect(spec.agentCoreGateways).toHaveLength(1);
+      expect(spec.agentCoreGateways[0]).toMatchObject({
+        name: "box",
+        protocolType: "None",
+        authorizerType: "AWS_IAM",
+      });
+      expect(
+        spec.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+      ).toEqual(targetNames);
+    },
+  );
+
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>
       resolveScaffoldHarnessInput({
@@ -447,7 +486,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "CodeZip",
-        entrypoint: "main.py",
+        entrypoint: "start.py",
         codeLocation: "app/agent",
         runtimeVersion: "PYTHON_3_14",
       },

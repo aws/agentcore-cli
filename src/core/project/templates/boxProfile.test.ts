@@ -1,11 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import {
+  getBoxGatewaySpec,
   resolveRuntimeTemplateShortcut,
   type RuntimeTemplateShortcutName,
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
-import { hasBoxProfile, renderBoxProfile } from "./boxProfile";
+import type { ProjectSpec } from "../../../projectSchemas/project";
+import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import {
+  hasBoxProfile,
+  renderBoxProfile,
+  renderRuntimeBoxProfile,
+  runsBoxStartScript,
+  startsInBoxOnCodeZip,
+} from "./boxProfile";
 
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
   return resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
@@ -219,5 +228,195 @@ describe("renderBoxProfile", () => {
     const runtime = resolveRuntimeTemplateShortcut(name);
     expect(hasBoxProfile(runtime)).toBe(false);
     expect(renderBoxProfile("V3Demo", runtime)).toBeUndefined();
+  });
+});
+
+function runtimeProfile(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
+  return parse(renderBoxProfile("V3Demo", template(name, overrides), "runtime")!) as Record<
+    string,
+    any
+  >;
+}
+
+const RUNTIME_ROUTE = { secret: { ref: "aws://" } };
+
+const IMAGE_PYTHON_FILESYSTEM = {
+  read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
+  exec: [
+    { path: "${{ workspace }}/.venv", optional: true },
+    "/usr/local/bin",
+    "/usr/local/lib",
+    "/usr/lib/aarch64-linux-gnu",
+  ],
+  deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
+};
+
+describe("renderBoxProfile for AgentCore Runtime", () => {
+  test("runs agent-python-strands from the zip with the Runtime's Python, for start.sh to fill in", () => {
+    const text = renderBoxProfile("V3Demo", template("agent-python-strands"), "runtime")!;
+    // start.sh replaces this line with the deployed Memories' and Gateways' variables.
+    expect(text).toContain('PYTHONUTF8 = "1"\n# @AGENT_ENV@\n');
+    expect(parse(text)).toEqual({
+      packs: ["box/base", "box/bedrock"],
+      profile: { name: "V3Demo" },
+      options: { bedrock: { region: "us-west-2" } },
+      agent: {
+        command: [
+          "@PYTHON@",
+          "-m",
+          "uvicorn",
+          "main:app",
+          "--app-dir",
+          "@CODE@",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "8081",
+        ],
+        env: {
+          PORT: "8081",
+          PYTHONPATH: "@CODE@/.box-dist/ffi:@CODE@",
+          PYTHONUNBUFFERED: "1",
+          PYTHONUTF8: "1",
+        },
+        filesystem: {
+          read: ["@CODE@", "@PYTHON_PREFIX@", "/usr/lib64", "/lib64"],
+          exec: ["@CODE@", "@PYTHON_PREFIX@"],
+        },
+        ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
+      },
+      egress: {
+        bedrock: RUNTIME_ROUTE,
+      },
+    });
+  });
+
+  test.each(["agent-python-strands-container"] as const)(
+    "runs %s from /app without --reload, signing calls with the Runtime's role",
+    (name) => {
+      expect(runtimeProfile(name)).toEqual({
+        packs: ["box/base", "box/bedrock"],
+        profile: { name: "V3Demo" },
+        options: { bedrock: { region: "us-west-2" } },
+        agent: {
+          command: [
+            "${{ workspace }}/.venv/bin/python",
+            "-m",
+            "uvicorn",
+            "main:app",
+            "--app-dir",
+            "${{ workspace }}",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8081",
+          ],
+          env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
+          filesystem: IMAGE_PYTHON_FILESYSTEM,
+          ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
+        },
+        egress: {
+          bedrock: RUNTIME_ROUTE,
+        },
+      });
+    },
+  );
+
+  test("serves the MCP server on all interfaces on the Runtime", () => {
+    const mcp = runtimeProfile("mcp-python-fastmcp");
+    expect(mcp.agent.ingress).toEqual([{ listen: "0.0.0.0:8000", workload_port: 8001 }]);
+    // The template has no default Memory route; build and deploy add it when the project has one.
+    expect(mcp.egress).toBeUndefined();
+  });
+
+  test("gives a non-Bedrock model no route, since its key comes from AgentCore Identity", () => {
+    const openai = runtimeProfile("agent-python-strands", {
+      modelProvider: "OpenAI",
+      apiKey: "sk-test",
+    });
+    expect(openai.packs).toEqual(["box/base"]);
+    expect(openai.egress).toBeUndefined();
+  });
+});
+
+describe("renderRuntimeBoxProfile", () => {
+  function spec(memories: string[], runtime: Partial<ProjectRuntime> = {}) {
+    return {
+      name: "V3Demo",
+      runtimes: [
+        {
+          name: "agent",
+          build: "CodeZip",
+          entrypoint: "start.py",
+          codeLocation: "app/agent",
+          protocol: "HTTP",
+          modelProvider: "Bedrock",
+          ...runtime,
+        } as ProjectRuntime,
+      ],
+      memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
+      agentCoreGateways: [getBoxGatewaySpec({ bedrockTarget: true })],
+    } as unknown as ProjectSpec;
+  }
+
+  test("routes the default Memory's calls through the Box gateway's agentcore target", () => {
+    const project = spec(["agentMemory"]);
+    const text = renderRuntimeBoxProfile(project, project.runtimes[0]!);
+
+    expect((parse(text).egress as Record<string, unknown>).agentcore).toEqual({
+      // No destination secret: the backend's own auth signs the call to the gateway.
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+      backends: [
+        {
+          url: "@GATEWAY_BOX_URL@/agentcore",
+          auth: {
+            ref: "aws://",
+            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+          },
+        },
+      ],
+    });
+  });
+
+  test("routes no Memory calls when the project has only another Memory", () => {
+    const project = spec(["ordersMemory"]);
+    const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress;
+
+    expect(egress).toEqual({ bedrock: RUNTIME_ROUTE });
+  });
+
+  test("renders the CodeZip form for start.py and the image form for a container", () => {
+    const codeZip = spec(["agentMemory"]);
+    const container = spec(["agentMemory"], { build: "Container", entrypoint: "main.py" });
+
+    expect(renderRuntimeBoxProfile(codeZip, codeZip.runtimes[0]!)).toContain('"@PYTHON@"');
+    expect(renderRuntimeBoxProfile(container, container.runtimes[0]!)).toContain(
+      '"${{ workspace }}/.venv/bin/python"',
+    );
+  });
+
+  test("signs no Bedrock route for an agent on another model provider", () => {
+    const project = spec(["agentMemory"], { modelProvider: "OpenAI" });
+    const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress as Record<
+      string,
+      unknown
+    >;
+
+    expect(Object.keys(egress)).toEqual(["agentcore"]);
+  });
+});
+
+describe("startsInBoxOnCodeZip", () => {
+  test("starts every Python CodeZip template in a box, and no container or TypeScript one", () => {
+    expect(startsInBoxOnCodeZip(template("agent-python-strands"))).toBe(true);
+    expect(startsInBoxOnCodeZip(template("mcp-python-fastmcp"))).toBe(true);
+    expect(startsInBoxOnCodeZip(template("agent-python-strands-container"))).toBe(false);
+    expect(startsInBoxOnCodeZip(template("agent-typescript-strands"))).toBe(false);
+  });
+
+  test("recognizes the start script with or without a handler", () => {
+    expect(runsBoxStartScript("start.py")).toBe(true);
+    expect(runsBoxStartScript("start.py:app")).toBe(true);
+    expect(runsBoxStartScript("main.py")).toBe(false);
   });
 });
