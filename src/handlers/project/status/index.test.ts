@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRootHandler } from "../../index";
+import { ValueContext, type Context } from "../../../router";
 import {
+  assertMetricEmitted,
   createSilentLogger,
+  getTestTelemetryClient,
   initProject,
   TestCoreClient,
   TestGlobalConfigAccessor,
@@ -11,6 +14,7 @@ import {
   testIO,
   ttyTestIO,
   waitFor,
+  withTelemetry,
 } from "../../../testing";
 import { CdkBackend, type ProjectBackend } from "../../../core/project";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
@@ -48,24 +52,60 @@ function fakeBackend(deployed: ResolvedProjectResource[]) {
   return { targets, backend };
 }
 
-function statusCommand(backend: ProjectBackend, io = testIO()) {
-  const root = createRootHandler(new TestCoreClient({ backends: { CDK: backend } }), {
-    io: io.io,
-    globalConfigAccessor: new TestGlobalConfigAccessor(),
-    logger: createSilentLogger(),
-  });
+// The identity every target-account test expects: TestCoreClient's stubbed STS
+// lookup returns DEFAULT_TARGET's account, and no AWS_PROFILE is set.
+const DEFAULT_IDENTITY = {
+  credentialSource: "profile",
+  profile: "default",
+  success: true,
+  account: DEFAULT_TARGET.account,
+};
+
+type ResolveAccount = (region: string) => Promise<string>;
+
+function statusCommand(backend: ProjectBackend, io = testIO(), resolveAccount?: ResolveAccount) {
+  const root = createRootHandler(
+    new TestCoreClient({ backends: { CDK: backend }, resolveAccount }),
+    {
+      io: io.io,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      logger: createSilentLogger(),
+    },
+  );
 
   return {
     io,
     json: () => JSON.parse(io.stdout()),
-    run: (args: string[] = []) => root.route(["node", "agentcore", "status", ...args]),
+    run: (args: string[] = [], ctx?: Context) =>
+      root.route(["node", "agentcore", "status", ...args], ctx),
   };
 }
 
-function testStatusCommand(deployed: ResolvedProjectResource[] = [], io = testIO()) {
+function testStatusCommand(
+  deployed: ResolvedProjectResource[] = [],
+  io = testIO(),
+  resolveAccount?: ResolveAccount,
+) {
   const fake = fakeBackend(deployed);
-  return { ...fake, ...statusCommand(fake.backend, io) };
+  return { ...fake, ...statusCommand(fake.backend, io, resolveAccount) };
 }
+
+// The credential environment the identity lookup reads, cleared for every test
+// so a developer's own AWS_PROFILE or keys never leak into the assertions.
+const CREDENTIAL_ENV = ["AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] as const;
+const savedEnv = new Map<string, string | undefined>();
+beforeEach(() => {
+  for (const name of CREDENTIAL_ENV) {
+    savedEnv.set(name, process.env[name]);
+    delete process.env[name];
+  }
+});
+afterEach(() => {
+  for (const [name, value] of savedEnv) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -159,6 +199,8 @@ describe("project status handler", () => {
       projectName: "orders",
       target: "default",
       region: DEFAULT_TARGET.region,
+      targetAccount: DEFAULT_TARGET.account,
+      awsIdentity: DEFAULT_IDENTITY,
       resources: [
         {
           resourceType: "harness",
@@ -196,6 +238,8 @@ describe("project status handler", () => {
       projectName: "orders",
       target: "default",
       region: "us-east-1",
+      targetAccount: DEFAULT_TARGET.account,
+      awsIdentity: DEFAULT_IDENTITY,
       resources: [
         HARNESS_ROW,
         {
@@ -269,6 +313,8 @@ describe("project status handler", () => {
       projectName: "orders",
       target: "default",
       region: "us-east-1",
+      targetAccount: DEFAULT_TARGET.account,
+      awsIdentity: DEFAULT_IDENTITY,
       resources: [
         HARNESS_ROW,
         { resourceType: "memory", name: "shortTerm", deploymentState: "local-only" },
@@ -298,6 +344,118 @@ describe("project status handler", () => {
     await expect(subject.run(["--target", "typo"])).rejects.toThrow(
       /has no deployment target named 'typo'/,
     );
+  });
+});
+
+describe("project status AWS identity", () => {
+  async function runWithTelemetry(subject: ReturnType<typeof testStatusCommand>, args: string[]) {
+    const { client, filePath, cleanup } = await getTestTelemetryClient();
+    cleanups.push(cleanup);
+    await withTelemetry(ValueContext.EmptyContext(), client, (ctx) => subject.run(args, ctx));
+    return filePath;
+  }
+
+  test("names the profile from AWS_PROFILE and writes no warning when the accounts match", async () => {
+    process.env.AWS_PROFILE = "dev";
+    // AWS_PROFILE wins over keys in the environment, as in the SDK's default chain.
+    process.env.AWS_ACCESS_KEY_ID = "access-key";
+    process.env.AWS_SECRET_ACCESS_KEY = "secret-key";
+    const subject = testStatusCommand();
+    await inProject();
+
+    await subject.run();
+
+    expect(subject.json().awsIdentity).toEqual({
+      credentialSource: "profile",
+      profile: "dev",
+      success: true,
+      account: DEFAULT_TARGET.account,
+    });
+    expect(subject.io.stderr()).toBe("");
+  });
+
+  test("reports environment credentials when access keys are set without AWS_PROFILE", async () => {
+    process.env.AWS_ACCESS_KEY_ID = "access-key";
+    process.env.AWS_SECRET_ACCESS_KEY = "secret-key";
+    const subject = testStatusCommand();
+    await inProject();
+
+    await subject.run();
+
+    expect(subject.json().awsIdentity).toEqual({
+      credentialSource: "environment",
+      success: true,
+      account: DEFAULT_TARGET.account,
+    });
+  });
+
+  test("resolves the identity in the selected target's region", async () => {
+    const regions: string[] = [];
+    const subject = testStatusCommand([], testIO(), async (region) => {
+      regions.push(region);
+      return STAGING_TARGET.account;
+    });
+    await inProject();
+
+    await subject.run(["--target", "staging"]);
+
+    expect(regions).toEqual([STAGING_TARGET.region]);
+    expect(subject.json()).toMatchObject({
+      targetAccount: STAGING_TARGET.account,
+      awsIdentity: { success: true, account: STAGING_TARGET.account },
+    });
+  });
+
+  test("warns on stderr when the credentials belong to another account", async () => {
+    const subject = testStatusCommand([HARNESS_ROW], testIO(), async () => "999988887777");
+    await inProject();
+
+    const telemetry = await runWithTelemetry(subject, []);
+
+    expect(subject.json()).toMatchObject({
+      targetAccount: DEFAULT_TARGET.account,
+      awsIdentity: { success: true, account: "999988887777" },
+      resources: [HARNESS_ROW],
+    });
+    expect(subject.io.stderr()).toBe(
+      "warning: The active AWS credentials belong to account 999988887777, " +
+        "but target 'default' is configured for account 111122223333.",
+    );
+    await assertMetricEmitted(telemetry, "cli.command_run", {
+      command_path: "/agentcore/status",
+      exit_reason: "success",
+      aws_identity_resolved: true,
+      aws_account_mismatch: true,
+    });
+  });
+
+  test("reports missing credentials instead of failing", async () => {
+    const subject = testStatusCommand([HARNESS_ROW], testIO(), async () => {
+      throw new Error("Could not load credentials from any providers");
+    });
+    await inProject();
+
+    const telemetry = await runWithTelemetry(subject, []);
+
+    expect(subject.json()).toMatchObject({
+      awsIdentity: {
+        credentialSource: "profile",
+        profile: "default",
+        success: false,
+        error: "Could not load credentials from any providers",
+      },
+      resources: [HARNESS_ROW],
+    });
+    expect(subject.io.stderr()).toBe(
+      "warning: AWS account unavailable (profile default): " +
+        "Could not load credentials from any providers",
+    );
+    await assertMetricEmitted(telemetry, "cli.command_run", {
+      command_path: "/agentcore/status",
+      exit_reason: "success",
+      aws_identity_resolved: false,
+      aws_account_mismatch: false,
+    });
   });
 });
 
@@ -354,6 +512,8 @@ describe("project status dispatch", () => {
       projectName: "orders",
       target: "default",
       region: "us-east-1",
+      targetAccount: DEFAULT_TARGET.account,
+      awsIdentity: DEFAULT_IDENTITY,
       resources: [HARNESS_ROW],
     });
   });
