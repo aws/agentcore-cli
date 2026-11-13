@@ -142,7 +142,7 @@ describe("project create", () => {
   test.each([
     ["agent-python-strands", ["bedrock"]],
     ["agent-python-minimal", ["bedrock"]],
-    ["mcp-python-fastmcp", undefined],
+    ["mcp-python-fastmcp", []],
     ["empty", undefined],
   ] as const)(
     "create --template %s writes projectType box and the box gateway entry targets %j to agentcore.json",

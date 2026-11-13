@@ -103,7 +103,10 @@ type RuntimeTemplateShortcut = {
   modelProvider?: ModelProvider;
   /** Ships with memory. */
   includesMemory: boolean;
-  /** Ships with the Box gateway: the project is a Box project (the agent calls a model). */
+  /**
+   * Ships with the Box gateway: the project is a Box project, so the agent's
+   * outbound calls, including a model added later, have a gateway to go through.
+   */
   includesBoxGateway: boolean;
   /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
   supportsModelProviderOverride: boolean;
@@ -211,7 +214,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     protocol: "MCP",
     includesMemory: false,
-    includesBoxGateway: false,
+    includesBoxGateway: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -351,7 +354,10 @@ export function resolveRuntimeTemplateShortcut(
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
     ...(template.includesBoxGateway && {
       boxGateway: getBoxGatewaySpec({
-        bedrockTarget: callsBedrockModel({ modelProvider, modelId: overrides?.modelId }),
+        // A template with no model provider (an MCP server) calls no model yet: no Bedrock target.
+        bedrockTarget:
+          modelProvider !== undefined &&
+          callsBedrockModel({ modelProvider, modelId: overrides?.modelId }),
       }),
     }),
     runtimeVersion: template.runtimeVersion,

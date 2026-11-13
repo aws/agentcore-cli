@@ -119,12 +119,16 @@ describe("Box gateway entry", () => {
     });
   });
 
-  test.each(["mcp-python-fastmcp", "environment-python-bma"] as const)(
-    "%s, which calls no model, declares none",
-    (template) => {
-      expect(resolveRuntimeTemplateShortcut(template).boxGateway).toBeUndefined();
-    },
-  );
+  test("mcp-python-fastmcp, which calls no model yet, declares it with no targets", () => {
+    expect(resolveRuntimeTemplateShortcut("mcp-python-fastmcp").boxGateway).toEqual(
+      getBoxGatewaySpec({ bedrockTarget: false }),
+    );
+    expect(resolveRuntimeTemplateShortcut("mcp-python-fastmcp").boxGateway?.targets).toEqual([]);
+  });
+
+  test("environment-python-bma, a Bedrock Managed Agents environment, declares none", () => {
+    expect(resolveRuntimeTemplateShortcut("environment-python-bma").boxGateway).toBeUndefined();
+  });
 
   test.each([
     ["OpenAI", { modelProvider: "OpenAI", apiKey: "sk-test" }],
