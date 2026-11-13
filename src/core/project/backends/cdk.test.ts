@@ -1545,10 +1545,19 @@ describe("CdkBackend.resolveProjectResources", () => {
 
 describe("CdkBackend.deploy and the Box gateway", () => {
   const MEMORY = { name: "recall", eventExpiryDuration: 30, strategies: [] };
+  const runtime = (name: string) => ({
+    name,
+    build: "CodeZip",
+    entrypoint: "main.py",
+    codeLocation: `app/${name}`,
+    runtimeVersion: "PYTHON_3_12",
+  });
+  const RUNTIMES = [runtime("agent"), runtime("my_agent")];
+  const RECORDED = ["example-default-agent-box", "example-default-my-agent-box"];
   const LOST_MARKER_ERROR =
     `agentcore.json has no "projectType": "box", so this deploy would delete the Box ` +
-    `gateway 'example-default-box'. Add "projectType": "box" back to agentcore.json, or re-run ` +
-    `with --yes to delete the gateway.`;
+    `gateways 'example-default-agent-box', 'example-default-my-agent-box'. Add "projectType": ` +
+    `"box" back to agentcore.json, or re-run with --yes to delete the gateways.`;
 
   async function boxProject(spec: Record<string, unknown>): Promise<Project> {
     const input = await project();
@@ -1560,39 +1569,52 @@ describe("CdkBackend.deploy and the Box gateway", () => {
     return JSON.parse(await Bun.file(statePath).text()).targets.default;
   }
 
-  async function recordBoxGateway(input: Project): Promise<void> {
+  async function recordBoxGateways(input: Project, names: string[] = RECORDED): Promise<void> {
     await updateTargetState(json, input.rootPath, TARGET.name, {
       stackArn: STACK_ARN,
-      resources: { boxGateway: { name: "example-default-box" } },
+      resources: { boxGateways: names.map((name) => ({ name })) },
     });
   }
 
-  test("records the Box gateway of a Box project after the deploy", async () => {
-    const input = await boxProject({ projectType: "box" });
+  test("records the Box gateway of each runtime after the deploy", async () => {
+    const input = await boxProject({ projectType: "box", runtimes: RUNTIMES });
     await writeAssembly(input, [TARGET.name]);
 
     await collectDeploy(harness().backend.deploy(input, deployInput()));
 
     expect((await targetState(input)).resources).toEqual({
       credentials: {},
-      boxGateway: { name: "example-default-box" },
+      boxGateways: RECORDED.map((name) => ({ name })),
     });
   });
 
+  test("records no Box gateway for a Box project with no runtime", async () => {
+    const input = await boxProject({ projectType: "box", memories: [MEMORY] });
+    await writeAssembly(input, [TARGET.name]);
+
+    await collectDeploy(harness().backend.deploy(input, deployInput()));
+
+    expect((await targetState(input)).resources).toEqual({ credentials: {} });
+  });
+
   test("records the v0 name, with no target segment, for a migrated project", async () => {
-    const input = await boxProject({ projectType: "box", migratedFrom: "v1" });
+    const input = await boxProject({
+      projectType: "box",
+      migratedFrom: "v1",
+      runtimes: [runtime("agent")],
+    });
     await writeAssembly(input, [TARGET.name]);
 
     await collectDeploy(harness().backend.deploy(input, deployInput()));
 
     expect((await targetState(input)).resources).toMatchObject({
-      boxGateway: { name: "example-box" },
+      boxGateways: [{ name: "example-agent-box" }],
     });
   });
 
   test("stops a deploy that would delete a recorded Box gateway, before any change", async () => {
     const input = await boxProject({ memories: [MEMORY] });
-    await recordBoxGateway(input);
+    await recordBoxGateways(input);
     await writeAssembly(input, [TARGET.name]);
     const requests: unknown[] = [];
     const subject = harness();
@@ -1612,28 +1634,30 @@ describe("CdkBackend.deploy and the Box gateway", () => {
     ).rejects.toThrow(LOST_MARKER_ERROR);
 
     expect(requests).toEqual([
-      { projectName: "example", targetName: "default", gatewayName: "example-default-box" },
+      { projectName: "example", targetName: "default", gatewayNames: RECORDED },
     ]);
     expect(subject.commands).toEqual([]);
     expect(subject.runs).toEqual([]);
     expect((await targetState(input)).resources).toEqual({
-      boxGateway: { name: "example-default-box" },
+      boxGateways: RECORDED.map((name) => ({ name })),
     });
   });
 
-  test("stops the deploy when no confirmation handler is given", async () => {
+  test("stops the deploy when no confirmation handler is given, and names one gateway", async () => {
     const input = await boxProject({ memories: [MEMORY] });
-    await recordBoxGateway(input);
+    await recordBoxGateways(input, ["example-default-agent-box"]);
     await writeAssembly(input, [TARGET.name]);
 
     await expect(collectDeploy(harness().backend.deploy(input, deployInput()))).rejects.toThrow(
-      LOST_MARKER_ERROR,
+      `agentcore.json has no "projectType": "box", so this deploy would delete the Box gateway ` +
+        `'example-default-agent-box'. Add "projectType": "box" back to agentcore.json, or re-run ` +
+        `with --yes to delete the gateway.`,
     );
   });
 
   test("deploys when the deletion is confirmed, and clears the record", async () => {
     const input = await boxProject({ memories: [MEMORY] });
-    await recordBoxGateway(input);
+    await recordBoxGateways(input);
     await writeAssembly(input, [TARGET.name]);
     const subject = harness();
 
@@ -1648,7 +1672,7 @@ describe("CdkBackend.deploy and the Box gateway", () => {
   test("leaves a project with no resources to the teardown confirmation alone", async () => {
     // The state after `agentcore remove all`: no projectType and no resources.
     const input = await boxProject({});
-    await recordBoxGateway(input);
+    await recordBoxGateways(input);
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
     let asked = false;
 

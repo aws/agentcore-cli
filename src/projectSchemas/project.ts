@@ -27,31 +27,54 @@ export const ProjectNameSchema = z
     message:
       "This name conflicts with a reserved package dependency. Please choose a different name.",
   });
-/** The kind of project. `box` is the only kind: a Box project gets the Box gateway. */
+/** The kind of project. `box` is the only kind: each runtime of a Box project gets a Box gateway. */
 export const ProjectTypeSchema = z.enum(["box"]);
-/** Whether the project is a Box project, so the CDK library makes the Box gateway. */
+/** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
-/** The logical name of the Box gateway, and of the gateway entry that adds targets to it. */
-export const BOX_GATEWAY_NAME = "box";
+/** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box`. */
+export const BOX_GATEWAY_SUFFIX = "-box";
 /** The only target type the Box gateway takes: it has no MCP interface (protocolType "None"). */
 export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
 /**
- * Whether a gateway entry only adds targets to the Box gateway: it is named `box` in a Box
- * project. In any other project, a gateway named `box` is a normal gateway.
+ * The logical name of the Box gateway of a runtime, and of the gateway entry that adds targets to
+ * it. Gateway names do not permit `_`, so `my_agent` gets `my-agent-box`. Must match the CDK library.
  */
-export const isBoxExtensionEntry = (spec: { projectType?: string }, gateway: { name: string }) =>
-  isBoxProject(spec) && gateway.name === BOX_GATEWAY_NAME;
+export const boxGatewayName = (runtimeName: string): string =>
+  `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
+/** The Box gateway names of a Box project, one for each runtime; none in any other project. */
+export const boxGatewayNames = (spec: {
+  projectType?: string;
+  runtimes: { name: string }[];
+}): string[] => (isBoxProject(spec) ? spec.runtimes.map(({ name }) => boxGatewayName(name)) : []);
 /**
- * The AWS name the CDK library gives the Box gateway: `<project>-<target>-box`. A project
- * migrated from v0 keeps v0's names, which have no target segment.
+ * Whether a gateway entry only adds targets to a Box gateway: it is named `<runtime>-box` for a
+ * runtime of a Box project. In any other project, such a name is a normal gateway.
  */
-export const boxGatewayName = (
+export const isBoxExtensionEntry = (
+  spec: { projectType?: string; runtimes: { name: string }[] },
+  gateway: { name: string },
+) => boxGatewayNames(spec).includes(gateway.name);
+/**
+ * Whether a gateway name is reserved for Box in a Box project: each name that ends in `-box`, in
+ * any letter case. The CDK library refuses such a name unless it is a runtime's Box gateway.
+ */
+export const isReservedBoxGatewayName = (spec: { projectType?: string }, name: string) =>
+  isBoxProject(spec) && name.toLowerCase().endsWith(BOX_GATEWAY_SUFFIX);
+/**
+ * The AWS name the CDK library gives the Box gateway of a runtime: `<project>-<target>-<runtime>-box`.
+ * A project migrated from v0 keeps v0's names, which have no target segment.
+ */
+export const boxGatewayAwsName = (
   spec: { name: string; migratedFrom?: string },
   targetName: string,
+  runtimeName: string,
 ): string =>
   spec.migratedFrom === undefined
-    ? `${spec.name}-${targetName}-${BOX_GATEWAY_NAME}`
-    : `${spec.name}-${BOX_GATEWAY_NAME}`;
+    ? `${spec.name}-${targetName}-${boxGatewayName(runtimeName)}`
+    : `${spec.name}-${boxGatewayName(runtimeName)}`;
+/** "the Box gateway 'a'" or "the Box gateways 'a', 'b'", for messages about recorded gateways. */
+export const describeBoxGateways = (names: string[]): string =>
+  `the Box gateway${names.length === 1 ? "" : "s"} ${names.map((name) => `'${name}'`).join(", ")}`;
 /** Whether every resource collection of the spec is empty, as after `agentcore remove all`. */
 export function declaresNoResources(spec: ProjectSpec): boolean {
   const collections = [
@@ -94,8 +117,8 @@ export const ProjectSpecSchema = z
     tags: TagsSchema.optional(),
     /**
      * `"box"` for a Box project. `agentcore create` writes it into every new project, and the CDK
-     * library then adds the Box gateway: logical name `box`, `AWS_IAM` auth, `protocolType: "None"`.
-     * A gateway entry named `box` in such a project only adds targets to it. No default: the spec
+     * library then adds one Box gateway for each runtime: logical name `<runtime>-box`, `AWS_IAM`
+     * auth, `protocolType: "None"`. A gateway entry with that name only adds targets to it. No default: the spec
      * is written back to disk after each parse, so a default would add the field to every
      * existing project.
      */

@@ -765,11 +765,11 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
 describe("project deploy and the Box gateway", () => {
   const BOX_PROMPT =
     `agentcore.json has no "projectType": "box", so this deploy will delete the Box gateway ` +
-    `'orders-default-box'. Continue? (y/N)`;
+    `'orders-default-agent-box'. Continue? (y/N)`;
   const REQUEST = {
     projectName: "orders",
     targetName: "default",
-    gatewayName: "orders-default-box",
+    gatewayNames: ["orders-default-agent-box"],
   };
 
   /** A Box project that lost its projectType after a deploy recorded its Box gateway. */
@@ -782,7 +782,9 @@ describe("project deploy and the Box gateway", () => {
     await writeFile(
       join(projectRoot, "agentcore", ".cli", "deployed-state.json"),
       JSON.stringify({
-        targets: { default: { resources: { boxGateway: { name: "orders-default-box" } } } },
+        targets: {
+          default: { resources: { boxGateways: [{ name: "orders-default-agent-box" }] } },
+        },
       }),
     );
     return projectRoot;

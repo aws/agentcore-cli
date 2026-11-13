@@ -702,7 +702,7 @@ describe("project remove in a Box project", () => {
       "add",
       "gateway-target",
       "--gateway",
-      "box",
+      "agent-box",
       "--target-configuration",
       JSON.stringify({
         name: "weather",
@@ -714,14 +714,14 @@ describe("project remove in a Box project", () => {
     return projectRoot;
   }
 
-  test("add gateway-target --gateway box writes the extension entry", async () => {
+  test("add gateway-target --gateway agent-box writes the extension entry", async () => {
     const projectRoot = await boxProject();
 
     const spec = await projectSpec(projectRoot);
     expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toMatchObject([
       {
-        name: "box",
+        name: "agent-box",
         authorizerType: "AWS_IAM",
         protocolType: "None",
         targets: [{ name: "weather", targetType: "passthrough" }],
@@ -732,7 +732,7 @@ describe("project remove in a Box project", () => {
   test("remove gateway-target of the last target removes the entry", async () => {
     const projectRoot = await boxProject();
 
-    await run(["remove", "gateway-target", "--gateway", "box", "--name", "weather"]);
+    await run(["remove", "gateway-target", "--gateway", "agent-box", "--name", "weather"]);
 
     const spec = await projectSpec(projectRoot);
     expect(spec.agentCoreGateways).toEqual([]);
@@ -740,11 +740,11 @@ describe("project remove in a Box project", () => {
   });
 
   test.each([[[]], [["--json"]]])(
-    "remove gateway --name box %j says that the Box gateway stays",
+    "remove gateway --name agent-box %j says that the Box gateway stays",
     async (extra) => {
       const projectRoot = await boxProject();
 
-      const { io } = await run(["remove", "gateway", "--name", "box", ...extra]);
+      const { io } = await run(["remove", "gateway", "--name", "agent-box", ...extra]);
 
       expect(io.stderr()).toContain(BOX_GATEWAY_STAYS_NOTICE);
       const spec = await projectSpec(projectRoot);
