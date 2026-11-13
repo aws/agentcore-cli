@@ -3,7 +3,7 @@ import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
-  getBoxGatewayEntry,
+  getBoxGatewayBedrockEntry,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
   resolveRuntimeTemplateShortcut,
@@ -89,20 +89,32 @@ test("default memory names fit the service limit for long runtime names", () => 
 });
 
 describe("Box gateway entry", () => {
+  const BEDROCK_TARGET = {
+    name: "bedrock",
+    targetType: "passthrough",
+    passthrough: {
+      endpoint: "https://bedrock-runtime.us-west-2.amazonaws.com",
+      protocolType: "CUSTOM",
+    },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-west-2" },
+  } as const;
+
   test("is a valid project gateway, named after the runtime's Box gateway", () => {
-    const entry = getBoxGatewayEntry("my_agent");
+    const entry = getBoxGatewayBedrockEntry("my_agent");
     expect(AgentCoreGatewaySchema.parse(entry)).toEqual(entry);
     expect(entry.name).toBe("my-agent-box");
   });
 
   test.each([
-    "agent-python-strands-box",
-    "agent-python-strands-box-container",
-    "agent-python-minimal-box",
-    "agent-python-langchain-box",
-    "a2a-python-strands-box",
-    "agui-python-strands-box",
-  ] as const)("%s declares it with no target", (template) => {
+    "agent-python-strands",
+    "agent-python-strands-container",
+    "agent-typescript-strands",
+    "a2a-python-strands",
+    "agui-python-strands",
+    "agent-python-langchain",
+    "agent-typescript-vercel",
+    "agent-python-minimal",
+  ] as const)("%s declares it with the Bedrock target by default", (template) => {
     expect(
       resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
     ).toEqual({
@@ -111,7 +123,8 @@ describe("Box gateway entry", () => {
       authorizerType: "AWS_IAM",
       enableSemanticSearch: true,
       exceptionLevel: "NONE",
-      targets: [],
+      targets: [BEDROCK_TARGET],
+      policyEngineConfiguration: { policyEngineName: "agent_box", mode: "ENFORCE" },
     });
   });
 
@@ -138,10 +151,10 @@ describe("Box gateway entry", () => {
     ).toBeUndefined();
   });
 
-  test("a LiteLLM agent on its default Bedrock model declares the Box gateway", () => {
+  test("a LiteLLM agent on its default Bedrock model declares the Bedrock target", () => {
     expect(
       resolveRuntimeTemplateShortcut("agent-python-strands-box", { modelProvider: "LiteLLM" })
         .boxGatewayEntry?.targets,
-    ).toEqual([]);
+    ).toEqual([BEDROCK_TARGET]);
   });
 });

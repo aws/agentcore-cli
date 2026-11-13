@@ -18,7 +18,11 @@ import {
 import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
-import { createGatewayProjectTestHarness, removeDefaultBoxGateway } from "../gateway-test-support";
+import {
+  createGatewayProjectTestHarness,
+  DEFAULT_BOX_POLICY_ENGINE,
+  removeDefaultBoxGateway,
+} from "../gateway-test-support";
 
 const { addGateway, cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness(
   "add-policy-engine-wizard",
@@ -59,6 +63,7 @@ describe("project add policy-engine wizard", () => {
     expect(screen.lastFrame()).toContain("[enter] go back");
     // The same bare engine `--name Guardrails` writes.
     expect((await projectSpec(projectRoot)).policyEngines).toEqual([
+      DEFAULT_BOX_POLICY_ENGINE,
       { name: "Guardrails", policies: [] },
     ]);
 
@@ -113,7 +118,10 @@ describe("project add policy-engine wizard", () => {
     expect(screen.lastFrame()).toContain("attached to 2 Gateways in log-only mode");
     const spec = await projectSpec(projectRoot);
     const [box, ...attached] = spec.agentCoreGateways;
-    expect(box.policyEngineConfiguration).toBeUndefined();
+    expect(box.policyEngineConfiguration).toEqual({
+      policyEngineName: "agent_box",
+      mode: "ENFORCE",
+    });
     for (const gateway of attached) {
       expect(gateway.policyEngineConfiguration).toEqual({
         policyEngineName: "Guardrails",
@@ -139,7 +147,10 @@ describe("project add policy-engine wizard", () => {
     await waitForText(screen.lastFrame, "added Policy Engine 'Guardrails'");
     expect(screen.lastFrame()).not.toContain("attached to");
     const spec = await projectSpec(projectRoot);
-    expect(spec.policyEngines).toEqual([{ name: "Guardrails", policies: [] }]);
+    expect(spec.policyEngines).toEqual([
+      DEFAULT_BOX_POLICY_ENGINE,
+      { name: "Guardrails", policies: [] },
+    ]);
     expect(spec.agentCoreGateways[1].policyEngineConfiguration).toBeUndefined();
     screen.unmount();
   }, 15000);
@@ -211,7 +222,7 @@ describe("project add policy-engine wizard", () => {
     await waitForText(screen.lastFrame, "this Policy Engine will be added to agentcore.json");
     expect(flatFrame(screen.lastFrame)).toContain("policy engine Guardrails");
 
-    expect((await projectSpec(projectRoot)).policyEngines).toHaveLength(1);
+    expect((await projectSpec(projectRoot)).policyEngines).toHaveLength(2);
     screen.unmount();
   }, 15000);
 
@@ -319,6 +330,7 @@ describe("project add policy-engine dispatch", () => {
     ]);
 
     expect((await projectSpec(projectRoot)).policyEngines).toEqual([
+      DEFAULT_BOX_POLICY_ENGINE,
       { name: "FlagEngine", policies: [] },
     ]);
   }, 10000);

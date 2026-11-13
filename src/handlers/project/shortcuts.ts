@@ -7,7 +7,11 @@ import {
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
+import type { PolicyEngine } from "../../projectSchemas/policy";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { boxGatewayName, boxGatewayPolicyEngineName } from "../../projectSchemas/project";
+
+export { boxGatewayPolicyEngineName };
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -27,57 +31,77 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   };
 }
 
-/**
- * The name of the Box gateway, which the CDK library adds to a project with
- * `"projectType": "box"`. The agentcore.json entry of this name only adds
- * targets (and `additionalPolicies`) to it.
- */
-export const BOX_GATEWAY_NAME = "box";
-
-/** The name of the Box gateway's Bedrock model target. */
+/** The name of the Bedrock model target in a runtime's Box gateway entry. */
 export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
 /**
- * The region of the Box gateway's Bedrock target, fixed for now.
- * `create` does not know the deploy region (deploy resolves it, per target), so
- * a project deployed elsewhere still calls Bedrock in this region until the
- * target is edited in agentcore.json.
+ * The region of the Bedrock target, fixed for now. `create` does not know the
+ * deploy region (deploy resolves it, per target), so a project deployed
+ * elsewhere still calls Bedrock in this region until the target is edited in
+ * agentcore.json.
  */
 export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
 
 /**
- * The Box gateway entry that `agentcore create` declares next to
- * `"projectType": "box"`, so the deployed agent's outbound calls go through one
- * gateway. The CDK library owns the gateway itself, and allows the entry only
- * the settings below, which are the Box gateway's own. It gets a passthrough
- * target for the Bedrock model endpoint only when the agent calls Bedrock:
- * another model provider's endpoint takes an API key, which create does not
- * have a credential for.
+ * The entry that `agentcore create` declares for a runtime whose agent calls
+ * Bedrock: it adds a passthrough target for the Bedrock model endpoint to the
+ * runtime's Box gateway, `<runtime>-box`, which the CDK library makes for each
+ * runtime of a Box project. The entry has the settings `agentcore add
+ * gateway-target` gives one, which are the Box gateway's own. Another model
+ * provider's endpoint takes an API key that create has no credential for, so
+ * such an agent gets no entry.
  */
-export function getBoxGatewaySpec(options: { bedrockTarget: boolean }): AgentCoreGateway {
+export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway {
   const region = BOX_GATEWAY_BEDROCK_REGION;
   return {
-    name: BOX_GATEWAY_NAME,
+    ...getBoxGatewayEntry(runtimeName),
+    targets: [
+      {
+        name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+        targetType: "passthrough",
+        passthrough: {
+          endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+          protocolType: "CUSTOM",
+        },
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+      },
+    ],
+  };
+}
+
+/** The mode of a Box gateway's policy engine: `ENFORCE`, so its policies are enforced. */
+export const BOX_GATEWAY_POLICY_ENGINE_MODE = "ENFORCE" as const;
+
+/**
+ * The policy engine of a runtime's Box gateway: one engine for each gateway, with no policies.
+ * `agentcore create` declares it, and the Box gateway entry attaches it. Add policies later.
+ */
+export function getBoxGatewayPolicyEngineSpec(runtimeName: string): PolicyEngine {
+  return {
+    name: boxGatewayPolicyEngineName(runtimeName),
+    description: `Policy engine for the Box gateway '${boxGatewayName(runtimeName)}'.`,
+    policies: [],
+  };
+}
+
+/**
+ * An entry for the runtime's Box gateway, `<runtime>-box`, with no targets yet. It has the
+ * settings `agentcore add gateway-target` gives one, which are the Box gateway's own. The entry
+ * attaches the gateway's own policy engine, which `getBoxGatewayPolicyEngineSpec` declares.
+ */
+export function getBoxGatewayEntry(runtimeName: string): AgentCoreGateway {
+  return {
+    name: boxGatewayName(runtimeName),
     protocolType: "None",
     authorizerType: "AWS_IAM",
-    // The only value the Box gateway entry accepts; it has no effect without MCP.
+    // The value the gateway schema fills in; it has no effect without MCP.
     enableSemanticSearch: true,
     exceptionLevel: "NONE",
-    targets: [
-      ...(options.bedrockTarget
-        ? [
-            {
-              name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
-              targetType: "passthrough" as const,
-              passthrough: {
-                endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
-                protocolType: "CUSTOM" as const,
-              },
-              outboundAuth: { type: "GATEWAY_IAM_ROLE" as const, service: "bedrock", region },
-            },
-          ]
-        : []),
-    ],
+    targets: [],
+    policyEngineConfiguration: {
+      policyEngineName: boxGatewayPolicyEngineName(runtimeName),
+      mode: BOX_GATEWAY_POLICY_ENGINE_MODE,
+    },
   };
 }
 
@@ -469,14 +493,11 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
-    ...(template.includesBoxGateway && {
-      boxGateway: getBoxGatewaySpec({
-        // A template with no model provider (an MCP server) calls no model yet: no Bedrock target.
-        bedrockTarget:
-          modelProvider !== undefined &&
-          callsBedrockModel({ modelProvider, modelId: overrides?.modelId }),
+    // A template with no model provider (an MCP server, BMA) calls no model.
+    ...(modelProvider !== undefined &&
+      callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
+        boxGatewayEntry: getBoxGatewayBedrockEntry(runtimeName),
       }),
-    }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

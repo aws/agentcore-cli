@@ -1,11 +1,13 @@
 import { InputValidationError } from "../../errors/errors";
 import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
-  BOX_GATEWAY_NAME,
+  BOX_GATEWAY_POLICY_ENGINE_MODE,
+  boxGatewayPolicyEngineName,
   getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewaySpec,
+  getBoxGatewayEntry,
+  getBoxGatewayPolicyEngineSpec,
 } from "../../handlers/project/shortcuts";
-import type { ProjectSpec } from "../../projectSchemas/project";
+import { boxGatewayName, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { runsAgentInBox } from "./backends/boxContainer";
@@ -39,11 +41,11 @@ export function hasDefaultMemory(spec: ProjectSpec, runtime: ProjectRuntime): bo
   return spec.memories.some((memory) => memory.name === defaultMemoryName(runtime.name));
 }
 
-/** The default Memory names of the runtimes that run their agent in a box. */
-function boxedDefaultMemories(spec: ProjectSpec, projectRoot: string): string[] {
-  return spec.runtimes
-    .filter((runtime) => runsAgentInBox(projectRoot, runtime) && hasDefaultMemory(spec, runtime))
-    .map((runtime) => defaultMemoryName(runtime.name));
+/** The runtimes that run their agent in a box and have their default Memory. */
+function boxedRuntimesWithMemory(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
+  return spec.runtimes.filter(
+    (runtime) => runsAgentInBox(projectRoot, runtime) && hasDefaultMemory(spec, runtime),
+  );
 }
 
 /**
@@ -56,7 +58,9 @@ export function boxMemoryPolicy(
   spec: ProjectSpec,
   projectRoot: string,
 ): Record<string, unknown> | undefined {
-  const memories = boxedDefaultMemories(spec, projectRoot);
+  const memories = boxedRuntimesWithMemory(spec, projectRoot).map((runtime) =>
+    defaultMemoryName(runtime.name),
+  );
   if (memories.length === 0) return undefined;
   return {
     Version: "2012-10-17",
@@ -74,27 +78,29 @@ export function boxMemoryPolicy(
 }
 
 /**
- * Adds the `agentcore` passthrough target to the Box gateway when a runtime
- * that runs its agent in a box has its default Memory, so the box can send the
- * agent's Memory calls through the gateway, and lists
- * {@link BOX_MEMORY_POLICY_FILE} in the gateway's `additionalPolicies` so its
- * role may make them (unless the gateway imports its role). Recreates the
- * gateway entry when it was removed, and marks the project `"projectType":
- * "box"` so the CDK library deploys the Box gateway that the entry extends.
- * Changes `spec` in place, and returns the step messages; none when nothing
- * changed. Target names are project-unique, so the name on another gateway is
- * an error.
+ * Adds the `agentcore` passthrough target to the Box gateway, `<runtime>-box`, of each runtime
+ * that runs its agent in a box and has its default Memory, so the box can send the agent's Memory
+ * calls through the gateway, and lists {@link BOX_MEMORY_POLICY_FILE} in that gateway's
+ * `additionalPolicies` so its role may make them (unless the gateway imports its role). Recreates
+ * a gateway entry that was removed, and marks the project `"projectType": "box"` so the CDK
+ * library deploys the Box gateways the entries extend. Changes `spec` in place, and returns the
+ * step messages; none when nothing changed. The target name on a gateway that is not a Box
+ * gateway is an error.
  */
 export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): string[] {
-  if (boxedDefaultMemories(spec, projectRoot).length === 0) return [];
+  const runtimes = boxedRuntimesWithMemory(spec, projectRoot);
+  if (runtimes.length === 0) return [];
 
-  const owner = spec.agentCoreGateways.find((gateway) =>
-    gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET),
+  const boxGateways = new Set(spec.runtimes.map(({ name }) => boxGatewayName(name)));
+  const owner = spec.agentCoreGateways.find(
+    (gateway) =>
+      !boxGateways.has(gateway.name) &&
+      gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET),
   );
-  if (owner && owner.name !== BOX_GATEWAY_NAME) {
+  if (owner) {
     throw new InputValidationError(
-      `gateway '${owner.name}' has a target named '${BOX_MEMORY_TARGET}', the name the ` +
-        `'${BOX_GATEWAY_NAME}' gateway needs for the agent's Memory calls. Rename that target.`,
+      `gateway '${owner.name}' has a target named '${BOX_MEMORY_TARGET}', the name the Box ` +
+        "gateways need for the agent's Memory calls. Rename that target.",
     );
   }
 
@@ -103,26 +109,50 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
     spec.projectType = "box";
     messages.push(`setting "projectType": "box" in agentcore.json, for the Box gateway`);
   }
-  let gateway = spec.agentCoreGateways.find(({ name }) => name === BOX_GATEWAY_NAME);
-  if (!gateway) {
-    gateway = getBoxGatewaySpec({ bedrockTarget: false });
-    spec.agentCoreGateways.push(gateway);
-    messages.push(`adding gateway '${BOX_GATEWAY_NAME}' to agentcore.json`);
-  }
-  if (!owner) {
-    gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
-    messages.push(
-      `adding target '${BOX_MEMORY_TARGET}' to gateway '${BOX_GATEWAY_NAME}' in ` +
-        "agentcore.json, for the boxed agent's Memory calls",
-    );
-  }
-  // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
-  if (!gateway.executionRoleArn && !gateway.additionalPolicies?.includes(BOX_MEMORY_POLICY_FILE)) {
-    gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_MEMORY_POLICY_FILE];
-    messages.push(
-      `adding '${BOX_MEMORY_POLICY_FILE}' to gateway '${BOX_GATEWAY_NAME}' ` +
-        "additionalPolicies in agentcore.json, so its role can call Memory",
-    );
+  for (const runtime of runtimes) {
+    const name = boxGatewayName(runtime.name);
+    let gateway = spec.agentCoreGateways.find((entry) => entry.name === name);
+    if (!gateway) {
+      gateway = getBoxGatewayEntry(runtime.name);
+      spec.agentCoreGateways.push(gateway);
+      messages.push(`adding gateway '${name}' to agentcore.json`);
+    }
+    if (!gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET)) {
+      gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
+      messages.push(
+        `adding target '${BOX_MEMORY_TARGET}' to gateway '${name}' in ` +
+          "agentcore.json, for the boxed agent's Memory calls",
+      );
+    }
+    // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
+    if (
+      !gateway.executionRoleArn &&
+      !gateway.additionalPolicies?.includes(BOX_MEMORY_POLICY_FILE)
+    ) {
+      gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_MEMORY_POLICY_FILE];
+      messages.push(
+        `adding '${BOX_MEMORY_POLICY_FILE}' to gateway '${name}' ` +
+          "additionalPolicies in agentcore.json, so its role can call Memory",
+      );
+    }
+    // Each Box gateway gets its own policy engine. Attach it, and declare it, if either is missing
+    // (a gateway from an older project has neither).
+    const engineName = boxGatewayPolicyEngineName(runtime.name);
+    if (!gateway.policyEngineConfiguration) {
+      gateway.policyEngineConfiguration = {
+        policyEngineName: engineName,
+        mode: BOX_GATEWAY_POLICY_ENGINE_MODE,
+      };
+      messages.push(
+        `attaching policy engine '${engineName}' to gateway '${name}' in agentcore.json`,
+      );
+    }
+    if (!spec.policyEngines.some((engine) => engine.name === engineName)) {
+      spec.policyEngines.push(getBoxGatewayPolicyEngineSpec(runtime.name));
+      messages.push(
+        `adding policy engine '${engineName}' to agentcore.json, for gateway '${name}'`,
+      );
+    }
   }
   return messages;
 }

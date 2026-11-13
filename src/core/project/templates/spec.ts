@@ -7,6 +7,7 @@ export function mergeSpecEntries(entries: SpecEntries[]): SpecEntries {
   const memories = entries.flatMap(({ memories }) => memories ?? []);
   const harnesses = entries.flatMap(({ harnesses }) => harnesses ?? []);
   const agentCoreGateways = entries.flatMap(({ agentCoreGateways }) => agentCoreGateways ?? []);
+  const policyEngines = entries.flatMap(({ policyEngines }) => policyEngines ?? []);
 
   return {
     ...(runtimes.length > 0 && { runtimes }),
@@ -14,5 +15,6 @@ export function mergeSpecEntries(entries: SpecEntries[]): SpecEntries {
     ...(memories.length > 0 && { memories }),
     ...(harnesses.length > 0 && { harnesses }),
     ...(agentCoreGateways.length > 0 && { agentCoreGateways }),
+    ...(policyEngines.length > 0 && { policyEngines }),
   };
 }
