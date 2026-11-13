@@ -1,8 +1,5 @@
 import { join } from "node:path";
-import {
-  DEFAULT_EGRESS_BEDROCK_REGION,
-  callsBedrockModel,
-} from "../../../handlers/project/shortcuts";
+import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
@@ -202,7 +199,7 @@ function containerRunner(workloadPort: number): Runner {
 export function renderBoxProfile(projectName: string, runtime: ScaffoldRuntimeInput) {
   if (!hasBoxProfile(runtime)) return undefined;
 
-  const region = DEFAULT_EGRESS_BEDROCK_REGION;
+  const region = BOX_GATEWAY_BEDROCK_REGION;
   const protocol = runtime.protocol ?? "HTTP";
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
   const ingressPort = boxIngressPort(protocol);

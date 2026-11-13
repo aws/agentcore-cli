@@ -68,6 +68,19 @@ function render(path: string, core: TestCoreClient, project: Project) {
   return renderScreen(path, { core, withContext: (ctx) => ctx.withValue(ProjectKey, project) });
 }
 
+/**
+ * A project with no resources: the created one minus its scaffolded runtime,
+ * whose removal also removes the runtime's Box gateway entry that create declares.
+ */
+async function emptyProject(core: TestCoreClient): Promise<Project> {
+  const { project } = await createProject(core);
+  const { project: empty } = await core.projectManager.removeResource(project, {
+    resourceType: "runtime",
+    name: project.spec.runtimes[0]!.name,
+  });
+  return empty;
+}
+
 async function readSpec(specPath: string): Promise<ProjectSpec> {
   return ProjectSpecSchema.parse(JSON.parse(await readFile(specPath, "utf8")));
 }
@@ -223,11 +236,7 @@ describe("project remove screen", () => {
 
   test("an empty project offers no resources to remove and no all option", async () => {
     const core = new TestCoreClient();
-    const { project } = await createProject(core);
-    const { project: empty } = await core.projectManager.removeResource(project, {
-      resourceType: "runtime",
-      name: project.spec.runtimes[0]!.name,
-    });
+    const empty = await emptyProject(core);
     const r = render("/agentcore/remove", core, empty);
 
     await waitForText(r.lastFrame, "This project has no resources to remove.");
@@ -251,11 +260,7 @@ describe("project remove screen", () => {
 
   test("remove all on an empty project shows nothing to remove", async () => {
     const core = new TestCoreClient();
-    const { project } = await createProject(core);
-    const { project: empty } = await core.projectManager.removeResource(project, {
-      resourceType: "runtime",
-      name: project.spec.runtimes[0]!.name,
-    });
+    const empty = await emptyProject(core);
     const r = render("/agentcore/remove/all", core, empty);
 
     await waitForText(r.lastFrame, "This project has no resources to remove.");
@@ -314,8 +319,9 @@ describe("project remove screen", () => {
     const r = render("/agentcore/remove", core, project);
 
     await waitForText(r.lastFrame, "all");
-    // `all` = the sum of the listed rows: 1 runtime + 1 policy-engine + 1 policy.
-    expect(r.lastFrame()).toMatch(/all\s+3/);
+    // `all` = the sum of the listed rows: 1 runtime + 1 policy-engine + 1 policy,
+    // plus the agent-box gateway entry and its bedrock gateway-target.
+    expect(r.lastFrame()).toMatch(/all\s+5/);
     r.unmount();
   });
 

@@ -62,7 +62,17 @@ import {
 import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
-import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
+import {
+  BOX_GATEWAY_TARGET_TYPE,
+  boxGatewayName,
+  boxGatewayNames,
+  isBoxExtensionEntry,
+  isBoxProject,
+  isReservedBoxGatewayName,
+  ProjectSpecSchema,
+  type ManagedBy,
+} from "../../projectSchemas/project";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import {
   CredentialSchema,
@@ -92,6 +102,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -913,6 +924,16 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
+        // KD6: in a Box project, names that end in -box belong to the Box gateways, in any
+        // letter case. The CDK library would refuse them at synth; refusing here keeps
+        // agentcore.json unchanged.
+        if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
+          throw new InputValidationError(
+            `the gateway name '${input.resourceConfig.name}' is reserved: in this project, names that ` +
+              `end in '-box' belong to the Box gateways of the runtimes. Give the gateway a name that ` +
+              `does not end in '-box'.${boxGatewayHint(projectSpec)}`,
+          );
+        }
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
       case "payment-manager": {
@@ -951,12 +972,35 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway-target": {
-        const gatewayIndex = projectSpec.agentCoreGateways.findIndex(
+        let gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
         );
+        // In a Box project the L3 owns the Box gateway, so the entry that holds its targets
+        // comes and goes with them. It states the gateway's true settings: the write-back would
+        // fill in authorizerType NONE, and the schema checks targets against protocolType.
+        const boxEntry = isBoxExtensionEntry(projectSpec, { name: input.gatewayName });
+        if (boxEntry && input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE) {
+          throw new InputValidationError(
+            `the Box gateway takes only passthrough targets, but target ` +
+              `'${input.resourceConfig.name}' is ${input.resourceConfig.targetType}. Pass ` +
+              `--target-configuration with "targetType": "passthrough".`,
+          );
+        }
+        if (gatewayIndex < 0 && boxEntry) {
+          gatewayIndex =
+            projectSpec.agentCoreGateways.push(
+              parseResource(AgentCoreGatewaySchema, {
+                name: input.gatewayName,
+                authorizerType: "AWS_IAM",
+                protocolType: "None",
+                targets: [],
+              }),
+            ) - 1;
+        }
         if (gatewayIndex < 0) {
+          const hint = boxGatewayHint(projectSpec);
           throw new ResourceNotFoundError(
-            `no gateway named '${input.gatewayName}' exists in this project`,
+            `no gateway named '${input.gatewayName}' exists in this project${hint ? `.${hint}` : ""}`,
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);
@@ -1093,7 +1137,12 @@ export class FsProjectManager implements ProjectManager {
       const gateway = gateways[gatewayIndex]!;
       const targets = gateway.targets.filter((target) => target.name !== input.name);
       removed = targets.length !== gateway.targets.length;
-      gateways[gatewayIndex] = { ...gateway, targets };
+      // The Box gateway stays without its entry, so the file shows only what the user added.
+      if (isBoxExtensionEntry(existingProjectSpec, gateway) && targets.length === 0) {
+        gateways.splice(gatewayIndex, 1);
+      } else {
+        gateways[gatewayIndex] = { ...gateway, targets };
+      }
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
     } else if (input.resourceType === "payment-connector") {
       const payments = [...(existingProjectSpec.payments ?? [])];
@@ -1134,6 +1183,17 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+      // The Box gateway of a runtime goes with the runtime (KD4), so its targets go too. An
+      // entry for a runtime that no longer exists would fail the synth.
+      if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
+        const boxName = boxGatewayName(input.name);
+        newSpec = {
+          ...(newSpec as object),
+          agentCoreGateways: existingProjectSpec.agentCoreGateways.filter(
+            (gateway) => gateway.name !== boxName,
+          ),
+        };
+      }
     }
 
     if (!removed) {
@@ -1186,8 +1246,11 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
+    // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
+    // every resource, so the next deploy reaches the teardown confirmation as before.
+    const { projectType: _projectType, ...rest } = existingProjectSpec;
     const newSpec = {
-      ...existingProjectSpec,
+      ...rest,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1691,6 +1754,7 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
+      confirmBoxGatewayDeletion: input.confirmBoxGatewayDeletion,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
     });
@@ -1714,6 +1778,11 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<AwsDeploymentTarget | undefined> {
     const targets = await this.listTargets(project);
     return targets.find((candidate) => candidate.name === input.target);
+  }
+
+  public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
+    const state = await readDeployedState(this.json, project.rootPath);
+    return (state.targets[input.target]?.resources?.boxGateways ?? []).map(({ name }) => name);
   }
 
   public async resolveDeployedResource(
@@ -2054,6 +2123,13 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/** A hint that lists the Box gateways of a Box project, for errors about gateway names. */
+function boxGatewayHint(spec: { projectType?: string; runtimes: { name: string }[] }): string {
+  const names = boxGatewayNames(spec);
+  if (names.length === 0) return "";
+  return ` The Box gateways in this project are: ${names.map((name) => `'${name}'`).join(", ")}.`;
 }
 
 function parseResource<TSchema extends z.ZodType>(

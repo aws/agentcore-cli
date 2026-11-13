@@ -6,7 +6,9 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import type { AgentCoreGateway } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { boxGatewayName } from "../../projectSchemas/project";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -26,11 +28,48 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   };
 }
 
+/** The name of the Bedrock model target in a runtime's Box gateway entry. */
+export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
+
 /**
- * The Bedrock region a boxed agent's model calls go to, fixed for now.
- * `create` does not know the deploy region (deploy resolves it, per target).
+ * The region of the Bedrock target, fixed for now. `create` does not know the
+ * deploy region (deploy resolves it, per target), so a project deployed
+ * elsewhere still calls Bedrock in this region until the target is edited in
+ * agentcore.json.
  */
-export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
+export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
+
+/**
+ * The entry that `agentcore create` declares for a runtime whose agent calls
+ * Bedrock: it adds a passthrough target for the Bedrock model endpoint to the
+ * runtime's Box gateway, `<runtime>-box`, which the CDK library makes for each
+ * runtime of a Box project. The entry has the settings `agentcore add
+ * gateway-target` gives one, which are the Box gateway's own. Another model
+ * provider's endpoint takes an API key that create has no credential for, so
+ * such an agent gets no entry.
+ */
+export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway {
+  const region = BOX_GATEWAY_BEDROCK_REGION;
+  return {
+    name: boxGatewayName(runtimeName),
+    protocolType: "None",
+    authorizerType: "AWS_IAM",
+    // The value the gateway schema fills in; it has no effect without MCP.
+    enableSemanticSearch: true,
+    exceptionLevel: "NONE",
+    targets: [
+      {
+        name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+        targetType: "passthrough",
+        passthrough: {
+          endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+          protocolType: "CUSTOM",
+        },
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+      },
+    ],
+  };
+}
 
 /**
  * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
@@ -273,19 +312,26 @@ export function resolveRuntimeTemplateShortcut(
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
 
+  const modelProvider = template.supportsModelProviderOverride
+    ? (overrides?.modelProvider ?? template.modelProvider)
+    : template.modelProvider;
+
   const input = {
     runtimeName,
     build: template.build,
     language: template.language,
     framework: template.framework,
     protocol: template.protocol,
-    modelProvider: template.supportsModelProviderOverride
-      ? (overrides?.modelProvider ?? template.modelProvider)
-      : template.modelProvider,
+    modelProvider,
     ...(overrides?.modelId !== undefined && { modelId: overrides.modelId }),
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
+    // A template with no model provider (an MCP server, BMA) calls no model.
+    ...(modelProvider !== undefined &&
+      callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
+        boxGatewayEntry: getBoxGatewayBedrockEntry(runtimeName),
+      }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   LegacyDeployError,
@@ -415,7 +415,8 @@ describe("project deploy handler", () => {
       exit_reason: "success",
       project_runtime_count: 1,
       project_memory_count: 0,
-      project_gateway_count: 0,
+      // the agent-box gateway entry that create declares.
+      project_gateway_count: 1,
       project_harness_count: 0,
     });
     expect(subject.calls).toHaveLength(1);
@@ -759,5 +760,98 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
 
     await expect(subject.run()).rejects.toThrow(/JSON Parse error/);
     expect(subject.calls).toEqual([]);
+  });
+});
+
+describe("project deploy and the Box gateway", () => {
+  const BOX_PROMPT =
+    `agentcore.json has no "projectType": "box", so this deploy will delete the Box gateway ` +
+    `'orders-default-agent-box'. Continue? (y/N)`;
+  const REQUEST = {
+    projectName: "orders",
+    targetName: "default",
+    gatewayNames: ["orders-default-agent-box"],
+  };
+
+  /** A Box project that lost its projectType after a deploy recorded its Box gateway. */
+  async function lostMarker(): Promise<string> {
+    const projectRoot = await inProjectWithTargets();
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const { projectType: _projectType, ...spec } = JSON.parse(await readFile(specPath, "utf8"));
+    await writeFile(specPath, JSON.stringify(spec));
+    await mkdir(join(projectRoot, "agentcore", ".cli"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "agentcore", ".cli", "deployed-state.json"),
+      JSON.stringify({
+        targets: {
+          default: { resources: { boxGateways: [{ name: "orders-default-agent-box" }] } },
+        },
+      }),
+    );
+    return projectRoot;
+  }
+
+  const answer = (subject: { calls: { input: DeployBackendInput }[] }) =>
+    subject.calls[0]!.input.confirmBoxGatewayDeletion!(REQUEST);
+
+  test("asks before it deletes the Box gateway and proceeds on yes", async () => {
+    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
+    await lostMarker();
+
+    await subject.run();
+
+    expect(subject.io.stderr()).toContain(BOX_PROMPT);
+    expect(await answer(subject)).toBe(true);
+  });
+
+  test("cancels before the deploy when the user declines", async () => {
+    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "n\n" });
+    await lostMarker();
+
+    await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
+    expect(subject.calls).toEqual([]);
+  });
+
+  test("--yes confirms without a prompt", async () => {
+    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "n\n" });
+    await lostMarker();
+
+    await subject.run(["--yes"]);
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+    expect(await answer(subject)).toBe(true);
+  });
+
+  test("declines without a prompt in a non-interactive shell", async () => {
+    const subject = await testDeployCommand({ outputs: {} }, [], { stdin: "y\n" });
+    await lostMarker();
+
+    await subject.run();
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+    expect(await answer(subject)).toBe(false);
+  });
+
+  test("does not ask in a project that kept projectType", async () => {
+    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
+    await inProjectWithTargets();
+
+    await subject.run();
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+  });
+
+  test("a project with only projectType is a deploy, not a teardown", async () => {
+    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
+    const projectRoot = await inProjectWithTargets();
+    await writeFile(
+      join(projectRoot, "agentcore", "agentcore.json"),
+      JSON.stringify({ name: "orders", version: 2, projectType: "box" }),
+    );
+
+    await subject.run();
+
+    expect(subject.io.stderr()).not.toContain("(y/N)");
+    expect(await subject.calls[0]!.input.confirmTeardown(TEARDOWN)).toBe(false);
   });
 });
