@@ -43,7 +43,11 @@ describe("project add policy", () => {
       FORBID_ALL,
     ]);
 
-    expect((await projectSpec(projectRoot)).policyEngines[0].policies).toEqual([
+    expect(
+      (await projectSpec(projectRoot)).policyEngines.find(
+        (engine: { name: string }) => engine.name === "Guardrails",
+      )!.policies,
+    ).toEqual([
       {
         name: "DenyAll",
         statement: FORBID_ALL,
@@ -75,7 +79,11 @@ describe("project add policy", () => {
       SUPPRESS,
     );
 
-    expect((await projectSpec(projectRoot)).policyEngines[0].policies[0]).toMatchObject({
+    expect(
+      (await projectSpec(projectRoot)).policyEngines.find(
+        (engine: { name: string }) => engine.name === "Guardrails",
+      )!.policies[0],
+    ).toMatchObject({
       validationMode: "IGNORE_ALL_FINDINGS",
       enforcementMode: "LOG_ONLY",
       authorizationPhase: "RETURN_OUTPUT",
@@ -100,7 +108,11 @@ describe("project add policy", () => {
       "return-output",
     ]);
 
-    expect((await projectSpec(projectRoot)).policyEngines[0].policies[0]).toMatchObject({
+    expect(
+      (await projectSpec(projectRoot)).policyEngines.find(
+        (engine: { name: string }) => engine.name === "Guardrails",
+      )!.policies[0],
+    ).toMatchObject({
       statement: FORBID_ALL,
       sourceFile: cedarPath,
       authorizationPhase: "RETURN_OUTPUT",

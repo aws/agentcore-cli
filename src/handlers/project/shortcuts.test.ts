@@ -117,6 +117,7 @@ describe("Box gateway entry", () => {
       enableSemanticSearch: true,
       exceptionLevel: "NONE",
       targets: [BEDROCK_TARGET],
+      policyEngineConfiguration: { policyEngineName: "agent_box", mode: "ENFORCE" },
     });
   });
 

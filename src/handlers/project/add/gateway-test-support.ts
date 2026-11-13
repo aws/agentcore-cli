@@ -8,7 +8,7 @@ import {
   testIO,
 } from "../../../testing";
 import { DEFAULT_CREATE_RUNTIME_NAME } from "../create";
-import { getBoxGatewayBedrockEntry } from "../shortcuts";
+import { getBoxGatewayBedrockEntry, getBoxGatewayPolicyEngineSpec } from "../shortcuts";
 
 /**
  * The Box gateway entry (`agent-box`, with the Bedrock target) that `agentcore create
@@ -16,6 +16,9 @@ import { getBoxGatewayBedrockEntry } from "../shortcuts";
  * starts with it at index 0.
  */
 export const DEFAULT_BOX_GATEWAY = getBoxGatewayBedrockEntry(DEFAULT_CREATE_RUNTIME_NAME);
+
+/** The policy engine that the default Box gateway attaches, declared by `agentcore create`. */
+export const DEFAULT_BOX_POLICY_ENGINE = getBoxGatewayPolicyEngineSpec(DEFAULT_CREATE_RUNTIME_NAME);
 
 export async function projectSpec(projectRoot: string) {
   return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();

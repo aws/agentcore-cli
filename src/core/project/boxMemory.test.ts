@@ -42,6 +42,7 @@ function spec(options: { entrypoint?: string; memories?: string[] } = {}): Proje
       strategies: [],
     })),
     agentCoreGateways: [getBoxGatewayBedrockEntry("agent")],
+    policyEngines: [],
   } as unknown as ProjectSpec;
 }
 
@@ -57,6 +58,7 @@ describe("addBoxMemoryTarget", () => {
     expect(addBoxMemoryTarget(project, await root())).toEqual([
       "adding target 'agentcore' to gateway 'agent-box' in agentcore.json, for the boxed agent's Memory calls",
       "adding 'agentcore/box-memory-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call Memory",
+      "adding policy engine 'agent_box' to agentcore.json, for gateway 'agent-box'",
     ]);
     expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
@@ -118,6 +120,7 @@ describe("addBoxMemoryTarget", () => {
 
     expect(addBoxMemoryTarget(project, await root())).toEqual([
       "adding 'agentcore/box-memory-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call Memory",
+      "adding policy engine 'agent_box' to agentcore.json, for gateway 'agent-box'",
     ]);
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
   });

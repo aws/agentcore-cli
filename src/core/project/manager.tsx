@@ -67,6 +67,7 @@ import {
   BOX_GATEWAY_TARGET_TYPE,
   boxGatewayName,
   boxGatewayNames,
+  boxGatewayPolicyEngineName,
   isBoxExtensionEntry,
   isBoxProject,
   isReservedBoxGatewayName,
@@ -1191,10 +1192,15 @@ export class FsProjectManager implements ProjectManager {
       // entry for a runtime that no longer exists would fail the synth.
       if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
         const boxName = boxGatewayName(input.name);
+        const engineName = boxGatewayPolicyEngineName(input.name);
         newSpec = {
           ...(newSpec as object),
           agentCoreGateways: existingProjectSpec.agentCoreGateways.filter(
             (gateway) => gateway.name !== boxName,
+          ),
+          // The Box gateway's own policy engine goes with it.
+          policyEngines: existingProjectSpec.policyEngines.filter(
+            (engine) => engine.name !== engineName,
           ),
         };
       }
