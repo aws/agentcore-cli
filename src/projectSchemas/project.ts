@@ -29,6 +29,7 @@ export const ProjectNameSchema = z
   });
 /** The kind of project. `box` is the only kind: each runtime of a Box project gets a Box gateway. */
 export const ProjectTypeSchema = z.enum(["box"]);
+export type ProjectType = z.infer<typeof ProjectTypeSchema>;
 /** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box`. */
