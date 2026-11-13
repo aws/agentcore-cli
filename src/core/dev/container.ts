@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,6 +12,8 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
+import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
@@ -24,7 +26,13 @@ const AWS_ENV_KEYS = [
   "AWS_DEFAULT_REGION",
   "AWS_PROFILE",
 ] as const;
-const CLEANUP_TIMEOUT_MS = 2_000;
+// Each container command in cleanup gets this long. Finch sends every command through its VM,
+// so a 2s limit cut cleanup short and left the dev container running.
+const CLEANUP_TIMEOUT_MS = 15_000;
+/** Seconds `stop` waits for the container to exit before it kills it. */
+const STOP_GRACE_SECONDS = 2;
+/** How Docker, Podman, and Finch report a container that does not exist. */
+const NO_SUCH_CONTAINER = /no such container/i;
 const DOCKERFILE_NAME = "Dockerfile";
 const CONTAINER_RUNTIME_INSTALL_HINT =
   "Install Docker (https://docs.docker.com/get-docker/), Podman (https://podman.io/), " +
@@ -49,6 +57,22 @@ __pycache__
 **/.DS_Store
 agentcore/
 `;
+
+/**
+ * What box's Linux sandbox needs from the container: system calls and mounts
+ * that Docker's default seccomp and AppArmor profiles refuse, permission to
+ * mount, and a /proc with no covered paths, so box can mount a fresh one.
+ */
+const BOX_RUN_FLAGS = [
+  "--cap-add",
+  "SYS_ADMIN",
+  "--security-opt",
+  "seccomp=unconfined",
+  "--security-opt",
+  "apparmor=unconfined",
+  "--security-opt",
+  "systempaths=unconfined",
+];
 
 type ContainerTool = (typeof CONTAINER_TOOLS)[number];
 type ToolAvailable = typeof toolAvailable;
@@ -116,7 +140,7 @@ export class ContainerDevRunner implements DevRunner {
     const projectId = hashString(resolve(input.projectRoot));
     const imageTag = `agentcore-dev/${sanitizeImageNameComponent(runtimeName)}-${projectId}`;
     const containerName = `agentcore-dev-${runtimeName}-${projectId}`;
-    await this.removeContainer(tool, containerName, context);
+    await this.removeStaleContainer(tool, containerName, context);
     input.signal.throwIfAborted();
 
     const buildArgs = input.runtime.customDockerBuildArgs ?? {};
@@ -128,6 +152,7 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
+    const boxed = this.stageBox(input, context);
     const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
@@ -188,6 +213,7 @@ export class ContainerDevRunner implements DevRunner {
       // resolve everywhere and is harmless where the name already exists.
       "--add-host",
       "host.docker.internal:host-gateway",
+      ...(boxed ? BOX_RUN_FLAGS : []),
       ...awsMount,
       "--env-file",
       envFile,
@@ -203,14 +229,49 @@ export class ContainerDevRunner implements DevRunner {
       });
     } finally {
       try {
-        await this.removeContainer(tool, containerName, context);
+        await this.stopContainer(tool, containerName, context);
       } finally {
         await rm(envFile, { force: true });
       }
     }
   }
 
+  /**
+   * Stages box into the build context when the Dockerfile copies `.box-dist/`,
+   * with the project's box profile, and says whether it did. The image then
+   * runs `box run`, which needs BOX_RUN_FLAGS.
+   */
+  private stageBox(input: DevServerInput, context: string): boolean {
+    if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
+    const profile = boxProfilePath(input.projectRoot);
+    if (!existsSync(profile)) {
+      throw new ResourceNotFoundError(
+        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
+          `but its box profile ${profile} does not exist. Restore the profile that ` +
+          "`agentcore create` wrote.",
+      );
+    }
+    stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
+    return true;
+  }
+
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
+    // AGENTCORE_CONTAINER_TOOL picks the tool. Without it, the first that can build wins; a Docker
+    // CLI answers `build --help` even when its engine is down, so a Finch user sets this.
+    const chosen = this.processEnv.AGENTCORE_CONTAINER_TOOL;
+    if (chosen) {
+      if (!(CONTAINER_TOOLS as readonly string[]).includes(chosen)) {
+        throw new InputValidationError(
+          `AGENTCORE_CONTAINER_TOOL is '${chosen}'; use ${CONTAINER_TOOLS.join(", ")}.`,
+        );
+      }
+      if (!(await this.toolAvailable(chosen))) {
+        signal.throwIfAborted();
+        throw new MissingToolError(chosen, CONTAINER_RUNTIME_INSTALL_HINT);
+      }
+      signal.throwIfAborted();
+      return chosen as ContainerTool;
+    }
     for (const tool of CONTAINER_TOOLS) {
       const hasVersion = await this.toolAvailable(tool);
       signal.throwIfAborted();
@@ -228,21 +289,50 @@ export class ContainerDevRunner implements DevRunner {
     throw new MissingToolError("container runtime", CONTAINER_RUNTIME_INSTALL_HINT);
   }
 
-  private async removeContainer(
+  /**
+   * Best-effort removal of a dev container left over from an earlier run. A missing container and
+   * an unavailable daemon are both safe to ignore here.
+   */
+  private async removeStaleContainer(
     tool: ContainerTool,
     containerName: string,
     cwd: string,
   ): Promise<void> {
     try {
-      for await (const _event of this.streamProcess([tool, "rm", "-f", containerName], {
-        cwd,
-        env: this.processEnv,
-        signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
-      })) {
-        // Best-effort cleanup intentionally discards command output.
-      }
+      await this.runCleanupCommand([tool, "rm", "-f", containerName], cwd);
     } catch {
-      // A missing container and an unavailable daemon are both safe to ignore here.
+      // Nothing to remove, or a daemon that is down: the build reports the latter.
+    }
+  }
+
+  /**
+   * Stops the dev container at shutdown: `stop -t 2` gives it a short grace period, then kills it,
+   * and `run --rm` removes it. A container that already exited is gone already. Any other failure
+   * leaves it running, so it is thrown with the command that removes it.
+   */
+  private async stopContainer(tool: ContainerTool, containerName: string, cwd: string) {
+    try {
+      await this.runCleanupCommand(
+        [tool, "stop", "-t", String(STOP_GRACE_SECONDS), containerName],
+        cwd,
+      );
+    } catch (error) {
+      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return;
+      throw new InvalidEnvironmentError(
+        `Could not stop the dev container ${containerName}; it may still be running. ` +
+          `Remove it with '${tool} rm -f ${containerName}'.`,
+        { cause: error, meta: { tool, containerName } },
+      );
+    }
+  }
+
+  private async runCleanupCommand(command: string[], cwd: string): Promise<void> {
+    for await (const _event of this.streamProcess(command, {
+      cwd,
+      env: this.processEnv,
+      signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
+    })) {
+      // Cleanup output is not shown.
     }
   }
 }

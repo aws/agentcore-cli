@@ -134,7 +134,7 @@ function containerName(projectRoot: string): string {
   return `agentcore-dev-hello_world-${hashString(resolve(projectRoot))}`;
 }
 
-function commandCall(calls: ProcessCall[], operation: "build" | "run"): ProcessCall {
+function commandCall(calls: ProcessCall[], operation: "build" | "run" | "stop"): ProcessCall {
   const call = calls.find(({ command }) => command[1] === operation);
   if (!call) throw new Error(`${operation} command was not called`);
   return call;
@@ -324,6 +324,40 @@ describe("ContainerDevRunner", () => {
     expect(run.command.join(" ")).not.toContain("tcp://application-value");
     expect(run.options.env?.DOCKER_HOST).toBeUndefined();
     expect(parseEnv(run.envFile!.contents).DOCKER_HOST).toBe("tcp://application-value");
+  });
+
+  test("uses the tool AGENTCORE_CONTAINER_TOOL names, even when an earlier one can build", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness({
+      available: async () => true,
+      processEnv: {
+        AWS_ACCESS_KEY_ID: "test-access-key",
+        AWS_SECRET_ACCESS_KEY: "test-secret-key",
+        AGENTCORE_CONTAINER_TOOL: "finch",
+      },
+    });
+
+    await collect(runner.run(input(root, projectRuntime)));
+
+    expect(commandCall(calls, "build").command[0]).toBe("finch");
+    expect(commandCall(calls, "run").command[0]).toBe("finch");
+  });
+
+  test("refuses an AGENTCORE_CONTAINER_TOOL it does not know", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { runner } = harness({
+      processEnv: {
+        AWS_ACCESS_KEY_ID: "test-access-key",
+        AWS_SECRET_ACCESS_KEY: "test-secret-key",
+        AGENTCORE_CONTAINER_TOOL: "nerdctl",
+      },
+    });
+
+    await expect(collect(runner.run(input(root, projectRuntime)))).rejects.toBeInstanceOf(
+      InputValidationError,
+    );
   });
 
   test("selects the first tool that supports container builds", async () => {
@@ -557,10 +591,11 @@ describe("ContainerDevRunner", () => {
       ["docker", "rm", "-f"],
       ["docker", "build", "-f"],
       ["docker", "run", "--rm"],
-      ["docker", "rm", "-f"],
+      ["docker", "stop", "-t"],
     ]);
     expect(calls[0]?.command).toEqual(["docker", "rm", "-f", containerName(root)]);
-    expect(calls[3]?.command).toEqual(calls[0]!.command);
+    // At shutdown the container gets a 2s grace period, then `run --rm` removes it.
+    expect(calls[3]?.command).toEqual(["docker", "stop", "-t", "2", containerName(root)]);
     expect(calls[0]?.options.signal).not.toBe(runInput.signal);
     expect(calls[1]?.options.signal).toBe(runInput.signal);
     expect(calls[2]?.options.signal).toBe(runInput.signal);
@@ -580,7 +615,7 @@ describe("ContainerDevRunner", () => {
       "container failed",
     );
 
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(commandCall(calls, "stop")).toBeDefined();
   });
 
   test("cleans up when container execution is aborted", async () => {
@@ -601,7 +636,7 @@ describe("ContainerDevRunner", () => {
       collect(runner.run(input(root, projectRuntime, controller.signal))),
     ).rejects.toMatchObject({ name: "AbortError" });
 
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(commandCall(calls, "stop")).toBeDefined();
   });
 
   test("cleans up when the consumer stops iterating", async () => {
@@ -634,10 +669,41 @@ describe("ContainerDevRunner", () => {
     await iterator.return(undefined);
 
     expect(runIteratorClosed).toBe(true);
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(commandCall(calls, "stop")).toBeDefined();
   });
 
-  test("ignores stale and final cleanup failures", async () => {
+  test("says how to remove the container when stop fails at shutdown", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { calls, runner } = harness({
+      stream: (command) =>
+        command[1] === "stop" ? rejectedEvents(new Error("daemon is slow")) : [],
+    });
+
+    const error = await collect(runner.run(input(root, projectRuntime))).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(InvalidEnvironmentError);
+    expect((error as Error).message).toContain(
+      `Could not stop the dev container ${containerName(root)}`,
+    );
+    expect((error as Error).message).toContain(`'docker rm -f ${containerName(root)}'`);
+    expect(calls.at(-1)?.command[1]).toBe("stop");
+  });
+
+  test("treats a container that already exited as stopped", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { runner } = harness({
+      stream: (command) =>
+        command[1] === "stop"
+          ? rejectedEvents(new Error("Error response from daemon: No such container: x"))
+          : [],
+    });
+
+    await expect(collect(runner.run(input(root, projectRuntime)))).resolves.toBeDefined();
+  });
+
+  test("ignores a failed removal of a stale container", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
     const { calls, runner } = harness({
@@ -648,7 +714,7 @@ describe("ContainerDevRunner", () => {
 
     await expect(collect(runner.run(input(root, projectRuntime)))).resolves.toBeDefined();
     expect(commandCall(calls, "run")).toBeDefined();
-    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(2);
+    expect(calls.filter(({ command }) => command[1] === "rm")).toHaveLength(1);
   });
 
   test("does not run a container after a failed build", async () => {
@@ -682,5 +748,139 @@ describe("ContainerDevRunner", () => {
       { type: "status", message: "Starting container" },
       { type: "stderr", line: "run output" },
     ]);
+  });
+
+  describe("with a box image", () => {
+    const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/box /opt/box/\n";
+
+    /** A project named `Demo` whose Dockerfile copies .box-dist/, and a box source with a Linux build. */
+    async function boxedScene(
+      options: {
+        binaries?: string[];
+        profile?: boolean;
+        dockerfile?: string;
+      } = {},
+    ) {
+      const binaries = options.binaries ?? [
+        "box",
+        "strands-box-sock-alias",
+        "strands-box-contain-trampoline",
+      ];
+      const projectRuntime = runtime();
+      const root = await projectRoot(projectRuntime);
+      const context = join(root, projectRuntime.codeLocation);
+      await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
+      await mkdir(join(root, "agentcore"));
+      await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
+      const source = await mkdtemp(join(tmpdir(), "agentcore-container-box-source-"));
+      tempDirectories.push(source);
+      if (options.profile ?? true) {
+        await mkdir(join(root, ".box"));
+        await writeFile(join(root, ".box", "profile.toml"), "# local profile\n");
+      }
+      await mkdir(join(source, "target-al2023", "release"), { recursive: true });
+      for (const binary of binaries) {
+        await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
+      }
+      await mkdir(join(source, "resources", "shared"), { recursive: true });
+      return { projectRuntime, root, context, source };
+    }
+
+    const credentials = {
+      AWS_ACCESS_KEY_ID: "test-access-key",
+      AWS_SECRET_ACCESS_KEY: "test-secret-key",
+    };
+
+    test("stages box and the local profile in .box-dist/, and lets box's sandbox run", async () => {
+      const { projectRuntime, root, context, source } = await boxedScene();
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      // The Dockerfile copies .box-dist/, so the build takes no extra build context.
+      expect(commandCall(calls, "build").command).toEqual([
+        "docker",
+        "build",
+        "-f",
+        "Dockerfile",
+        "-t",
+        imageTag(root),
+        ".",
+      ]);
+      expect(await readFile(join(context, ".box-dist", "box"), "utf8")).toBe("#!box\n");
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# local profile\n",
+      );
+      const run = commandCall(calls, "run").command;
+      expect(run.slice(run.indexOf("--cap-add"), run.indexOf("--cap-add") + 8)).toEqual([
+        "--cap-add",
+        "SYS_ADMIN",
+        "--security-opt",
+        "seccomp=unconfined",
+        "--security-opt",
+        "apparmor=unconfined",
+        "--security-opt",
+        "systempaths=unconfined",
+      ]);
+    });
+
+    test("runs an image that does not copy box without box's flags, even with a profile", async () => {
+      const { projectRuntime, root, context, source } = await boxedScene({
+        dockerfile: "FROM scratch\n",
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(commandCall(calls, "run").command).not.toContain("--cap-add");
+      expect(await Bun.file(join(context, ".box-dist", "box")).exists()).toBe(false);
+    });
+
+    test("refuses a box image when the project has no box profile", async () => {
+      const { projectRuntime, root, source } = await boxedScene({ profile: false });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
+      });
+
+      const error = await collect(runner.run(input(root, projectRuntime))).catch(
+        (caught) => caught,
+      );
+
+      expect(error).toBeInstanceOf(ResourceNotFoundError);
+      expect((error as Error).message).toContain("its Dockerfile copies .box-dist/");
+      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
+    });
+
+    test("says where to point AGENTCORE_BOX_SOURCE when it is unset", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const error = await collect(runner.run(input(root, projectRuntime))).catch(
+        (caught) => caught,
+      );
+
+      expect(error).toBeInstanceOf(InvalidEnvironmentError);
+      expect((error as Error).message).toContain("Set AGENTCORE_BOX_SOURCE");
+      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
+    });
+
+    test("names the Linux binary the box source lacks", async () => {
+      const { projectRuntime, root, source } = await boxedScene({ binaries: ["box"] });
+      const { runner } = harness({
+        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
+      });
+
+      const error = await collect(runner.run(input(root, projectRuntime))).catch(
+        (caught) => caught,
+      );
+
+      expect((error as Error).message).toContain(
+        join(source, "target-al2023", "release", "strands-box-sock-alias"),
+      );
+    });
   });
 });
