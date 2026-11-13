@@ -7,7 +7,7 @@ import {
 import { boxGatewayName, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { runsBoxStartScript } from "./templates/boxProfile";
+import { runsAgentInBox } from "./backends/boxContainer";
 
 /** The Box gateway's target, and the box route, that the agent's AgentCore Memory calls take. */
 export const BOX_MEMORY_TARGET = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
@@ -38,19 +38,11 @@ export function hasDefaultMemory(spec: ProjectSpec, runtime: ProjectRuntime): bo
   return spec.memories.some((memory) => memory.name === defaultMemoryName(runtime.name));
 }
 
-/**
- * Whether a runtime runs its agent in a box on AgentCore Runtime: a CodeZip
- * runtime whose entry point is the box start script.
- */
-function runsAgentInBox(runtime: ProjectRuntime): boolean {
-  return runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint);
-}
-
-/** The default Memory names of the runtimes that run their agent in a box. */
-function boxedDefaultMemories(spec: ProjectSpec): string[] {
-  return spec.runtimes
-    .filter((runtime) => runsAgentInBox(runtime) && hasDefaultMemory(spec, runtime))
-    .map((runtime) => defaultMemoryName(runtime.name));
+/** The runtimes that run their agent in a box and have their default Memory. */
+function boxedRuntimesWithMemory(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
+  return spec.runtimes.filter(
+    (runtime) => runsAgentInBox(projectRoot, runtime) && hasDefaultMemory(spec, runtime),
+  );
 }
 
 /**
@@ -59,8 +51,13 @@ function boxedDefaultMemories(spec: ProjectSpec): string[] {
  * deploy, so each resource matches the physical name the L3 gives the Memory,
  * `<project>_<target>_<memory>-<suffix>`, in any target.
  */
-export function boxMemoryPolicy(spec: ProjectSpec): Record<string, unknown> | undefined {
-  const memories = boxedDefaultMemories(spec);
+export function boxMemoryPolicy(
+  spec: ProjectSpec,
+  projectRoot: string,
+): Record<string, unknown> | undefined {
+  const memories = boxedRuntimesWithMemory(spec, projectRoot).map((runtime) =>
+    defaultMemoryName(runtime.name),
+  );
   if (memories.length === 0) return undefined;
   return {
     Version: "2012-10-17",
@@ -87,10 +84,8 @@ export function boxMemoryPolicy(spec: ProjectSpec): Record<string, unknown> | un
  * step messages; none when nothing changed. The target name on a gateway that is not a Box
  * gateway is an error.
  */
-export function addBoxMemoryTarget(spec: ProjectSpec): string[] {
-  const runtimes = spec.runtimes.filter(
-    (runtime) => runsAgentInBox(runtime) && hasDefaultMemory(spec, runtime),
-  );
+export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): string[] {
+  const runtimes = boxedRuntimesWithMemory(spec, projectRoot);
   if (runtimes.length === 0) return [];
 
   const boxGateways = new Set(spec.runtimes.map(({ name }) => boxGatewayName(name)));

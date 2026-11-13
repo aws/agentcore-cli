@@ -240,6 +240,17 @@ function runtimeProfile(name: RuntimeTemplateShortcutName, overrides: Record<str
 
 const RUNTIME_ROUTE = { secret: { ref: "aws://" } };
 
+const IMAGE_PYTHON_FILESYSTEM = {
+  read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
+  exec: [
+    { path: "${{ workspace }}/.venv", optional: true },
+    "/usr/local/bin",
+    "/usr/local/lib",
+    "/usr/lib/aarch64-linux-gnu",
+  ],
+  deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
+};
+
 describe("renderBoxProfile for AgentCore Runtime", () => {
   test("runs agent-python-strands from the zip with the Runtime's Python, for start.sh to fill in", () => {
     const text = renderBoxProfile("V3Demo", template("agent-python-strands"), "runtime")!;
@@ -279,6 +290,37 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
       },
     });
   });
+
+  test.each(["agent-python-strands-container"] as const)(
+    "runs %s from /app without --reload, signing calls with the Runtime's role",
+    (name) => {
+      expect(runtimeProfile(name)).toEqual({
+        packs: ["box/base", "box/bedrock"],
+        profile: { name: "V3Demo" },
+        options: { bedrock: { region: "us-west-2" } },
+        agent: {
+          command: [
+            "${{ workspace }}/.venv/bin/python",
+            "-m",
+            "uvicorn",
+            "main:app",
+            "--app-dir",
+            "${{ workspace }}",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8081",
+          ],
+          env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
+          filesystem: IMAGE_PYTHON_FILESYSTEM,
+          ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
+        },
+        egress: {
+          bedrock: RUNTIME_ROUTE,
+        },
+      });
+    },
+  );
 
   test("serves the MCP server on all interfaces on the Runtime", () => {
     const mcp = runtimeProfile("mcp-python-fastmcp");
@@ -341,6 +383,16 @@ describe("renderRuntimeBoxProfile", () => {
     const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress;
 
     expect(egress).toEqual({ bedrock: RUNTIME_ROUTE });
+  });
+
+  test("renders the CodeZip form for start.py and the image form for a container", () => {
+    const codeZip = spec(["agentMemory"]);
+    const container = spec(["agentMemory"], { build: "Container", entrypoint: "main.py" });
+
+    expect(renderRuntimeBoxProfile(codeZip, codeZip.runtimes[0]!)).toContain('"@PYTHON@"');
+    expect(renderRuntimeBoxProfile(container, container.runtimes[0]!)).toContain(
+      '"${{ workspace }}/.venv/bin/python"',
+    );
   });
 
   test("signs no Bedrock route for an agent on another model provider", () => {
