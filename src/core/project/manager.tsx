@@ -51,6 +51,7 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
+import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -396,6 +397,8 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  /** The environment the CDK backend reads AGENTCORE_BOX_SOURCE from; process.env by default. */
+  processEnv?: NodeJS.ProcessEnv;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
   /**
@@ -434,6 +437,7 @@ export class FsProjectManager implements ProjectManager {
         runner: config.runner,
         checkTool: config.checkTool,
         json: config.json,
+        processEnv: config.processEnv,
       }),
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
@@ -1490,7 +1494,43 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    yield* this.backendFor(project).build(synced.project);
+    const routed = await this.addBoxMemoryTarget(synced.project);
+    for (const message of routed.messages) yield { type: "step", message };
+    yield* this.backendFor(project).build(routed.project);
+  }
+
+  /**
+   * Adds the Box gateway's `agentcore` target, and the policy file that lets
+   * its role call Memory, to agentcore.json when a boxed agent has its default
+   * Memory, before synth reads the file. Patches the raw file, as
+   * syncRuntimeBuilds does, so unknown fields and key order survive. Rewrites
+   * the policy file each time, since the CLI owns it.
+   */
+  private async addBoxMemoryTarget(
+    project: Project,
+  ): Promise<{ project: Project; messages: string[] }> {
+    const spec = structuredClone(project.spec);
+    const messages = addBoxMemoryTarget(spec);
+    const policy = boxMemoryPolicy(spec);
+    if (policy) {
+      const policyPath = join(project.rootPath, BOX_MEMORY_POLICY_FILE);
+      if (!existsSync(policyPath)) messages.push(`writing ${BOX_MEMORY_POLICY_FILE}`);
+      await this.json.write(policyPath, policy);
+    }
+    if (messages.length === 0) return { project, messages };
+    const specPath = this.getProjectSpecPath(project);
+    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+    const updated = {
+      ...raw,
+      projectType: spec.projectType,
+      agentCoreGateways: spec.agentCoreGateways,
+    };
+    const parsed = ProjectSpecSchema.safeParse(updated);
+    if (!parsed.success) {
+      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+    }
+    await this.json.write(specPath, updated);
+    return { project: { ...project, spec: parsed.data }, messages };
   }
 
   public async syncRuntimeBuilds(
@@ -1591,7 +1631,9 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    project = synced.project;
+    const routed = await this.addBoxMemoryTarget(synced.project);
+    for (const message of routed.messages) yield { type: "step", message };
+    project = routed.project;
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor

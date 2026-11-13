@@ -486,7 +486,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "CodeZip",
-        entrypoint: "main.py",
+        entrypoint: "start.py",
         codeLocation: "app/agent",
         runtimeVersion: "PYTHON_3_14",
       },

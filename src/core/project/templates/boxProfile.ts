@@ -1,8 +1,16 @@
 import { join } from "node:path";
-import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
+import {
+  BOX_GATEWAY_AGENTCORE_HOST,
+  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+  BOX_GATEWAY_BEDROCK_REGION,
+  BOX_GATEWAY_NAME,
+  callsBedrockModel,
+} from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
+import { defaultMemoryName } from "../../../projectSchemas/memory";
+import type { ProjectSpec } from "../../../projectSchemas/project";
+import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 
 /** Where uv installs the Pythons it manages, as a boxy path. */
@@ -10,6 +18,38 @@ const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
 
 /** The system libraries of the Linux arm64 image, such as libssl. */
 const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
+
+/**
+ * The entry point of a runtime that runs its agent in a box on a CodeZip
+ * deploy: start.py runs start.sh, which starts `box run`. Create writes both.
+ */
+export const BOX_CODEZIP_ENTRYPOINT = "start.py";
+
+/** The folder deploy stages box into, inside the runtime's code folder, so it ships in the zip. */
+export const BOX_CODEZIP_DIST = ".box-dist";
+
+/** Placeholders in the CodeZip Runtime profile, which start.sh fills in at start. */
+const CODEZIP_CODE = "@CODE@";
+const CODEZIP_PYTHON = "@PYTHON@";
+const CODEZIP_PYTHON_PREFIX = "@PYTHON_PREFIX@";
+
+/**
+ * The line in a Runtime profile's `[agent.env]` that start.sh replaces with
+ * the deployed resources' variables.
+ */
+const AGENT_ENV_MARKER = "# @AGENT_ENV@";
+
+/**
+ * The placeholder for the Box gateway's URL, which exists only once the
+ * gateway is deployed; start.sh fills it in from AGENTCORE_GATEWAY_BOX_URL.
+ */
+export const BOX_GATEWAY_URL_PLACEHOLDER = "@GATEWAY_BOX_URL@";
+
+/**
+ * The credential Box signs with on AgentCore Runtime: a bare `aws://` resolves the
+ * AWS default credential chain, which finds the execution role and refreshes it.
+ */
+const RUNTIME_AWS_SIGNER = "aws://";
 
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
@@ -46,12 +86,38 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
 }
 
 /** The Strands container template, whose image starts `box run` in /app. */
-function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
+export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (
     runtime.build === "Container" &&
     runtime.language === "Python" &&
     runtime.framework === "strands"
   );
+}
+
+/** The frameworks whose Python CodeZip templates run their agent in a box on AgentCore Runtime. */
+const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = new Set([
+  "strands",
+  "langchain",
+  "none",
+]);
+
+/**
+ * Whether create writes the box start scripts, so a CodeZip deploy runs the
+ * agent in a box: every Python CodeZip template (Strands over HTTP, A2A and
+ * AG-UI, LangChain, minimal, and the FastMCP server). start.sh serves the
+ * protocol's port, which the profile's ingress names.
+ */
+export function startsInBoxOnCodeZip(runtime: ScaffoldRuntimeInput): boolean {
+  return (
+    runtime.build === "CodeZip" &&
+    runtime.language === "Python" &&
+    CODEZIP_BOX_FRAMEWORKS.has(runtime.framework)
+  );
+}
+
+/** Whether a runtime's entry point is the box start script that create writes. */
+export function runsBoxStartScript(entrypoint: string): boolean {
+  return entrypoint.split(":")[0] === BOX_CODEZIP_ENTRYPOINT;
 }
 
 /** An `[egress.<name>]` route for a model provider that takes an API key. */
@@ -100,13 +166,18 @@ function apiKeyRoute(runtime: ScaffoldRuntimeInput): ApiKeyRoute | undefined {
   }
 }
 
-/** How the agent starts in the box, and the variable that sets the port it listens on. */
+/**
+ * How the agent starts in the box, and the variable that sets the port it
+ * listens on. `agentcore dev` reloads an HTTP agent on edits; AgentCore
+ * Runtime does not.
+ */
 function serve(
   protocol: Protocol,
   appDir: string,
   workloadPort: number,
+  reload: boolean,
+  python = `${appDir}/.venv/bin/python`,
 ): { command: string[]; env: Record<string, string> } {
-  const python = `${appDir}/.venv/bin/python`;
   if (protocol === "HTTP") {
     return {
       command: [
@@ -116,9 +187,7 @@ function serve(
         "main:app",
         "--app-dir",
         appDir,
-        "--reload",
-        "--reload-dir",
-        appDir,
+        ...(reload ? ["--reload", "--reload-dir", appDir] : []),
         "--host",
         "127.0.0.1",
         "--port",
@@ -147,18 +216,20 @@ type Runner = {
   command: string[];
   env: Record<string, string>;
   read: string[];
+  /** Comment lines above `exec`, each ending in a newline. */
+  execComment?: string;
   exec: string[];
   denyWrite: string[];
 };
 
 /** A CodeZip agent: its code and venv are in the project's app/<runtime> folder. */
 function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number): Runner {
-  const { command, env } = serve(protocol, appDir, workloadPort);
+  const { command, env } = serve(protocol, appDir, workloadPort, true);
   // Optional, so a venv built on another Python still starts; that Python then needs its own grant.
   const uvPython = `{ path = ${str(UV_PYTHON_INSTALL_DIR)}, optional = true }`;
   return {
     command,
-    env,
+    env: { LOCAL_DEV: "1", ...env },
     read: [str(appDir), str(`${appDir}/.venv`), uvPython],
     exec: [optional(`${appDir}/.venv`), uvPython],
     denyWrite: [optional(`${appDir}/.venv`)],
@@ -172,10 +243,10 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
  */
 function containerRunner(workloadPort: number): Runner {
   const appDir = "${{ workspace }}";
-  const { command, env } = serve("HTTP", appDir, workloadPort);
+  const { command, env } = serve("HTTP", appDir, workloadPort, true);
   return {
     command,
-    env,
+    env: { LOCAL_DEV: "1", ...env },
     // The image's Python loads its own native modules (lib-dynload) from /usr/local/lib, and the
     // system libraries they link, such as libssl, from the multiarch folder.
     read: [str(appDir), str("/usr/local/lib"), str(LINUX_LIBRARIES)],
@@ -190,13 +261,54 @@ function containerRunner(workloadPort: number): Runner {
 }
 
 /**
+ * A Python agent on a CodeZip deploy: the Runtime unpacks the zip into a
+ * read-only folder and runs its own Python, at paths only start.sh can see.
+ * start.sh fills the placeholders in, and the box starts in a writable folder
+ * outside the code, so nothing the agent runs needs `deny_write`.
+ */
+function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner {
+  const { command, env } = serve(protocol, CODEZIP_CODE, workloadPort, false, CODEZIP_PYTHON);
+  return {
+    command,
+    env: {
+      ...env,
+      // Python finds the _ctypes that deploy stages before its own: its libffi uses static
+      // trampolines, which Box Core's W^X filter allows.
+      PYTHONPATH: `${CODEZIP_CODE}/${BOX_CODEZIP_DIST}/ffi:${CODEZIP_CODE}`,
+    },
+    read: [CODEZIP_CODE, CODEZIP_PYTHON_PREFIX, "/usr/lib64", "/lib64"].map(str),
+    execComment:
+      "# Box Core adds the loader folders itself and refuses exec on them, so they are read only.\n" +
+      "# One grant may not sit inside another, so the Python prefix covers its bin/ folder.\n",
+    exec: [CODEZIP_CODE, CODEZIP_PYTHON_PREFIX].map(str),
+    denyWrite: [],
+  };
+}
+
+/** Which profile to render: the one `agentcore dev` runs, or the one AgentCore Runtime runs. */
+export type BoxProfileTarget = "local" | "runtime";
+
+/**
  * The boxy profile that runs the scaffolded agent, or `undefined` when the
  * template has none. It holds no host path: boxy fills `${{ workspace }}` (the
- * folder `box run` starts in, the project root) and `${{ home }}` at run time.
- * It names no interpreter either, only the folder of every uv-managed Python,
- * so it is the same with and without `--skip-install`.
+ * folder `box run` starts in) and `${{ home }}` at run time.
+ *
+ * - `local`: what `agentcore dev` runs. On a Mac, box starts in the project
+ *   root and names no interpreter, only the folder of every uv-managed Python,
+ *   so it is the same with and without `--skip-install`. The container
+ *   template's runs in its dev image, in /app.
+ * - `runtime`: what AgentCore Runtime runs from a CodeZip runtime's zip, with
+ *   no reload, signed with the execution role. Build and deploy render it from
+ *   agentcore.json with
+ *   {@link renderRuntimeBoxProfile}; `runtimeRoutes` holds the routes they
+ *   derive from it, as sections that start with a blank line.
  */
-export function renderBoxProfile(projectName: string, runtime: ScaffoldRuntimeInput) {
+export function renderBoxProfile(
+  projectName: string,
+  runtime: ScaffoldRuntimeInput,
+  target: BoxProfileTarget = "local",
+  runtimeRoutes = "",
+) {
   if (!hasBoxProfile(runtime)) return undefined;
 
   const region = BOX_GATEWAY_BEDROCK_REGION;
@@ -204,36 +316,56 @@ export function renderBoxProfile(projectName: string, runtime: ScaffoldRuntimeIn
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = ingressPort + 1;
+  const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
-  const runner = container
-    ? containerRunner(workloadPort)
-    : codeZipRunner(protocol, appDir, workloadPort);
-  // In the image, Docker forwards the host's port to the container's own address, not loopback.
-  const listenHost = container ? "0.0.0.0" : "127.0.0.1";
+  const runner = onRuntime
+    ? runtimeCodeZipRunner(protocol, workloadPort)
+    : container
+      ? containerRunner(workloadPort)
+      : codeZipRunner(protocol, appDir, workloadPort);
+  // In an image or the Runtime's microVM, the port is reached on the machine's own address.
+  const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
   const callsModel = protocol !== "MCP";
   const bedrock = callsModel && callsBedrockModel(runtime);
   const keyed = callsModel ? apiKeyRoute(runtime) : undefined;
-  const environment = {
-    LOCAL_DEV: "1",
-    ...runner.env,
-    PYTHONUNBUFFERED: "1",
-    PYTHONUTF8: "1",
-  };
+  const environment = { ...runner.env, PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" };
 
   // The optional sections, each empty or ending in a newline.
-  const header = container
-    ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-    : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
+  const header = onRuntime
+    ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. start.sh fills in @CODE@, @PYTHON@, @PYTHON_PREFIX@ and the deployed resources' variables."
+    : container
+      ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
+      : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
   const options = bedrock ? `[options]\nbedrock.region = ${str(region)}\n\n` : "";
-  const bedrockRoute = bedrock
-    ? `
+  const envMarker = onRuntime ? `${AGENT_ENV_MARKER}\n` : "";
+  const execComment = runner.execComment ?? "";
+  const denyWrite =
+    runner.denyWrite.length > 0 ? `deny_write = [${runner.denyWrite.join(", ")}]\n` : "";
+  // Only the Runtime agent calls AgentCore: locally, LOCAL_DEV=1 skips Identity, and no memory ID
+  // reaches the box, so Memory is off.
+  const routes = onRuntime ? runtimeRoutes : "";
+  const bedrockRoute = !bedrock
+    ? ""
+    : onRuntime
+      ? `
+# Sign the model calls with the Runtime's execution role.
+[egress.bedrock]
+secret.ref = ${str(RUNTIME_AWS_SIGNER)}
+`
+      : `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
 # rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
 [egress.bedrock]
 secret.ref = "aws://default"
+`;
+  const keyedRoute = !keyed
+    ? ""
+    : onRuntime
+      ? `
+# Open: on AgentCore Runtime the agent reads its ${runtime.modelProvider} API key from
+# AgentCore Identity, so ${keyed.host} has no route here yet.
 `
-    : "";
-  const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime)) : "";
+      : apiKeyRouteSection(keyed, apiKeyVariable(runtime));
   const packs = list(["box/base", ...(bedrock ? ["box/bedrock"] : [])]);
   const env = Object.entries(environment)
     .map(([name, value]) => `${name} = ${str(value)}`)
@@ -251,16 +383,57 @@ command = ${list(runner.command)}
 
 [agent.env]
 ${env}
-
+${envMarker}
 [agent.filesystem]
 read = [${runner.read.join(", ")}]
-exec = [${runner.exec.join(", ")}]
-deny_write = [${runner.denyWrite.join(", ")}]
-
+${execComment}exec = [${runner.exec.join(", ")}]
+${denyWrite}
 [[agent.ingress]]
 listen = ${str(`${listenHost}:${ingressPort}`)}
 workload_port = ${workloadPort}
-${bedrockRoute}${keyedRoute}`;
+${routes}${bedrockRoute}${keyedRoute}`;
+}
+
+/**
+ * The route the agent's AgentCore Memory calls take on the Runtime: the box
+ * sends them to the Box gateway's AgentCore passthrough target, signed with
+ * the execution role. Starts with a blank line.
+ */
+function runtimeMemoryRouteSection(): string {
+  const target = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
+  return `
+# AgentCore Memory, through the '${BOX_GATEWAY_NAME}' gateway's '${target}' target.
+[egress.${target}]
+destinations = [${str(BOX_GATEWAY_AGENTCORE_HOST)}]
+
+[[egress.${target}.backends]]
+url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
+auth.ref = ${str(RUNTIME_AWS_SIGNER)}
+auth.aws.service = "bedrock-agentcore"
+auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
+`;
+}
+
+/**
+ * The AgentCore Runtime box profile of a CodeZip runtime that runs its agent
+ * in a box, derived from agentcore.json: the runtime's protocol and model
+ * provider, and, when the project has the runtime's default Memory, the route
+ * its Memory calls take through the Box gateway. agentcore.json does not
+ * record the framework, and the profile does not depend on it, so the input
+ * names Strands, one of the frameworks that run in a box.
+ */
+export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
+  const memory = spec.memories.some((entry) => entry.name === defaultMemoryName(runtime.name));
+  const input = {
+    runtimeName: runtime.name,
+    build: runtime.build,
+    language: "Python",
+    framework: "strands",
+    protocol: runtime.protocol,
+    modelProvider: runtime.modelProvider,
+    modelId: runtime.modelId,
+  } as ScaffoldRuntimeInput;
+  return renderBoxProfile(spec.name, input, "runtime", memory ? runtimeMemoryRouteSection() : "")!;
 }
 
 /** The variable that holds the model provider's API key, as the template's model code reads it. */

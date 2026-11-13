@@ -88,7 +88,7 @@ afterEach(async () => {
 });
 
 // A manager whose runner records commands instead of spawning them.
-function manager(): {
+function manager(processEnv?: NodeJS.ProcessEnv): {
   manager: FsProjectManager;
   commands: { command: string[]; cwd: string }[];
   checkedTools: string[];
@@ -98,6 +98,7 @@ function manager(): {
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
+      processEnv,
       identity: new TestIdentityClient(),
       enableTransactionSearch: async () => {},
       runner: async (command, { cwd }) => {
@@ -243,7 +244,7 @@ describe("FsProjectManager.create", () => {
       name: "a2a_python_strands",
       build: "CodeZip",
       protocol: "A2A",
-      entrypoint: "main.py",
+      entrypoint: "start.py",
     });
     expect(spec.memories).toMatchObject([{ name: "a2a_python_strandsMemory" }]);
   });
@@ -329,7 +330,7 @@ describe("FsProjectManager.create", () => {
       {
         name: "agent_python_minimal",
         build: "CodeZip",
-        entrypoint: "main.py",
+        entrypoint: "start.py",
         codeLocation: "app/agent_python_minimal",
         runtimeVersion: "PYTHON_3_14",
       },
@@ -1786,6 +1787,18 @@ describe("chinaModelProviderRestriction", () => {
 });
 
 describe("FsProjectManager.build", () => {
+  /** A staging-boxy checkout: the scaffolded runtime starts in a box, so build stages box. */
+  async function boxSource(): Promise<NodeJS.ProcessEnv> {
+    const source = await mkdtemp(join(tmpdir(), "agentcore-box-source-"));
+    tempDirectories.push(source);
+    await mkdir(join(source, "target-al2023", "release"), { recursive: true });
+    for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
+      await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
+    }
+    await mkdir(join(source, "resources"), { recursive: true });
+    return { AGENTCORE_BOX_SOURCE: source };
+  }
+
   // build() requires the CDK app's node_modules; create() with skipInstall
   // never produces them, so tests stub the directory in.
   async function scaffolded(
@@ -1815,7 +1828,7 @@ describe("FsProjectManager.build", () => {
 
   test("compiles and synthesizes via the generated cdk script", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager();
+    const { manager: subject, commands } = manager(await boxSource());
     const project = await scaffolded(subject, directory);
     commands.length = 0; // discard create()'s commands
 
@@ -1837,6 +1850,20 @@ describe("FsProjectManager.build", () => {
       },
     ]);
     expect(events).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
+    // The zip carries box and the Runtime profile, staged before synth packages the code.
+    const dist = join(directory, "example", "app", "agent_python_minimal", ".box-dist");
+    expect(existsSync(join(dist, "box"))).toBe(true);
+    expect(existsSync(join(dist, "profile.toml"))).toBe(true);
+  });
+
+  test("refuses to build a boxed runtime when AGENTCORE_BOX_SOURCE is unset", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager({});
+    const project = await scaffolded(subject, directory);
+    commands.length = 0;
+
+    await expect(drain(subject.build(project))).rejects.toThrow(/Set AGENTCORE_BOX_SOURCE/);
+    expect(commands).toEqual([]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
@@ -1864,6 +1891,44 @@ describe("FsProjectManager.build", () => {
     expect(commands).toEqual([]);
   });
 
+  test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = manager(await boxSource());
+    const { project } = await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+      skipInstall: true,
+      skipGit: true,
+    });
+    await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
+      recursive: true,
+    });
+
+    const events = await drain(subject.build(project));
+
+    const root = join(directory, "example");
+    const spec = JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf8"));
+    const box = spec.agentCoreGateways.find(({ name }: { name: string }) => name === "box");
+    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
+    expect(box.additionalPolicies).toEqual(["agentcore/box-memory-policy.json"]);
+    expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
+    expect(events).toContainEqual({
+      type: "step",
+      message: "writing agentcore/box-memory-policy.json",
+    });
+    // The Runtime profile routes the Memory calls to that target.
+    const profile = await readFile(
+      join(root, "app", "agent_python_strands", ".box-dist", "profile.toml"),
+      "utf8",
+    );
+    expect(profile).toContain('url = "@GATEWAY_BOX_URL@/agentcore"');
+
+    // A second build, of the project as it now reads, changes nothing in agentcore.json.
+    const reread = await subject.resolve({ filePath: root });
+    const again = await drain(subject.build(reread!));
+    expect(again).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
+  });
+
   test("propagates a synthesis failure", async () => {
     const directory = await inTempDirectory();
     const { manager: subject } = manager();
@@ -1876,6 +1941,7 @@ describe("FsProjectManager.build", () => {
         throw new Error("cdk synth exploded");
       },
       checkTool: async () => {},
+      processEnv: await boxSource(),
     });
 
     await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");
