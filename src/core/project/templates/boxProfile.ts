@@ -3,7 +3,6 @@ import {
   BOX_GATEWAY_AGENTCORE_HOST,
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
   BOX_GATEWAY_BEDROCK_REGION,
-  BOX_GATEWAY_NAME,
   callsBedrockModel,
 } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
@@ -402,7 +401,7 @@ ${routes}${bedrockRoute}${keyedRoute}`;
 function runtimeMemoryRouteSection(): string {
   const target = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
   return `
-# AgentCore Memory, through the '${BOX_GATEWAY_NAME}' gateway's '${target}' target.
+# AgentCore Memory, through the runtime's Box gateway's '${target}' target.
 [egress.${target}]
 destinations = [${str(BOX_GATEWAY_AGENTCORE_HOST)}]
 

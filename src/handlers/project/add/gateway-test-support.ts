@@ -7,13 +7,15 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
-import { getBoxGatewaySpec } from "../shortcuts";
+import { DEFAULT_CREATE_RUNTIME_NAME } from "../create";
+import { getBoxGatewayBedrockEntry } from "../shortcuts";
 
 /**
- * the box gateway entry that `agentcore create --template agent-python-minimal`
- * declares (a Bedrock agent), so every harness project starts with it at index 0.
+ * The Box gateway entry (`agent-box`, with the Bedrock target) that `agentcore create
+ * --template agent-python-minimal` declares for its Bedrock agent, so every harness project
+ * starts with it at index 0.
  */
-export const DEFAULT_BOX_GATEWAY = getBoxGatewaySpec({ bedrockTarget: true });
+export const DEFAULT_BOX_GATEWAY = getBoxGatewayBedrockEntry(DEFAULT_CREATE_RUNTIME_NAME);
 
 export async function projectSpec(projectRoot: string) {
   return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -27,7 +29,7 @@ export async function writeProjectSpec(projectRoot: string, spec: unknown): Prom
 }
 
 /**
- * Removes the box gateway entry that a templated project starts with, for
+ * Removes the Box gateway entry that a templated project starts with, for
  * a test about a project that has no gateways at all.
  */
 export async function removeDefaultBoxGateway(projectRoot: string): Promise<void> {

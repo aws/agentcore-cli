@@ -3,7 +3,7 @@ import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
-  getBoxGatewaySpec,
+  getBoxGatewayBedrockEntry,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
   resolveRuntimeTemplateShortcut,
@@ -92,11 +92,10 @@ describe("Box gateway entry", () => {
     outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-west-2" },
   } as const;
 
-  test("is a valid project gateway, with or without the Bedrock target", () => {
-    for (const bedrockTarget of [true, false]) {
-      const gateway = getBoxGatewaySpec({ bedrockTarget });
-      expect(AgentCoreGatewaySchema.parse(gateway)).toEqual(gateway);
-    }
+  test("is a valid project gateway, named after the runtime's Box gateway", () => {
+    const entry = getBoxGatewayBedrockEntry("my_agent");
+    expect(AgentCoreGatewaySchema.parse(entry)).toEqual(entry);
+    expect(entry.name).toBe("my-agent-box");
   });
 
   test.each([
@@ -109,8 +108,10 @@ describe("Box gateway entry", () => {
     "agent-typescript-vercel",
     "agent-python-minimal",
   ] as const)("%s declares it with the Bedrock target by default", (template) => {
-    expect(resolveRuntimeTemplateShortcut(template).boxGateway).toEqual({
-      name: "box",
+    expect(
+      resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
+    ).toEqual({
+      name: "agent-box",
       protocolType: "None",
       authorizerType: "AWS_IAM",
       enableSemanticSearch: true,
@@ -119,32 +120,28 @@ describe("Box gateway entry", () => {
     });
   });
 
-  test("mcp-python-fastmcp, which calls no model yet, declares it with no targets", () => {
-    expect(resolveRuntimeTemplateShortcut("mcp-python-fastmcp").boxGateway).toEqual(
-      getBoxGatewaySpec({ bedrockTarget: false }),
-    );
-    expect(resolveRuntimeTemplateShortcut("mcp-python-fastmcp").boxGateway?.targets).toEqual([]);
-  });
-
-  test("environment-python-bma, a Bedrock Managed Agents environment, declares none", () => {
-    expect(resolveRuntimeTemplateShortcut("environment-python-bma").boxGateway).toBeUndefined();
-  });
+  test.each(["mcp-python-fastmcp", "environment-python-bma"] as const)(
+    "%s, which has no model provider, declares none",
+    (template) => {
+      expect(resolveRuntimeTemplateShortcut(template).boxGatewayEntry).toBeUndefined();
+    },
+  );
 
   test.each([
     ["OpenAI", { modelProvider: "OpenAI", apiKey: "sk-test" }],
     ["Anthropic", { modelProvider: "Anthropic", apiKey: "sk-test" }],
     ["Gemini", { modelProvider: "Gemini", apiKey: "test" }],
     ["LiteLLM with a non-Bedrock model", { modelProvider: "LiteLLM", modelId: "openai/gpt-4o" }],
-  ] as const)("%s: the agent gets the gateway with no Bedrock target", (_label, overrides) => {
+  ] as const)("%s: the agent declares none", (_label, overrides) => {
     expect(
-      resolveRuntimeTemplateShortcut("agent-python-strands", overrides).boxGateway?.targets,
-    ).toEqual([]);
+      resolveRuntimeTemplateShortcut("agent-python-strands", overrides).boxGatewayEntry,
+    ).toBeUndefined();
   });
 
-  test("a LiteLLM agent on its default Bedrock model keeps the Bedrock target", () => {
+  test("a LiteLLM agent on its default Bedrock model declares the Bedrock target", () => {
     expect(
       resolveRuntimeTemplateShortcut("agent-python-strands", { modelProvider: "LiteLLM" })
-        .boxGateway?.targets,
+        .boxGatewayEntry?.targets,
     ).toEqual([BEDROCK_TARGET]);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { InputValidationError } from "../../errors/errors";
 import {
   getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewaySpec,
+  getBoxGatewayBedrockEntry,
 } from "../../handlers/project/shortcuts";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
@@ -24,20 +24,22 @@ function spec(options: { entrypoint?: string; memories?: string[] } = {}): Proje
       eventExpiryDuration: 30,
       strategies: [],
     })),
-    agentCoreGateways: [getBoxGatewaySpec({ bedrockTarget: true })],
+    agentCoreGateways: [getBoxGatewayBedrockEntry("agent")],
   } as unknown as ProjectSpec;
 }
 
 const targets = (project: ProjectSpec) =>
-  project.agentCoreGateways.find(({ name }) => name === "box")?.targets.map(({ name }) => name);
+  project.agentCoreGateways
+    .find(({ name }) => name === "agent-box")
+    ?.targets.map(({ name }) => name);
 
 describe("addBoxMemoryTarget", () => {
   test("adds the agentcore target for a boxed runtime's default Memory", () => {
     const project = spec();
 
     expect(addBoxMemoryTarget(project)).toEqual([
-      "adding target 'agentcore' to gateway 'box' in agentcore.json, for the boxed agent's Memory calls",
-      "adding 'agentcore/box-memory-policy.json' to gateway 'box' additionalPolicies in agentcore.json, so its role can call Memory",
+      "adding target 'agentcore' to gateway 'agent-box' in agentcore.json, for the boxed agent's Memory calls",
+      "adding 'agentcore/box-memory-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call Memory",
     ]);
     expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
@@ -65,7 +67,7 @@ describe("addBoxMemoryTarget", () => {
   test("recreates a removed box gateway entry with the agentcore target", () => {
     const project = { ...spec(), agentCoreGateways: [] } as ProjectSpec;
 
-    expect(addBoxMemoryTarget(project)).toContain("adding gateway 'box' to agentcore.json");
+    expect(addBoxMemoryTarget(project)).toContain("adding gateway 'agent-box' to agentcore.json");
     expect(targets(project)).toEqual(["agentcore"]);
   });
 
@@ -95,7 +97,7 @@ describe("addBoxMemoryTarget", () => {
     project.agentCoreGateways[0]!.targets.push(getBoxGatewayAgentCoreTargetSpec());
 
     expect(addBoxMemoryTarget(project)).toEqual([
-      "adding 'agentcore/box-memory-policy.json' to gateway 'box' additionalPolicies in agentcore.json, so its role can call Memory",
+      "adding 'agentcore/box-memory-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call Memory",
     ]);
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
   });

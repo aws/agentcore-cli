@@ -1908,7 +1908,9 @@ describe("FsProjectManager.build", () => {
 
     const root = join(directory, "example");
     const spec = JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf8"));
-    const box = spec.agentCoreGateways.find(({ name }: { name: string }) => name === "box");
+    const box = spec.agentCoreGateways.find(
+      ({ name }: { name: string }) => name === "agent-python-strands-box",
+    );
     expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
     expect(box.additionalPolicies).toEqual(["agentcore/box-memory-policy.json"]);
     expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);

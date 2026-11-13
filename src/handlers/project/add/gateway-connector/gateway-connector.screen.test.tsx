@@ -38,7 +38,7 @@ async function targetsOf(projectRoot: string, gateway = "tools") {
 }
 
 // reachConnectorStep picks the test's Gateway, "tools" (listed after the
-// project's "box" gateway entry), leaving the wizard on the connector step.
+// project's "agent-box" gateway entry), leaving the wizard on the connector step.
 async function reachConnectorStep(screen: RenderScreenResult): Promise<void> {
   await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
   await screen.press("down");
@@ -74,7 +74,7 @@ describe("project add gateway-connector wizard", () => {
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
     await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
-    expect(screen.lastFrame()).toContain("❯ ● box");
+    expect(screen.lastFrame()).toContain("❯ ● agent-box");
     await screen.press("down");
     await waitForText(screen.lastFrame, "❯ ● tools");
     await screen.press("return");

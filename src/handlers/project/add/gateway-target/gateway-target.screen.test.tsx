@@ -59,7 +59,7 @@ async function projectWith(extra: {
 }
 
 // reachKindStep picks the test's Gateway, "tools" (listed after the project's
-// "box" gateway entry), leaving the wizard on the kind step.
+// "agent-box" gateway entry), leaving the wizard on the kind step.
 async function reachKindStep(screen: RenderScreenResult): Promise<void> {
   await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
   await screen.press("down");
@@ -113,7 +113,7 @@ describe("project add gateway-target wizard", () => {
     const screen = renderScreen("/agentcore/add/gateway-target");
 
     await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
-    expect(screen.lastFrame()).toContain("❯ ● box");
+    expect(screen.lastFrame()).toContain("❯ ● agent-box");
     await screen.press("down");
     await waitForText(screen.lastFrame, "❯ ● tools");
     expect(screen.lastFrame()).toContain("0 Targets · MCP servers and Runtimes");

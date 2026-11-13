@@ -142,10 +142,10 @@ describe("project create", () => {
   test.each([
     ["agent-python-strands", ["bedrock"]],
     ["agent-python-minimal", ["bedrock"]],
-    ["mcp-python-fastmcp", []],
+    ["mcp-python-fastmcp", undefined],
     ["empty", undefined],
   ] as const)(
-    "create --template %s writes projectType box and the box gateway entry targets %j to agentcore.json",
+    "create --template %s writes the agent-box entry targets %j to agentcore.json",
     async (template, targetNames) => {
       const { path: directory, cleanup } = await inTempDirectory();
       cleanups.push(cleanup);
@@ -160,15 +160,15 @@ describe("project create", () => {
       ]);
 
       const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+      // Every new project is a Box project; the CDK library makes each runtime's Box gateway.
+      expect(spec.projectType).toBe("box");
       if (targetNames === undefined) {
         expect(spec.agentCoreGateways ?? []).toEqual([]);
-        expect(spec.projectType).toBeUndefined();
         return;
       }
-      expect(spec.projectType).toBe("box");
       expect(spec.agentCoreGateways).toHaveLength(1);
       expect(spec.agentCoreGateways[0]).toMatchObject({
-        name: "box",
+        name: "agent-box",
         protocolType: "None",
         authorizerType: "AWS_IAM",
       });

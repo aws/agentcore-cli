@@ -85,8 +85,11 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
-    /** The Box gateway entry `agentcore create` declares, with `"projectType": "box"`, for the agent's outbound calls. */
-    boxGateway: AgentCoreGatewaySchema.optional(),
+    /**
+     * The entry that adds the template's targets (the Bedrock model endpoint) to this runtime's Box
+     * gateway, `<runtime>-box`; absent when the agent calls no Bedrock model.
+     */
+    boxGatewayEntry: AgentCoreGatewaySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),
@@ -214,6 +217,16 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
+/** A deploy that would delete the Box gateways, because agentcore.json lost its "projectType": "box". */
+export type BoxGatewayDeletionRequest = {
+  projectName: string;
+  targetName: string;
+  /** The AWS names of the Box gateways that the last deploy to the target recorded. */
+  gatewayNames: string[];
+};
+
+export type BoxGatewayDeletionHandler = (request: BoxGatewayDeletionRequest) => Promise<boolean>;
+
 export type DeployProjectInput = {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
@@ -225,6 +238,11 @@ export type DeployProjectInput = {
   region: string;
   /** Requests approval after the backend discovers that this deploy is a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
+  /**
+   * Requests approval for a deploy that would delete the Box gateway. Absent means declined:
+   * the deploy then fails with the "re-run with --yes" error.
+   */
+  confirmBoxGatewayDeletion?: BoxGatewayDeletionHandler;
   /** Whether to enable CloudWatch Transaction Search on deploy (from global config). */
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
@@ -587,6 +605,12 @@ export interface ProjectManager {
     project: Project,
     input: ResolveTargetInput,
   ): Promise<AwsDeploymentTarget | undefined>;
+
+  /**
+   * The AWS name of the Box gateway that the last deploy to the target recorded, or undefined
+   * when it recorded none. Read-only, for the deploy handler's up-front confirmation.
+   */
+  recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

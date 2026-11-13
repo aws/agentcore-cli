@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
-import { getBoxGatewaySpec } from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
 import type { Project } from "../../../handlers/project/types";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
@@ -58,7 +58,7 @@ async function project(entrypoint: string): Promise<Project> {
         },
       ],
       memories: [],
-      agentCoreGateways: [getBoxGatewaySpec({ bedrockTarget: true })],
+      agentCoreGateways: [getBoxGatewayBedrockEntry("agent")],
     },
   } as unknown as Project;
 }

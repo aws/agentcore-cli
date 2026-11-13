@@ -52,13 +52,14 @@ export async function createProjectTree(
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
-          // A Box project: the CDK library adds the Box gateway, and the entry adds targets to it.
-          ...(options?.runtime?.boxGateway && { projectType: "box" }),
+          // Only new projects are Box projects; no other command adds this field.
+          projectType: "box",
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
-            // The Box gateway entry belongs to the project, not to one template's files.
-            ...(options?.runtime?.boxGateway
-              ? [{ agentCoreGateways: [options.runtime.boxGateway] }]
+            // The entry that adds the template's targets (a model endpoint) to the runtime's
+            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files.
+            ...(options?.runtime?.boxGatewayEntry
+              ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
               : []),
           ]),
         }),

@@ -75,13 +75,13 @@ describe("project add policy-engine wizard", () => {
     await nameStep(screen, "Guardrails");
 
     await waitForText(screen.lastFrame, "attach it to any Gateways now?");
-    expect(screen.lastFrame()).toContain("❯ [ ] box");
+    expect(screen.lastFrame()).toContain("❯ [ ] agent-box");
     expect(screen.lastFrame()).toContain("[ ] tools");
     expect(screen.lastFrame()).toContain("[ ] search");
     // Nothing checked yet, so the mode question is not on screen.
     expect(screen.lastFrame()).not.toContain("Enforcement on those Gateways");
 
-    // Skip the box gateway entry; attach to the two the test added.
+    // Skip the agent-box gateway entry; attach to the two the test added.
     await screen.press("down");
     await waitForText(screen.lastFrame, "❯ [ ] tools");
     await screen.write(" ");

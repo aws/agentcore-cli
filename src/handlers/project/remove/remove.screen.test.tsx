@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ProjectSpecSchema, type ProjectSpec } from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
-import { BOX_GATEWAY_NAME, resolveRuntimeTemplateShortcut } from "../shortcuts";
+import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { AddResourceInput, Project } from "../types";
 import {
   renderScreen,
@@ -69,18 +69,14 @@ function render(path: string, core: TestCoreClient, project: Project) {
 }
 
 /**
- * A project with no resources: the created one minus its scaffolded runtime and
- * the box gateway entry that create declares.
+ * A project with no resources: the created one minus its scaffolded runtime,
+ * whose removal also removes the runtime's Box gateway entry that create declares.
  */
 async function emptyProject(core: TestCoreClient): Promise<Project> {
   const { project } = await createProject(core);
-  const { project: withoutRuntime } = await core.projectManager.removeResource(project, {
+  const { project: empty } = await core.projectManager.removeResource(project, {
     resourceType: "runtime",
     name: project.spec.runtimes[0]!.name,
-  });
-  const { project: empty } = await core.projectManager.removeResource(withoutRuntime, {
-    resourceType: "gateway",
-    name: BOX_GATEWAY_NAME,
   });
   return empty;
 }
@@ -324,7 +320,7 @@ describe("project remove screen", () => {
 
     await waitForText(r.lastFrame, "all");
     // `all` = the sum of the listed rows: 1 runtime + 1 policy-engine + 1 policy,
-    // plus the box gateway entry and its bedrock gateway-target.
+    // plus the agent-box gateway entry and its bedrock gateway-target.
     expect(r.lastFrame()).toMatch(/all\s+5/);
     r.unmount();
   });

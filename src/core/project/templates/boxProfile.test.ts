@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import {
-  getBoxGatewaySpec,
+  getBoxGatewayBedrockEntry,
   resolveRuntimeTemplateShortcut,
   type RuntimeTemplateShortcutName,
 } from "../../../handlers/project/shortcuts";
@@ -313,7 +313,7 @@ describe("renderRuntimeBoxProfile", () => {
         } as ProjectRuntime,
       ],
       memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
-      agentCoreGateways: [getBoxGatewaySpec({ bedrockTarget: true })],
+      agentCoreGateways: [getBoxGatewayBedrockEntry("agent")],
     } as unknown as ProjectSpec;
   }
 

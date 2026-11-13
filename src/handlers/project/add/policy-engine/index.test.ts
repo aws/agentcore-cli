@@ -108,7 +108,7 @@ describe("project add policy-engine", () => {
     ]);
 
     const spec = await projectSpec(projectRoot);
-    // the box gateway entry is not named, so it stays unattached.
+    // the agent-box gateway entry is not named, so it stays unattached.
     const [box, ...attached] = spec.agentCoreGateways;
     expect(box).toEqual(DEFAULT_BOX_GATEWAY);
     expect(attached).toHaveLength(2);
