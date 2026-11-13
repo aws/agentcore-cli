@@ -49,7 +49,15 @@ export async function createProjectTree(
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
-          ...mergeSpecEntries(templates.map(({ spec }) => spec)),
+          // A Box project: the CDK library adds the Box gateway, and the entry adds targets to it.
+          ...(options?.runtime?.boxGateway && { projectType: "box" }),
+          ...mergeSpecEntries([
+            ...templates.map(({ spec }) => spec),
+            // The Box gateway entry belongs to the project, not to one template's files.
+            ...(options?.runtime?.boxGateway
+              ? [{ agentCoreGateways: [options.runtime.boxGateway] }]
+              : []),
+          ]),
         }),
       ),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),

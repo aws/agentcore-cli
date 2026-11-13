@@ -84,7 +84,8 @@ describe("project remove", () => {
         ["remove", "gateway", "--name", "remove"],
       ],
       specKey: "agentCoreGateways",
-      expectedRemaining: ["keep"],
+      // the box gateway entry that create declares stays.
+      expectedRemaining: ["box", "keep"],
     },
     {
       label: "config-bundle",
@@ -296,7 +297,7 @@ describe("project remove", () => {
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(
-      agentcoreJson.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+      agentcoreJson.agentCoreGateways[1].targets.map((target: { name: string }) => target.name),
     ).toEqual(["keep"]);
     expect(JSON.parse(io.stdout())).toEqual({
       operation: "remove",

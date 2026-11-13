@@ -69,7 +69,7 @@ describe("project add gateway-connector", () => {
       cnConnectorTargetMessage("web-search"),
       RegionUnsupportedFeatureError,
     );
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual([]);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual([]);
   });
 
   test("--json preserves the command resource type and parent Gateway", async () => {
@@ -127,7 +127,7 @@ describe("project add gateway-connector", () => {
       "ABCDEFGHIJ",
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual([
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual([
       {
         name: "web",
         targetType: "connector",
@@ -164,7 +164,7 @@ describe("project add gateway-connector", () => {
       `file://${path}`,
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets[0]).toEqual(target);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets[0]).toEqual(target);
   });
 
   test("rejects a non-connector project Target", async () => {
