@@ -11,7 +11,11 @@ import {
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import { declaresNoResources, isBoxProject } from "../../../projectSchemas/project";
+import {
+  declaresNoResources,
+  describeBoxGateways,
+  isBoxProject,
+} from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
   createHandler,
@@ -84,7 +88,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       flag(
         "yes",
         "confirm removing the target's stack when the project declares nothing to deploy, " +
-          'or the Box gateway when agentcore.json has lost its "projectType": "box"',
+          'or the Box gateways when agentcore.json has lost its "projectType": "box"',
         z.boolean().default(false),
       ),
       flag(
@@ -331,11 +335,11 @@ async function resolveTeardownDecision(
   return async () => false;
 }
 
-/** The question the deploy command asks before it deletes the Box gateway. */
-function boxGatewayDeletionQuestion(gatewayName: string): string {
+/** The question the deploy command asks before it deletes the Box gateways. */
+function boxGatewayDeletionQuestion(gatewayNames: string[]): string {
   return (
-    `agentcore.json has no "projectType": "box", so this deploy will delete the Box gateway ` +
-    `'${gatewayName}'. Continue?`
+    `agentcore.json has no "projectType": "box", so this deploy will delete ` +
+    `${describeBoxGateways(gatewayNames)}. Continue?`
   );
 }
 
@@ -353,11 +357,11 @@ async function resolveBoxGatewayDecision(
 ): Promise<BoxGatewayDeletionHandler> {
   if (confirmed) return async () => true;
   if (canPrompt && !isBoxProject(project.spec) && !declaresNoResources(project.spec)) {
-    const gatewayName = await config.projectManager.recordedBoxGateway(project, {
+    const gatewayNames = await config.projectManager.recordedBoxGateways(project, {
       target: targetName,
     });
-    if (gatewayName !== undefined) {
-      if (!(await promptForConfirmation(config.io, boxGatewayDeletionQuestion(gatewayName)))) {
+    if (gatewayNames.length > 0) {
+      if (!(await promptForConfirmation(config.io, boxGatewayDeletionQuestion(gatewayNames)))) {
         throw new UserCancellationError();
       }
       return async () => true;

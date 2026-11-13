@@ -208,12 +208,12 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
-/** A deploy that would delete the Box gateway, because agentcore.json lost its "projectType": "box". */
+/** A deploy that would delete the Box gateways, because agentcore.json lost its "projectType": "box". */
 export type BoxGatewayDeletionRequest = {
   projectName: string;
   targetName: string;
-  /** The AWS name of the Box gateway that the last deploy to the target recorded. */
-  gatewayName: string;
+  /** The AWS names of the Box gateways that the last deploy to the target recorded. */
+  gatewayNames: string[];
 };
 
 export type BoxGatewayDeletionHandler = (request: BoxGatewayDeletionRequest) => Promise<boolean>;
@@ -601,7 +601,7 @@ export interface ProjectManager {
    * The AWS name of the Box gateway that the last deploy to the target recorded, or undefined
    * when it recorded none. Read-only, for the deploy handler's up-front confirmation.
    */
-  recordedBoxGateway(project: Project, input: ResolveTargetInput): Promise<string | undefined>;
+  recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

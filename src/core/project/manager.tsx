@@ -62,10 +62,12 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
-  BOX_GATEWAY_NAME,
   BOX_GATEWAY_TARGET_TYPE,
+  boxGatewayName,
+  boxGatewayNames,
   isBoxExtensionEntry,
   isBoxProject,
+  isReservedBoxGatewayName,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
@@ -917,16 +919,14 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // KD6: in a Box project the name belongs to the Box gateway, in any letter case. The
-        // CDK library would refuse it at synth; refusing here keeps agentcore.json unchanged.
-        if (
-          isBoxProject(projectSpec) &&
-          input.resourceConfig.name.toLowerCase() === BOX_GATEWAY_NAME
-        ) {
+        // KD6: in a Box project, names that end in -box belong to the Box gateways, in any
+        // letter case. The CDK library would refuse them at synth; refusing here keeps
+        // agentcore.json unchanged.
+        if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
           throw new InputValidationError(
-            `the gateway name '${input.resourceConfig.name}' is reserved for the Box gateway in this ` +
-              `project. Give the gateway a different name. To add targets to the Box gateway, use ` +
-              `'agentcore add gateway-target --gateway ${BOX_GATEWAY_NAME}'.`,
+            `the gateway name '${input.resourceConfig.name}' is reserved: in this project, names that ` +
+              `end in '-box' belong to the Box gateways of the runtimes. Give the gateway a name that ` +
+              `does not end in '-box'.${boxGatewayHint(projectSpec)}`,
           );
         }
         projectSpec.agentCoreGateways.push(input.resourceConfig);
@@ -985,7 +985,7 @@ export class FsProjectManager implements ProjectManager {
           gatewayIndex =
             projectSpec.agentCoreGateways.push(
               parseResource(AgentCoreGatewaySchema, {
-                name: BOX_GATEWAY_NAME,
+                name: input.gatewayName,
                 authorizerType: "AWS_IAM",
                 protocolType: "None",
                 targets: [],
@@ -993,8 +993,9 @@ export class FsProjectManager implements ProjectManager {
             ) - 1;
         }
         if (gatewayIndex < 0) {
+          const hint = boxGatewayHint(projectSpec);
           throw new ResourceNotFoundError(
-            `no gateway named '${input.gatewayName}' exists in this project`,
+            `no gateway named '${input.gatewayName}' exists in this project${hint ? `.${hint}` : ""}`,
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);
@@ -1177,6 +1178,17 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+      // The Box gateway of a runtime goes with the runtime (KD4), so its targets go too. An
+      // entry for a runtime that no longer exists would fail the synth.
+      if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
+        const boxName = boxGatewayName(input.name);
+        newSpec = {
+          ...(newSpec as object),
+          agentCoreGateways: existingProjectSpec.agentCoreGateways.filter(
+            (gateway) => gateway.name !== boxName,
+          ),
+        };
+      }
     }
 
     if (!removed) {
@@ -1763,12 +1775,9 @@ export class FsProjectManager implements ProjectManager {
     return targets.find((candidate) => candidate.name === input.target);
   }
 
-  public async recordedBoxGateway(
-    project: Project,
-    input: ResolveTargetInput,
-  ): Promise<string | undefined> {
+  public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
     const state = await readDeployedState(this.json, project.rootPath);
-    return state.targets[input.target]?.resources?.boxGateway?.name;
+    return (state.targets[input.target]?.resources?.boxGateways ?? []).map(({ name }) => name);
   }
 
   public async resolveDeployedResource(
@@ -2087,6 +2096,13 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/** A hint that lists the Box gateways of a Box project, for errors about gateway names. */
+function boxGatewayHint(spec: { projectType?: string; runtimes: { name: string }[] }): string {
+  const names = boxGatewayNames(spec);
+  if (names.length === 0) return "";
+  return ` The Box gateways in this project are: ${names.map((name) => `'${name}'`).join(", ")}.`;
 }
 
 function parseResource<TSchema extends z.ZodType>(
