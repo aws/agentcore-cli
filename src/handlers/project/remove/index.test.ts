@@ -84,7 +84,8 @@ describe("project remove", () => {
         ["remove", "gateway", "--name", "remove"],
       ],
       specKey: "agentCoreGateways",
-      expectedRemaining: ["keep"],
+      // The agent-box entry that create declares for the Bedrock agent stays.
+      expectedRemaining: ["agent-box", "keep"],
     },
     {
       label: "config-bundle",
@@ -296,7 +297,7 @@ describe("project remove", () => {
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(
-      agentcoreJson.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+      agentcoreJson.agentCoreGateways[1].targets.map((target: { name: string }) => target.name),
     ).toEqual(["keep"]);
     expect(JSON.parse(io.stdout())).toEqual({
       operation: "remove",
@@ -724,7 +725,11 @@ describe("project remove in a Box project", () => {
         name: "agent-box",
         authorizerType: "AWS_IAM",
         protocolType: "None",
-        targets: [{ name: "weather", targetType: "passthrough" }],
+        // create declares the Bedrock target for the template's Bedrock agent.
+        targets: [
+          { name: "bedrock", targetType: "passthrough" },
+          { name: "weather", targetType: "passthrough" },
+        ],
       },
     ]);
   });
@@ -733,6 +738,8 @@ describe("project remove in a Box project", () => {
     const projectRoot = await boxProject();
 
     await run(["remove", "gateway-target", "--gateway", "agent-box", "--name", "weather"]);
+    expect((await projectSpec(projectRoot)).agentCoreGateways).toHaveLength(1);
+    await run(["remove", "gateway-target", "--gateway", "agent-box", "--name", "bedrock"]);
 
     const spec = await projectSpec(projectRoot);
     expect(spec.agentCoreGateways).toEqual([]);

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expectError } from "../../../../testing";
-import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { createGatewayProjectTestHarness, DEFAULT_BOX_GATEWAY } from "../gateway-test-support";
 import { InputValidationError, ResourceNotFoundError } from "../../../../errors";
 
 const { cleanup, inProject, projectSpec, run, writeProjectSpec } =
@@ -16,6 +16,7 @@ describe("project add gateway", () => {
     const io = await run(["add", "gateway", "--name", "tools"]);
 
     expect((await projectSpec(projectRoot)).agentCoreGateways).toEqual([
+      DEFAULT_BOX_GATEWAY,
       {
         name: "tools",
         protocolType: "None",
@@ -56,7 +57,7 @@ describe("project add gateway", () => {
       '{"team":"agents"}',
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0]).toMatchObject({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1]).toMatchObject({
       name: "tools",
       protocolType: "MCP",
       description: "Project tools",
@@ -90,7 +91,7 @@ describe("project add gateway", () => {
       }),
     );
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0]).toMatchObject({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1]).toMatchObject({
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
         customJwtAuthorizer: {
@@ -116,7 +117,7 @@ describe("project add gateway", () => {
       ]),
     ).rejects.toThrow("customJWTAuthorizer");
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways ?? []).toEqual([]);
+    expect((await projectSpec(projectRoot)).agentCoreGateways).toEqual([DEFAULT_BOX_GATEWAY]);
   });
 
   test("maps log-only policy mode", async () => {
@@ -136,7 +137,7 @@ describe("project add gateway", () => {
       "log-only",
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].policyEngineConfiguration).toEqual(
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].policyEngineConfiguration).toEqual(
       {
         policyEngineName: "Guardrails",
         mode: "LOG_ONLY",
@@ -148,7 +149,7 @@ describe("project add gateway", () => {
     const projectRoot = await inProject();
     await run(["add", "gateway", "--name", "tools", "--tags", "source=pairs", "team=agents"]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[0].tags).toEqual({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[1].tags).toEqual({
       source: "pairs",
       team: "agents",
     });

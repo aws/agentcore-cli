@@ -51,7 +51,14 @@ export async function createProjectTree(
           managedBy: "CDK",
           // Only new projects are Box projects; no other command adds this field.
           projectType: "box",
-          ...mergeSpecEntries(templates.map(({ spec }) => spec)),
+          ...mergeSpecEntries([
+            ...templates.map(({ spec }) => spec),
+            // The entry that adds the template's targets (a model endpoint) to the runtime's
+            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files.
+            ...(options?.runtime?.boxGatewayEntry
+              ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
+              : []),
+          ]),
         }),
       ),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
