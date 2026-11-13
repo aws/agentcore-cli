@@ -7,7 +7,7 @@ import type {
 } from "../../../handlers/project/add/runtime/types";
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
-import { BOX_CODEZIP_ENTRYPOINT, startsInBoxOnCodeZip } from "./boxProfile";
+import { BOX_CODEZIP_ENTRYPOINT, isBoxedContainer, startsInBoxOnCodeZip } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
@@ -36,6 +36,7 @@ export async function createProjectTree(
 
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
+    if (isBoxedContainer(options.runtime)) withBoxContainerStartScript(config, template);
     templates.push(template);
   }
 
@@ -90,6 +91,18 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
     );
   }
   for (const runtime of template.spec.runtimes ?? []) runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+}
+
+/**
+ * The container image's entry point, start.sh, which the Dockerfile copies
+ * into /opt/box: it fills in the deployed resources and starts `box run`.
+ */
+function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
+  template.tree.children.push(
+    FsTreeNode.createFile("start.sh", () =>
+      config.assetSource.read("templates/box-container/start.sh"),
+    ),
+  );
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
