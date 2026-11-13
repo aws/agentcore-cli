@@ -42,6 +42,12 @@ export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
  */
 export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
+/**
+ * The name of the policy engine of a runtime's Box gateway. Each Box gateway gets its own engine.
+ * A policy engine name takes no `-`, so the Box gateway name `<runtime>-box` becomes `<runtime>_box`.
+ */
+export const boxGatewayPolicyEngineName = (runtimeName: string): string =>
+  boxGatewayName(runtimeName).replace(/-/g, "_");
 /** The Box gateway names of a Box project, one for each runtime; none in any other project. */
 export const boxGatewayNames = (spec: {
   projectType?: string;

@@ -319,9 +319,10 @@ describe("project remove screen", () => {
     const r = render("/agentcore/remove", core, project);
 
     await waitForText(r.lastFrame, "all");
-    // `all` = the sum of the listed rows: 1 runtime + 1 policy-engine + 1 policy,
-    // plus the agent-box gateway entry and its bedrock gateway-target.
-    expect(r.lastFrame()).toMatch(/all\s+5/);
+    // `all` = the sum of the listed rows: 1 runtime + 2 policy-engines (the added one
+    // and the agent-box gateway's own) + 1 policy, plus the agent-box gateway entry and
+    // its bedrock gateway-target.
+    expect(r.lastFrame()).toMatch(/all\s+6/);
     r.unmount();
   });
 

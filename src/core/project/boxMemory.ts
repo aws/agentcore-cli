@@ -1,8 +1,11 @@
 import { InputValidationError } from "../../errors/errors";
 import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+  BOX_GATEWAY_POLICY_ENGINE_MODE,
+  boxGatewayPolicyEngineName,
   getBoxGatewayAgentCoreTargetSpec,
   getBoxGatewayEntry,
+  getBoxGatewayPolicyEngineSpec,
 } from "../../handlers/project/shortcuts";
 import { boxGatewayName, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
@@ -130,6 +133,24 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
       messages.push(
         `adding '${BOX_MEMORY_POLICY_FILE}' to gateway '${name}' ` +
           "additionalPolicies in agentcore.json, so its role can call Memory",
+      );
+    }
+    // Each Box gateway gets its own policy engine. Attach it, and declare it, if either is missing
+    // (a gateway from an older project has neither).
+    const engineName = boxGatewayPolicyEngineName(runtime.name);
+    if (!gateway.policyEngineConfiguration) {
+      gateway.policyEngineConfiguration = {
+        policyEngineName: engineName,
+        mode: BOX_GATEWAY_POLICY_ENGINE_MODE,
+      };
+      messages.push(
+        `attaching policy engine '${engineName}' to gateway '${name}' in agentcore.json`,
+      );
+    }
+    if (!spec.policyEngines.some((engine) => engine.name === engineName)) {
+      spec.policyEngines.push(getBoxGatewayPolicyEngineSpec(runtime.name));
+      messages.push(
+        `adding policy engine '${engineName}' to agentcore.json, for gateway '${name}'`,
       );
     }
   }
