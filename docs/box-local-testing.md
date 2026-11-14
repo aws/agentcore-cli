@@ -115,9 +115,11 @@ works. They change nothing in `.box/`.
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
   host, a plain-HTTP-only host, an unsupported secret, an MCP server over HTTP, and similar
-  cases stop them too. The error lists every failure with its rule or entry and its
-  `file:line:column` in your policy file, found by the rule's `@id`, or says that Box adds the
-  rule, and nothing is written.
+  cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
+  number of problems, then gives one line for each problem: its `file:line:column` in your
+  profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
+  by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as
+  `[egress.github]`. Nothing is written.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
@@ -188,11 +190,11 @@ bun run "$CLI" deploy
 
 ## Troubleshooting
 
-- **Build says box did not start.** `box` is not on your `PATH`. Install it as for
-  `agentcore dev`, then build again.
-- **Build says `box profile show .box/profile.toml --full` failed.** The lines under it are
-  box's own error. A fresh checkout often has no agent venv yet, and box then names
-  `.venv/bin/python` under a write grant: run `uv sync` in the agent's folder (`app/<agent>`).
+- **Build says Box is not installed or not on PATH.** Install `box` as for `agentcore dev`,
+  then build again.
+- **Build says Box refused the profile.** The lines under it are box's own error. A fresh
+  checkout often has no agent venv yet, and box then names `.venv/bin/python` under a write
+  grant. The error then says to run `uv sync` in the agent's folder (`app/<agent>`).
 - **Build cannot find the box binaries.** `AGENTCORE_BOX_SOURCE` is unset or does not hold
   `target-al2023/release`. Build box for Amazon Linux 2023 in that checkout first.
 - **Deploy says a credential has no secret.** The credential's value did not reach
