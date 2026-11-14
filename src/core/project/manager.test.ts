@@ -1039,17 +1039,6 @@ describe("FsProjectManager.addResource", () => {
         join(project.rootPath, "agentcore", "aws-targets.json"),
         JSON.stringify([{ name: "primary", account: "111122223333", region }]),
       );
-      // Box is not supported in China, so its gateway's default policy engine is out of scope
-      // here. Drop it from the China fixture: `policyEngines` is not a China-supported collection,
-      // and these tests exercise China runtime gating, not the Box policy engine.
-      if (region.startsWith("cn-")) {
-        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
-        const parsed = JSON.parse(await readFile(specPath, "utf8"));
-        parsed.policyEngines = [];
-        for (const gateway of parsed.agentCoreGateways ?? [])
-          delete gateway.policyEngineConfiguration;
-        await writeFile(specPath, JSON.stringify(parsed, undefined, 2));
-      }
       missingTool = missingToolAfterCreate;
       checkedTools.length = 0;
       return { subject, project, checkedTools, deployCalls };
