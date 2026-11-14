@@ -195,6 +195,96 @@ yourself.
 Note that `agentcore status` reports only the resources `agentcore.json`
 declares, not the ones you add in the stack.
 
+## Running agents in Box (preview)
+
+The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
+Runtime. box comes from the GitHub release `v0.1.11-linux-preview.1` of the private repository
+`mquang-amazon/staging-boxy`, pinned with its SHA-256 in
+`src/core/project/backends/boxRelease.ts`. Until that release is public, you need read access to
+the repository and a GitHub token:
+
+- A CodeZip agent's zip carries box. `build` and `deploy` download the release once with your
+  GitHub CLI login into `~/.agentcore/box/`, and stage it into the runtime's `.box-dist/`.
+- A container agent's image installs box while it builds, with `install-box.py`. `agentcore dev`
+  builds the image on your machine with your GitHub login. `agentcore deploy` builds it in AWS
+  CodeBuild, which reads the token from the Secrets Manager secret `agentcore/box/github-token`.
+
+To use a local box build instead of the release for a CodeZip agent, set `AGENTCORE_BOX_SOURCE` to a
+staging-boxy checkout with an Amazon Linux 2023 build in `target-al2023/release`.
+
+### Before you start
+
+Ask the owner of `mquang-amazon/staging-boxy` to add your GitHub account, and accept the invitation
+at <https://github.com/notifications>. Then log in to the GitHub CLI and check that you can see the
+release:
+
+```sh
+gh auth login
+gh release view v0.1.11-linux-preview.1 --repo mquang-amazon/staging-boxy
+```
+
+### Create a GitHub token and store it (container agents, once per account and region)
+
+1. Open <https://github.com/settings/personal-access-tokens/new> and create a fine-grained token:
+   resource owner `mquang-amazon`, repository access **Only select repositories** with
+   `mquang-amazon/staging-boxy`, and repository permission **Contents: Read-only**. Leave
+   everything else at No access, and pick an expiration of 30 or 90 days.
+2. Copy the token. Don't save it in a file, a note or a chat; keep it in a password manager if you
+   need it again.
+3. Store it in the account and region you deploy to. The command waits for input without showing
+   it: paste the token and press Enter, so it never appears in your terminal or shell history.
+
+   ```sh
+   read -s GH_TOKEN && aws secretsmanager create-secret --region us-west-2 --name agentcore/box/github-token --secret-string "$GH_TOKEN" && unset GH_TOKEN
+   ```
+
+   When the token expires, store a new one with `put-secret-value` instead:
+
+   ```sh
+   read -s GH_TOKEN && aws secretsmanager put-secret-value --region us-west-2 --secret-id agentcore/box/github-token --secret-string "$GH_TOKEN" && unset GH_TOKEN
+   ```
+
+`create` declares the secret on the container runtime in `agentcore.json`, so the token is a
+BuildKit secret of the image build, never a build arg, and never lands in the image or the build
+log:
+
+```json
+"dockerBuildSecrets": { "gh_token": "agentcore/box/github-token" }
+```
+
+### Create, run and deploy
+
+```sh
+agentcore create --name MyBoxAgent --template agent-python-strands-container
+cd MyBoxAgent
+AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional: uses GH_TOKEN, or else `gh auth token`
+CDK_DOCKER=finch agentcore deploy --yes
+agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"My favorite color is teal. Remember it."}'
+agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"What is my favorite color?"}'
+agentcore logs runtime --name agent --since 15m --query '"[box]"'
+```
+
+The CodeBuild log of the deploy shows
+`install-box: box 0.1.11-linux-preview.1 from mquang-amazon/staging-boxy in /opt/box`. The second
+answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK` or
+`AccessDenied` line. For a CodeZip agent, use `--template agent-python-strands` and skip the token
+and the container settings.
+
+### Troubleshooting
+
+- `ExpiredTokenException` from `aws`: your AWS credentials expired. Refresh them and run the command
+  again.
+- `ResourceNotFoundException` from `put-secret-value`: the secret doesn't exist yet. Use
+  `create-secret`. `ResourceExistsException` from `create-secret` means it does: use
+  `put-secret-value`.
+- The deploy fails with `Secrets Manager can't find the specified secret`: the secret is in another
+  account or region than the deploy target. Create it there.
+- `install-box: cannot download ... HTTP Error 404` in the CodeBuild log: the token can't read the
+  release. Check its Contents permission on `mquang-amazon/staging-boxy`, that your invitation is
+  accepted, and that the token hasn't expired.
+- `agentcore dev` or `deploy` says to run `gh auth login`: you have no GitHub CLI login. Run
+  `gh auth login`, or set `GH_TOKEN` for that command.
+
 ## Documentation
 
 - [Command reference](command.md): every command and flag.
