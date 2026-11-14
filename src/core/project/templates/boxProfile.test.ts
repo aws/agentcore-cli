@@ -394,7 +394,10 @@ describe("renderRuntimeBoxProfile", () => {
       backends: [
         {
           url: "@GATEWAY_BOX_URL@/github",
-          auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+          auth: {
+            ref: "aws://default",
+            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+          },
         },
       ],
     });
@@ -407,7 +410,10 @@ describe("renderRuntimeBoxProfile", () => {
       backends: [
         {
           url: "@GATEWAY_BOX_URL@/agentcore",
-          auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+          auth: {
+            ref: "aws://default",
+            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+          },
         },
       ],
     });

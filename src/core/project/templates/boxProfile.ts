@@ -39,10 +39,12 @@ const AGENT_ENV_MARKER = "# @AGENT_ENV@";
 export const BOX_GATEWAY_URL_PLACEHOLDER = "@GATEWAY_BOX_URL@";
 
 /**
- * The credential Box signs with on AgentCore Runtime: a bare `aws://` resolves the
- * AWS default credential chain, which finds the execution role and refreshes it.
+ * The credential Box signs with on AgentCore Runtime: the `default` AWS profile, which start.sh
+ * writes from the execution role and refreshes. box refuses a bare `aws://` (the AWS default
+ * credential chain), and Box Core reads a named profile only from its files. TEMPORARY: back to
+ * `aws://`, and drop start.sh's credentials step, once box accepts the default chain again.
  */
-const RUNTIME_AWS_SIGNER = "aws://";
+const RUNTIME_AWS_SIGNER = "aws://default";
 
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
