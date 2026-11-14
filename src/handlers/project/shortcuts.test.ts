@@ -3,6 +3,7 @@ import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
+  boxGatewayEntryForRuntime,
   getBoxGatewayBedrockEntry,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
@@ -109,7 +110,7 @@ describe("Box gateway entry", () => {
     "agent-python-minimal",
   ] as const)("%s declares it with the Bedrock target by default", (template) => {
     expect(
-      resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
+      boxGatewayEntryForRuntime(resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" })),
     ).toEqual({
       name: "agent-box",
       protocolType: "None",
@@ -123,7 +124,7 @@ describe("Box gateway entry", () => {
   test.each(["mcp-python-fastmcp", "environment-python-bma"] as const)(
     "%s, which has no model provider, declares none",
     (template) => {
-      expect(resolveRuntimeTemplateShortcut(template).boxGatewayEntry).toBeUndefined();
+      expect(boxGatewayEntryForRuntime(resolveRuntimeTemplateShortcut(template))).toBeUndefined();
     },
   );
 
@@ -134,14 +135,30 @@ describe("Box gateway entry", () => {
     ["LiteLLM with a non-Bedrock model", { modelProvider: "LiteLLM", modelId: "openai/gpt-4o" }],
   ] as const)("%s: the agent declares none", (_label, overrides) => {
     expect(
-      resolveRuntimeTemplateShortcut("agent-python-strands", overrides).boxGatewayEntry,
+      boxGatewayEntryForRuntime(resolveRuntimeTemplateShortcut("agent-python-strands", overrides)),
     ).toBeUndefined();
+  });
+
+  test.each([
+    ["eu-central-1", "https://bedrock-runtime.eu-central-1.amazonaws.com"],
+    ["us-gov-west-1", "https://bedrock-runtime.us-gov-west-1.amazonaws.com"],
+  ])("targets Bedrock in the region the command resolved, %s", (region, endpoint) => {
+    const [target] = getBoxGatewayBedrockEntry("agent", region).targets;
+    expect(target).toMatchObject({
+      passthrough: { endpoint },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+    });
+  });
+
+  test("falls back to us-west-2 when no region is given", () => {
+    expect(getBoxGatewayBedrockEntry("agent").targets[0]).toEqual(BEDROCK_TARGET);
   });
 
   test("a LiteLLM agent on its default Bedrock model declares the Bedrock target", () => {
     expect(
-      resolveRuntimeTemplateShortcut("agent-python-strands", { modelProvider: "LiteLLM" })
-        .boxGatewayEntry?.targets,
+      boxGatewayEntryForRuntime(
+        resolveRuntimeTemplateShortcut("agent-python-strands", { modelProvider: "LiteLLM" }),
+      )?.targets,
     ).toEqual([BEDROCK_TARGET]);
   });
 });

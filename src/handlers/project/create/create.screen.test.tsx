@@ -38,13 +38,20 @@ afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
 
 // spyOnCreate records every CreateProjectInput handed to the manager while
 // still running the real FsProjectManager underneath, so a test can assert
-// both the exact input and the files it produced.
-function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
+// both the exact input and the files it produced. The resolved region goes to
+// `regions` instead of the input, so the input assertions stay on what the
+// form chose.
+function spyOnCreate(
+  core: TestCoreClient,
+  regions: (string | undefined)[] = [],
+): CreateProjectInput[] {
   const inputs: CreateProjectInput[] = [];
   const manager = core.projectManager;
   const original = manager.create.bind(manager);
   manager.create = (input) => {
-    inputs.push(input);
+    const { region, ...chosen } = input;
+    inputs.push(chosen as CreateProjectInput);
+    regions.push(region);
     return original(input);
   };
   return inputs;
@@ -1016,7 +1023,8 @@ describe("project create wizard", () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const core = new TestCoreClient();
-    const inputs = spyOnCreate(core);
+    const regions: (string | undefined)[] = [];
+    const inputs = spyOnCreate(core, regions);
     const r = renderScreen("/agentcore/create", { core });
 
     await waitForText(r.lastFrame, "name your project");
@@ -1047,6 +1055,8 @@ describe("project create wizard", () => {
         runtimeName: "agent",
       }),
     });
+    // The resolved region picks the Bedrock endpoint of the agent-box entry.
+    expect(regions).toEqual(["us-east-1"]);
 
     const spec = await Bun.file(join(directory, "HelloApp", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual(["agent"]);

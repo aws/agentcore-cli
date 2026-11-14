@@ -178,6 +178,28 @@ describe("project create", () => {
     },
   );
 
+  test("create --region points the agent-box Bedrock target at that region", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      "agent-python-strands",
+      "--skip-install",
+      "--skip-git",
+      "--region",
+      "eu-central-1",
+    ]);
+
+    const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+    expect(spec.agentCoreGateways[0].targets[0]).toMatchObject({
+      passthrough: { endpoint: "https://bedrock-runtime.eu-central-1.amazonaws.com" },
+      outboundAuth: { region: "eu-central-1" },
+    });
+  });
+
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>
       resolveScaffoldHarnessInput({

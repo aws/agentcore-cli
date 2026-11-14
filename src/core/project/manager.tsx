@@ -121,6 +121,7 @@ import type { CreateCloudFormationClient } from "../types";
 import type { CoreIdentityClient } from "../../handlers/identity/types";
 import { templateManagesDependencies } from "../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../handlers/project/runtimeTemplateProfile";
+import { boxGatewayEntryForRuntime } from "../../handlers/project/shortcuts";
 import { projectFormat, type ProjectFormat } from "./legacy/detect";
 import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
@@ -517,7 +518,11 @@ export class FsProjectManager implements ProjectManager {
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
       { projectName: input.name },
-      { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
+      {
+        runtime: scaffoldRuntimeInput,
+        importBedrockAgent: input.importBedrockAgent,
+        region: input.region,
+      },
     );
 
     // Validate required tools exist before starting creation flow
@@ -850,6 +855,20 @@ export class FsProjectManager implements ProjectManager {
         if (spec.runtimes) projectSpec.runtimes.push(...spec.runtimes);
         if (spec.memories) projectSpec.memories.push(...spec.memories);
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
+        // The same Box gateway entry `create` gives a runtime, so an added one matches.
+        const boxEntry =
+          isBoxProject(projectSpec) &&
+          boxGatewayEntryForRuntime(
+            input.resourceConfig.scaffoldRuntimeInput,
+            input.resourceConfig.region,
+          );
+        if (boxEntry && !projectSpec.agentCoreGateways.some(({ name }) => name === boxEntry.name)) {
+          yield {
+            type: "step",
+            message: `adding the Bedrock target to Box gateway '${boxEntry.name}'`,
+          };
+          projectSpec.agentCoreGateways.push(boxEntry);
+        }
         if (envEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
           yield { type: "step", message: `updating secrets file at '${envFile.path}'` };

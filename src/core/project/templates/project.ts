@@ -8,6 +8,7 @@ import type {
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { mergeSpecEntries } from "./spec";
+import { boxGatewayEntryForRuntime } from "../../../handlers/project/shortcuts";
 import type { Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
@@ -19,7 +20,12 @@ type CreateProjectConfig = {
 export async function createProjectTree(
   config: CreateProjectConfig,
   input: { projectName: string },
-  options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
+  options?: {
+    runtime?: ScaffoldRuntimeInput;
+    importBedrockAgent?: ImportBedrockAgentInput;
+    /** The region the command resolved; it picks the Bedrock endpoint of the Box gateway entry. */
+    region?: string;
+  },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
   if (options?.runtime) {
@@ -37,6 +43,8 @@ export async function createProjectTree(
   }
 
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
+  const boxGatewayEntry =
+    options?.runtime && boxGatewayEntryForRuntime(options.runtime, options.region);
 
   const tree = FsTreeNode.createDirectory(".", [
     FsTreeNode.createFile(".gitignore", () =>
@@ -53,11 +61,9 @@ export async function createProjectTree(
           projectType: "box",
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
-            // The entry that adds the template's targets (a model endpoint) to the runtime's
-            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files.
-            ...(options?.runtime?.boxGatewayEntry
-              ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
-              : []),
+            // The entry that adds the runtime's model target to its Box gateway. It sits in
+            // agentCoreGateways, not in the template's runtime files.
+            ...(boxGatewayEntry ? [{ agentCoreGateways: [boxGatewayEntry] }] : []),
           ]),
         }),
       ),

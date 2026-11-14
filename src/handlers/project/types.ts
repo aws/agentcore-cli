@@ -15,11 +15,7 @@ import type {
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
 import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
-import {
-  AgentCoreGatewaySchema,
-  type AgentCoreGateway,
-  type AgentCoreGatewayTarget,
-} from "../../projectSchemas/gateway";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
@@ -34,6 +30,11 @@ type CreateProjectInputBase = {
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
   skipGit?: boolean;
+  /**
+   * The region the command resolved (flag, AWS_REGION, then the profile). It
+   * picks the Bedrock endpoint of a runtime's Box gateway entry.
+   */
+  region?: string;
 };
 
 /** Set of arguments needed to scaffold a managed code-based evaluator. */
@@ -85,11 +86,6 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
-    /**
-     * The entry that adds the template's targets (the Bedrock model endpoint) to this runtime's Box
-     * gateway, `<runtime>-box`; absent when the agent calls no Bedrock model.
-     */
-    boxGatewayEntry: AgentCoreGatewaySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),

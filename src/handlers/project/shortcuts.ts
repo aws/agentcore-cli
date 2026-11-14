@@ -32,24 +32,24 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
 /**
- * The region of the Bedrock target, fixed for now. `create` does not know the
- * deploy region (deploy resolves it, per target), so a project deployed
- * elsewhere still calls Bedrock in this region until the target is edited in
- * agentcore.json.
+ * The region of the Bedrock target when the command resolved none (a caller
+ * that passes no region, such as a test). `create` and `add runtime` pass the
+ * region they resolved (flag, AWS_REGION, then the profile), which is the
+ * region a first `deploy` uses when aws-targets.json is empty.
  */
-export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
+export const BOX_GATEWAY_BEDROCK_DEFAULT_REGION = "us-west-2";
 
 /**
- * The entry that `agentcore create` declares for a runtime whose agent calls
- * Bedrock: it adds a passthrough target for the Bedrock model endpoint to the
- * runtime's Box gateway, `<runtime>-box`, which the CDK library makes for each
- * runtime of a Box project. The entry has the settings `agentcore add
- * gateway-target` gives one, which are the Box gateway's own. Another model
- * provider's endpoint takes an API key that create has no credential for, so
- * such an agent gets no entry.
+ * The entry that adds a passthrough target for the Bedrock model endpoint in
+ * `region` to the runtime's Box gateway, `<runtime>-box`, which the CDK library
+ * makes for each runtime of a Box project. The entry has the settings `agentcore
+ * add gateway-target` gives one, which are the Box gateway's own. The target
+ * signs with the gateway's role, which needs Bedrock permissions of its own.
  */
-export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway {
-  const region = BOX_GATEWAY_BEDROCK_REGION;
+export function getBoxGatewayBedrockEntry(
+  runtimeName: string,
+  region: string = BOX_GATEWAY_BEDROCK_DEFAULT_REGION,
+): AgentCoreGateway {
   return {
     name: boxGatewayName(runtimeName),
     protocolType: "None",
@@ -69,6 +69,23 @@ export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway
       },
     ],
   };
+}
+
+/**
+ * The Box gateway entry that a scaffolded runtime of a Box project starts with,
+ * or undefined. A runtime whose agent calls Bedrock (the Bedrock provider, or
+ * LiteLLM on a `bedrock/` model) gets the Bedrock target. A runtime with no
+ * model provider (an MCP server, BMA) calls no model, and another provider's
+ * endpoint takes an API key that the CLI has no credential for, so those get
+ * none; their Box gateway still exists. `create` and `add runtime` both call
+ * this where they write the spec, so the two give a runtime the same entry.
+ */
+export function boxGatewayEntryForRuntime(
+  input: Pick<ScaffoldRuntimeInput, "runtimeName" | "modelProvider" | "modelId">,
+  region?: string,
+): AgentCoreGateway | undefined {
+  if (input.modelProvider === undefined || !callsBedrockModel(input)) return undefined;
+  return getBoxGatewayBedrockEntry(input.runtimeName, region);
 }
 
 /**
@@ -327,11 +344,6 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
-    // A template with no model provider (an MCP server, BMA) calls no model.
-    ...(modelProvider !== undefined &&
-      callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
-        boxGatewayEntry: getBoxGatewayBedrockEntry(runtimeName),
-      }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

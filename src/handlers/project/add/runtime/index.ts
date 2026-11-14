@@ -296,6 +296,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
               getDefaultMemorySpec(runtimeName),
             ),
             importBedrockAgent,
+            region: ctx.require(RegionKey),
           }),
           `added runtime '${flags.name}' to '${project.name}'`,
           { notes },
