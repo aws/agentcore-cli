@@ -83,50 +83,69 @@ describe("BoxCliProfileResolver", () => {
     ]);
   });
 
-  test("names box's own error, and not its usage text, when box refuses the profile", async () => {
-    const command = ["box", "profile", "show", ".box/profile.toml", "--full"];
-    const fake = streamer(
-      [
-        {
-          type: "stderr",
-          line: "box: error: /work/demo/.box/profile.toml:4: a profile holds no `policy`; list authored files in `policies`",
-        },
-        { type: "stderr", line: "Usage: box profile show [OPTIONS] <NAME>" },
-        { type: "stderr", line: "For more information, try '--help'." },
-      ],
-      new ProcessFailedError(command, "/work/demo", 1, "box: error: ..."),
+  const COMMAND = ["box", "profile", "show", ".box/profile.toml", "--full"];
+  const refusal = (lines: string[], exitCode: number | null = 1) =>
+    streamer(
+      lines.map((line) => ({ type: "stderr", line })),
+      new ProcessFailedError(COMMAND, "/work/demo", exitCode, "box: error: ..."),
     );
-
-    const error = await new BoxCliProfileResolver(fake)
+  const failure = (fake: ReturnType<typeof streamer>) =>
+    new BoxCliProfileResolver(fake)
       .resolve("/work/demo", ".box/profile.toml")
       .catch((caught: unknown) => caught);
 
+  test("shows Box's own error, and not its usage text, when Box refuses the profile", async () => {
+    const error = await failure(
+      refusal([
+        "box: error: /work/demo/.box/profile.toml:4: a profile holds no `policy`; list authored files in `policies`",
+        "Usage: box profile show [OPTIONS] <NAME>",
+        "For more information, try '--help'.",
+      ]),
+    );
+
     expect(error).toBeInstanceOf(InvalidEnvironmentError);
     expect((error as Error).message).toBe(
-      "`box profile show .box/profile.toml --full` failed in /work/demo (exit code 1), so build " +
-        "cannot read the box profile as Box resolves it:\n" +
+      "Box refused the profile .box/profile.toml:\n" +
         "  box: error: /work/demo/.box/profile.toml:4: a profile holds no `policy`; list authored " +
         "files in `policies`\n" +
-        "Fix what box names, so that `box profile show .box/profile.toml` succeeds in the project " +
-        "folder, then retry.",
+        "Fix what Box reports, then retry.",
     );
   });
 
-  test("says box did not start, and where to get it, when box is not on PATH", async () => {
-    const command = ["box", "profile", "show", ".box/profile.toml", "--full"];
+  test("says to run uv sync in the agent's folder when Box refuses its missing .venv", async () => {
+    const error = await failure(
+      refusal([
+        "box: error: /work/demo/app/agent/.venv/bin/python lies under the write grant /work/demo, so the workload can replace it",
+      ]),
+    );
+
+    expect((error as Error).message).toBe(
+      "Box refused the profile .box/profile.toml:\n" +
+        "  box: error: /work/demo/app/agent/.venv/bin/python lies under the write grant " +
+        "/work/demo, so the workload can replace it\n" +
+        "Run 'uv sync' in app/agent, then retry.",
+    );
+  });
+
+  test("says how to see why when Box fails and prints no error", async () => {
+    expect(((await failure(refusal([], 2))) as Error).message).toBe(
+      "Box stopped on .box/profile.toml with exit code 2 and printed no error. Run " +
+        "'box profile show .box/profile.toml' in the project folder to see why.",
+    );
+  });
+
+  test("says Box is not installed, and where to get it, when box is not on PATH", async () => {
     const fake = streamer(
       [],
-      new ProcessFailedError(command, "/work/demo", null, "Error: spawn box ENOENT"),
+      new ProcessFailedError(COMMAND, "/work/demo", null, "Error: spawn box ENOENT"),
     );
 
     await expect(
       new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/profile.toml"),
     ).rejects.toThrow(
       new InvalidEnvironmentError(
-        "build and deploy read .box/profile.toml with `box profile show .box/profile.toml " +
-          "--full`, as Box resolves it, and box did not start: Error: spawn box ENOENT. Put box " +
-          "on PATH, as `agentcore dev` needs it (https://github.com/mquang-amazon/box-releases), " +
-          "then retry.",
+        "Box is not installed or not on PATH. Install it " +
+          "(https://github.com/mquang-amazon/box-releases), then retry.",
       ),
     );
   });
@@ -136,7 +155,12 @@ describe("BoxCliProfileResolver", () => {
 
     await expect(
       new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/profile.toml"),
-    ).rejects.toThrow('printed no "# box.toml" and "# policy.dw" sections');
+    ).rejects.toThrow(
+      new InvalidEnvironmentError(
+        "This Box cannot show the full profile .box/profile.toml, which build reads. Install a " +
+          "newer Box (https://github.com/mquang-amazon/box-releases), then retry.",
+      ),
+    );
   });
 });
 
