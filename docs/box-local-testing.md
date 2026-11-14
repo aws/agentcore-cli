@@ -89,6 +89,10 @@ This adds an `[egress]` entry for `api.github.com` with a `github` API key crede
 needs `destinations`. Build declares the credential from the `env://` secret, adds the
 `egress-github` gateway target, and deploy provisions the credential in AgentCore Identity.
 
+The `destinations` key lists the hosts the credential may reach. The box blocks the
+credential's egress to any host not in the list. Each entry is a `<host>` or
+`<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
+
 ```
 printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
 ```
