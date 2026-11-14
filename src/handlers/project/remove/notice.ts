@@ -12,3 +12,7 @@ export function shouldShowAppCodeNotice(resourceType: ProjectMutationResourceTyp
  * targets.
  */
 export const BOX_GATEWAY_STAYS_NOTICE = "The Box gateway stays. This removes only its targets.";
+
+/** Shown when `remove policy-engine` names a Box gateway's managed engine, which is kept, not removed. */
+export const BOX_POLICY_ENGINE_STAYS_NOTICE =
+  "The Box policy engine stays. Remove its runtime, or run 'agentcore remove all'.";
