@@ -52,7 +52,7 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
-import { addBoxProfileCredentials } from "./boxProfileCredentials";
+import { addBoxProfileCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -435,6 +435,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly json: ReadWriteJson;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
+  private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -456,6 +457,7 @@ export class FsProjectManager implements ProjectManager {
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
+    this.processEnv = config.processEnv ?? process.env;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -1621,7 +1623,7 @@ export class FsProjectManager implements ProjectManager {
     project: Project,
   ): Promise<{ project: Project; messages: string[] }> {
     const spec = structuredClone(project.spec);
-    const messages = addBoxProfileCredentials(spec, project.rootPath);
+    const { messages, added } = addBoxProfileCredentials(spec, project.rootPath);
     if (messages.length === 0) return { project, messages };
     const specPath = this.getProjectSpecPath(project);
     const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
@@ -1631,6 +1633,14 @@ export class FsProjectManager implements ProjectManager {
       throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
     }
     await this.json.write(specPath, updated);
+    // Carry each key from the box env var the profile named into .env.local, under the
+    // credential's reserved name, so deploy provisions it without a manual step. insertIfNew
+    // never overwrites an existing value.
+    const seeds = boxProfileCredentialEnvEntries(added, this.processEnv);
+    if (seeds.length > 0) {
+      const { written } = await new EnvLocalFile(project.rootPath).insertIfNew(seeds);
+      for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
+    }
     return { project: { ...project, spec: parsed.data }, messages };
   }
 

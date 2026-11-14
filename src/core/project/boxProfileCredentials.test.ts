@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addBoxProfileCredentials } from "./boxProfileCredentials";
+import { addBoxProfileCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
 
@@ -26,18 +26,22 @@ function spec(credentials: ProjectSpec["credentials"] = []): ProjectSpec {
 }
 
 describe("addBoxProfileCredentials", () => {
-  test("adds an ApiKeyCredentialProvider for each env:// egress secret", async () => {
+  test("adds an ApiKeyCredentialProvider and records the source var for each env:// secret", async () => {
     const root = await projectWithProfile(
       '[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n\n' +
         '[egress.stripe]\nsecret.ref = "env://STRIPE_KEY"\n',
     );
     const s = spec();
 
-    const messages = addBoxProfileCredentials(s, root);
+    const { messages, added } = addBoxProfileCredentials(s, root);
 
     expect(s.credentials).toEqual([
       { authorizerType: "ApiKeyCredentialProvider", name: "github" },
       { authorizerType: "ApiKeyCredentialProvider", name: "stripe" },
+    ]);
+    expect(added).toEqual([
+      { name: "github", variable: "GITHUB_TOKEN" },
+      { name: "stripe", variable: "STRIPE_KEY" },
     ]);
     expect(messages).toHaveLength(2);
   });
@@ -46,7 +50,7 @@ describe("addBoxProfileCredentials", () => {
     const root = await projectWithProfile('[egress.bedrock]\nsecret.ref = "aws://default"\n');
     const s = spec();
 
-    expect(addBoxProfileCredentials(s, root)).toEqual([]);
+    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
     expect(s.credentials).toEqual([]);
   });
 
@@ -55,7 +59,7 @@ describe("addBoxProfileCredentials", () => {
     const root = await projectWithProfile(`[egress.openai]\nsecret.ref = "env://${covered}"\n`);
     const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "agentOpenAIApiKey" }]);
 
-    expect(addBoxProfileCredentials(s, root)).toEqual([]);
+    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
     expect(s.credentials).toHaveLength(1);
   });
 
@@ -64,7 +68,7 @@ describe("addBoxProfileCredentials", () => {
     const s = spec();
 
     addBoxProfileCredentials(s, root);
-    expect(addBoxProfileCredentials(s, root)).toEqual([]);
+    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
     expect(s.credentials).toHaveLength(1);
   });
 
@@ -72,9 +76,10 @@ describe("addBoxProfileCredentials", () => {
     const root = await projectWithProfile('[egress.ab]\nsecret.ref = "env://AB_KEY"\n');
     const s = spec();
 
-    const messages = addBoxProfileCredentials(s, root);
+    const { messages, added } = addBoxProfileCredentials(s, root);
 
     expect(s.credentials).toEqual([]);
+    expect(added).toEqual([]);
     expect(messages[0]).toContain("not a valid credential name");
   });
 
@@ -82,7 +87,28 @@ describe("addBoxProfileCredentials", () => {
     const root = await projectWithProfile(undefined);
     const s = spec();
 
-    expect(addBoxProfileCredentials(s, root)).toEqual([]);
+    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
     expect(s.credentials).toEqual([]);
+  });
+});
+
+describe("boxProfileCredentialEnvEntries", () => {
+  const added = [{ name: "github", variable: "GITHUB_TOKEN" }];
+
+  test("carries a set var into .env.local under the credential's reserved name", () => {
+    const entries = boxProfileCredentialEnvEntries(added, { GITHUB_TOKEN: "ghp_123" });
+
+    expect(entries).toEqual([
+      {
+        key: credentialEnvVarName("github"),
+        value: "ghp_123",
+        comment: expect.stringContaining("env://GITHUB_TOKEN"),
+      },
+    ]);
+  });
+
+  test("skips a var that is unset or empty, leaving it for the operator", () => {
+    expect(boxProfileCredentialEnvEntries(added, {})).toEqual([]);
+    expect(boxProfileCredentialEnvEntries(added, { GITHUB_TOKEN: "" })).toEqual([]);
   });
 });
