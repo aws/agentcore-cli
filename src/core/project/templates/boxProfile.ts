@@ -3,6 +3,7 @@ import {
   BOX_GATEWAY_AGENTCORE_HOST,
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
   BOX_GATEWAY_BEDROCK_REGION,
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
   callsBedrockModel,
 } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
@@ -348,11 +349,12 @@ export function renderBoxProfile(
   const bedrockRoute = !bedrock
     ? ""
     : onRuntime
-      ? `
-# Sign the model calls with the Runtime's execution role.
-[egress.bedrock]
-secret.ref = ${str(RUNTIME_AWS_SIGNER)}
-`
+      ? runtimeGatewayRouteSection(
+          BOX_GATEWAY_BEDROCK_TARGET_NAME,
+          `bedrock-runtime.${region}.amazonaws.com`,
+          // box/bedrock's env:// secret stays as the phantom a re-routed entry may keep.
+          "Bedrock model calls",
+        )
       : `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
 # rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
@@ -396,16 +398,17 @@ ${routes}${bedrockRoute}${keyedRoute}`;
 }
 
 /**
- * The route the agent's AgentCore Memory calls take on the Runtime: the box
- * sends them to the Box gateway's AgentCore passthrough target, signed with
- * the execution role. Starts with a blank line.
+ * A route the agent's calls take on the Runtime: the box re-routes calls to
+ * `host` to the runtime's Box gateway target of the same name, signing them for
+ * the gateway with the execution role; the gateway signs the call to `host`
+ * with its own role. Every `[egress.<name>]` on the Runtime is one of these, so
+ * every outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeMemoryRouteSection(): string {
-  const target = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
+function runtimeGatewayRouteSection(target: string, host: string, what: string): string {
   return `
-# AgentCore Memory, through the runtime's Box gateway's '${target}' target.
+# ${what}, through the runtime's Box gateway's '${target}' target.
 [egress.${target}]
-destinations = [${str(BOX_GATEWAY_AGENTCORE_HOST)}]
+destinations = [${str(host)}]
 
 [[egress.${target}.backends]]
 url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
@@ -435,7 +438,14 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  return renderBoxProfile(spec.name, input, "runtime", memory ? runtimeMemoryRouteSection() : "")!;
+  const memoryRoute = memory
+    ? runtimeGatewayRouteSection(
+        BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+        BOX_GATEWAY_AGENTCORE_HOST,
+        "AgentCore Memory",
+      )
+    : "";
+  return renderBoxProfile(spec.name, input, "runtime", memoryRoute)!;
 }
 
 /** The variable that holds the model provider's API key, as the template's model code reads it. */

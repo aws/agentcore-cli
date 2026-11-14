@@ -238,7 +238,16 @@ function runtimeProfile(name: RuntimeTemplateShortcutName, overrides: Record<str
   >;
 }
 
-const RUNTIME_ROUTE = { secret: { ref: "aws://" } };
+/** The Runtime's Bedrock route: re-routed to the Box gateway's `bedrock` target. */
+const RUNTIME_ROUTE = {
+  destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
+  backends: [
+    {
+      url: "@GATEWAY_BOX_URL@/bedrock",
+      auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+    },
+  ],
+};
 
 const IMAGE_PYTHON_FILESYSTEM = {
   read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
@@ -359,6 +368,26 @@ describe("renderRuntimeBoxProfile", () => {
     } as unknown as ProjectSpec;
   }
 
+  test.each([
+    ["Bedrock, with Memory", ["agentMemory"], {}],
+    ["Bedrock, no Memory", [], {}],
+    ["OpenAI, with Memory", ["agentMemory"], { modelProvider: "OpenAI" }],
+    ["MCP, with Memory", ["agentMemory"], { protocol: "MCP" }],
+    ["a container, with Memory", ["agentMemory"], { build: "Container" }],
+  ] as const)(
+    "sends every egress route through the runtime's Box gateway target of its name (%s)",
+    (_, memories, runtime) => {
+      const project = spec([...memories], runtime as Partial<ProjectRuntime>);
+      const egress = (parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress ??
+        {}) as Record<string, { secret?: { ref?: string }; backends?: { url: string }[] }>;
+
+      for (const [name, route] of Object.entries(egress)) {
+        expect(route.backends?.map(({ url }) => url)).toEqual([`@GATEWAY_BOX_URL@/${name}`]);
+        // Box refuses a signed destination secret beside a backend.
+        expect(route.secret?.ref ?? "env://").toStartWith("env://");
+      }
+    },
+  );
   test("routes the default Memory's calls through the Box gateway's agentcore target", () => {
     const project = spec(["agentMemory"]);
     const text = renderRuntimeBoxProfile(project, project.runtimes[0]!);
