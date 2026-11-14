@@ -212,3 +212,18 @@ describe("addBoxGatewayTargets", () => {
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
   });
 });
+
+describe("one target for one endpoint", () => {
+  test("adds no bedrock or agentcore target where another target serves the endpoint", async () => {
+    const project = spec();
+    project.agentCoreGateways[0]!.targets = [
+      { ...getBoxGatewayBedrockEntry("agent").targets[0]!, name: "egress-models" },
+      { ...getBoxGatewayAgentCoreTargetSpec(), name: "mem" },
+    ];
+
+    addBoxGatewayTargets(project, await root());
+
+    expect(targets(project)).toEqual(["egress-models", "mem"]);
+    expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
+  });
+});
