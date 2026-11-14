@@ -24,6 +24,23 @@ function envVarFromRef(ref: unknown): string | undefined {
 }
 
 /**
+ * The `[egress.*]` table of the box profile, or `undefined` when the profile is absent, unreadable,
+ * or has no egress routes. A malformed profile is the box's concern; build does not block on it.
+ */
+function readBoxProfileEgress(projectRoot: string): Record<string, unknown> | undefined {
+  const profilePath = join(projectRoot, BOX_PROFILE_RELATIVE_PATH);
+  if (!existsSync(profilePath)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = parseToml(readFileSync(profilePath, "utf8"));
+  } catch {
+    return undefined;
+  }
+  const egress = (parsed as { egress?: Record<string, unknown> }).egress;
+  return egress !== undefined && typeof egress === "object" ? egress : undefined;
+}
+
+/**
  * For each `[egress.<name>] secret.ref = "env://VAR"` in the box profile, make sure the project
  * declares an `ApiKeyCredentialProvider` named `<name>`. A later `agentcore deploy` then provisions
  * it in AgentCore Identity, so the key lives there and the runtime reads it from Identity rather
@@ -41,18 +58,8 @@ export function addBoxProfileCredentials(
   spec: ProjectSpec,
   projectRoot: string,
 ): { messages: string[]; added: AddedBoxCredential[] } {
-  const profilePath = join(projectRoot, BOX_PROFILE_RELATIVE_PATH);
-  if (!existsSync(profilePath)) return { messages: [], added: [] };
-
-  let parsed: unknown;
-  try {
-    parsed = parseToml(readFileSync(profilePath, "utf8"));
-  } catch {
-    // A malformed profile is the box's concern; build does not block on it here.
-    return { messages: [], added: [] };
-  }
-  const egress = (parsed as { egress?: Record<string, unknown> }).egress;
-  if (egress === undefined || typeof egress !== "object") return { messages: [], added: [] };
+  const egress = readBoxProfileEgress(projectRoot);
+  if (egress === undefined) return { messages: [], added: [] };
 
   const names = new Set(spec.credentials.map((credential) => credential.name));
   const coveredVars = new Set(
@@ -109,4 +116,25 @@ export function boxProfileCredentialEnvEntries(
     });
   }
   return entries;
+}
+
+/**
+ * Every `[egress.<name>] secret.ref = "env://VAR"` route in the box profile, as `(name, variable)`
+ * pairs, for each `<name>` that is a valid credential name. Unlike {@link addBoxProfileCredentials},
+ * this does not depend on what `agentcore.json` already declares, so build can seed each key on
+ * every run from the var the profile names, not only the run that first adds the credential. A
+ * no-op when the profile is absent.
+ */
+export function boxProfileEnvCredentials(projectRoot: string): AddedBoxCredential[] {
+  const egress = readBoxProfileEgress(projectRoot);
+  if (egress === undefined) return [];
+  const credentials: AddedBoxCredential[] = [];
+  for (const [name, entry] of Object.entries(egress)) {
+    const ref = (entry as { secret?: { ref?: unknown } } | null)?.secret?.ref;
+    const variable = envVarFromRef(ref);
+    if (variable === undefined) continue;
+    if (!CredentialNameSchema.safeParse(name).success) continue;
+    credentials.push({ name, variable });
+  }
+  return credentials;
 }
