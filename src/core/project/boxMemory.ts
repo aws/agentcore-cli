@@ -154,7 +154,12 @@ export function addBoxMemoryTarget(
   for (const runtime of runtimes) {
     const gateway = boxGatewayFor(spec, runtime, messages);
     const name = gateway.name;
-    placeTarget(gateway, getBoxGatewayAgentCoreTargetSpec, region, messages, "Memory calls");
+    if (!servesTarget(gateway.targets, getBoxGatewayAgentCoreTargetSpec())) {
+      gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
+      messages.push(
+        `adding gateway target '${BOX_MEMORY_TARGET}' to '${name}' for the agent's Memory calls`,
+      );
+    }
     // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
     if (
       !gateway.executionRoleArn &&
@@ -162,8 +167,8 @@ export function addBoxMemoryTarget(
     ) {
       gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_MEMORY_POLICY_FILE];
       messages.push(
-        `adding '${BOX_MEMORY_POLICY_FILE}' to gateway '${name}' ` +
-          "additionalPolicies in agentcore.json, so its role can call Memory",
+        `adding ${BOX_MEMORY_POLICY_FILE} to additionalPolicies of '${name}', so the gateway ` +
+          "can call Memory",
       );
     }
   }
@@ -261,7 +266,13 @@ export function addBoxBedrockTarget(
   for (const runtime of spec.runtimes) {
     if (!runsAgentInBox(projectRoot, runtime) || !callsBedrock(runtime)) continue;
     const gateway = boxGatewayFor(spec, runtime, messages);
-    placeTarget(gateway, getBoxGatewayBedrockTargetSpec, region, messages, "model calls");
+    if (!servesTarget(gateway.targets, getBoxGatewayBedrockTargetSpec())) {
+      gateway.targets.push(getBoxGatewayBedrockTargetSpec());
+      messages.push(
+        `adding gateway target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to '${gateway.name}' for the ` +
+          "agent's model calls",
+      );
+    }
     // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
     if (
       !gateway.executionRoleArn &&
@@ -269,8 +280,8 @@ export function addBoxBedrockTarget(
     ) {
       gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_BEDROCK_POLICY_FILE];
       messages.push(
-        `adding '${BOX_BEDROCK_POLICY_FILE}' to gateway '${gateway.name}' ` +
-          "additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+        `adding ${BOX_BEDROCK_POLICY_FILE} to additionalPolicies of '${gateway.name}', so the ` +
+          "gateway can call the Bedrock model",
       );
     }
   }

@@ -53,8 +53,14 @@ export interface ConversionFailure {
   readonly egressEntry?: string;
   /** The `[mcp.<name>]` entry, when the failure belongs to one MCP server. */
   readonly mcpEntry?: string;
+  /**
+   * What the rule or entry does wrong, and how to fix it, written to follow its name: `allows
+   * every host. Name each host.` The model puts the name and the place before it.
+   */
   readonly reason: string;
   readonly span?: SourceSpan;
+  /** For a duplicate `@id`, the span of the first rule with that `@id`. */
+  readonly firstSpan?: SourceSpan;
 }
 
 /** A sample request the converter evaluates the whole Box policy on: a method and a path. */

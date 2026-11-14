@@ -1990,22 +1990,7 @@ describe("FsProjectManager.build", () => {
       {
         type: "step",
         message:
-          "adding target 'bedrock' to gateway 'agent-python-strands-box-box' in agentcore.json, for the boxed agent's model calls",
-      },
-      {
-        type: "step",
-        message:
-          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-strands-box-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
-      },
-      {
-        type: "step",
-        message:
-          "adding target 'agentcore' to gateway 'agent-python-strands-box-box' in agentcore.json, for the boxed agent's Memory calls",
-      },
-      {
-        type: "step",
-        message:
-          "adding 'agentcore/box-memory-policy.json' to gateway 'agent-python-strands-box-box' additionalPolicies in agentcore.json, so its role can call Memory",
+          "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-python-minimal-box', so the gateway can call the Bedrock model",
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "writing agentcore/box-memory-policy.json" },

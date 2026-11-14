@@ -1,0 +1,11 @@
+Build stopped: 10 problems in the Box profile and agentcore.json. Nothing was changed.
+.box/policy.dw:2:1  The rule "wild" allows each host that matches "*.example.com", and each gateway target needs one fixed host. Name each host in the rule, for example context.input.host == "api.example.com".
+.box/policy.dw:4:1  The rule "dup" has the same @id as the rule at .box/policy.dw:3:1. Give each rule its own @id.
+.box/policy.dw:6:1  The rule "route_github_connect" is one Box adds itself for [egress.github]. Remove it from .box/policy.dw.
+.box/policy.dw:7:1  This rule allows requests to every host, and each gateway target needs one fixed host. Add a condition that names each host, for example context.input.host == "api.example.com".
+.box/profile.toml:4:1  The rule "pack_mirrors", which a pack in `packs` adds, allows each host that matches "*.mirror.example.com", and each gateway target needs one fixed host. Name each host in the rule, for example context.input.host == "api.example.com".
+.box/profile.toml:4:1  [egress.legacy], which a pack in `packs` adds, reads its secret from credsd://prod, and the gateway cannot read credsd. Use an env:// secret, which build stores as an API key credential.
+.box/profile.toml:38:1  [egress.signed] signs requests to api.example.com with aws://default, and the gateway signs only for Bedrock, AgentCore, and Lambda function URL hosts. Use an env:// secret for this host, or remove the secret.
+.box/profile.toml:42:1  [egress.wide] has the wildcard destination "*.wide.example.com", and each gateway target needs one fixed host. Name each host in `destinations`.
+.box/profile.toml:46:1  [mcp.docs] is an MCP server over HTTP, and the deployed agent cannot reach it through the gateway. Make it a stdio server, or remove it.
+agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends the API key credential 'github' in the header Authorization with the prefix Bearer, and [egress.github] sends no credential. Make the two the same, in agentcore.json or in .box/profile.toml.

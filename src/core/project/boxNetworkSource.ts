@@ -14,6 +14,7 @@ import {
   buildBoxNetwork,
   parseResolvedPolicy,
   parseResolvedProfile,
+  profilePlaces,
   profilePolicyFiles,
   type BoxNetwork,
   type BoxNetworkFailure,
@@ -70,15 +71,15 @@ export async function readBoxNetworks(
  * and for a policy file Box would refuse.
  */
 export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
-  const named = namedPolicyFiles(projectRoot);
-  const files = readPolicyFiles(projectRoot, named.ok ? named.files : []);
+  const text = profileText(projectRoot);
+  const named = text === undefined ? { ok: true as const, files: [] } : profilePolicyFiles(text);
+  const policies = text === undefined ? undefined : profilePlaces(text).policies;
+  const files = readPolicyFiles(projectRoot, named.ok ? named.files : [], policies);
   const failures = [...(named.ok ? [] : [named.failure]), ...files.failures];
   if (failures.length > 0) {
-    const count = `${failures.length} ${failures.length === 1 ? "failure" : "failures"}`;
+    const lines = failureLines(failures);
     throw new ProjectStateError(
-      `\`agentcore dev\` cannot stage the policy files of ${BOX_PROFILE_PATH} (${count}):\n` +
-        failures.map((failure) => `  - ${failureLine(failure)}`).join("\n") +
-        "\n\nNothing was staged. Change the profile or its policy files, then retry.",
+      [stoppedHeader("dev", lines.length, failures), ...lines].join("\n"),
     );
   }
   return (named.ok ? named.files : []).map((relative) => ({
@@ -95,12 +96,14 @@ async function readResolvedPolicy(
   projectRoot: string,
   resolver: BoxProfileResolver,
 ): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
-  if (!existsSync(profilePath(projectRoot))) return { parsed: NO_POLICY, failures: [] };
+  const text = profileText(projectRoot);
+  if (text === undefined) return { parsed: NO_POLICY, failures: [] };
   const resolved = await resolver.resolve(projectRoot, BOX_PROFILE_PATH);
-  const named = namedPolicyFiles(projectRoot);
-  const files = readPolicyFiles(projectRoot, named.ok ? named.files : []);
+  const named = profilePolicyFiles(text);
+  const places = profilePlaces(text);
+  const files = readPolicyFiles(projectRoot, named.ok ? named.files : [], places.policies);
   const profile = parseResolvedProfile(resolved.boxToml, named.ok ? named.files : []);
-  const policy = parseResolvedPolicy(profile.profile, resolved.policy, files.texts);
+  const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
   return {
     parsed: policy.parsed,
     failures: [
@@ -112,41 +115,34 @@ async function readResolvedPolicy(
   };
 }
 
-function profilePath(projectRoot: string): string {
-  return join(projectRoot, ...BOX_PROFILE_PATH.split("/"));
-}
-
-/** The policy files of the box profile's `policies`, or none when the project has no profile. */
-function namedPolicyFiles(projectRoot: string): ReturnType<typeof profilePolicyFiles> {
-  const path = profilePath(projectRoot);
-  if (!existsSync(path)) return { ok: true, files: [] };
-  return profilePolicyFiles(readFileSync(path, "utf8"));
+/** The text of the box profile, or `undefined` when the project has none. */
+function profileText(projectRoot: string): string | undefined {
+  const path = join(projectRoot, ...BOX_PROFILE_PATH.split("/"));
+  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
 /**
  * Each policy file the profile names, read as Box reads it: a regular file with one link, inside
- * `.box/`, and a failure for each other one.
+ * `.box/`, and a failure for each other one, at `policies`, the place the profile names it.
  */
 function readPolicyFiles(
   projectRoot: string,
   files: readonly string[],
+  policies: string = BOX_PROFILE_PATH,
 ): { texts: PolicyFileText[]; failures: BoxNetworkFailure[] } {
   const folder = join(projectRoot, ".box");
   const texts: PolicyFileText[] = [];
   const failures: BoxNetworkFailure[] = [];
   for (const file of files) {
-    const place = `.box/${file}`;
+    const shown = `.box/${file}`;
     const problem =
-      policyPathProblem(file) ?? policyFileProblem(folder, join(folder, ...file.split("/")));
+      policyPathProblem(file, shown) ??
+      policyFileProblem(folder, join(folder, ...file.split("/")), file, shown);
     if (problem !== undefined) {
-      failures.push({
-        code: "INVALID_POLICY_FILE",
-        reason: `${BOX_PROFILE_PATH} names the policy file ${place}, which ${problem}`,
-        place,
-      });
+      failures.push({ code: "INVALID_POLICY_FILE", reason: problem, place: policies });
       continue;
     }
-    texts.push({ file: place, text: readFileSync(join(folder, ...file.split("/")), "utf8") });
+    texts.push({ file: shown, text: readFileSync(join(folder, ...file.split("/")), "utf8") });
   }
   return { texts, failures };
 }
@@ -162,29 +158,48 @@ const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
   "start.sh",
 ]);
 
-/** Why start.sh cannot copy a policy file at `file` beside the Runtime profile, if it cannot. */
-function policyPathProblem(file: string): string | undefined {
+/**
+ * Why the Runtime cannot take a copy of the policy file `file`, shown as `shown`, beside its
+ * profile, if it cannot.
+ */
+function policyPathProblem(file: string, shown: string): string | undefined {
   if (!/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(file)) {
-    return "has a character other than a letter, a digit, '.', '_', '-', and '/' in its path, which the AgentCore Runtime start.sh cannot copy";
+    return (
+      `${shown} has a character other than a letter, a digit, ".", "_", "-", or "/" in its ` +
+      "path, and deploy cannot copy it to AgentCore Runtime. Rename the file."
+    );
   }
   const first = file.split("/")[0]!;
   if (BOX_DIST_NAMES.has(first)) {
-    return `takes the name ${first}, which box keeps beside its AgentCore Runtime profile`;
+    return (
+      `${shown} takes the name "${first}", which Box keeps for its own files on AgentCore ` +
+      `Runtime. Rename the ${first === file ? "file" : "folder"}.`
+    );
   }
   return undefined;
 }
 
 /** Why Box would refuse the policy file at `path`, or `undefined` when it reads it. */
-function policyFileProblem(folder: string, path: string): string | undefined {
-  if (!existsSync(path)) return "does not exist";
+function policyFileProblem(
+  folder: string,
+  path: string,
+  file: string,
+  shown: string,
+): string | undefined {
+  if (!existsSync(path)) {
+    return `\`policies\` names ${file}, but ${shown} does not exist. Create it, or remove it from \`policies\`.`;
+  }
   const inside = relative(realpathSync(folder), realpathSync(path));
   if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
-    return "is a symlink that leaves .box/";
+    return `${shown} is a symbolic link to a file outside .box/, which Box does not read. Put the policy file itself in .box/.`;
   }
   const stat = statSync(path);
-  if (stat.isDirectory()) return "is a directory";
-  if (!stat.isFile()) return "is not a regular file";
-  if (stat.nlink > 1) return `has ${stat.nlink} hard links, and Box reads a policy file with one`;
+  if (stat.isDirectory())
+    return `${shown} is a folder, not a policy file. Name a file in \`policies\`.`;
+  if (!stat.isFile()) return `${shown} is not a regular file. Name a policy file in \`policies\`.`;
+  if (stat.nlink > 1) {
+    return `${shown} has ${stat.nlink} hard links, and Box reads only a policy file with one. Replace it with a copy.`;
+  }
   return undefined;
 }
 
@@ -208,10 +223,10 @@ function grantedActions(
   const warnings: string[] = [];
   for (const policy of policies) {
     if (!policy.endsWith(".json")) continue;
-    const skipped = (why: string) =>
+    const skipped = (why: string, fix: string) =>
       warnings.push(
-        `${policy}, which additionalPolicies of gateway '${gateway}' lists, ${why}, so build ` +
-          "counts none of its actions when it checks what the gateway's role may sign for",
+        `${policy}, in additionalPolicies of the gateway '${gateway}', ${why}, so build cannot ` +
+          `check the permissions it grants. ${fix}`,
       );
     let text: string;
     try {
@@ -219,9 +234,14 @@ function grantedActions(
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT") {
-        if (!BUILD_POLICY_FILES.has(policy)) skipped("does not exist");
+        if (!BUILD_POLICY_FILES.has(policy)) {
+          skipped("does not exist", "Create it, or remove it from additionalPolicies.");
+        }
       } else {
-        skipped(`cannot be read (${code ?? String(error)})`);
+        skipped(
+          `cannot be read (${code ?? String(error)})`,
+          "Make it readable, or remove it from additionalPolicies.",
+        );
       }
       continue;
     }
@@ -229,11 +249,11 @@ function grantedActions(
     try {
       document = JSON.parse(text);
     } catch (error) {
-      skipped(`is not valid JSON (${(error as Error).message})`);
+      skipped(`is not valid JSON (${(error as Error).message})`, "Correct the JSON.");
       continue;
     }
     if (typeof document !== "object" || document === null || Array.isArray(document)) {
-      skipped("is not a JSON object");
+      skipped("is not a JSON object", "Make it an IAM policy document.");
       continue;
     }
     const { Statement } = document as { Statement?: unknown };
@@ -247,51 +267,85 @@ function grantedActions(
   return { actions, warnings };
 }
 
-/** One failure: its code, its rule, entry, or target, its place, and why. */
+/** The command that a list of problems stops. */
+type BoxNetworkCommand = "build" | "deploy" | "dev";
+
+const STOPPED: Readonly<Record<BoxNetworkCommand, string>> = {
+  build: "Build",
+  deploy: "Deploy",
+  dev: "Dev",
+};
+
+/** One problem: where it is, then what is wrong and how to fix it. */
 function failureLine(failure: BoxNetworkFailure): string {
-  const what =
-    failure.ruleId !== undefined
-      ? `rule ${JSON.stringify(failure.ruleId)}`
-      : failure.egressEntry !== undefined
-        ? `[egress.${failure.egressEntry}]`
-        : failure.mcpEntry !== undefined
-          ? `[mcp.${failure.mcpEntry}]`
-          : failure.target !== undefined
-            ? `target '${failure.target}'`
-            : undefined;
-  const entry = failure.egressEntry ?? failure.mcpEntry;
-  const prefix = `[${failure.egressEntry !== undefined ? "egress" : "mcp"}.${entry}]: `;
-  const reason =
-    entry !== undefined && failure.reason.startsWith(prefix)
-      ? failure.reason.slice(prefix.length)
-      : failure.reason;
-  const place = failure.place && `at ${failure.place}`;
-  return `${[failure.code, what, place].filter(Boolean).join(", ")}: ${reason}`;
+  return `${failure.place ?? BOX_PROFILE_PATH}  ${failure.reason}`;
 }
 
 /**
- * The error text for the models that have failures, with every failure of each. Models whose
- * failures are the same share one block.
+ * The lines of `failures`, each once, in order of file, line, and column, as a compiler lists
+ * them; failures at one place keep their order.
  */
-export function boxNetworkFailureMessage(networks: readonly BoxNetwork[]): string {
-  const groups = new Map<string, BoxNetwork[]>();
-  for (const network of networks) {
-    if (network.failures.length === 0) continue;
-    const lines = network.failures.map((failure) => `  - ${failureLine(failure)}`).join("\n");
-    groups.set(lines, [...(groups.get(lines) ?? []), network]);
-  }
-  const blocks = [...groups].map(([lines, group]) => {
-    const count = lines.split("\n").length;
-    const gateways = group.map(({ gateway }) => `'${gateway}'`).join(", ");
-    const runtimes = group.map(({ runtime }) => `'${runtime}'`).join(", ");
-    return (
-      `${BOX_PROFILE_PATH} does not parse into the Box network of the Box gateway ` +
-      `${gateways} of ${group.length === 1 ? "runtime" : "runtimes"} ${runtimes} ` +
-      `(${count} ${count === 1 ? "failure" : "failures"}):\n${lines}`
+function failureLines(failures: readonly BoxNetworkFailure[]): string[] {
+  const key = (failure: BoxNetworkFailure) => {
+    const place = failure.place ?? BOX_PROFILE_PATH;
+    const [, file = place, line = "0", column = "0"] = /^(.*?):(\d+):(\d+)$/.exec(place) ?? [];
+    return { file, line: Number(line), column: Number(column) };
+  };
+  const sorted = failures
+    .map((failure) => ({ failure, at: key(failure) }))
+    .sort(
+      (a, b) =>
+        (a.at.file < b.at.file ? -1 : a.at.file > b.at.file ? 1 : 0) ||
+        a.at.line - b.at.line ||
+        a.at.column - b.at.column,
     );
-  });
+  return unique(sorted.map(({ failure }) => failureLine(failure)));
+}
+
+/** `Build stopped: 2 problems in the Box profile. Nothing was changed.` */
+function stoppedHeader(
+  command: BoxNetworkCommand,
+  count: number,
+  failures: readonly BoxNetworkFailure[],
+): string {
+  const inSpec = (failure: BoxNetworkFailure) => failure.place?.startsWith("agentcore/") === true;
+  const where = [
+    failures.some((failure) => !inSpec(failure)) && "the Box profile",
+    failures.some(inSpec) && "agentcore.json",
+  ].filter(Boolean);
   return (
-    `${blocks.join("\n\n")}\n\nNothing of the box profile was written: no gateway target, ` +
-    "credential, Memory target, or file. Change the profile or its policy files, then retry."
+    `${STOPPED[command]} stopped: ${count} ${count === 1 ? "problem" : "problems"} in ` +
+    `${where.join(" and ")}. Nothing was changed.`
   );
+}
+
+function unique(lines: readonly string[]): string[] {
+  return [...new Set(lines)];
+}
+
+/**
+ * The error text for the models that have failures: a header, then one line for each problem, in
+ * order of place. With more than one box runtime, the problems of only some runtimes follow
+ * `In runtime <name>:`.
+ */
+export function boxNetworkFailureMessage(
+  networks: readonly BoxNetwork[],
+  command: Exclude<BoxNetworkCommand, "dev">,
+): string {
+  const lines = networks.map((network) => failureLines(network.failures));
+  const shared = lines[0]?.filter((line) => lines.every((own) => own.includes(line))) ?? [];
+  const blocks: string[] = [];
+  let count = shared.length;
+  networks.forEach((network, index) => {
+    const own = lines[index]!.filter((line) => !shared.includes(line));
+    if (own.length === 0) return;
+    count += own.length;
+    blocks.push(`In runtime ${network.runtime}:`, ...own.map((line) => `  ${line}`));
+  });
+  const header = stoppedHeader(
+    command,
+    count,
+    networks.flatMap((network) => network.failures),
+  );
+  return [header, ...shared, ...blocks].join("\n");
 }

@@ -980,18 +980,20 @@ describe("ContainerDevRunner", () => {
       [
         "a TOML error",
         'policies = ["policy.dw"]\n[agent\n',
-        "  - INVALID_PROFILE, at .box/profile.toml:2:7: ",
+        ".box/profile.toml:2:7  This is not valid TOML (illegal character in key). Correct the " +
+          "syntax.",
       ],
       [
         "the `policy` key",
         '# one file\npolicy = "policy.dw"\n',
-        "  - UNSUPPORTED_POLICY_KEY, at .box/profile.toml:2: the profile names `policy`",
+        ".box/profile.toml:2:1  Box does not take the key `policy`. List your policy files under " +
+          '`policies` instead, such as policies = ["policy.dw"].',
       ],
       [
         "a policy file outside .box/",
         'policies = ["../../elsewhere.dw"]\n',
-        '  - INVALID_PROFILE, at .box/profile.toml:1: `policies` names "../../elsewhere.dw", ' +
-          "which is outside the profile's folder",
+        '.box/profile.toml:1:1  `policies` names "../../elsewhere.dw", which is outside .box/. ' +
+          "Move the file into .box/, and name it from there.",
       ],
     ])("stops, and stages nothing, for a profile with %s", async (_, profileText, line) => {
       const { projectRuntime, root, context } = await boxedScene({ profileText });
@@ -1002,11 +1004,8 @@ describe("ContainerDevRunner", () => {
       );
 
       expect(error).toBeInstanceOf(ProjectStateError);
-      expect((error as Error).message).toStartWith(
-        "`agentcore dev` cannot stage the policy files of .box/profile.toml (1 failure):\n" + line,
-      );
-      expect((error as Error).message).toEndWith(
-        "\n\nNothing was staged. Change the profile or its policy files, then retry.",
+      expect((error as Error).message).toBe(
+        `Dev stopped: 1 problem in the Box profile. Nothing was changed.\n${line}`,
       );
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);

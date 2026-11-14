@@ -222,7 +222,7 @@ describe("the box on PATH", () => {
         ["MCP_OVER_HTTP", "docs"],
       ]);
       expect(network?.warnings).toContainEqual(
-        expect.stringContaining('Box enforces "no_admin" on its own'),
+        expect.stringContaining('Box still applies the rule "no_admin"'),
       );
     },
     120_000,

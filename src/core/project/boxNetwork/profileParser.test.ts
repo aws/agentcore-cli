@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseResolvedProfile, profilePolicyFiles } from "./profileParser";
+import { parseResolvedProfile, profilePlaces, profilePolicyFiles } from "./profileParser";
 
 describe("parseResolvedProfile", () => {
   test("reads [egress] and [mcp] of Box's resolved box.toml, and keeps the profile's policy files", () => {
@@ -23,15 +23,19 @@ describe("parseResolvedProfile", () => {
   });
 
   test.each([
-    ["egress = 3", "`egress` is not a table"],
-    ["[egress", "Invalid"],
-  ])("fails a box.toml it cannot read: %s", (text, reason) => {
+    [
+      "egress = 3",
+      "Box resolves `egress` in this profile to a value that is not a table. Write each entry " +
+        "as a table, such as [egress.github].",
+    ],
+    [
+      "[egress",
+      "Build cannot read the settings that Box resolves this profile to (incomplete " +
+        "key-value: cannot find end of key). Update Box, then retry.",
+    ],
+  ])("fails a box.toml it cannot read, at the profile: %s", (text, reason) => {
     expect(parseResolvedProfile(text, []).failures).toEqual([
-      {
-        code: "INVALID_PROFILE",
-        reason: expect.stringContaining(reason),
-        place: "the box.toml of `box profile show`",
-      },
+      { code: "INVALID_PROFILE", reason, place: ".box/profile.toml" },
     ]);
   });
 });
@@ -53,15 +57,26 @@ describe("profilePolicyFiles", () => {
   });
 
   test.each([
-    ['policies = ["../escape.dw"]', "outside the profile's folder"],
-    ['policies = ["/etc/policy.dw"]', "outside the profile's folder"],
-    ['policies = ["a.dw", "./a.dw"]', "twice"],
-    ['policies = [""]', "nonempty paths"],
+    [
+      'policies = ["../escape.dw"]',
+      '`policies` names "../escape.dw", which is outside .box/. Move the file into .box/, and ' +
+        "name it from there.",
+    ],
+    [
+      'policies = ["/etc/policy.dw"]',
+      '`policies` names "/etc/policy.dw", which is outside .box/. Move the file into .box/, and ' +
+        "name it from there.",
+    ],
+    ['policies = ["a.dw", "./a.dw"]', '`policies` names "./a.dw" twice. Remove one of them.'],
+    [
+      'policies = [""]',
+      '`policies` must be a list of policy file paths, such as ["policy.dw"]. Correct it.',
+    ],
   ])("refuses %s at the line of `policies`", (text, reason) => {
-    expect(refusal(`# policy files\n${text}\n`)).toEqual({
+    expect(refusal(`# policy files\n  ${text}\n`)).toEqual({
       code: "INVALID_PROFILE",
-      reason: expect.stringContaining(reason),
-      place: ".box/profile.toml:2",
+      reason,
+      place: ".box/profile.toml:2:3",
     });
   });
 
@@ -69,15 +84,57 @@ describe("profilePolicyFiles", () => {
     expect(refusal('\npolicy = "policy.dw"\n')).toEqual({
       code: "UNSUPPORTED_POLICY_KEY",
       reason:
-        "the profile names `policy`, which the box CLI refuses; list the files under `policies`",
-      place: ".box/profile.toml:2",
+        "Box does not take the key `policy`. List your policy files under `policies` instead, " +
+        'such as policies = ["policy.dw"].',
+      place: ".box/profile.toml:2:1",
     });
   });
 
   test("places a TOML syntax error at its line and column", () => {
-    expect(refusal("a = 1\n[egress\n")).toMatchObject({
+    expect(refusal("a = 1\n[egress\n")).toEqual({
       code: "INVALID_PROFILE",
+      reason: "This is not valid TOML (illegal character in key). Correct the syntax.",
       place: ".box/profile.toml:2:8",
     });
+  });
+});
+
+describe("profilePlaces", () => {
+  test("places each entry by its header, its dotted key, or its key under [egress]", () => {
+    const places = profilePlaces(
+      [
+        'packs = ["box/base", "box/bedrock"]',
+        'policies = ["policy.dw"]',
+        "",
+        "[egress.github]",
+        'destinations = ["api.github.com"]',
+        "",
+        '[egress."dot.name".secret]',
+        'ref = "env://KEY"',
+        "",
+        "[egress]",
+        '  inline = { destinations = ["a.example.com"] }',
+        "",
+        "[agent]",
+        'command = ["python", "--host=1"]',
+        'mcp.docs = { type = "http" }',
+        "",
+        "[mcp.tools]",
+        'type = "stdio"',
+      ].join("\n"),
+    );
+
+    expect(Object.fromEntries(places.entries)).toEqual({
+      "egress.github": ".box/profile.toml:4:1",
+      "egress.dot.name": ".box/profile.toml:7:1",
+      "egress.inline": ".box/profile.toml:11:3",
+      "mcp.tools": ".box/profile.toml:17:1",
+    });
+    expect(places.packs).toBe(".box/profile.toml:1:1");
+    expect(places.policies).toBe(".box/profile.toml:2:1");
+  });
+
+  test("places no entry, `packs`, or `policies` that the profile does not set", () => {
+    expect(profilePlaces('[agent]\ncommand = ["/bin/sh"]\n')).toEqual({ entries: new Map() });
   });
 });

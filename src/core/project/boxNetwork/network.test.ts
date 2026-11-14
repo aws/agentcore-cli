@@ -7,6 +7,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { boxNetworkRules } from "../boxProfileResolver-test-support";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
+import { profilePlaces } from "./profileParser";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -34,6 +35,10 @@ const passthrough = (name: string, endpoint: string, rest: Partial<AgentCoreGate
 
 interface Options {
   readonly mcp?: Record<string, unknown>;
+  /** Rules that only Box's policy holds, as a pack adds them. */
+  readonly packRules?: string;
+  /** Rules that only Box's policy holds, before the policy file's. */
+  readonly boxFirst?: string;
   readonly targets?: AgentCoreGatewayTarget[];
   readonly credentials?: ProjectSpec["credentials"];
   readonly grantedActions?: string[];
@@ -42,7 +47,8 @@ interface Options {
 
 /**
  * The model of runtime `agent` for `policy` in `.box/policy.dw` and the routes `egress`, as Box
- * resolves them: its policy holds the file, then the rules Box adds for each route.
+ * resolves them: its policy holds the file, then the rules Box adds for each route. The profile
+ * sets `packs` on line 1, then each entry of `egress` and `mcp` on a line of its own.
  */
 function model(policy: string, egress: Record<string, unknown> = {}, options: Options = {}) {
   const spec = {
@@ -62,9 +68,14 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
       : [],
   } as unknown as ProjectSpec;
   const mcp = options.mcp ?? {};
+  const profile = [
+    'packs = ["box/base"]',
+    ...Object.keys(egress).map((name) => `[egress.${JSON.stringify(name)}]`),
+    ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
+  ].join("\n");
   const { parsed, failures } = parseResolvedPolicy(
-    { egress, mcp, policyFiles: policy ? ["policy.dw"] : [] },
-    `${policy}\n${boxNetworkRules(egress, mcp)}`,
+    { egress, mcp, policyFiles: policy ? ["policy.dw"] : [], places: profilePlaces(profile) },
+    `${options.boxFirst ?? ""}${policy}\n${options.packRules ?? ""}${boxNetworkRules(egress, mcp)}`,
     policy ? [{ file: ".box/policy.dw", text: policy }] : [],
   );
   const network = buildBoxNetwork(parsed, failures, {
@@ -84,6 +95,8 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     failures: () =>
       network.failures.map((f) => [f.code, f.ruleId ?? f.egressEntry ?? f.mcpEntry ?? f.target]),
     reasons: () => network.failures.map((f) => f.reason),
+    /** Each failure as its place and its text, as the error prints it. */
+    lines: () => network.failures.map((f) => `${f.place}  ${f.reason}`),
   };
 }
 
@@ -205,9 +218,12 @@ describe("the gateway's targets", () => {
       },
     );
     expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "github"]]);
-    expect(r.reasons()[0]).toBe(
-      "[egress.github]: the Box gateway's target gh sends GATEWAY_IAM_ROLE (execute-api, us-east-1) to api.github.com, and [egress.github] gives it API_KEY (github, header Authorization, prefix Bearer); one host has one target. Make the two the same, in agentcore.json or in .box/profile.toml",
-    );
+    expect(r.lines()).toEqual([
+      "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends requests " +
+        "signed with the gateway's role for execute-api, and [egress.github] sends the API key " +
+        "credential 'github' in the header Authorization with the prefix Bearer. Make the two " +
+        "the same, in agentcore.json or in .box/profile.toml.",
+    ]);
   });
 
   test("keeps the outbound auth of a target for a host that only the policy names", () => {
@@ -231,11 +247,34 @@ describe("the gateway's targets", () => {
       reach("w", "weather.example.com"),
       {},
       {
-        targets: [passthrough("weather", "https://weather.example.com/v1")],
+        targets: [
+          passthrough("weather", "https://weather.example.com/v1"),
+          passthrough("tools", "https://tools.example.com", {
+            passthrough: { endpoint: "https://tools.example.com", protocolType: "MCP" },
+          }),
+        ],
+      },
+    );
+    const tools = model(
+      reach("t", "tools.example.com"),
+      {},
+      {
+        targets: [
+          passthrough("tools", "https://tools.example.com", {
+            passthrough: { endpoint: "https://tools.example.com", protocolType: "MCP" },
+          }),
+        ],
       },
     );
     expect(pathed.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "w_connect"]]);
-    expect(pathed.network.failures[0]?.place).toBe(".box/policy.dw:1:1");
+    expect([...pathed.lines(), ...tools.lines()]).toEqual([
+      "agentcore/agentcore.json  The gateway target 'weather' for weather.example.com has the " +
+        "path /v1 in its endpoint, and the agent's requests do not include it. Remove /v1 from " +
+        "the endpoint, or remove the target.",
+      "agentcore/agentcore.json  The gateway target 'tools' for tools.example.com has " +
+        "protocolType MCP, and Box needs CUSTOM. Set its protocolType to CUSTOM, or remove the " +
+        "target.",
+    ]);
   });
 
   test("refuses to manage an egress- target that build would not write, and names it", () => {
@@ -262,7 +301,16 @@ describe("the gateway's targets", () => {
       ["MANAGED_TARGET_CHANGED", "egress-github"],
       ["MANAGED_TARGET_CHANGED", "egress-old"],
     ]);
-    expect(r.reasons()[0]).toContain("has protocolType MCP, which build does not write");
+    expect(r.lines()).toEqual([
+      "agentcore/agentcore.json  The gateway target 'egress-github' has protocolType MCP, " +
+        'which build does not write for a target whose name starts with "egress-", so build ' +
+        'does not change or remove it. Rename it without "egress-" to keep it as yours, or ' +
+        "remove it so build writes it again.",
+      "agentcore/agentcore.json  The gateway target 'egress-old' sends the API key credential " +
+        "'old' in the query parameter key, which build does not write for a target whose name " +
+        'starts with "egress-", so build does not change or remove it. Rename it without ' +
+        '"egress-" to keep it as yours, or remove it so build writes it again.',
+    ]);
   });
 
   test("lets a new host take the name of an egress- target that no host takes now", () => {
@@ -302,6 +350,10 @@ describe("the gateway's targets", () => {
       "my-api": { destinations: ["b.example.com"] },
     });
     expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "my-api"]]);
+    expect(r.lines()).toEqual([
+      ".box/profile.toml:3:1  [egress.my-api] would name the gateway target for b.example.com " +
+        "'egress-my-api', and [egress.my_api] for a.example.com has that name. Rename the entry.",
+    ]);
   });
 
   test("fails a host only the policy names whose name an entry holds", () => {
@@ -309,6 +361,11 @@ describe("the gateway's targets", () => {
       "api-github-com": { destinations: ["other.example.com"] },
     });
     expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "gh_connect"]]);
+    expect(r.lines()).toEqual([
+      '.box/policy.dw:1:1  The rule "gh_connect" allows api.github.com, and its gateway target ' +
+        "would have the name 'egress-api-github-com', which [egress.api-github-com] for " +
+        "other.example.com has. Add an [egress] entry with another name for api.github.com.",
+    ]);
   });
 
   test("gives a reserved-looking entry a name that takes none of the gateway's own paths", () => {
@@ -324,8 +381,9 @@ describe("the gateway's targets", () => {
       model("", { ["x".repeat(120)]: { destinations: ["a.example.com"] } }).host("a.example.com")
         ?.target,
     ).toBe(`egress-${"x".repeat(93)}`);
-    expect(model("", { ___: { destinations: ["a.example.com"] } }).failures()).toEqual([
-      ["TARGET_NAME_INVALID", "___"],
+    expect(model("", { ___: { destinations: ["a.example.com"] } }).lines()).toEqual([
+      ".box/profile.toml:2:1  [egress.___] has no letter or digit in its name, so build cannot " +
+        "name a gateway target after it. Rename the entry.",
     ]);
   });
 
@@ -343,6 +401,11 @@ describe("the gateway's targets", () => {
       ],
     });
     expect(r.failures()).toEqual([["TOO_MANY_TARGETS", undefined]]);
+    expect(r.lines()).toEqual([
+      ".box/profile.toml  The gateway 'agent-box' needs 101 targets, 99 for the hosts of the " +
+        "Box profile and 2 of your own, and a gateway can have at most 100. Remove hosts from " +
+        "the profile, or targets from the gateway.",
+    ]);
   });
 });
 
@@ -399,25 +462,52 @@ describe("outbound auth", () => {
       { credentials: [{ authorizerType: "OAuthCredentialProvider", name: "github" } as never] },
     );
     expect(taken.failures()).toEqual([["API_KEY_CREDENTIAL_MISSING", "github"]]);
-  });
-
-  test("refuses a secret the gateway cannot send", () => {
-    const failures = (destination: string, secret: Record<string, unknown>) =>
-      model("", { x: { destinations: [destination], secret } }).failures();
-    expect(failures("api.example.com", { ref: "credsd://prod" })).toEqual([
-      ["UNSUPPORTED_SECRET", "x"],
-    ]);
-    expect(failures("api.example.com", { ref: "vault://kv" })).toEqual([
-      ["UNSUPPORTED_SECRET", "x"],
+    expect(taken.lines()).toEqual([
+      ".box/profile.toml:2:1  [egress.github] needs an API key credential named 'github' for " +
+        "env://GITHUB_TOKEN, and agentcore.json has a credential of another type with that " +
+        "name. Rename the entry, or that credential.",
     ]);
     expect(
-      failures("api.example.com", { ref: "env://KEY", placement: "query_param", param: "key" }),
-    ).toEqual([["UNSUPPORTED_SECRET_PLACEMENT", "x"]]);
-    expect(failures("api.example.com", { ref: "aws://default" })).toEqual([
-      ["UNSIGNABLE_HOST", "x"],
+      model("", { ab: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } } }).lines(),
+    ).toEqual([
+      ".box/profile.toml:2:1  [egress.ab] needs an API key credential named after it for " +
+        'env://KEY, and "ab" is not a valid credential name (3 to 128 letters, digits, "-", ' +
+        'or "_"). Rename the entry.',
     ]);
-    expect(failures("api.example.com/v1", { ref: "env://KEY" })).toEqual([
+  });
+
+  test("refuses a secret the gateway cannot send, and says what to use", () => {
+    const refused = (destination: string, secret: Record<string, unknown>) => {
+      const r = model("", { x: { destinations: [destination], secret } });
+      return [...r.failures(), ...r.reasons()];
+    };
+    expect(refused("api.example.com", { ref: "credsd://prod" })).toEqual([
+      ["UNSUPPORTED_SECRET", "x"],
+      "[egress.x] reads its secret from credsd://prod, and the gateway cannot read credsd. Use " +
+        "an env:// secret, which build stores as an API key credential.",
+    ]);
+    expect(refused("api.example.com", { ref: "vault://kv" })).toEqual([
+      ["UNSUPPORTED_SECRET", "x"],
+      "[egress.x] has the secret vault://kv, and the gateway takes only an aws:// or env:// " +
+        "secret. Use one of them.",
+    ]);
+    expect(
+      refused("api.example.com", { ref: "env://KEY", placement: "query_param", param: "key" }),
+    ).toEqual([
+      ["UNSUPPORTED_SECRET_PLACEMENT", "x"],
+      "[egress.x] sends its secret as query_param, and a gateway target sends an API key only " +
+        'in a header. Set `placement` to "header", if the host takes the key in a header.',
+    ]);
+    expect(refused("api.example.com", { ref: "aws://default" })).toEqual([
+      ["UNSIGNABLE_HOST", "x"],
+      "[egress.x] signs requests to api.example.com with aws://default, and the gateway signs " +
+        "only for Bedrock, AgentCore, and Lambda function URL hosts. Use an env:// secret for " +
+        "this host, or remove the secret.",
+    ]);
+    expect(refused("api.example.com/v1", { ref: "env://KEY" })).toEqual([
       ["PATH_SCOPED_SECRET", "x"],
+      "[egress.x] sends its secret only under /v1, and a gateway target sends its credential " +
+        "on every path of the host. Remove the path from the destination.",
     ]);
   });
 });
@@ -436,7 +526,18 @@ describe("hosts the model cannot carry", () => {
       ["UNCONSTRAINED_HOST", "anywhere"],
       ["UNCONSTRAINED_HOST", "not_one"],
     ]);
-    expect(r.network.failures[1]?.place).toBe(".box/policy.dw:1:1");
+    const example = 'for example context.input.host == "api.example.com".';
+    expect(r.lines()).toEqual([
+      '.box/profile.toml:2:1  [egress.wide] has the wildcard destination "*.example.com", and ' +
+        "each gateway target needs one fixed host. Name each host in `destinations`.",
+      '.box/policy.dw:1:1  The rule "wild" allows each host that matches "*.example.com", and ' +
+        `each gateway target needs one fixed host. Name each host in the rule, ${example}`,
+      '.box/policy.dw:2:1  The rule "anywhere" allows requests to every host, and each gateway ' +
+        `target needs one fixed host. Add a condition that names each host, ${example}`,
+      '.box/policy.dw:3:1  The rule "not_one" allows every host except the ones it excludes ' +
+        '(context.input.host != "evil.example.com"), and each gateway target needs one fixed ' +
+        `host. Name each host it allows, ${example}`,
+    ]);
   });
 
   test("fails a host reachable only over plain HTTP", () => {
@@ -451,6 +552,21 @@ describe("hosts the model cannot carry", () => {
       ["PLAIN_HTTP_ONLY", "plain"],
       ["PLAIN_HTTP_ONLY", "port80"],
     ]);
+    expect(
+      model(
+        permit("plain", on("a.example.com", "context.input.intercepted == false")) +
+          permit("port80", on("b.example.com", "context.input.port == 80")),
+        { http: { destinations: ["c.example.com:80"] } },
+      ).reasons(),
+    ).toEqual([
+      '[egress.http] has the destination "c.example.com:80", which is plain HTTP, and the ' +
+        "gateway reaches hosts only over HTTPS. Use port 443.",
+      'The rule "plain" allows only plain HTTP requests, as it requires that ' +
+        "context.input.intercepted is false, and the gateway reaches hosts only over HTTPS. " +
+        "Remove that condition.",
+      'The rule "port80" allows b.example.com on port 80, which is plain HTTP, and the gateway ' +
+        "reaches hosts only over HTTPS. Use port 443.",
+    ]);
   });
 
   test("fails a rule that allows only PUT, PATCH, or HEAD, and keeps the routable methods", () => {
@@ -458,6 +574,11 @@ describe("hosts the model cannot carry", () => {
       permit("put", on("a.example.com", '["PUT", "PATCH", "HEAD"].contains(context.input.method)')),
     );
     expect(r.failures()).toEqual([["METHOD_NOT_ROUTABLE", "put"]]);
+    expect(r.reasons()).toEqual([
+      'The rule "put" allows only PUT, PATCH, HEAD on a.example.com, and the gateway sends ' +
+        "only GET, POST, and DELETE requests to a host. Allow GET, POST, or DELETE in the rule, " +
+        "or remove the rule.",
+    ]);
     const mixed = model(
       reach("both", "a.example.com", '["GET", "PUT"].contains(context.input.method)'),
     );
@@ -471,6 +592,12 @@ describe("hosts the model cannot carry", () => {
     expect(r.failures()).toEqual([
       ["EGRESS_HAS_BACKEND", "x"],
       ["EGRESS_ENTRY_FAILED", "x_get"],
+    ]);
+    expect(r.lines()).toEqual([
+      ".box/profile.toml:2:1  [egress.x] already has `backends`, and build sends each host " +
+        "through the gateway itself. Remove `backends` from the entry.",
+      '.box/policy.dw:1:1  The rule "x_get" allows a.example.com, and [egress.x] for that host ' +
+        "has a problem. Fix [egress.x] first.",
     ]);
   });
 
@@ -486,9 +613,13 @@ describe("hosts the model cannot carry", () => {
       ["MCP_OVER_HTTP", "m"],
       ["MCP_OVER_HTTP", "tools"],
     ]);
-    expect(r.reasons()[1]).toBe(
-      "[mcp.tools]: it is an MCP server over HTTP, and Box cannot route an MCP server through a gateway backend",
-    );
+    expect(r.lines()).toEqual([
+      '.box/profile.toml:2:1  [egress.m] is an MCP server (protocol = "mcp"), and the deployed ' +
+        "agent cannot reach it through the gateway. Run the server as a stdio server under " +
+        "[mcp], or remove the entry.",
+      ".box/profile.toml:3:1  [mcp.tools] is an MCP server over HTTP, and the deployed agent " +
+        "cannot reach it through the gateway. Make it a stdio server, or remove it.",
+    ]);
   });
 
   test("refuses a host Box never presents, at its rule or its entry", () => {
@@ -508,7 +639,21 @@ describe("hosts the model cannot carry", () => {
       ["INVALID_HOST", "upper"],
       ["INVALID_HOST", "dot"],
     ]);
-    expect(r.reasons()[2]).toContain("is an IPv6 address");
+    expect(r.reasons()).toEqual([
+      '[egress.caps] has the destination "Api.example.com", whose host never matches, because ' +
+        'Box compares hosts in lower case with no trailing dot. Write the host as "api.example.com".',
+      '[egress.under] has the destination "my_host.example.com", whose host has a character ' +
+        'that the host of a gateway target cannot have. Use a host with only letters, digits, "-", ' +
+        'and ".".',
+      '[egress.six] has the destination "[::1]:8443", whose host is an IPv6 address, and a ' +
+        "gateway target cannot reach one. Use a host name or an IPv4 address.",
+      'The rule "upper" compares the host with "API.example.com" (context.input.host == ' +
+        '"API.example.com"), which never matches, because Box compares hosts in lower case with ' +
+        'no trailing dot. Write the host as "api.example.com".',
+      'The rule "dot" compares the host with "x.example.com." (context.input.host == ' +
+        '"x.example.com."), which never matches, because Box compares hosts in lower case with ' +
+        'no trailing dot. Write the host as "x.example.com".',
+    ]);
   });
 
   test("fails rules Box would refuse, and a syntax error at its place", () => {
@@ -525,7 +670,85 @@ describe("hosts the model cannot carry", () => {
       ["UNKNOWN_ACTION", "verb"],
       ["UNKNOWN_ATTRIBUTE", "query"],
     ]);
-    expect(r.network.failures[0]?.place).toBe(".box/policy.dw:5:67");
+    expect(r.lines()).toEqual([
+      ".box/policy.dw:5:67  Syntax error: unexpected } in a condition. Correct the rule at this " +
+        "place.",
+      '.box/policy.dw:2:1  The rule "dup" has the same @id as the rule at .box/policy.dw:1:1. ' +
+        "Give each rule its own @id.",
+      '.box/policy.dw:3:1  The rule "verb" names the action Box::Action::"http:get", which Box ' +
+        'does not have. Use a Box action, such as Box::Action::"http:request" or ' +
+        'Box::Action::"net:connect".',
+      '.box/policy.dw:4:1  The rule "query" reads context.input.query, which http:request does ' +
+        "not have. Use one of context.input.host, context.input.port, context.input.method, " +
+        "context.input.path, context.input.body_bytes, context.input.intercepted, or " +
+        "context.output.status.",
+    ]);
+  });
+
+  test("puts a copy of a rule Box adds at the user's copy, and names what makes Box add it", () => {
+    const github = { destinations: ["api.github.com"] };
+    const copied = model(
+      "// Copied from box profile show.\n" + connect("route_github_connect", on("api.github.com")),
+      { github },
+    );
+    const metadata = model(forbid("metadata_hosts", on("x.example.com")), { github });
+    const packed = model(
+      forbid("pack_rule", on("x.example.com")),
+      { github },
+      {
+        packRules: forbid("pack_rule", on("y.example.com")),
+      },
+    );
+
+    const boxFirst = model(
+      forbid("shared", on("x.example.com")),
+      {},
+      {
+        boxFirst: forbid("shared", on("y.example.com")),
+      },
+    );
+
+    expect([
+      ...copied.lines(),
+      ...boxFirst.lines(),
+      ...metadata.lines(),
+      ...packed.lines(),
+    ]).toEqual([
+      '.box/policy.dw:2:1  The rule "route_github_connect" is one Box adds itself for ' +
+        "[egress.github]. Remove it from .box/policy.dw.",
+      '.box/policy.dw:1:1  The rule "shared" has the same @id as a rule that a pack in ' +
+        "`packs` adds. Give your rule another @id.",
+      '.box/policy.dw:1:1  The rule "metadata_hosts" is one Box adds itself to every profile. ' +
+        "Remove it from .box/policy.dw.",
+      '.box/policy.dw:1:1  The rule "pack_rule" has the same @id as a rule that a pack in ' +
+        "`packs` adds. Give your rule another @id.",
+    ]);
+  });
+
+  test("puts a failing rule or entry that Box or a pack adds at the part of the profile that adds it", () => {
+    const r = model(
+      "",
+      { github: { destinations: ["api.github.com"] } },
+      {
+        packRules:
+          permit("pack_wild", 'context.input.host like "*.pack.example.com"') +
+          "permit (principal, action, resource) when { context.input.port == 1 };\n",
+      },
+    );
+    const unnamed = model(
+      `permit (principal, ${HR}, resource) when { context.input.port == 1 };\n`,
+    );
+
+    const rest = "and each gateway target needs one fixed host.";
+    expect(r.lines().map((line) => line.slice(0, line.indexOf(rest) + rest.length))).toEqual([
+      '.box/profile.toml:1:1  The rule "pack_wild", which a pack in `packs` adds, allows each ' +
+        `host that matches "*.pack.example.com", ${rest}`,
+      `.box/profile.toml:1:1  A rule that a pack in \`packs\` adds allows requests to every host, ${rest}`,
+    ]);
+    expect(unnamed.lines()).toEqual([
+      `.box/policy.dw:1:1  This rule allows requests to every host, ${rest} Add a condition ` +
+        'that names each host, for example context.input.host == "api.example.com".',
+    ]);
   });
 });
 
@@ -568,8 +791,10 @@ describe("warnings", () => {
       { github: GITHUB },
     );
     expect(r.network.warnings).toEqual([
-      `api.github.com (target 'egress-github' of gateway 'agent-box'): the gateway forwards every request to it, and Box enforces "no_admin" on its own; Box allows 6 of 15 sample requests`,
-      `httpbin.org (target 'egress-httpbin-org' of gateway 'agent-box'): the gateway forwards every request to it, and Box enforces "get" on its own; Box allows 2 of 6 sample requests. The AgentCore Runtime route for httpbin.org permits every request to it, so there Box enforces the forbids, and not the method and path limits of the permits`,
+      'api.github.com: the gateway allows every request to this host; Box still applies the rule "no_admin".',
+      'httpbin.org: the gateway allows every request to this host; Box still applies the rule "get". ' +
+        "On AgentCore Runtime, Box applies only your forbid rules to this host, so write each " +
+        "limit as a forbid rule to keep it there.",
     ]);
   });
 
@@ -577,7 +802,8 @@ describe("warnings", () => {
     expect(
       model(forbid("no_github", on("api.github.com")), { github: GITHUB }).network.warnings,
     ).toEqual([
-      `[egress.github] api.github.com gets no target of gateway 'agent-box': Box allows no request to it, and "no_github" forbid it`,
+      'api.github.com: your policy allows no request to this host (the rule "no_github" denies ' +
+        "it), so [egress.github] gets no gateway target.",
     ]);
   });
 
@@ -599,8 +825,10 @@ describe("warnings", () => {
     });
     r.spec.agentCoreGateways[0]!.additionalPolicies = ["agentcore/box-memory-policy.json"];
     expect(boxGatewayIamWarnings(r.spec, r.network)).toEqual([
-      "target 'bedrock' of gateway 'agent-box' (agentcore create added it) signs its requests with the gateway's role for 'bedrock', and no policy of that role grants a 'bedrock:' action, so bedrock refuses them. Add an IAM policy file to additionalPolicies of agent-box.",
-      "target 'egress-control' of gateway 'agent-box' signs its requests with the gateway's role for 'bedrock', and no policy of that role grants a 'bedrock:' action, so bedrock refuses them. Add an IAM policy file to additionalPolicies of agent-box.",
+      "Target 'bedrock' calls bedrock with the gateway's role, which has no bedrock permissions. " +
+        "Add an IAM policy file to additionalPolicies of the 'agent-box' gateway.",
+      "Target 'egress-control' calls bedrock with the gateway's role, which has no bedrock " +
+        "permissions. Add an IAM policy file to additionalPolicies of the 'agent-box' gateway.",
     ]);
     const granted = model("", egress, {
       targets: [control],

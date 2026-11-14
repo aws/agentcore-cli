@@ -1,10 +1,7 @@
 import { clausesFor, pinnedValue } from "./conditions";
 import { parsePolicy, type SourceSpan, type Statement } from "./dogwood";
 import type { BoxNetworkFailure } from "./network";
-import type { ParsedProfile } from "./profileParser";
-
-/** Where a rule is that no policy file of the profile holds. */
-export const BOX_RULE_PLACE = "a rule Box adds, from a pack or Box itself";
+import { BOX_PROFILE_PATH, type ParsedProfile } from "./profileParser";
 
 /** The `net:connect` permit Box writes for each route, by the route's name. */
 const ROUTE_CONNECT_ID = /^route_(.+)_connect$/;
@@ -30,8 +27,8 @@ export interface PolicyFileText {
 /**
  * Parses Box's resolved `policy`, and places each of its statements in the profile's own policy
  * `files`: at the statement there with the same `@id`, or the same text when it has none. A
- * statement that no file holds is a rule Box adds. Each syntax error is at its place in a file,
- * or in Box's policy when no file has one.
+ * statement that no file holds is a rule Box adds. Each syntax error is at its place in a file;
+ * one in Box's policy, when no file has one, is placed at the profile.
  */
 export function parseResolvedPolicy(
   profile: ParsedProfile,
@@ -49,7 +46,7 @@ export function parseResolvedPolicy(
     for (const error of own.errors) {
       failures.push({
         code: "PARSE_ERROR",
-        reason: error.message,
+        reason: `Syntax error: ${error.message}. Correct the rule at this place.`,
         place: placeIn(file, error.span),
       });
     }
@@ -57,7 +54,13 @@ export function parseResolvedPolicy(
   const resolved = parsePolicy(policy);
   if (failures.length === 0) {
     for (const error of resolved.errors) {
-      failures.push({ code: "PARSE_ERROR", reason: error.message, place: BOX_RULE_PLACE });
+      failures.push({
+        code: "PARSE_ERROR",
+        reason:
+          `Build cannot read a rule that Box or a pack adds to this profile (syntax error: ` +
+          `${error.message}). Update the AgentCore CLI, then retry.`,
+        place: BOX_PROFILE_PATH,
+      });
     }
   }
   const places = new Map<string, string>();
@@ -73,9 +76,15 @@ export function parseResolvedPolicy(
   };
 }
 
-/** Where the statement at `span` of Box's policy is: in a policy file of the profile, or not. */
-export function placeOf(parsed: Pick<ParsedPolicy, "places">, span: SourceSpan): string {
-  return parsed.places.get(spanKey(span)) ?? BOX_RULE_PLACE;
+/**
+ * The `file:line:column` of the statement at `span` of Box's policy in a policy file of the
+ * profile, or `undefined` for a rule that Box adds.
+ */
+export function placeOf(
+  parsed: Pick<ParsedPolicy, "places">,
+  span: SourceSpan,
+): string | undefined {
+  return parsed.places.get(spanKey(span));
 }
 
 /**

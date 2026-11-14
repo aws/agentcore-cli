@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BOX_RULE_PLACE, parseResolvedPolicy, placeOf, type PolicyFileText } from "./policyParser";
+import { parseResolvedPolicy, placeOf, type PolicyFileText } from "./policyParser";
 
 const NC = 'action == Box::Action::"net:connect"';
 const HR = 'action == Box::Action::"http:request"';
@@ -36,16 +36,16 @@ function places(result: ReturnType<typeof parsed>) {
 }
 
 describe("parseResolvedPolicy", () => {
-  test("places each rule of a policy file at its line there, and each other rule as Box's", () => {
+  test("places each rule of a policy file at its line there, and no rule that Box adds", () => {
     const result = parsed(RESOLVED, FILES);
 
     expect(result.failures).toEqual([]);
     expect(places(result)).toEqual([
       ["no_admin", ".box/policy.dw:2:1"],
       ["more_rule", ".box/sub/more.dw:3:1"],
-      ["shell_commands", BOX_RULE_PLACE],
-      ["route_github_connect", BOX_RULE_PLACE],
-      ["route_github_request", BOX_RULE_PLACE],
+      ["shell_commands", undefined],
+      ["route_github_connect", undefined],
+      ["route_github_request", undefined],
     ]);
   });
 
@@ -100,12 +100,18 @@ describe("parseResolvedPolicy", () => {
     expect(inFile.failures).toEqual([
       {
         code: "PARSE_ERROR",
-        reason: "unexpected } in a condition",
+        reason: "Syntax error: unexpected } in a condition. Correct the rule at this place.",
         place: `.box/policy.dw:1:${broken.indexOf("}") + 1}`,
       },
     ]);
     expect(inBox.failures).toEqual([
-      { code: "PARSE_ERROR", reason: "unexpected } in a condition", place: BOX_RULE_PLACE },
+      {
+        code: "PARSE_ERROR",
+        reason:
+          "Build cannot read a rule that Box or a pack adds to this profile (syntax error: " +
+          "unexpected } in a condition). Update the AgentCore CLI, then retry.",
+        place: ".box/profile.toml",
+      },
     ]);
   });
 });

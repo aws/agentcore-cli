@@ -1596,7 +1596,7 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, await this.boxBuildRegion());
+    const boxed = await this.applyBoxNetwork(synced.project, "build");
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
   }
@@ -1607,15 +1607,15 @@ export class FsProjectManager implements ProjectManager {
    * synth reads agentcore.json and build renders each Runtime profile's routes from its Box
    * gateway's targets: agentcore.json once, patched in the raw file so unknown fields and key order
    * survive and checked against the schema first, then the files, then `.env.local`. A failure of
-   * any model stops build and deploy before anything of the box profile is written.
+   * any model stops `command` before anything of the box profile is written.
    */
   private async applyBoxNetwork(
     project: Project,
-    region: string,
+    command: "build" | "deploy",
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
     const networks = await readBoxNetworks(project.spec, project.rootPath, this.boxProfileResolver);
     if (networks.some(({ failures }) => failures.length > 0)) {
-      throw new InputValidationError(boxNetworkFailureMessage(networks));
+      throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
     const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, {
       spec: project.spec,
@@ -1764,7 +1764,7 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, target.region);
+    const boxed = await this.applyBoxNetwork(synced.project, "deploy");
     yield* boxed.events;
     project = boxed.project;
 

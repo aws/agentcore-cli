@@ -8,11 +8,13 @@ import { InputValidationError, InvalidEnvironmentError } from "../../errors/erro
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
-import { createSilentLogger, TestIdentityClient } from "../../testing";
+import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { FsProjectManager } from "./manager";
 
+/** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
+const FIXTURES = join(import.meta.dir, "__fixtures__");
 const GATEWAY = "agent-python-strands-box";
 const SPEC = "agentcore/agentcore.json";
 const RUNTIME_PROFILE = "app/agent_python_strands/.box-dist/profile.toml";
@@ -213,7 +215,7 @@ describe("build writes the Box network of the box profile", () => {
     );
     expect(targets[1]).toEqual(userTarget("egress-httpbin-org", "https://httpbin.org"));
     expect(steps).toContain(
-      `adding target 'egress-github' to gateway '${GATEWAY}' in agentcore.json, for api.github.com`,
+      `adding gateway target 'egress-github' to '${GATEWAY}' for api.github.com`,
     );
 
     // The Runtime profile routes each target of the Box gateway, as upstream renders it.
@@ -301,8 +303,8 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     expect(steps).toContain(
-      `removing target 'egress-github' from gateway '${GATEWAY}' in agentcore.json: Box allows ` +
-        "no request to its host in .box/profile.toml",
+      `removing gateway target 'egress-github' from '${GATEWAY}': the Box profile no longer ` +
+        "allows api.github.com",
     );
   });
 
@@ -327,20 +329,46 @@ describe("build writes the Box network of the box profile", () => {
     expect(Object.keys(egress)).toEqual(["bedrock", "agentcore"]);
   });
 
-  test("on a first build, stops with every failure, where it is, and writes nothing", async () => {
+  test("on a first build, stops with every problem, where it is, and writes nothing", async () => {
     const { manager, root, counter, box } = await strandsProject();
-    const wild =
-      "// Every subdomain of example.com.\n" +
-      `@id("wild") permit (principal, ${HR}, resource) when { context.input.host like "*.example.com" };\n`;
+    const policy = [
+      "// Every subdomain of example.com.",
+      `@id("wild") permit (principal, ${HR}, resource) when { context.input.host like "*.example.com" };`,
+      `@id("dup") forbid (principal, ${HR}, resource) when { context.input.host == "a.example.com" };`,
+      `@id("dup") forbid (principal, ${HR}, resource) when { context.input.host == "b.example.com" };`,
+      "// A copy of the rule Box adds for [egress.github].",
+      `@id("route_github_connect") permit (principal, ${NC}, resource) when { context.input.host == "api.github.com" };`,
+      `permit (principal, ${HR}, resource);`,
+      "",
+    ].join("\n");
     await editProfile(root, {
       top: 'policies = ["policy.dw"]\n',
       tables:
-        GITHUB_ROUTE +
-        '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n',
-      policy: wild,
+        '\n[egress.github]\ndestinations = ["api.github.com"]\n' +
+        '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n' +
+        '\n[egress.wide]\ndestinations = ["*.wide.example.com"]\nsecret.ref = "env://WIDE_KEY"\n' +
+        '\n[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',
+      policy,
     });
-    const signed = { destinations: ["api.example.com"], secret: { ref: "aws://default" } };
-    box.answer = shows({ github: GITHUB, signed }, wild);
+    await editGateway(root, (gateway) => {
+      gateway.targets.push(
+        userTarget("gh", "https://api.github.com", { outboundAuth: GITHUB_KEY }),
+      );
+    });
+    // Box resolves the packs too: one adds [egress.legacy] and a rule of its own.
+    box.answer = boxShowOf({
+      egress: {
+        bedrock: BEDROCK,
+        github: { destinations: ["api.github.com"] },
+        signed: { destinations: ["api.example.com"], secret: { ref: "aws://default" } },
+        wide: { destinations: ["*.wide.example.com"], secret: { ref: "env://WIDE_KEY" } },
+        legacy: { destinations: ["legacy.example.com"], secret: { ref: "credsd://prod" } },
+      },
+      mcp: { docs: { type: "http", destinations: ["docs.example.com"] } },
+      policy:
+        policy +
+        `@id("pack_mirrors") permit (principal, ${HR}, resource) when { context.input.host like "*.mirror.example.com" };\n`,
+    });
     const spec = await text(root, SPEC);
     const envLocal = await text(root, "agentcore/.env.local");
     const before = await boxFiles(root);
@@ -351,18 +379,7 @@ describe("build writes the Box network of the box profile", () => {
     );
 
     expect(error).toBeInstanceOf(InputValidationError);
-    expect((error as Error).message).toBe(
-      ".box/profile.toml does not parse into the Box network of the Box gateway " +
-        `'${GATEWAY}' of runtime 'agent_python_strands' (2 failures):\n` +
-        '  - WILDCARD_HOST, rule "wild", at .box/policy.dw:2:1: it allows hosts by the pattern ' +
-        'context.input.host like "*.example.com"; a gateway target needs one fixed host, so ' +
-        "name each host\n" +
-        "  - UNSIGNABLE_HOST, [egress.signed]: it signs api.example.com with aws://default, but " +
-        "the host is not an AWS endpoint the gateway can sign for: bedrock, bedrock-runtime, " +
-        "bedrock-agentcore, or a Lambda function URL\n\n" +
-        "Nothing of the box profile was written: no gateway target, credential, Memory target, " +
-        "or file. Change the profile or its policy files, then retry.",
-    );
+    matchGolden(FIXTURES, "box-network-build-stopped.golden.txt", (error as Error).message);
     expect(counter.specWrites).toBe(0);
     expect(await text(root, SPEC)).toBe(spec);
     expect(existsSync(path(root, "agentcore/box-bedrock-policy.json"))).toBe(false);
@@ -370,6 +387,46 @@ describe("build writes the Box network of the box profile", () => {
     expect(await text(root, "agentcore/.env.local")).toBe(envLocal);
     expect(existsSync(path(root, RUNTIME_PROFILE))).toBe(false);
     expect(await boxFiles(root)).toEqual(before);
+  });
+
+  test("warns once for each limit Box enforces that the gateway does not, and builds", async () => {
+    const { manager, root, box } = await strandsProject();
+    const policy = [
+      `@id("no_admin") forbid (principal, ${HR}, resource) when { context.input.host == "api.github.com" && context.input.path like "/admin/*" };`,
+      `@id("no_blocked") forbid (principal, ${NC}, resource) when { context.input.host == "blocked.example.com" };`,
+      `@id("httpbin_connect") permit (principal, ${NC}, resource) when { context.input.host == "httpbin.org" };`,
+      `@id("httpbin_get") permit (principal, ${HR}, resource) when { context.input.host == "httpbin.org" && context.input.method == "GET" };`,
+      "",
+    ].join("\n");
+    const fn = {
+      destinations: ["abc123.lambda-url.us-west-2.on.aws"],
+      secret: { ref: "aws://default" },
+    };
+    await editProfile(root, {
+      top: 'policies = ["policy.dw"]\n',
+      tables:
+        GITHUB_ROUTE +
+        '\n[egress.blocked]\ndestinations = ["blocked.example.com"]\n' +
+        '\n[egress.fn]\ndestinations = ["abc123.lambda-url.us-west-2.on.aws"]\n' +
+        'secret.ref = "aws://default"\n',
+      policy,
+    });
+    await writeFile(path(root, "agentcore/extra-policy.json"), "[]");
+    await editGateway(root, (gateway) => {
+      const entry = gateway as { additionalPolicies?: string[] };
+      entry.additionalPolicies = [
+        ...(entry.additionalPolicies ?? []),
+        "agentcore/extra-policy.json",
+      ];
+    });
+    box.answer = shows(
+      { github: GITHUB, blocked: { destinations: ["blocked.example.com"] }, fn },
+      policy,
+    );
+
+    const { warnings } = await build(manager, root);
+
+    matchGolden(FIXTURES, "box-network-build-warnings.golden.txt", warnings.join("\n"));
   });
 
   test("warns for an IAM policy file of the Box gateway that is not JSON, and builds", async () => {
@@ -385,8 +442,8 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(warnings).toContainEqual(
       expect.stringContaining(
-        `agentcore/extra-policy.json, which additionalPolicies of gateway '${GATEWAY}' lists, ` +
-          "is not valid JSON (",
+        `agentcore/extra-policy.json, in additionalPolicies of the gateway '${GATEWAY}', is not ` +
+          "valid JSON (",
       ),
     );
   });
@@ -401,8 +458,11 @@ describe("build writes the Box network of the box profile", () => {
     const spec = await text(root, SPEC);
 
     await expect(build(manager, root)).rejects.toThrow(
-      "EXISTING_TARGET_CONFLICT, [egress.github]: the Box gateway's target gh sends NONE to " +
-        "api.github.com",
+      "Build stopped: 1 problem in agentcore.json. Nothing was changed.\n" +
+        "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends no " +
+        "credential, and [egress.github] sends the API key credential 'github' in the header " +
+        "Authorization with the prefix Bearer. Make the two the same, in agentcore.json or in " +
+        ".box/profile.toml.",
     );
     expect(await text(root, SPEC)).toBe(spec);
   });
