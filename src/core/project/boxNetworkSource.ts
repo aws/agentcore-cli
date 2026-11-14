@@ -7,7 +7,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { ProjectStateError } from "../../errors/errors";
 import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
-import { addBoxGatewayTargets } from "./boxMemory";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
   BOX_PROFILE_PATH,
   buildBoxNetwork,
@@ -38,13 +38,15 @@ export function readBoxNetworks(spec: ProjectSpec, projectRoot: string): BoxNetw
   return runtimes.map((runtime) => {
     const gateway = boxGatewayName(runtime.name);
     const entry = withDefaults.agentCoreGateways.find(({ name }) => name === gateway);
-    return buildBoxNetwork(parsed, found, {
+    const granted = grantedActions(projectRoot, gateway, entry?.additionalPolicies ?? []);
+    const network = buildBoxNetwork(parsed, found, {
       spec,
       runtime,
       gateway,
       targets: entry?.targets ?? [],
-      grantedActions: grantedActions(projectRoot, entry?.additionalPolicies ?? []),
+      grantedActions: granted.actions,
     });
+    return { ...network, warnings: [...network.warnings, ...granted.warnings] };
   });
 }
 
@@ -151,29 +153,63 @@ function policyFileProblem(folder: string, path: string): string | undefined {
   return undefined;
 }
 
-/** The actions that the Allow statements of the `.json` policy files of `policies` grant. */
-function grantedActions(projectRoot: string, policies: readonly string[]): string[] {
+/** The policy files that build writes for the gateway's role, after it reads them. */
+const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([
+  BOX_BEDROCK_POLICY_FILE,
+  BOX_MEMORY_POLICY_FILE,
+]);
+
+/**
+ * The actions that the Allow statements of the `.json` policy files of `policies` grant, and a
+ * warning for each such file that does not exist, cannot be read, or is not a JSON object, whose
+ * actions build then does not count. A policy file that build writes itself may not exist yet.
+ */
+function grantedActions(
+  projectRoot: string,
+  gateway: string,
+  policies: readonly string[],
+): { actions: string[]; warnings: string[] } {
   const actions: string[] = [];
+  const warnings: string[] = [];
   for (const policy of policies) {
     if (!policy.endsWith(".json")) continue;
-    const path = join(projectRoot, ...policy.split("/"));
-    if (!existsSync(path)) continue;
-    let document: { Statement?: unknown };
+    const skipped = (why: string) =>
+      warnings.push(
+        `${policy}, which additionalPolicies of gateway '${gateway}' lists, ${why}, so build ` +
+          "counts none of its actions when it checks what the gateway's role may sign for",
+      );
+    let text: string;
     try {
-      document = JSON.parse(readFileSync(path, "utf8")) as { Statement?: unknown };
-    } catch {
+      text = readFileSync(join(projectRoot, ...policy.split("/")), "utf8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        if (!BUILD_POLICY_FILES.has(policy)) skipped("does not exist");
+      } else {
+        skipped(`cannot be read (${code ?? String(error)})`);
+      }
       continue;
     }
-    const statements = Array.isArray(document.Statement)
-      ? document.Statement
-      : [document.Statement];
+    let document: unknown;
+    try {
+      document = JSON.parse(text);
+    } catch (error) {
+      skipped(`is not valid JSON (${(error as Error).message})`);
+      continue;
+    }
+    if (typeof document !== "object" || document === null || Array.isArray(document)) {
+      skipped("is not a JSON object");
+      continue;
+    }
+    const { Statement } = document as { Statement?: unknown };
+    const statements = Array.isArray(Statement) ? Statement : [Statement];
     for (const statement of statements as { Effect?: unknown; Action?: unknown }[]) {
       if (statement?.Effect !== "Allow") continue;
       const named = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
       actions.push(...named.filter((action): action is string => typeof action === "string"));
     }
   }
-  return actions;
+  return { actions, warnings };
 }
 
 /** One failure: its code, its rule, entry, or target, its place, and why. */

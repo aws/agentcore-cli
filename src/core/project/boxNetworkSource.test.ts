@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 
@@ -104,6 +105,38 @@ describe("readBoxNetworks", () => {
     await symlink(join(root, ".box", "policy.dw"), join(root, ".box", "inner.dw"));
 
     expect(failuresOf(root)).toEqual([]);
+  });
+});
+
+describe("the IAM policy files of the Box gateway", () => {
+  test("counts the actions of each listed file, and warns for one it cannot count", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    await writeFile(join(root, "agentcore", "broken.json"), "{ not json");
+    await writeFile(join(root, "agentcore", "list.json"), "[]");
+    await writeFile(
+      join(root, "agentcore", "grants.json"),
+      JSON.stringify({ Statement: [{ Effect: "Allow", Action: ["bedrock:InvokeModel"] }] }),
+    );
+    const listed = ["missing", "broken", "list", "grants"].map((name) => `agentcore/${name}.json`);
+    const spec = {
+      ...SPEC,
+      agentCoreGateways: [{ ...getBoxGatewayEntry("agent"), additionalPolicies: listed }],
+    } as ProjectSpec;
+
+    const [network] = readBoxNetworks(spec, root);
+
+    expect(network?.grantedActions).toEqual(["bedrock:InvokeModel"]);
+    const tail =
+      "so build counts none of its actions when it checks what the gateway's role may sign for";
+    // Build writes box-bedrock-policy.json itself, so a missing one is no warning.
+    expect(network?.warnings).toEqual([
+      `agentcore/missing.json, which additionalPolicies of gateway 'agent-box' lists, does not exist, ${tail}`,
+      expect.stringMatching(
+        /^agentcore\/broken\.json, which additionalPolicies of gateway 'agent-box' lists, is not valid JSON \(.+\), so build counts none/,
+      ),
+      `agentcore/list.json, which additionalPolicies of gateway 'agent-box' lists, is not a JSON object, ${tail}`,
+    ]);
   });
 });
 

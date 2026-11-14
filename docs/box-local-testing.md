@@ -114,7 +114,9 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
   failure with its rule or entry and its `file:line:column`, and nothing is written.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
-  AWS service that no policy of the gateway's role grants.
+  AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
+  the gateway's `additionalPolicies` that is missing or is not JSON, as it counts none of its
+  actions.
 - **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
   `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. Each policy
   file is copied beside it, byte for byte, and listed under `policies`.
