@@ -51,17 +51,27 @@ function outboundAuthKey(auth: OutboundAuth | undefined): string {
   ]);
 }
 
-/** A target's outbound auth as one line of text, such as `API_KEY (github, header Authorization)`. */
-export function outboundAuthText(auth: OutboundAuth | undefined): string {
-  if (auth === undefined || auth.type === "NONE") return "NONE";
+/**
+ * What a target sends to its host, in words for a message: `no credential`, `requests signed with
+ * the gateway's role for bedrock`, or `the API key credential 'github' in the header
+ * Authorization`.
+ */
+export function outboundAuthWords(auth: OutboundAuth | undefined): string {
+  if (auth === undefined || auth.type === "NONE") return "no credential";
   switch (auth.type) {
     case "GATEWAY_IAM_ROLE":
-      return `GATEWAY_IAM_ROLE (${[auth.service, auth.region].filter(Boolean).join(", ")})`;
-    case "API_KEY":
-      return `API_KEY (${auth.credentialName ?? "no credential"}, ${(auth.location ?? "HEADER") === "HEADER" ? "header" : "query parameter"} ${auth.parameterName ?? "Authorization"}${auth.prefix !== undefined ? `, prefix ${auth.prefix}` : ""})`;
+      return `requests signed with the gateway's role${auth.service ? ` for ${auth.service}` : ""}`;
+    case "API_KEY": {
+      const where =
+        (auth.location ?? "HEADER") === "HEADER"
+          ? `the header ${auth.parameterName ?? "Authorization"}`
+          : `the query parameter ${auth.parameterName ?? "(none)"}`;
+      const prefix = auth.prefix !== undefined ? ` with the prefix ${auth.prefix}` : "";
+      return `the API key credential '${auth.credentialName ?? "(none)"}' in ${where}${prefix}`;
+    }
     default:
       return auth.credentialName !== undefined
-        ? `${auth.type} (${auth.credentialName})`
-        : auth.type;
+        ? `the ${auth.type} credential '${auth.credentialName}'`
+        : `a ${auth.type} credential`;
   }
 }

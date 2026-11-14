@@ -4,7 +4,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { buildBoxNetwork, type BoxNetworkHost } from "./network";
 import { boxNetworkRules } from "../boxProfileResolver-test-support";
 import { parseResolvedPolicy } from "./policyParser";
-import { gatewayTargetFor, outboundAuthText, sameOutboundAuth } from "./projectSpec";
+import { gatewayTargetFor, outboundAuthWords, sameOutboundAuth } from "./projectSpec";
 
 /** The hosts of `egress`, with the rules Box adds for it. */
 function hostsOf(egress: Record<string, unknown>): BoxNetworkHost[] {
@@ -141,6 +141,6 @@ describe("sameOutboundAuth", () => {
         { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-east-1" },
       ),
     ).toBe(false);
-    expect(outboundAuthText(undefined)).toBe("NONE");
+    expect(outboundAuthWords(undefined)).toBe("no credential");
   });
 });

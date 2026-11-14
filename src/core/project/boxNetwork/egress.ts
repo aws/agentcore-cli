@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CredentialNameSchema } from "../../../projectSchemas/credential";
 import type { BoxEgressAuth } from "./network";
 import type { FailureCode } from "./types";
 
@@ -54,18 +55,30 @@ export function parseDestination(text: string): Destination | undefined {
 }
 
 /**
- * Why a gateway target cannot have `host`, or `undefined` when it can: a target's endpoint takes a
- * lower-case DNS name or IPv4 address, with no trailing dot, as Box presents a host.
+ * Why a gateway target cannot have `host`, to follow the host in a sentence, and how to fix it;
+ * `undefined` when it can. A target's endpoint takes a lower-case DNS name or IPv4 address, with
+ * no trailing dot, as Box presents a host.
  */
-export function targetHostProblem(host: string): string | undefined {
+export function targetHostProblem(
+  host: string,
+): { readonly why: string; readonly fix: string } | undefined {
   if (host.startsWith("[") || host.includes(":")) {
-    return `${host} is an IPv6 address, and a gateway target's endpoint takes no IPv6 address`;
+    return {
+      why: "is an IPv6 address, and a gateway target cannot reach one",
+      fix: "Use a host name or an IPv4 address.",
+    };
   }
   if (host !== host.toLowerCase() || host.endsWith(".")) {
-    return `Box presents ${host} in lower case with no trailing dot, so it never matches; write ${host.toLowerCase().replace(/\.+$/, "")}`;
+    return {
+      why: "never matches, because Box compares hosts in lower case with no trailing dot",
+      fix: `Write the host as ${JSON.stringify(host.toLowerCase().replace(/\.+$/, ""))}.`,
+    };
   }
   if (!/^[a-z0-9.-]+$/.test(host)) {
-    return `${host} has a character other than a letter, a digit, '-', or '.', which a gateway target's endpoint refuses`;
+    return {
+      why: "has a character that the host of a gateway target cannot have",
+      fix: 'Use a host with only letters, digits, "-", and ".".',
+    };
   }
   return undefined;
 }
@@ -131,13 +144,14 @@ export type OutboundAuthResult =
   | { readonly ok: false; readonly code: FailureCode; readonly reason: string };
 
 /**
- * The gateway's outbound auth for an entry's secret: `aws://` signs with the gateway's role for the
- * host's service, `env://` sends the API key of the credential `credentialFor` names, and no secret
- * sends nothing.
+ * The gateway's outbound auth for the secret of `[egress.<entry>]`: `aws://` signs with the
+ * gateway's role for the host's service, `env://` sends the API key of the credential
+ * `credentialFor` names, and no secret sends nothing. A failure's reason follows the entry's name.
  */
 export function outboundAuthFor(
   secret: BoxEgressSecret | undefined,
   host: string,
+  entry: string,
   credentialFor: (variable: string) => string | undefined,
 ): OutboundAuthResult {
   if (!secret) return { ok: true, auth: { kind: "none" } };
@@ -149,8 +163,9 @@ export function outboundAuthFor(
         ok: false,
         code: "UNSIGNABLE_HOST",
         reason:
-          `it signs ${host} with ${secret.ref}, but the host is not an AWS endpoint the gateway ` +
-          "can sign for: bedrock, bedrock-runtime, bedrock-agentcore, or a Lambda function URL",
+          `signs requests to ${host} with ${secret.ref}, and the gateway signs only for Bedrock, ` +
+          "AgentCore, and Lambda function URL hosts. Use an env:// secret for this host, or " +
+          "remove the secret.",
       };
     }
     return { ok: true, auth: { kind: "iam", ...signing } };
@@ -161,8 +176,8 @@ export function outboundAuthFor(
         ok: false,
         code: "UNSUPPORTED_SECRET_PLACEMENT",
         reason:
-          `its secret is placed as ${secret.placement}, and a gateway API key target in ` +
-          "agentcore.json sends its key only in a header",
+          `sends its secret as ${secret.placement}, and a gateway target sends an API key only ` +
+          'in a header. Set `placement` to "header", if the host takes the key in a header.',
       };
     }
     const credentialName = credentialFor(value);
@@ -170,10 +185,12 @@ export function outboundAuthFor(
       return {
         ok: false,
         code: "API_KEY_CREDENTIAL_MISSING",
-        reason:
-          `its secret ${secret.ref} needs an API key credential named after the entry, and the ` +
-          "entry's name is not a credential name (3 to 128 letters, digits, '-', or '_'), or " +
-          "agentcore.json has a credential of another kind with that name. Rename the entry",
+        reason: CredentialNameSchema.safeParse(entry).success
+          ? `needs an API key credential named '${entry}' for ${secret.ref}, and agentcore.json ` +
+            "has a credential of another type with that name. Rename the entry, or that credential."
+          : `needs an API key credential named after it for ${secret.ref}, and ` +
+            `${JSON.stringify(entry)} is not a valid credential name (3 to 128 letters, digits, ` +
+            '"-", or "_"). Rename the entry.',
       };
     }
     const header = secret.header ?? "Authorization";
@@ -196,7 +213,11 @@ export function outboundAuthFor(
     code: "UNSUPPORTED_SECRET",
     reason:
       scheme === "credsd"
-        ? `its secret ${secret.ref} comes from credsd, which the gateway cannot read`
-        : `its secret ${secret.ref} names no scheme the gateway can use (aws:// or env://)`,
+        ? `reads its secret from ${secret.ref}, and the gateway cannot read credsd. Use an ` +
+          "env:// secret, which build stores as an API key credential."
+        : scheme === "env"
+          ? `has the secret ${secret.ref}, which names no variable. Write env://<VARIABLE>.`
+          : `has the secret ${secret.ref}, and the gateway takes only an aws:// or env:// ` +
+            "secret. Use one of them.",
   };
 }

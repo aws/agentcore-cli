@@ -61,8 +61,13 @@ describe("readBoxNetworks", () => {
     expect(network?.hosts.map(({ target }) => target)).toEqual(["egress-api"]);
   });
 
-  test("places a rule of a policy file at its line, and a rule Box adds as Box's", async () => {
+  test("places a rule of a policy file at its line, and an entry at its line in the profile", async () => {
     const root = await project(["policy.dw"]);
+    await writeFile(
+      join(root, ".box", "profile.toml"),
+      'policies = ["policy.dw"]\n\n[egress.wide]\ndestinations = ["*.wide.example.com"]\n' +
+        'secret.ref = "env://KEY"\n',
+    );
     const wild =
       '@id("wild") permit (principal, action == Box::Action::"http:request", resource) when { context.input.host like "*.example.com" };\n';
     await writeFile(join(root, ".box", "policy.dw"), `// every subdomain\n${wild}`);
@@ -82,7 +87,7 @@ describe("readBoxNetworks", () => {
         place,
       ]),
     ).toEqual([
-      ["EGRESS_WILDCARD_DESTINATION", "wide", undefined],
+      ["EGRESS_WILDCARD_DESTINATION", "wide", ".box/profile.toml:3:1"],
       ["WILDCARD_HOST", "wild", ".box/policy.dw:2:1"],
     ]);
   });
@@ -105,7 +110,7 @@ describe("readBoxNetworks", () => {
     ).rejects.toBe(refused);
   });
 
-  test("refuses a policy file Box would refuse, each at its place", async () => {
+  test("refuses a policy file Box would refuse, each at `policies`, and says how to fix it", async () => {
     const root = await project([
       "missing.dw",
       "outside.dw",
@@ -120,31 +125,22 @@ describe("readBoxNetworks", () => {
     await link(join(root, ".box", "policy.dw"), join(root, ".box", "linked.dw"));
     await mkdir(join(root, ".box", "folder.dw"));
 
-    expect(await failuresOf(root)).toEqual([
-      expect.objectContaining({
-        place: ".box/missing.dw",
-        reason: expect.stringContaining("does not exist"),
-      }),
-      expect.objectContaining({
-        place: ".box/outside.dw",
-        reason: expect.stringContaining("a symlink that leaves .box/"),
-      }),
-      expect.objectContaining({
-        place: ".box/linked.dw",
-        reason: expect.stringContaining("has 2 hard links"),
-      }),
-      expect.objectContaining({
-        place: ".box/folder.dw",
-        reason: expect.stringContaining("is a directory"),
-      }),
-      expect.objectContaining({
-        place: ".box/box",
-        reason: expect.stringContaining("takes the name box"),
-      }),
-      expect.objectContaining({
-        place: ".box/a b.dw",
-        reason: expect.stringContaining("cannot copy"),
-      }),
+    const reasons = await failuresOf(root);
+    expect(reasons.map(({ code, place }) => [code, place])).toEqual(
+      Array(6).fill(["INVALID_POLICY_FILE", ".box/profile.toml:1:1"]),
+    );
+    expect(reasons.map(({ reason }) => reason)).toEqual([
+      "`policies` names missing.dw, but .box/missing.dw does not exist. Create it, or remove " +
+        "it from `policies`.",
+      ".box/outside.dw is a symbolic link to a file outside .box/, which Box does not read. Put " +
+        "the policy file itself in .box/.",
+      ".box/linked.dw has 2 hard links, and Box reads only a policy file with one. Replace it " +
+        "with a copy.",
+      ".box/folder.dw is a folder, not a policy file. Name a file in `policies`.",
+      '.box/box takes the name "box", which Box keeps for its own files on AgentCore Runtime. ' +
+        "Rename the file.",
+      '.box/a b.dw has a character other than a letter, a digit, ".", "_", "-", or "/" in its ' +
+        "path, and deploy cannot copy it to AgentCore Runtime. Rename the file.",
     ]);
   });
 
@@ -175,21 +171,23 @@ describe("the IAM policy files of the Box gateway", () => {
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
 
     expect(network?.grantedActions).toEqual(["bedrock:InvokeModel"]);
-    const tail =
-      "so build counts none of its actions when it checks what the gateway's role may sign for";
+    const listing = "in additionalPolicies of the gateway 'agent-box'";
+    const check = "so build cannot check the permissions it grants.";
     // Build writes box-bedrock-policy.json itself, so a missing one is no warning.
     expect(network?.warnings).toEqual([
-      `agentcore/missing.json, which additionalPolicies of gateway 'agent-box' lists, does not exist, ${tail}`,
+      `agentcore/missing.json, ${listing}, does not exist, ${check} Create it, or remove it ` +
+        "from additionalPolicies.",
       expect.stringMatching(
-        /^agentcore\/broken\.json, which additionalPolicies of gateway 'agent-box' lists, is not valid JSON \(.+\), so build counts none/,
+        /^agentcore\/broken\.json, in additionalPolicies of the gateway 'agent-box', is not valid JSON \(.+\), so build cannot check the permissions it grants\. Correct the JSON\.$/,
       ),
-      `agentcore/list.json, which additionalPolicies of gateway 'agent-box' lists, is not a JSON object, ${tail}`,
+      `agentcore/list.json, ${listing}, is not a JSON object, ${check} Make it an IAM policy ` +
+        "document.",
     ]);
   });
 });
 
 describe("boxNetworkFailureMessage", () => {
-  test("lists every failure once for the runtimes that share them, and says nothing was written", async () => {
+  test("lists a problem of every box runtime once, with no runtime, and says nothing changed", async () => {
     const root = await project(["missing.dw"]);
     const spec = {
       ...SPEC,
@@ -198,13 +196,46 @@ describe("boxNetworkFailureMessage", () => {
 
     const networks = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
 
-    expect(boxNetworkFailureMessage(networks)).toBe(
-      ".box/profile.toml does not parse into the Box network of the Box gateway 'agent-box', " +
-        "'second-box' of runtimes 'agent', 'second' (1 failure):\n" +
-        "  - INVALID_POLICY_FILE, at .box/missing.dw: .box/profile.toml names the policy file " +
-        ".box/missing.dw, which does not exist\n\n" +
-        "Nothing of the box profile was written: no gateway target, credential, Memory target, " +
-        "or file. Change the profile or its policy files, then retry.",
+    expect(boxNetworkFailureMessage(networks, "deploy")).toBe(
+      "Deploy stopped: 1 problem in the Box profile. Nothing was changed.\n" +
+        ".box/profile.toml:1:1  `policies` names missing.dw, but .box/missing.dw does not exist. " +
+        "Create it, or remove it from `policies`.",
+    );
+  });
+
+  test("names the runtime of a problem that only some box runtimes have", async () => {
+    const root = await project(["missing.dw"]);
+    const spec = {
+      ...SPEC,
+      runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
+      agentCoreGateways: [
+        {
+          ...getBoxGatewayEntry("second"),
+          targets: [
+            {
+              name: "api",
+              targetType: "passthrough",
+              passthrough: { endpoint: "https://api.example.com/v1", protocolType: "CUSTOM" },
+            },
+          ],
+        },
+      ],
+    } as ProjectSpec;
+
+    const networks = await readBoxNetworks(
+      spec,
+      root,
+      new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE })),
+    );
+
+    expect(boxNetworkFailureMessage(networks, "build")).toBe(
+      "Build stopped: 2 problems in the Box profile and agentcore.json. Nothing was changed.\n" +
+        ".box/profile.toml:1:1  `policies` names missing.dw, but .box/missing.dw does not exist. " +
+        "Create it, or remove it from `policies`.\n" +
+        "In runtime second:\n" +
+        "  agentcore/agentcore.json  The gateway target 'api' for api.example.com has the path " +
+        "/v1 in its endpoint, and the agent's requests do not include it. Remove /v1 from the " +
+        "endpoint, or remove the target.",
     );
   });
 });

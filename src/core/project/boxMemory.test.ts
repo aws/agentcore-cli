@@ -63,8 +63,8 @@ describe("addBoxMemoryTarget", () => {
     const project = spec();
 
     expect(addBoxMemoryTarget(project, await root())).toEqual([
-      "adding target 'agentcore' to gateway 'agent-box' in agentcore.json, for the boxed agent's Memory calls",
-      "adding 'agentcore/box-memory-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call Memory",
+      "adding gateway target 'agentcore' to 'agent-box' for the agent's Memory calls",
+      "adding agentcore/box-memory-policy.json to additionalPolicies of 'agent-box', so the gateway can call Memory",
     ]);
     expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
@@ -125,7 +125,7 @@ describe("addBoxMemoryTarget", () => {
     project.agentCoreGateways[0]!.targets.push(getBoxGatewayAgentCoreTargetSpec());
 
     expect(addBoxMemoryTarget(project, await root())).toEqual([
-      "adding 'agentcore/box-memory-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call Memory",
+      "adding agentcore/box-memory-policy.json to additionalPolicies of 'agent-box', so the gateway can call Memory",
     ]);
     expect(targets(project)).toEqual(["bedrock", "agentcore"]);
   });
@@ -169,8 +169,8 @@ describe("addBoxBedrockTarget", () => {
     const project = without(spec());
 
     expect(addBoxBedrockTarget(project, await root())).toEqual([
-      "adding target 'bedrock' to gateway 'agent-box' in agentcore.json, for the boxed agent's model calls",
-      "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      "adding gateway target 'bedrock' to 'agent-box' for the agent's model calls",
+      "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-box', so the gateway can call the Bedrock model",
     ]);
     expect(targets(project)).toEqual(["bedrock"]);
   });
@@ -179,7 +179,7 @@ describe("addBoxBedrockTarget", () => {
     const project = spec();
 
     expect(addBoxBedrockTarget(project, await root())).toEqual([
-      "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-box', so the gateway can call the Bedrock model",
     ]);
     expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([
       "agentcore/box-bedrock-policy.json",

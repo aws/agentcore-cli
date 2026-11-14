@@ -245,7 +245,7 @@ function checkPath(path: string[], action: NetworkAction, text: string): void {
   if (root === "principal" || root === "resource" || root === "action") {
     throw new ClauseFailure(
       "UNKNOWN_ATTRIBUTE",
-      `it reads ${text}, but Box entities have no attributes`,
+      `reads ${text}, but the ${root} has no attributes in Box. Remove that condition.`,
     );
   }
   if (root !== "context" || group === undefined) return;
@@ -255,9 +255,12 @@ function checkPath(path: string[], action: NetworkAction, text: string): void {
       action === "http:request" &&
       (field === undefined || field === "status"));
   if (!known) {
+    const fields = [...INPUT_FIELDS[action]].map((name) => `context.input.${name}`);
+    if (action === "http:request") fields.push("context.output.status");
     throw new ClauseFailure(
       "UNKNOWN_ATTRIBUTE",
-      `it reads ${path.join(".")}, which ${action} does not declare`,
+      `reads ${path.join(".")}, which ${action} does not have. Use one of ` +
+        `${fields.slice(0, -1).join(", ")}, or ${fields.at(-1)}.`,
     );
   }
 }
@@ -442,6 +445,14 @@ function identityFormula(
   return constant(expr.op === "!=" ? !matches : matches, expr.text);
 }
 
+/** Why a rule that names the `Box::Action` `id`, which Box does not have, fails. */
+export function unknownActionReason(id: string): string {
+  return (
+    `names the action Box::Action::"${id}", which Box does not have. Use a Box action, such as ` +
+    'Box::Action::"http:request" or Box::Action::"net:connect".'
+  );
+}
+
 /** Whether `entity` is a `Box::Action` the vocabulary does not hold. */
 export function isUnknownBoxAction(entity: EntityRef): boolean {
   return entity.type.join("::") === "Box::Action" && !BOX_ACTIONS.has(entity.id);
@@ -449,10 +460,7 @@ export function isUnknownBoxAction(entity: EntityRef): boolean {
 
 function checkAction(entity: EntityRef): void {
   if (isUnknownBoxAction(entity)) {
-    throw new ClauseFailure(
-      "UNKNOWN_ACTION",
-      `it names Box::Action::"${entity.id}", which Box does not define`,
-    );
+    throw new ClauseFailure("UNKNOWN_ACTION", unknownActionReason(entity.id));
   }
 }
 
@@ -482,8 +490,9 @@ function checkHostLiteral(comparison: Comparison, text: string): void {
   if (literal !== literal.toLowerCase() || literal.endsWith(".")) {
     throw new ClauseFailure(
       "INVALID_HOST",
-      `it compares the host with ${JSON.stringify(literal)}, which Box never presents: Box ` +
-        `compares the host in lower case with no trailing dot (${text})`,
+      `compares the host with ${JSON.stringify(literal)} (${text}), which never matches, ` +
+        "because Box compares hosts in lower case with no trailing dot. Write the host as " +
+        `${JSON.stringify(literal.toLowerCase().replace(/\.+$/, ""))}.`,
     );
   }
 }
@@ -521,6 +530,7 @@ function disjunctiveNormalForm(formula: Formula, negated: boolean): Atom[][] {
 function tooComplex(): ClauseFailure {
   return new ClauseFailure(
     "CONDITION_TOO_COMPLEX",
-    `its condition expands to more than ${MAX_CLAUSES} cases`,
+    `has a condition with more than ${MAX_CLAUSES} cases, which is too many for build to check. ` +
+      "Split it into smaller rules.",
   );
 }

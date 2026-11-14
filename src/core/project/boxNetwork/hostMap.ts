@@ -8,12 +8,13 @@ import {
   holds,
   isUnknownBoxAction,
   pinnedValue,
+  unknownActionReason,
   type Clause,
   type ClauseSet,
   type FieldAtom,
   type NetworkAction,
 } from "./conditions";
-import type { Statement } from "./dogwood";
+import type { SourceSpan, Statement } from "./dogwood";
 import {
   BoxEgressEntrySchema,
   BoxMcpEntrySchema,
@@ -22,6 +23,7 @@ import {
   type BoxEgressSecret,
   type Destination,
 } from "./egress";
+import { BOX_METADATA_RULE_IDS } from "./places";
 import {
   ROUTABLE_METHODS,
   hostKey,
@@ -44,9 +46,6 @@ const HTTP_METHODS = [
   "CONNECT",
   "TRACE",
 ];
-
-/** The rules the box CLI writes into every profile, which Box enforces for every host. */
-const BOX_CLI_BUILT_INS: ReadonlySet<string> = new Set(["metadata_hosts", "metadata_addresses"]);
 
 /** A path segment no rule names, which stands for every path below a sample that no rule names. */
 export const SENTINEL_SEGMENT = "§";
@@ -151,18 +150,21 @@ class HostMapBuilder {
     for (const [name, entry] of Object.entries(input.mcp)) this.addMcpEntry(name, entry);
 
     const rules: Rule[] = [];
-    const seen = new Set<string>();
+    const seen = new Map<string, SourceSpan>();
     input.statements.forEach((statement, order) => {
       if (this.covered.has(statement.id)) return;
-      if (seen.has(statement.id)) {
+      const first = seen.get(statement.id);
+      if (first) {
         this.failures.push({
           code: "DUPLICATE_RULE_ID",
           ruleId: statement.id,
-          reason: `two rules have the @id ${JSON.stringify(statement.id)}`,
+          reason: "has the same @id as another rule. Give each rule its own @id.",
           span: statement.span,
+          firstSpan: first,
         });
+      } else {
+        seen.set(statement.id, statement.span);
       }
-      seen.add(statement.id);
       const rule = this.classify(statement, order);
       if (rule) rules.push(rule);
     });
@@ -190,7 +192,7 @@ class HostMapBuilder {
       const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "entry"}: ${i.message}`);
       problems.push({
         code: "INVALID_INPUT",
-        reason: `it is not a valid egress entry: ${issues.join("; ")}`,
+        reason: `is not a valid entry (${issues.join("; ")}). Correct the entry.`,
       });
     } else {
       problems.push(...entryProblems(parsed.data, destinations));
@@ -209,7 +211,9 @@ class HostMapBuilder {
         if (holder === undefined) continue;
         problems.push({
           code: "EGRESS_DESTINATION_OVERLAP",
-          reason: `it names ${group.key}, which [egress.${holder}] names too; one host and port is one entry and one gateway target, as Box requires. Keep ${group.key} in one of [egress.${holder}] and [egress.${name}]`,
+          reason:
+            `names ${group.key}, and [egress.${holder}] names it too, but one host has only one ` +
+            `entry. Keep ${group.key} in only one of the two.`,
         });
       }
     }
@@ -229,9 +233,8 @@ class HostMapBuilder {
       }
       return undefined;
     }
-    for (const { code, reason } of problems) {
-      this.failures.push({ code, egressEntry: name, reason: `[egress.${name}]: ${reason}` });
-    }
+    for (const { code, reason } of problems)
+      this.failures.push({ code, egressEntry: name, reason });
     return destinations.flatMap(({ parsed: d }) => (d && !d.wildcard ? [d] : []));
   }
 
@@ -242,7 +245,9 @@ class HostMapBuilder {
       this.failures.push({
         code: "INVALID_INPUT",
         mcpEntry: name,
-        reason: `[mcp.${name}]: it is not a valid MCP entry`,
+        reason:
+          "is not a valid MCP entry. Give it a `type`, and for a server over HTTP, a list of " +
+          "`destinations`.",
       });
       return;
     }
@@ -256,8 +261,8 @@ class HostMapBuilder {
       code: "MCP_OVER_HTTP",
       mcpEntry: name,
       reason:
-        `[mcp.${name}]: it is an MCP server over HTTP, and Box cannot route an MCP server ` +
-        "through a gateway backend",
+        "is an MCP server over HTTP, and the deployed agent cannot reach it through the " +
+        "gateway. Make it a stdio server, or remove it.",
     });
   }
 
@@ -284,12 +289,14 @@ class HostMapBuilder {
             port = 443;
           } else {
             if (action === "http:request") {
+              const ports = atoms("port")
+                .map((a) => a.text)
+                .join(" and ");
               this.ruleFailure(
                 rule,
                 "UNCONSTRAINED_PORT",
-                `it allows ${host} on ports ${atoms("port")
-                  .map((a) => a.text)
-                  .join(" and ")} with no fixed port; a gateway target needs one`,
+                `allows ${host} on each port where ${ports}, and each gateway target needs one ` +
+                  "fixed port. Name one port, for example context.input.port == 443.",
               );
             }
             continue;
@@ -318,11 +325,7 @@ class HostMapBuilder {
       scope.kind === "any" ? [] : scope.kind === "eq" ? [scope.entity] : scope.entities;
     const unknown = entities.find(isUnknownBoxAction);
     if (unknown) {
-      this.failRule(
-        statement,
-        "UNKNOWN_ACTION",
-        `it names Box::Action::"${unknown.id}", which Box does not define`,
-      );
+      this.failRule(statement, "UNKNOWN_ACTION", unknownActionReason(unknown.id));
       return undefined;
     }
     const network: NetworkAction[] =
@@ -364,7 +367,8 @@ class HostMapBuilder {
       this.ruleFailure(
         rule,
         "PLAIN_HTTP_ONLY",
-        "it allows only plain HTTP (intercepted == false); the gateway reaches a target only over HTTPS",
+        "allows only plain HTTP requests, as it requires that context.input.intercepted is " +
+          "false, and the gateway reaches hosts only over HTTPS. Remove that condition.",
       );
     }
     const byHost = new Map<string, Binding[]>();
@@ -375,7 +379,8 @@ class HostMapBuilder {
         this.ruleFailure(
           rule,
           "METHOD_NOT_ROUTABLE",
-          `it allows only ${names} on ${host}; the gateway routes only GET, POST, and DELETE to a passthrough target`,
+          `allows only ${names} on ${host}, and the gateway sends only GET, POST, and DELETE ` +
+            "requests to a host. Allow GET, POST, or DELETE in the rule, or remove the rule.",
         );
       }
     }
@@ -387,19 +392,26 @@ class HostMapBuilder {
     const host = pinnedValue(hostAtoms, "host");
     if (typeof host !== "string") {
       const pattern = hostAtoms.find((a) => !a.negated && a.comparison.op === "like");
-      if (pattern) {
+      const example = 'for example context.input.host == "api.example.com"';
+      if (pattern && pattern.comparison.op === "like") {
+        const hosts = pattern.comparison.pattern.parts
+          .map((part) => (part.kind === "literal" ? part.text : "*"))
+          .join("");
         this.ruleFailure(
           rule,
           "WILDCARD_HOST",
-          `it allows hosts by the pattern ${pattern.text}; a gateway target needs one fixed host, so name each host`,
+          `allows each host that matches ${JSON.stringify(hosts)}, and each gateway target ` +
+            `needs one fixed host. Name each host in the rule, ${example}.`,
         );
       } else {
         this.ruleFailure(
           rule,
           "UNCONSTRAINED_HOST",
           hostAtoms.length > 0
-            ? `it allows every host except those it excludes (${hostAtoms.map((a) => a.text).join(", ")}); a gateway target needs one fixed host`
-            : "it allows requests to every host; a gateway target needs one fixed host",
+            ? `allows every host except the ones it excludes (${hostAtoms.map((a) => a.text).join(", ")}), ` +
+                `and each gateway target needs one fixed host. Name each host it allows, ${example}.`
+            : "allows requests to every host, and each gateway target needs one fixed host. Add " +
+                `a condition that names each host, ${example}.`,
         );
       }
       return undefined;
@@ -407,7 +419,11 @@ class HostMapBuilder {
     if (!hostAtoms.every((a) => holds(a, host)) || this.mcpHosts.has(host)) return undefined;
     const problem = targetHostProblem(host);
     if (problem !== undefined) {
-      this.ruleFailure(rule, "INVALID_HOST", `it allows ${problem}`);
+      this.ruleFailure(
+        rule,
+        "INVALID_HOST",
+        `allows the host ${JSON.stringify(host)}, which ${problem.why}. ${problem.fix}`,
+      );
       return undefined;
     }
     const portAtoms = atoms("port");
@@ -418,7 +434,8 @@ class HostMapBuilder {
         this.ruleFailure(
           rule,
           "PLAIN_HTTP_ONLY",
-          `it allows ${host}:80, which is plain HTTP; the gateway reaches a target only over HTTPS`,
+          `allows ${host} on port 80, which is plain HTTP, and the gateway reaches hosts only ` +
+            "over HTTPS. Use port 443.",
         );
         return undefined;
       }
@@ -429,7 +446,8 @@ class HostMapBuilder {
       this.ruleFailure(
         rule,
         "EGRESS_ENTRY_FAILED",
-        `it allows ${key}, whose [egress.${blockedBy}] entry cannot convert`,
+        `allows ${key}, and [egress.${blockedBy}] for that host has a problem. Fix ` +
+          `[egress.${blockedBy}] first.`,
       );
       return undefined;
     }
@@ -509,7 +527,7 @@ function decide(node: Node, policy: Policy): MappedHost {
     }
   }
   for (const [ruleId, order] of forbiddenBy) enforced.set(ruleId, order);
-  for (const ruleId of BOX_CLI_BUILT_INS) enforced.delete(ruleId);
+  for (const ruleId of BOX_METADATA_RULE_IDS) enforced.delete(ruleId);
   const inOrder = (rules: Map<string, number>) =>
     [...rules].sort(([, a], [, b]) => a - b).map(([ruleId]) => ruleId);
   return {
@@ -640,7 +658,7 @@ export function sampleRequests(
   return ROUTABLE_METHODS.flatMap((method) => [...paths].map((path) => ({ method, path })));
 }
 
-/** What keeps an entry from routing to gateway targets. */
+/** What keeps an entry from routing to gateway targets, each reason to follow its name. */
 function entryProblems(
   entry: {
     readonly protocol?: string;
@@ -654,37 +672,49 @@ function entryProblems(
     if (!d.parsed)
       problems.push({
         code: "INVALID_INPUT",
-        reason: `its destination ${JSON.stringify(d.text)} is not host[:port][/path]`,
+        reason:
+          `has the destination ${JSON.stringify(d.text)}, which is not a host or host:port, ` +
+          "with or without a path. Correct the destination.",
       });
   }
   if (entry.protocol === "mcp") {
     problems.push({
       code: "MCP_OVER_HTTP",
       reason:
-        "it is an MCP server; Box cannot route an MCP server through a gateway backend, so the gateway cannot carry it",
+        'is an MCP server (protocol = "mcp"), and the deployed agent cannot reach it through the ' +
+        "gateway. Run the server as a stdio server under [mcp], or remove the entry.",
     });
   }
   if ((entry.backends?.length ?? 0) > 0) {
     problems.push({
       code: "EGRESS_HAS_BACKEND",
-      reason: "it already routes to a backend; convert the source profile, not the Runtime profile",
+      reason:
+        "already has `backends`, and build sends each host through the gateway itself. Remove " +
+        "`backends` from the entry.",
     });
   }
   for (const d of destinations) {
     if (d.parsed?.wildcard) {
       problems.push({
         code: "EGRESS_WILDCARD_DESTINATION",
-        reason: `its destination ${d.text} is a wildcard; a gateway target needs one fixed host, so name each host`,
+        reason:
+          `has the wildcard destination ${JSON.stringify(d.text)}, and each gateway target ` +
+          "needs one fixed host. Name each host in `destinations`.",
       });
       continue;
     }
     const problem = d.parsed && targetHostProblem(d.parsed.host);
     if (problem !== undefined) {
-      problems.push({ code: "INVALID_HOST", reason: `its destination ${d.text} names ${problem}` });
+      problems.push({
+        code: "INVALID_HOST",
+        reason: `has the destination ${JSON.stringify(d.text)}, whose host ${problem.why}. ${problem.fix}`,
+      });
     } else if (d.parsed?.port === 80) {
       problems.push({
         code: "PLAIN_HTTP_ONLY",
-        reason: `its destination ${d.text} is plain HTTP; the gateway reaches a target only over HTTPS`,
+        reason:
+          `has the destination ${JSON.stringify(d.text)}, which is plain HTTP, and the gateway ` +
+          "reaches hosts only over HTTPS. Use port 443.",
       });
     }
   }
@@ -693,8 +723,8 @@ function entryProblems(
     problems.push({
       code: "PATH_SCOPED_SECRET",
       reason:
-        `its secret applies only under ${scoped.parsed!.path}, but a gateway target sends its ` +
-        "credential on every path of the host",
+        `sends its secret only under ${scoped.parsed!.path}, and a gateway target sends its ` +
+        "credential on every path of the host. Remove the path from the destination.",
     });
   }
   return problems;

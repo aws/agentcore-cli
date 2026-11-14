@@ -10,7 +10,13 @@ import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
-import { gatewayTargetFor, isManagedTarget, type BoxNetwork } from "./boxNetwork";
+import {
+  gatewayTargetFor,
+  hostKey,
+  isManagedTarget,
+  parseEndpoint,
+  type BoxNetwork,
+} from "./boxNetwork";
 import {
   addBoxGatewayTargets,
   BOX_BEDROCK_POLICY_FILE,
@@ -144,6 +150,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const existing = gateway?.targets ?? [];
   const messages: string[] = [];
   const targets: AgentCoreGatewayTarget[] = [];
+  const gatewayName = `'${network.gateway}'`;
   for (const target of existing) {
     if (!isManagedTarget(target)) {
       targets.push(target);
@@ -151,17 +158,17 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     }
     const host = served.find((candidate) => candidate.target === target.name);
     if (!host) {
+      const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
       messages.push(
-        `removing target '${target.name}' from gateway '${network.gateway}' in agentcore.json: ` +
-          "Box allows no request to its host in .box/profile.toml",
+        `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
+          `longer allows ${at ? hostKey(at.host, at.port) : "its host"}`,
       );
       continue;
     }
     const written = gatewayTargetFor(host);
     if (!isDeepStrictEqual(written, target)) {
       messages.push(
-        `updating target '${target.name}' of gateway '${network.gateway}' in agentcore.json, ` +
-          `for ${host.authority}`,
+        `updating gateway target '${target.name}' of ${gatewayName} for ${host.authority}`,
       );
     }
     targets.push(written);
@@ -169,10 +176,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   for (const host of served) {
     if (existing.some(({ name }) => name === host.target)) continue;
     targets.push(gatewayTargetFor(host));
-    messages.push(
-      `adding target '${host.target}' to gateway '${network.gateway}' in agentcore.json, ` +
-        `for ${host.authority}`,
-    );
+    messages.push(`adding gateway target '${host.target}' to ${gatewayName} for ${host.authority}`);
   }
   if (messages.length === 0) return [];
   if (!gateway) {

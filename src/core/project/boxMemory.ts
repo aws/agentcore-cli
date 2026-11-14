@@ -151,8 +151,7 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
     if (!servesTarget(gateway.targets, getBoxGatewayAgentCoreTargetSpec())) {
       gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
       messages.push(
-        `adding target '${BOX_MEMORY_TARGET}' to gateway '${name}' in ` +
-          "agentcore.json, for the boxed agent's Memory calls",
+        `adding gateway target '${BOX_MEMORY_TARGET}' to '${name}' for the agent's Memory calls`,
       );
     }
     // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
@@ -162,8 +161,8 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
     ) {
       gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_MEMORY_POLICY_FILE];
       messages.push(
-        `adding '${BOX_MEMORY_POLICY_FILE}' to gateway '${name}' ` +
-          "additionalPolicies in agentcore.json, so its role can call Memory",
+        `adding ${BOX_MEMORY_POLICY_FILE} to additionalPolicies of '${name}', so the gateway ` +
+          "can call Memory",
       );
     }
   }
@@ -230,8 +229,8 @@ export function addBoxBedrockTarget(spec: ProjectSpec, projectRoot: string): str
     if (!servesTarget(gateway.targets, getBoxGatewayBedrockTargetSpec())) {
       gateway.targets.push(getBoxGatewayBedrockTargetSpec());
       messages.push(
-        `adding target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to gateway '${gateway.name}' in ` +
-          "agentcore.json, for the boxed agent's model calls",
+        `adding gateway target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to '${gateway.name}' for the ` +
+          "agent's model calls",
       );
     }
     // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
@@ -241,8 +240,8 @@ export function addBoxBedrockTarget(spec: ProjectSpec, projectRoot: string): str
     ) {
       gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_BEDROCK_POLICY_FILE];
       messages.push(
-        `adding '${BOX_BEDROCK_POLICY_FILE}' to gateway '${gateway.name}' ` +
-          "additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+        `adding ${BOX_BEDROCK_POLICY_FILE} to additionalPolicies of '${gateway.name}', so the ` +
+          "gateway can call the Bedrock model",
       );
     }
   }

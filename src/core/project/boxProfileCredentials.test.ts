@@ -80,7 +80,7 @@ describe("addBoxEgressCredentials", () => {
     const needed = [{ name: "github", variable: "GITHUB_TOKEN" }];
 
     expect(addBoxEgressCredentials(s, needed)).toEqual([
-      "adding API key credential 'github' to agentcore.json for box egress 'env://GITHUB_TOKEN', so deploy provisions it in AgentCore Identity",
+      "adding API key credential 'github' for env://GITHUB_TOKEN",
     ]);
     expect(addBoxEgressCredentials(s, needed)).toEqual([]);
     expect(s.credentials).toEqual([{ authorizerType: "ApiKeyCredentialProvider", name: "github" }]);

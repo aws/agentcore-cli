@@ -59,7 +59,9 @@ export function boxEgressCredentials(
     const credential = boxEgressCredentialName(credentials, name, variable);
     if (credential === undefined) {
       skipped.push(
-        `skipping box egress '${name}' (env://${variable}): '${name}' is not a valid credential name`,
+        `[egress.${name}] gets no API key credential for env://${variable}: ${JSON.stringify(name)} ` +
+          "is not a valid credential name, or a credential of another type has it. Rename the " +
+          "entry.",
       );
       continue;
     }
@@ -84,10 +86,7 @@ export function addBoxEgressCredentials(
   for (const { name, variable } of needed) {
     if (spec.credentials.some((credential) => credential.name === name)) continue;
     spec.credentials.push({ authorizerType: "ApiKeyCredentialProvider", name });
-    messages.push(
-      `adding API key credential '${name}' to agentcore.json for box egress 'env://${variable}', ` +
-        "so deploy provisions it in AgentCore Identity",
-    );
+    messages.push(`adding API key credential '${name}' for env://${variable}`);
   }
   return messages;
 }

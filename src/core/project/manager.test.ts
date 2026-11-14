@@ -1880,7 +1880,7 @@ describe("FsProjectManager.build", () => {
       {
         type: "step",
         message:
-          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+          "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-python-minimal-box', so the gateway can call the Bedrock model",
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },
