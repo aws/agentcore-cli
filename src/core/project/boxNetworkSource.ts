@@ -50,14 +50,25 @@ export function readBoxNetworks(spec: ProjectSpec, projectRoot: string): BoxNetw
 
 /**
  * Each policy file the box profile names, as an image's `.box-dist/` takes it under `agentcore
- * dev`, which stages the profile itself and not the Runtime one, and builds no model. Throws for a
- * policy file Box would refuse.
+ * dev`, which stages the profile itself and not the Runtime one, and builds no model. Throws, with
+ * every failure where it is, for a profile whose policy files cannot be read and for a policy file
+ * Box would refuse.
  */
 export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
-  const { profile } = readProfile(projectRoot);
-  const { failures } = readPolicyFiles(projectRoot, profile.policyFiles);
+  const { profile, failures: profileFailures } = readProfile(projectRoot);
+  const files = readPolicyFiles(projectRoot, profile.policyFiles);
+  // The box in the image reads every pack; only build refuses one it does not convert.
+  const failures = [
+    ...profileFailures.filter(({ code }) => code !== "UNSUPPORTED_PACK"),
+    ...files.failures,
+  ];
   if (failures.length > 0) {
-    throw new ProjectStateError(failures.map(({ reason }) => reason).join("\n"));
+    const count = `${failures.length} ${failures.length === 1 ? "failure" : "failures"}`;
+    throw new ProjectStateError(
+      `\`agentcore dev\` cannot stage the policy files of ${BOX_PROFILE_PATH} (${count}):\n` +
+        failures.map((failure) => `  - ${failureLine(failure)}`).join("\n") +
+        "\n\nNothing was staged. Change the profile or its policy files, then retry.",
+    );
   }
   return profile.policyFiles.map((relative) => ({
     from: join(projectRoot, ".box", ...relative.split("/")),
