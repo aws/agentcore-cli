@@ -1872,7 +1872,16 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    expect(events).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
+    // The Box gateway signs the model calls with its own role, so build grants it Bedrock.
+    expect(events).toEqual([
+      {
+        type: "step",
+        message:
+          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      },
+      { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
+      { type: "step", message: "synthesizing CloudFormation templates" },
+    ]);
     // The zip carries box and the Runtime profile, staged before synth packages the code.
     const dist = join(directory, "example", "app", "agent_python_minimal", ".box-dist");
     expect(existsSync(join(dist, "box"))).toBe(true);
@@ -1940,7 +1949,10 @@ describe("FsProjectManager.build", () => {
       ({ name }: { name: string }) => name === "agent-python-strands-box",
     );
     expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
-    expect(box.additionalPolicies).toEqual(["agentcore/box-memory-policy.json"]);
+    expect(box.additionalPolicies).toEqual([
+      "agentcore/box-bedrock-policy.json",
+      "agentcore/box-memory-policy.json",
+    ]);
     expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
     expect(events).toContainEqual({
       type: "step",

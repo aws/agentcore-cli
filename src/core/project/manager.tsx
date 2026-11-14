@@ -51,7 +51,13 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
-import { addBoxGatewayTargets, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
+import {
+  addBoxGatewayTargets,
+  BOX_BEDROCK_POLICY_FILE,
+  BOX_MEMORY_POLICY_FILE,
+  boxBedrockPolicy,
+  boxMemoryPolicy,
+} from "./boxMemory";
 import {
   addBoxProfileCredentials,
   boxProfileCredentialEnvEntries,
@@ -1584,10 +1590,13 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<{ project: Project; messages: string[] }> {
     const spec = structuredClone(project.spec);
     const messages = addBoxGatewayTargets(spec, project.rootPath);
-    const policy = boxMemoryPolicy(spec, project.rootPath);
-    if (policy) {
-      const policyPath = join(project.rootPath, BOX_MEMORY_POLICY_FILE);
-      if (!existsSync(policyPath)) messages.push(`writing ${BOX_MEMORY_POLICY_FILE}`);
+    for (const [file, policy] of [
+      [BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy(spec, project.rootPath)],
+      [BOX_MEMORY_POLICY_FILE, boxMemoryPolicy(spec, project.rootPath)],
+    ] as const) {
+      if (!policy) continue;
+      const policyPath = join(project.rootPath, file);
+      if (!existsSync(policyPath)) messages.push(`writing ${file}`);
       await this.json.write(policyPath, policy);
     }
     if (messages.length === 0) return { project, messages };

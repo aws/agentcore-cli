@@ -252,11 +252,14 @@ const IMAGE_PYTHON_FILESYSTEM = {
   deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
 };
 
+/** The fake AWS keys a Runtime profile gives the agent, so boto3 in the box builds its requests. */
+const AWS_STAND_INS = { AWS_ACCESS_KEY_ID: "box-stand-in", AWS_SECRET_ACCESS_KEY: "box-stand-in" };
+
 describe("renderBoxProfile for AgentCore Runtime", () => {
   test("runs agent-python-strands from the zip with the Runtime's Python, for start.sh to fill in", () => {
     const text = renderBoxProfile("V3Demo", template("agent-python-strands"), "runtime")!;
     // start.sh replaces this line with the deployed Memories' and Gateways' variables.
-    expect(text).toContain('PYTHONUTF8 = "1"\n# @AGENT_ENV@\n');
+    expect(text).toContain('AWS_SECRET_ACCESS_KEY = "box-stand-in"\n# @AGENT_ENV@\n');
     expect(parse(text)).toEqual({
       packs: ["box/base", "box/bedrock"],
       profile: { name: "V3Demo" },
@@ -279,6 +282,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
           PYTHONPATH: "@CODE@/.box-dist/ffi:@CODE@",
           PYTHONUNBUFFERED: "1",
           PYTHONUTF8: "1",
+          ...AWS_STAND_INS,
         },
         filesystem: {
           read: ["@CODE@", "@PYTHON_PREFIX@", "/usr/lib64", "/lib64"],
@@ -309,7 +313,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
             "--port",
             "8081",
           ],
-          env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
+          env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1", ...AWS_STAND_INS },
           filesystem: IMAGE_PYTHON_FILESYSTEM,
           ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
         },
