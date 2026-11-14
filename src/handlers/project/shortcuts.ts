@@ -7,11 +7,8 @@ import {
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import type { PolicyEngine } from "../../projectSchemas/policy";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
-import { boxGatewayName, boxGatewayPolicyEngineName } from "../../projectSchemas/project";
-
-export { boxGatewayPolicyEngineName };
+import { boxGatewayName } from "../../projectSchemas/project";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -69,25 +66,9 @@ export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway
   };
 }
 
-/** The mode of a Box gateway's policy engine: `ENFORCE`, so its policies are enforced. */
-export const BOX_GATEWAY_POLICY_ENGINE_MODE = "ENFORCE" as const;
-
-/**
- * The policy engine of a runtime's Box gateway: one engine for each gateway, with no policies.
- * `agentcore create` declares it, and the Box gateway entry attaches it. Add policies later.
- */
-export function getBoxGatewayPolicyEngineSpec(runtimeName: string): PolicyEngine {
-  return {
-    name: boxGatewayPolicyEngineName(runtimeName),
-    description: `Policy engine for the Box gateway '${boxGatewayName(runtimeName)}'.`,
-    policies: [],
-  };
-}
-
 /**
  * An entry for the runtime's Box gateway, `<runtime>-box`, with no targets yet. It has the
- * settings `agentcore add gateway-target` gives one, which are the Box gateway's own. The entry
- * attaches the gateway's own policy engine, which `getBoxGatewayPolicyEngineSpec` declares.
+ * settings `agentcore add gateway-target` gives one, which are the Box gateway's own.
  */
 export function getBoxGatewayEntry(runtimeName: string): AgentCoreGateway {
   return {
@@ -98,10 +79,6 @@ export function getBoxGatewayEntry(runtimeName: string): AgentCoreGateway {
     enableSemanticSearch: true,
     exceptionLevel: "NONE",
     targets: [],
-    policyEngineConfiguration: {
-      policyEngineName: boxGatewayPolicyEngineName(runtimeName),
-      mode: BOX_GATEWAY_POLICY_ENGINE_MODE,
-    },
   };
 }
 

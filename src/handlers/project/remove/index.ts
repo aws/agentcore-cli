@@ -12,7 +12,6 @@ import { isBoxExtensionEntry } from "../../../projectSchemas/project";
 import {
   APP_CODE_RETAINED_NOTICE,
   BOX_GATEWAY_STAYS_NOTICE,
-  BOX_POLICY_ENGINE_STAYS_NOTICE,
   shouldShowAppCodeNotice,
 } from "./notice";
 
@@ -168,9 +167,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
       if (resource === "gateway" && isBoxExtensionEntry(project.spec, { name })) {
         config.io.stderr.write(`${BOX_GATEWAY_STAYS_NOTICE}\n`);
       }
-      if (result.boxPolicyEngineStayed) {
-        config.io.stderr.write(`${BOX_POLICY_ENGINE_STAYS_NOTICE}\n`);
-      }
       const showAppCodeNotice = shouldShowAppCodeNotice(resource);
       renderResult<ProjectMutationResult>(
         ctx,
@@ -181,7 +177,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           removedEnvironmentKeys: result.removedEnvKeys,
         },
         () => {
-          if (result.boxPolicyEngineStayed) return;
           config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`);
           if (showAppCodeNotice) {
             config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);

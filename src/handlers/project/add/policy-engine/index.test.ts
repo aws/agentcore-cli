@@ -2,11 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expectError } from "../../../../testing";
-import {
-  createGatewayProjectTestHarness,
-  DEFAULT_BOX_GATEWAY,
-  DEFAULT_BOX_POLICY_ENGINE,
-} from "../gateway-test-support";
+import { createGatewayProjectTestHarness, DEFAULT_BOX_GATEWAY } from "../gateway-test-support";
 import { InputValidationError } from "../../../../errors";
 
 const { addGateway, cleanup, inProject, projectSpec, run } =
@@ -20,7 +16,6 @@ describe("project add policy-engine", () => {
     const io = await run(["add", "policy-engine", "--name", "Guardrails"]);
 
     expect((await projectSpec(projectRoot)).policyEngines).toEqual([
-      DEFAULT_BOX_POLICY_ENGINE,
       { name: "Guardrails", policies: [] },
     ]);
     expect(io.stderr()).toContain("added Policy Engine 'Guardrails'");
@@ -41,7 +36,7 @@ describe("project add policy-engine", () => {
       "team=agents",
     ]);
 
-    expect((await projectSpec(projectRoot)).policyEngines[1]).toEqual({
+    expect((await projectSpec(projectRoot)).policyEngines[0]).toEqual({
       name: "Guardrails",
       description: "Cedar authorization",
       encryptionKeyArn: "arn:aws:kms:us-west-2:123456789012:key/abc",
@@ -148,9 +143,7 @@ describe("project add policy-engine", () => {
     await expect(
       run(["add", "policy-engine", "--name", "Guardrails", "--attach-to-gateways", "missing"]),
     ).rejects.toThrow("no gateway named 'missing' exists in this project");
-    expect((await projectSpec(projectRoot)).policyEngines ?? []).toEqual([
-      DEFAULT_BOX_POLICY_ENGINE,
-    ]);
+    expect((await projectSpec(projectRoot)).policyEngines ?? []).toEqual([]);
   });
 
   test("rejects --attach-mode without --attach-to-gateways", async () => {

@@ -5,7 +5,6 @@ import type { CredentialSchema } from "../../../projectSchemas/credential";
 import type { HarnessRegistryEntry } from "../../../projectSchemas/harness";
 import type { Evaluator } from "../../../projectSchemas/evaluator";
 import type { AgentCoreGateway } from "../../../projectSchemas/gateway";
-import type { PolicyEngine } from "../../../projectSchemas/policy";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import type z from "zod";
 
@@ -17,7 +16,6 @@ export type SpecEntries = {
   harnesses?: HarnessRegistryEntry[];
   evaluators?: Evaluator[];
   agentCoreGateways?: AgentCoreGateway[];
-  policyEngines?: PolicyEngine[];
 };
 
 /** A group of files and resources that can be rendered into a project **/

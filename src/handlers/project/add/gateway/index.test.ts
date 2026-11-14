@@ -32,7 +32,7 @@ describe("project add gateway", () => {
   test("maps scalar flags directly to Gateway project fields", async () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
-    spec.policyEngines.push({ name: "Guardrails", policies: [] });
+    spec.policyEngines = [{ name: "Guardrails", policies: [] }];
     await writeProjectSpec(projectRoot, spec);
 
     await run([
@@ -123,7 +123,7 @@ describe("project add gateway", () => {
   test("maps log-only policy mode", async () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
-    spec.policyEngines.push({ name: "Guardrails", policies: [] });
+    spec.policyEngines = [{ name: "Guardrails", policies: [] }];
     await writeProjectSpec(projectRoot, spec);
 
     await run([
