@@ -32,6 +32,8 @@ the missing path.
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
 - A box checkout for `AGENTCORE_BOX_SOURCE`, built for Amazon Linux 2023 (see above).
+- `box` on your `PATH`, the one `agentcore dev` runs. Build and deploy run it to read the box
+  profile.
 - AWS credentials for a **dev or test** account. Box uses `us-west-2` Bedrock.
 - `bun` for the CLI, `npm` for the generated CDK app.
 
@@ -99,8 +101,10 @@ printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env:
 
 ### What build and deploy do with the box profile
 
-Build and deploy read `.box/profile.toml` and the policy files it lists under `policies`, and
-turn them into the runtime's Box network. They change nothing in `.box/`.
+Build and deploy run `box profile show .box/profile.toml --full` in the project folder, with the
+`box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box resolves the profile to into
+the runtime's Box network. Every pack, option, and rule Box adds is already in them, so any pack
+works. They change nothing in `.box/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
@@ -109,9 +113,11 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
   one when no host needs it. It never changes another target.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
-- **Failures.** A wildcard host, a plain-HTTP-only host, an unsupported secret or pack, an
-  MCP server over HTTP, and similar cases stop build and deploy. The error lists every
-  failure with its rule or entry and its `file:line:column`, and nothing is written.
+- **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
+  host, a plain-HTTP-only host, an unsupported secret, an MCP server over HTTP, and similar
+  cases stop them too. The error lists every failure with its rule or entry and its
+  `file:line:column` in your policy file, found by the rule's `@id`, or says that Box adds the
+  rule, and nothing is written.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
@@ -182,6 +188,11 @@ bun run "$CLI" deploy
 
 ## Troubleshooting
 
+- **Build says box did not start.** `box` is not on your `PATH`. Install it as for
+  `agentcore dev`, then build again.
+- **Build says `box profile show .box/profile.toml --full` failed.** The lines under it are
+  box's own error. A fresh checkout often has no agent venv yet, and box then names
+  `.venv/bin/python` under a write grant: run `uv sync` in the agent's folder (`app/<agent>`).
 - **Build cannot find the box binaries.** `AGENTCORE_BOX_SOURCE` is unset or does not hold
   `target-al2023/release`. Build box for Amazon Linux 2023 in that checkout first.
 - **Deploy says a credential has no secret.** The credential's value did not reach
