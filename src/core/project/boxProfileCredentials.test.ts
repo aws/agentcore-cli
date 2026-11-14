@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addBoxProfileCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
+import {
+  addBoxProfileCredentials,
+  boxProfileCredentialEnvEntries,
+  boxProfileEnvCredentials,
+} from "./boxProfileCredentials";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
 
@@ -110,5 +114,43 @@ describe("boxProfileCredentialEnvEntries", () => {
   test("skips a var that is unset or empty, leaving it for the operator", () => {
     expect(boxProfileCredentialEnvEntries(added, {})).toEqual([]);
     expect(boxProfileCredentialEnvEntries(added, { GITHUB_TOKEN: "" })).toEqual([]);
+  });
+});
+
+describe("boxProfileEnvCredentials", () => {
+  test("lists every env:// egress route, independent of declared credentials", async () => {
+    const root = await projectWithProfile(
+      '[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n\n' +
+        '[egress.stripe]\nsecret.ref = "env://STRIPE_KEY"\n',
+    );
+
+    expect(boxProfileEnvCredentials(root)).toEqual([
+      { name: "github", variable: "GITHUB_TOKEN" },
+      { name: "stripe", variable: "STRIPE_KEY" },
+    ]);
+  });
+
+  test("lists a route even after agentcore.json already declares its credential", async () => {
+    const root = await projectWithProfile('[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n');
+    // addBoxProfileCredentials no longer reports it as 'added', but the route is still here, so
+    // build can re-seed its value on every run.
+    const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "github" }]);
+    expect(addBoxProfileCredentials(s, root).added).toEqual([]);
+
+    expect(boxProfileEnvCredentials(root)).toEqual([{ name: "github", variable: "GITHUB_TOKEN" }]);
+  });
+
+  test("skips aws:// refs and names that are not valid credential names", async () => {
+    const root = await projectWithProfile(
+      '[egress.bedrock]\nsecret.ref = "aws://default"\n\n' +
+        '[egress."not a name"]\nsecret.ref = "env://SOME_TOKEN"\n',
+    );
+
+    expect(boxProfileEnvCredentials(root)).toEqual([]);
+  });
+
+  test("is a no-op when the project has no box profile", async () => {
+    const root = await projectWithProfile(undefined);
+    expect(boxProfileEnvCredentials(root)).toEqual([]);
   });
 });

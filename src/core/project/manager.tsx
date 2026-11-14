@@ -52,7 +52,11 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
-import { addBoxProfileCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
+import {
+  addBoxProfileCredentials,
+  boxProfileCredentialEnvEntries,
+  boxProfileEnvCredentials,
+} from "./boxProfileCredentials";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -1618,30 +1622,43 @@ export class FsProjectManager implements ProjectManager {
    * `ApiKeyCredentialProvider`, so deploy provisions the key in AgentCore Identity and the runtime
    * never holds it. Mirrors `addBoxMemoryTarget`: it commits only `credentials`, and only when it
    * adds one.
+   *
+   * It then seeds `.env.local` on every build, not only the build that first adds a credential: for
+   * each `env://VAR` egress route it carries the value of `VAR` from the current environment into
+   * `.env.local` under the credential's reserved name. So a `VAR` the box already reads (for example
+   * `GITHUB_TOKEN`) also reaches deploy, with no second variable to set. `insertIfNew` never
+   * overwrites an existing value, so a secret already stored, or set by hand, is left alone.
    */
   private async reconcileBoxProfileCredentials(
     project: Project,
   ): Promise<{ project: Project; messages: string[] }> {
     const spec = structuredClone(project.spec);
     const { messages, added } = addBoxProfileCredentials(spec, project.rootPath);
-    if (messages.length === 0) return { project, messages };
-    const specPath = this.getProjectSpecPath(project);
-    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
-    const updated = { ...raw, credentials: spec.credentials };
-    const parsed = ProjectSpecSchema.safeParse(updated);
-    if (!parsed.success) {
-      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+    let result = project;
+    if (added.length > 0) {
+      const specPath = this.getProjectSpecPath(project);
+      const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+      const updated = { ...raw, credentials: spec.credentials };
+      const parsed = ProjectSpecSchema.safeParse(updated);
+      if (!parsed.success) {
+        throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+      }
+      await this.json.write(specPath, updated);
+      result = { ...project, spec: parsed.data };
     }
-    await this.json.write(specPath, updated);
-    // Carry each key from the box env var the profile named into .env.local, under the
-    // credential's reserved name, so deploy provisions it without a manual step. insertIfNew
-    // never overwrites an existing value.
-    const seeds = boxProfileCredentialEnvEntries(added, this.processEnv);
+    // Carry each key from the box env var the profile names into .env.local, under the credential's
+    // reserved name, so deploy provisions it without a second variable. This runs every build, for
+    // every `env://` egress route, not only a credential added this run. insertIfNew never
+    // overwrites an existing value.
+    const seeds = boxProfileCredentialEnvEntries(
+      boxProfileEnvCredentials(project.rootPath),
+      this.processEnv,
+    );
     if (seeds.length > 0) {
       const { written } = await new EnvLocalFile(project.rootPath).insertIfNew(seeds);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
-    return { project: { ...project, spec: parsed.data }, messages };
+    return { project: result, messages };
   }
 
   public async syncRuntimeBuilds(
