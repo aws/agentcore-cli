@@ -82,7 +82,7 @@ describe("stageBoxContainers", () => {
     );
     // The Runtime profile is rendered from agentcore.json.
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
-      renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
+      renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!, demo.rootPath),
     );
     // The image's own Python needs no libffi shim.
     expect(await Bun.file(join(dist, "ffi", "libffi.so.8")).exists()).toBe(false);

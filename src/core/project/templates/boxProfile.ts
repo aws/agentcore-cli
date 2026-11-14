@@ -11,6 +11,7 @@ import { defaultMemoryName } from "../../../projectSchemas/memory";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
+import { boxEgressRoutes, type BoxEgressRoute } from "../boxEgress";
 
 /** Where uv installs the Pythons it manages, as a boxy path. */
 const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
@@ -416,15 +417,41 @@ auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
 }
 
 /**
- * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
- * derived from agentcore.json: the runtime's build, protocol, and model
- * provider, and, when the project has the runtime's default Memory, the route
- * its Memory calls take through the Box gateway. agentcore.json does not
- * record the framework, and the profile does not depend on it beyond the
- * container case, so the input names Strands, one of the frameworks that run
- * in a box.
+ * The route a box egress takes on the Runtime: the box sends the agent's calls
+ * to the egress destinations to the Box gateway's target of the same name,
+ * signed with the execution role, and the gateway adds the API key from
+ * AgentCore Identity. Starts with a blank line, as the Memory route does.
  */
-export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
+function runtimeEgressRouteSection(route: BoxEgressRoute): string {
+  return `
+# Box egress '${route.name}', through the runtime's Box gateway's '${route.name}' target.
+# The gateway adds the API key from AgentCore Identity; the box signs the call with the execution role.
+[egress.${route.name}]
+destinations = [${route.destinations.map(str).join(", ")}]
+
+[[egress.${route.name}.backends]]
+url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${route.name}`)}
+auth.ref = ${str(RUNTIME_AWS_SIGNER)}
+auth.aws.service = "bedrock-agentcore"
+auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
+`;
+}
+
+/**
+ * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
+ * derived from agentcore.json and `.box/profile.toml`: the runtime's build,
+ * protocol, and model provider; when the project has the runtime's default
+ * Memory, the route its Memory calls take through the Box gateway; and, for each
+ * box egress that fronts an `env://` API key, the route its calls take through
+ * the Box gateway. agentcore.json does not record the framework, and the profile
+ * does not depend on it beyond the container case, so the input names Strands,
+ * one of the frameworks that run in a box.
+ */
+export function renderRuntimeBoxProfile(
+  spec: ProjectSpec,
+  runtime: ProjectRuntime,
+  projectRoot: string,
+): string {
   const memory = spec.memories.some((entry) => entry.name === defaultMemoryName(runtime.name));
   const input = {
     runtimeName: runtime.name,
@@ -435,7 +462,10 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  return renderBoxProfile(spec.name, input, "runtime", memory ? runtimeMemoryRouteSection() : "")!;
+  const routes =
+    (memory ? runtimeMemoryRouteSection() : "") +
+    boxEgressRoutes(projectRoot).map(runtimeEgressRouteSection).join("");
+  return renderBoxProfile(spec.name, input, "runtime", routes)!;
 }
 
 /** The variable that holds the model provider's API key, as the template's model code reads it. */

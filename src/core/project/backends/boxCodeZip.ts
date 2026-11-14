@@ -78,7 +78,10 @@ export function stageBoxCodeZip(project: Project, env: NodeJS.ProcessEnv): strin
     }
     cpSync(resources, join(dist, "resources"), { recursive: true });
     if (existsSync(ffi)) cpSync(ffi, join(dist, "ffi"), { recursive: true });
-    writeFileSync(join(dist, "profile.toml"), renderRuntimeBoxProfile(project.spec, runtime));
+    writeFileSync(
+      join(dist, "profile.toml"),
+      renderRuntimeBoxProfile(project.spec, runtime, project.rootPath),
+    );
   }
   return runtimes.map((runtime) => runtime.name);
 }

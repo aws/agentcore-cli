@@ -100,7 +100,7 @@ export function stageBoxContainers(project: Project, env: NodeJS.ProcessEnv): st
   for (const runtime of runtimes) {
     stageBoxImage(
       containerBuildContext(project.rootPath, runtime),
-      renderRuntimeBoxProfile(project.spec, runtime),
+      renderRuntimeBoxProfile(project.spec, runtime, project.rootPath),
       env,
       runtime.name,
     );

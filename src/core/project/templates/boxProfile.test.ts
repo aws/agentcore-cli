@@ -24,6 +24,10 @@ function profile(name: RuntimeTemplateShortcutName, overrides: Record<string, st
   return parse(renderBoxProfile("V3Demo", template(name, overrides))!) as Record<string, any>;
 }
 
+// A project root with no `.box/profile.toml`, so renderRuntimeBoxProfile adds no box egress routes
+// and renders only from the spec. Box egress is covered in boxEgress.test.ts.
+const NO_BOX_PROFILE_ROOT = "/nonexistent/agentcore-box-egress-test";
+
 const STRANDS = template("agent-python-strands");
 
 const VENV_GRANTS = {
@@ -361,7 +365,7 @@ describe("renderRuntimeBoxProfile", () => {
 
   test("routes the default Memory's calls through the Box gateway's agentcore target", () => {
     const project = spec(["agentMemory"]);
-    const text = renderRuntimeBoxProfile(project, project.runtimes[0]!);
+    const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, NO_BOX_PROFILE_ROOT);
 
     expect((parse(text).egress as Record<string, unknown>).agentcore).toEqual({
       // No destination secret: the backend's own auth signs the call to the gateway.
@@ -380,7 +384,9 @@ describe("renderRuntimeBoxProfile", () => {
 
   test("routes no Memory calls when the project has only another Memory", () => {
     const project = spec(["ordersMemory"]);
-    const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress;
+    const egress = parse(
+      renderRuntimeBoxProfile(project, project.runtimes[0]!, NO_BOX_PROFILE_ROOT),
+    ).egress;
 
     expect(egress).toEqual({ bedrock: RUNTIME_ROUTE });
   });
@@ -389,18 +395,19 @@ describe("renderRuntimeBoxProfile", () => {
     const codeZip = spec(["agentMemory"]);
     const container = spec(["agentMemory"], { build: "Container", entrypoint: "main.py" });
 
-    expect(renderRuntimeBoxProfile(codeZip, codeZip.runtimes[0]!)).toContain('"@PYTHON@"');
-    expect(renderRuntimeBoxProfile(container, container.runtimes[0]!)).toContain(
-      '"${{ workspace }}/.venv/bin/python"',
+    expect(renderRuntimeBoxProfile(codeZip, codeZip.runtimes[0]!, NO_BOX_PROFILE_ROOT)).toContain(
+      '"@PYTHON@"',
     );
+    expect(
+      renderRuntimeBoxProfile(container, container.runtimes[0]!, NO_BOX_PROFILE_ROOT),
+    ).toContain('"${{ workspace }}/.venv/bin/python"');
   });
 
   test("signs no Bedrock route for an agent on another model provider", () => {
     const project = spec(["agentMemory"], { modelProvider: "OpenAI" });
-    const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress as Record<
-      string,
-      unknown
-    >;
+    const egress = parse(
+      renderRuntimeBoxProfile(project, project.runtimes[0]!, NO_BOX_PROFILE_ROOT),
+    ).egress as Record<string, unknown>;
 
     expect(Object.keys(egress)).toEqual(["agentcore"]);
   });

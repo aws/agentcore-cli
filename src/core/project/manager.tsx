@@ -53,6 +53,7 @@ import {
 } from "./templates/harness";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
 import { addBoxProfileCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
+import { addBoxEgressTargets } from "./boxEgressTargets";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -1576,7 +1577,9 @@ export class FsProjectManager implements ProjectManager {
     for (const message of routed.messages) yield { type: "step", message };
     const credentialed = await this.reconcileBoxProfileCredentials(routed.project);
     for (const message of credentialed.messages) yield { type: "step", message };
-    yield* this.backendFor(project).build(credentialed.project);
+    const egressed = await this.addBoxEgressTargets(credentialed.project);
+    for (const message of egressed.messages) yield { type: "step", message };
+    yield* this.backendFor(project).build(egressed.project);
   }
 
   /**
@@ -1641,6 +1644,36 @@ export class FsProjectManager implements ProjectManager {
       const { written } = await new EnvLocalFile(project.rootPath).insertIfNew(seeds);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
+    return { project: { ...project, spec: parsed.data }, messages };
+  }
+
+  /**
+   * Adds a Box gateway passthrough target for each box egress that fronts an
+   * `env://` API key to agentcore.json, before synth reads the file, so the
+   * boxed agent's calls to those destinations go through the gateway and the
+   * gateway adds the key from AgentCore Identity. Mirrors `addBoxMemoryTarget`:
+   * it patches the raw file, commits only the gateway fields, and only when it
+   * changes one.
+   */
+  private async addBoxEgressTargets(
+    project: Project,
+  ): Promise<{ project: Project; messages: string[] }> {
+    const spec = structuredClone(project.spec);
+    const messages = addBoxEgressTargets(spec, project.rootPath);
+    if (messages.length === 0) return { project, messages };
+    const specPath = this.getProjectSpecPath(project);
+    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+    const updated = {
+      ...raw,
+      projectType: spec.projectType,
+      agentCoreGateways: spec.agentCoreGateways,
+      policyEngines: spec.policyEngines,
+    };
+    const parsed = ProjectSpecSchema.safeParse(updated);
+    if (!parsed.success) {
+      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+    }
+    await this.json.write(specPath, updated);
     return { project: { ...project, spec: parsed.data }, messages };
   }
 
