@@ -3,7 +3,10 @@ import type { SourceSpan } from "./dogwood";
 /** AgentCore's limit on the targets of one gateway. */
 export const MAX_GATEWAY_TARGETS = 100;
 
-/** The only methods a gateway routes on a passthrough target; PUT, PATCH, and HEAD get a 404. */
+/**
+ * The methods a gateway routes to a passthrough target. Every other method (PUT, PATCH, HEAD,
+ * OPTIONS, …) is not routed.
+ */
 export const ROUTABLE_METHODS = ["GET", "POST", "DELETE"] as const;
 export type RoutableMethod = (typeof ROUTABLE_METHODS)[number];
 
