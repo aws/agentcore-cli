@@ -6,8 +6,9 @@ import {
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import { boxNetworkRules } from "../boxProfileResolver-test-support";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
-import { parsePolicyFiles } from "./policyParser";
+import { parseResolvedPolicy } from "./policyParser";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -41,7 +42,10 @@ interface Options {
   readonly executionRoleArn?: string;
 }
 
-/** The model of runtime `agent` for `policy` in `.box/policy.dw` and the profile's `egress`. */
+/**
+ * The model of runtime `agent` for `policy` in `.box/policy.dw` and the routes `egress`, as Box
+ * resolves them: its policy holds the file, then the rules Box adds for each route.
+ */
 function model(policy: string, egress: Record<string, unknown> = {}, options: Options = {}) {
   const spec = {
     name: "demo",
@@ -59,8 +63,10 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
         ]
       : [],
   } as unknown as ProjectSpec;
-  const { parsed, failures } = parsePolicyFiles(
-    { egress, mcp: options.mcp ?? {}, policyFiles: policy ? ["policy.dw"] : [] },
+  const mcp = options.mcp ?? {};
+  const { parsed, failures } = parseResolvedPolicy(
+    { egress, mcp, policyFiles: policy ? ["policy.dw"] : [] },
+    `${policy}\n${boxNetworkRules(egress, mcp)}`,
     policy ? [{ file: ".box/policy.dw", text: policy }] : [],
   );
   const network = buildBoxNetwork(parsed, failures, {

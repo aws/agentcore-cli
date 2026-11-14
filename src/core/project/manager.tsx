@@ -53,6 +53,7 @@ import {
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
@@ -412,6 +413,11 @@ type ProjectManagerConfig = {
   json?: ReadWriteJson;
   /** The environment the CDK backend reads AGENTCORE_BOX_SOURCE from; process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
+  /**
+   * Resolves the box profile as Box does, for build and deploy to read its network; the `box` on
+   * PATH by default, as `agentcore dev` runs it.
+   */
+  boxProfileResolver?: BoxProfileResolver;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
   /**
@@ -435,6 +441,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly boxProfileResolver: BoxProfileResolver;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -457,6 +464,8 @@ export class FsProjectManager implements ProjectManager {
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.processEnv = config.processEnv ?? process.env;
+    this.boxProfileResolver =
+      config.boxProfileResolver ?? new BoxCliProfileResolver({ env: this.processEnv });
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -1567,17 +1576,17 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Builds the Box network model of each box runtime from the box profile, then writes what the
-   * Box network writers derive from it, before synth reads agentcore.json and build renders each
-   * Runtime profile's routes from its Box gateway's targets: agentcore.json once, patched in the
-   * raw file so unknown fields and key order survive and checked against the schema first, then
-   * the files, then `.env.local`. A failure of any model stops build and deploy before anything
-   * of the box profile is written.
+   * Builds the Box network model of each box runtime from the box profile as Box resolves it
+   * (`box profile show --full`), then writes what the Box network writers derive from it, before
+   * synth reads agentcore.json and build renders each Runtime profile's routes from its Box
+   * gateway's targets: agentcore.json once, patched in the raw file so unknown fields and key order
+   * survive and checked against the schema first, then the files, then `.env.local`. A failure of
+   * any model stops build and deploy before anything of the box profile is written.
    */
   private async applyBoxNetwork(
     project: Project,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    const networks = readBoxNetworks(project.spec, project.rootPath);
+    const networks = await readBoxNetworks(project.spec, project.rootPath, this.boxProfileResolver);
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks));
     }

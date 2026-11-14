@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { InvalidEnvironmentError } from "../../errors/errors";
 import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -22,6 +24,9 @@ const SPEC = {
   agentCoreGateways: [],
 } as unknown as ProjectSpec;
 
+/** What box resolves the profile of {@link project} to: its route `api`, which has no secret. */
+const API_ROUTE = { api: { destinations: ["api.example.com"] } };
+
 /** A project root whose profile names `policies`, with `.box/policy.dw` in it. */
 async function project(policies: string[]): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
@@ -35,26 +40,69 @@ async function project(policies: string[]): Promise<string> {
   return root;
 }
 
-const failuresOf = (root: string) =>
-  readBoxNetworks(SPEC, root)[0]!.failures.map(({ code, reason, place }) => ({
-    code,
-    reason,
-    place,
-  }));
+const failuresOf = async (root: string) =>
+  (await readBoxNetworks(SPEC, root, new FakeBoxProfileResolver()))[0]!.failures.map(
+    ({ code, reason, place }) => ({ code, reason, place }),
+  );
 
 describe("readBoxNetworks", () => {
-  test("reads the profile and its policy files into one model per box runtime", async () => {
+  test("reads box's resolution of .box/profile.toml, in the project folder, into one model per box runtime", async () => {
     const root = await project(["policy.dw"]);
+    const box = new FakeBoxProfileResolver(
+      boxShowOf({ egress: API_ROUTE, policy: "// no rule\n" }),
+    );
 
-    const [network] = readBoxNetworks(SPEC, root);
+    const [network] = await readBoxNetworks(SPEC, root, box);
 
+    expect(box.calls).toEqual([{ projectRoot: root, profilePath: ".box/profile.toml" }]);
     expect(network?.gateway).toBe("agent-box");
     expect(network?.policyFiles).toEqual(["policy.dw"]);
+    // Box writes a route with no secret only as rules, and the target still takes its name.
     expect(network?.hosts.map(({ target }) => target)).toEqual(["egress-api"]);
   });
 
-  test("builds no model for a project that is not a Box project", async () => {
-    expect(readBoxNetworks({ ...SPEC, projectType: undefined }, await project([]))).toEqual([]);
+  test("places a rule of a policy file at its line, and a rule Box adds as Box's", async () => {
+    const root = await project(["policy.dw"]);
+    const wild =
+      '@id("wild") permit (principal, action == Box::Action::"http:request", resource) when { context.input.host like "*.example.com" };\n';
+    await writeFile(join(root, ".box", "policy.dw"), `// every subdomain\n${wild}`);
+    const box = new FakeBoxProfileResolver(
+      boxShowOf({
+        egress: { wide: { destinations: ["*.wide.example.com"], secret: { ref: "env://KEY" } } },
+        policy: `// every subdomain\n${wild}`,
+      }),
+    );
+
+    const [network] = await readBoxNetworks(SPEC, root, box);
+
+    expect(
+      network?.failures.map(({ code, ruleId, egressEntry, place }) => [
+        code,
+        ruleId ?? egressEntry,
+        place,
+      ]),
+    ).toEqual([
+      ["EGRESS_WILDCARD_DESTINATION", "wide", undefined],
+      ["WILDCARD_HOST", "wild", ".box/policy.dw:2:1"],
+    ]);
+  });
+
+  test("runs no box for a project that is not a Box project, or that has no box profile", async () => {
+    const box = new FakeBoxProfileResolver();
+    const root = await project([]);
+
+    expect(await readBoxNetworks({ ...SPEC, projectType: undefined }, root, box)).toEqual([]);
+    await rm(join(root, ".box", "profile.toml"));
+    expect((await readBoxNetworks(SPEC, root, box))[0]?.hosts).toEqual([]);
+    expect(box.calls).toEqual([]);
+  });
+
+  test("stops with box's own error when box cannot resolve the profile", async () => {
+    const refused = new InvalidEnvironmentError("box: error: a profile holds no `policy`");
+
+    await expect(
+      readBoxNetworks(SPEC, await project([]), new FakeBoxProfileResolver(refused)),
+    ).rejects.toBe(refused);
   });
 
   test("refuses a policy file Box would refuse, each at its place", async () => {
@@ -72,7 +120,7 @@ describe("readBoxNetworks", () => {
     await link(join(root, ".box", "policy.dw"), join(root, ".box", "linked.dw"));
     await mkdir(join(root, ".box", "folder.dw"));
 
-    expect(failuresOf(root)).toEqual([
+    expect(await failuresOf(root)).toEqual([
       expect.objectContaining({
         place: ".box/missing.dw",
         reason: expect.stringContaining("does not exist"),
@@ -104,7 +152,7 @@ describe("readBoxNetworks", () => {
     const root = await project(["inner.dw"]);
     await symlink(join(root, ".box", "policy.dw"), join(root, ".box", "inner.dw"));
 
-    expect(failuresOf(root)).toEqual([]);
+    expect(await failuresOf(root)).toEqual([]);
   });
 });
 
@@ -124,7 +172,7 @@ describe("the IAM policy files of the Box gateway", () => {
       agentCoreGateways: [{ ...getBoxGatewayEntry("agent"), additionalPolicies: listed }],
     } as ProjectSpec;
 
-    const [network] = readBoxNetworks(spec, root);
+    const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
 
     expect(network?.grantedActions).toEqual(["bedrock:InvokeModel"]);
     const tail =
@@ -148,7 +196,9 @@ describe("boxNetworkFailureMessage", () => {
       runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
     } as ProjectSpec;
 
-    expect(boxNetworkFailureMessage(readBoxNetworks(spec, root))).toBe(
+    const networks = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
+
+    expect(boxNetworkFailureMessage(networks)).toBe(
       ".box/profile.toml does not parse into the Box network of the Box gateway 'agent-box', " +
         "'second-box' of runtimes 'agent', 'second' (1 failure):\n" +
         "  - INVALID_POLICY_FILE, at .box/missing.dw: .box/profile.toml names the policy file " +

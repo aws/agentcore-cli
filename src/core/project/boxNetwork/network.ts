@@ -76,7 +76,7 @@ export interface BoxNetworkFailure {
   readonly mcpEntry?: string;
   readonly target?: string;
   readonly reason: string;
-  /** `file:line:column`, `file:line`, or `a rule the box CLI adds`. */
+  /** `file:line:column`, `file:line`, or the place of a rule that Box adds. */
   readonly place?: string;
 }
 
@@ -127,12 +127,12 @@ export function buildBoxNetwork(
   });
   const located = (failure: ConversionFailure): BoxNetworkFailure => {
     const { span, ...rest } = failure;
-    return span ? { ...rest, place: placeOf(parsed.segments, span) } : rest;
+    return span ? { ...rest, place: placeOf(parsed, span) } : rest;
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
   const targets = hostTargets(map.hosts, project, (ruleId) => {
     const statement = parsed.statements.find(({ id }) => id === ruleId);
-    return statement && placeOf(parsed.segments, statement.span);
+    return statement && placeOf(parsed, statement.span);
   });
   failures.push(...targets.failures);
   const credentials = boxEgressCredentials(parsed.profile.egress, project.spec.credentials);

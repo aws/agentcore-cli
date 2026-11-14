@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parsePolicy } from "./dogwood";
 import { buildHostMap } from "./hostMap";
-import { boxGeneratedNetworkRules } from "./profileParser";
+import { boxNetworkRules } from "../boxProfileResolver-test-support";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -17,13 +17,13 @@ const on = (host: string, rest = "") =>
 const reach = (id: string, host: string, rest = "") =>
   connect(`${id}_connect`, on(host)) + permit(id, on(host, rest));
 
-/** The host map of `policy` and the rules the box CLI adds for `egress` and `mcp`, as build makes it. */
+/** The host map of `policy` and the rules Box adds for `egress` and `mcp`, as Box resolves them. */
 function map(
   policy: string,
   egress: Record<string, unknown> = {},
   mcp: Record<string, unknown> = {},
 ) {
-  const parsed = parsePolicy(policy + boxGeneratedNetworkRules(egress, mcp));
+  const parsed = parsePolicy(policy + boxNetworkRules(egress, mcp));
   if (parsed.errors.length > 0) throw new Error(JSON.stringify(parsed.errors));
   return buildHostMap({ statements: parsed.statements, egress, mcp });
 }

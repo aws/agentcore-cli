@@ -49,6 +49,7 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_PROFILE_FILE, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_RELEASE } from "./backends/boxRelease";
+import { FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -100,6 +101,7 @@ function manager(processEnv?: NodeJS.ProcessEnv): {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
       processEnv,
+      boxProfileResolver: new FakeBoxProfileResolver(),
       identity: new TestIdentityClient(),
       enableTransactionSearch: async () => {},
       runner: async (command, { cwd }) => {
@@ -1046,6 +1048,7 @@ describe("FsProjectManager.addResource", () => {
         identity: new TestIdentityClient(),
         enableTransactionSearch: async () => {},
         backends: { CDK: backend },
+        boxProfileResolver: new FakeBoxProfileResolver(),
         runner: async () => {},
         checkTool: async (candidate: string) => {
           checkedTools.push(candidate);
@@ -1984,6 +1987,7 @@ describe("FsProjectManager.build", () => {
       },
       checkTool: async () => {},
       processEnv: await boxSource(),
+      boxProfileResolver: new FakeBoxProfileResolver(),
     });
 
     await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");

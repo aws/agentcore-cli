@@ -1,7 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, type ProcessEvent, type StreamProcessOptions } from "../../io";
+import type { ProjectSpec } from "../../projectSchemas/project";
+import { readBoxNetworks } from "./boxNetworkSource";
 import { BoxCliProfileResolver, parseBoxProfileShow } from "./boxProfileResolver";
+import { boxNetworkRules } from "./boxProfileResolver-test-support";
 
 const NC = 'action == Box::Action::"net:connect"';
 
@@ -132,4 +138,69 @@ describe("BoxCliProfileResolver", () => {
       new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/profile.toml"),
     ).rejects.toThrow('printed no "# box.toml" and "# policy.dw" sections');
   });
+});
+
+const directories: string[] = [];
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })));
+});
+
+const SPEC = {
+  name: "demo",
+  projectType: "box",
+  runtimes: [
+    { name: "agent", build: "CodeZip", entrypoint: "start.py", codeLocation: "app/agent" },
+  ],
+  memories: [],
+  credentials: [],
+  agentCoreGateways: [],
+} as unknown as ProjectSpec;
+
+const POLICY =
+  "// No admin paths on GitHub.\n" +
+  '@id("no_admin") forbid (principal, action == Box::Action::"http:request", resource) when { context.input.host == "api.github.com" && context.input.path like "/admin/*" };\n';
+const ROUTES = {
+  github: { destinations: ["api.github.com"] },
+  keyed: { destinations: ["k.example.com:8443"], secret: { ref: "env://KEY" } },
+};
+const SERVERS = { docs: { type: "http", destinations: ["docs.example.com"] } };
+
+describe("the box on PATH", () => {
+  test.skipIf(!Bun.which("box"))(
+    "resolves a profile into the model and the rules the tests fake (skipped when box is not on PATH)",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "box-profile-resolver-"));
+      directories.push(root);
+      await mkdir(join(root, ".box"));
+      await writeFile(
+        join(root, ".box", "profile.toml"),
+        'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
+          '[agent]\ncommand = ["/bin/sh"]\n\n[egress.github]\ndestinations = ["api.github.com"]\n\n' +
+          '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n\n' +
+          '[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',
+      );
+      await writeFile(join(root, ".box", "policy.dw"), POLICY);
+      const resolver = new BoxCliProfileResolver();
+
+      const resolved = await resolver.resolve(root, ".box/profile.toml");
+      const [network] = await readBoxNetworks(SPEC, root, resolver);
+
+      const lines = resolved.policy.split("\n");
+      for (const rule of boxNetworkRules(ROUTES, SERVERS).trimEnd().split("\n")) {
+        expect(lines).toContain(rule);
+      }
+      const reachable = network?.hosts.filter((host) => host.reachable) ?? [];
+      expect(reachable.map((h) => [h.authority, h.target, h.outboundAuth.kind])).toEqual([
+        ["k.example.com:8443", "egress-keyed", "apiKey"],
+        ["api.github.com", "egress-github", "none"],
+      ]);
+      expect(network?.failures.map(({ code, mcpEntry }) => [code, mcpEntry])).toEqual([
+        ["MCP_OVER_HTTP", "docs"],
+      ]);
+      expect(network?.warnings).toContainEqual(
+        expect.stringContaining('Box enforces "no_admin" on its own'),
+      );
+    },
+    120_000,
+  );
 });
