@@ -8,14 +8,14 @@ import {
   testIO,
 } from "../../../testing";
 import { DEFAULT_CREATE_RUNTIME_NAME } from "../create";
-import { getBoxGatewayBedrockEntry } from "../shortcuts";
+import { getBoxGatewayEntry } from "../shortcuts";
 
 /**
- * The Box gateway entry (`agent-box`, with the Bedrock target) that `agentcore create
- * --template agent-python-minimal` declares for its Bedrock agent, so every harness project
- * starts with it at index 0.
+ * The Box gateway entry (`agent-box`, with no targets: build adds the Bedrock target) that
+ * `agentcore create --template agent-python-minimal` declares for its Bedrock agent, so every
+ * harness project starts with it at index 0.
  */
-export const DEFAULT_BOX_GATEWAY = getBoxGatewayBedrockEntry(DEFAULT_CREATE_RUNTIME_NAME);
+export const DEFAULT_BOX_GATEWAY = getBoxGatewayEntry(DEFAULT_CREATE_RUNTIME_NAME);
 
 export async function projectSpec(projectRoot: string) {
   return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();

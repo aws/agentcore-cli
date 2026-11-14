@@ -19,6 +19,7 @@ function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
   return {
     runtime: "agent",
     gateway: "agent-box",
+    region: "us-west-2",
     hosts: [],
     credentials: [],
     policyFiles: [],

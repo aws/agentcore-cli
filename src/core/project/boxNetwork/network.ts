@@ -4,8 +4,8 @@
  * and every warning and failure. Build, deploy, and staging write from it.
  */
 import {
-  BOX_GATEWAY_AGENTCORE_HOST,
   BOX_GATEWAY_BEDROCK_TARGET_NAME,
+  boxGatewayAgentCoreHost,
 } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
@@ -85,6 +85,8 @@ export interface BoxNetwork {
   readonly runtime: string;
   /** The runtime's Box gateway, as agentcore.json names it. */
   readonly gateway: string;
+  /** The region build builds for: of the Box gateway, its `bedrock` and `agentcore` targets. */
+  readonly region: string;
   /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
   readonly hosts: readonly BoxNetworkHost[];
   readonly credentials: readonly BoxEgressCredential[];
@@ -102,6 +104,8 @@ export interface BoxNetworkProject {
   readonly runtime: ProjectRuntime;
   /** The runtime's Box gateway, as agentcore.json names it. */
   readonly gateway: string;
+  /** The region build builds for. */
+  readonly region: string;
   /**
    * The gateway's targets, with the `bedrock` and `agentcore` targets that build adds for the
    * runtime's model and Memory calls (`addBoxGatewayTargets`).
@@ -139,6 +143,7 @@ export function buildBoxNetwork(
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
+    region: project.region,
     hosts: targets.hosts,
     credentials: credentials.needed,
     policyFiles: parsed.profile.policyFiles,
@@ -390,7 +395,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[], gateway: string): string
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
-  network: Pick<BoxNetwork, "gateway" | "grantedActions">,
+  network: Pick<BoxNetwork, "gateway" | "grantedActions" | "region">,
 ): string[] {
   const gateway = spec.agentCoreGateways.find(({ name }) => name === network.gateway);
   if (!gateway || gateway.executionRoleArn) return [];
@@ -408,7 +413,8 @@ export function boxGatewayIamWarnings(
     const auth = target.outboundAuth;
     if (auth?.type !== "GATEWAY_IAM_ROLE" || !auth.service || granted(auth.service)) continue;
     const memory =
-      auth.service === "bedrock-agentcore" && endpointKey(target) === BOX_GATEWAY_AGENTCORE_HOST;
+      auth.service === "bedrock-agentcore" &&
+      endpointKey(target) === boxGatewayAgentCoreHost(network.region);
     if (memory && memoryGranted) continue;
     const created =
       target.name === BOX_GATEWAY_BEDROCK_TARGET_NAME ? " (agentcore create added it)" : "";

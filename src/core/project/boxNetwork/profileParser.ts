@@ -38,8 +38,14 @@ export interface ProfileFailure {
 
 const EMPTY_PROFILE: ParsedProfile = { egress: {}, mcp: {}, policyFiles: [] };
 
-/** The network inputs of the box profile `text`, and every failure of the profile. */
-export function parseProfile(text: string): {
+/**
+ * The network inputs of the box profile `text`, and every failure of the profile. `bedrockRegion`
+ * is the region the AgentCore Runtime profile gives box/bedrock, when it replaces the profile's.
+ */
+export function parseProfile(
+  text: string,
+  bedrockRegion?: string,
+): {
   readonly profile: ParsedProfile;
   readonly failures: readonly ProfileFailure[];
 } {
@@ -86,7 +92,9 @@ export function parseProfile(text: string): {
       place: placeOfKey(text, "packs"),
     }));
   let egress: Record<string, unknown> = {};
-  if ((packs as string[]).includes(BOX_BEDROCK_PACK)) egress = bedrockPackEgress(table);
+  if ((packs as string[]).includes(BOX_BEDROCK_PACK)) {
+    egress = bedrockPackEgress(table, bedrockRegion);
+  }
   egress = merged(egress, (table.egress as Record<string, unknown> | undefined) ?? {});
   return {
     profile: {
@@ -105,13 +113,20 @@ function placeOfKey(text: string, key: string | undefined): string {
   return index === -1 ? BOX_PROFILE_PATH : `${BOX_PROFILE_PATH}:${index + 1}`;
 }
 
-/** The `[egress.bedrock]` route of `box/bedrock`, for the region the profile's `[options]` set. */
-function bedrockPackEgress(table: Record<string, unknown>): Record<string, unknown> {
+/**
+ * The `[egress.bedrock]` route of `box/bedrock`: for `bedrockRegion`, the region the AgentCore
+ * Runtime profile sets, else the region the profile's `[options]` set.
+ */
+function bedrockPackEgress(
+  table: Record<string, unknown>,
+  bedrockRegion: string | undefined,
+): Record<string, unknown> {
   const options = isTable(table.options) ? table.options : {};
   const bedrock = isTable(options.bedrock) ? options.bedrock : {};
   const quoted = options["bedrock.region"];
-  const region =
-    typeof bedrock.region === "string"
+  const region = bedrockRegion
+    ? bedrockRegion
+    : typeof bedrock.region === "string"
       ? bedrock.region
       : typeof quoted === "string"
         ? quoted

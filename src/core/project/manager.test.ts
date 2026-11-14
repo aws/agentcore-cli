@@ -1919,8 +1919,14 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    // The Box gateway signs the model calls with its own role, so build grants it Bedrock.
+    // Build adds the Bedrock target, which create no longer declares; the Box gateway signs the
+    // model calls with its own role, so build grants it Bedrock.
     expect(events).toEqual([
+      {
+        type: "step",
+        message:
+          "adding target 'bedrock' to gateway 'agent-python-minimal-box' in agentcore.json, for the boxed agent's model calls",
+      },
       {
         type: "step",
         message:
