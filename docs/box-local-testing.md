@@ -88,8 +88,12 @@ bun run "$CLI" create --name "$PROJECT" --template agent-python-strands
 This adds a `github` API key credential. Build declares the credential from the `env://`
 route, and deploy provisions it in AgentCore Identity.
 
+The `destinations` key lists the hosts the credential may reach. The box blocks the
+credential's egress to any host not in the list. Each entry is a `<host>` or
+`<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
+
 ```
-printf '\n[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
 ```
 
 ## 5. Point the generated CDK app at the local L3 tarball
