@@ -3,6 +3,8 @@
  * and `policy.dw` that a run of the profile gets, with every pack, option, and rule Box adds
  * already in them, so build reads them rather than compiling the profile itself.
  */
+import { realpathSync } from "node:fs";
+import { isAbsolute, relative, sep } from "node:path";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
 
@@ -51,7 +53,6 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
 
   public async resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile> {
     const command = ["box", "profile", "show", profilePath, "--full"];
-    const shown = `\`${command.join(" ")}\``;
     const stdout: string[] = [];
     const stderr: string[] = [];
     try {
@@ -66,38 +67,71 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
       if (!(error instanceof ProcessFailedError)) throw error;
       if (error.meta.exitCode === null && stderr.length === 0) {
         throw new InvalidEnvironmentError(
-          `build and deploy read ${profilePath} with ${shown}, as Box resolves it, and box did ` +
-            `not start: ${lastLine(error.message)}. Put box on PATH, as \`agentcore dev\` needs ` +
-            `it (${BOX_RELEASES_URL}), then retry.`,
+          `Box is not installed or not on PATH. Install it (${BOX_RELEASES_URL}), then retry.`,
           { cause: error },
         );
       }
+      const lines = boxError(stderr);
+      if (lines.length === 0) {
+        throw new InvalidEnvironmentError(
+          `Box stopped on ${profilePath} with exit code ` +
+            `${String(error.meta.exitCode ?? "unknown")} and printed no error. Run ` +
+            `'box profile show ${profilePath}' in the project folder to see why.`,
+          { cause: error },
+        );
+      }
+      const agent = venvAgentFolder(lines, projectRoot);
       throw new InvalidEnvironmentError(
-        `${shown} failed in ${projectRoot} (exit code ${String(error.meta.exitCode ?? "unknown")}), ` +
-          `so build cannot read the box profile as Box resolves it:\n${boxError(stderr)}\n` +
-          `Fix what box names, so that \`box profile show ${profilePath}\` succeeds in the project ` +
-          "folder, then retry.",
+        [
+          `Box refused the profile ${profilePath}:`,
+          ...lines.map((line) => `  ${line}`),
+          agent === undefined
+            ? "Fix what Box reports, then retry."
+            : `Run 'uv sync' in ${agent}, then retry.`,
+        ].join("\n"),
         { cause: error },
       );
     }
     const resolved = parseBoxProfileShow(stdout.join("\n"));
     if (resolved === undefined) {
       throw new InvalidEnvironmentError(
-        `${shown} printed no "${BOX_TOML_HEADING}" and "${POLICY_HEADING}" sections, which build ` +
-          `reads. Install a box that prints them (${BOX_RELEASES_URL}), then retry.`,
+        `This Box cannot show the full profile ${profilePath}, which build reads. Install a ` +
+          `newer Box (${BOX_RELEASES_URL}), then retry.`,
       );
     }
     return resolved;
   }
 }
 
-/** Box's error lines, without the usage text that box prints after them. */
-function boxError(stderr: readonly string[]): string {
+/** Box's error lines, without the usage text that box prints after them, or blank lines. */
+function boxError(stderr: readonly string[]): string[] {
   const usage = stderr.findIndex((line) => line.startsWith("Usage: box"));
   const lines = usage === -1 ? stderr : stderr.slice(0, usage);
-  return lines.map((line) => `  ${line}`).join("\n");
+  return lines.filter((line) => line.trim() !== "");
 }
 
-function lastLine(text: string): string {
-  return text.trim().split("\n").at(-1) ?? text;
+/**
+ * The agent's folder, from the project root, when Box refuses the profile because the agent's
+ * `.venv` lies under a write grant, as it does before `uv sync` makes the venv; else `undefined`.
+ */
+function venvAgentFolder(lines: readonly string[], projectRoot: string): string | undefined {
+  for (const line of lines) {
+    if (!line.includes("write grant")) continue;
+    const folder = /(\S+?)[\\/]\.venv[\\/]/.exec(line)?.[1];
+    if (folder === undefined) continue;
+    const inside = relative(realPath(projectRoot), realPath(folder));
+    if (inside === "") return "the project folder";
+    const outside = inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+    return outside ? folder : inside.split(sep).join("/");
+  }
+  return undefined;
+}
+
+/** The path with every link resolved, or the path itself when it does not exist. */
+function realPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
 }
