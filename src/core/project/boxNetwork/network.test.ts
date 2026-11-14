@@ -67,6 +67,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     spec,
     runtime: RUNTIME,
     gateway: "agent-box",
+    region: "us-west-2",
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
   });

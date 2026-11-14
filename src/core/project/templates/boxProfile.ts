@@ -319,10 +319,10 @@ export function renderBoxProfile(
   target: BoxProfileTarget = "local",
   runtimeRoutes = "",
   runtimePolicies: readonly string[] = [],
+  region: string = BOX_GATEWAY_BEDROCK_REGION,
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
-  const region = BOX_GATEWAY_BEDROCK_REGION;
   const protocol = runtime.protocol ?? "HTTP";
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
   const ingressPort = boxIngressPort(protocol);
@@ -419,7 +419,7 @@ ${routes}${bedrockRoute}${keyedRoute}`;
  * with its own role. Every `[egress.<name>]` on the Runtime is one of these, so
  * every outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeGatewayRouteSection(target: string, host: string): string {
+function runtimeGatewayRouteSection(target: string, host: string, region: string): string {
   const key = tomlKey(target);
   return `
 # Calls to ${host}, through the runtime's Box gateway's '${target}' target.
@@ -430,7 +430,7 @@ destinations = [${str(host)}]
 url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
-auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
+auth.aws.region = ${str(region)}
 `;
 }
 
@@ -441,13 +441,19 @@ auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
  * the template's calls need (see `addBoxGatewayTargets`) before it renders.
  * None outside a Box project, which has no Box gateway.
  */
-function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime): string {
+function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region: string): string {
   if (!isBoxProject(spec)) return "";
   const gateway = spec.agentCoreGateways.find(({ name }) => name === boxGatewayName(runtime.name));
   return (gateway?.targets ?? [])
     .flatMap((target) =>
       target.targetType === "passthrough" && target.passthrough
-        ? [runtimeGatewayRouteSection(target.name, new URL(target.passthrough.endpoint).host)]
+        ? [
+            runtimeGatewayRouteSection(
+              target.name,
+              new URL(target.passthrough.endpoint).host,
+              region,
+            ),
+          ]
         : [],
     )
     .join("");
@@ -465,7 +471,7 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime): strin
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  network?: Pick<BoxNetwork, "policyFiles">,
+  network?: Pick<BoxNetwork, "policyFiles"> & Partial<Pick<BoxNetwork, "region">>,
 ): string {
   const input = {
     runtimeName: runtime.name,
@@ -480,8 +486,9 @@ export function renderRuntimeBoxProfile(
     spec.name,
     input,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime),
+    runtimeGatewayRoutes(spec, runtime, network?.region ?? BOX_GATEWAY_BEDROCK_REGION),
     network?.policyFiles,
+    network?.region,
   )!;
 }
 

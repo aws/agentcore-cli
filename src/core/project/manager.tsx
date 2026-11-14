@@ -53,6 +53,7 @@ import {
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
@@ -1561,9 +1562,24 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project);
+    const boxed = await this.applyBoxNetwork(synced.project, await this.boxBuildRegion());
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
+  }
+
+  /**
+   * The region `agentcore build` writes the Box gateway's `bedrock` and `agentcore` targets and the
+   * AgentCore Runtime profile for, as the first deploy picks the default target's: AWS_REGION,
+   * then AWS_DEFAULT_REGION, then the active profile's region in the shared AWS config file, then
+   * DEFAULT_REGION. Deploy uses its target's region instead.
+   */
+  private async boxBuildRegion(): Promise<string> {
+    return (
+      this.processEnv.AWS_REGION ||
+      this.processEnv.AWS_DEFAULT_REGION ||
+      (await regionFromConfigFile()) ||
+      DEFAULT_REGION
+    );
   }
 
   /**
@@ -1576,8 +1592,9 @@ export class FsProjectManager implements ProjectManager {
    */
   private async applyBoxNetwork(
     project: Project,
+    region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    const networks = readBoxNetworks(project.spec, project.rootPath);
+    const networks = readBoxNetworks(project.spec, project.rootPath, region);
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks));
     }
@@ -1721,7 +1738,7 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project);
+    const boxed = await this.applyBoxNetwork(synced.project, target.region);
     yield* boxed.events;
     project = boxed.project;
 

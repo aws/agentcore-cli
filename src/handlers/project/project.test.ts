@@ -140,8 +140,8 @@ describe("project create", () => {
   });
 
   test.each([
-    ["agent-python-strands", ["bedrock"]],
-    ["agent-python-minimal", ["bedrock"]],
+    ["agent-python-strands", []],
+    ["agent-python-minimal", []],
     ["mcp-python-fastmcp", undefined],
     ["empty", undefined],
   ] as const)(

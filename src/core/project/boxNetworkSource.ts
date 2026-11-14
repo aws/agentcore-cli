@@ -7,6 +7,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { ProjectStateError } from "../../errors/errors";
 import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
+import { BOX_GATEWAY_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets } from "./boxMemory";
 import {
   BOX_PROFILE_PATH,
@@ -22,19 +23,25 @@ import {
 const NO_PROFILE: ParsedProfile = { egress: {}, mcp: {}, policyFiles: [] };
 
 /** The Box network model of each runtime of `spec` that runs its agent in a box. */
-export function readBoxNetworks(spec: ProjectSpec, projectRoot: string): BoxNetwork[] {
+export function readBoxNetworks(
+  spec: ProjectSpec,
+  projectRoot: string,
+  region: string = BOX_GATEWAY_BEDROCK_REGION,
+): BoxNetwork[] {
   const runtimes = isBoxProject(spec)
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
     : [];
   if (runtimes.length === 0) return [];
-  const read = readProfile(projectRoot);
+  // The Runtime profile sets `[options] bedrock.region` to the region build builds for, so the
+  // model reads box/bedrock's route for that region, not the one `agentcore dev` uses.
+  const read = readProfile(projectRoot, region);
   const files = readPolicyFiles(projectRoot, read.profile.policyFiles);
   const { parsed, failures } = parsePolicyFiles(read.profile, files.texts);
   const found = [...read.failures, ...files.failures, ...failures];
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
-  addBoxGatewayTargets(withDefaults, projectRoot);
+  addBoxGatewayTargets(withDefaults, projectRoot, region);
   return runtimes.map((runtime) => {
     const gateway = boxGatewayName(runtime.name);
     const entry = withDefaults.agentCoreGateways.find(({ name }) => name === gateway);
@@ -42,6 +49,7 @@ export function readBoxNetworks(spec: ProjectSpec, projectRoot: string): BoxNetw
       spec,
       runtime,
       gateway,
+      region,
       targets: entry?.targets ?? [],
       grantedActions: grantedActions(projectRoot, entry?.additionalPolicies ?? []),
     });
@@ -66,13 +74,16 @@ export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
 }
 
 /** The box profile of the project, or an empty one when it has none. */
-function readProfile(projectRoot: string): {
+function readProfile(
+  projectRoot: string,
+  bedrockRegion?: string,
+): {
   profile: ParsedProfile;
   failures: readonly BoxNetworkFailure[];
 } {
   const path = join(projectRoot, ...BOX_PROFILE_PATH.split("/"));
   if (!existsSync(path)) return { profile: NO_PROFILE, failures: [] };
-  return parseProfile(readFileSync(path, "utf8"));
+  return parseProfile(readFileSync(path, "utf8"), bedrockRegion);
 }
 
 /**
