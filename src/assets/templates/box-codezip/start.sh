@@ -11,11 +11,14 @@
 #       ├── box  strands-box-sock-alias  strands-box-contain-trampoline
 #       ├── resources/                 box's packs
 #       ├── ffi/                       _ctypes and a libffi that Box Core's W^X filter allows
-#       └── profile.toml               rendered from agentcore.json, with @CODE@, @PYTHON@,
-#                                      @PYTHON_PREFIX@ and @GATEWAY_BOX_URL@ for this script
+#       ├── profile.toml               rendered from agentcore.json, with @CODE@, @PYTHON@,
+#       │                              @PYTHON_PREFIX@ and @GATEWAY_BOX_URL@ for this script
+#       └── <policy files>             the Dogwood files of .box/profile.toml, unchanged, which
+#                                      the profile's `policies` names
 #
 #   /tmp/box/                          written here; gone with the microVM
-#   ├── profile.toml                   the filled profile, which box run takes by path    $PROFILE
+#   ├── profile/                       the filled profile, which box run takes by path, and a
+#   │                                  copy of each policy file it names                  $PROFILE_DIR
 #   ├── workspace/                     where box run starts; the agent reads and writes   $WORKSPACE
 #   └── home/                          HOME for box; the agent cannot read it             $HOME_DIR
 #
@@ -32,8 +35,9 @@ DIST=$CODE/.box-dist
 BOX=$DIST/box
 WORKSPACE=/tmp/box/workspace
 HOME_DIR=/tmp/box/home
-# Outside the workspace, so box accepts the profile file.
-PROFILE=/tmp/box/profile.toml
+# Outside the workspace, so box accepts the profile and its policy files.
+PROFILE_DIR=/tmp/box/profile
+PROFILE=$PROFILE_DIR/profile.toml
 READY_BY=22
 
 log() { echo "[box] $*"; }
@@ -48,8 +52,22 @@ serve_without_box() {
 }
 
 # --- The profile -----------------------------------------------------------------------------------
+# The policy files the profile's `policies` names. Deploy renders that line on one line, and names
+# each file with letters, digits, `.`, `_`, `-`, and `/` only.
+policy_files() { sed -n 's/^policies = \[\(.*\)\]$/\1/p' "$1" | tr -d '"' | tr ',' ' '; }
+
+# Copies them from beside the staged profile to beside the filled one, where box reads them.
+copy_policy_files() {
+  local file
+  for file in $(policy_files "$1/profile.toml"); do
+    mkdir -p "$2/$(dirname "$file")" && cp "$1/$file" "$2/$file" || return 1
+  done
+}
+
 write_profile() {
   local python_prefix agent_env
+  rm -rf "$PROFILE_DIR" && mkdir -p "$PROFILE_DIR" && copy_policy_files "$DIST" "$PROFILE_DIR" \
+    || return 1
   python_prefix=$(pyq -c 'import sys; print(sys.base_prefix)')
 
   # Only the deployed Memories' and Gateways' IDs and URLs reach the agent, never a secret.
@@ -109,7 +127,7 @@ log "box: $("$BOX" --version 2>&1 | head -1)  python: $PYTHON  user: $(id -u)"
 mkdir -p "$WORKSPACE" "$HOME_DIR"
 chmod 0700 "$HOME_DIR"
 
-write_profile
+write_profile || serve_without_box "cannot write $PROFILE and its policy files"
 log "profile:"
 sed 's/^/[box]   /' "$PROFILE"
 start_box

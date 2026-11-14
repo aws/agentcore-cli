@@ -8,6 +8,12 @@ import type {
   BoxGatewayDeletionHandler,
 } from "../../../handlers/project/types";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import type { BoxNetwork } from "../boxNetwork";
+
+export type BuildBackendInput = {
+  /** The Box network model of each box runtime, which staging writes the Runtime profile from. */
+  boxNetworks: readonly BoxNetwork[];
+};
 
 export type DeployBackendInput = {
   /** Fully resolved account and region selected from aws-targets.json. */
@@ -20,7 +26,7 @@ export type DeployBackendInput = {
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
   skipBootstrap?: boolean;
-};
+} & BuildBackendInput;
 
 export type ResolveDeployedResourcesBackendInput = {
   target: AwsDeploymentTarget;
@@ -32,7 +38,7 @@ export type ResolveProjectResourcesBackendInput = {
 
 /** Builds the deployable artifacts owned by a project's selected backend. */
 export interface ProjectBackend {
-  build(project: Project): AsyncGenerator<ProjectEvent, void>;
+  build(project: Project, input: BuildBackendInput): AsyncGenerator<ProjectEvent, void>;
   deploy(project: Project, input: DeployBackendInput): AsyncGenerator<ProjectEvent, DeployResult>;
   resolveDeployedResources(
     project: Project,

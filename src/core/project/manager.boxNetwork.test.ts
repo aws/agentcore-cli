@@ -205,7 +205,10 @@ describe("build writes the Box network of the box profile", () => {
     );
 
     // The Runtime profile routes each target of the Box gateway, as upstream renders it.
-    const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
+    const profile = await runtimeProfile(root);
+    expect(profile.policies).toEqual(["policy.dw"]);
+    expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
+    const egress = profile.egress as Record<string, unknown>;
     expect(Object.keys(egress)).toEqual([
       "bedrock",
       "egress-github",
@@ -392,6 +395,7 @@ describe("deploy writes the Box network before the backend deploys", () => {
       authorizerType: "ApiKeyCredentialProvider",
       name: "github",
     });
+    expect(calls[0]!.input.boxNetworks.map(({ gateway: name }) => name)).toEqual([GATEWAY]);
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
   });
 });

@@ -38,9 +38,10 @@ USER bedrock_agentcore
 # Manager (dockerBuildSecrets in agentcore.json), and `agentcore dev` passes your GitHub login. It is
 # never a build arg and never lands in the image. A private release's file downloads only through
 # the GitHub API, by its asset URL; curl does not send the token on to the storage it redirects to.
-# Without the secret, the public download URL is used. The box profile comes from .box-dist/, which
-# dev, build and deploy stage: dev the project's .box/profile.toml, build and deploy the AgentCore
-# Runtime profile. start.sh runs box with the profile's path, outside /app, the workspace.
+# Without the secret, the public download URL is used. The box profile and the policy files it names
+# come from .box-dist/, which dev, build and deploy stage: dev the project's .box/profile.toml, build
+# and deploy the AgentCore Runtime profile. The folder is copied whole, so each policy file stays
+# beside the profile. start.sh runs box with the profile's path, outside /app, the workspace.
 USER root
 ARG BOX_REPO={{box.repo}}
 ARG BOX_VERSION={{box.version}}
@@ -62,8 +63,8 @@ RUN --mount=type=secret,id=gh_token \
     tar -C /opt/box -xzf /tmp/box.tar.gz --no-same-owner; \
     rm /tmp/box.tar.gz; \
     /opt/box/box --version
+COPY .box-dist/ /opt/box/
 COPY start.sh /opt/box/
-COPY .box-dist/profile.toml /opt/box/profile.toml
 # box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
 # /app/.box-dist is not the agent's, so it goes.
 RUN rm -rf /app/.box-dist \

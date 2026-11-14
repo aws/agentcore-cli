@@ -5,13 +5,15 @@
 # The image (Debian, arm64, user bedrock_agentcore):
 #
 #   /app/                              the agent and its .venv; box's workspace, which the agent can write
-#   /opt/box/                          box, its two helpers, resources/ (its packs), and this script
+#   /opt/box/                          box, its two helpers, resources/ (its packs), this script, and
+#                                      the Dogwood policy files the profile's `policies` names
 #   /opt/box/profile.toml              on AgentCore Runtime: rendered from agentcore.json at deploy
 #                                      under `agentcore dev`: the project's .box/profile.toml
-#   ~/profile.toml                     on AgentCore Runtime: that profile with the deployed values
+#   ~/box-profile/                     profile.toml, that profile with the deployed values on
+#                                      AgentCore Runtime, and a copy of each policy file it names
 #
-# box run takes the profile by its path. Both copies are outside /app, the workspace, so box accepts
-# them, and the agent cannot change either.
+# box run takes the profile by its path, and reads its policy files from beside it. Both copies are
+# outside /app, the workspace, so box accepts them, and the agent cannot change either.
 #
 # On AgentCore Runtime, this script puts the deployed Memories' and Gateways' variables and the
 # Box gateway's URL into the profile, and starts box run. Box signs the AWS requests with the
@@ -24,14 +26,30 @@ set -u
 
 BOX=/opt/box/box
 PYTHON=/app/.venv/bin/python
-TEMPLATE=/opt/box/profile.toml
-PROFILE=$HOME/profile.toml
+TEMPLATE_DIR=/opt/box
+TEMPLATE=$TEMPLATE_DIR/profile.toml
+PROFILE_DIR=$HOME/box-profile
+PROFILE=$PROFILE_DIR/profile.toml
 READY_BY=22
 
 log() { echo "[box] $*"; }
 
+# The policy files the profile's `policies` names, as TOML reads it.
+policy_files() {
+  /usr/local/bin/python -c 'import sys, tomllib; print("\n".join(tomllib.load(open(sys.argv[1], "rb")).get("policies", [])))' "$1"
+}
+
+# Copies them from beside the image's profile to beside the filled one, where box reads them.
+copy_policy_files() {
+  local file
+  for file in $(policy_files "$1/profile.toml"); do
+    mkdir -p "$2/$(dirname "$file")" && cp "$1/$file" "$2/$file" || return 1
+  done
+}
+
 if [ "${LOCAL_DEV:-}" = 1 ]; then
-  cp "$TEMPLATE" "$PROFILE" && chmod 0644 "$PROFILE"
+  rm -rf "$PROFILE_DIR" && mkdir -p "$PROFILE_DIR" && copy_policy_files "$TEMPLATE_DIR" "$PROFILE_DIR" \
+    && cp "$TEMPLATE" "$PROFILE" && chmod 0644 "$PROFILE" || exit 1
   cd /app && exec "$BOX" run "$PROFILE" --no-banner
 fi
 
@@ -43,6 +61,8 @@ serve_without_box() {
 # --- The deployed resources ------------------------------------------------------------------------
 fill_profile() {
   local agent_env
+  rm -rf "$PROFILE_DIR" && mkdir -p "$PROFILE_DIR" \
+    && copy_policy_files "$TEMPLATE_DIR" "$PROFILE_DIR" || return 1
   # Only the deployed Memories' and Gateways' IDs and URLs reach the agent, never a secret.
   agent_env=$(env | grep -E '^((AGENTCORE_GATEWAY|MEMORY)_[A-Z0-9_]+_(URL|ARN|ID|AUTH_TYPE)|AWS_REGION|AWS_DEFAULT_REGION)=[!-~]*$' \
     | sed -E 's/^([^=]+)=(.*)$/\1 = "\2"/')
@@ -94,7 +114,7 @@ start_box() {
 log "box: $("$BOX" --version 2>&1 | head -1)  user: $(id)"
 log "covers over /proc: $(awk '$5 ~ "^/proc/" {printf "%s ", $5}' /proc/self/mountinfo)"
 
-fill_profile
+fill_profile || serve_without_box "cannot write $PROFILE and its policy files"
 log "profile:"
 sed 's/^/[box]   /' "$PROFILE"
 start_box

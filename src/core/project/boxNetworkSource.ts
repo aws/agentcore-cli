@@ -5,7 +5,8 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
-import { runsAgentInBox } from "./backends/boxContainer";
+import { ProjectStateError } from "../../errors/errors";
+import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
 import { addBoxGatewayTargets } from "./boxMemory";
 import {
   BOX_PROFILE_PATH,
@@ -47,6 +48,23 @@ export function readBoxNetworks(spec: ProjectSpec, projectRoot: string): BoxNetw
   });
 }
 
+/**
+ * Each policy file the box profile names, as an image's `.box-dist/` takes it under `agentcore
+ * dev`, which stages the profile itself and not the Runtime one, and builds no model. Throws for a
+ * policy file Box would refuse.
+ */
+export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
+  const { profile } = readProfile(projectRoot);
+  const { failures } = readPolicyFiles(projectRoot, profile.policyFiles);
+  if (failures.length > 0) {
+    throw new ProjectStateError(failures.map(({ reason }) => reason).join("\n"));
+  }
+  return profile.policyFiles.map((relative) => ({
+    from: join(projectRoot, ".box", ...relative.split("/")),
+    relative,
+  }));
+}
+
 /** The box profile of the project, or an empty one when it has none. */
 function readProfile(projectRoot: string): {
   profile: ParsedProfile;
@@ -70,7 +88,8 @@ function readPolicyFiles(
   const failures: BoxNetworkFailure[] = [];
   for (const file of files) {
     const place = `.box/${file}`;
-    const problem = policyFileProblem(folder, join(folder, ...file.split("/")));
+    const problem =
+      policyPathProblem(file) ?? policyFileProblem(folder, join(folder, ...file.split("/")));
     if (problem !== undefined) {
       failures.push({
         code: "INVALID_POLICY_FILE",
@@ -82,6 +101,29 @@ function readPolicyFiles(
     texts.push({ file: place, text: readFileSync(join(folder, ...file.split("/")), "utf8") });
   }
   return { texts, failures };
+}
+
+/** What `.box-dist/` and the image's `/opt/box/` hold for box itself, which no policy file takes. */
+const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
+  "box",
+  "strands-box-sock-alias",
+  "strands-box-contain-trampoline",
+  "resources",
+  "ffi",
+  "profile.toml",
+  "start.sh",
+]);
+
+/** Why start.sh cannot copy a policy file at `file` beside the Runtime profile, if it cannot. */
+function policyPathProblem(file: string): string | undefined {
+  if (!/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(file)) {
+    return "has a character other than a letter, a digit, '.', '_', '-', and '/' in its path, which the AgentCore Runtime start.sh cannot copy";
+  }
+  const first = file.split("/")[0]!;
+  if (BOX_DIST_NAMES.has(first)) {
+    return `takes the name ${first}, which box keeps beside its AgentCore Runtime profile`;
+  }
+  return undefined;
 }
 
 /** Why Box would refuse the policy file at `path`, or `undefined` when it reads it. */

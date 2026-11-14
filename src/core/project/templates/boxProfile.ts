@@ -5,6 +5,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
+import type { BoxNetwork } from "../boxNetwork";
 
 /** Where uv installs the Pythons it manages, as a boxy path. */
 const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
@@ -293,13 +294,16 @@ export type BoxProfileTarget = "local" | "runtime";
  * - `runtime`: what AgentCore Runtime runs, with no reload, signed with the
  *   execution role. Build and deploy render it from agentcore.json with
  *   {@link renderRuntimeBoxProfile}; `runtimeRoutes` holds the routes they
- *   derive from it, as sections that start with a blank line.
+ *   derive from it, as sections that start with a blank line, and
+ *   `runtimePolicies` the box profile's policy files, which staging copies
+ *   beside it.
  */
 export function renderBoxProfile(
   projectName: string,
   runtime: ScaffoldRuntimeInput,
   target: BoxProfileTarget = "local",
   runtimeRoutes = "",
+  runtimePolicies: readonly string[] = [],
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
@@ -339,6 +343,10 @@ export function renderBoxProfile(
   // Only the Runtime agent calls AgentCore: locally, LOCAL_DEV=1 skips Identity, and no memory ID
   // reaches the box, so Memory is off.
   const routes = onRuntime ? runtimeRoutes : "";
+  const policies =
+    onRuntime && runtimePolicies.length > 0
+      ? `# The policy files of ${BOX_PROFILE_FILE}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
+      : "";
   const bedrockRoute = !bedrock
     ? ""
     : onRuntime
@@ -366,7 +374,7 @@ secret.ref = "aws://default"
   return `# Runs the agent of the AgentCore project '${projectName}' in a box.
 ${header}
 packs = ${packs}
-
+${policies}
 [profile]
 name = ${str(projectName)}
 
@@ -430,12 +438,17 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime): strin
 /**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
- * provider, and a route for each passthrough target of its Box gateway.
- * agentcore.json does not record the framework, and the profile does not
- * depend on it beyond the container case, so the input names Strands, one of
- * the frameworks that run in a box.
+ * provider, and a route for each passthrough target of its Box gateway; and,
+ * from the runtime's Box network model, the box profile's policy files under
+ * `policies`. agentcore.json does not record the framework, and the profile
+ * does not depend on it beyond the container case, so the input names Strands,
+ * one of the frameworks that run in a box.
  */
-export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
+export function renderRuntimeBoxProfile(
+  spec: ProjectSpec,
+  runtime: ProjectRuntime,
+  network?: Pick<BoxNetwork, "policyFiles">,
+): string {
   const input = {
     runtimeName: runtime.name,
     build: runtime.build,
@@ -445,7 +458,13 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  return renderBoxProfile(spec.name, input, "runtime", runtimeGatewayRoutes(spec, runtime))!;
+  return renderBoxProfile(
+    spec.name,
+    input,
+    "runtime",
+    runtimeGatewayRoutes(spec, runtime),
+    network?.policyFiles,
+  )!;
 }
 
 /** The variable that holds the model provider's API key, as the template's model code reads it. */

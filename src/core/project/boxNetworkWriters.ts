@@ -13,6 +13,7 @@ import type { ProjectSpec } from "../../projectSchemas/project";
 import { gatewayTargetFor, isManagedTarget, type BoxNetwork } from "./boxNetwork";
 import { addBoxGatewayTargets, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
 import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
+import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** Something exactly one writer owns. */
 export type BoxNetworkOutput =
@@ -219,6 +220,45 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     };
   },
 };
+
+/** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */
+export interface StagedRuntime {
+  readonly runtime: string;
+  readonly dist: string;
+}
+
+/**
+ * The AgentCore Runtime box profile of each staged runtime, and a byte copy of each policy file
+ * its profile names, beside it at the same path.
+ */
+export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetworkWriter {
+  const networkOf = (networks: readonly BoxNetwork[], runtime: string) =>
+    networks.find((network) => network.runtime === runtime);
+  return {
+    name: "runtime profile",
+    writes: (networks) =>
+      staged.flatMap(({ runtime, dist }) => [
+        { kind: "file" as const, path: `${dist}/profile.toml` },
+        ...(networkOf(networks, runtime)?.policyFiles ?? []).map((file) => ({
+          kind: "file" as const,
+          path: `${dist}/${file}`,
+        })),
+      ]),
+    edits: (networks, { spec }) => ({
+      files: staged.flatMap(({ runtime, dist }) => {
+        const network = networkOf(networks, runtime);
+        const entry = spec.runtimes.find(({ name }) => name === runtime)!;
+        return [
+          { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
+          ...(network?.policyFiles ?? []).map((file) => ({
+            path: `${dist}/${file}`,
+            copyOf: `.box/${file}`,
+          })),
+        ];
+      }),
+    }),
+  };
+}
 
 /** The writers that build and deploy run before synth, in order. */
 export const BOX_NETWORK_WRITERS: readonly BoxNetworkWriter[] = [
