@@ -1892,19 +1892,14 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("downloads box from the box release with gh when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("refuses to build a boxed CodeZip runtime when AGENTCORE_BOX_SOURCE is unset", async () => {
     const directory = await inTempDirectory();
-    const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
-    tempDirectories.push(home);
-    const { manager: subject, commands } = manager({ HOME: home });
+    const { manager: subject, commands } = manager({});
     const project = await scaffolded(subject, directory);
     commands.length = 0;
 
-    // The test runner downloads nothing, so build stops before synth and says how to log in.
-    await expect(drain(subject.build(project))).rejects.toThrow(/Run `gh auth login`/);
-    expect(commands.map(({ command }) => command.slice(0, 3))).toEqual([
-      ["gh", "release", "download"],
-    ]);
+    await expect(drain(subject.build(project))).rejects.toThrow(/Set AGENTCORE_BOX_SOURCE/);
+    expect(commands).toEqual([]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
