@@ -514,6 +514,24 @@ describe("project remove", () => {
         .policyEngineConfiguration,
     ).toBeUndefined();
   });
+
+  test("keeps a Box gateway's own policy engine on direct removal", async () => {
+    const { projectRoot, cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal"],
+    });
+    cleanups.push(cleanup);
+
+    const { io } = await run(["remove", "policy-engine", "--name", "agent_box"]);
+
+    const spec = await projectSpec(projectRoot);
+    // The managed engine stays, and the Box gateway keeps its attachment.
+    expect(spec.policyEngines).toEqual([DEFAULT_BOX_POLICY_ENGINE]);
+    expect(
+      spec.agentCoreGateways.find((gateway: { name: string }) => gateway.name === "agent-box")
+        .policyEngineConfiguration,
+    ).toEqual({ policyEngineName: "agent_box", mode: "ENFORCE" });
+    expect(io.stderr()).toContain("The Box policy engine stays");
+  });
 });
 
 describe("project remove all", () => {

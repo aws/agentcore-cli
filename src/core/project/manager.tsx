@@ -69,6 +69,7 @@ import {
   boxGatewayNames,
   boxGatewayPolicyEngineName,
   isBoxExtensionEntry,
+  isBoxPolicyEngine,
   isBoxProject,
   isReservedBoxGatewayName,
   ProjectSpecSchema,
@@ -1121,6 +1122,11 @@ export class FsProjectManager implements ProjectManager {
       );
       newSpec = { ...existingProjectSpec, policyEngines: engines };
     } else if (input.resourceType === "policy-engine") {
+      // A Box gateway's own engine is managed by Box, like the gateway: it stays here, and goes
+      // only when its runtime is removed, or by `remove all`.
+      if (isBoxPolicyEngine(existingProjectSpec, input.name)) {
+        return { project, removedEnvKeys: [], removedResource: input, boxPolicyEngineStayed: true };
+      }
       const engines = existingProjectSpec.policyEngines.filter(
         (engine) => engine.name !== input.name,
       );
