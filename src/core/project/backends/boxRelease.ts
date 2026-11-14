@@ -29,7 +29,7 @@ export type BoxRelease = {
 };
 
 export const BOX_RELEASE: BoxRelease = {
-  repo: "mquang-amazon/box-releases",
+  repo: "mquang-amazon/staging-boxy",
   version: "0.1.11-linux-preview.2",
   target: "aarch64-unknown-linux-gnu",
   box: {
@@ -44,18 +44,12 @@ export const BOX_RELEASE: BoxRelease = {
 };
 
 /**
- * How to install the `box` that `agentcore dev` runs a CodeZip box agent with, which create and
- * dev ask for when it is not on PATH. The release has a build for each machine it supports.
+ * The BuildKit secret that holds a GitHub token able to read the box release: a box image's
+ * Dockerfile reads it with `RUN --mount=type=secret,id=gh_token`. On deploy CodeBuild reads it
+ * from the Secrets Manager secret `BOX_GITHUB_TOKEN_SECRET`; under dev it is your GitHub login.
  */
-export const BOX_INSTALL_HINT =
-  `Install box: download the build for your machine from ` +
-  `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}, unpack it into ` +
-  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.";
-
-/** Where a release's asset downloads from: the public GitHub release, no token needed. */
-export function boxReleaseAssetUrl(release: BoxRelease, asset: string): string {
-  return `https://github.com/${release.repo}/releases/download/v${release.version}/${asset}`;
-}
+export const BOX_GITHUB_TOKEN_SECRET_ID = "gh_token";
+export const BOX_GITHUB_TOKEN_SECRET = "agentcore/box/github-token";
 
 /** box and the two helper programs it runs, which must sit beside it. */
 export const BOX_BINARIES = [
@@ -74,40 +68,58 @@ export type BoxLinuxBuild = {
   ffi: Partial<Record<string, string>>;
 };
 
-/** Told the URL of a box archive just before it downloads, which happens once per version. */
-export type OnBoxDownload = (url: string) => void;
-
-/** The line that says box is downloading, for `version` and the machine it runs on. */
-export function boxDownloadMessage(version: string, url: string, forWhat: string): string {
-  return (
-    `downloading box ${version} for ${forWhat} from ${url} ` +
-    "(once; later runs reuse ~/.agentcore/box/)"
-  );
-}
-
 export type ResolveBoxLinuxBuildOptions = {
-  /** Runs curl and tar; tests inject one. */
+  /** Runs gh and tar; tests inject one. */
   runner?: ProcessRunner;
-  onDownload?: OnBoxDownload;
   /** The home folder the release cache is in, `~/.agentcore/box/`. */
   home?: string;
   /** The release to install; BOX_RELEASE by default. */
   release?: BoxRelease;
 };
 
+/** The local build in a staging-boxy checkout that AGENTCORE_BOX_SOURCE names. */
+const SOURCE_BUILD = join("target-al2023", "release");
+const SOURCE_FFI = join("target-al2023", "ffi");
+
 /**
- * The Linux box for AgentCore Runtime, from `release` (BOX_RELEASE by default). The release
- * downloads once with curl from its public URL, into `~/.agentcore/box/<version>-<target>/`,
- * after its checksums match; later runs reuse it.
+ * Where box for AgentCore Runtime comes from: the staging-boxy checkout AGENTCORE_BOX_SOURCE
+ * names, for a local build, or else BOX_RELEASE. The release downloads once with gh, into
+ * `~/.agentcore/box/<version>-<target>/`, after its pinned checksums match; later runs reuse it.
+ * Only CodeZip runtimes use it: a container image installs box itself, from its Dockerfile.
  */
 export async function resolveBoxLinuxBuild(
   env: NodeJS.ProcessEnv,
   options: ResolveBoxLinuxBuildOptions = {},
 ): Promise<BoxLinuxBuild> {
+  const source = env.AGENTCORE_BOX_SOURCE;
   const release = options.release ?? BOX_RELEASE;
+  if (source) return sourceBuild(source, release);
   // HOME from the environment the CLI was given, so the cache follows it.
   const home = options.home ?? env.HOME ?? homedir();
-  return releaseBuild(release, env, options.runner ?? runProcess, home, options.onDownload);
+  return releaseBuild(release, env, options.runner ?? runProcess, home);
+}
+
+function sourceBuild(source: string, release: BoxRelease): BoxLinuxBuild {
+  const binaries = join(source, SOURCE_BUILD);
+  for (const binary of BOX_BINARIES) {
+    if (!isFile(join(binaries, binary))) {
+      throw new InvalidEnvironmentError(
+        `AGENTCORE_BOX_SOURCE has no ${join(binaries, binary)}. Build box on Amazon Linux 2023 ` +
+          `into ${SOURCE_BUILD} there, or unset AGENTCORE_BOX_SOURCE to use box ` +
+          `${release.version}.`,
+      );
+    }
+  }
+  const resources = join(source, "resources");
+  if (!existsSync(resources)) {
+    throw new InvalidEnvironmentError(`AGENTCORE_BOX_SOURCE has no box packs at ${resources}.`);
+  }
+  const ffi = join(source, SOURCE_FFI);
+  return {
+    binaries,
+    resources,
+    ffi: existsSync(ffi) ? { [release.ffi.runtimeVersion]: ffi } : {},
+  };
 }
 
 /** The installed release: release.json names the pinned version. */
@@ -132,7 +144,6 @@ async function releaseBuild(
   env: NodeJS.ProcessEnv,
   runner: ProcessRunner,
   home: string,
-  onDownload: OnBoxDownload | undefined,
 ): Promise<BoxLinuxBuild> {
   const cache = join(home, ".agentcore", "box");
   const root = join(cache, `${release.version}-${release.target}`);
@@ -142,7 +153,6 @@ async function releaseBuild(
   mkdirSync(cache, { recursive: true });
   const work = mkdtempSync(join(cache, ".download-"));
   try {
-    onDownload?.(boxReleaseAssetUrl(release, release.box.asset));
     for (const { asset } of [release.box, release.ffi]) {
       await download(release, asset, work, env, runner);
     }
@@ -189,94 +199,29 @@ async function download(
   into: string,
   env: NodeJS.ProcessEnv,
   runner: ProcessRunner,
-  failure: (url: string) => string = (url) =>
-    `a runtime runs its agent in a box, so this ships box ${release.version} to AgentCore ` +
-    `Runtime, downloaded from ${url}, which failed. Check your network, then retry.`,
 ): Promise<void> {
-  const url = boxReleaseAssetUrl(release, asset);
+  const command = [
+    "gh",
+    "release",
+    "download",
+    `v${release.version}`,
+    "--repo",
+    release.repo,
+    "--pattern",
+    asset,
+    "--dir",
+    into,
+  ];
   try {
-    await runner(["curl", "-fsSL", "--retry", "3", "-o", join(into, asset), url], {
-      cwd: into,
-      env,
-    });
-    if (!isFile(join(into, asset))) throw new Error(`curl downloaded no ${asset}`);
+    await runner(command, { cwd: into, env });
+    if (!isFile(join(into, asset))) throw new Error(`gh downloaded no ${asset}`);
   } catch (error) {
     throw new InvalidEnvironmentError(
-      `${failure(url)}\n\n${error instanceof Error ? error.message : String(error)}`,
+      `a runtime runs its agent in a box, so this ships box ${release.version} to AgentCore ` +
+        `Runtime, downloaded from the github.com/${release.repo} release with gh, which ` +
+        `failed. Run \`gh auth login\` with an account that can read ${release.repo}, or set ` +
+        `AGENTCORE_BOX_SOURCE to a staging-boxy checkout with a Linux build.\n\n` +
+        (error instanceof Error ? error.message : String(error)),
     );
-  }
-}
-
-/** The box releases this CLI pins checksums for, by version. */
-const PINNED_BOX_RELEASES: Readonly<Record<string, BoxRelease>> = {
-  [BOX_RELEASE.version]: BOX_RELEASE,
-};
-
-/**
- * The box release of `version`, which a runtime's `box.version` names: one this CLI pins, else
- * one in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
- * SHA256SUMS.txt. No version means BOX_RELEASE.
- */
-export async function boxReleaseFor(
-  version: string | undefined,
-  env: NodeJS.ProcessEnv,
-  options: { runner?: ProcessRunner; home?: string } = {},
-): Promise<BoxRelease> {
-  if (version === undefined) return BOX_RELEASE;
-  const pinned = PINNED_BOX_RELEASES[version];
-  if (pinned) return pinned;
-  const assets = {
-    box: `box-v${version}-${BOX_RELEASE.target}.tar.gz`,
-    ffi: BOX_RELEASE.ffi.asset,
-  };
-  const release: BoxRelease = { ...BOX_RELEASE, version };
-  const sums = await releaseChecksums(release, env, options.runner ?? runProcess, options.home);
-  const sha = (asset: string) => sums.get(asset);
-  const boxSha = sha(assets.box);
-  const ffiSha = sha(assets.ffi);
-  if (!boxSha || !ffiSha) {
-    throw new InvalidEnvironmentError(
-      `box ${version}, which agentcore.json names under box.version, has no ` +
-        `${boxSha ? assets.ffi : assets.box} in the SHA256SUMS.txt of its release at ` +
-        `github.com/${release.repo}. Name a box version that release has, or remove box.version ` +
-        `to use box ${BOX_RELEASE.version}.`,
-    );
-  }
-  return {
-    ...release,
-    box: { asset: assets.box, sha256: boxSha },
-    ffi: { ...BOX_RELEASE.ffi, sha256: ffiSha },
-  };
-}
-
-/** The SHA-256 of each asset of `release`, from the SHA256SUMS.txt it publishes. */
-async function releaseChecksums(
-  release: BoxRelease,
-  env: NodeJS.ProcessEnv,
-  runner: ProcessRunner,
-  home: string | undefined,
-): Promise<Map<string, string>> {
-  const cache = join(home ?? env.HOME ?? homedir(), ".agentcore", "box");
-  mkdirSync(cache, { recursive: true });
-  const work = mkdtempSync(join(cache, ".download-"));
-  try {
-    await download(
-      release,
-      "SHA256SUMS.txt",
-      work,
-      env,
-      runner,
-      (url) =>
-        `agentcore.json names box ${release.version} under box.version, whose checksums ` +
-        `download from ${url}, which failed. Check the version and your network, then retry.`,
-    );
-    const sums = new Map<string, string>();
-    for (const line of readFileSync(join(work, "SHA256SUMS.txt"), "utf8").split("\n")) {
-      const match = /^([0-9a-f]{64})\s+\*?(\S+)$/.exec(line.trim());
-      if (match) sums.set(match[2]!, match[1]!);
-    }
-    return sums;
-  } finally {
-    rmSync(work, { recursive: true, force: true });
   }
 }

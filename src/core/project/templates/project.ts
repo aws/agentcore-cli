@@ -8,6 +8,7 @@ import type {
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { BOX_CODEZIP_ENTRYPOINT, isBoxedContainer, startsInBoxOnCodeZip } from "./boxProfile";
+import { BOX_GITHUB_TOKEN_SECRET, BOX_GITHUB_TOKEN_SECRET_ID } from "../backends/boxRelease";
 import { getBoxGatewayPolicyEngineSpec } from "../../../handlers/project/shortcuts";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
@@ -103,6 +104,9 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
 /**
  * The container image's entry point, start.sh, which the Dockerfile copies
  * into /opt/box: it fills in the deployed resources and starts `box run`.
+ * The Dockerfile installs box from the box release at build time, so the
+ * runtime declares the GitHub token that reads the release as a build
+ * secret, which CodeBuild reads from Secrets Manager on deploy.
  */
 function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
   template.tree.children.push(
@@ -110,6 +114,9 @@ function withBoxContainerStartScript(config: CreateProjectConfig, template: Temp
       config.assetSource.read("templates/box-container/start.sh"),
     ),
   );
+  for (const runtime of template.spec.runtimes ?? []) {
+    runtime.dockerBuildSecrets = { [BOX_GITHUB_TOKEN_SECRET_ID]: BOX_GITHUB_TOKEN_SECRET };
+  }
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

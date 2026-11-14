@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,19 +18,8 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
-import {
-  boxReleaseFor,
-  resolveBoxLinuxBuild,
-  type BoxLinuxBuild,
-} from "../project/backends/boxRelease";
-import { boxLocalProfilePath } from "../project/templates/boxProfile";
-import {
-  BOX_DEV_AWS_REFRESH_MS,
-  resolveDefaultAwsCredentials,
-  writeBoxDevAwsFiles,
-  type BoxDevAwsFiles,
-  type ResolveAwsCredentials,
-} from "./boxAwsCredentials";
+import { BOX_GITHUB_TOKEN_SECRET_ID, BOX_RELEASE } from "../project/backends/boxRelease";
+import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
@@ -46,8 +35,6 @@ const AWS_ENV_KEYS = [
 // Each container command in cleanup gets this long. Finch sends every command through its VM,
 // so a 2s limit cut cleanup short and left the dev container running.
 const CLEANUP_TIMEOUT_MS = 15_000;
-/** How long `finch run`'s pipes may stay open after it exits. */
-const PIPE_CLOSE_GRACE_MS = 1000;
 /** Seconds `stop` waits for the container to exit before it kills it. */
 const STOP_GRACE_SECONDS = 2;
 /** How Docker, Podman, and Finch report a container that does not exist. */
@@ -101,13 +88,8 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
-  /**
-   * The Linux box the image runs: the box release of the runtime's `box.version`, downloaded once
-   * into `~/.agentcore/box/`, as build and deploy stage it. Tests inject one.
-   */
-  resolveBox?: (version: string | undefined) => Promise<BoxLinuxBuild>;
-  /** Resolves the credentials a boxed container signs with; the default AWS SDK chain by default. */
-  resolveAwsCredentials?: ResolveAwsCredentials;
+  /** The home folder build secrets are written under; the user's home by default. */
+  homeDirectory?: string;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -115,21 +97,14 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
-  private readonly resolveBox: (version: string | undefined) => Promise<BoxLinuxBuild>;
-  private readonly resolveAwsCredentials: ResolveAwsCredentials;
+  private readonly homeDirectory: string;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
-    this.resolveBox =
-      config.resolveBox ??
-      (async (version) =>
-        resolveBoxLinuxBuild(this.processEnv, {
-          release: await boxReleaseFor(version, this.processEnv),
-        }));
-    this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
+    this.homeDirectory = config.homeDirectory ?? homedir();
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -187,26 +162,44 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxed = await this.stageBox(input, context);
-    const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
-    const buildOptions: StreamProcessOptions = {
-      cwd: context,
-      env: this.processEnv,
-      redactedCommand: [
+    const boxed = this.stageBox(input, context);
+    const secrets = await this.buildSecretFiles(input);
+    try {
+      const buildCommand = [
         tool,
         "build",
         "-f",
         dockerfile,
         "-t",
         imageTag,
-        ...redactedBuildArgFlags,
+        ...buildArgFlags,
+        ...secrets.flags,
         ".",
-      ],
-      signal: input.signal,
-    };
+      ];
+      const buildOptions: StreamProcessOptions = {
+        cwd: context,
+        // BuildKit runs the RUN --mount=type=secret steps; Docker's legacy builder refuses them.
+        env:
+          secrets.flags.length > 0 ? { ...this.processEnv, DOCKER_BUILDKIT: "1" } : this.processEnv,
+        redactedCommand: [
+          tool,
+          "build",
+          "-f",
+          dockerfile,
+          "-t",
+          imageTag,
+          ...redactedBuildArgFlags,
+          ...secrets.flags,
+          ".",
+        ],
+        signal: input.signal,
+      };
 
-    yield { type: "status", message: `Building image with ${tool}` };
-    yield* this.streamProcess(buildCommand, buildOptions);
+      yield { type: "status", message: `Building image with ${tool}` };
+      yield* this.streamProcess(buildCommand, buildOptions);
+    } finally {
+      secrets.remove();
+    }
 
     const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
     const forwardedEnv: Record<string, string> = {};
@@ -220,23 +213,8 @@ export class ContainerDevRunner implements DevRunner {
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }
-    // Box in the container signs with the `[default]` profile, which it reads only from the AWS
-    // files, as the image's user. A boxed container gets its own copy of the resolved credentials
-    // as that profile, since that user cannot read ~/.aws; without credentials it gets ~/.aws.
-    const boxAws = boxed
-      ? await writeBoxDevAwsFiles(
-          this.resolveAwsCredentials,
-          forwardedEnv.AWS_REGION ?? forwardedEnv.AWS_DEFAULT_REGION,
-        )
-      : undefined;
-    let awsMount: string[] = [];
-    if (boxAws) {
-      awsMount = boxAws.mounts;
-      Object.assign(forwardedEnv, boxAws.env);
-      // The files hold only `[default]`, so a named profile would find nothing.
-      delete forwardedEnv.AWS_PROFILE;
-    } else if (hasAwsConfig) {
-      awsMount = ["-v", `${this.awsDirectory}:/aws-config:ro`];
+    const awsMount = hasAwsConfig ? ["-v", `${this.awsDirectory}:/aws-config:ro`] : [];
+    if (awsMount.length) {
       forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
       forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
     }
@@ -248,7 +226,6 @@ export class ContainerDevRunner implements DevRunner {
       });
     } catch (error) {
       await rm(envFile, { force: true });
-      await boxAws?.dispose();
       throw error;
     }
     const runCommand = [
@@ -271,35 +248,28 @@ export class ContainerDevRunner implements DevRunner {
       imageTag,
     ];
 
-    if (boxAws) {
-      yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
-    }
     yield { type: "status", message: "Starting container" };
-    const refresh = boxAws ? startRefresh(boxAws) : undefined;
     try {
       yield* this.streamProcess(runCommand, {
         cwd: context,
         env: this.processEnv,
         signal: input.signal,
-        // `finch run` hands its pipes to Finch's ssh connection, which outlives it.
-        ...(tool === "finch" && { pipeCloseGraceMs: PIPE_CLOSE_GRACE_MS }),
       });
     } finally {
-      if (refresh) clearInterval(refresh);
-      const warning = await this.stopContainer(tool, containerName, context);
-      await rm(envFile, { force: true });
-      await boxAws?.dispose();
-      // A warning, not a throw, so a failed run keeps its own error.
-      if (warning) yield { type: "status", message: warning };
+      try {
+        await this.stopContainer(tool, containerName, context);
+      } finally {
+        await rm(envFile, { force: true });
+      }
     }
   }
 
   /**
-   * Stages box into the build context's `.box-dist/` when the Dockerfile copies it: the Linux
-   * build of the runtime's box release and the project's box profile. Says whether it did. The
-   * image then runs `box run`, which needs BOX_RUN_FLAGS.
+   * Stages box into the build context when the Dockerfile copies `.box-dist/`,
+   * with the project's box profile, and says whether it did. The image then
+   * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private async stageBox(input: DevServerInput, context: string): Promise<boolean> {
+  private stageBox(input: DevServerInput, context: string): boolean {
     if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
     // The image installs box and starts `box run`, which needs the Box project's profile.
     if (!input.boxProject) {
@@ -317,9 +287,65 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    const profileText = readFileSync(profile, "utf8");
-    stageBoxImage(context, profileText, await this.resolveBox(input.runtime.box?.version));
+    stageBoxImage(context, readFileSync(profile, "utf8"));
     return true;
+  }
+
+  /**
+   * The runtime's dockerBuildSecrets, as `--secret id=<id>,src=<file>` flags. On deploy CodeBuild
+   * reads them from Secrets Manager; here the box release's GitHub token is your GitHub login:
+   * GH_TOKEN, or else `gh auth token`. Each value goes in a file only you can read, in your home
+   * folder so Finch's VM can see it, which `remove` deletes after the build. A file, not an env
+   * source, because Finch does not pass the CLI's environment to its VM.
+   */
+  private async buildSecretFiles(
+    input: DevServerInput,
+  ): Promise<{ flags: string[]; remove: () => void }> {
+    const ids = Object.keys(input.runtime.dockerBuildSecrets ?? {});
+    if (ids.length === 0) return { flags: [], remove: () => {} };
+    const unsupported = ids.filter((id) => id !== BOX_GITHUB_TOKEN_SECRET_ID);
+    if (unsupported.length > 0) {
+      throw new InvalidEnvironmentError(
+        `runtime "${input.runtime.name}" builds with the dockerBuildSecrets ` +
+          `${unsupported.map((id) => `"${id}"`).join(", ")}, which agentcore dev cannot supply: it ` +
+          `supplies only "${BOX_GITHUB_TOKEN_SECRET_ID}", from your GitHub login.`,
+      );
+    }
+    const token = this.processEnv.GH_TOKEN?.trim() || (await this.githubToken(input));
+    const folder = join(this.homeDirectory, ".agentcore", "build-secrets");
+    mkdirSync(folder, { recursive: true, mode: 0o700 });
+    const directory = mkdtempSync(join(folder, "dev-"));
+    const file = join(directory, BOX_GITHUB_TOKEN_SECRET_ID);
+    writeFileSync(file, token, { mode: 0o600 });
+    return {
+      flags: ["--secret", `id=${BOX_GITHUB_TOKEN_SECRET_ID},src=${file}`],
+      remove: () => rmSync(directory, { recursive: true, force: true }),
+    };
+  }
+
+  private async githubToken(input: DevServerInput): Promise<string> {
+    const lines: string[] = [];
+    try {
+      for await (const event of this.streamProcess(["gh", "auth", "token"], {
+        cwd: input.projectRoot,
+        env: this.processEnv,
+        redactedCommand: ["gh", "auth", "token"],
+        signal: input.signal,
+      })) {
+        if (event.type === "stdout") lines.push(event.line);
+      }
+    } catch {
+      lines.length = 0;
+    }
+    const token = lines.join("").trim();
+    if (!token) {
+      throw new InvalidEnvironmentError(
+        `runtime "${input.runtime.name}" installs box from a GitHub release at build time, which ` +
+          "needs a GitHub token. Run `gh auth login` with an account that can read " +
+          `${BOX_RELEASE.repo}, or set GH_TOKEN, then retry.`,
+      );
+    }
+    return token;
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
@@ -375,27 +401,22 @@ export class ContainerDevRunner implements DevRunner {
   /**
    * Stops the dev container at shutdown: `stop -t 2` gives it a short grace period, then kills it,
    * and `run --rm` removes it. A container that already exited is gone already. Any other failure
-   * leaves it running, so it returns a warning with the command that removes it.
+   * leaves it running, so it is thrown with the command that removes it.
    */
-  private async stopContainer(
-    tool: ContainerTool,
-    containerName: string,
-    cwd: string,
-  ): Promise<string | undefined> {
+  private async stopContainer(tool: ContainerTool, containerName: string, cwd: string) {
     try {
       await this.runCleanupCommand(
         [tool, "stop", "-t", String(STOP_GRACE_SECONDS), containerName],
         cwd,
       );
     } catch (error) {
-      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return undefined;
-      const reason = error instanceof Error ? error.message : String(error);
-      return (
-        `Could not stop the dev container ${containerName}; it may still be running ` +
-        `(${reason}). Remove it with '${tool} rm -f ${containerName}'.`
+      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return;
+      throw new InvalidEnvironmentError(
+        `Could not stop the dev container ${containerName}; it may still be running. ` +
+          `Remove it with '${tool} rm -f ${containerName}'.`,
+        { cause: error, meta: { tool, containerName } },
       );
     }
-    return undefined;
   }
 
   private async runCleanupCommand(command: string[], cwd: string): Promise<void> {
@@ -404,6 +425,7 @@ export class ContainerDevRunner implements DevRunner {
       env: this.processEnv,
       signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
     })) {
+      // Cleanup output is not shown.
     }
   }
 }
@@ -413,18 +435,6 @@ function ensureBuildContextDockerignore(context: string): string | undefined {
   if (existsSync(dockerignore)) return undefined;
   writeFileSync(dockerignore, BUILD_CONTEXT_DOCKERIGNORE);
   return dockerignore;
-}
-
-/**
- * Rewrites a boxed container's credentials every BOX_DEV_AWS_REFRESH_MS, so box keeps signing after
- * temporary credentials expire. A failed refresh keeps the last credentials.
- */
-function startRefresh(files: BoxDevAwsFiles): ReturnType<typeof setInterval> {
-  const timer = setInterval(() => {
-    files.refresh().catch(() => undefined);
-  }, BOX_DEV_AWS_REFRESH_MS);
-  timer.unref?.();
-  return timer;
 }
 
 function serializeEnvironment(env: Record<string, string>): string {

@@ -18,7 +18,8 @@
 # execution role: a bare aws:// in the profile resolves the AWS default credential chain, which Box
 # Core reads and refreshes itself. If box fails, or the agent in it does not answer by 22s, it serves
 # the agent without box: the Runtime allows 30s to start. Under `agentcore dev` (LOCAL_DEV=1), dev
-# passes your credentials, so it only starts box.
+# passes your credentials, so it only starts box. box runs only a profile file the agent's user owns
+# and only it can write, so both paths run a copy in $HOME, not the root-owned image copy.
 set -u
 
 BOX=/opt/box/box
@@ -30,7 +31,8 @@ READY_BY=22
 log() { echo "[box] $*"; }
 
 if [ "${LOCAL_DEV:-}" = 1 ]; then
-  cd /app && exec "$BOX" run "$TEMPLATE" --no-banner
+  cp "$TEMPLATE" "$PROFILE" && chmod 0644 "$PROFILE"
+  cd /app && exec "$BOX" run "$PROFILE" --no-banner
 fi
 
 serve_without_box() {
