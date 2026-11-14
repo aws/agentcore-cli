@@ -351,6 +351,25 @@ describe("build writes the Box network of the box profile", () => {
     expect(await boxFiles(root)).toEqual(before);
   });
 
+  test("warns for an IAM policy file of the Box gateway that is not JSON, and builds", async () => {
+    const { manager, root } = await strandsProject();
+    await writeFile(path(root, "agentcore/extra-policy.json"), "{ not json");
+    await editGateway(root, (gateway) => {
+      (gateway as { additionalPolicies?: string[] }).additionalPolicies = [
+        "agentcore/extra-policy.json",
+      ];
+    });
+
+    const { warnings } = await build(manager, root);
+
+    expect(warnings).toContainEqual(
+      expect.stringContaining(
+        `agentcore/extra-policy.json, which additionalPolicies of gateway '${GATEWAY}' lists, ` +
+          "is not valid JSON (",
+      ),
+    );
+  });
+
   test("refuses a target of the user's whose outbound auth differs from the entry's", async () => {
     const { manager, root } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
