@@ -93,9 +93,10 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   },
   httpRuntime: { authRequired: false, validAuthTypes: ["OAUTH", "NONE"], iamRoleFallback: true },
   connector: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
+  // A passthrough target with no outbound auth gets no credential provider.
   passthrough: {
-    authRequired: true,
-    validAuthTypes: ["GATEWAY_IAM_ROLE", "OAUTH", "JWT_PASSTHROUGH", "API_KEY"],
+    authRequired: false,
+    validAuthTypes: ["GATEWAY_IAM_ROLE", "OAUTH", "JWT_PASSTHROUGH", "API_KEY", "NONE"],
     iamRoleFallback: false,
   },
 };
