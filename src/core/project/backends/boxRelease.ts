@@ -30,7 +30,7 @@ export type BoxRelease = {
 };
 
 export const BOX_RELEASE: BoxRelease = {
-  repo: "mquang-amazon/staging-boxy",
+  repo: "mquang-amazon/box-releases",
   version: "0.1.11-linux-preview.2",
   target: "aarch64-unknown-linux-gnu",
   box: {
@@ -44,13 +44,10 @@ export const BOX_RELEASE: BoxRelease = {
   },
 };
 
-/**
- * The BuildKit secret that holds a GitHub token able to read the box release: a box image's
- * Dockerfile reads it with `RUN --mount=type=secret,id=gh_token`. On deploy CodeBuild reads it
- * from the Secrets Manager secret `BOX_GITHUB_TOKEN_SECRET`; under dev it is your GitHub login.
- */
-export const BOX_GITHUB_TOKEN_SECRET_ID = "gh_token";
-export const BOX_GITHUB_TOKEN_SECRET = "agentcore/box/github-token";
+/** Where a release's asset downloads from: the public GitHub release, no token needed. */
+export function boxReleaseAssetUrl(release: BoxRelease, asset: string): string {
+  return `https://github.com/${release.repo}/releases/download/v${release.version}/${asset}`;
+}
 
 /** box and the two helper programs it runs, which must sit beside it. */
 export const BOX_BINARIES = [
@@ -70,7 +67,7 @@ export type BoxLinuxBuild = {
 };
 
 export type ResolveBoxLinuxBuildOptions = {
-  /** Runs gh and tar; tests inject one. */
+  /** Runs curl and tar; tests inject one. */
   runner?: ProcessRunner;
   /** The home folder the release cache is in, `~/.agentcore/box/`. */
   home?: string;
@@ -84,7 +81,7 @@ const SOURCE_FFI = join("target-al2023", "ffi");
 
 /**
  * Where box for AgentCore Runtime comes from: the staging-boxy checkout AGENTCORE_BOX_SOURCE
- * names, for a local build, or else BOX_RELEASE. The release downloads once with gh, into
+ * names, for a local build, or else BOX_RELEASE. The release downloads once with curl from its public URL, into
  * `~/.agentcore/box/<version>-<target>/`, after its pinned checksums match; later runs reuse it.
  * Only CodeZip runtimes use it: a container image installs box itself, from its Dockerfile.
  */
@@ -201,26 +198,17 @@ async function download(
   env: NodeJS.ProcessEnv,
   runner: ProcessRunner,
 ): Promise<void> {
-  const command = [
-    "gh",
-    "release",
-    "download",
-    `v${release.version}`,
-    "--repo",
-    release.repo,
-    "--pattern",
-    asset,
-    "--dir",
-    into,
-  ];
+  const url = boxReleaseAssetUrl(release, asset);
   try {
-    await runner(command, { cwd: into, env });
-    if (!isFile(join(into, asset))) throw new Error(`gh downloaded no ${asset}`);
+    await runner(["curl", "-fsSL", "--retry", "3", "-o", join(into, asset), url], {
+      cwd: into,
+      env,
+    });
+    if (!isFile(join(into, asset))) throw new Error(`curl downloaded no ${asset}`);
   } catch (error) {
     throw new InvalidEnvironmentError(
       `a runtime runs its agent in a box, so this ships box ${release.version} to AgentCore ` +
-        `Runtime, downloaded from the github.com/${release.repo} release with gh, which ` +
-        `failed. Run \`gh auth login\` with an account that can read ${release.repo}, or set ` +
+        `Runtime, downloaded from ${url}, which failed. Check your network, or set ` +
         `AGENTCORE_BOX_SOURCE to a staging-boxy checkout with a Linux build.\n\n` +
         (error instanceof Error ? error.message : String(error)),
     );

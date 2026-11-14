@@ -369,14 +369,12 @@ describe("FsProjectManager.create", () => {
     expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
     expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
     expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
-    expect(dockerfile).toContain("RUN --mount=type=secret,id=gh_token");
+    expect(dockerfile).not.toContain("--mount=type=secret");
     // The download is checked against the pinned SHA-256 before it is unpacked.
     expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
-    // The GitHub token is a build secret, never a build arg.
+    // The release is public, so the build needs no token.
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0].dockerBuildSecrets).toEqual({
-      gh_token: "agentcore/box/github-token",
-    });
+    expect(spec.runtimes[0].dockerBuildSecrets).toBeUndefined();
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
 
@@ -1880,7 +1878,14 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
+    // The Box gateway signs the model calls with its own role, so build grants it Bedrock.
     expect(events).toEqual([
+      {
+        type: "step",
+        message:
+          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      },
+      { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "warning", message: bedrockGrantWarning("agent-python-minimal-box") },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
@@ -1890,7 +1895,7 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("downloads box from the box release with gh when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("downloads box from the public box release when AGENTCORE_BOX_SOURCE is unset", async () => {
     const directory = await inTempDirectory();
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
     tempDirectories.push(home);
@@ -1898,11 +1903,11 @@ describe("FsProjectManager.build", () => {
     const project = await scaffolded(subject, directory);
     commands.length = 0;
 
-    // The test runner downloads nothing, so build stops before synth and says how to log in.
-    await expect(drain(subject.build(project))).rejects.toThrow(/Run `gh auth login`/);
-    expect(commands.map(({ command }) => command.slice(0, 3))).toEqual([
-      ["gh", "release", "download"],
-    ]);
+    // The test runner downloads nothing, so build stops before synth and names the URL.
+    await expect(drain(subject.build(project))).rejects.toThrow(
+      /downloaded from https:\/\/github\.com\/mquang-amazon\/box-releases\//,
+    );
+    expect(commands.map(({ command }) => command[0])).toEqual(["curl"]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
@@ -1951,7 +1956,10 @@ describe("FsProjectManager.build", () => {
       ({ name }: { name: string }) => name === "agent-python-strands-box",
     );
     expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
-    expect(box.additionalPolicies).toEqual(["agentcore/box-memory-policy.json"]);
+    expect(box.additionalPolicies).toEqual([
+      "agentcore/box-bedrock-policy.json",
+      "agentcore/box-memory-policy.json",
+    ]);
     expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
     expect(events).toContainEqual({
       type: "step",
@@ -1967,10 +1975,7 @@ describe("FsProjectManager.build", () => {
     // A second build, of the project as it now reads, changes nothing in agentcore.json.
     const reread = await subject.resolve({ filePath: root });
     const again = await drain(subject.build(reread!));
-    expect(again).toEqual([
-      { type: "warning", message: bedrockGrantWarning("agent-python-strands-box") },
-      { type: "step", message: "synthesizing CloudFormation templates" },
-    ]);
+    expect(again).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
   });
 
   test("propagates a synthesis failure", async () => {

@@ -21,9 +21,10 @@
 #   │                                  copy of each policy file it names                  $PROFILE_DIR
 #   ├── workspace/                     where box run starts; the agent reads and writes   $WORKSPACE
 #   └── home/                          HOME for box; the agent cannot read it             $HOME_DIR
+#       └── .aws/credentials           profile [default], the execution role
 #
-# Box signs the AWS requests with the execution role: a bare aws:// in the profile resolves the AWS
-# default credential chain, which Box Core reads and refreshes itself.
+# Box signs the AWS requests with the execution role, through the AWS profile default that this
+# script writes and refreshes.
 #
 # If box fails, or the agent in it does not answer by 22s, this serves main.py without box: the
 # Runtime allows 30s to start. Set BOX_START_DISABLE=1 on the Runtime to skip box.
@@ -38,6 +39,7 @@ HOME_DIR=/tmp/box/home
 # Outside the workspace, so box accepts the profile and its policy files.
 PROFILE_DIR=/tmp/box/profile
 PROFILE=$PROFILE_DIR/profile.toml
+CREDENTIALS=$HOME_DIR/.aws/credentials
 READY_BY=22
 
 log() { echo "[box] $*"; }
@@ -49,6 +51,42 @@ pyq() { env PYTHONPATH="$CODE" "$PYTHON" "$@"; }
 serve_without_box() {
   log "FALLBACK ($1) after ${SECONDS}s: serving the agent without box"
   cd "$CODE" && exec "$PYTHON" main.py
+}
+
+# --- Credentials (TEMPORARY) -----------------------------------------------------------------------
+# The profile signs the AWS routes with aws://default: box refuses a bare aws://, and Box Core reads
+# a named profile only from its files, as static keys (a session token is fine). So copy the
+# execution role into the [default] profile of box's credentials file, and rewrite it every 15
+# minutes before the role's keys expire; Box Core reads the file again when it signs. Remove this,
+# and go back to aws:// in the profile, once box accepts the default credential chain again.
+write_credentials() {
+  pyq - "$CREDENTIALS" <<'EOF'
+import os, sys
+import botocore.session
+credentials = botocore.session.get_session().get_credentials()
+if credentials is None:
+    sys.exit("no execution role credentials")
+keys = credentials.get_frozen_credentials()
+text = f"[default]\naws_access_key_id = {keys.access_key}\naws_secret_access_key = {keys.secret_key}\n"
+if keys.token:
+    text += f"aws_session_token = {keys.token}\n"
+temporary = sys.argv[1] + ".tmp"
+with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as out:
+    out.write(text)
+os.replace(temporary, sys.argv[1])
+print(f"credentials from {credentials.method}")
+EOF
+}
+
+start_credentials() {
+  local result
+  mkdir -p "$(dirname "$CREDENTIALS")" && chmod 0700 "$(dirname "$CREDENTIALS")"
+  if result=$(write_credentials 2>&1); then
+    log "$result"
+    ( while sleep 900; do write_credentials >/dev/null 2>&1 || log "credential refresh failed"; done ) &
+  else
+    log "credentials failed: $result (the AWS routes cannot sign)"
+  fi
 }
 
 # --- The profile -----------------------------------------------------------------------------------
@@ -126,6 +164,7 @@ log "box: $("$BOX" --version 2>&1 | head -1)  python: $PYTHON  user: $(id -u)"
 
 mkdir -p "$WORKSPACE" "$HOME_DIR"
 chmod 0700 "$HOME_DIR"
+start_credentials
 
 write_profile || serve_without_box "cannot write $PROFILE and its policy files"
 log "profile:"

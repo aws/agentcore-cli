@@ -11,14 +11,14 @@
 #                                      under `agentcore dev`: the project's .box/profile.toml
 #   ~/box-profile/                     profile.toml, that profile with the deployed values on
 #                                      AgentCore Runtime, and a copy of each policy file it names
+#   ~/.aws/credentials                 on AgentCore Runtime: profile [default], the execution role
 #
 # box run takes the profile by its path, and reads its policy files from beside it. Both copies are
 # outside /app, the workspace, so box accepts them, and the agent cannot change either.
 #
 # On AgentCore Runtime, this script puts the deployed Memories' and Gateways' variables and the
 # Box gateway's URL into the profile, and starts box run. Box signs the AWS requests with the
-# execution role: a bare aws:// in the profile resolves the AWS default credential chain, which Box
-# Core reads and refreshes itself. If box fails, or the agent in it does not answer by 22s, it serves
+# execution role, through the AWS profile default that this script writes and refreshes. If box fails, or the agent in it does not answer by 22s, it serves
 # the agent without box: the Runtime allows 30s to start. Under `agentcore dev` (LOCAL_DEV=1), dev
 # passes your credentials, so it only starts box. box runs only a profile file the agent's user owns
 # and only it can write, so both paths run a copy in $HOME, not the root-owned image copy.
@@ -30,6 +30,7 @@ TEMPLATE_DIR=/opt/box
 TEMPLATE=$TEMPLATE_DIR/profile.toml
 PROFILE_DIR=$HOME/box-profile
 PROFILE=$PROFILE_DIR/profile.toml
+CREDENTIALS=$HOME/.aws/credentials
 READY_BY=22
 
 log() { echo "[box] $*"; }
@@ -56,6 +57,42 @@ fi
 serve_without_box() {
   log "FALLBACK ($1) after ${SECONDS}s: serving the agent without box"
   cd /app && exec "$PYTHON" -m main
+}
+
+# --- Credentials (TEMPORARY) -----------------------------------------------------------------------
+# The profile signs the AWS routes with aws://default: box refuses a bare aws://, and Box Core reads
+# a named profile only from its files, as static keys (a session token is fine). So copy the
+# execution role into the [default] profile of box's credentials file, and rewrite it every 15
+# minutes before the role's keys expire; Box Core reads the file again when it signs. Remove this,
+# and go back to aws:// in the profile, once box accepts the default credential chain again.
+write_credentials() {
+  "$PYTHON" - "$CREDENTIALS" <<'EOF'
+import os, sys
+import botocore.session
+credentials = botocore.session.get_session().get_credentials()
+if credentials is None:
+    sys.exit("no execution role credentials")
+keys = credentials.get_frozen_credentials()
+text = f"[default]\naws_access_key_id = {keys.access_key}\naws_secret_access_key = {keys.secret_key}\n"
+if keys.token:
+    text += f"aws_session_token = {keys.token}\n"
+temporary = sys.argv[1] + ".tmp"
+with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as out:
+    out.write(text)
+os.replace(temporary, sys.argv[1])
+print(f"credentials from {credentials.method}")
+EOF
+}
+
+start_credentials() {
+  local result
+  mkdir -p "$(dirname "$CREDENTIALS")" && chmod 0700 "$(dirname "$CREDENTIALS")"
+  if result=$(write_credentials 2>&1); then
+    log "$result"
+    ( while sleep 900; do write_credentials >/dev/null 2>&1 || log "credential refresh failed"; done ) &
+  else
+    log "credentials failed: $result (the AWS routes cannot sign)"
+  fi
 }
 
 # --- The deployed resources ------------------------------------------------------------------------
@@ -114,6 +151,7 @@ start_box() {
 log "box: $("$BOX" --version 2>&1 | head -1)  user: $(id)"
 log "covers over /proc: $(awk '$5 ~ "^/proc/" {printf "%s ", $5}' /proc/self/mountinfo)"
 
+start_credentials
 fill_profile || serve_without_box "cannot write $PROFILE and its policy files"
 log "profile:"
 sed 's/^/[box]   /' "$PROFILE"

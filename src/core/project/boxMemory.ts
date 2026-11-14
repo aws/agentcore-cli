@@ -22,6 +22,16 @@ export const BOX_MEMORY_TARGET = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
  */
 export const BOX_MEMORY_POLICY_FILE = "agentcore/box-memory-policy.json";
 
+/**
+ * The policy file, relative to the project root, that lets the Box gateway's role call the Bedrock
+ * model for the boxed agents: the gateway's `bedrock` target signs the model calls with that role,
+ * not the execution role. The CLI rewrites it on build.
+ */
+export const BOX_BEDROCK_POLICY_FILE = "agentcore/box-bedrock-policy.json";
+
+/** The Bedrock actions behind Converse and ConverseStream, which the agent's model calls make. */
+const BEDROCK_INVOKE_ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+
 /** The Memory data-plane actions the agent's session manager calls, as the L3 grants a runtime. */
 const MEMORY_DATA_PLANE_ACTIONS = [
   "bedrock-agentcore:ListMemoryRecords",
@@ -73,6 +83,35 @@ export function boxMemoryPolicy(
         Resource: memories.map(
           (memory) => `arn:aws:bedrock-agentcore:*:*:memory/${spec.name}_*${memory}-*`,
         ),
+      },
+    ],
+  };
+}
+
+/**
+ * The IAM policy document for {@link BOX_BEDROCK_POLICY_FILE}, or undefined when no boxed runtime
+ * calls a Bedrock model. A cross-region (`us.`, `global.`) inference profile invokes the model in
+ * other regions, so both the profiles and the foundation models match any region.
+ */
+export function boxBedrockPolicy(
+  spec: ProjectSpec,
+  projectRoot: string,
+): Record<string, unknown> | undefined {
+  if (
+    !spec.runtimes.some((runtime) => runsAgentInBox(projectRoot, runtime) && callsBedrock(runtime))
+  )
+    return undefined;
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "BoxedAgentModelCallsThroughGateway",
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [
+          "arn:aws:bedrock:*:*:inference-profile/*",
+          "arn:aws:bedrock:*::foundation-model/*",
+        ],
       },
     ],
   };
@@ -178,23 +217,34 @@ function callsBedrock(runtime: ProjectRuntime): boolean {
  * Adds the `bedrock` passthrough target to the Box gateway of each runtime that runs its agent in
  * a box and calls a Bedrock model, when it is missing, so the Runtime profile has a route for the
  * model calls: the profile has a route for each target of the Box gateway, and no other. Create
- * writes the target; this puts it back after it is removed. Changes `spec` in place, and returns
- * the step messages; none when nothing changed.
+ * writes the target; this puts it back after it is removed. Lists {@link BOX_BEDROCK_POLICY_FILE}
+ * in that gateway's `additionalPolicies`, since the target signs the model calls with the
+ * gateway's role (unless the gateway imports its role). Changes `spec` in place, and returns the
+ * step messages; none when nothing changed.
  */
 export function addBoxBedrockTarget(spec: ProjectSpec, projectRoot: string): string[] {
   const messages: string[] = [];
   for (const runtime of spec.runtimes) {
     if (!runsAgentInBox(projectRoot, runtime) || !callsBedrock(runtime)) continue;
-    const existing = spec.agentCoreGateways.find(
-      ({ name }) => name === boxGatewayName(runtime.name),
-    );
-    if (servesTarget(existing?.targets ?? [], getBoxGatewayBedrockTargetSpec())) continue;
     const gateway = boxGatewayFor(spec, runtime, messages);
-    gateway.targets.push(getBoxGatewayBedrockTargetSpec());
-    messages.push(
-      `adding target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to gateway '${gateway.name}' in ` +
-        "agentcore.json, for the boxed agent's model calls",
-    );
+    if (!servesTarget(gateway.targets, getBoxGatewayBedrockTargetSpec())) {
+      gateway.targets.push(getBoxGatewayBedrockTargetSpec());
+      messages.push(
+        `adding target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to gateway '${gateway.name}' in ` +
+          "agentcore.json, for the boxed agent's model calls",
+      );
+    }
+    // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
+    if (
+      !gateway.executionRoleArn &&
+      !gateway.additionalPolicies?.includes(BOX_BEDROCK_POLICY_FILE)
+    ) {
+      gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_BEDROCK_POLICY_FILE];
+      messages.push(
+        `adding '${BOX_BEDROCK_POLICY_FILE}' to gateway '${gateway.name}' ` +
+          "additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      );
+    }
   }
   return messages;
 }

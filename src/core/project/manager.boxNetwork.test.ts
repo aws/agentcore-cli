@@ -33,7 +33,7 @@ const GITHUB_KEY = {
 const GATEWAY_BACKEND = (target: string) => [
   {
     url: `@GATEWAY_BOX_URL@/${target}`,
-    auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+    auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
   },
 ];
 
@@ -325,6 +325,7 @@ describe("build writes the Box network of the box profile", () => {
     );
     expect(counter.specWrites).toBe(0);
     expect(await text(root, SPEC)).toBe(spec);
+    expect(existsSync(path(root, "agentcore/box-bedrock-policy.json"))).toBe(false);
     expect(existsSync(path(root, "agentcore/box-memory-policy.json"))).toBe(false);
     expect(await text(root, "agentcore/.env.local")).toBe(envLocal);
     expect(existsSync(path(root, RUNTIME_PROFILE))).toBe(false);
