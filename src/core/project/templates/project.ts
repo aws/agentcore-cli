@@ -102,18 +102,18 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
 }
 
 /**
- * The container image's box files, which the Dockerfile copies into /opt/box:
- * start.sh, the entry point, which fills in the deployed resources and starts
- * `box run`, and install-box.py, which installs box from the box release at
- * build time. The runtime declares the GitHub token that reads the release as
- * a build secret, which CodeBuild reads from Secrets Manager on deploy.
+ * The container image's entry point, start.sh, which the Dockerfile copies
+ * into /opt/box: it fills in the deployed resources and starts `box run`.
+ * The Dockerfile installs box from the box release at build time, so the
+ * runtime declares the GitHub token that reads the release as a build
+ * secret, which CodeBuild reads from Secrets Manager on deploy.
  */
 function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
-  for (const name of ["start.sh", "install-box.py"]) {
-    template.tree.children.push(
-      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-container/${name}`)),
-    );
-  }
+  template.tree.children.push(
+    FsTreeNode.createFile("start.sh", () =>
+      config.assetSource.read("templates/box-container/start.sh"),
+    ),
+  );
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.dockerBuildSecrets = { [BOX_GITHUB_TOKEN_SECRET_ID]: BOX_GITHUB_TOKEN_SECRET };
   }

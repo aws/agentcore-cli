@@ -205,7 +205,8 @@ the repository and a GitHub token:
 
 - A CodeZip agent's zip carries box. `build` and `deploy` download the release once with your
   GitHub CLI login into `~/.agentcore/box/`, and stage it into the runtime's `.box-dist/`.
-- A container agent's image installs box while it builds, with `install-box.py`. `agentcore dev`
+- A container agent's image installs box while it builds: its Dockerfile downloads the release
+  file, checks its pinned SHA-256 and unpacks it into `/opt/box`. `agentcore dev`
   builds the image on your machine with your GitHub login. `agentcore deploy` builds it in AWS
   CodeBuild, which reads the token from the Secrets Manager secret `agentcore/box/github-token`.
 
@@ -265,7 +266,7 @@ agentcore logs runtime --name agent --since 15m --query '"[box]"'
 ```
 
 The CodeBuild log of the deploy shows
-`install-box: box 0.1.11-linux-preview.1 from mquang-amazon/staging-boxy in /opt/box`. The second
+`/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.1`. The second
 answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK` or
 `AccessDenied` line. For a CodeZip agent, use `--template agent-python-strands` and skip the token
 and the container settings.
@@ -279,7 +280,7 @@ and the container settings.
   `put-secret-value`.
 - The deploy fails with `Secrets Manager can't find the specified secret`: the secret is in another
   account or region than the deploy target. Create it there.
-- `install-box: cannot download ... HTTP Error 404` in the CodeBuild log: the token can't read the
+- `curl: (22) The requested URL returned error: 404` in the CodeBuild log: the token can't read the
   release. Check its Contents permission on `mquang-amazon/staging-boxy`, that your invitation is
   accepted, and that the token hasn't expired.
 - `agentcore dev` or `deploy` says to run `gh auth login`: you have no GitHub CLI login. Run

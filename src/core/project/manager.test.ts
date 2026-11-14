@@ -364,13 +364,14 @@ describe("FsProjectManager.create", () => {
     });
 
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
-    expect(await Bun.file(join(appDir, "install-box.py")).exists()).toBe(true);
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
     expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
     expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
     expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
     expect(dockerfile).toContain("RUN --mount=type=secret,id=gh_token");
+    // The download is checked against the pinned SHA-256 before it is unpacked.
+    expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
     // The GitHub token is a build secret, never a build arg.
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0].dockerBuildSecrets).toEqual({
