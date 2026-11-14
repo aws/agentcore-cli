@@ -32,31 +32,18 @@ RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
 USER bedrock_agentcore
 
-# box, from the box release (Linux arm64): download the archive, check its pinned SHA-256 and
-# unpack box, its two helpers and its packs into /opt/box. The release is private, so a GitHub token
-# that can read it comes in as the BuildKit secret gh_token: on deploy CodeBuild reads it from Secrets
-# Manager (dockerBuildSecrets in agentcore.json), and `agentcore dev` passes your GitHub login. It is
-# never a build arg and never lands in the image. A private release's file downloads only through
-# the GitHub API, by its asset URL; curl does not send the token on to the storage it redirects to.
-# Without the secret, the public download URL is used. The box profile comes from .box-dist/, which
-# dev, build and deploy stage: dev the project's .box/profile.toml, build and deploy the AgentCore
-# Runtime profile. start.sh runs box with the profile's path, outside /app, the workspace.
+# box, from the box release (Linux arm64): download the archive from its public GitHub release, check
+# its pinned SHA-256 and unpack box, its two helpers and its packs into /opt/box. The box profile
+# comes from .box-dist/, which dev, build and deploy stage: dev the project's .box/profile.toml,
+# build and deploy the AgentCore Runtime profile. start.sh runs box with the profile's path, outside
+# /app, the workspace.
 USER root
 ARG BOX_REPO={{box.repo}}
 ARG BOX_VERSION={{box.version}}
 ARG BOX_SHA256={{box.sha256}}
-RUN --mount=type=secret,id=gh_token \
-    set -eu; \
-    asset="box-v${BOX_VERSION}-aarch64-unknown-linux-gnu.tar.gz"; \
-    if [ -s /run/secrets/gh_token ]; then \
-      auth="Authorization: Bearer $(cat /run/secrets/gh_token)"; \
-      url=$(curl -fsSL -H "$auth" -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/${BOX_REPO}/releases/tags/v${BOX_VERSION}" \
-        | /usr/local/bin/python -c 'import json, sys; print(next(a["url"] for a in json.load(sys.stdin)["assets"] if a["name"] == sys.argv[1]))' "$asset"); \
-      curl -fsSL -H "$auth" -H "Accept: application/octet-stream" -o /tmp/box.tar.gz "$url"; \
-    else \
-      curl -fsSL -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${asset}"; \
-    fi; \
+RUN set -eu; \
+    curl -fsSL --retry 3 -o /tmp/box.tar.gz \
+      "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/box-v${BOX_VERSION}-aarch64-unknown-linux-gnu.tar.gz"; \
     echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -; \
     mkdir -p /opt/box; \
     tar -C /opt/box -xzf /tmp/box.tar.gz --no-same-owner; \

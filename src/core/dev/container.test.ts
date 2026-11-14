@@ -20,7 +20,6 @@ type ProcessCall = {
   command: string[];
   options: StreamProcessOptions;
   envFile?: { path: string; contents: string; mode: number };
-  secretFile?: { path: string; contents: string; mode: number };
 };
 
 type StreamBehavior = (
@@ -67,7 +66,6 @@ function harness(
     stream?: StreamBehavior;
     awsDirectory?: string;
     processEnv?: NodeJS.ProcessEnv;
-    homeDirectory?: string;
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -80,12 +78,7 @@ function harness(
       const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
       call.envFile = { path, contents, mode: metadata.mode & 0o777 };
     }
-    const secretFlag = command.indexOf("--secret");
-    if (secretFlag >= 0) {
-      const path = command[secretFlag + 1]!.split(",src=")[1]!;
-      const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-      call.secretFile = { path, contents, mode: metadata.mode & 0o777 };
-    }
+
     if (config.stream) yield* config.stream(command, options);
   };
   return {
@@ -102,7 +95,6 @@ function harness(
         AWS_ACCESS_KEY_ID: "test-access-key",
         AWS_SECRET_ACCESS_KEY: "test-secret-key",
       },
-      homeDirectory: config.homeDirectory ?? join(tmpdir(), "agentcore-container-home"),
     }),
   };
 }
@@ -768,12 +760,9 @@ describe("ContainerDevRunner", () => {
       options: {
         profile?: boolean;
         dockerfile?: string;
-        dockerBuildSecrets?: Record<string, string>;
       } = {},
     ) {
-      const projectRuntime = runtime(
-        options.dockerBuildSecrets ? { dockerBuildSecrets: options.dockerBuildSecrets } : {},
-      );
+      const projectRuntime = runtime();
       const root = await projectRoot(projectRuntime);
       const context = join(root, projectRuntime.codeLocation);
       await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
@@ -783,20 +772,17 @@ describe("ContainerDevRunner", () => {
         await mkdir(join(root, ".box"));
         await writeFile(join(root, ".box", "profile.toml"), "# local profile\n");
       }
-      const home = await mkdtemp(join(tmpdir(), "agentcore-container-home-"));
-      tempDirectories.push(home);
-      return { projectRuntime, root, context, home };
+      return { projectRuntime, root, context };
     }
 
     const credentials = {
       AWS_ACCESS_KEY_ID: "test-access-key",
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
     };
-    const GH_SECRET = { gh_token: "agentcore/box/github-token" };
 
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
-      const { projectRuntime, root, context, home } = await boxedScene();
-      const { calls, runner } = harness({ processEnv: credentials, homeDirectory: home });
+      const { projectRuntime, root, context } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, projectRuntime)));
 
@@ -827,86 +813,11 @@ describe("ContainerDevRunner", () => {
       ]);
     });
 
-    test("mounts GH_TOKEN as the gh_token build secret from a file only you can read", async () => {
-      const { projectRuntime, root, home } = await boxedScene({ dockerBuildSecrets: GH_SECRET });
-      const { calls, runner } = harness({
-        processEnv: { ...credentials, GH_TOKEN: "ghp_from_env" },
-        homeDirectory: home,
-      });
-
-      await collect(runner.run(input(root, projectRuntime)));
-
-      const build = commandCall(calls, "build");
-      const secret = build.command[build.command.indexOf("--secret") + 1]!;
-      expect(secret).toStartWith(`id=gh_token,src=${join(home, ".agentcore", "build-secrets")}`);
-      expect(build.command.at(-1)).toBe(".");
-      expect(build.secretFile).toMatchObject({ contents: "ghp_from_env", mode: 0o600 });
-      // The token is in a file, so neither the command nor its error form carries it.
-      expect(build.command.join(" ")).not.toContain("ghp_from_env");
-      expect(build.options.redactedCommand?.join(" ")).not.toContain("ghp_from_env");
-      expect(build.options.env?.DOCKER_BUILDKIT).toBe("1");
-      expect(calls.some(({ command }) => command[0] === "gh")).toBe(false);
-      // The file is gone after the build.
-      expect(existsSync(build.secretFile!.path)).toBe(false);
-    });
-
-    test("reads the token with `gh auth token` without GH_TOKEN", async () => {
-      const { projectRuntime, root, home } = await boxedScene({ dockerBuildSecrets: GH_SECRET });
-      const { calls, runner } = harness({
-        processEnv: credentials,
-        homeDirectory: home,
-        stream: (command) =>
-          command[0] === "gh" ? [{ type: "stdout" as const, line: "gho_from_gh" }] : [],
-      });
-
-      await collect(runner.run(input(root, projectRuntime)));
-
-      expect(calls.find(({ command }) => command[0] === "gh")?.command).toEqual([
-        "gh",
-        "auth",
-        "token",
-      ]);
-      expect(commandCall(calls, "build").secretFile?.contents).toBe("gho_from_gh");
-    });
-
-    test("says how to log in when there is no GitHub token, before building", async () => {
-      const { projectRuntime, root, home } = await boxedScene({ dockerBuildSecrets: GH_SECRET });
-      const { calls, runner } = harness({
-        processEnv: credentials,
-        homeDirectory: home,
-        stream: (command) =>
-          command[0] === "gh" ? rejectedEvents(new Error("not logged in")) : [],
-      });
-
-      const error = await collect(runner.run(input(root, projectRuntime))).catch(
-        (caught) => caught,
-      );
-
-      expect(error).toBeInstanceOf(InvalidEnvironmentError);
-      expect((error as Error).message).toContain("Run `gh auth login`");
-      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
-    });
-
-    test("refuses a build secret dev cannot supply", async () => {
-      const { projectRuntime, root, home } = await boxedScene({
-        dockerBuildSecrets: { npmrc: "npm-token" },
-      });
-      const { calls, runner } = harness({ processEnv: credentials, homeDirectory: home });
-
-      const error = await collect(runner.run(input(root, projectRuntime))).catch(
-        (caught) => caught,
-      );
-
-      expect(error).toBeInstanceOf(InvalidEnvironmentError);
-      expect((error as Error).message).toContain('dockerBuildSecrets "npmrc"');
-      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
-    });
-
     test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {
-      const { projectRuntime, root, context, home } = await boxedScene({
+      const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n",
       });
-      const { calls, runner } = harness({ processEnv: credentials, homeDirectory: home });
+      const { calls, runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, projectRuntime)));
 
@@ -915,8 +826,8 @@ describe("ContainerDevRunner", () => {
     });
 
     test("refuses a box image when the project has no box profile", async () => {
-      const { projectRuntime, root, home } = await boxedScene({ profile: false });
-      const { calls, runner } = harness({ processEnv: credentials, homeDirectory: home });
+      const { projectRuntime, root } = await boxedScene({ profile: false });
+      const { calls, runner } = harness({ processEnv: credentials });
 
       const error = await collect(runner.run(input(root, projectRuntime))).catch(
         (caught) => caught,
