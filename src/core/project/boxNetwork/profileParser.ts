@@ -1,7 +1,7 @@
 /**
  * Reads the network inputs of a box profile as the box CLI compiles them: the `[egress]` and
  * `[mcp]` tables after the packs merge in, the policy files the profile names, and the rules the
- * box CLI adds for each route. {@link convertBoxNetworkPolicy} takes the result.
+ * box CLI adds for each route. {@link parsePolicyFiles} takes the result.
  */
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
