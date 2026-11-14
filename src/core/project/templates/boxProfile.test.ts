@@ -423,6 +423,17 @@ describe("renderRuntimeBoxProfile", () => {
     });
   });
 
+  test("names the model's policy files under policies, at the top of the profile", () => {
+    const project = spec([bedrock]);
+    const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+      policyFiles: ["policy.dw", "rules/extra.dw"],
+    });
+
+    expect(parse(text).policies).toEqual(["policy.dw", "rules/extra.dw"]);
+    expect(text).toContain('policies = ["policy.dw", "rules/extra.dw"]\n');
+    expect(parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).policies).toBeUndefined();
+  });
+
   test("has no route without a Box gateway target, whatever the model provider", () => {
     expect(egressOf(spec([]))).toEqual({});
   });

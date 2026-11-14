@@ -13,6 +13,7 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
@@ -238,8 +239,8 @@ export class ContainerDevRunner implements DevRunner {
 
   /**
    * Stages box into the build context when the Dockerfile copies `.box-dist/`,
-   * with the project's box profile, and says whether it did. The image then
-   * runs `box run`, which needs BOX_RUN_FLAGS.
+   * with the project's box profile and the policy files it names, and says
+   * whether it did. The image then runs `box run`, which needs BOX_RUN_FLAGS.
    */
   private stageBox(input: DevServerInput, context: string): boolean {
     if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
@@ -251,7 +252,7 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    stageBoxImage(context, readFileSync(profile, "utf8"));
+    stageBoxImage(context, readFileSync(profile, "utf8"), boxPolicyFileCopies(input.projectRoot));
     return true;
   }
 

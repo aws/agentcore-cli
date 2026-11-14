@@ -7,6 +7,7 @@ import {
   getBoxGatewayBedrockTargetSpec,
   getBoxGatewayEntry,
 } from "../../handlers/project/shortcuts";
+import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { boxGatewayName, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
@@ -147,7 +148,7 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
   for (const runtime of runtimes) {
     const gateway = boxGatewayFor(spec, runtime, messages);
     const name = gateway.name;
-    if (!gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET)) {
+    if (!servesTarget(gateway.targets, getBoxGatewayAgentCoreTargetSpec())) {
       gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
       messages.push(
         `adding target '${BOX_MEMORY_TARGET}' to gateway '${name}' in ` +
@@ -190,6 +191,18 @@ function boxGatewayFor(spec: ProjectSpec, runtime: ProjectRuntime, messages: str
 }
 
 /**
+ * Whether `targets` has `wanted`: a target of its name, or one for its endpoint, which then takes
+ * its calls, so one endpoint has one target.
+ */
+function servesTarget(targets: readonly AgentCoreGatewayTarget[], wanted: AgentCoreGatewayTarget) {
+  const endpoint = (target: AgentCoreGatewayTarget) =>
+    target.passthrough && new URL(target.passthrough.endpoint).host;
+  return targets.some(
+    (target) => target.name === wanted.name || endpoint(target) === endpoint(wanted),
+  );
+}
+
+/**
  * Whether a runtime's agent calls a Bedrock model, as its box profile routes it: a protocol other
  * than MCP, and the Bedrock provider (the default) or a `bedrock/` LiteLLM model.
  */
@@ -214,7 +227,7 @@ export function addBoxBedrockTarget(spec: ProjectSpec, projectRoot: string): str
   for (const runtime of spec.runtimes) {
     if (!runsAgentInBox(projectRoot, runtime) || !callsBedrock(runtime)) continue;
     const gateway = boxGatewayFor(spec, runtime, messages);
-    if (!gateway.targets.some(({ name }) => name === BOX_GATEWAY_BEDROCK_TARGET_NAME)) {
+    if (!servesTarget(gateway.targets, getBoxGatewayBedrockTargetSpec())) {
       gateway.targets.push(getBoxGatewayBedrockTargetSpec());
       messages.push(
         `adding target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to gateway '${gateway.name}' in ` +
