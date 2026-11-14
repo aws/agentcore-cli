@@ -139,6 +139,67 @@ describe("project create", () => {
     expect(io.stderr()).toContain("next steps:\n  cd MyAgent\n  agentcore add harness");
   });
 
+  test.each([
+    ["agent-python-strands", ["bedrock"]],
+    ["agent-python-minimal", ["bedrock"]],
+    ["mcp-python-fastmcp", undefined],
+    ["empty", undefined],
+  ] as const)(
+    "create --template %s writes the agent-box entry targets %j to agentcore.json",
+    async (template, targetNames) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await run([
+        "create",
+        "--name",
+        "BoxApp",
+        "--template",
+        template,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+      // Every new project is a Box project; the CDK library makes each runtime's Box gateway.
+      expect(spec.projectType).toBe("box");
+      if (targetNames === undefined) {
+        expect(spec.agentCoreGateways ?? []).toEqual([]);
+        return;
+      }
+      expect(spec.agentCoreGateways).toHaveLength(1);
+      expect(spec.agentCoreGateways[0]).toMatchObject({
+        name: "agent-box",
+        protocolType: "None",
+        authorizerType: "AWS_IAM",
+      });
+      expect(
+        spec.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+      ).toEqual(targetNames);
+    },
+  );
+
+  test("create --region points the agent-box Bedrock target at that region", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      "agent-python-strands",
+      "--skip-install",
+      "--skip-git",
+      "--region",
+      "eu-central-1",
+    ]);
+
+    const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+    expect(spec.agentCoreGateways[0].targets[0]).toMatchObject({
+      passthrough: { endpoint: "https://bedrock-runtime.eu-central-1.amazonaws.com" },
+      outboundAuth: { region: "eu-central-1" },
+    });
+  });
+
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>
       resolveScaffoldHarnessInput({

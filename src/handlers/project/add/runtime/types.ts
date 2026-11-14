@@ -27,6 +27,11 @@ export const RuntimeResourceConfigSchema = RuntimeInfraConfigSchema.extend({
   scaffoldRuntimeInput: ScaffoldRuntimeInputSchema,
   /** Present when runtime files were translated from a Bedrock Agent version. */
   importBedrockAgent: ImportBedrockAgentInputSchema.optional(),
+  /**
+   * The region the command resolved; in a Box project it picks the Bedrock
+   * endpoint of the runtime's Box gateway entry.
+   */
+  region: z.string().min(1).optional(),
 });
 export type RuntimeResourceConfig = z.infer<typeof RuntimeResourceConfigSchema>;
 

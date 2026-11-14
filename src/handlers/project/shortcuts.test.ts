@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
+  boxGatewayEntryForRuntime,
+  getBoxGatewayBedrockEntry,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
+  resolveRuntimeTemplateShortcut,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
 } from "./shortcuts";
@@ -76,4 +80,85 @@ test("default memory names fit the service limit for long runtime names", () => 
 
   expect(memory.name).toBe(`${"a".repeat(42)}Memory`);
   expect(memory.name).toHaveLength(48);
+});
+
+describe("Box gateway entry", () => {
+  const BEDROCK_TARGET = {
+    name: "bedrock",
+    targetType: "passthrough",
+    passthrough: {
+      endpoint: "https://bedrock-runtime.us-west-2.amazonaws.com",
+      protocolType: "CUSTOM",
+    },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-west-2" },
+  } as const;
+
+  test("is a valid project gateway, named after the runtime's Box gateway", () => {
+    const entry = getBoxGatewayBedrockEntry("my_agent");
+    expect(AgentCoreGatewaySchema.parse(entry)).toEqual(entry);
+    expect(entry.name).toBe("my-agent-box");
+  });
+
+  test.each([
+    "agent-python-strands",
+    "agent-python-strands-container",
+    "agent-typescript-strands",
+    "a2a-python-strands",
+    "agui-python-strands",
+    "agent-python-langchain",
+    "agent-typescript-vercel",
+    "agent-python-minimal",
+  ] as const)("%s declares it with the Bedrock target by default", (template) => {
+    expect(
+      boxGatewayEntryForRuntime(resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" })),
+    ).toEqual({
+      name: "agent-box",
+      protocolType: "None",
+      authorizerType: "AWS_IAM",
+      enableSemanticSearch: true,
+      exceptionLevel: "NONE",
+      targets: [BEDROCK_TARGET],
+    });
+  });
+
+  test.each(["mcp-python-fastmcp", "environment-python-bma"] as const)(
+    "%s, which has no model provider, declares none",
+    (template) => {
+      expect(boxGatewayEntryForRuntime(resolveRuntimeTemplateShortcut(template))).toBeUndefined();
+    },
+  );
+
+  test.each([
+    ["OpenAI", { modelProvider: "OpenAI", apiKey: "sk-test" }],
+    ["Anthropic", { modelProvider: "Anthropic", apiKey: "sk-test" }],
+    ["Gemini", { modelProvider: "Gemini", apiKey: "test" }],
+    ["LiteLLM with a non-Bedrock model", { modelProvider: "LiteLLM", modelId: "openai/gpt-4o" }],
+  ] as const)("%s: the agent declares none", (_label, overrides) => {
+    expect(
+      boxGatewayEntryForRuntime(resolveRuntimeTemplateShortcut("agent-python-strands", overrides)),
+    ).toBeUndefined();
+  });
+
+  test.each([
+    ["eu-central-1", "https://bedrock-runtime.eu-central-1.amazonaws.com"],
+    ["us-gov-west-1", "https://bedrock-runtime.us-gov-west-1.amazonaws.com"],
+  ])("targets Bedrock in the region the command resolved, %s", (region, endpoint) => {
+    const [target] = getBoxGatewayBedrockEntry("agent", region).targets;
+    expect(target).toMatchObject({
+      passthrough: { endpoint },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+    });
+  });
+
+  test("falls back to us-west-2 when no region is given", () => {
+    expect(getBoxGatewayBedrockEntry("agent").targets[0]).toEqual(BEDROCK_TARGET);
+  });
+
+  test("a LiteLLM agent on its default Bedrock model declares the Bedrock target", () => {
+    expect(
+      boxGatewayEntryForRuntime(
+        resolveRuntimeTemplateShortcut("agent-python-strands", { modelProvider: "LiteLLM" }),
+      )?.targets,
+    ).toEqual([BEDROCK_TARGET]);
+  });
 });

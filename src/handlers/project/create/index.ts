@@ -164,10 +164,13 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
-      const project = await runWithProgress(config.projectManager.create(createInput), {
-        io: config.io,
-        interactive: ctx.require(JsonKey) ? false : undefined,
-      });
+      const project = await runWithProgress(
+        config.projectManager.create({ ...createInput, region }),
+        {
+          io: config.io,
+          interactive: ctx.require(JsonKey) ? false : undefined,
+        },
+      );
 
       renderResult<ProjectMutationResult>(
         ctx,

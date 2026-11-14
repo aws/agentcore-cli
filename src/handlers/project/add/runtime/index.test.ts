@@ -343,6 +343,31 @@ describe("project add runtime --agent-id (Bedrock Agent import)", () => {
     "us-east-1",
   ];
 
+  test("in a Box project, gives the imported Bedrock agent the Bedrock target in --region", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    core.bedrockAgentImportPlans["A1B2C3D4E5/TSTALIASID"] = translatedImportPlan();
+
+    await run(importArgs, { core });
+
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.projectType).toBe("box");
+    expect(
+      spec.agentCoreGateways.find((g: { name: string }) => g.name === "support-proxy-box"),
+    ).toMatchObject({
+      authorizerType: "AWS_IAM",
+      protocolType: "None",
+      targets: [
+        {
+          name: "bedrock",
+          passthrough: { endpoint: "https://bedrock-runtime.us-east-1.amazonaws.com" },
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-east-1" },
+        },
+      ],
+    });
+  });
+
   test("scaffolds owned runtime code translated from the selected agent version", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);

@@ -6,6 +6,9 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import type { AgentCoreGateway } from "../../projectSchemas/gateway";
+import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { boxGatewayName } from "../../projectSchemas/project";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -23,6 +26,77 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
       }),
     })),
   };
+}
+
+/** The name of the Bedrock model target in a runtime's Box gateway entry. */
+export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
+
+/**
+ * The region of the Bedrock target when the command resolved none (a caller
+ * that passes no region, such as a test). `create` and `add runtime` pass the
+ * region they resolved (flag, AWS_REGION, then the profile), which is the
+ * region a first `deploy` uses when aws-targets.json is empty.
+ */
+export const BOX_GATEWAY_BEDROCK_DEFAULT_REGION = "us-west-2";
+
+/**
+ * The entry that adds a passthrough target for the Bedrock model endpoint in
+ * `region` to the runtime's Box gateway, `<runtime>-box`, which the CDK library
+ * makes for each runtime of a Box project. The entry has the settings `agentcore
+ * add gateway-target` gives one, which are the Box gateway's own. The target
+ * signs with the gateway's role, which needs Bedrock permissions of its own.
+ */
+export function getBoxGatewayBedrockEntry(
+  runtimeName: string,
+  region: string = BOX_GATEWAY_BEDROCK_DEFAULT_REGION,
+): AgentCoreGateway {
+  return {
+    name: boxGatewayName(runtimeName),
+    protocolType: "None",
+    authorizerType: "AWS_IAM",
+    // The value the gateway schema fills in; it has no effect without MCP.
+    enableSemanticSearch: true,
+    exceptionLevel: "NONE",
+    targets: [
+      {
+        name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+        targetType: "passthrough",
+        passthrough: {
+          endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+          protocolType: "CUSTOM",
+        },
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+      },
+    ],
+  };
+}
+
+/**
+ * The Box gateway entry that a scaffolded runtime of a Box project starts with,
+ * or undefined. A runtime whose agent calls Bedrock (the Bedrock provider, or
+ * LiteLLM on a `bedrock/` model) gets the Bedrock target. A runtime with no
+ * model provider (an MCP server, BMA) calls no model, and another provider's
+ * endpoint takes an API key that the CLI has no credential for, so those get
+ * none; their Box gateway still exists. `create` and `add runtime` both call
+ * this where they write the spec, so the two give a runtime the same entry.
+ */
+export function boxGatewayEntryForRuntime(
+  input: Pick<ScaffoldRuntimeInput, "runtimeName" | "modelProvider" | "modelId">,
+  region?: string,
+): AgentCoreGateway | undefined {
+  if (input.modelProvider === undefined || !callsBedrockModel(input)) return undefined;
+  return getBoxGatewayBedrockEntry(input.runtimeName, region);
+}
+
+/**
+ * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
+ * provider, or LiteLLM with a `bedrock/` model id (its default).
+ */
+export function callsBedrockModel(input: Pick<ScaffoldRuntimeInput, "modelProvider" | "modelId">) {
+  const provider = input.modelProvider ?? "Bedrock";
+  if (provider === "Bedrock") return true;
+  if (provider !== "LiteLLM") return false;
+  return (input.modelId ?? DEFAULT_MODEL_IDS.LiteLLM).startsWith("bedrock/");
 }
 
 type RuntimeTemplateShortcut = {
@@ -255,15 +329,17 @@ export function resolveRuntimeTemplateShortcut(
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
 
+  const modelProvider = template.supportsModelProviderOverride
+    ? (overrides?.modelProvider ?? template.modelProvider)
+    : template.modelProvider;
+
   const input = {
     runtimeName,
     build: template.build,
     language: template.language,
     framework: template.framework,
     protocol: template.protocol,
-    modelProvider: template.supportsModelProviderOverride
-      ? (overrides?.modelProvider ?? template.modelProvider)
-      : template.modelProvider,
+    modelProvider,
     ...(overrides?.modelId !== undefined && { modelId: overrides.modelId }),
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
