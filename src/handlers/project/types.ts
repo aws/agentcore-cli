@@ -564,8 +564,6 @@ export type RemoveResourcesResult = {
 /** The outcome of removing one resource, including its resolved parent. */
 export type RemoveResourceResult = RemoveResourcesResult & {
   removedResource: RemoveResourceInput;
-  /** Set when a `remove policy-engine` named a Box gateway's managed engine: it was kept, not removed. */
-  boxPolicyEngineStayed?: boolean;
 };
 
 /**

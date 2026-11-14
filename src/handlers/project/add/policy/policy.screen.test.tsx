@@ -18,7 +18,7 @@ import {
 import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
-import { createGatewayProjectTestHarness, removeDefaultBoxGateway } from "../gateway-test-support";
+import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { readableFileSchema } from "./screen";
 
 const FORBID_ALL = "forbid (principal, action, resource);";
@@ -28,7 +28,7 @@ const SUPPRESS =
   '["HATE"].confidenceScore.greaterThan(decimal("0.2")) };';
 const FILE_HELP = "a .cedar file, relative to the current directory or absolute";
 
-const { cleanup, inProject, projectSpec, run, writeProjectSpec } =
+const { cleanup, inProject, projectSpec, run } =
   createGatewayProjectTestHarness("add-policy-wizard");
 
 afterEach(cleanup);
@@ -46,13 +46,10 @@ async function policiesOf(projectRoot: string, engine = "Guardrails") {
     .policies;
 }
 
-// reachSourceStep selects the Guardrails engine and names the policy, leaving the
-// wizard on the statement-source step. A Box project also lists its gateway's own
-// engine first, so step down to Guardrails before confirming.
+// reachSourceStep confirms the only engine and names the policy, leaving the
+// wizard on the statement-source step.
 async function reachSourceStep(screen: RenderScreenResult, name: string): Promise<void> {
   await waitForText(screen.lastFrame, "which Policy Engine should this Policy belong to?");
-  await screen.press("down");
-  await waitForText(screen.lastFrame, "❯ ● Guardrails");
   await screen.press("return");
   await waitForText(screen.lastFrame, "what should this Policy be called?");
   await screen.write(name);
@@ -78,8 +75,7 @@ describe("project add policy wizard", () => {
     const screen = renderScreen("/agentcore/add/policy");
 
     await waitForText(screen.lastFrame, "which Policy Engine should this Policy belong to?");
-    await screen.press("down");
-    await waitForText(screen.lastFrame, "❯ ● Guardrails");
+    expect(screen.lastFrame()).toContain("❯ ● Guardrails");
     expect(screen.lastFrame()).toContain("0 policies");
     await screen.press("return");
 
@@ -262,13 +258,7 @@ describe("project add policy wizard", () => {
   }, 15000);
 
   test("without a Policy Engine the first step says what to add and esc returns to the menu", async () => {
-    const projectRoot = await inProject();
-    // A Box project starts with its gateway's engine; drop the gateway and the engine
-    // to reach the no-engine path.
-    await removeDefaultBoxGateway(projectRoot);
-    const spec = await projectSpec(projectRoot);
-    spec.policyEngines = [];
-    await writeProjectSpec(projectRoot, spec);
+    await inProject();
     const screen = renderScreen("/agentcore/add/policy");
 
     await waitForText(screen.lastFrame, "no Policy Engines in this project");
@@ -297,7 +287,6 @@ describe("project add policy wizard", () => {
     // Pick the second engine; the name is taken by the first, and names are
     // unique across engines, so addResource refuses it.
     await waitForText(screen.lastFrame, "which Policy Engine should this Policy belong to?");
-    await screen.press("down");
     await screen.press("down");
     await waitForText(screen.lastFrame, "❯ ● Second");
     await screen.press("return");

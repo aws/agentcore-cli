@@ -15,11 +15,7 @@ import {
   ResourceNotFoundError,
   UserCancellationError,
 } from "../../../errors";
-import {
-  DEFAULT_BOX_POLICY_ENGINE,
-  projectSpec,
-  writeProjectSpec,
-} from "../add/gateway-test-support";
+import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { readEnvFile } from "../../../io/envFile";
@@ -487,9 +483,7 @@ describe("project remove", () => {
     // Duplicate policy names cannot be added through the CLI, so seed the
     // second one by editing the spec the way a user would.
     const spec = await projectSpec(projectRoot);
-    const first = spec.policyEngines.find((engine: { name: string }) => engine.name === "First");
-    const second = spec.policyEngines.find((engine: { name: string }) => engine.name === "Second");
-    second.policies = first.policies;
+    spec.policyEngines[1].policies = spec.policyEngines[0].policies;
     await writeProjectSpec(projectRoot, spec);
 
     await expect(run(["remove", "policy", "--name", "DenyAll"])).rejects.toThrow(
@@ -508,29 +502,8 @@ describe("project remove", () => {
     await run(["remove", "policy-engine", "--name", "Guardrails"]);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec.policyEngines).toEqual([DEFAULT_BOX_POLICY_ENGINE]);
-    expect(
-      spec.agentCoreGateways.find((gateway: { name: string }) => gateway.name === "tools")
-        .policyEngineConfiguration,
-    ).toBeUndefined();
-  });
-
-  test("keeps a Box gateway's own policy engine on direct removal", async () => {
-    const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
-    });
-    cleanups.push(cleanup);
-
-    const { io } = await run(["remove", "policy-engine", "--name", "agent_box"]);
-
-    const spec = await projectSpec(projectRoot);
-    // The managed engine stays, and the Box gateway keeps its attachment.
-    expect(spec.policyEngines).toEqual([DEFAULT_BOX_POLICY_ENGINE]);
-    expect(
-      spec.agentCoreGateways.find((gateway: { name: string }) => gateway.name === "agent-box")
-        .policyEngineConfiguration,
-    ).toEqual({ policyEngineName: "agent_box", mode: "ENFORCE" });
-    expect(io.stderr()).toContain("The Box policy engine stays");
+    expect(spec.policyEngines).toEqual([]);
+    expect(spec.agentCoreGateways[0].policyEngineConfiguration).toBeUndefined();
   });
 });
 

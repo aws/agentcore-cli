@@ -9,7 +9,6 @@ import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { BOX_CODEZIP_ENTRYPOINT, isBoxedContainer, startsInBoxOnCodeZip } from "./boxProfile";
 import { BOX_GITHUB_TOKEN_SECRET, BOX_GITHUB_TOKEN_SECRET_ID } from "../backends/boxRelease";
-import { getBoxGatewayPolicyEngineSpec } from "../../../handlers/project/shortcuts";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
@@ -60,15 +59,9 @@ export async function createProjectTree(
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
             // The entry that adds the template's targets (a model endpoint) to the runtime's
-            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files. The
-            // entry attaches the gateway's own policy engine, so declare that engine too.
+            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files.
             ...(options?.runtime?.boxGatewayEntry
-              ? [
-                  {
-                    agentCoreGateways: [options.runtime.boxGatewayEntry],
-                    policyEngines: [getBoxGatewayPolicyEngineSpec(options.runtime.runtimeName)],
-                  },
-                ]
+              ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
               : []),
           ]),
         }),
