@@ -198,18 +198,20 @@ declares, not the ones you add in the stack.
 ## Running agents in Box (preview)
 
 The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
-Runtime. Where box comes from depends on how the agent deploys:
+Runtime. box comes from the GitHub release `v0.1.11-linux-preview.2` of the private repository
+`mquang-amazon/staging-boxy`, pinned with its SHA-256 in
+`src/core/project/backends/boxRelease.ts`. Until that release is public, you need read access to
+the repository and a GitHub token:
 
-- A container agent's image installs box while it builds, from the GitHub release
-  `v0.1.11-linux-preview.2` of the private repository `mquang-amazon/staging-boxy`: its Dockerfile
-  downloads the release file, checks the SHA-256 pinned in
-  `src/core/project/backends/boxRelease.ts` and unpacks it into `/opt/box`. Until the release is
-  public, this needs read access to the repository and a GitHub token. `agentcore dev` builds the
-  image on your machine with your GitHub login. `agentcore deploy` builds it in AWS CodeBuild,
-  which reads the token from the Secrets Manager secret `agentcore/box/github-token`.
-- A CodeZip agent's zip carries box. `build` and `deploy` stage it into the runtime's
-  `.box-dist/` from the staging-boxy checkout that `AGENTCORE_BOX_SOURCE` names, which needs an
-  Amazon Linux 2023 build in `target-al2023/release`.
+- A CodeZip agent's zip carries box. `build` and `deploy` download the release once with your
+  GitHub CLI login into `~/.agentcore/box/`, and stage it into the runtime's `.box-dist/`.
+- A container agent's image installs box while it builds: its Dockerfile downloads the release
+  file, checks its pinned SHA-256 and unpacks it into `/opt/box`. `agentcore dev`
+  builds the image on your machine with your GitHub login. `agentcore deploy` builds it in AWS
+  CodeBuild, which reads the token from the Secrets Manager secret `agentcore/box/github-token`.
+
+To use a local box build instead of the release for a CodeZip agent, set `AGENTCORE_BOX_SOURCE` to a
+staging-boxy checkout with an Amazon Linux 2023 build in `target-al2023/release`.
 
 ### Before you start
 
@@ -266,8 +268,8 @@ agentcore logs runtime --name agent --since 15m --query '"[box]"'
 The CodeBuild log of the deploy shows
 `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.2`. The second
 answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK` or
-`AccessDenied` line. For a CodeZip agent, use `--template agent-python-strands`, skip the token and
-the container settings, and set `AGENTCORE_BOX_SOURCE` for `deploy`.
+`AccessDenied` line. For a CodeZip agent, use `--template agent-python-strands` and skip the token
+and the container settings.
 
 ### Troubleshooting
 
@@ -281,8 +283,8 @@ the container settings, and set `AGENTCORE_BOX_SOURCE` for `deploy`.
 - `curl: (22) The requested URL returned error: 404` in the CodeBuild log: the token can't read the
   release. Check its Contents permission on `mquang-amazon/staging-boxy`, that your invitation is
   accepted, and that the token hasn't expired.
-- `agentcore dev` says to run `gh auth login`: you have no GitHub CLI login. Run `gh auth login`,
-  or set `GH_TOKEN` for that command.
+- `agentcore dev` or `deploy` says to run `gh auth login`: you have no GitHub CLI login. Run
+  `gh auth login`, or set `GH_TOKEN` for that command.
 
 ## Documentation
 
