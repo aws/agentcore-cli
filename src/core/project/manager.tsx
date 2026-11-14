@@ -52,6 +52,7 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
+import { addBoxProfileCredentials } from "./boxProfileCredentials";
 import { createProjectTree } from "./templates/project";
 import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -1571,7 +1572,9 @@ export class FsProjectManager implements ProjectManager {
     for (const message of synced.messages) yield { type: "step", message };
     const routed = await this.addBoxMemoryTarget(synced.project);
     for (const message of routed.messages) yield { type: "step", message };
-    yield* this.backendFor(project).build(routed.project);
+    const credentialed = await this.reconcileBoxProfileCredentials(routed.project);
+    for (const message of credentialed.messages) yield { type: "step", message };
+    yield* this.backendFor(project).build(credentialed.project);
   }
 
   /**
@@ -1600,6 +1603,29 @@ export class FsProjectManager implements ProjectManager {
       projectType: spec.projectType,
       agentCoreGateways: spec.agentCoreGateways,
     };
+    const parsed = ProjectSpecSchema.safeParse(updated);
+    if (!parsed.success) {
+      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+    }
+    await this.json.write(specPath, updated);
+    return { project: { ...project, spec: parsed.data }, messages };
+  }
+
+  /**
+   * For each `env://` secret in the box profile, make sure agentcore.json declares an
+   * `ApiKeyCredentialProvider`, so deploy provisions the key in AgentCore Identity and the runtime
+   * never holds it. Mirrors `addBoxMemoryTarget`: it commits only `credentials`, and only when it
+   * adds one.
+   */
+  private async reconcileBoxProfileCredentials(
+    project: Project,
+  ): Promise<{ project: Project; messages: string[] }> {
+    const spec = structuredClone(project.spec);
+    const messages = addBoxProfileCredentials(spec, project.rootPath);
+    if (messages.length === 0) return { project, messages };
+    const specPath = this.getProjectSpecPath(project);
+    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+    const updated = { ...raw, credentials: spec.credentials };
     const parsed = ProjectSpecSchema.safeParse(updated);
     if (!parsed.success) {
       throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
