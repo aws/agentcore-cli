@@ -51,7 +51,7 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
-import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
+import { addBoxGatewayTargets, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
 import {
   addBoxProfileCredentials,
   boxProfileCredentialEnvEntries,
@@ -1564,7 +1564,7 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const routed = await this.addBoxMemoryTarget(synced.project);
+    const routed = await this.addBoxGatewayTargets(synced.project);
     for (const message of routed.messages) yield { type: "step", message };
     const credentialed = await this.reconcileBoxProfileCredentials(routed.project);
     for (const message of credentialed.messages) yield { type: "step", message };
@@ -1572,17 +1572,18 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Adds the Box gateway's `agentcore` target, and the policy file that lets
-   * its role call Memory, to agentcore.json when a boxed agent has its default
-   * Memory, before synth reads the file. Patches the raw file, as
-   * syncRuntimeBuilds does, so unknown fields and key order survive. Rewrites
-   * the policy file each time, since the CLI owns it.
+   * Adds the Box gateway targets the boxed agents' calls need to agentcore.json
+   * (`bedrock` for a Bedrock model, `agentcore` and the policy file that lets
+   * the gateway's role call Memory for a default Memory), before synth reads
+   * the file and build renders each Runtime profile's routes from the targets.
+   * Patches the raw file, as syncRuntimeBuilds does, so unknown fields and key
+   * order survive. Rewrites the policy file each time, since the CLI owns it.
    */
-  private async addBoxMemoryTarget(
+  private async addBoxGatewayTargets(
     project: Project,
   ): Promise<{ project: Project; messages: string[] }> {
     const spec = structuredClone(project.spec);
-    const messages = addBoxMemoryTarget(spec, project.rootPath);
+    const messages = addBoxGatewayTargets(spec, project.rootPath);
     const policy = boxMemoryPolicy(spec, project.rootPath);
     if (policy) {
       const policyPath = join(project.rootPath, BOX_MEMORY_POLICY_FILE);
@@ -1608,7 +1609,7 @@ export class FsProjectManager implements ProjectManager {
   /**
    * For each `env://` secret in the box profile, make sure agentcore.json declares an
    * `ApiKeyCredentialProvider`, so deploy provisions the key in AgentCore Identity and the runtime
-   * never holds it. Mirrors `addBoxMemoryTarget`: it commits only `credentials`, and only when it
+   * never holds it. Mirrors `addBoxGatewayTargets`: it commits only `credentials`, and only when it
    * adds one.
    *
    * It then seeds `.env.local` on every build, not only the build that first adds a credential: for
@@ -1747,7 +1748,7 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const routed = await this.addBoxMemoryTarget(synced.project);
+    const routed = await this.addBoxGatewayTargets(synced.project);
     for (const message of routed.messages) yield { type: "step", message };
     project = routed.project;
 

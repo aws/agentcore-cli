@@ -1,7 +1,10 @@
 import { InputValidationError } from "../../errors/errors";
 import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
+  callsBedrockModel,
   getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
   getBoxGatewayEntry,
 } from "../../handlers/project/shortcuts";
 import { boxGatewayName, type ProjectSpec } from "../../projectSchemas/project";
@@ -102,18 +105,9 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
   }
 
   const messages: string[] = [];
-  if (spec.projectType !== "box") {
-    spec.projectType = "box";
-    messages.push(`setting "projectType": "box" in agentcore.json, for the Box gateway`);
-  }
   for (const runtime of runtimes) {
-    const name = boxGatewayName(runtime.name);
-    let gateway = spec.agentCoreGateways.find((entry) => entry.name === name);
-    if (!gateway) {
-      gateway = getBoxGatewayEntry(runtime.name);
-      spec.agentCoreGateways.push(gateway);
-      messages.push(`adding gateway '${name}' to agentcore.json`);
-    }
+    const gateway = boxGatewayFor(spec, runtime, messages);
+    const name = gateway.name;
     if (!gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET)) {
       gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
       messages.push(
@@ -134,4 +128,68 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
     }
   }
   return messages;
+}
+
+/**
+ * The Box gateway entry of `runtime`, `<runtime>-box`: recreated when it was removed, with the
+ * project marked `"projectType": "box"` so the CDK library deploys the gateway the entry extends.
+ * Pushes a step message for each change.
+ */
+function boxGatewayFor(spec: ProjectSpec, runtime: ProjectRuntime, messages: string[]) {
+  if (spec.projectType !== "box") {
+    spec.projectType = "box";
+    messages.push(`setting "projectType": "box" in agentcore.json, for the Box gateway`);
+  }
+  const name = boxGatewayName(runtime.name);
+  let gateway = spec.agentCoreGateways.find((entry) => entry.name === name);
+  if (!gateway) {
+    gateway = getBoxGatewayEntry(runtime.name);
+    spec.agentCoreGateways.push(gateway);
+    messages.push(`adding gateway '${name}' to agentcore.json`);
+  }
+  return gateway;
+}
+
+/**
+ * Whether a runtime's agent calls a Bedrock model, as its box profile routes it: a protocol other
+ * than MCP, and the Bedrock provider (the default) or a `bedrock/` LiteLLM model.
+ */
+function callsBedrock(runtime: ProjectRuntime): boolean {
+  return (
+    runtime.protocol !== "MCP" &&
+    callsBedrockModel({ modelProvider: runtime.modelProvider, modelId: runtime.modelId })
+  );
+}
+
+/**
+ * Adds the `bedrock` passthrough target to the Box gateway of each runtime that runs its agent in
+ * a box and calls a Bedrock model, when it is missing, so the Runtime profile has a route for the
+ * model calls: the profile has a route for each target of the Box gateway, and no other. Create
+ * writes the target; this puts it back after it is removed. Changes `spec` in place, and returns
+ * the step messages; none when nothing changed.
+ */
+export function addBoxBedrockTarget(spec: ProjectSpec, projectRoot: string): string[] {
+  const messages: string[] = [];
+  for (const runtime of spec.runtimes) {
+    if (!runsAgentInBox(projectRoot, runtime) || !callsBedrock(runtime)) continue;
+    const existing = spec.agentCoreGateways.find(
+      ({ name }) => name === boxGatewayName(runtime.name),
+    );
+    if (existing?.targets.some(({ name }) => name === BOX_GATEWAY_BEDROCK_TARGET_NAME)) continue;
+    const gateway = boxGatewayFor(spec, runtime, messages);
+    gateway.targets.push(getBoxGatewayBedrockTargetSpec());
+    messages.push(
+      `adding target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to gateway '${gateway.name}' in ` +
+        "agentcore.json, for the boxed agent's model calls",
+    );
+  }
+  return messages;
+}
+
+/**
+ * Adds the Box gateway targets that the boxed agents' calls need, the Bedrock model and the default
+ * Memory, before build renders the Runtime profiles from those targets.
+ */
+export function addBoxGatewayTargets(spec: ProjectSpec, projectRoot: string): string[] {
+  return [...addBoxBedrockTarget(spec, projectRoot), ...addBoxMemoryTarget(spec, projectRoot)];
 }

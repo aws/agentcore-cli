@@ -1,15 +1,8 @@
 import { join } from "node:path";
-import {
-  BOX_GATEWAY_AGENTCORE_HOST,
-  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
-  BOX_GATEWAY_BEDROCK_REGION,
-  BOX_GATEWAY_BEDROCK_TARGET_NAME,
-  callsBedrockModel,
-} from "../../../handlers/project/shortcuts";
+import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import { defaultMemoryName } from "../../../projectSchemas/memory";
-import type { ProjectSpec } from "../../../projectSchemas/project";
+import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 
@@ -349,12 +342,8 @@ export function renderBoxProfile(
   const bedrockRoute = !bedrock
     ? ""
     : onRuntime
-      ? runtimeGatewayRouteSection(
-          BOX_GATEWAY_BEDROCK_TARGET_NAME,
-          `bedrock-runtime.${region}.amazonaws.com`,
-          // box/bedrock's env:// secret stays as the phantom a re-routed entry may keep.
-          "Bedrock model calls",
-        )
+      ? // The Box gateway's `bedrock` target makes this route, with the rest of runtimeRoutes.
+        ""
       : `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
 # rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
@@ -404,13 +393,14 @@ ${routes}${bedrockRoute}${keyedRoute}`;
  * with its own role. Every `[egress.<name>]` on the Runtime is one of these, so
  * every outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeGatewayRouteSection(target: string, host: string, what: string): string {
+function runtimeGatewayRouteSection(target: string, host: string): string {
+  const key = tomlKey(target);
   return `
-# ${what}, through the runtime's Box gateway's '${target}' target.
-[egress.${target}]
+# Calls to ${host}, through the runtime's Box gateway's '${target}' target.
+[egress.${key}]
 destinations = [${str(host)}]
 
-[[egress.${target}.backends]]
+[[egress.${key}.backends]]
 url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
@@ -419,16 +409,33 @@ auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
 }
 
 /**
+ * The Runtime routes of a runtime: one for each passthrough target of its Box
+ * gateway, `<runtime>-box`, named for the target and sent to it, so a target in
+ * agentcore.json is what gives the boxed agent a route. Build adds the targets
+ * the template's calls need (see `addBoxGatewayTargets`) before it renders.
+ * None outside a Box project, which has no Box gateway.
+ */
+function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime): string {
+  if (!isBoxProject(spec)) return "";
+  const gateway = spec.agentCoreGateways.find(({ name }) => name === boxGatewayName(runtime.name));
+  return (gateway?.targets ?? [])
+    .flatMap((target) =>
+      target.targetType === "passthrough" && target.passthrough
+        ? [runtimeGatewayRouteSection(target.name, new URL(target.passthrough.endpoint).host)]
+        : [],
+    )
+    .join("");
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
- * provider, and, when the project has the runtime's default Memory, the route
- * its Memory calls take through the Box gateway. agentcore.json does not
- * record the framework, and the profile does not depend on it beyond the
- * container case, so the input names Strands, one of the frameworks that run
- * in a box.
+ * provider, and a route for each passthrough target of its Box gateway.
+ * agentcore.json does not record the framework, and the profile does not
+ * depend on it beyond the container case, so the input names Strands, one of
+ * the frameworks that run in a box.
  */
 export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
-  const memory = spec.memories.some((entry) => entry.name === defaultMemoryName(runtime.name));
   const input = {
     runtimeName: runtime.name,
     build: runtime.build,
@@ -438,14 +445,7 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  const memoryRoute = memory
-    ? runtimeGatewayRouteSection(
-        BOX_GATEWAY_AGENTCORE_TARGET_NAME,
-        BOX_GATEWAY_AGENTCORE_HOST,
-        "AgentCore Memory",
-      )
-    : "";
-  return renderBoxProfile(spec.name, input, "runtime", memoryRoute)!;
+  return renderBoxProfile(spec.name, input, "runtime", runtimeGatewayRoutes(spec, runtime))!;
 }
 
 /** The variable that holds the model provider's API key, as the template's model code reads it. */
@@ -480,4 +480,9 @@ function optional(path: string): string {
 
 function list(values: string[]): string {
   return `[${values.map(str).join(", ")}]`;
+}
+
+/** A TOML key: bare when TOML allows it, else a quoted string. */
+function tomlKey(key: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : str(key);
 }
