@@ -2,12 +2,12 @@
 
 This guide creates, builds, and deploys a Box project with the AgentCore CLI and the
 `@aws/agentcore-cdk` L3 constructs taken from your local workspace, not the published
-packages. Use it to test the Box gateway, its policy engine, and API key credentials
+packages. Use it to test the Box gateway, its egress targets, and API key credentials
 end to end before you publish.
 
 A "Box project" (`"projectType": "box"` in `agentcore.json`) runs its agent in a _box_:
 a sandbox that controls the agent's network egress and filesystem access. Each runtime
-gets its own Box gateway (`<runtime>-box`) and a dedicated policy engine (`<runtime>_box`).
+gets its own Box gateway, named after the runtime: the runtime `agent` gets `agent-box`.
 
 ## What `AGENTCORE_BOX_SOURCE` means
 
@@ -85,12 +85,38 @@ bun run "$CLI" create --name "$PROJECT" --template agent-python-strands
 
 ## 4. (Optional) add an egress credential to test
 
-This adds a `github` API key credential. Build declares the credential from the `env://`
-route, and deploy provisions it in AgentCore Identity.
+This adds an `[egress]` entry for `api.github.com` with a `github` API key credential. An entry
+needs `destinations`. Build declares the credential from the `env://` secret, adds the
+`egress-github` gateway target, and deploy provisions the credential in AgentCore Identity.
 
 ```
-printf '\n[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
 ```
+
+### What build and deploy do with the box profile
+
+Build and deploy read `.box/profile.toml` and the policy files it lists under `policies`, and
+turn them into the runtime's Box network. They change nothing in `.box/`.
+
+- **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
+  names, and that the policy allows at least one request to, gets one passthrough target on
+  `<runtime>-box`. A host the gateway already has a target for keeps that target. Build owns
+  only the targets whose name starts with `egress-`: it adds them, changes them, and removes
+  one when no host needs it. It never changes another target.
+- **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
+  sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
+- **Failures.** A wildcard host, a plain-HTTP-only host, an unsupported secret or pack, an
+  MCP server over HTTP, and similar cases stop build and deploy. The error lists every
+  failure with its rule or entry and its `file:line:column`, and nothing is written.
+- **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
+  method, or forbid), when an entry's host gets no target, and when a target is signed for an
+  AWS service that no policy of the gateway's role grants.
+- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
+  `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. Each policy
+  file is copied beside it, byte for byte, and listed under `policies`.
+- **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
+  only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
+  local L3 build, as in step 5.
 
 ## 5. Point the generated CDK app at the local L3 tarball
 
@@ -123,13 +149,13 @@ bun run "$CLI" deploy
 Deploy synthesizes the CDK app you linked in step 5, so the stack uses your local L3 constructs.
 The first deploy makes the `default` target from your account and region.
 
-## 8. Verify the gateway, policy engine, and credential
+## 8. Verify the gateway, its targets, and the credential
 
 Local checks, in `agentcore/agentcore.json`:
 
 - `"projectType": "box"`.
-- A gateway named `agent-box` with a `bedrock` passthrough target in `us-west-2`.
-- A policy engine named `agent_box`, attached to `agent-box` in `ENFORCE` mode.
+- A gateway named `agent-box` with a `bedrock` passthrough target in `us-west-2`, and an
+  `egress-github` target for `https://api.github.com`.
 - A credential named `github` with `authorizerType: ApiKeyCredentialProvider`.
 
 Live checks, after deploy:
@@ -137,12 +163,6 @@ Live checks, after deploy:
 ```
 bun run "$CLI" gateway list
 bun run "$CLI" identity api-key-credential-provider get --name github
-```
-
-The policy engine guard keeps a Box gateway's own engine. This keeps it and prints a notice:
-
-```
-bun run "$CLI" remove policy-engine --name agent_box
 ```
 
 ## 9. Tear down
