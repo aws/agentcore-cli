@@ -3,6 +3,7 @@ import type { AssetSource } from "../source";
 import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtime/types";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { mergeSpecEntries } from "./spec";
+import { BOX_RELEASE } from "../backends/boxRelease";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
 import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import {
@@ -267,6 +268,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       enableOtel: true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
+      // The box release the container Dockerfile installs.
+      box: { repo: BOX_RELEASE.repo, version: BOX_RELEASE.version, sha256: BOX_RELEASE.box.sha256 },
     };
     const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(

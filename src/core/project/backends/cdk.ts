@@ -12,6 +12,7 @@ import type {
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
+import { resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -157,7 +158,7 @@ export type CdkBackendConfig = {
   removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
-  /** The environment AGENTCORE_BOX_SOURCE is read from; process.env by default. */
+  /** The environment AGENTCORE_BOX_SOURCE and gh read; process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
 };
 
@@ -223,9 +224,12 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
-    // The zip or the image carries box, so it is staged before synth packages the code.
-    stageBoxCodeZip(project, this.processEnv);
-    stageBoxContainers(project, this.processEnv);
+    // The zip carries box and the image its box profile, so both are staged before synth packages
+    // the code. The box release downloads only when a CodeZip runtime runs in a box.
+    await stageBoxCodeZip(project, () =>
+      resolveBoxLinuxBuild(this.processEnv, { runner: this.runner }),
+    );
+    stageBoxContainers(project);
   }
 
   private async *synthesize(

@@ -29,12 +29,22 @@ RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
 USER bedrock_agentcore
 
-# box, its two helper programs (Linux arm64), box's packs, and the box profile, which dev, build and
-# deploy stage in .box-dist/: dev the project's .box/profile.toml, build and deploy the AgentCore
-# Runtime profile. start.sh runs box with the profile's path, outside /app, the workspace.
+# box, from the box release (Linux arm64): install-box.py downloads the archive, checks its pinned
+# SHA-256 and unpacks box, its two helpers and its packs into /opt/box. A GitHub token that can read
+# the release comes in as the BuildKit secret gh_token: on deploy CodeBuild reads it from Secrets
+# Manager (dockerBuildSecrets in agentcore.json), and `agentcore dev` passes your GitHub login. It is
+# never a build arg and never lands in the image. The box profile comes from .box-dist/, which dev,
+# build and deploy stage: dev the project's .box/profile.toml, build and deploy the AgentCore Runtime
+# profile. start.sh runs box with the profile's path, outside /app, the workspace.
 USER root
-COPY .box-dist/box .box-dist/strands-box-sock-alias .box-dist/strands-box-contain-trampoline start.sh /opt/box/
-COPY .box-dist/resources/ /opt/box/resources/
+ARG BOX_REPO={{box.repo}}
+ARG BOX_VERSION={{box.version}}
+ARG BOX_SHA256={{box.sha256}}
+COPY install-box.py start.sh /opt/box/
+RUN --mount=type=secret,id=gh_token \
+    BOX_REPO=$BOX_REPO BOX_VERSION=$BOX_VERSION BOX_SHA256=$BOX_SHA256 \
+    /usr/local/bin/python /opt/box/install-box.py /opt/box \
+    && rm /opt/box/install-box.py
 COPY .box-dist/profile.toml /opt/box/profile.toml
 # box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
 # /app/.box-dist is not the agent's, so it goes.

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -13,6 +13,7 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import { BOX_GITHUB_TOKEN_SECRET_ID, BOX_RELEASE } from "../project/backends/boxRelease";
 import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
@@ -82,6 +83,8 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
+  /** The home folder build secrets are written under; the user's home by default. */
+  homeDirectory?: string;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -89,12 +92,14 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly homeDirectory: string;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
+    this.homeDirectory = config.homeDirectory ?? homedir();
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -153,25 +158,43 @@ export class ContainerDevRunner implements DevRunner {
       `${key}=<redacted>`,
     ]);
     const boxed = this.stageBox(input, context);
-    const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
-    const buildOptions: StreamProcessOptions = {
-      cwd: context,
-      env: this.processEnv,
-      redactedCommand: [
+    const secrets = await this.buildSecretFiles(input);
+    try {
+      const buildCommand = [
         tool,
         "build",
         "-f",
         dockerfile,
         "-t",
         imageTag,
-        ...redactedBuildArgFlags,
+        ...buildArgFlags,
+        ...secrets.flags,
         ".",
-      ],
-      signal: input.signal,
-    };
+      ];
+      const buildOptions: StreamProcessOptions = {
+        cwd: context,
+        // BuildKit runs the RUN --mount=type=secret steps; Docker's legacy builder refuses them.
+        env:
+          secrets.flags.length > 0 ? { ...this.processEnv, DOCKER_BUILDKIT: "1" } : this.processEnv,
+        redactedCommand: [
+          tool,
+          "build",
+          "-f",
+          dockerfile,
+          "-t",
+          imageTag,
+          ...redactedBuildArgFlags,
+          ...secrets.flags,
+          ".",
+        ],
+        signal: input.signal,
+      };
 
-    yield { type: "status", message: `Building image with ${tool}` };
-    yield* this.streamProcess(buildCommand, buildOptions);
+      yield { type: "status", message: `Building image with ${tool}` };
+      yield* this.streamProcess(buildCommand, buildOptions);
+    } finally {
+      secrets.remove();
+    }
 
     const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
     const forwardedEnv: Record<string, string> = {};
@@ -251,8 +274,65 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
+    stageBoxImage(context, readFileSync(profile, "utf8"));
     return true;
+  }
+
+  /**
+   * The runtime's dockerBuildSecrets, as `--secret id=<id>,src=<file>` flags. On deploy CodeBuild
+   * reads them from Secrets Manager; here the box release's GitHub token is your GitHub login:
+   * GH_TOKEN, or else `gh auth token`. Each value goes in a file only you can read, in your home
+   * folder so Finch's VM can see it, which `remove` deletes after the build. A file, not an env
+   * source, because Finch does not pass the CLI's environment to its VM.
+   */
+  private async buildSecretFiles(
+    input: DevServerInput,
+  ): Promise<{ flags: string[]; remove: () => void }> {
+    const ids = Object.keys(input.runtime.dockerBuildSecrets ?? {});
+    if (ids.length === 0) return { flags: [], remove: () => {} };
+    const unsupported = ids.filter((id) => id !== BOX_GITHUB_TOKEN_SECRET_ID);
+    if (unsupported.length > 0) {
+      throw new InvalidEnvironmentError(
+        `runtime "${input.runtime.name}" builds with the dockerBuildSecrets ` +
+          `${unsupported.map((id) => `"${id}"`).join(", ")}, which agentcore dev cannot supply: it ` +
+          `supplies only "${BOX_GITHUB_TOKEN_SECRET_ID}", from your GitHub login.`,
+      );
+    }
+    const token = this.processEnv.GH_TOKEN?.trim() || (await this.githubToken(input));
+    const folder = join(this.homeDirectory, ".agentcore", "build-secrets");
+    mkdirSync(folder, { recursive: true, mode: 0o700 });
+    const directory = mkdtempSync(join(folder, "dev-"));
+    const file = join(directory, BOX_GITHUB_TOKEN_SECRET_ID);
+    writeFileSync(file, token, { mode: 0o600 });
+    return {
+      flags: ["--secret", `id=${BOX_GITHUB_TOKEN_SECRET_ID},src=${file}`],
+      remove: () => rmSync(directory, { recursive: true, force: true }),
+    };
+  }
+
+  private async githubToken(input: DevServerInput): Promise<string> {
+    const lines: string[] = [];
+    try {
+      for await (const event of this.streamProcess(["gh", "auth", "token"], {
+        cwd: input.projectRoot,
+        env: this.processEnv,
+        redactedCommand: ["gh", "auth", "token"],
+        signal: input.signal,
+      })) {
+        if (event.type === "stdout") lines.push(event.line);
+      }
+    } catch {
+      lines.length = 0;
+    }
+    const token = lines.join("").trim();
+    if (!token) {
+      throw new InvalidEnvironmentError(
+        `runtime "${input.runtime.name}" installs box from a GitHub release at build time, which ` +
+          "needs a GitHub token. Run `gh auth login` with an account that can read " +
+          `${BOX_RELEASE.repo}, or set GH_TOKEN, then retry.`,
+      );
+    }
+    return token;
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
