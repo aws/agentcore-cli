@@ -1856,12 +1856,6 @@ describe("chinaModelProviderRestriction", () => {
   });
 });
 
-/** The warning build gives for create's Bedrock target, which the Box gateway's role cannot call. */
-const bedrockGrantWarning = (gateway: string) =>
-  `target 'bedrock' of gateway '${gateway}' (agentcore create added it) signs its requests with ` +
-  "the gateway's role for 'bedrock', and no policy of that role grants a 'bedrock:' action, so " +
-  `bedrock refuses them. Add an IAM policy file to additionalPolicies of ${gateway}.`;
-
 describe("FsProjectManager.build", () => {
   /** A staging-boxy checkout: the scaffolded runtime starts in a box, so build stages box. */
   async function boxSource(): Promise<NodeJS.ProcessEnv> {
@@ -1925,8 +1919,14 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
+    // The Box gateway signs the model calls with its own role, so build grants it Bedrock.
     expect(events).toEqual([
-      { type: "warning", message: bedrockGrantWarning("agent-python-minimal-box") },
+      {
+        type: "step",
+        message:
+          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      },
+      { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     // The zip carries box and the Runtime profile, staged before synth packages the code.
@@ -1992,9 +1992,14 @@ describe("FsProjectManager.build", () => {
 
     const root = join(directory, "example");
     const spec = JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf8"));
-    const box = spec.agentCoreGateways.find(({ name }: { name: string }) => name === "box");
+    const box = spec.agentCoreGateways.find(
+      ({ name }: { name: string }) => name === "agent-python-strands-box",
+    );
     expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
-    expect(box.additionalPolicies).toEqual(["agentcore/box-memory-policy.json"]);
+    expect(box.additionalPolicies).toEqual([
+      "agentcore/box-bedrock-policy.json",
+      "agentcore/box-memory-policy.json",
+    ]);
     expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
     expect(events).toContainEqual({
       type: "step",
@@ -2010,10 +2015,7 @@ describe("FsProjectManager.build", () => {
     // A second build, of the project as it now reads, changes nothing in agentcore.json.
     const reread = await subject.resolve({ filePath: root });
     const again = await drain(subject.build(reread!));
-    expect(again).toEqual([
-      { type: "warning", message: bedrockGrantWarning("agent-python-strands-box") },
-      { type: "step", message: "synthesizing CloudFormation templates" },
-    ]);
+    expect(again).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
   });
 
   test("propagates a synthesis failure", async () => {

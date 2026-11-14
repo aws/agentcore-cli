@@ -47,6 +47,19 @@ export const BOX_GATEWAY_URL_PLACEHOLDER = "@GATEWAY_BOX_URL@";
  */
 const RUNTIME_AWS_SIGNER = "aws://default";
 
+/**
+ * Stand-in AWS keys for the agent on AgentCore Runtime. They let boto3 in the box sign a request,
+ * which box then sends to the Box gateway signed again with RUNTIME_AWS_SIGNER, so they
+ * authenticate nothing. box made these itself for the `aws://` secret.ref the Bedrock route had;
+ * a backend-only route has no secret, so the profile names them.
+ */
+const RUNTIME_AWS_STAND_IN_LINES = [
+  "# Stand-ins so boto3 in the box can build its requests. They authenticate nothing: every AWS",
+  "# route goes to the Box gateway, and box signs each request for it with the execution role.",
+  'AWS_ACCESS_KEY_ID = "box-stand-in"',
+  'AWS_SECRET_ACCESS_KEY = "box-stand-in"',
+].join("\n");
+
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
 /**
@@ -374,6 +387,9 @@ secret.ref = "aws://default"
   const env = Object.entries(environment)
     .map(([name, value]) => `${name} = ${str(value)}`)
     .join("\n");
+  // On the Runtime every AWS route is a Box gateway backend, and box adds no stand-in AWS keys for
+  // a backend-only route, so boto3 in the box would find none and refuse to build a request.
+  const awsStandIns = onRuntime ? `\n${RUNTIME_AWS_STAND_IN_LINES}` : "";
 
   return `# Runs the agent of the AgentCore project '${projectName}' in a box.
 ${header}
@@ -387,7 +403,7 @@ ${options}[agent]
 command = ${list(runner.command)}
 
 [agent.env]
-${env}
+${env}${awsStandIns}
 ${envMarker}
 [agent.filesystem]
 read = [${runner.read.join(", ")}]

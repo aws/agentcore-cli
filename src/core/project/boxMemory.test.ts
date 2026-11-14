@@ -13,6 +13,7 @@ import {
   addBoxGatewayTargets,
   addBoxMemoryTarget,
   BOX_MEMORY_POLICY_FILE,
+  boxBedrockPolicy,
   boxMemoryPolicy,
 } from "./boxMemory";
 
@@ -168,15 +169,60 @@ describe("addBoxBedrockTarget", () => {
 
     expect(addBoxBedrockTarget(project, await root())).toEqual([
       "adding target 'bedrock' to gateway 'agent-box' in agentcore.json, for the boxed agent's model calls",
+      "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
     ]);
     expect(targets(project)).toEqual(["bedrock"]);
   });
 
-  test("changes nothing when the target is there", async () => {
+  test("lists the Bedrock policy on a gateway that already has the target", async () => {
     const project = spec();
+
+    expect(addBoxBedrockTarget(project, await root())).toEqual([
+      "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+    ]);
+    expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([
+      "agentcore/box-bedrock-policy.json",
+    ]);
+  });
+
+  test("changes nothing when the target and the policy are there", async () => {
+    const project = spec();
+    addBoxBedrockTarget(project, await root());
 
     expect(addBoxBedrockTarget(project, await root())).toEqual([]);
     expect(targets(project)).toEqual(["bedrock"]);
+  });
+
+  test("leaves a gateway that imports its role without the policy", async () => {
+    const project = spec();
+    project.agentCoreGateways[0]!.executionRoleArn = "arn:aws:iam::111122223333:role/mine";
+
+    expect(addBoxBedrockTarget(project, await root())).toEqual([]);
+    expect(project.agentCoreGateways[0]!.additionalPolicies).toBeUndefined();
+  });
+
+  test("grants the gateway role the model invoke actions in any region", async () => {
+    expect(boxBedrockPolicy(spec(), await root())).toEqual({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "BoxedAgentModelCallsThroughGateway",
+          Effect: "Allow",
+          Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+          Resource: [
+            "arn:aws:bedrock:*:*:inference-profile/*",
+            "arn:aws:bedrock:*::foundation-model/*",
+          ],
+        },
+      ],
+    });
+  });
+
+  test("writes no Bedrock policy for an agent that calls another provider", async () => {
+    const project = spec();
+    project.runtimes[0]!.modelProvider = "OpenAI";
+
+    expect(boxBedrockPolicy(project, await root())).toBeUndefined();
   });
 
   test.each([
