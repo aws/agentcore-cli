@@ -1,6 +1,7 @@
 /**
- * Reads the box profile and its policy files once, as Box reads them, runs the profile and policy
- * parsers on them, and builds the Box network model of each runtime that runs its agent in a box.
+ * Reads Box's own resolution of the box profile, and the profile's policy files once, as Box reads
+ * them, runs the profile and policy parsers on them, and builds the Box network model of each
+ * runtime that runs its agent in a box.
  */
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
@@ -11,32 +12,37 @@ import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE }
 import {
   BOX_PROFILE_PATH,
   buildBoxNetwork,
-  parsePolicyFiles,
-  parseProfile,
+  parseResolvedPolicy,
+  parseResolvedProfile,
+  profilePolicyFiles,
   type BoxNetwork,
   type BoxNetworkFailure,
-  type ParsedProfile,
+  type ParsedPolicy,
   type PolicyFileText,
 } from "./boxNetwork";
+import type { BoxProfileResolver } from "./boxProfileResolver";
 
-const NO_PROFILE: ParsedProfile = { egress: {}, mcp: {}, policyFiles: [] };
+const NO_POLICY: ParsedPolicy = {
+  profile: { egress: {}, mcp: {}, policyFiles: [] },
+  statements: [],
+  places: new Map(),
+};
 
-/** The Box network model of each runtime of `spec` that runs its agent in a box. */
-export function readBoxNetworks(
+/**
+ * The Box network model of each runtime of `spec` that runs its agent in a box, from the box
+ * profile as `resolver` resolves it. A project with no box runtime, or no box profile, resolves
+ * nothing.
+ */
+export async function readBoxNetworks(
   spec: ProjectSpec,
   projectRoot: string,
-  region: string = BOX_GATEWAY_BEDROCK_REGION,
-): BoxNetwork[] {
+  resolver: BoxProfileResolver,
+): Promise<BoxNetwork[]> {
   const runtimes = isBoxProject(spec)
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
     : [];
   if (runtimes.length === 0) return [];
-  // The Runtime profile sets `[options] bedrock.region` to the region build builds for, so the
-  // model reads box/bedrock's route for that region, not the one `agentcore dev` uses.
-  const read = readProfile(projectRoot, region);
-  const files = readPolicyFiles(projectRoot, read.profile.policyFiles);
-  const { parsed, failures } = parsePolicyFiles(read.profile, files.texts);
-  const found = [...read.failures, ...files.failures, ...failures];
+  const { parsed, failures: found } = await readResolvedPolicy(projectRoot, resolver);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
@@ -59,18 +65,14 @@ export function readBoxNetworks(
 
 /**
  * Each policy file the box profile names, as an image's `.box-dist/` takes it under `agentcore
- * dev`, which stages the profile itself and not the Runtime one, and builds no model. Throws, with
- * every failure where it is, for a profile whose policy files cannot be read and for a policy file
- * Box would refuse.
+ * dev`, which stages the profile itself and not the Runtime one, runs no box here, and builds no
+ * model. Throws, with every failure where it is, for a profile whose policy files cannot be read
+ * and for a policy file Box would refuse.
  */
 export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
-  const { profile, failures: profileFailures } = readProfile(projectRoot);
-  const files = readPolicyFiles(projectRoot, profile.policyFiles);
-  // The box in the image reads every pack; only build refuses one it does not convert.
-  const failures = [
-    ...profileFailures.filter(({ code }) => code !== "UNSUPPORTED_PACK"),
-    ...files.failures,
-  ];
+  const named = namedPolicyFiles(projectRoot);
+  const files = readPolicyFiles(projectRoot, named.ok ? named.files : []);
+  const failures = [...(named.ok ? [] : [named.failure]), ...files.failures];
   if (failures.length > 0) {
     const count = `${failures.length} ${failures.length === 1 ? "failure" : "failures"}`;
     throw new ProjectStateError(
@@ -79,23 +81,46 @@ export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
         "\n\nNothing was staged. Change the profile or its policy files, then retry.",
     );
   }
-  return profile.policyFiles.map((relative) => ({
+  return (named.ok ? named.files : []).map((relative) => ({
     from: join(projectRoot, ".box", ...relative.split("/")),
     relative,
   }));
 }
 
-/** The box profile of the project, or an empty one when it has none. */
-function readProfile(
+/**
+ * Box's resolution of the box profile, parsed, with the profile's own policy files to place its
+ * rules and to stage; nothing when the project has no profile.
+ */
+async function readResolvedPolicy(
   projectRoot: string,
-  bedrockRegion?: string,
-): {
-  profile: ParsedProfile;
-  failures: readonly BoxNetworkFailure[];
-} {
-  const path = join(projectRoot, ...BOX_PROFILE_PATH.split("/"));
-  if (!existsSync(path)) return { profile: NO_PROFILE, failures: [] };
-  return parseProfile(readFileSync(path, "utf8"), bedrockRegion);
+  resolver: BoxProfileResolver,
+): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
+  if (!existsSync(profilePath(projectRoot))) return { parsed: NO_POLICY, failures: [] };
+  const resolved = await resolver.resolve(projectRoot, BOX_PROFILE_PATH);
+  const named = namedPolicyFiles(projectRoot);
+  const files = readPolicyFiles(projectRoot, named.ok ? named.files : []);
+  const profile = parseResolvedProfile(resolved.boxToml, named.ok ? named.files : []);
+  const policy = parseResolvedPolicy(profile.profile, resolved.policy, files.texts);
+  return {
+    parsed: policy.parsed,
+    failures: [
+      ...(named.ok ? [] : [named.failure]),
+      ...profile.failures,
+      ...files.failures,
+      ...policy.failures,
+    ],
+  };
+}
+
+function profilePath(projectRoot: string): string {
+  return join(projectRoot, ...BOX_PROFILE_PATH.split("/"));
+}
+
+/** The policy files of the box profile's `policies`, or none when the project has no profile. */
+function namedPolicyFiles(projectRoot: string): ReturnType<typeof profilePolicyFiles> {
+  const path = profilePath(projectRoot);
+  if (!existsSync(path)) return { ok: true, files: [] };
+  return profilePolicyFiles(readFileSync(path, "utf8"));
 }
 
 /**

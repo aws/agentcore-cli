@@ -13,7 +13,6 @@ export type RoutableMethod = (typeof ROUTABLE_METHODS)[number];
 /** Why the box profile, a policy file, a rule, an entry, or a target cannot convert. */
 export const FAILURE_CODES = [
   "INVALID_PROFILE",
-  "UNSUPPORTED_PACK",
   "UNSUPPORTED_POLICY_KEY",
   "INVALID_POLICY_FILE",
   "PARSE_ERROR",

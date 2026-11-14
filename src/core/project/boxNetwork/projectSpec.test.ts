@@ -2,12 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { buildBoxNetwork, type BoxNetworkHost } from "./network";
-import { parsePolicyFiles } from "./policyParser";
+import { boxNetworkRules } from "../boxProfileResolver-test-support";
+import { parseResolvedPolicy } from "./policyParser";
 import { gatewayTargetFor, outboundAuthText, sameOutboundAuth } from "./projectSpec";
 
-/** The hosts of `egress`, with the rules the box CLI adds for it. */
+/** The hosts of `egress`, with the rules Box adds for it. */
 function hostsOf(egress: Record<string, unknown>): BoxNetworkHost[] {
-  const { parsed } = parsePolicyFiles({ egress, mcp: {}, policyFiles: [] }, []);
+  const { parsed } = parseResolvedPolicy(
+    { egress, mcp: {}, policyFiles: [] },
+    boxNetworkRules(egress),
+    [],
+  );
   const runtime = { name: "agent" } as ProjectRuntime;
   const spec = { credentials: [], agentCoreGateways: [], memories: [] } as never;
   const network = buildBoxNetwork(parsed, [], {

@@ -4,13 +4,13 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "smol-toml";
-import { InputValidationError } from "../../errors/errors";
+import { InputValidationError, InvalidEnvironmentError } from "../../errors/errors";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
-import { seedBoxCache } from "./backends/box-release-test-support";
+import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { FsProjectManager } from "./manager";
 
 const GATEWAY = "agent-python-strands-box";
@@ -24,6 +24,15 @@ const POLICY =
   `@id("httpbin_get") permit (principal, ${HR}, resource) when { context.input.host == "httpbin.org" && context.input.path == "/get" };\n`;
 const GITHUB_ROUTE =
   '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
+/** Box's resolution of the Bedrock route of the profile `create` writes, with box/bedrock. */
+const BEDROCK = {
+  destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
+  secret: { ref: "aws://default" },
+};
+const GITHUB = { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_TOKEN" } };
+/** What box resolves the created profile to, with `routes` beside its Bedrock route. */
+const shows = (routes: Record<string, unknown> = {}, policy?: string) =>
+  boxShowOf({ egress: { bedrock: BEDROCK, ...routes }, policy });
 const GITHUB_KEY = {
   type: "API_KEY",
   credentialName: "github",
@@ -93,6 +102,7 @@ async function strandsProject(
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
   const { json, counter } = countingJson();
+  const box = new FakeBoxProfileResolver(shows());
   const manager = new FsProjectManager({
     logger: createSilentLogger(),
     identity: new TestIdentityClient(),
@@ -100,11 +110,8 @@ async function strandsProject(
     runner: async () => {},
     checkTool: async () => {},
     json,
-    processEnv: {
-      HOME: await boxHome(),
-      AWS_REGION: "us-west-2",
-      ...options.env,
-    },
+    processEnv: { AGENTCORE_BOX_SOURCE: await boxSource(), ...options.env },
+    boxProfileResolver: box,
     ...(options.backends && { backends: options.backends }),
   });
   const { value: created } = await drain(
@@ -120,7 +127,7 @@ async function strandsProject(
   const root = created.rootPath;
   await mkdir(join(root, "agentcore", "cdk", "node_modules"), { recursive: true });
   counter.specWrites = 0;
-  return { manager, root, counter };
+  return { manager, root, counter, box };
 }
 
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
@@ -181,12 +188,13 @@ const userTarget = (name: string, endpoint: string, rest: object = {}) => ({
 
 describe("build writes the Box network of the box profile", () => {
   test("gives each host Box allows a target, and routes it through the gateway on the Runtime", async () => {
-    const { manager, root, counter } = await strandsProject();
+    const { manager, root, counter, box } = await strandsProject();
     await editProfile(root, {
       top: 'policies = ["policy.dw"]\n',
       tables: GITHUB_ROUTE,
       policy: POLICY,
     });
+    box.answer = shows({ github: GITHUB }, POLICY);
     const before = await boxFiles(root);
 
     const { steps } = await build(manager, root);
@@ -246,8 +254,9 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("changes nothing on a second build", async () => {
-    const { manager, root, counter } = await strandsProject();
+    const { manager, root, counter, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
     await build(manager, root);
     const spec = await text(root, SPEC);
     const profile = await text(root, RUNTIME_PROFILE);
@@ -262,8 +271,9 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("routes a host through the target the gateway holds for it, and keeps every user target", async () => {
-    const { manager, root } = await strandsProject();
+    const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
     await editGateway(root, (gateway) => {
       gateway.targets.push(
         userTarget("gh", "https://api.github.com:443", { outboundAuth: GITHUB_KEY }),
@@ -279,11 +289,13 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("removes a target it added when the profile no longer allows its host, and only that one", async () => {
-    const { manager, root } = await strandsProject();
+    const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
     await build(manager, root);
     const profile = await text(root, ".box/profile.toml");
     await writeFile(path(root, ".box/profile.toml"), profile.replace(GITHUB_ROUTE, ""));
+    box.answer = shows();
 
     const { steps } = await build(manager, root);
 
@@ -295,11 +307,17 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("gives the Memory endpoint to the agentcore target, and adds no second target for it", async () => {
-    const { manager, root } = await strandsProject();
+    const { manager, root, box } = await strandsProject();
     await editProfile(root, {
       tables:
         '\n[egress.memory]\ndestinations = ["bedrock-agentcore.us-west-2.amazonaws.com"]\n' +
         'secret.ref = "aws://default"\n',
+    });
+    box.answer = shows({
+      memory: {
+        destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+        secret: { ref: "aws://default" },
+      },
     });
 
     await build(manager, root);
@@ -310,16 +328,19 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("on a first build, stops with every failure, where it is, and writes nothing", async () => {
-    const { manager, root, counter } = await strandsProject();
+    const { manager, root, counter, box } = await strandsProject();
+    const wild =
+      "// Every subdomain of example.com.\n" +
+      `@id("wild") permit (principal, ${HR}, resource) when { context.input.host like "*.example.com" };\n`;
     await editProfile(root, {
       top: 'policies = ["policy.dw"]\n',
       tables:
         GITHUB_ROUTE +
         '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n',
-      policy:
-        "// Every subdomain of example.com.\n" +
-        `@id("wild") permit (principal, ${HR}, resource) when { context.input.host like "*.example.com" };\n`,
+      policy: wild,
     });
+    const signed = { destinations: ["api.example.com"], secret: { ref: "aws://default" } };
+    box.answer = shows({ github: GITHUB, signed }, wild);
     const spec = await text(root, SPEC);
     const envLocal = await text(root, "agentcore/.env.local");
     const before = await boxFiles(root);
@@ -371,8 +392,9 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("refuses a target of the user's whose outbound auth differs from the entry's", async () => {
-    const { manager, root } = await strandsProject();
+    const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
     await editGateway(root, (gateway) => {
       gateway.targets.push(userTarget("gh", "https://api.github.com"));
     });
@@ -386,78 +408,49 @@ describe("build writes the Box network of the box profile", () => {
   });
 });
 
-describe("build writes the Bedrock and Memory targets for the region it builds for", () => {
-  const bedrockTarget = (region: string) => ({
-    name: "bedrock",
-    targetType: "passthrough",
-    passthrough: {
-      endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
-      protocolType: "CUSTOM",
-    },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
-  });
-
-  test("takes AWS_REGION for the targets and the Runtime profile", async () => {
-    const { manager, root } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
-
-    await build(manager, root);
-
-    const { targets } = await boxGateway(root);
-    expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("eu-central-1"));
-    expect(targets.find(({ name }) => name === "agentcore")).toMatchObject({
-      passthrough: { endpoint: "https://bedrock-agentcore.eu-central-1.amazonaws.com" },
-      outboundAuth: { region: "eu-central-1" },
-    });
-    const profile = await runtimeProfile(root);
-    expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
-    const egress = profile.egress as Record<string, { destinations: string[]; backends: unknown }>;
-    expect(egress.bedrock!.destinations).toEqual(["bedrock-runtime.eu-central-1.amazonaws.com"]);
-    expect(JSON.stringify(egress.bedrock!.backends)).toContain('"region":"eu-central-1"');
-  });
-
-  test("takes AWS_DEFAULT_REGION when AWS_REGION is unset", async () => {
-    const { manager, root } = await strandsProject({
-      env: { AWS_REGION: undefined, AWS_DEFAULT_REGION: "ap-southeast-2" },
-    });
-
-    await build(manager, root);
-
-    const { targets } = await boxGateway(root);
-    expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("ap-southeast-2"));
-  });
-
-  test("moves a target it wrote for another region, and keeps one the user changed", async () => {
-    const { manager, root } = await strandsProject();
-    await build(manager, root);
-    await editGateway(root, (gateway) => {
-      gateway.targets = gateway.targets.map((target) => {
-        const { name } = target as { name: string };
-        if (name === "bedrock") return bedrockTarget("us-east-1");
-        if (name === "agentcore") {
-          return {
-            ...(target as object),
-            passthrough: { endpoint: "https://memory.example.com", protocolType: "CUSTOM" },
-            outboundAuth: {
-              type: "GATEWAY_IAM_ROLE",
-              service: "bedrock-agentcore",
-              region: "eu-west-1",
-            },
-          };
-        }
-        return target;
-      });
-    });
-
-    const { steps } = await build(manager, root);
-
-    const { targets } = await boxGateway(root);
-    expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("us-west-2"));
-    expect(steps).toContain(
-      `updating target 'bedrock' of gateway '${GATEWAY}' in agentcore.json from us-east-1 to us-west-2`,
+describe("build reads the box profile as box resolves it", () => {
+  test("takes the route a pack adds, which build refused when it compiled the profile itself", async () => {
+    const { manager, root, box } = await strandsProject();
+    const profile = await text(root, ".box/profile.toml");
+    await writeFile(
+      path(root, ".box/profile.toml"),
+      profile.replace('"box/bedrock"]', '"box/bedrock", "box/anthropic"]'),
     );
-    expect(targets.find(({ name }) => name === "agentcore")).toMatchObject({
-      passthrough: { endpoint: "https://memory.example.com" },
+    // `box profile show --full` resolves box/anthropic to this route, with its secret.
+    box.answer = shows({
+      anthropic: {
+        destinations: ["api.anthropic.com"],
+        secret: { header: "x-api-key", phantom_prefix: "sk-ant-", ref: "env://ANTHROPIC_API_KEY" },
+      },
     });
+
+    await build(manager, root);
+
+    expect(box.calls).toEqual([{ projectRoot: root, profilePath: ".box/profile.toml" }]);
+    const { targets } = await boxGateway(root);
+    expect(targets.find(({ name }) => name === "egress-anthropic")).toEqual(
+      userTarget("egress-anthropic", "https://api.anthropic.com", {
+        outboundAuth: {
+          type: "API_KEY",
+          credentialName: "anthropic",
+          location: "HEADER",
+          parameterName: "x-api-key",
+        },
+      }),
+    );
+  });
+
+  test("stops with box's error when box refuses the profile, and writes nothing", async () => {
+    const { manager, root, counter, box } = await strandsProject();
+    box.answer = new InvalidEnvironmentError(
+      "`box profile show .box/profile.toml --full` failed in the project (exit code 1)",
+    );
+    const spec = await text(root, SPEC);
+
+    await expect(build(manager, root)).rejects.toBe(box.answer);
+    expect(counter.specWrites).toBe(0);
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(existsSync(path(root, RUNTIME_PROFILE))).toBe(false);
   });
 });
 
@@ -478,10 +471,11 @@ describe("deploy writes the Box network before the backend deploys", () => {
         return [];
       },
     };
-    const { manager, root } = await strandsProject({
+    const { manager, root, box } = await strandsProject({
       backends: { CDK: backend },
       env: { GITHUB_TOKEN: "ghp_123" },
     });
+    box.answer = shows({ github: GITHUB });
     await writeFile(
       path(root, "agentcore/aws-targets.json"),
       JSON.stringify([{ name: "primary", account: "111122223333", region: "eu-west-1" }]),

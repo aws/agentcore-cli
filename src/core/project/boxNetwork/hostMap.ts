@@ -53,7 +53,7 @@ export const SENTINEL_SEGMENT = "§";
 
 /** The network inputs of a box profile, parsed. */
 export interface HostMapInput {
-  /** The policy files' statements, then the rules the box CLI adds. */
+  /** The statements of Box's resolved policy: the policy files', then the rules Box adds. */
   readonly statements: readonly Statement[];
   readonly egress: Readonly<Record<string, unknown>>;
   readonly mcp: Readonly<Record<string, unknown>>;
