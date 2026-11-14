@@ -54,6 +54,17 @@ DEMO=/tmp/cliDemo
 PROJECT=cliDemo
 ```
 
+## Install the CLI's dependencies
+
+The CLI runs from source, so it needs its own `node_modules`. Install them once in the
+CLI checkout before the first `bun run "$CLI"`. Without this, `bun` falls back to its global
+cache and `create` fails with `ENOENT while resolving package '@opentelemetry/core'`.
+
+```
+cd "$(dirname "$CLI")/.."
+bun install
+```
+
 ## 1. Get AWS credentials
 
 Deploy creates real resources, so it needs write access. This example uses `ada` with an
@@ -144,6 +155,19 @@ bun run "$CLI" build
 grep AGENTCORE_CREDENTIAL_GITHUB agentcore/.env.local
 ```
 
+If you added the `github` egress credential in step 4, this first standalone `build` stops
+after writing the targets, policies, and `.env.local`, with:
+
+```
+Project build cannot resolve credential "github" before its first deployment.
+Run 'agentcore deploy' to provision the credential and build the project.
+```
+
+This is expected. An `env://` credential must exist in AgentCore Identity before synthesis can
+resolve it, and only `deploy` provisions it. So on the **first** run with an egress credential,
+skip straight to step 7: `deploy` provisions the credential and then builds in one step (keep
+`GITHUB_TOKEN` exported). After that first deploy, `build` runs standalone as above.
+
 ## 7. Deploy
 
 ```
@@ -182,6 +206,12 @@ bun run "$CLI" deploy
 
 - **Build cannot find the box binaries.** `AGENTCORE_BOX_SOURCE` is unset or does not hold
   `target-al2023/release`. Build box for Amazon Linux 2023 in that checkout first.
+- **`create` fails with `ENOENT while resolving package '@opentelemetry/core'`.** The CLI's
+  dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in
+  the CLI checkout (see "Install the CLI's dependencies").
+- **Build says it cannot resolve credential "github" before its first deployment.** Expected
+  when step 4's egress credential has never been deployed. Run `agentcore deploy` instead; it
+  provisions the credential and builds. Standalone `build` works after that. See step 6.
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.
