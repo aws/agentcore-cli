@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
 import type { Project } from "../../../handlers/project/types";
+import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxContainers } from "./boxContainer";
 
@@ -53,7 +54,7 @@ describe("stageBoxContainers", () => {
   test("stages only the Runtime profile into the build context; the image installs box", async () => {
     const demo = await project(BOX_DOCKERFILE);
 
-    expect(stageBoxContainers(demo)).toEqual(["agent"]);
+    expect(stageBoxContainers(demo, [])).toEqual(["agent"]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     // The Runtime profile is rendered from agentcore.json.
@@ -69,7 +70,7 @@ describe("stageBoxContainers", () => {
     await mkdir(join(dist, "resources"), { recursive: true });
     await writeFile(join(dist, "box"), "old");
 
-    stageBoxContainers(demo);
+    stageBoxContainers(demo, []);
 
     expect(await readdir(dist)).toEqual(["profile.toml"]);
   });
@@ -77,7 +78,52 @@ describe("stageBoxContainers", () => {
   test("stages nothing for an image that does not copy .box-dist/", async () => {
     const demo = await project("FROM scratch\n");
 
-    expect(stageBoxContainers(demo)).toEqual([]);
+    expect(stageBoxContainers(demo, [])).toEqual([]);
+    expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
+  });
+
+  test("copies each policy file of the model beside the profile, for an image that copies .box-dist/ whole", async () => {
+    const demo = await project(TEMPLATE_DOCKERFILE);
+    await writeFile(join(demo.rootPath, "app", "agent", "start.sh"), START_SH);
+    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+
+    stageBoxContainers(demo, [model(["policy.dw"])]);
+
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect((await readdir(dist)).sort()).toEqual(["policy.dw", "profile.toml"]);
+    expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
+  });
+
+  test("refuses an image that copies only the profile when policy files go with it", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+
+    expect(() => stageBoxContainers(demo, [model(["policy.dw"])])).toThrow(
+      "does not copy .box-dist/ whole into the image",
+    );
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 });
+
+const TEMPLATES = join(import.meta.dir, "..", "..", "..", "assets", "templates");
+/** The container start.sh and the Dockerfile that `agentcore create` writes. */
+const START_SH = readFileSync(join(TEMPLATES, "box-container", "start.sh"), "utf8");
+const TEMPLATE_DOCKERFILE = readFileSync(
+  join(TEMPLATES, "agent-python-strands", "Dockerfile.template"),
+  "utf8",
+);
+
+function model(policyFiles: string[]): BoxNetwork {
+  return {
+    runtime: "agent",
+    gateway: "agent-box",
+    hosts: [],
+    credentials: [],
+    policyFiles,
+    grantedActions: [],
+    warnings: [],
+    failures: [],
+  };
+}

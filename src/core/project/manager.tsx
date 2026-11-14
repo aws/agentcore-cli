@@ -1579,7 +1579,7 @@ export class FsProjectManager implements ProjectManager {
     for (const message of synced.messages) yield { type: "step", message };
     const boxed = await this.applyBoxNetwork(synced.project);
     yield* boxed.events;
-    yield* this.backendFor(project).build(boxed.project);
+    yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
   }
 
   /**
@@ -1842,6 +1842,7 @@ export class FsProjectManager implements ProjectManager {
       confirmBoxGatewayDeletion: input.confirmBoxGatewayDeletion,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
+      boxNetworks: boxed.networks,
     });
   }
 

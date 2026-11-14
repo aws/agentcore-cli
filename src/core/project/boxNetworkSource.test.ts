@@ -57,7 +57,14 @@ describe("readBoxNetworks", () => {
   });
 
   test("refuses a policy file Box would refuse, each at its place", async () => {
-    const root = await project(["missing.dw", "outside.dw", "linked.dw", "folder.dw"]);
+    const root = await project([
+      "missing.dw",
+      "outside.dw",
+      "linked.dw",
+      "folder.dw",
+      "box",
+      "a b.dw",
+    ]);
     const elsewhere = join(root, "elsewhere.dw");
     await writeFile(elsewhere, "// outside\n");
     await symlink(elsewhere, join(root, ".box", "outside.dw"));
@@ -80,6 +87,14 @@ describe("readBoxNetworks", () => {
       expect.objectContaining({
         place: ".box/folder.dw",
         reason: expect.stringContaining("is a directory"),
+      }),
+      expect.objectContaining({
+        place: ".box/box",
+        reason: expect.stringContaining("takes the name box"),
+      }),
+      expect.objectContaining({
+        place: ".box/a b.dw",
+        reason: expect.stringContaining("cannot copy"),
       }),
     ]);
   });

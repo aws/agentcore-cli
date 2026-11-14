@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
 import type { Project } from "../../../handlers/project/types";
+import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { type BoxLinuxBuild, resolveBoxLinuxBuild } from "./boxRelease";
@@ -74,7 +76,7 @@ describe("stageBoxCodeZip", () => {
     const build = await sourceBuild({ ffi: true });
     const demo = await project("start.py");
 
-    expect(await stageBoxCodeZip(demo, async () => build)).toEqual(["agent"]);
+    expect(await stageBoxCodeZip(demo, [], async () => build)).toEqual(["agent"]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     for (const binary of BINARIES) {
@@ -96,7 +98,7 @@ describe("stageBoxCodeZip", () => {
     const build = await sourceBuild({ ffi: true });
     const demo = await project("start.py", "PYTHON_3_13");
 
-    await stageBoxCodeZip(demo, async () => build);
+    await stageBoxCodeZip(demo, [], async () => build);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
@@ -110,7 +112,7 @@ describe("stageBoxCodeZip", () => {
     await writeFile(join(dist, "ffi", "stale.so"), "old");
     const build = await sourceBuild();
 
-    await stageBoxCodeZip(demo, async () => build);
+    await stageBoxCodeZip(demo, [], async () => build);
 
     expect(await Bun.file(join(dist, "ffi", "stale.so")).exists()).toBe(false);
     expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
@@ -122,10 +124,78 @@ describe("stageBoxCodeZip", () => {
       throw new Error("not asked");
     });
 
-    expect(await stageBoxCodeZip(demo, box)).toEqual([]);
+    expect(await stageBoxCodeZip(demo, [], box)).toEqual([]);
     expect(box).not.toHaveBeenCalled();
     expect(await Bun.file(join(demo.rootPath, "app", "agent", ".box-dist", "box")).exists()).toBe(
       false,
     );
   });
+
+  test("copies each policy file of the model, byte for byte, beside the profile that names it", async () => {
+    const build = await sourceBuild();
+    const demo = await project("start.py");
+    await mkdir(join(demo.rootPath, ".box", "rules"), { recursive: true });
+    const bytes = Buffer.from([0x2f, 0x2f, 0x20, 0xe2, 0x9c, 0x93, 0x0d, 0x0a]);
+    await writeFile(join(demo.rootPath, ".box", "policy.dw"), bytes);
+    await writeFile(join(demo.rootPath, ".box", "rules", "extra.dw"), "// extra\n");
+    await writeFile(join(demo.rootPath, "app", "agent", "start.sh"), START_SH);
+
+    await stageBoxCodeZip(demo, [model(["policy.dw", "rules/extra.dw"])], async () => build);
+
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(Buffer.compare(await readFile(join(dist, "policy.dw")), bytes)).toBe(0);
+    expect(await readFile(join(dist, "rules", "extra.dw"), "utf8")).toBe("// extra\n");
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toContain(
+      'policies = ["policy.dw", "rules/extra.dw"]',
+    );
+  });
+
+  test("stages no policy file and names none when the model has none", async () => {
+    const build = await sourceBuild();
+    const demo = await project("start.py");
+
+    await stageBoxCodeZip(demo, [model([])], async () => build);
+
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).not.toContain("policies");
+  });
+
+  test("refuses an older start.sh before it asks for box, and stages nothing", async () => {
+    const demo = await project("start.py");
+    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await writeFile(
+      join(demo.rootPath, "app", "agent", "start.sh"),
+      "#!/bin/bash\nwrite_profile\n",
+    );
+    const box = mock(async (): Promise<BoxLinuxBuild> => sourceBuild());
+
+    await expect(stageBoxCodeZip(demo, [model(["policy.dw"])], box)).rejects.toThrow(
+      "copies no policy file of .box/profile.toml (policy.dw)",
+    );
+    expect(box).not.toHaveBeenCalled();
+    expect(
+      await Bun.file(join(demo.rootPath, "app", "agent", ".box-dist", "profile.toml")).exists(),
+    ).toBe(false);
+  });
 });
+
+/** The CodeZip start.sh that `agentcore create` writes. */
+const START_SH = readFileSync(
+  join(import.meta.dir, "..", "..", "..", "assets", "templates", "box-codezip", "start.sh"),
+  "utf8",
+);
+
+/** A model of runtime `agent` with the default Memory route and the policy files given. */
+function model(policyFiles: string[]): BoxNetwork {
+  return {
+    runtime: "agent",
+    gateway: "agent-box",
+    hosts: [],
+    credentials: [],
+    policyFiles,
+    grantedActions: [],
+    warnings: [],
+    failures: [],
+  };
+}
