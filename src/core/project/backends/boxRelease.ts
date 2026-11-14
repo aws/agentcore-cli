@@ -10,8 +10,8 @@ import { isFile } from "../runtimeBuild";
  */
 export const BOX_RELEASE = {
   repo: "mquang-amazon/staging-boxy",
-  version: "0.1.11-linux-preview.1",
-  box: { sha256: "d5d9dccc3104c98684173ed591cdad07e3cb77b2b08dbf810b8bdb17dfe287f1" },
+  version: "0.1.11-linux-preview.2",
+  box: { sha256: "31605fd1c6e8d2d31e0222e3612ea978dc65c0c369e8a97e964bf848b460122c" },
 } as const;
 
 /**

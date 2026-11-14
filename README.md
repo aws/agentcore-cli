@@ -201,7 +201,7 @@ The Python templates run their agent in a box, both under `agentcore dev` and on
 Runtime. Where box comes from depends on how the agent deploys:
 
 - A container agent's image installs box while it builds, from the GitHub release
-  `v0.1.11-linux-preview.1` of the private repository `mquang-amazon/staging-boxy`: its Dockerfile
+  `v0.1.11-linux-preview.2` of the private repository `mquang-amazon/staging-boxy`: its Dockerfile
   downloads the release file, checks the SHA-256 pinned in
   `src/core/project/backends/boxRelease.ts` and unpacks it into `/opt/box`. Until the release is
   public, this needs read access to the repository and a GitHub token. `agentcore dev` builds the
@@ -219,7 +219,7 @@ release:
 
 ```sh
 gh auth login
-gh release view v0.1.11-linux-preview.1 --repo mquang-amazon/staging-boxy
+gh release view v0.1.11-linux-preview.2 --repo mquang-amazon/staging-boxy
 ```
 
 ### Create a GitHub token and store it (container agents, once per account and region)
@@ -264,7 +264,7 @@ agentcore logs runtime --name agent --since 15m --query '"[box]"'
 ```
 
 The CodeBuild log of the deploy shows
-`/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.1`. The second
+`/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.2`. The second
 answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK` or
 `AccessDenied` line. For a CodeZip agent, use `--template agent-python-strands`, skip the token and
 the container settings, and set `AGENTCORE_BOX_SOURCE` for `deploy`.
