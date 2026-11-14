@@ -1809,12 +1809,6 @@ describe("chinaModelProviderRestriction", () => {
   });
 });
 
-/** The warning build gives for create's Bedrock target, which the Box gateway's role cannot call. */
-const bedrockGrantWarning = (gateway: string) =>
-  `target 'bedrock' of gateway '${gateway}' (agentcore create added it) signs its requests with ` +
-  "the gateway's role for 'bedrock', and no policy of that role grants a 'bedrock:' action, so " +
-  `bedrock refuses them. Add an IAM policy file to additionalPolicies of ${gateway}.`;
-
 describe("FsProjectManager.build", () => {
   /** A staging-boxy checkout: the scaffolded runtime starts in a box, so build stages box. */
   async function boxSource(): Promise<NodeJS.ProcessEnv> {
@@ -1886,7 +1880,6 @@ describe("FsProjectManager.build", () => {
           "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
-      { type: "warning", message: bedrockGrantWarning("agent-python-minimal-box") },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     // The zip carries box and the Runtime profile, staged before synth packages the code.
