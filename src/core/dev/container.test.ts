@@ -806,6 +806,8 @@ describe("ContainerDevRunner", () => {
     async function boxedScene(
       options: {
         profile?: boolean;
+        /** The text of `.box/profile.toml`. */
+        profileText?: string;
         dockerfile?: string;
       } = {},
     ) {
@@ -816,9 +818,11 @@ describe("ContainerDevRunner", () => {
       await mkdir(join(root, "agentcore"));
       await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
       if (options.profile ?? true) {
-        const local = join(root, ".box", projectRuntime.name, "local");
-        await mkdir(local, { recursive: true });
-        await writeFile(join(local, "profile.toml"), "# local profile\n");
+        await mkdir(join(root, ".box"));
+        await writeFile(
+          join(root, ".box", "profile.toml"),
+          options.profileText ?? "# local profile\n",
+        );
       }
       return { projectRuntime, root, context };
     }
@@ -972,74 +976,40 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
     });
 
-    test("passes box a readable copy of the resolved credentials as profile default", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      const awsDirectory = join(root, ".aws");
-      await mkdir(awsDirectory);
-      const { calls, runner } = harness({
-        awsDirectory,
-        processEnv: { AWS_PROFILE: "sandbox", AWS_REGION: "us-west-2" },
-        resolveAwsCredentials: async () => ({
-          accessKeyId: "AKIDEXAMPLE",
-          secretAccessKey: "secret-example",
-          sessionToken: "token-example",
-        }),
-      });
+    test.each([
+      [
+        "a TOML error",
+        'policies = ["policy.dw"]\n[agent\n',
+        "  - INVALID_PROFILE, at .box/profile.toml:2:7: ",
+      ],
+      [
+        "the `policy` key",
+        '# one file\npolicy = "policy.dw"\n',
+        "  - UNSUPPORTED_POLICY_KEY, at .box/profile.toml:2: the profile names `policy`",
+      ],
+      [
+        "a policy file outside .box/",
+        'policies = ["../../elsewhere.dw"]\n',
+        '  - INVALID_PROFILE, at .box/profile.toml:1: `policies` names "../../elsewhere.dw", ' +
+          "which is outside the profile's folder",
+      ],
+    ])("stops, and stages nothing, for a profile with %s", async (_, profileText, line) => {
+      const { projectRuntime, root, context } = await boxedScene({ profileText });
+      const { calls, runner } = harness({ processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const error = await collect(runner.run(input(root, projectRuntime))).catch(
+        (caught) => caught,
+      );
 
-      const run = commandCall(calls, "run");
-      // Not ~/.aws, which the image's user cannot read when only you may.
-      expect(run.command.join(" ")).not.toContain(`${awsDirectory}:/aws-config`);
-      expect(run.command.some((part) => part.endsWith(":/aws-config/config:ro"))).toBe(true);
-      expect(run.awsCredentials).toMatchObject({
-        contents:
-          "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret-example\n" +
-          "aws_session_token = token-example\n",
-        // Readable by the container's user; the folder keeps other host users out.
-        mode: 0o644,
-        folderMode: 0o700,
-      });
-      const env = parseEnv(run.envFile!.contents);
-      expect(env).toMatchObject({
-        AWS_CONFIG_FILE: "/aws-config/config",
-        AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
-        AWS_REGION: "us-west-2",
-      });
-      // The files hold only [default].
-      expect(env.AWS_PROFILE).toBeUndefined();
-      expect(existsSync(run.awsCredentials!.path)).toBe(false);
-    });
-
-    test("mounts ~/.aws for a box image when no credentials resolve", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      const awsDirectory = join(root, ".aws");
-      await mkdir(awsDirectory);
-      const { calls, runner } = harness({ awsDirectory, processEnv: credentials });
-
-      await collect(runner.run(input(root, projectRuntime)));
-
-      expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
-    });
-
-    test("leaves an image without box on ~/.aws, without resolving credentials", async () => {
-      const { projectRuntime, root } = await boxedScene({ dockerfile: "FROM scratch\n" });
-      const awsDirectory = join(root, ".aws");
-      await mkdir(awsDirectory);
-      let resolved = 0;
-      const { calls, runner } = harness({
-        awsDirectory,
-        processEnv: credentials,
-        resolveAwsCredentials: async () => {
-          resolved += 1;
-          return { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "secret-example" };
-        },
-      });
-
-      await collect(runner.run(input(root, projectRuntime)));
-
-      expect(resolved).toBe(0);
-      expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect((error as Error).message).toStartWith(
+        "`agentcore dev` cannot stage the policy files of .box/profile.toml (1 failure):\n" + line,
+      );
+      expect((error as Error).message).toEndWith(
+        "\n\nNothing was staged. Change the profile or its policy files, then retry.",
+      );
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
 
     test("refuses a box image when the project has no box profile", async () => {
