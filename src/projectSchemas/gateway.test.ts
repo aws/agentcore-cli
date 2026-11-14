@@ -345,6 +345,40 @@ describe("gateway custom validation", () => {
       targetIssues({ ...githubPassthrough, outboundAuth: { ...apiKeyAuth, ...placement } }),
     ).toEqual([{ path, message }]);
   });
+  it.each([
+    ["no outbound auth", {}],
+    ["outbound auth NONE", { outboundAuth: { type: "NONE" } }],
+  ])("accepts a passthrough target with %s", (_case, fields) => {
+    expect(targetIssues({ ...githubPassthrough, ...fields })).toBeUndefined();
+  });
+  it.each([
+    [
+      "GATEWAY_IAM_ROLE with no service",
+      { type: "GATEWAY_IAM_ROLE" },
+      ["outboundAuth", "service"],
+      "GATEWAY_IAM_ROLE outbound auth on passthrough targets requires a service name.",
+    ],
+    [
+      "API_KEY with no credentialName",
+      { type: "API_KEY" },
+      ["outboundAuth", "credentialName"],
+      "API_KEY outbound auth requires a credentialName.",
+    ],
+    [
+      "OAUTH with no credentialName",
+      { type: "OAUTH" },
+      ["outboundAuth", "credentialName"],
+      "OAUTH outbound auth requires a credentialName.",
+    ],
+    [
+      "NONE with a service",
+      { type: "NONE", service: "bedrock" },
+      ["outboundAuth"],
+      "service and region are only valid with GATEWAY_IAM_ROLE outbound auth.",
+    ],
+  ])("still rejects a passthrough target with %s", (_case, outboundAuth, path, message) => {
+    expect(targetIssues({ ...githubPassthrough, outboundAuth })).toEqual([{ path, message }]);
+  });
   it("rejects API key placement fields with non-API_KEY outbound auth", () => {
     expect(
       targetIssues({
