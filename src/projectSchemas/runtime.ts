@@ -70,6 +70,7 @@ export const RESERVED_BUILD_ARG_KEYS = [
   "IMAGE_URI",
   "DOCKERFILE_PATH",
   "BUILD_ARG_FLAGS",
+  "BUILD_SECRET_FLAGS",
   "PATH",
   "HOME",
   "IFS",
@@ -82,9 +83,27 @@ export const RESERVED_BUILD_ARG_KEYS = [
 ];
 export function isReservedBuildArgKey(key: string): boolean {
   return (
-    RESERVED_BUILD_ARG_KEYS.includes(key) || key.startsWith("CODEBUILD_") || key.startsWith("AWS_")
+    RESERVED_BUILD_ARG_KEYS.includes(key) ||
+    key.startsWith("CODEBUILD_") ||
+    key.startsWith("AWS_") ||
+    // The build variables that carry the dockerBuildSecrets values.
+    key.startsWith("BUILD_SECRET_")
   );
 }
+/** A BuildKit secret id: what a Dockerfile names in `RUN --mount=type=secret,id=<id>`. */
+export const BuildSecretIdSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/,
+    'A build secret id is 1-64 letters, digits, "_", "." or "-"',
+  );
+/** The name of a Secrets Manager secret in the deploy target's account and region (not an ARN). */
+const BuildSecretNameSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9/_+=.@-]{1,512}$/,
+    "A build secret is the name of a Secrets Manager secret, not an ARN",
+  );
 const BuildArgValueSchema = z
   .string()
   .max(4096, "Build arg values must be at most 4096 characters")
@@ -311,6 +330,11 @@ export const ProjectRuntimeSchema = z
     dockerfile: DockerfilePathSchema.optional(),
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
+    /**
+     * Secrets Manager secrets that `docker build` mounts as BuildKit secrets, by secret id. The
+     * Dockerfile reads one with `RUN --mount=type=secret,id=<id>`. Container builds only.
+     */
+    dockerBuildSecrets: z.record(BuildSecretIdSchema, BuildSecretNameSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
@@ -396,7 +420,12 @@ export const ProjectRuntimeSchema = z
         path: ["runtimeVersion"],
       });
     }
-    for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+    for (const field of [
+      "dockerfile",
+      "buildContextPath",
+      "customDockerBuildArgs",
+      "dockerBuildSecrets",
+    ] as const) {
       if (data.build !== "Container" && data[field]) {
         ctx.addIssue({
           code: "custom",

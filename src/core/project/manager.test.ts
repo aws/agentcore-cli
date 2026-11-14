@@ -48,6 +48,7 @@ import {
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_PROFILE_FILE, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -353,6 +354,30 @@ describe("FsProjectManager.create", () => {
 
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+  });
+
+  test("scaffolds a container image that installs box from the pinned box release", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER,
+    });
+
+    const appDir = join(directory, "example", "app", "agent_python_strands_container");
+    expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
+    const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
+    expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
+    expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
+    expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
+    expect(dockerfile).toContain("RUN --mount=type=secret,id=gh_token");
+    // The download is checked against the pinned SHA-256 before it is unpacked.
+    expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
+    // The GitHub token is a build secret, never a build arg.
+    const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].dockerBuildSecrets).toEqual({
+      gh_token: "agentcore/box/github-token",
+    });
+    expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
 
   test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {
@@ -1856,14 +1881,19 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("refuses to build a boxed runtime when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("downloads box from the box release with gh when AGENTCORE_BOX_SOURCE is unset", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager({});
+    const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
+    tempDirectories.push(home);
+    const { manager: subject, commands } = manager({ HOME: home });
     const project = await scaffolded(subject, directory);
     commands.length = 0;
 
-    await expect(drain(subject.build(project))).rejects.toThrow(/Set AGENTCORE_BOX_SOURCE/);
-    expect(commands).toEqual([]);
+    // The test runner downloads nothing, so build stops before synth and says how to log in.
+    await expect(drain(subject.build(project))).rejects.toThrow(/Run `gh auth login`/);
+    expect(commands.map(({ command }) => command.slice(0, 3))).toEqual([
+      ["gh", "release", "download"],
+    ]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {
