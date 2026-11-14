@@ -602,6 +602,11 @@ describe("warnings", () => {
       grantedActions: ["bedrock:InvokeModel"],
     });
     expect(boxGatewayIamWarnings(granted.spec, granted.network)).toEqual([]);
+    const listed = model("", egress, {
+      targets: [...getBoxGatewayBedrockEntry("agent").targets, control],
+    });
+    listed.spec.agentCoreGateways[0]!.additionalPolicies = ["agentcore/box-bedrock-policy.json"];
+    expect(boxGatewayIamWarnings(listed.spec, listed.network)).toEqual([]);
     const imported = model("", egress, {
       targets: [control],
       executionRoleArn: "arn:aws:iam::123456789012:role/mine",

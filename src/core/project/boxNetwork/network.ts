@@ -10,7 +10,7 @@ import {
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import { BOX_MEMORY_POLICY_FILE } from "../boxMemory";
+import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName, boxEgressCredentials } from "../boxProfileCredentials";
 import { buildHostMap, type MappedHost } from "./hostMap";
 import { BOX_EGRESS_TARGET_PREFIX, outboundAuthFor, parseEndpoint, targetNameFor } from "./egress";
@@ -384,9 +384,9 @@ function hostWarnings(hosts: readonly BoxNetworkHost[], gateway: string): string
 
 /**
  * A warning for each target of the network's Box gateway in `spec`, as build writes it, that the
- * gateway signs with its own role for a service that no policy of that role grants. The Memory
- * policy file that build writes grants the Memory calls; a gateway that imports its role is the
- * user's to grant.
+ * gateway signs with its own role for a service that no policy of that role grants. The Bedrock
+ * policy file that build writes grants `bedrock`, and the Memory policy file the Memory calls; a
+ * gateway that imports its role is the user's to grant.
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
@@ -394,8 +394,12 @@ export function boxGatewayIamWarnings(
 ): string[] {
   const gateway = spec.agentCoreGateways.find(({ name }) => name === network.gateway);
   if (!gateway || gateway.executionRoleArn) return [];
-  const memoryGranted = (gateway.additionalPolicies ?? []).includes(BOX_MEMORY_POLICY_FILE);
+  const listed = gateway.additionalPolicies ?? [];
+  const memoryGranted = listed.includes(BOX_MEMORY_POLICY_FILE);
+  // Listed is enough: grantedActions is read from disk before build first writes this file.
+  const bedrockGranted = listed.includes(BOX_BEDROCK_POLICY_FILE);
   const granted = (service: string) =>
+    (service === "bedrock" && bedrockGranted) ||
     network.grantedActions.some(
       (action) => action === "*" || action.toLowerCase().startsWith(`${service}:`),
     );
