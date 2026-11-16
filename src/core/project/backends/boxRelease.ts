@@ -311,3 +311,82 @@ function installedDevBuild(release: BoxRelease, root: string): boolean {
     existsSync(join(root, "resources", "shared"))
   );
 }
+
+/** The box releases this CLI pins checksums for, by version. */
+const PINNED_BOX_RELEASES: Readonly<Record<string, BoxRelease>> = {
+  [BOX_RELEASE.version]: BOX_RELEASE,
+};
+
+/**
+ * The box release of `version`, which a runtime's `box.version` names: one this CLI pins, else
+ * one in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
+ * SHA256SUMS.txt. No version means BOX_RELEASE.
+ */
+export async function boxReleaseFor(
+  version: string | undefined,
+  env: NodeJS.ProcessEnv,
+  options: { runner?: ProcessRunner; home?: string } = {},
+): Promise<BoxRelease> {
+  if (version === undefined) return BOX_RELEASE;
+  const pinned = PINNED_BOX_RELEASES[version];
+  if (pinned) return pinned;
+  const assets = {
+    box: `box-v${version}-${BOX_RELEASE.target}.tar.gz`,
+    ffi: BOX_RELEASE.ffi.asset,
+    mac: `box-v${version}-aarch64-apple-darwin.tar.gz`,
+  };
+  const release: BoxRelease = { ...BOX_RELEASE, version, dev: {} };
+  const sums = await releaseChecksums(release, env, options.runner ?? runProcess, options.home);
+  const sha = (asset: string) => sums.get(asset);
+  const boxSha = sha(assets.box);
+  const ffiSha = sha(assets.ffi);
+  if (!boxSha || !ffiSha) {
+    throw new InvalidEnvironmentError(
+      `box ${version}, which agentcore.json names under box.version, has no ` +
+        `${boxSha ? assets.ffi : assets.box} in the SHA256SUMS.txt of its release at ` +
+        `github.com/${release.repo}. Name a box version that release has, or remove box.version ` +
+        `to use box ${BOX_RELEASE.version}.`,
+    );
+  }
+  const macSha = sha(assets.mac);
+  return {
+    ...release,
+    box: { asset: assets.box, sha256: boxSha },
+    ffi: { ...BOX_RELEASE.ffi, sha256: ffiSha },
+    dev: macSha
+      ? { "darwin-arm64": { target: "aarch64-apple-darwin", asset: assets.mac, sha256: macSha } }
+      : {},
+  };
+}
+
+/** The SHA-256 of each asset of `release`, from the SHA256SUMS.txt it publishes. */
+async function releaseChecksums(
+  release: BoxRelease,
+  env: NodeJS.ProcessEnv,
+  runner: ProcessRunner,
+  home: string | undefined,
+): Promise<Map<string, string>> {
+  const cache = join(home ?? env.HOME ?? homedir(), ".agentcore", "box");
+  mkdirSync(cache, { recursive: true });
+  const work = mkdtempSync(join(cache, ".download-"));
+  try {
+    await download(
+      release,
+      "SHA256SUMS.txt",
+      work,
+      env,
+      runner,
+      (url) =>
+        `agentcore.json names box ${release.version} under box.version, whose checksums ` +
+        `download from ${url}, which failed. Check the version and your network, then retry.`,
+    );
+    const sums = new Map<string, string>();
+    for (const line of readFileSync(join(work, "SHA256SUMS.txt"), "utf8").split("\n")) {
+      const match = /^([0-9a-f]{64})\s+\*?(\S+)$/.exec(line.trim());
+      if (match) sums.set(match[2]!, match[1]!);
+    }
+    return sums;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}

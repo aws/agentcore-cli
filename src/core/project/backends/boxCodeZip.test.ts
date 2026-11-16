@@ -97,6 +97,20 @@ describe("stageBoxCodeZip", () => {
     );
   });
 
+  test("asks for the box of the runtime's box.version", async () => {
+    const build = await sourceBuild({ ffi: true });
+    const demo = await project("start.py");
+    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
+    const versions: (string | undefined)[] = [];
+
+    await stageBoxCodeZip(demo, [], async (version) => {
+      versions.push(version);
+      return build;
+    });
+
+    expect(versions).toEqual(["2.0.0"]);
+  });
+
   test("ships no shim to a runtime whose Python it was not built for", async () => {
     const build = await sourceBuild({ ffi: true });
     const demo = await project("start.py", "PYTHON_3_13");

@@ -45,8 +45,16 @@ async function scene(profiled: boolean, releaseBox?: string) {
     },
   };
   // No release build for this machine, so box comes from PATH, unless the test names one.
-  const runner = new BoxDevRunner({ fallback, streamProcess, resolveBox: async () => releaseBox });
-  return { projectRoot, calls, fallbackRuns, runner };
+  const versions: (string | undefined)[] = [];
+  const runner = new BoxDevRunner({
+    fallback,
+    streamProcess,
+    resolveBox: async (version) => {
+      versions.push(version);
+      return releaseBox;
+    },
+  });
+  return { projectRoot, calls, fallbackRuns, runner, versions };
 }
 
 function input(
@@ -71,6 +79,17 @@ async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
 }
 
 describe("BoxDevRunner", () => {
+  test("asks for the box of the runtime's box.version", async () => {
+    const { projectRoot, runner, versions } = await scene(true);
+    const pinned = input(projectRoot);
+    pinned.runtime = { ...pinned.runtime, box: { version: "2.0.0" } };
+
+    await collect(runner.run(pinned));
+    await collect(runner.run(input(projectRoot)));
+
+    expect(versions).toEqual(["2.0.0", undefined]);
+  });
+
   test("runs the release's box for this machine when it has one", async () => {
     const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
     const { projectRoot, calls, runner } = await scene(true, box);

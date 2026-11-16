@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { InputValidationError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer } from "../../io";
-import { resolveBoxDevBinary } from "../project/backends/boxRelease";
+import { boxReleaseFor, resolveBoxDevBinary } from "../project/backends/boxRelease";
 import {
   BOX_PROFILE_FILE,
   boxIngressPort,
@@ -18,7 +18,7 @@ type BoxDevRunnerConfig = {
    * The `box` to run: the release's build for this machine, downloaded once into
    * `~/.agentcore/box/`, else `undefined`, for the `box` on PATH. Tests inject one.
    */
-  resolveBox?: () => Promise<string | undefined>;
+  resolveBox?: (version: string | undefined) => Promise<string | undefined>;
 };
 
 /**
@@ -31,12 +31,15 @@ type BoxDevRunnerConfig = {
 export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
   private readonly streamProcess: ProcessStreamer;
-  private readonly resolveBox: () => Promise<string | undefined>;
+  private readonly resolveBox: (version: string | undefined) => Promise<string | undefined>;
 
   constructor(config: BoxDevRunnerConfig) {
     this.fallback = config.fallback;
     this.streamProcess = config.streamProcess ?? streamProcess;
-    this.resolveBox = config.resolveBox ?? (() => resolveBoxDevBinary(process.env));
+    this.resolveBox =
+      config.resolveBox ??
+      (async (version) =>
+        resolveBoxDevBinary(process.env, { release: await boxReleaseFor(version, process.env) }));
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -60,7 +63,8 @@ export class BoxDevRunner implements DevRunner {
           `${input.port}. Free port ${listen}, or change [[agent.ingress]] listen in the profile.`,
       );
     }
-    const box = (await this.resolveBox()) ?? "box";
+    // The runtime's box.version in agentcore.json, else the box release this CLI pins.
+    const box = (await this.resolveBox(input.runtime.box?.version)) ?? "box";
     yield {
       type: "status",
       message: `Starting the agent in a box (${box} run ${BOX_PROFILE_FILE})`,

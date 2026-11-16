@@ -348,6 +348,7 @@ describe("FsProjectManager.create", () => {
       {
         name: "agent_python_minimal",
         build: "CodeZip",
+        box: { version: BOX_RELEASE.version },
         entrypoint: "start.py",
         codeLocation: "app/agent_python_minimal",
         runtimeVersion: "PYTHON_3_14",

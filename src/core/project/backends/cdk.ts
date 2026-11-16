@@ -12,7 +12,7 @@ import type {
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
-import { resolveBoxLinuxBuild } from "./boxRelease";
+import { boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -224,8 +224,11 @@ export class CdkBackend implements ProjectBackend {
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     // The zip carries box and the image its box profile, so both are staged before synth packages
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
-    await stageBoxCodeZip(project, boxNetworks, () =>
-      resolveBoxLinuxBuild(this.processEnv, { runner: this.runner }),
+    await stageBoxCodeZip(project, boxNetworks, async (version) =>
+      resolveBoxLinuxBuild(this.processEnv, {
+        runner: this.runner,
+        release: await boxReleaseFor(version, this.processEnv, { runner: this.runner }),
+      }),
     );
     stageBoxContainers(project, boxNetworks);
   }
