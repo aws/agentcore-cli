@@ -87,6 +87,11 @@ export function stackReferenceOf(state: TargetState | undefined): string | undef
   return state?.stackArn ?? state?.resources?.stackName;
 }
 
+/** The names of the Box gateways the last deploy of `targetName` recorded. */
+export function boxGatewaysOf(state: DeployedState, targetName: string): string[] {
+  return (state.targets[targetName]?.resources?.boxGateways ?? []).map(({ name }) => name);
+}
+
 function statePathFor(projectRoot: string): string {
   return join(projectRoot, DEPLOYED_STATE_RELATIVE_PATH);
 }

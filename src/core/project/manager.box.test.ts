@@ -8,8 +8,8 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 
 /**
- * `"projectType": "box"` is written by `agentcore create` only. In a project with the
- * Box project, the gateway entry named `box` holds the targets of the Box gateway, which the CDK
+ * `"projectType": "box"` is written by `agentcore create` only. In a Box project, the gateway
+ * entry named `<runtime>-box` holds the targets of that runtime's Box gateway, which the CDK
  * library makes from the project type, so the entry comes and goes with its targets. A project
  * without the field behaves as before and never gets it.
  */
@@ -287,7 +287,7 @@ describe("gateway targets in a Box project", () => {
     expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["my-agent-box"]);
   });
 
-  test("remove all removes projectType with every gateway entry", async () => {
+  test("remove all keeps projectType and removes every gateway entry", async () => {
     const manager = subject();
     let project = await createdProject(manager);
     project = await drain(manager.addResource(project, boxTarget("weather")));
@@ -295,9 +295,9 @@ describe("gateway targets in a Box project", () => {
     const result = await manager.removeAllResources(project);
 
     const spec = await specOnDisk(result.project);
-    expect("projectType" in spec).toBe(false);
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(result.project.spec.projectType).toBeUndefined();
+    expect(result.project.spec.projectType).toBe("box");
   });
 });
 
