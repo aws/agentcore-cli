@@ -16,6 +16,7 @@ import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { resolveScaffoldHarnessInput } from "./create/index";
 import { readEnvFile } from "../../io/envFile";
+import { BOX_RELEASE } from "../../core/project/backends/boxRelease";
 
 async function run(
   args: string[],
@@ -137,6 +138,27 @@ describe("project create", () => {
     expect(spec.harnesses ?? []).toEqual([]);
     expect(existsSync(join(projectRoot, "app"))).toBe(true);
     expect(io.stderr()).toContain("next steps:\n  cd MyAgent\n  agentcore add harness");
+  });
+
+  test.each([
+    ["agent-python-strands", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-container", undefined],
+  ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      template,
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+    // A container runtime's Dockerfile names its box release instead.
+    expect(spec.runtimes[0].box).toEqual(box);
   });
 
   test.each([
@@ -486,6 +508,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "CodeZip",
+        box: { version: BOX_RELEASE.version },
         entrypoint: "start.py",
         codeLocation: "app/agent",
         runtimeVersion: "PYTHON_3_14",

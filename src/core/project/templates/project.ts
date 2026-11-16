@@ -7,6 +7,7 @@ import type {
 } from "../../../handlers/project/add/runtime/types";
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
+import { BOX_RELEASE } from "../backends/boxRelease";
 import { BOX_CODEZIP_ENTRYPOINT, isBoxedContainer, startsInBoxOnCodeZip } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
@@ -90,7 +91,11 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
       FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${name}`)),
     );
   }
-  for (const runtime of template.spec.runtimes ?? []) runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+  for (const runtime of template.spec.runtimes ?? []) {
+    runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+    // The box release dev runs, and build and deploy ship; change it to move to another release.
+    runtime.box = { version: BOX_RELEASE.version };
+  }
 }
 
 /**

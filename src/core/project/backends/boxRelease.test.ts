@@ -7,7 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
-import { type BoxRelease, resolveBoxDevBinary, resolveBoxLinuxBuild } from "./boxRelease";
+import {
+  BOX_RELEASE,
+  type BoxRelease,
+  boxReleaseFor,
+  resolveBoxDevBinary,
+  resolveBoxLinuxBuild,
+} from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -253,6 +259,64 @@ describe("resolveBoxDevBinary from the box release", () => {
     await expect(result).rejects.toThrow(/not the pinned 0{64}\. Nothing was installed/);
     expect(existsSync(join(home, ".agentcore", "box", `${VERSION}-aarch64-apple-darwin`))).toBe(
       false,
+    );
+  });
+});
+
+describe("boxReleaseFor a runtime's box.version", () => {
+  /** A runner whose curl serves SHA256SUMS.txt with `text`, and records each URL. */
+  function sumsServer(text: string) {
+    const urls: string[] = [];
+    const runner: ProcessRunner = async (command) => {
+      urls.push(command.at(-1)!);
+      await writeFile(command[command.indexOf("-o") + 1]!, text);
+    };
+    return { runner, urls };
+  }
+
+  test("is the pinned release, with no download, for no version or a pinned one", async () => {
+    const { runner, urls } = sumsServer("");
+
+    expect(await boxReleaseFor(undefined, {}, { runner })).toBe(BOX_RELEASE);
+    expect(await boxReleaseFor(BOX_RELEASE.version, {}, { runner })).toBe(BOX_RELEASE);
+    expect(urls).toEqual([]);
+  });
+
+  test("takes another version's checksums from its release's SHA256SUMS.txt", async () => {
+    const home = await temp("box-home-");
+    const linux = "a".repeat(64);
+    const ffi = "b".repeat(64);
+    const mac = "c".repeat(64);
+    const { runner, urls } = sumsServer(
+      `${linux}  box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz\n` +
+        `${ffi}  ${BOX_RELEASE.ffi.asset}\n` +
+        `${mac}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`,
+    );
+
+    const release = await boxReleaseFor("2.0.0", {}, { runner, home });
+
+    expect(urls).toEqual([
+      `https://github.com/${BOX_RELEASE.repo}/releases/download/v2.0.0/SHA256SUMS.txt`,
+    ]);
+    expect(release.version).toBe("2.0.0");
+    expect(release.box).toEqual({
+      asset: "box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz",
+      sha256: linux,
+    });
+    expect(release.ffi.sha256).toBe(ffi);
+    expect(release.dev["darwin-arm64"]).toEqual({
+      target: "aarch64-apple-darwin",
+      asset: "box-v2.0.0-aarch64-apple-darwin.tar.gz",
+      sha256: mac,
+    });
+  });
+
+  test("refuses a version whose release lists no Linux box", async () => {
+    const home = await temp("box-home-");
+    const { runner } = sumsServer(`${"b".repeat(64)}  ${BOX_RELEASE.ffi.asset}\n`);
+
+    await expect(boxReleaseFor("2.0.0", {}, { runner, home })).rejects.toThrow(
+      /box 2\.0\.0, which agentcore\.json names under box\.version, has no box-v2\.0\.0-aarch64-unknown-linux-gnu\.tar\.gz/,
     );
   });
 });
