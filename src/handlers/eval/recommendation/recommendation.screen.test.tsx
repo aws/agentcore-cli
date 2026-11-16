@@ -147,6 +147,21 @@ describe("recommendation detail (raw JSON)", () => {
     });
   });
 
+  test("renders an integer beyond 2^53 with every digit", async () => {
+    const core = new TestCoreClient();
+    core.eval.setGetRecommendationResponse({
+      recommendationId: "rec-1",
+      recommendationConfig: {
+        systemPromptRecommendationConfig: {
+          agentTraces: { sessionSpans: [{ startTimeUnixNano: 1750000000000000001n }] },
+        },
+      },
+    } as unknown as GetRecommendationResponse);
+    const screen = renderScreen("/agentcore/eval/recommendation/get/rec-1", { core });
+
+    await waitForText(screen.lastFrame, "1750000000000000001");
+  });
+
   test("retries a failed detail query", async () => {
     const core = new TestCoreClient();
     core.eval.setError(new Error("recommendation unavailable"));
