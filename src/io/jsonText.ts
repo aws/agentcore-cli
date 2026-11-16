@@ -1,32 +1,43 @@
-// stringifyJson is JSON.stringify that also accepts BigInt, written as a JSON
-// number with every digit. The AWS SDK decodes integers beyond 2^53 inside
-// document members to BigInt when the runtime's JSON.parse exposes source text
-// (Bun does, Node 20 does not), and plain JSON.stringify throws on them.
-//
-// A replacer cannot return raw JSON, and JSON.rawJSON is missing from Node 20,
-// so each BigInt is first written as a marked string and the marked strings are
-// then unquoted. The marker is chosen so that it occurs nowhere in the output
-// without BigInts, which means no real string can be mistaken for one. Output
-// for a value with no BigInt is exactly what JSON.stringify returns.
+import { types } from "node:util";
+
+const isRawJson = (
+  JSON as typeof JSON & {
+    isRawJSON?: (value: unknown) => value is { rawJSON: string };
+  }
+).isRawJSON;
+
+// Node 20 cannot emit raw JSON from a replacer. Track BigInts by their position
+// among string values, then unquote only those tokens without revisiting the input.
 export function stringifyJson(value: unknown, space?: number): string {
-  let hasBigInt = false;
-  const plain = JSON.stringify(
+  const bigIntPositions = new Set<number>();
+  let stringPosition = 0;
+  const json = JSON.stringify(
     value,
     (_key, val: unknown) => {
-      if (typeof val !== "bigint") return val;
-      hasBigInt = true;
-      return val.toString();
+      if (typeof val === "bigint") {
+        bigIntPositions.add(stringPosition++);
+        return val.toString();
+      }
+      if (
+        typeof val === "string" ||
+        types.isStringObject(val) ||
+        (isRawJson?.(val) && val.rawJSON.startsWith('"'))
+      ) {
+        stringPosition++;
+      }
+      return val;
     },
     space,
   );
-  if (!hasBigInt) return plain;
+  if (bigIntPositions.size === 0) return json;
 
-  let marker = "bigint:";
-  while (plain.includes(marker)) marker += "_";
-  const marked = JSON.stringify(
-    value,
-    (_key, val: unknown) => (typeof val === "bigint" ? `${marker}${val.toString()}` : val),
-    space,
+  stringPosition = 0;
+  // Match whole JSON strings (including escapes); a following colon identifies a key.
+  return json.replace(
+    /"[^"\\]*(?:\\.[^"\\]*)*"(\s*:)?/g,
+    (token: string, key: string | undefined) => {
+      if (key !== undefined) return token;
+      return bigIntPositions.has(stringPosition++) ? token.slice(1, -1) : token;
+    },
   );
-  return marked.replace(new RegExp(`"${marker}(-?\\d+)"`, "g"), "$1");
 }
