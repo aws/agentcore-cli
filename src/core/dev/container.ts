@@ -20,6 +20,13 @@ import {
 } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import { boxProfilePath } from "../project/templates/boxProfile";
+import {
+  BOX_DEV_AWS_REFRESH_MS,
+  resolveDefaultAwsCredentials,
+  writeBoxDevAwsFiles,
+  type BoxDevAwsFiles,
+  type ResolveAwsCredentials,
+} from "./boxAwsCredentials";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
@@ -93,6 +100,8 @@ type ContainerDevRunnerConfig = {
    * into `~/.agentcore/box/`, as build and deploy stage it. Tests inject one.
    */
   resolveBox?: (version: string | undefined) => Promise<BoxLinuxBuild>;
+  /** Resolves the credentials a boxed container signs with; the default AWS SDK chain by default. */
+  resolveAwsCredentials?: ResolveAwsCredentials;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -101,6 +110,7 @@ export class ContainerDevRunner implements DevRunner {
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly resolveBox: (version: string | undefined) => Promise<BoxLinuxBuild>;
+  private readonly resolveAwsCredentials: ResolveAwsCredentials;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
@@ -113,6 +123,7 @@ export class ContainerDevRunner implements DevRunner {
         resolveBoxLinuxBuild(this.processEnv, {
           release: await boxReleaseFor(version, this.processEnv),
         }));
+    this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -203,8 +214,23 @@ export class ContainerDevRunner implements DevRunner {
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }
-    const awsMount = hasAwsConfig ? ["-v", `${this.awsDirectory}:/aws-config:ro`] : [];
-    if (awsMount.length) {
+    // Box in the container signs with the `[default]` profile, which it reads only from the AWS
+    // files, as the image's user. A boxed container gets its own copy of the resolved credentials
+    // as that profile, since that user cannot read ~/.aws; without credentials it gets ~/.aws.
+    const boxAws = boxed
+      ? await writeBoxDevAwsFiles(
+          this.resolveAwsCredentials,
+          forwardedEnv.AWS_REGION ?? forwardedEnv.AWS_DEFAULT_REGION,
+        )
+      : undefined;
+    let awsMount: string[] = [];
+    if (boxAws) {
+      awsMount = boxAws.mounts;
+      Object.assign(forwardedEnv, boxAws.env);
+      // The files hold only `[default]`, so a named profile would find nothing.
+      delete forwardedEnv.AWS_PROFILE;
+    } else if (hasAwsConfig) {
+      awsMount = ["-v", `${this.awsDirectory}:/aws-config:ro`];
       forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
       forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
     }
@@ -216,6 +242,7 @@ export class ContainerDevRunner implements DevRunner {
       });
     } catch (error) {
       await rm(envFile, { force: true });
+      await boxAws?.dispose();
       throw error;
     }
     const runCommand = [
@@ -238,7 +265,11 @@ export class ContainerDevRunner implements DevRunner {
       imageTag,
     ];
 
+    if (boxAws) {
+      yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
+    }
     yield { type: "status", message: "Starting container" };
+    const refresh = boxAws ? startRefresh(boxAws) : undefined;
     try {
       yield* this.streamProcess(runCommand, {
         cwd: context,
@@ -246,10 +277,12 @@ export class ContainerDevRunner implements DevRunner {
         signal: input.signal,
       });
     } finally {
+      if (refresh) clearInterval(refresh);
       try {
         await this.stopContainer(tool, containerName, context);
       } finally {
         await rm(envFile, { force: true });
+        await boxAws?.dispose();
       }
     }
   }
@@ -365,6 +398,18 @@ function ensureBuildContextDockerignore(context: string): string | undefined {
   if (existsSync(dockerignore)) return undefined;
   writeFileSync(dockerignore, BUILD_CONTEXT_DOCKERIGNORE);
   return dockerignore;
+}
+
+/**
+ * Rewrites a boxed container's credentials every BOX_DEV_AWS_REFRESH_MS, so box keeps signing after
+ * temporary credentials expire. A failed refresh keeps the last credentials.
+ */
+function startRefresh(files: BoxDevAwsFiles): ReturnType<typeof setInterval> {
+  const timer = setInterval(() => {
+    files.refresh().catch(() => undefined);
+  }, BOX_DEV_AWS_REFRESH_MS);
+  timer.unref?.();
+  return timer;
 }
 
 function serializeEnvironment(env: Record<string, string>): string {
