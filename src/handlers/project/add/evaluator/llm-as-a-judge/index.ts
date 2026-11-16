@@ -11,7 +11,7 @@ import {
   type RatingScale,
 } from "../../../../../projectSchemas/evaluator";
 import type { AddResourceInput } from "../../../types";
-import { parseJsonFlagWithSchema, parseTags, tagsFlag } from "../../../../utils";
+import { parseJsonFlag, parseTags, tagsFlag } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
 import {
@@ -164,5 +164,26 @@ async function resolveRatingScale(value: string, resolver: SourceResolver): Prom
       `invalid --rating-scale "${value}": expected a preset (${RATING_SCALE_PRESET_NAMES.join(", ")}) or a JSON rating scale (inline, file://<path>, or - for stdin)`,
     );
   }
-  return parseJsonFlagWithSchema("rating-scale", raw, RatingScaleSchema);
+  const result = RatingScaleSchema.safeParse(parseJsonFlag<unknown>("rating-scale", raw));
+  if (!result.success) {
+    throw new InputValidationError(
+      `Invalid value for option '--rating-scale': ${formatRatingScaleIssues(result.error)}`,
+      { cause: result.error },
+    );
+  }
+  return result.data;
+}
+
+// Prefixes each issue with its path.
+function formatRatingScaleIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path
+        .map((key, i) =>
+          typeof key === "number" ? `[${key}]` : `${i === 0 ? "" : "."}${String(key)}`,
+        )
+        .join("");
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join("; ");
 }

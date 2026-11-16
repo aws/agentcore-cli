@@ -390,6 +390,44 @@ describe("project add evaluator llm-as-a-judge", () => {
     expect(evaluator.config.llmAsAJudge.ratingScale).toEqual({ multiDimensional });
   });
 
+  test("names the dimension path in a --rating-scale validation error", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dimension = (dimensionName: string, definition: string) => ({
+      dimensionName,
+      dimensionInstruction: "Rate it.",
+      dimensionRatingScale: {
+        categorical: [
+          { label: "Pass", definition },
+          { label: "Fail", definition: "Not met" },
+        ],
+      },
+    });
+    const ratingScale = {
+      multiDimensional: [dimension("A", "Met"), dimension("B", "Met"), dimension("C", " ")],
+    };
+
+    await expect(
+      run([
+        "add",
+        "evaluator",
+        "llm-as-a-judge",
+        "--name",
+        "paths",
+        "--level",
+        "SESSION",
+        "--model",
+        MODEL,
+        "--instructions",
+        "Judge the answer.",
+        "--rating-scale",
+        JSON.stringify(ratingScale),
+      ]),
+    ).rejects.toThrow(
+      "Invalid value for option '--rating-scale': multiDimensional[2].dimensionRatingScale.categorical[0].definition: Dimension rating definition must not be blank",
+    );
+  });
+
   test("persists description, kms key, and tags", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
