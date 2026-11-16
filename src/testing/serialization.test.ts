@@ -30,6 +30,23 @@ test("revives BigInt values as BigInt with every digit", () => {
   expect(revived.spans[0]!.startTimeUnixNano).toBe(1750000000000000001n);
 });
 
+test.each([
+  { $bigint: "123" },
+  { $bigint: "123", text: "keep" },
+  { $bigint: "hello" },
+  { $bigintObject: [["$bigint", { value: "123" }]] },
+  { $bigint: "123", nested: { $bigint: "456" }, actual: 1750000000000000001n },
+])("preserves document data containing fixture tag keys: %s", (doc) => {
+  const value = { doc };
+  expect(parse<typeof value>(stringify(value))).toEqual(value);
+});
+
+test("retains omitted properties inside escaped fixture objects", () => {
+  const doc = { $bigint: "123", omitted: undefined, fn: () => {}, symbol: Symbol() };
+  const expected = { doc: { $bigint: "123" } };
+  expect(parse<typeof expected>(stringify({ doc }))).toEqual(expected);
+});
+
 test("stringify produces indented, human-readable JSON", () => {
   expect(stringify({ a: 1 })).toBe('{\n  "a": 1\n}');
 });
