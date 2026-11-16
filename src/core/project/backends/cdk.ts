@@ -12,7 +12,7 @@ import type {
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
-import { boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
+import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -213,7 +213,7 @@ export class CdkBackend implements ProjectBackend {
   private async ensureCdkDependencies(
     project: Project,
     boxNetworks: BuildBackendInput["boxNetworks"],
-  ): Promise<void> {
+  ): Promise<ProjectEvent[]> {
     const cdkDir = this.cdkDirectory(project);
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
@@ -224,13 +224,22 @@ export class CdkBackend implements ProjectBackend {
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     // The zip carries box and the image its box profile, so both are staged before synth packages
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
-    const box = async (version: string | undefined) =>
-      resolveBoxLinuxBuild(this.processEnv, {
+    const events: ProjectEvent[] = [];
+    const box = async (version: string | undefined) => {
+      const release = await boxReleaseFor(version, this.processEnv, { runner: this.runner });
+      return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
-        release: await boxReleaseFor(version, this.processEnv, { runner: this.runner }),
+        release,
+        onDownload: (url) =>
+          events.push({
+            type: "step",
+            message: boxDownloadMessage(release.version, url, "AgentCore Runtime"),
+          }),
       });
+    };
     await stageBoxCodeZip(project, boxNetworks, box);
     await stageBoxContainers(project, boxNetworks, box);
+    return events;
   }
 
   private async *synthesize(
@@ -238,7 +247,7 @@ export class CdkBackend implements ProjectBackend {
     explainUndeployedCredentials: boolean,
     boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
-    await this.ensureCdkDependencies(project, boxNetworks);
+    yield* await this.ensureCdkDependencies(project, boxNetworks);
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
@@ -292,7 +301,7 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    await this.ensureCdkDependencies(project, input.boxNetworks);
+    yield* await this.ensureCdkDependencies(project, input.boxNetworks);
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose

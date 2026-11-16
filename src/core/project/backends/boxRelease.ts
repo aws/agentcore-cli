@@ -78,9 +78,21 @@ export type BoxLinuxBuild = {
   ffi: Partial<Record<string, string>>;
 };
 
+/** Told the URL of a box archive just before it downloads, which happens once per version. */
+export type OnBoxDownload = (url: string) => void;
+
+/** The line that says box is downloading, for `version` and the machine it runs on. */
+export function boxDownloadMessage(version: string, url: string, forWhat: string): string {
+  return (
+    `downloading box ${version} for ${forWhat} from ${url} ` +
+    "(once; later runs reuse ~/.agentcore/box/)"
+  );
+}
+
 export type ResolveBoxLinuxBuildOptions = {
   /** Runs curl and tar; tests inject one. */
   runner?: ProcessRunner;
+  onDownload?: OnBoxDownload;
   /** The home folder the release cache is in, `~/.agentcore/box/`. */
   home?: string;
   /** The release to install; BOX_RELEASE by default. */
@@ -106,7 +118,7 @@ export async function resolveBoxLinuxBuild(
   if (source) return sourceBuild(source, release);
   // HOME from the environment the CLI was given, so the cache follows it.
   const home = options.home ?? env.HOME ?? homedir();
-  return releaseBuild(release, env, options.runner ?? runProcess, home);
+  return releaseBuild(release, env, options.runner ?? runProcess, home, options.onDownload);
 }
 
 function sourceBuild(source: string, release: BoxRelease): BoxLinuxBuild {
@@ -154,6 +166,7 @@ async function releaseBuild(
   env: NodeJS.ProcessEnv,
   runner: ProcessRunner,
   home: string,
+  onDownload: OnBoxDownload | undefined,
 ): Promise<BoxLinuxBuild> {
   const cache = join(home, ".agentcore", "box");
   const root = join(cache, `${release.version}-${release.target}`);
@@ -163,6 +176,7 @@ async function releaseBuild(
   mkdirSync(cache, { recursive: true });
   const work = mkdtempSync(join(cache, ".download-"));
   try {
+    onDownload?.(boxReleaseAssetUrl(release, release.box.asset));
     for (const { asset } of [release.box, release.ffi]) {
       await download(release, asset, work, env, runner);
     }
@@ -235,6 +249,7 @@ export type ResolveBoxDevBinaryOptions = {
   home?: string;
   /** The release to install; BOX_RELEASE by default. */
   release?: BoxRelease;
+  onDownload?: OnBoxDownload;
   /** Node's `process.platform` and `process.arch`, which pick the build; tests pin them. */
   platform?: string;
   arch?: string;
@@ -263,6 +278,7 @@ export async function resolveBoxDevBinary(
   mkdirSync(cache, { recursive: true });
   const work = mkdtempSync(join(cache, ".download-"));
   try {
+    options.onDownload?.(boxReleaseAssetUrl(release, build.asset));
     await download(
       release,
       build.asset,

@@ -2,7 +2,11 @@ import { existsSync } from "node:fs";
 import { InputValidationError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer } from "../../io";
-import { boxReleaseFor, resolveBoxDevBinary } from "../project/backends/boxRelease";
+import {
+  boxDownloadMessage,
+  boxReleaseFor,
+  resolveBoxDevBinary,
+} from "../project/backends/boxRelease";
 import {
   BOX_PROFILE_FILE,
   boxIngressPort,
@@ -18,7 +22,10 @@ type BoxDevRunnerConfig = {
    * The `box` to run: the release's build for this machine, downloaded once into
    * `~/.agentcore/box/`, else `undefined`, for the `box` on PATH. Tests inject one.
    */
-  resolveBox?: (version: string | undefined) => Promise<string | undefined>;
+  resolveBox?: (
+    version: string | undefined,
+    onDownload: (message: string) => void,
+  ) => Promise<string | undefined>;
 };
 
 /**
@@ -31,15 +38,20 @@ type BoxDevRunnerConfig = {
 export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
   private readonly streamProcess: ProcessStreamer;
-  private readonly resolveBox: (version: string | undefined) => Promise<string | undefined>;
+  private readonly resolveBox: NonNullable<BoxDevRunnerConfig["resolveBox"]>;
 
   constructor(config: BoxDevRunnerConfig) {
     this.fallback = config.fallback;
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.resolveBox =
       config.resolveBox ??
-      (async (version) =>
-        resolveBoxDevBinary(process.env, { release: await boxReleaseFor(version, process.env) }));
+      (async (version, onDownload) => {
+        const release = await boxReleaseFor(version, process.env);
+        return resolveBoxDevBinary(process.env, {
+          release,
+          onDownload: (url) => onDownload(boxDownloadMessage(release.version, url, "this machine")),
+        });
+      });
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -63,8 +75,18 @@ export class BoxDevRunner implements DevRunner {
           `${input.port}. Free port ${listen}, or change [[agent.ingress]] listen in the profile.`,
       );
     }
-    // The runtime's box.version in agentcore.json, else the box release this CLI pins.
-    const box = (await this.resolveBox(input.runtime.box?.version)) ?? "box";
+    // The runtime's box.version in agentcore.json, else the box release this CLI pins. A first
+    // run downloads it, which dev says before it waits for it.
+    let downloading: string | undefined;
+    let noticed!: () => void;
+    const notice = new Promise<void>((resolve) => (noticed = resolve));
+    const resolving = this.resolveBox(input.runtime.box?.version, (message) => {
+      downloading = message;
+      noticed();
+    });
+    await Promise.race([resolving.catch(() => undefined), notice]);
+    if (downloading) yield { type: "status", message: downloading };
+    const box = (await resolving) ?? "box";
     yield {
       type: "status",
       message: `Starting the agent in a box (${box} run ${BOX_PROFILE_FILE})`,
