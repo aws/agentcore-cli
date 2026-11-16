@@ -27,9 +27,15 @@ import type { AwsCredentialProvider } from "../../core/types";
 import type { LegacyProjectInfo } from "../../core/project/legacy/types";
 import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
+/** How isolated a project's runtimes are. `private-vpc` puts every runtime in a private VPC with no internet path. */
+export const ISOLATION_LEVELS = ["sandboxed", "private-vpc"] as const;
+export type Isolation = (typeof ISOLATION_LEVELS)[number];
+
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
+  /** `private-vpc` writes `"secureVpc": "ENABLED"`. Missing means `sandboxed`. */
+  isolation?: Isolation;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */

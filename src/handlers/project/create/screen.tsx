@@ -6,7 +6,7 @@ import type { ScreenProps } from "../../types";
 import { PlatformKey } from "../../../router";
 import { RegionKey } from "../../keys";
 import { assertProjectPathFits } from "./pathLimit";
-import type { CreateProjectInput } from "../types";
+import type { CreateProjectInput, Isolation } from "../types";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
@@ -68,6 +68,7 @@ interface CreateProjectFormValues {
   // The code-based model step's answer; only read for templates that take a
   // model-provider override (see templateTakesModelProvider).
   runtimeModel: RuntimeModelValues;
+  isolation: Isolation;
 }
 
 function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
@@ -77,6 +78,7 @@ function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
     model: emptyHarnessModel(),
     template: DEFAULT_TEMPLATE,
     runtimeModel: emptyRuntimeModel(region),
+    isolation: "sandboxed",
   };
 }
 
@@ -104,6 +106,21 @@ const PROJECT_KIND_CHOICES: Choice<ProjectKind>[] = [
 ];
 
 const DEFAULT_TEMPLATE: TemplateName = "agent-python-strands";
+
+const ISOLATION_CHOICES: Choice<Isolation>[] = [
+  {
+    value: "sandboxed",
+    label: "sandboxed",
+    description:
+      "runs in Box · every model and tool call goes through its own Box gateway · $0 idle",
+  },
+  {
+    value: "private-vpc",
+    label: "private VPC",
+    description:
+      "also a private VPC with no internet path · about $58 to $75/month · uses 1 of 5 VPCs",
+  },
+];
 
 const TEMPLATE_CHOICES: Choice<TemplateName>[] = PROJECT_TEMPLATE_NAMES.map((template) => ({
   value: template,
@@ -148,6 +165,7 @@ export function buildCreateInput(
     name: values.name,
     skipInstall: false,
     skipGit: false,
+    ...(values.isolation === "private-vpc" && { isolation: "private-vpc" as const }),
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
       runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
       ...(model && {
@@ -177,6 +195,9 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     type,
     template: values.template,
     ...(templateTakesModelProvider(values.template) && runtimeModelSummary(values.runtimeModel)),
+    ...(values.template !== EMPTY_TEMPLATE_NAME && {
+      isolation: values.isolation === "private-vpc" ? "private VPC" : "sandboxed",
+    }),
     directory: `./${values.name}`,
   };
 }
@@ -300,6 +321,16 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
                 ? undefined
                 : RUNTIME_TEMPLATE_SHORTCUTS[values.template].language
             }
+          />
+        </Step>
+      )}
+
+      {values.kind === "agent" && values.template !== EMPTY_TEMPLATE_NAME && (
+        <Step stepKey="isolation" prompt="how isolated should the agent be?">
+          <ChoiceField<Isolation>
+            choices={ISOLATION_CHOICES}
+            value={values.isolation}
+            onChange={(isolation) => patch({ isolation })}
           />
         </Step>
       )}

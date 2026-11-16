@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
   AddResourceOptions,
@@ -57,12 +56,7 @@ import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
-import {
-  boxProfilePath,
-  boxProfileWarnings,
-  hasBoxProfile,
-  renderBoxProfile,
-} from "./templates/boxProfile";
+import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -112,7 +106,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
-import { boxGatewaysOf, readDeployedState } from "./backends/cdk/deployedState";
+import { readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -417,7 +411,7 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
-  /** The environment the CDK backend reads HOME (the box cache) from; process.env by default. */
+  /** The environment the CDK backend reads AGENTCORE_BOX_SOURCE from; process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
@@ -532,7 +526,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, secureVpc: input.isolation === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -584,12 +578,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     if (scaffoldRuntimeInput) {
-      yield* this.writeBoxProfile(
-        destination,
-        input.name,
-        scaffoldRuntimeInput,
-        input.region ?? (await this.boxBuildRegion()),
-      );
+      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput);
     }
 
     if (!input.skipGit) {
@@ -955,7 +944,7 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // In a Box project, names that end in -box belong to the Box gateways, in any
+        // KD6: in a Box project, names that end in -box belong to the Box gateways, in any
         // letter case. The CDK library would refuse them at synth; refusing here keeps
         // agentcore.json unchanged.
         if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
@@ -1214,7 +1203,7 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-      // The Box gateway of a runtime goes with the runtime, so its targets go too. An
+      // The Box gateway of a runtime goes with the runtime (KD4), so its targets go too. An
       // entry for a runtime that no longer exists would fail the synth.
       if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
         const boxName = boxGatewayName(input.name);
@@ -1277,10 +1266,17 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
-    // The project type stays, so a runtime added later still gets its Box gateway. With no
-    // runtimes there is no Box gateway, so the next deploy reaches the teardown confirmation.
+    // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
+    // every resource, so the next deploy reaches the teardown confirmation as before. The secure
+    // VPC goes with it, because "secureVpc": "ENABLED" is only valid in a Box project.
+    const {
+      projectType: _projectType,
+      secureVpc: _secureVpc,
+      network: _network,
+      ...rest
+    } = existingProjectSpec;
     const newSpec = {
-      ...existingProjectSpec,
+      ...rest,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1631,16 +1627,9 @@ export class FsProjectManager implements ProjectManager {
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
       const updated = {
         ...raw,
-        agentCoreGateways: patchNamedEntries(
-          raw.agentCoreGateways,
-          project.spec.agentCoreGateways,
-          edits.spec.agentCoreGateways,
-        ),
-        credentials: patchNamedEntries(
-          raw.credentials,
-          project.spec.credentials,
-          edits.spec.credentials,
-        ),
+        projectType: edits.spec.projectType,
+        agentCoreGateways: edits.spec.agentCoreGateways,
+        credentials: edits.spec.credentials,
       };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
@@ -1896,7 +1885,8 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), input.target);
+    const state = await readDeployedState(this.json, project.rootPath);
+    return (state.targets[input.target]?.resources?.boxGateways ?? []).map(({ name }) => name);
   }
 
   public async resolveDeployedResource(
@@ -2059,17 +2049,16 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Writes the box profile that runs the scaffolded agent into the project's
-   * `.box` folder, named after the project, calling Bedrock in `region`. An
-   * existing profile is the user's, so it is never overwritten.
+   * Writes the boxy profile that runs the scaffolded agent into the project's
+   * `.box` folder, named after the project. An existing profile is the
+   * user's, so it is never overwritten.
    */
   private async *writeBoxProfile(
     projectRoot: string,
     projectName: string,
     runtime: ScaffoldRuntimeInput,
-    region: string,
   ): AsyncGenerator<ProjectEvent, void> {
-    const text = renderBoxProfile(projectName, runtime, "local", "", [], region);
+    const text = renderBoxProfile(projectName, runtime);
     if (text === undefined) return;
     const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {
@@ -2079,7 +2068,6 @@ export class FsProjectManager implements ProjectManager {
     yield { type: "step", message: `writing box profile ${path}` };
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, text, { flag: "wx" });
-    for (const message of boxProfileWarnings(runtime)) yield { type: "warning", message };
   }
 
   /**
@@ -2094,11 +2082,7 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      // A boxed agent's profile grants exec only on the uv-managed Pythons, so its venv must link
-      // to one of them, not to a Homebrew or system Python that uv would otherwise pick.
-      const env =
-        input && hasBoxProfile(input) ? { ...this.processEnv, UV_MANAGED_PYTHON: "1" } : undefined;
-      yield* this.run(["uv", "sync"], appDir, undefined, env);
+      yield* this.run(["uv", "sync"], appDir);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
       yield { type: "step", message: "installing Node dependencies with npm" };
@@ -2145,7 +2129,6 @@ export class FsProjectManager implements ProjectManager {
     command: string[],
     cwd: string,
     formatLine: (line: string) => string | undefined = (line) => line,
-    env?: NodeJS.ProcessEnv,
   ): AsyncGenerator<ProjectEvent, void, unknown> {
     yield* withOutputEvents((emit) => {
       const lines = createLineSplitter((line) => {
@@ -2154,7 +2137,6 @@ export class FsProjectManager implements ProjectManager {
       });
       return this.runner(command, {
         cwd,
-        ...(env && { env }),
         onOutput: (chunk) => {
           this.logger.debug(chunk);
           lines.push(chunk);
@@ -2250,45 +2232,6 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
-}
-
-/**
- * The raw agentcore.json array `raw` with the edits that turned the parsed entries `before` into
- * `after`, matched by name: an entry `after` changed gets only its changed fields, so its other
- * keys, their order, and fields the schema does not know about survive; a new entry is appended,
- * and one `after` dropped is removed. Every other entry stays as the user wrote it.
- */
-function patchNamedEntries<T extends { name: string }>(
-  raw: unknown,
-  before: readonly T[],
-  after: readonly T[],
-): unknown[] {
-  const entries = Array.isArray(raw) ? [...(raw as unknown[])] : [];
-  const nameOf = (entry: unknown) => (entry as { name?: unknown } | null)?.name;
-  const kept = new Set(after.map(({ name }) => name));
-  const patched = entries.filter((entry) => {
-    const name = nameOf(entry);
-    return typeof name !== "string" || kept.has(name) || !before.some((b) => b.name === name);
-  });
-  for (const entry of after) {
-    const old = before.find(({ name }) => name === entry.name);
-    if (old && isDeepStrictEqual(old, entry)) continue;
-    const index = patched.findIndex((candidate) => nameOf(candidate) === entry.name);
-    if (!old || index < 0) {
-      patched.push(entry);
-      continue;
-    }
-    const next: Record<string, unknown> = { ...(patched[index] as object) };
-    const oldFields = old as Record<string, unknown>;
-    const newFields = entry as Record<string, unknown>;
-    for (const key of new Set([...Object.keys(oldFields), ...Object.keys(newFields)])) {
-      if (isDeepStrictEqual(oldFields[key], newFields[key])) continue;
-      if (newFields[key] === undefined) delete next[key];
-      else next[key] = newFields[key];
-    }
-    patched[index] = next;
-  }
-  return patched;
 }
 
 /** A hint that lists the Box gateways of a Box project, for errors about gateway names. */

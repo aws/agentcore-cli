@@ -9,8 +9,8 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 
 /**
- * `"projectType": "box"` is written by `agentcore create` only. In a Box project, the gateway
- * entry named `<runtime>-box` holds the targets of that runtime's Box gateway, which the CDK
+ * `"projectType": "box"` is written by `agentcore create` only. In a project with the
+ * Box project, the gateway entry named `box` holds the targets of the Box gateway, which the CDK
  * library makes from the project type, so the entry comes and goes with its targets. A project
  * without the field behaves as before and never gets it.
  */
@@ -172,14 +172,20 @@ describe("agentcore create", () => {
   });
 
   test.each([
-    ["a template without box", resolveRuntimeTemplateShortcut("agent-python-strands")],
-    ["an empty project", undefined],
-  ])('writes no "projectType" for %s', async (_name, scaffoldRuntimeInput) => {
-    const project = await created(subject(), {
-      ...(scaffoldRuntimeInput && { scaffoldRuntimeInput }),
-    });
+    ["no isolation", undefined, undefined, undefined],
+    ["sandboxed", "sandboxed" as const, undefined, undefined],
+    ["private-vpc", "private-vpc" as const, "ENABLED", { mode: "CONTAINED" }],
+  ])("with %s writes secureVpc %p", async (_name, isolation, secureVpc, network) => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      subject().create({ name: "example", skipInstall: true, skipGit: true, isolation }),
+    );
 
-    expect("projectType" in (await specOnDisk(project))).toBe(false);
+    const spec = await specOnDisk(project);
+    expect(spec.secureVpc).toBe(secureVpc);
+    expect(spec.network).toEqual(network);
   });
 });
 
@@ -323,17 +329,23 @@ describe("gateway targets in a Box project", () => {
     expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["my-agent-box"]);
   });
 
-  test("remove all keeps projectType and removes every gateway entry", async () => {
+  test("remove all removes projectType, secureVpc and network with every gateway entry", async () => {
     const manager = subject();
     let project = await createdProject(manager);
     project = await drain(manager.addResource(project, boxTarget("weather")));
+    project = {
+      ...project,
+      spec: { ...project.spec, secureVpc: "ENABLED", network: { cidr: "10.8.0.0/20" } },
+    };
 
     const result = await manager.removeAllResources(project);
 
     const spec = await specOnDisk(result.project);
-    expect(spec.projectType).toBe("box");
+    expect("projectType" in spec).toBe(false);
+    expect("secureVpc" in spec).toBe(false);
+    expect("network" in spec).toBe(false);
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(result.project.spec.projectType).toBe("box");
+    expect(result.project.spec.projectType).toBeUndefined();
   });
 });
 

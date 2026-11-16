@@ -11,6 +11,7 @@ import {
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
 import {
+  ISOLATION_LEVELS,
   type CreateProjectInput,
   type ModelProvider,
   type ProjectManager,
@@ -83,6 +84,10 @@ export function emptyProjectNextSteps(name: string, china: boolean): string[] {
   ];
 }
 
+/** What a private VPC adds, printed after create and shown in the wizard. */
+export const PRIVATE_VPC_NOTE =
+  "isolation: private VPC with no internet path · about $58 to $75/month while deployed · uses 1 of the account's VPCs (default 5 per region)";
+
 export const EMPTY_PROJECT_SUMMARY = "it has no agents or other resources yet.";
 
 /** The full message printed after creating an empty project. */
@@ -110,6 +115,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         { help: formatTemplateParameterHelp({ includeEmpty: true }) },
       ),
       flag(
+        "isolation",
+        "how isolated the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        z.enum(ISOLATION_LEVELS).default("sandboxed"),
+      ),
+      flag(
         "skip-install",
         "skip installing dependencies (npm install, uv sync)",
         z.boolean().default(false),
@@ -125,12 +135,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
 
       const template = flags["template"];
-      const region = ctx.require(RegionKey);
       const base = {
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
-        region,
+        ...(flags["isolation"] === "private-vpc" && { isolation: "private-vpc" as const }),
       };
 
       const createInput: CreateProjectInput =
@@ -143,6 +152,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
               }),
             };
 
+      const region = ctx.require(RegionKey);
       try {
         validateCreateRegionSupport(createInput, region);
       } catch (error) {
@@ -179,9 +189,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
             config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
+            if (base.isolation === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
             return;
           }
           config.io.stderr.write(`created project '${name}' in ./${name}\n`);
+          if (base.isolation === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
           config.io.stderr.write(
             `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
           );
