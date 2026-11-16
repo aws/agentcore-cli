@@ -19,7 +19,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; secureVpc?: boolean },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -55,6 +55,7 @@ export async function createProjectTree(
           managedBy: "CDK",
           // Only new projects are Box projects; no other command adds this field.
           projectType: "box",
+          ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
             // The entry that adds the template's targets (a model endpoint) to the runtime's

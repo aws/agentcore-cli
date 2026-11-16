@@ -526,7 +526,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, secureVpc: input.isolation === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -1256,8 +1256,14 @@ export class FsProjectManager implements ProjectManager {
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
     // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
-    // every resource, so the next deploy reaches the teardown confirmation as before.
-    const { projectType: _projectType, ...rest } = existingProjectSpec;
+    // every resource, so the next deploy reaches the teardown confirmation as before. The secure
+    // VPC goes with it, because "secureVpc": "ENABLED" is only valid in a Box project.
+    const {
+      projectType: _projectType,
+      secureVpc: _secureVpc,
+      network: _network,
+      ...rest
+    } = existingProjectSpec;
     const newSpec = {
       ...rest,
       runtimes: [],
