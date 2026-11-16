@@ -182,6 +182,7 @@ type HarnessOptions = {
 
 function harness(options: HarnessOptions = {}) {
   const commands: { command: string[]; cwd: string }[] = [];
+  const synthEnvs: (NodeJS.ProcessEnv | undefined)[] = [];
   const runs: { operation: CdkOperation; options: CdkRunOptions }[] = [];
   const credentialRegions: string[] = [];
   const accountCredentials: CdkCredentialProvider[] = [];
@@ -201,8 +202,9 @@ function harness(options: HarnessOptions = {}) {
   const backend = new CdkBackend({
     logger: createSilentLogger(),
     identity: unusedIdentity(),
-    runner: async (command, { cwd, onOutput }) => {
+    runner: async (command, { cwd, env, onOutput }) => {
       commands.push({ command, cwd });
+      synthEnvs.push(env);
       for (const chunk of options.synthOutput ?? []) onOutput?.(chunk);
       if (options.synthError) throw options.synthError;
     },
@@ -280,6 +282,7 @@ function harness(options: HarnessOptions = {}) {
     bootstrapCredentials,
     bootstrapRegions,
     commands,
+    synthEnvs,
     credentialRegions,
     credentials,
     runs,
@@ -412,6 +415,49 @@ describe("CdkBackend.build", () => {
         `Run 'agentcore deploy' to provision the credential and build the project.`,
     );
   });
+
+  test("tells the vended app to stand in placeholders for undeployed credentials", async () => {
+    const input = await project();
+    const subject = harness();
+
+    await collect(subject.backend.build(input, NO_BOX_NETWORKS));
+
+    expect(subject.synthEnvs).toHaveLength(1);
+    expect(subject.synthEnvs[0]?.AGENTCORE_BUILD_ALLOW_UNRESOLVED_CREDENTIALS).toBe("1");
+  });
+
+  test("warns and names the credentials no target has provisioned yet", async () => {
+    const input = {
+      ...(await project()),
+      spec: ProjectSpecSchema.parse({
+        name: "example",
+        version: 2,
+        credentials: [
+          { authorizerType: "ApiKeyCredentialProvider", name: "github" },
+          { authorizerType: "ApiKeyCredentialProvider", name: "openai" },
+        ],
+      }),
+    };
+    const subject = harness();
+
+    const events = await collect(subject.backend.build(input, NO_BOX_NETWORKS));
+
+    expect(events).toContainEqual({
+      type: "warning",
+      message:
+        "build used placeholder values for credentials not yet provisioned: github, openai. " +
+        "Run 'agentcore deploy' to provision them; the deployed stack uses the real values.",
+    });
+  });
+
+  test("does not warn about credentials when the project declares none", async () => {
+    const input = await project();
+    const subject = harness();
+
+    const events = await collect(subject.backend.build(input, NO_BOX_NETWORKS));
+
+    expect(events.some((event) => event.type === "warning")).toBe(false);
+  });
 });
 
 describe("CdkBackend.deploy", () => {
@@ -456,6 +502,17 @@ describe("CdkBackend.deploy", () => {
     expect(subject.accountRegions).toEqual([TARGET.region]);
     expect(subject.bootstrapRegions).toEqual([TARGET.region]);
     expect(subject.templateLoads()).toBe(0);
+  });
+
+  test("keeps strict credential resolution: no placeholder env flag on the deploy synth", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(subject.synthEnvs).toHaveLength(1);
+    expect(subject.synthEnvs[0]?.AGENTCORE_BUILD_ALLOW_UNRESOLVED_CREDENTIALS).toBeUndefined();
   });
 
   test("skips Transaction Search when the config disables it", async () => {

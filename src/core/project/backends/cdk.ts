@@ -98,6 +98,14 @@ type StackDescriber = typeof describeStack;
  */
 const MAX_ERROR_OUTPUT_LINES = 20;
 
+/**
+ * Env var the vended CDK app reads to synthesize with placeholder ARNs for credentials deployed
+ * state lacks, instead of throwing. `build` sets it so a project can synthesize before its first
+ * deploy provisions the credential providers; `deploy` never sets it, so a missing credential still
+ * fails deploy. The vended `bin/cdk.ts` reads the same literal.
+ */
+const BUILD_ALLOW_UNRESOLVED_CREDENTIALS_ENV = "AGENTCORE_BUILD_ALLOW_UNRESOLVED_CREDENTIALS";
+
 function unresolvedCredentialName(error: unknown): string | undefined {
   if (!(error instanceof ProcessFailedError)) return undefined;
 
@@ -268,6 +276,11 @@ export class CdkBackend implements ProjectBackend {
         const lines = createLineSplitter(emit);
         return this.runner(synthCommand(this.assemblyDirectory(project)), {
           cwd: this.cdkDirectory(project),
+          // Build synthesizes before its first deploy, so it lets the vended app stand in
+          // placeholder ARNs for credentials deployed state lacks. Deploy keeps strict resolution.
+          env: explainUndeployedCredentials
+            ? { ...this.processEnv, [BUILD_ALLOW_UNRESOLVED_CREDENTIALS_ENV]: "1" }
+            : undefined,
           onOutput: (chunk) => {
             this.logger.debug(chunk);
             lines.push(chunk);
@@ -293,7 +306,36 @@ export class CdkBackend implements ProjectBackend {
     project: Project,
     input: BuildBackendInput,
   ): AsyncGenerator<ProjectEvent, void> {
+    const placeholdered = await this.undeployedCredentialNames(project);
     yield* this.synthesize(project, true, input.boxNetworks);
+    if (placeholdered.length > 0) {
+      const one = placeholdered.length === 1;
+      yield {
+        type: "warning",
+        message:
+          `build used placeholder values for ${one ? "credential" : "credentials"} not yet provisioned: ` +
+          `${placeholdered.join(", ")}. Run 'agentcore deploy' to provision ${one ? "it" : "them"}; ` +
+          `the deployed stack uses the real values.`,
+      };
+    }
+  }
+
+  /**
+   * The names of credentials the project declares that no deployment target has provisioned yet.
+   * These are the credentials build synthesizes with a placeholder ARN. Empty once every declared
+   * credential has a provider ARN in deployed state (that is, after the first deploy).
+   */
+  private async undeployedCredentialNames(project: Project): Promise<string[]> {
+    const declared = (project.spec.credentials ?? []).map((credential) => credential.name);
+    if (declared.length === 0) return [];
+    const state = await readDeployedState(this.json, project.rootPath);
+    const provisioned = new Set<string>();
+    for (const target of Object.values(state.targets ?? {})) {
+      for (const name of Object.keys(target?.resources?.credentials ?? {})) {
+        provisioned.add(name);
+      }
+    }
+    return declared.filter((name) => !provisioned.has(name));
   }
 
   public async *deploy(
