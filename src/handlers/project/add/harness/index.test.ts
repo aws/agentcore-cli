@@ -552,6 +552,27 @@ describe("project add harness", () => {
     expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
   });
 
+  test("a project with secureVpc ENABLED refuses a harness before writing anything", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const spec = await Bun.file(specPath).json();
+    await Bun.write(
+      specPath,
+      JSON.stringify({
+        ...spec,
+        projectType: "box",
+        secureVpc: "ENABLED",
+        network: { mode: "CONTAINED" },
+      }),
+    );
+
+    await expect(run(["add", "harness", "--name", "x"])).rejects.toThrow(
+      'it has "secureVpc": "ENABLED", and a harness would run outside its private VPC',
+    );
+    expect(existsSync(join(projectRoot, "app", "x"))).toBe(false);
+  });
+
   test("a --model naming a credential the project lacks is refused", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);

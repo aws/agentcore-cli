@@ -230,6 +230,11 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
       };
 
       const project = ctx.require(ProjectKey);
+      if (project.spec.secureVpc === "ENABLED") {
+        throw new InputValidationError(
+          `a harness can't be added to '${project.name}': it has "secureVpc": "ENABLED", and a harness would run outside its private VPC`,
+        );
+      }
       const targets = await config.projectManager.listTargets(project);
       // Validate before reading the key, so a refused input never consumes stdin.
       if (flags["api-key"] !== undefined) toAddHarnessInput(project, targets, harnessInput, "");

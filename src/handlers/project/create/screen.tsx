@@ -6,7 +6,12 @@ import type { ScreenProps } from "../../types";
 import { PlatformKey } from "../../../router";
 import { RegionKey } from "../../keys";
 import { assertProjectPathFits } from "./pathLimit";
-import type { CreateProjectInput, Isolation } from "../types";
+import {
+  PRIVATE_VPC_COST,
+  PRIVATE_VPC_NOTE,
+  type CreateProjectInput,
+  type Isolation,
+} from "../types";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
@@ -117,8 +122,7 @@ const ISOLATION_CHOICES: Choice<Isolation>[] = [
   {
     value: "private-vpc",
     label: "private VPC",
-    description:
-      "also a private VPC with no internet path · about $58 to $75/month · uses 1 of 5 VPCs",
+    description: `also a private VPC with no internet path · ${PRIVATE_VPC_COST}`,
   },
 ];
 
@@ -155,8 +159,9 @@ export function buildCreateInput(
       ...(apiKey !== undefined && { harnessApiKey: apiKey }),
     };
   }
+  const isolation = values.isolation === "private-vpc" && { isolation: values.isolation };
   if (values.template === EMPTY_TEMPLATE_NAME) {
-    return { name: values.name, skipInstall: false, skipGit: false };
+    return { name: values.name, skipInstall: false, skipGit: false, ...isolation };
   }
   const model = templateTakesModelProvider(values.template)
     ? toRuntimeModelOverrides(values.runtimeModel)
@@ -165,7 +170,7 @@ export function buildCreateInput(
     name: values.name,
     skipInstall: false,
     skipGit: false,
-    ...(values.isolation === "private-vpc" && { isolation: "private-vpc" as const }),
+    ...isolation,
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
       runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
       ...(model && {
@@ -195,9 +200,7 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     type,
     template: values.template,
     ...(templateTakesModelProvider(values.template) && runtimeModelSummary(values.runtimeModel)),
-    ...(values.template !== EMPTY_TEMPLATE_NAME && {
-      isolation: values.isolation === "private-vpc" ? "private VPC" : "sandboxed",
-    }),
+    isolation: values.isolation === "private-vpc" ? "private VPC" : "sandboxed",
     directory: `./${values.name}`,
   };
 }
@@ -262,10 +265,11 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       }
       successHint="enter exits"
       onDone={() => {
+        const message = isEmptyProject
+          ? emptyProjectCreatedMessage(values.name, china).trimEnd()
+          : `next step:\n  cd ${values.name}/ && agentcore`;
         ctx.value(TuiExitMessageKey)?.(
-          isEmptyProject
-            ? emptyProjectCreatedMessage(values.name, china).trimEnd()
-            : `next step:\n  cd ${values.name}/ && agentcore`,
+          values.isolation === "private-vpc" ? `${message}\n${PRIVATE_VPC_NOTE}` : message,
         );
         exit();
       }}
@@ -325,7 +329,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         </Step>
       )}
 
-      {values.kind === "agent" && values.template !== EMPTY_TEMPLATE_NAME && (
+      {values.kind === "agent" && (
         <Step stepKey="isolation" prompt="how isolated should the agent be?">
           <ChoiceField<Isolation>
             choices={ISOLATION_CHOICES}

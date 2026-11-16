@@ -12,6 +12,7 @@ import {
 } from "../shortcuts";
 import {
   ISOLATION_LEVELS,
+  PRIVATE_VPC_NOTE,
   type CreateProjectInput,
   type ModelProvider,
   type ProjectManager,
@@ -84,10 +85,6 @@ export function emptyProjectNextSteps(name: string, china: boolean): string[] {
   ];
 }
 
-/** What a private VPC adds, printed after create and shown in the wizard. */
-export const PRIVATE_VPC_NOTE =
-  "isolation: private VPC with no internet path · about $58 to $75/month while deployed · uses 1 of the account's VPCs (default 5 per region)";
-
 export const EMPTY_PROJECT_SUMMARY = "it has no agents or other resources yet.";
 
 /** The full message printed after creating an empty project. */
@@ -139,7 +136,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
-        ...(flags["isolation"] === "private-vpc" && { isolation: "private-vpc" as const }),
+        isolation: flags["isolation"],
       };
 
       const createInput: CreateProjectInput =
@@ -189,14 +186,13 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
             config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
-            if (base.isolation === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
-            return;
+          } else {
+            config.io.stderr.write(`created project '${name}' in ./${name}\n`);
+            config.io.stderr.write(
+              `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+            );
           }
-          config.io.stderr.write(`created project '${name}' in ./${name}\n`);
-          if (base.isolation === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
-          config.io.stderr.write(
-            `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
-          );
+          if (flags["isolation"] === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
         },
       );
     },

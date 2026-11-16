@@ -30,33 +30,28 @@ export const ProjectNameSchema = z
 /** The kind of project. `box` is the only kind: each runtime of a Box project gets a Box gateway. */
 export const ProjectTypeSchema = z.enum(["box"]);
 export type ProjectType = z.infer<typeof ProjectTypeSchema>;
-/** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
-/**
- * `"ENABLED"` puts every runtime of a Box project in a private VPC with no internet path, which the
- * CDK library builds. An enum so a value can be added later. A missing field or `""` means `"DISABLED"`.
- */
 export const SecureVpcSchema = z.enum(["ENABLED", "DISABLED", ""]);
 export type SecureVpc = z.infer<typeof SecureVpcSchema>;
-export const isSecureVpcProject = (spec: { secureVpc?: string }) => spec.secureVpc === "ENABLED";
 function isVpcCidr(value: string): boolean {
-  const [address, prefix, ...rest] = value.split("/");
-  const octets = address?.split(".") ?? [];
-  return (
-    rest.length === 0 &&
-    /^\d{2}$/.test(prefix ?? "") &&
-    Number(prefix) >= 16 &&
-    Number(prefix) <= 24 &&
-    octets.length === 4 &&
-    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
-  );
+  const [address = "", prefix = "", ...rest] = value.split("/");
+  const octets = address.split(".");
+  if (rest.length > 0 || !/^\d{2}$/.test(prefix) || octets.length !== 4) return false;
+  if (!octets.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255))
+    return false;
+  const bits = Number(prefix);
+  const ip = octets.reduce((total, octet) => total * 256 + Number(octet), 0);
+  return bits >= 16 && bits <= 24 && ip % 2 ** (32 - bits) === 0;
 }
-/** The private VPC's settings. Everything else is set in CDK through `AgentCoreApplication.network()`. */
+/** Everything else about the private VPC is set in CDK through `AgentCoreApplication.network()`. */
 export const SecureVpcNetworkSchema = z
   .object({
     mode: z.enum(["CONTAINED"]).optional(),
     cidr: z
       .string()
-      .refine(isVpcCidr, "Must be an IPv4 CIDR block with a /16 to /24 prefix, such as 10.0.0.0/16")
+      .refine(
+        isVpcCidr,
+        "Must be an aligned IPv4 CIDR block with a /16 to /24 prefix, such as 10.0.0.0/16",
+      )
       .optional(),
     availabilityZoneIds: z
       .array(
@@ -80,6 +75,7 @@ export const SecureVpcNetworkSchema = z
   })
   .strict();
 export type SecureVpcNetwork = z.infer<typeof SecureVpcNetworkSchema>;
+/** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box`. */
 export const BOX_GATEWAY_SUFFIX = "-box";
@@ -181,7 +177,6 @@ export const ProjectSpecSchema = z
      * existing project.
      */
     projectType: ProjectTypeSchema.optional(),
-    /** No default, for the same reason as `projectType`. */
     secureVpc: SecureVpcSchema.optional(),
     network: SecureVpcNetworkSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),
@@ -214,7 +209,7 @@ export const ProjectSpecSchema = z
   })
   .strict()
   .superRefine((spec, ctx) => {
-    for (const message of secureVpcIssues(spec)) ctx.addIssue({ code: "custom", message });
+    for (const issue of secureVpcIssues(spec)) ctx.addIssue({ code: "custom", ...issue });
     const agentNames = new Set(spec.runtimes.map((a) => a.name));
     const evaluatorNames = new Set(spec.evaluators.map((e) => e.name));
     for (const config of spec.onlineEvalConfigs) {
@@ -400,33 +395,49 @@ export const ProjectSpecSchema = z
     }
   });
 export type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
-/**
- * In a secure project the CDK library places every runtime, so a runtime can't bring its own VPC, and
- * a harness, which gets no Box gateway, would keep the internet path the private VPC removes.
- */
+/** In a private VPC project, a runtime with its own network, a harness or a tool runtime would run outside the VPC. **/
 function secureVpcIssues(spec: {
   projectType?: string;
   secureVpc?: SecureVpc;
   network?: SecureVpcNetwork;
   runtimes: { name: string; networkMode?: string; networkConfig?: unknown }[];
   harnesses: { name: string }[];
-}): string[] {
-  const enabled = isSecureVpcProject(spec);
-  const issues: string[] = [];
-  if (enabled && !isBoxProject(spec))
-    issues.push('"secureVpc": "ENABLED" requires "projectType": "box"');
-  if (spec.network && !enabled)
-    issues.push('"network" is only allowed with "secureVpc": "ENABLED"');
+  toolRuntimes?: { name: string }[];
+}): { message: string; path: (string | number)[] }[] {
+  const enabled = spec.secureVpc === "ENABLED";
+  const issues: { message: string; path: (string | number)[] }[] = [];
+  if (enabled && !isBoxProject(spec)) {
+    issues.push({
+      message: '"secureVpc": "ENABLED" requires "projectType": "box"',
+      path: ["secureVpc"],
+    });
+  }
+  if (spec.network && !enabled) {
+    issues.push({
+      message: '"network" is only allowed with "secureVpc": "ENABLED"',
+      path: ["network"],
+    });
+  }
   if (!enabled) return issues;
-  for (const runtime of spec.runtimes) {
+  spec.runtimes.forEach((runtime, index) => {
     if (runtime.networkMode !== undefined || runtime.networkConfig !== undefined) {
-      issues.push(
-        `Runtime "${runtime.name}" sets networkMode or networkConfig, but with "secureVpc": "ENABLED" every runtime runs in the project's private VPC`,
-      );
+      issues.push({
+        message: `Runtime "${runtime.name}" sets networkMode or networkConfig, but in a project with "secureVpc": "ENABLED" every runtime runs in its private VPC`,
+        path: ["runtimes", index],
+      });
     }
-  }
-  for (const harness of spec.harnesses) {
-    issues.push(`Harness "${harness.name}" can't be in a project with "secureVpc": "ENABLED" yet`);
-  }
+  });
+  spec.harnesses.forEach((harness, index) => {
+    issues.push({
+      message: `Harness "${harness.name}" can't be added to a project with "secureVpc": "ENABLED": it would run outside the private VPC`,
+      path: ["harnesses", index],
+    });
+  });
+  (spec.toolRuntimes ?? []).forEach((tool, index) => {
+    issues.push({
+      message: `Tool runtime "${tool.name}" can't be added to a project with "secureVpc": "ENABLED": it would run outside the private VPC`,
+      path: ["toolRuntimes", index],
+    });
+  });
   return issues;
 }

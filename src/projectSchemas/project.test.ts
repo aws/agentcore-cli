@@ -50,6 +50,9 @@ describe("project custom validation", () => {
     ["an empty string", { ...minimalProject, secureVpc: "" }],
   ])("accepts secureVpc %s, with no default", (_name, project) => {
     expect(ProjectSpecSchema.safeParse(project).success).toBe(true);
+  });
+
+  test("secureVpc has no default", () => {
     expect("secureVpc" in ProjectSpecSchema.parse(minimalProject)).toBe(false);
   });
 
@@ -66,6 +69,8 @@ describe("project custom validation", () => {
     ],
     ["an unknown network mode", { ...secure, network: { mode: "EXISTING" } }, "mode"],
     ["a /25 CIDR", { ...secure, network: { cidr: "10.0.0.0/25" } }, "/16 to /24"],
+    ["a CIDR with host bits set", { ...secure, network: { cidr: "10.0.5.0/16" } }, "/16 to /24"],
+    ["a CIDR with a leading zero", { ...secure, network: { cidr: "010.0.0.0/16" } }, "/16 to /24"],
     [
       "an AZ name",
       { ...secure, network: { availabilityZoneIds: ["us-west-2a", "us-west-2b"] } },
@@ -75,6 +80,32 @@ describe("project custom validation", () => {
       "a runtime with its own network",
       { ...secure, runtimes: [{ ...runtime, networkMode: "PUBLIC" }] },
       "networkMode or networkConfig",
+    ],
+    [
+      "a harness",
+      { ...secure, harnesses: [{ name: "support", path: "app/support" }] },
+      "harnesses.0",
+    ],
+    [
+      "a tool runtime",
+      {
+        ...secure,
+        toolRuntimes: [
+          {
+            name: "search",
+            toolDefinition: {
+              name: "search",
+              description: "Search",
+              inputSchema: { type: "object" },
+            },
+            compute: {
+              host: "Lambda",
+              implementation: { language: "Python", path: "tools/search", handler: "handler.main" },
+            },
+          },
+        ],
+      },
+      "toolRuntimes.0",
     ],
   ])("rejects secureVpc with %s", (_name, project, message) => {
     const result = ProjectSpecSchema.safeParse(project);

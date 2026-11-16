@@ -62,7 +62,6 @@ const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5-5";
 const STRANDS_BEDROCK_MODEL_ID = DEFAULT_MODEL_IDS.Bedrock;
 const API_KEY_HELP = "file://<path> to the key file";
 
-/** Leaves the isolation step on its preselected "sandboxed". */
 async function passIsolationStep(r: {
   lastFrame: () => string | undefined;
   press: (key: "return") => Promise<void>;
@@ -1195,6 +1194,8 @@ describe("project create wizard", () => {
     for (let i = 0; i < PROJECT_TEMPLATE_NAMES.length - 1; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
+
+    await passIsolationStep(r);
 
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
