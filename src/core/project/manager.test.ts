@@ -46,7 +46,7 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { BOX_PROFILE_FILE, renderBoxProfile } from "./templates/boxProfile";
+import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
@@ -87,21 +87,25 @@ afterEach(async () => {
   );
 });
 
+/** A command the manager ran, with the UV_MANAGED_PYTHON it set, if any. */
+type Command = { command: string[]; cwd: string; UV_MANAGED_PYTHON?: string };
+
 // A manager whose runner records commands instead of spawning them.
 function manager(): {
   manager: FsProjectManager;
-  commands: { command: string[]; cwd: string }[];
+  commands: Command[];
   checkedTools: string[];
 } {
-  const commands: { command: string[]; cwd: string }[] = [];
+  const commands: Command[] = [];
   const checkedTools: string[] = [];
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
       enableTransactionSearch: async () => {},
-      runner: async (command, { cwd }) => {
-        commands.push({ command, cwd });
+      runner: async (command, { cwd, env }) => {
+        const managedPython = env?.UV_MANAGED_PYTHON;
+        commands.push({ command, cwd, ...(managedPython && { UV_MANAGED_PYTHON: managedPython }) });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -450,7 +454,12 @@ describe("FsProjectManager.create", () => {
         command: ["npm", "install", "--loglevel=http"],
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python_minimal") },
+      // The minimal template runs in a box, whose profile grants exec only on uv-managed Pythons.
+      {
+        command: ["uv", "sync"],
+        cwd: join(projectRoot, "app", "agent_python_minimal"),
+        UV_MANAGED_PYTHON: "1",
+      },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
   });
@@ -664,11 +673,30 @@ describe("FsProjectManager.create box profile", () => {
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
       skipInstall,
       skipGit: true,
+      region: "eu-west-1",
     });
 
     const path = join(directory, "example", BOX_PROFILE_FILE);
-    expect(await readFile(path, "utf8")).toBe(renderBoxProfile("example", AGENT_PYTHON_STRANDS)!);
+    expect(await readFile(path, "utf8")).toBe(
+      renderBoxProfile("example", AGENT_PYTHON_STRANDS, "eu-west-1")!,
+    );
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("warns when a LiteLLM agent's box profile reads a key that nothing set", async () => {
+    await inTempDirectory();
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "openai/gpt-4o",
+    });
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: runtime,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(events).toContainEqual({ type: "warning", message: boxProfileWarnings(runtime)[0]! });
   });
 
   test("leaves an existing box profile unchanged", async () => {

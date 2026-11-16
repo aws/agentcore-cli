@@ -5,7 +5,7 @@ import {
   type RuntimeTemplateShortcutName,
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
-import { hasBoxProfile, renderBoxProfile } from "./boxProfile";
+import { boxProfileWarnings, hasBoxProfile, renderBoxProfile } from "./boxProfile";
 
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
   return resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
@@ -174,6 +174,77 @@ describe("renderBoxProfile", () => {
     const { packs, egress } = profile("agent-python-strands", { modelProvider: "LiteLLM" });
     expect(packs).toEqual(["box/base", "box/bedrock"]);
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
+  });
+
+  test.each([
+    ["openai/gpt-4o", "openai", "OPENAI_API_KEY"],
+    ["anthropic/claude-sonnet-4-5", "anthropic", "ANTHROPIC_API_KEY"],
+    ["gemini/gemini-2.5-flash", "gemini", "GEMINI_API_KEY"],
+  ] as const)(
+    "reads a LiteLLM %s key created without --api-key from LiteLLM's own variable",
+    (modelId, route, variable) => {
+      const runtime = template("agent-python-strands", { modelProvider: "LiteLLM", modelId });
+      const { egress } = parse(renderBoxProfile("V3Demo", runtime)!) as {
+        egress: Record<string, { secret: { ref: string } }>;
+      };
+      expect(egress[route]?.secret.ref).toBe(`env://${variable}`);
+      expect(boxProfileWarnings(runtime)).toEqual([
+        `the box profile reads the ${route} API key from ${variable}: set it in ` +
+          "agentcore/.env.local or your shell before `agentcore dev`, or the agent's model calls " +
+          "go out with no key",
+      ]);
+    },
+  );
+
+  test("does not warn when the LiteLLM agent has a key, or calls Bedrock", () => {
+    const keyed = { modelProvider: "LiteLLM", modelId: "openai/gpt-4o", apiKey: "sk-test" };
+    expect(boxProfileWarnings(template("agent-python-strands", keyed))).toEqual([]);
+    expect(
+      boxProfileWarnings(template("agent-python-strands", { modelProvider: "LiteLLM" })),
+    ).toEqual([]);
+  });
+
+  test("warns that a LiteLLM agent on a provider with no route gets no model route", () => {
+    const groq = { modelProvider: "LiteLLM", modelId: "groq/llama3", apiKey: "sk-test" };
+    expect(profile("agent-python-strands", groq).egress).toBeUndefined();
+    expect(boxProfileWarnings(template("agent-python-strands", groq))).toEqual([
+      "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
+        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "model calls",
+    ]);
+  });
+
+  test("calls Bedrock in the region create resolved", () => {
+    const text = renderBoxProfile("V3Demo", STRANDS, "eu-west-1")!;
+    expect((parse(text) as { options: unknown }).options).toEqual({
+      bedrock: { region: "eu-west-1" },
+    });
+  });
+
+  test("keeps the port of an OpenAI-compatible endpoint in its destination", () => {
+    const { egress } = profile("agent-python-strands", {
+      modelProvider: "OpenAICompatible",
+      modelId: "llama3",
+      apiKey: "sk-test",
+      apiBase: "http://localhost:11434/v1",
+    });
+    expect(egress["openai-compatible"].destinations).toEqual(["localhost:11434"]);
+  });
+
+  test("gives an OpenAI-compatible agent with no base URL no route, rather than OpenAI's", () => {
+    // The schema requires --api-base, so drop it from a valid input; the type still allows it.
+    const runtime = {
+      ...template("agent-python-strands", {
+        modelProvider: "OpenAICompatible",
+        modelId: "llama3",
+        apiKey: "sk-test",
+        apiBase: "http://localhost:11434/v1",
+      }),
+      apiBase: undefined,
+    };
+    const text = renderBoxProfile("V3Demo", runtime)!;
+    expect(text).not.toContain("api.openai.com");
+    expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
   });
 
   test("runs the Strands container image's agent from /app, where box starts in the image", () => {

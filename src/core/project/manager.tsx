@@ -53,7 +53,12 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { createProjectTree } from "./templates/project";
-import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
+import {
+  boxProfilePath,
+  boxProfileWarnings,
+  hasBoxProfile,
+  renderBoxProfile,
+} from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -566,7 +571,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     if (scaffoldRuntimeInput) {
-      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput);
+      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);
     }
 
     if (!input.skipGit) {
@@ -1915,16 +1920,17 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Writes the boxy profile that runs the scaffolded agent into the project's
-   * `.box` folder, named after the project. An existing profile is the
-   * user's, so it is never overwritten.
+   * Writes the box profile that runs the scaffolded agent into the project's
+   * `.box` folder, named after the project, calling Bedrock in `region`. An
+   * existing profile is the user's, so it is never overwritten.
    */
   private async *writeBoxProfile(
     projectRoot: string,
     projectName: string,
     runtime: ScaffoldRuntimeInput,
+    region: string | undefined,
   ): AsyncGenerator<ProjectEvent, void> {
-    const text = renderBoxProfile(projectName, runtime);
+    const text = renderBoxProfile(projectName, runtime, region);
     if (text === undefined) return;
     const path = boxProfilePath(projectRoot);
     if (existsSync(path)) {
@@ -1934,6 +1940,7 @@ export class FsProjectManager implements ProjectManager {
     yield { type: "step", message: `writing box profile ${path}` };
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, text, { flag: "wx" });
+    for (const message of boxProfileWarnings(runtime)) yield { type: "warning", message };
   }
 
   /**
@@ -1948,7 +1955,11 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      yield* this.run(["uv", "sync"], appDir);
+      // A boxed agent's profile grants exec only on the uv-managed Pythons, so its venv must link
+      // to one of them, not to a Homebrew or system Python that uv would otherwise pick.
+      const env =
+        input && hasBoxProfile(input) ? { ...process.env, UV_MANAGED_PYTHON: "1" } : undefined;
+      yield* this.run(["uv", "sync"], appDir, undefined, env);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
       yield { type: "step", message: "installing Node dependencies with npm" };
@@ -1995,6 +2006,7 @@ export class FsProjectManager implements ProjectManager {
     command: string[],
     cwd: string,
     formatLine: (line: string) => string | undefined = (line) => line,
+    env?: NodeJS.ProcessEnv,
   ): AsyncGenerator<ProjectEvent, void, unknown> {
     yield* withOutputEvents((emit) => {
       const lines = createLineSplitter((line) => {
@@ -2003,6 +2015,7 @@ export class FsProjectManager implements ProjectManager {
       });
       return this.runner(command, {
         cwd,
+        ...(env && { env }),
         onOutput: (chunk) => {
           this.logger.debug(chunk);
           lines.push(chunk);
