@@ -411,7 +411,7 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
-  /** The environment the CDK backend reads AGENTCORE_BOX_SOURCE from; process.env by default. */
+  /** The environment the CDK backend reads HOME (the box cache) from; process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;

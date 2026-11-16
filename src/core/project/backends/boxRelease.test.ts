@@ -174,39 +174,6 @@ describe("resolveBoxLinuxBuild from the box release", () => {
   });
 });
 
-describe("resolveBoxLinuxBuild from AGENTCORE_BOX_SOURCE", () => {
-  async function boxSource(): Promise<string> {
-    const source = await temp("box-source-");
-    await mkdir(join(source, "target-al2023", "release"), { recursive: true });
-    for (const binary of BINARIES) {
-      await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
-    }
-    await mkdir(join(source, "resources"), { recursive: true });
-    return source;
-  }
-
-  test("uses the local build and downloads nothing", async () => {
-    const source = await boxSource();
-    const runner: ProcessRunner = async () => {
-      throw new Error("not run");
-    };
-
-    const build = await resolveBoxLinuxBuild({ AGENTCORE_BOX_SOURCE: source }, { runner });
-
-    expect(build.binaries).toBe(join(source, "target-al2023", "release"));
-    expect(build.ffi).toEqual({});
-  });
-
-  test("names the binary the local build lacks", async () => {
-    const source = await boxSource();
-    await rm(join(source, "target-al2023", "release", "strands-box-sock-alias"));
-
-    await expect(resolveBoxLinuxBuild({ AGENTCORE_BOX_SOURCE: source })).rejects.toThrow(
-      /has no .*target-al2023\/release\/strands-box-sock-alias/,
-    );
-  });
-});
-
 describe("resolveBoxDevBinary from the box release", () => {
   const mac = { platform: "darwin", arch: "arm64" };
 

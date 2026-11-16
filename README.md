@@ -210,9 +210,6 @@ it:
   archive, checks its pinned SHA-256 and unpacks it into `/opt/box`. `agentcore dev` builds the
   image on your machine and `agentcore deploy` builds it in AWS CodeBuild, the same way.
 
-To use a local box build instead of the release for a CodeZip agent, set `AGENTCORE_BOX_SOURCE` to a
-staging-boxy checkout with an Amazon Linux 2023 build in `target-al2023/release`.
-
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
 the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and
 rewrites it every 15 minutes, because box refuses the bare `aws://` that would read the role

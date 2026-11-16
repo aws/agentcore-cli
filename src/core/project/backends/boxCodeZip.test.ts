@@ -8,7 +8,7 @@ import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { type BoxLinuxBuild, resolveBoxLinuxBuild } from "./boxRelease";
+import type { BoxLinuxBuild } from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -26,7 +26,7 @@ async function temp(prefix: string): Promise<string> {
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
 
-/** A staging-boxy checkout with an Amazon Linux 2023 build, its packs, and optionally the shim. */
+/** A box build folder, with its binaries, its packs, and optionally the shim. */
 async function boxSource(options: { ffi?: boolean } = {}): Promise<string> {
   const source = await temp("box-source-");
   await mkdir(join(source, "target-al2023", "release"), { recursive: true });
@@ -66,9 +66,15 @@ async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Prom
   } as unknown as Project;
 }
 
-/** The box build a staging-boxy checkout gives, as deploy resolves it. */
+/** A box build laid out as deploy resolves it. */
 async function sourceBuild(options: { ffi?: boolean } = {}): Promise<BoxLinuxBuild> {
-  return resolveBoxLinuxBuild({ AGENTCORE_BOX_SOURCE: await boxSource(options) });
+  const source = await boxSource(options);
+  const ffi = join(source, "target-al2023", "ffi");
+  return {
+    binaries: join(source, "target-al2023", "release"),
+    resources: join(source, "resources"),
+    ffi: options.ffi ? { PYTHON_3_14: ffi } : {},
+  };
 }
 
 describe("stageBoxCodeZip", () => {
