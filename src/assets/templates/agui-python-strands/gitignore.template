@@ -42,3 +42,4 @@ Thumbs.db
 
 # Box, which agentcore deploy stages for AgentCore Runtime
 .box-dist/
+.box-dev/

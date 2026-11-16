@@ -20,6 +20,23 @@ import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
 export const BOX_IMAGE_DIST = ".box-dist";
 
+/**
+ * The folder `agentcore dev` stages a box image into, when the Dockerfile names its folder with
+ * {@link BOX_DIST_ARG}, so dev never overwrites the Runtime profile build and deploy stage in
+ * {@link BOX_IMAGE_DIST}. Dev removes it once the image is built.
+ */
+export const BOX_DEV_DIST = ".box-dev";
+
+/** The build argument that names the folder a box image copies, in a Dockerfile that declares it. */
+export const BOX_DIST_ARG = "BOX_DIST";
+
+/** A Dockerfile line that copies the folder {@link BOX_DIST_ARG} names. */
+const COPIES_DIST_ARG = new RegExp(
+  `^\\s*COPY\\s+(?:--\\S+\\s+)*\\$\\{${BOX_DIST_ARG}\\}\\/?\\s`,
+  "m",
+);
+const DECLARES_DIST_ARG = new RegExp(`^\\s*ARG\\s+${BOX_DIST_ARG}\\b`, "m");
+
 /** The folder a container runtime's image builds from. */
 export function containerBuildContext(projectRoot: string, runtime: ProjectRuntime): string {
   return join(projectRoot, runtime.buildContextPath ?? runtime.codeLocation);
@@ -29,7 +46,20 @@ export function containerBuildContext(projectRoot: string, runtime: ProjectRunti
 export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): boolean {
   if (runtime.build !== "Container") return false;
   const dockerfile = dockerfileOf(projectRoot, runtime);
-  return isFile(dockerfile) && readFileSync(dockerfile, "utf8").includes(`${BOX_IMAGE_DIST}/`);
+  if (!isFile(dockerfile)) return false;
+  const text = readFileSync(dockerfile, "utf8");
+  return text.includes(`${BOX_IMAGE_DIST}/`) || COPIES_DIST_ARG.test(text);
+}
+
+/**
+ * Whether a box image's Dockerfile takes the folder it copies from {@link BOX_DIST_ARG}, so dev
+ * can stage into {@link BOX_DEV_DIST}. A Dockerfile from an older template copies `.box-dist/`
+ * by name, and dev stages there as before.
+ */
+export function imageTakesBoxDistArg(projectRoot: string, runtime: ProjectRuntime): boolean {
+  if (!imageCopiesBox(projectRoot, runtime)) return false;
+  const text = readFileSync(dockerfileOf(projectRoot, runtime), "utf8");
+  return DECLARES_DIST_ARG.test(text) && COPIES_DIST_ARG.test(text);
 }
 
 /** The Dockerfile a container runtime's image builds from. */
@@ -53,8 +83,9 @@ export function stageBoxImage(
   profileText: string,
   policies: readonly PolicyFileCopy[] = [],
   build?: BoxLinuxBuild,
+  folder: string = BOX_IMAGE_DIST,
 ): void {
-  const dist = join(context, BOX_IMAGE_DIST);
+  const dist = join(context, folder);
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(dist, { recursive: true });
   if (build) copyBox(build, dist);

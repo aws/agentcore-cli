@@ -858,6 +858,65 @@ describe("ContainerDevRunner", () => {
       ]);
     });
 
+    test("stages a BOX_DIST image in .box-dev/, leaving build and deploy's .box-dist/ alone", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\nARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/\n",
+      });
+      await mkdir(join(context, ".box-dist"));
+      await writeFile(join(context, ".box-dist", "profile.toml"), "# runtime profile\n");
+      let staged: string | undefined;
+      const { calls, runner } = harness({
+        processEnv: credentials,
+        stream: async function* (command) {
+          // What docker build sees: dev's folder, while it builds.
+          if (command[1] === "build") {
+            staged = await readFile(join(context, ".box-dev", "profile.toml"), "utf8");
+          }
+          yield* [];
+        },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(commandCall(calls, "build").command).toEqual([
+        "docker",
+        "build",
+        "-f",
+        "Dockerfile",
+        "-t",
+        imageTag(root),
+        "--build-arg",
+        "BOX_DIST=.box-dev",
+        ".",
+      ]);
+      expect(staged).toBe("# local profile\n");
+      // Removed once built, so no deploy uploads dev's profile.
+      expect(existsSync(join(context, ".box-dev"))).toBe(false);
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# runtime profile\n",
+      );
+      expect(commandCall(calls, "run").command).toContain("--cap-add");
+    });
+
+    test("removes .box-dev/ when the image build fails", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\nARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/\n",
+      });
+      const { runner } = harness({
+        processEnv: credentials,
+        stream: (command) =>
+          command[1] === "build"
+            ? rejectedEvents(new Error("build failed"))
+            : (async function* () {})(),
+      });
+
+      await expect(collect(runner.run(input(root, projectRuntime)))).rejects.toThrow(
+        "build failed",
+      );
+
+      expect(existsSync(join(context, ".box-dev"))).toBe(false);
+    });
+
     test("stages box of the runtime's box.version", async () => {
       const { projectRuntime, root } = await boxedScene();
       const { boxVersions, runner } = harness({ processEnv: credentials });

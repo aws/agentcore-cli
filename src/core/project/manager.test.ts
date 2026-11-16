@@ -367,8 +367,9 @@ describe("FsProjectManager.create", () => {
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
-    // box comes from .box-dist/, staged from the release of the runtime's box.version.
-    expect(dockerfile).toContain("COPY .box-dist/ /opt/box/");
+    // box comes from .box-dist/, staged from the release of the runtime's box.version; dev names
+    // its own .box-dev/ with BOX_DIST.
+    expect(dockerfile).toContain("ARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/");
     expect(dockerfile).not.toContain("curl");
     expect(dockerfile).not.toContain("--mount=type=secret");
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
