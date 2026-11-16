@@ -206,9 +206,18 @@ it:
 - A CodeZip agent's zip carries box. `build` and `deploy` download the release once with `curl`
   into `~/.agentcore/box/`, check both archives against the pinned SHA-256s, and stage box, its
   packs and the Python 3.14 ffi shim into the runtime's `.box-dist/`.
-- A container agent's image installs box while it builds: its Dockerfile downloads the release
-  archive, checks its pinned SHA-256 and unpacks it into `/opt/box`. `agentcore dev` builds the
-  image on your machine and `agentcore deploy` builds it in AWS CodeBuild, the same way.
+- A container agent's image copies box in while it builds: dev, build and deploy download the same
+  Linux release into `~/.agentcore/box/` and stage box and its packs into the image's
+  `.box-dist/`, which the Dockerfile copies into `/opt/box`. `agentcore dev` builds the image on
+  your machine and `agentcore deploy` builds it in AWS CodeBuild.
+- A CodeZip agent under `agentcore dev` runs on your Mac in the release's macOS arm64 build, which
+  dev downloads once into `~/.agentcore/box/` and runs with its packs beside it. On a machine the
+  release has no build for, dev runs the `box` on your PATH.
+
+Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
+which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.ts`;
+another version takes them from its release's `SHA256SUMS.txt`. To try an unreleased box build,
+publish it as a pre-release with the same file names and set `box.version` to it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
 the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and

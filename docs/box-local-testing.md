@@ -12,15 +12,24 @@ gets its own Box gateway, named after the runtime: the runtime `agent` gets `age
 ## Where box comes from
 
 A Box project ships box inside its deploy artifact, so the agent runs in a box on AgentCore
-Runtime. `agentcore build` and `agentcore deploy` download the pinned box release from
+Runtime. Each box runtime names its box release in `agentcore.json` with
+`"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
+`agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
-`~/.agentcore/box/`, check its SHA-256s, and stage it into the build. No local box checkout is
-needed.
+`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
+`agentcore dev` downloads the release's macOS arm64 build the same way for a CodeZip agent, and
+the Linux build for a container image. No local box checkout is needed.
+
+To try an unreleased box build, publish it as a pre-release with the same file names and set
+`box.version` to it: a version the CLI does not pin takes its checksums from the release's
+`SHA256SUMS.txt`.
 
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- AWS credentials for a **dev or test** account. Box uses `us-west-2` Bedrock.
+- AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
+  Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
+  region.
 - `bun` for the CLI, `npm` for the generated CDK app.
 
 ## Settings
@@ -167,7 +176,7 @@ The first deploy makes the `default` target from your account and region.
 Local checks, in `agentcore/agentcore.json`:
 
 - `"projectType": "box"`.
-- A gateway named `agent-box` with a `bedrock` passthrough target in `us-west-2`, and an
+- A gateway named `agent-box` with a `bedrock` passthrough target in the deploy region, and an
   `egress-github` target for `https://api.github.com`.
 - A credential named `github` with `authorizerType: ApiKeyCredentialProvider`.
 
