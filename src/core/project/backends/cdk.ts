@@ -153,7 +153,7 @@ export type CdkBackendConfig = {
   removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
-  /** The environment box downloads and gh read (HOME for the box cache); process.env by default. */
+  /** The environment box downloads read (HOME for the box cache); process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
 };
 

@@ -398,7 +398,6 @@ describe("FsProjectManager.create", () => {
     expect(dockerfile).not.toContain("--mount=type=secret");
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
-    expect(spec.runtimes[0].dockerBuildSecrets).toBeUndefined();
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
 
