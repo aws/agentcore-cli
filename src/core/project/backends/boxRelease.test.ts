@@ -214,7 +214,20 @@ describe("resolveBoxDevBinary from the box release", () => {
     const home = await temp("box-home-");
     const { release, runner, commands } = await fakeRelease();
 
-    const box = await resolveBoxDevBinary({}, { runner, home, release, ...mac });
+    const downloads: string[] = [];
+    const box = await resolveBoxDevBinary(
+      {},
+      {
+        runner,
+        home,
+        release,
+        ...mac,
+        onDownload: (url) => downloads.push(url),
+      },
+    );
+    expect(downloads).toEqual([
+      `https://github.com/owner/box-releases/releases/download/v${VERSION}/box-v${VERSION}-aarch64-apple-darwin.tar.gz`,
+    ]);
 
     const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-apple-darwin`);
     expect(box).toBe(join(root, "box"));
@@ -229,8 +242,20 @@ describe("resolveBoxDevBinary from the box release", () => {
     ]);
 
     commands.length = 0;
-    expect(await resolveBoxDevBinary({}, { runner, home, release, ...mac })).toBe(box);
+    const later: string[] = [];
+    const again = await resolveBoxDevBinary(
+      {},
+      {
+        runner,
+        home,
+        release,
+        ...mac,
+        onDownload: (url) => later.push(url),
+      },
+    );
+    expect(again).toBe(box);
     expect(commands).toEqual([]);
+    expect(later).toEqual([]);
   });
 
   test("is undefined on a machine the release has no build for, so dev runs box from PATH", async () => {

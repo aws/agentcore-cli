@@ -79,6 +79,31 @@ async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
 }
 
 describe("BoxDevRunner", () => {
+  test("says box is downloading before it waits for a first download", async () => {
+    const projectRoot = await temp("agentcore-box-project-");
+    await mkdir(join(projectRoot, ".box"));
+    await writeFile(join(projectRoot, ".box", "profile.toml"), "");
+    const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
+    const runner = new BoxDevRunner({
+      fallback: { async *run() {} },
+      streamProcess: async function* () {},
+      resolveBox: async (_version, onDownload) => {
+        onDownload("downloading box 1.0.0 for this machine from https://example.com/box.tar.gz");
+        return box;
+      },
+    });
+
+    const events = await collect(runner.run(input(projectRoot)));
+
+    expect(events).toEqual([
+      {
+        type: "status",
+        message: "downloading box 1.0.0 for this machine from https://example.com/box.tar.gz",
+      },
+      { type: "status", message: `Starting the agent in a box (${box} run .box/profile.toml)` },
+    ]);
+  });
+
   test("asks for the box of the runtime's box.version", async () => {
     const { projectRoot, runner, versions } = await scene(true);
     const pinned = input(projectRoot);
