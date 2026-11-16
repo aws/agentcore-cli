@@ -306,12 +306,25 @@ describe("gateway targets in a Box project", () => {
 
   test("remove all removes projectType, secureVpc and network with every gateway entry", async () => {
     const manager = subject();
-    let project = await createdProject(manager);
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    let project = await drain(
+      manager.create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        isolation: "private-vpc",
+      }),
+    );
+    project = await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "agent", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
     project = await drain(manager.addResource(project, boxTarget("weather")));
-    project = {
-      ...project,
-      spec: { ...project.spec, secureVpc: "ENABLED", network: { cidr: "10.8.0.0/20" } },
-    };
+    expect((await specOnDisk(project)).secureVpc).toBe("ENABLED");
 
     const result = await manager.removeAllResources(project);
 

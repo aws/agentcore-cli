@@ -12,6 +12,7 @@ import { isBoxExtensionEntry } from "../../../projectSchemas/project";
 import {
   APP_CODE_RETAINED_NOTICE,
   BOX_GATEWAY_STAYS_NOTICE,
+  SECURE_VPC_REMOVED_NOTICE,
   shouldShowAppCodeNotice,
 } from "./notice";
 
@@ -111,6 +112,9 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           () => {
             config.io.stderr.write("removed all resources from project\n");
             config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
+            if (project.spec.secureVpc === "ENABLED") {
+              config.io.stderr.write(`${SECURE_VPC_REMOVED_NOTICE}\n`);
+            }
           },
         );
         return;
