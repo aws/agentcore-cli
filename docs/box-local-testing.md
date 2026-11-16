@@ -149,18 +149,18 @@ bun run "$CLI" build
 grep AGENTCORE_CREDENTIAL_GITHUB agentcore/.env.local
 ```
 
-If you added the `github` egress credential in step 4, this first standalone `build` stops
-after writing the targets, policies, and `.env.local`, with:
+If you added the `github` egress credential in step 4, this first standalone `build` warns that it
+stood in a placeholder, then finishes:
 
 ```
-Project build cannot resolve credential "github" before its first deployment.
-Run 'agentcore deploy' to provision the credential and build the project.
+build used placeholder values for credentials not yet provisioned: github. Run 'agentcore deploy' to provision them; the deployed stack uses the real values.
 ```
 
-This is expected. An `env://` credential must exist in AgentCore Identity before synthesis can
-resolve it, and only `deploy` provisions it. So on the **first** run with an egress credential,
-skip straight to step 7: `deploy` provisions the credential and then builds in one step (keep
-`GITHUB_TOKEN` exported). After that first deploy, `build` runs standalone as above.
+An `env://` credential must exist in AgentCore Identity before synthesis can resolve its ARN, and
+only `deploy` provisions it. So before the first deploy, build synthesizes a throwaway template with
+a placeholder ARN for `github` instead of failing. `deploy` provisions the credential and
+re-synthesizes with the real ARN, so the placeholder never reaches a deployed stack. After the first
+deploy, `build` resolves the real ARN and warns no more.
 
 ## 7. Deploy
 
@@ -203,9 +203,9 @@ bun run "$CLI" deploy
 - **`create` fails with `ENOENT while resolving package '@opentelemetry/core'`.** The CLI's
   dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in
   the CLI checkout (see "Install the CLI's dependencies").
-- **Build says it cannot resolve credential "github" before its first deployment.** Expected
-  when step 4's egress credential has never been deployed. Run `agentcore deploy` instead; it
-  provisions the credential and builds. Standalone `build` works after that. See step 6.
+- **Build says it cannot resolve credential "github" before its first deployment.** Your generated
+  CDK app predates placeholder support. Regenerate the project with this CLI (step 3) and relink the
+  local L3 (step 5), or run `agentcore deploy`, which provisions the credential and builds. See step 6.
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.
