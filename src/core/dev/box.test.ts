@@ -23,7 +23,7 @@ async function temp(prefix: string): Promise<string> {
 }
 
 /** A project named `Demo` that holds its box profile in .box/profile.toml when `profiled`. */
-async function scene(profiled: boolean) {
+async function scene(profiled: boolean, releaseBox?: string) {
   const projectRoot = await temp("agentcore-box-project-");
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
@@ -44,7 +44,8 @@ async function scene(profiled: boolean) {
       yield { type: "stdout", line: "fallback" };
     },
   };
-  const runner = new BoxDevRunner({ fallback, streamProcess });
+  // No release build for this machine, so box comes from PATH, unless the test names one.
+  const runner = new BoxDevRunner({ fallback, streamProcess, resolveBox: async () => releaseBox });
   return { projectRoot, calls, fallbackRuns, runner };
 }
 
@@ -70,6 +71,21 @@ async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
 }
 
 describe("BoxDevRunner", () => {
+  test("runs the release's box for this machine when it has one", async () => {
+    const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
+    const { projectRoot, calls, runner } = await scene(true, box);
+
+    const events = await collect(runner.run(input(projectRoot)));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      [box, "run", ".box/profile.toml", "--no-banner"],
+    ]);
+    expect(events[0]).toEqual({
+      type: "status",
+      message: `Starting the agent in a box (${box} run .box/profile.toml)`,
+    });
+  });
+
   test("runs the project's box profile from the project folder", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
 

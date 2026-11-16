@@ -27,6 +27,11 @@ export type BoxRelease = {
   target: string;
   box: { asset: string; sha256: string };
   ffi: { asset: string; sha256: string; runtimeVersion: string };
+  /**
+   * The builds `agentcore dev` runs a CodeZip agent with on this machine, by `<platform>-<arch>`
+   * of Node (`darwin-arm64`). Each archive holds box, its helpers, its packs and release.json.
+   */
+  dev: Partial<Record<string, { target: string; asset: string; sha256: string }>>;
 };
 
 export const BOX_RELEASE: BoxRelease = {
@@ -41,6 +46,13 @@ export const BOX_RELEASE: BoxRelease = {
     asset: "box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz",
     sha256: "1266d484cbdbfa9df53a0aa29efbc0a1063e0ace9945bca5489b5f828f68b54e",
     runtimeVersion: "PYTHON_3_14",
+  },
+  dev: {
+    "darwin-arm64": {
+      target: "aarch64-apple-darwin",
+      asset: "box-v0.1.11-linux-preview.2-aarch64-apple-darwin.tar.gz",
+      sha256: "0d6d9ef1ab2e41068fd421d20383eb13b06797ff9962bf6e42336bc998c350ed",
+    },
   },
 };
 
@@ -197,6 +209,10 @@ async function download(
   into: string,
   env: NodeJS.ProcessEnv,
   runner: ProcessRunner,
+  failure: (url: string) => string = (url) =>
+    `a runtime runs its agent in a box, so this ships box ${release.version} to AgentCore ` +
+    `Runtime, downloaded from ${url}, which failed. Check your network, or set ` +
+    `AGENTCORE_BOX_SOURCE to a staging-boxy checkout with a Linux build.`,
 ): Promise<void> {
   const url = boxReleaseAssetUrl(release, asset);
   try {
@@ -207,10 +223,91 @@ async function download(
     if (!isFile(join(into, asset))) throw new Error(`curl downloaded no ${asset}`);
   } catch (error) {
     throw new InvalidEnvironmentError(
-      `a runtime runs its agent in a box, so this ships box ${release.version} to AgentCore ` +
-        `Runtime, downloaded from ${url}, which failed. Check your network, or set ` +
-        `AGENTCORE_BOX_SOURCE to a staging-boxy checkout with a Linux build.\n\n` +
-        (error instanceof Error ? error.message : String(error)),
+      `${failure(url)}\n\n${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+export type ResolveBoxDevBinaryOptions = {
+  /** Runs curl and tar; tests inject one. */
+  runner?: ProcessRunner;
+  /** The home folder the release cache is in, `~/.agentcore/box/`. */
+  home?: string;
+  /** The release to install; BOX_RELEASE by default. */
+  release?: BoxRelease;
+  /** Node's `process.platform` and `process.arch`, which pick the build; tests pin them. */
+  platform?: string;
+  arch?: string;
+};
+
+/**
+ * The `box` that `agentcore dev` runs a CodeZip agent with: the release's build for this machine,
+ * which downloads once with curl into `~/.agentcore/box/<version>-<target>/` after its pinned
+ * checksum matches, with its packs beside it; later runs reuse it. `undefined` when the release
+ * has no build for this machine, so dev runs the `box` on PATH.
+ */
+export async function resolveBoxDevBinary(
+  env: NodeJS.ProcessEnv,
+  options: ResolveBoxDevBinaryOptions = {},
+): Promise<string | undefined> {
+  const release = options.release ?? BOX_RELEASE;
+  const machine = `${options.platform ?? process.platform}-${options.arch ?? process.arch}`;
+  const build = release.dev[machine];
+  if (!build) return undefined;
+  const home = options.home ?? env.HOME ?? homedir();
+  const cache = join(home, ".agentcore", "box");
+  const root = join(cache, `${release.version}-${build.target}`);
+  if (installedDevBuild(release, root)) return join(root, "box");
+
+  const runner = options.runner ?? runProcess;
+  mkdirSync(cache, { recursive: true });
+  const work = mkdtempSync(join(cache, ".download-"));
+  try {
+    await download(
+      release,
+      build.asset,
+      work,
+      env,
+      runner,
+      (url) =>
+        `agentcore dev runs the CodeZip agent in box ${release.version}, downloaded from ` +
+        `${url}, which failed. Check your network, then retry.`,
+    );
+    const archive = join(work, build.asset);
+    const digest = createHash("sha256").update(readFileSync(archive)).digest("hex");
+    if (digest !== build.sha256) {
+      throw new InvalidEnvironmentError(
+        `${build.asset} from github.com/${release.repo} has SHA-256 ${digest}, not the pinned ` +
+          `${build.sha256}. Nothing was installed.`,
+      );
+    }
+    const payload = join(work, "payload");
+    mkdirSync(payload);
+    await runner(["tar", "-xzf", archive, "-C", payload], { cwd: work, env });
+    for (const binary of BOX_BINARIES) {
+      if (!isFile(join(payload, binary))) {
+        throw new InvalidEnvironmentError(`${build.asset} has no ${binary}.`);
+      }
+      chmodSync(join(payload, binary), 0o755);
+    }
+    rmSync(root, { recursive: true, force: true });
+    renameSync(payload, root);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+  if (!installedDevBuild(release, root)) {
+    throw new InvalidEnvironmentError(
+      `${build.asset} has no release.json for box ${release.version}, or no box packs.`,
+    );
+  }
+  return join(root, "box");
+}
+
+/** Whether `root` holds the pinned version's dev build: release.json, box, and its packs. */
+function installedDevBuild(release: BoxRelease, root: string): boolean {
+  if (!installedRelease(release, root)) return false;
+  return (
+    BOX_BINARIES.every((binary) => isFile(join(root, binary))) &&
+    existsSync(join(root, "resources", "shared"))
+  );
 }

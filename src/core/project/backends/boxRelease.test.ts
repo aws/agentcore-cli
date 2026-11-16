@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
-import { type BoxRelease, resolveBoxLinuxBuild } from "./boxRelease";
+import { type BoxRelease, resolveBoxDevBinary, resolveBoxLinuxBuild } from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -43,14 +43,13 @@ async function tarball(name: string, files: Record<string, string>) {
 
 /** A release in the layout of BOX_RELEASE, with archives the fake gh serves. */
 async function fakeRelease(boxFiles?: Record<string, string>) {
-  const box = await tarball(
-    `box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
-    boxFiles ?? {
-      ...Object.fromEntries(BINARIES.map((binary) => [binary, `#!${binary}\n`])),
-      "resources/shared/base/pack.toml": "[pack]\n",
-      "release.json": JSON.stringify({ box_version: VERSION }),
-    },
-  );
+  const files = boxFiles ?? {
+    ...Object.fromEntries(BINARIES.map((binary) => [binary, `#!${binary}\n`])),
+    "resources/shared/base/pack.toml": "[pack]\n",
+    "release.json": JSON.stringify({ box_version: VERSION }),
+  };
+  const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
+  const mac = await tarball(`box-v${VERSION}-aarch64-apple-darwin.tar.gz`, files);
   const ffi = await tarball("box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz", {
     "libffi.so.8": "ffi",
   });
@@ -64,10 +63,18 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
       sha256: ffi.sha256,
       runtimeVersion: "PYTHON_3_14",
     },
+    dev: {
+      "darwin-arm64": {
+        target: "aarch64-apple-darwin",
+        asset: `box-v${VERSION}-aarch64-apple-darwin.tar.gz`,
+        sha256: mac.sha256,
+      },
+    },
   };
   const assets: Record<string, string> = {
     [release.box.asset]: box.archive,
     [release.ffi.asset]: ffi.archive,
+    [`box-v${VERSION}-aarch64-apple-darwin.tar.gz`]: mac.archive,
   };
   const commands: string[][] = [];
   // curl writes the asset its URL names to -o; tar runs for real.
@@ -190,6 +197,62 @@ describe("resolveBoxLinuxBuild from AGENTCORE_BOX_SOURCE", () => {
 
     await expect(resolveBoxLinuxBuild({ AGENTCORE_BOX_SOURCE: source })).rejects.toThrow(
       /has no .*target-al2023\/release\/strands-box-sock-alias/,
+    );
+  });
+});
+
+describe("resolveBoxDevBinary from the box release", () => {
+  const mac = { platform: "darwin", arch: "arm64" };
+
+  test("downloads this machine's build once, with its packs beside box, and returns its box", async () => {
+    const home = await temp("box-home-");
+    const { release, runner, commands } = await fakeRelease();
+
+    const box = await resolveBoxDevBinary({}, { runner, home, release, ...mac });
+
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-apple-darwin`);
+    expect(box).toBe(join(root, "box"));
+    expect(existsSync(join(root, "resources", "shared", "base", "pack.toml"))).toBe(true);
+    for (const binary of BINARIES) {
+      expect((await stat(join(root, binary))).mode & 0o777).toBe(0o755);
+    }
+    expect(
+      commands.filter((command) => command[0] === "curl").map((command) => command.at(-1)),
+    ).toEqual([
+      `https://github.com/owner/box-releases/releases/download/v${VERSION}/box-v${VERSION}-aarch64-apple-darwin.tar.gz`,
+    ]);
+
+    commands.length = 0;
+    expect(await resolveBoxDevBinary({}, { runner, home, release, ...mac })).toBe(box);
+    expect(commands).toEqual([]);
+  });
+
+  test("is undefined on a machine the release has no build for, so dev runs box from PATH", async () => {
+    const home = await temp("box-home-");
+    const { release, runner, commands } = await fakeRelease();
+
+    const box = await resolveBoxDevBinary(
+      {},
+      { runner, home, release, platform: "linux", arch: "x64" },
+    );
+
+    expect(box).toBeUndefined();
+    expect(commands).toEqual([]);
+  });
+
+  test("installs nothing when the build's checksum is not the pinned one", async () => {
+    const home = await temp("box-home-");
+    const { release, runner } = await fakeRelease();
+    const pinned = {
+      ...release,
+      dev: { "darwin-arm64": { ...release.dev["darwin-arm64"]!, sha256: "0".repeat(64) } },
+    };
+
+    const result = resolveBoxDevBinary({}, { runner, home, release: pinned, ...mac });
+
+    await expect(result).rejects.toThrow(/not the pinned 0{64}\. Nothing was installed/);
+    expect(existsSync(join(home, ".agentcore", "box", `${VERSION}-aarch64-apple-darwin`))).toBe(
+      false,
     );
   });
 });
