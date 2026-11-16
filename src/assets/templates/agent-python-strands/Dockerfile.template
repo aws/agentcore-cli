@@ -1,9 +1,6 @@
 FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
 
-# curl downloads box from the box release below.
-RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
 
@@ -32,25 +29,14 @@ RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
 USER bedrock_agentcore
 
-# box, from the box release (Linux arm64): download the archive from its public GitHub release, check
-# its pinned SHA-256 and unpack box, its two helpers and its packs into /opt/box. The box profile
-# and the policy files it names come from .box-dist/, which dev, build and deploy stage: dev the
-# project's .box/profile.toml, build and deploy the AgentCore Runtime profile. The folder is copied
-# whole, so each policy file stays beside the profile. start.sh runs box with the profile's path,
-# outside /app, the workspace.
+# box, from .box-dist/, which dev, build and deploy stage: box, its two helpers and its packs, from
+# the box release (Linux arm64) that box.version in agentcore.json names, checked against its
+# SHA-256; and the box profile with the policy files it names: dev the project's .box/profile.toml,
+# build and deploy the AgentCore Runtime profile. The folder is copied whole, so each policy file
+# stays beside the profile. start.sh runs box with the profile's path, outside /app, the workspace.
 USER root
-ARG BOX_REPO={{box.repo}}
-ARG BOX_VERSION={{box.version}}
-ARG BOX_SHA256={{box.sha256}}
-RUN set -eu; \
-    curl -fsSL --retry 3 -o /tmp/box.tar.gz \
-      "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/box-v${BOX_VERSION}-aarch64-unknown-linux-gnu.tar.gz"; \
-    echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -; \
-    mkdir -p /opt/box; \
-    tar -C /opt/box -xzf /tmp/box.tar.gz --no-same-owner; \
-    rm /tmp/box.tar.gz; \
-    /opt/box/box --version
 COPY .box-dist/ /opt/box/
+RUN /opt/box/box --version
 COPY start.sh /opt/box/
 # box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
 # /app/.box-dist is not the agent's, so it goes.

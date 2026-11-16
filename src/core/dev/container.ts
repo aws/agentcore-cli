@@ -13,6 +13,11 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import { BOX_IMAGE_DIST, imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import {
+  boxReleaseFor,
+  resolveBoxLinuxBuild,
+  type BoxLinuxBuild,
+} from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
@@ -88,6 +93,11 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
+  /**
+   * The Linux box the image runs: the box release of the runtime's `box.version`, downloaded once
+   * into `~/.agentcore/box/`, as build and deploy stage it. Tests inject one.
+   */
+  resolveBox?: (version: string | undefined) => Promise<BoxLinuxBuild>;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -95,12 +105,19 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly resolveBox: (version: string | undefined) => Promise<BoxLinuxBuild>;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
+    this.resolveBox =
+      config.resolveBox ??
+      (async (version) =>
+        resolveBoxLinuxBuild(this.processEnv, {
+          release: await boxReleaseFor(version, this.processEnv),
+        }));
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -263,7 +280,12 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    stageBoxImage(context, readFileSync(profile, "utf8"), boxPolicyFileCopies(input.projectRoot));
+    stageBoxImage(
+      context,
+      readFileSync(profile, "utf8"),
+      boxPolicyFileCopies(input.projectRoot),
+      await this.resolveBox(input.runtime.box?.version),
+    );
     return true;
   }
 

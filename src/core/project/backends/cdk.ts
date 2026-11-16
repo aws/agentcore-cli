@@ -224,13 +224,13 @@ export class CdkBackend implements ProjectBackend {
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     // The zip carries box and the image its box profile, so both are staged before synth packages
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
-    await stageBoxCodeZip(project, boxNetworks, async (version) =>
+    const box = async (version: string | undefined) =>
       resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release: await boxReleaseFor(version, this.processEnv, { runner: this.runner }),
-      }),
-    );
-    stageBoxContainers(project, boxNetworks);
+      });
+    await stageBoxCodeZip(project, boxNetworks, box);
+    await stageBoxContainers(project, boxNetworks, box);
   }
 
   private async *synthesize(
