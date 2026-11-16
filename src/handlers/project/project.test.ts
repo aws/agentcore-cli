@@ -142,7 +142,7 @@ describe("project create", () => {
 
   test.each([
     ["agent-python-strands", { version: BOX_RELEASE.version }],
-    ["agent-python-strands-container", undefined],
+    ["agent-python-strands-container", { version: BOX_RELEASE.version }],
   ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
@@ -157,7 +157,6 @@ describe("project create", () => {
     ]);
 
     const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
-    // A container runtime's Dockerfile names its box release instead.
     expect(spec.runtimes[0].box).toEqual(box);
   });
 

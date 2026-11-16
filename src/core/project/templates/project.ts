@@ -101,7 +101,7 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
 /**
  * The container image's entry point, start.sh, which the Dockerfile copies
  * into /opt/box: it fills in the deployed resources and starts `box run`.
- * The Dockerfile installs box from the public box release at build time.
+ * Dev, build and deploy stage box into .box-dist/, which the Dockerfile copies.
  */
 function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
   template.tree.children.push(
@@ -109,6 +109,9 @@ function withBoxContainerStartScript(config: CreateProjectConfig, template: Temp
       config.assetSource.read("templates/box-container/start.sh"),
     ),
   );
+  // The box release that dev, build and deploy stage into the image; change it to move to another.
+  for (const runtime of template.spec.runtimes ?? [])
+    runtime.box = { version: BOX_RELEASE.version };
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

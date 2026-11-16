@@ -357,7 +357,7 @@ describe("FsProjectManager.create", () => {
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
   });
 
-  test("scaffolds a container image that installs box from the pinned box release", async () => {
+  test("scaffolds a container image that runs the box dev, build and deploy stage", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
@@ -367,14 +367,12 @@ describe("FsProjectManager.create", () => {
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
-    expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
-    expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
-    expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
+    // box comes from .box-dist/, staged from the release of the runtime's box.version.
+    expect(dockerfile).toContain("COPY .box-dist/ /opt/box/");
+    expect(dockerfile).not.toContain("curl");
     expect(dockerfile).not.toContain("--mount=type=secret");
-    // The download is checked against the pinned SHA-256 before it is unpacked.
-    expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
-    // The release is public, so the build needs no token.
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
     expect(spec.runtimes[0].dockerBuildSecrets).toBeUndefined();
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
