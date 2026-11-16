@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";

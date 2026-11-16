@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
