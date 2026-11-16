@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,7 +12,14 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
-import { BOX_IMAGE_DIST, imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import {
+  BOX_DEV_DIST,
+  BOX_DIST_ARG,
+  BOX_IMAGE_DIST,
+  imageCopiesBox,
+  imageTakesBoxDistArg,
+  stageBoxImage,
+} from "../project/backends/boxContainer";
 import {
   boxReleaseFor,
   resolveBoxLinuxBuild,
@@ -186,14 +193,25 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxed = await this.stageBox(input, context);
+    const boxDist = await this.stageBox(input, context);
+    const boxed = boxDist !== undefined;
     if (boxed) {
-      yield {
-        type: "status",
-        message: `Staged box for the image in ${join(context, BOX_IMAGE_DIST)}`,
-      };
+      yield { type: "status", message: `Staged box for the image in ${join(context, boxDist)}` };
     }
-    const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
+    // The folder dev staged, for a Dockerfile that takes it as a build argument.
+    const boxDistFlags =
+      boxDist === BOX_DEV_DIST ? ["--build-arg", `${BOX_DIST_ARG}=${BOX_DEV_DIST}`] : [];
+    const buildCommand = [
+      tool,
+      "build",
+      "-f",
+      dockerfile,
+      "-t",
+      imageTag,
+      ...buildArgFlags,
+      ...boxDistFlags,
+      ".",
+    ];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
       env: this.processEnv,
@@ -205,13 +223,21 @@ export class ContainerDevRunner implements DevRunner {
         "-t",
         imageTag,
         ...redactedBuildArgFlags,
+        ...boxDistFlags,
         ".",
       ],
       signal: input.signal,
     };
 
     yield { type: "status", message: `Building image with ${tool}` };
-    yield* this.streamProcess(buildCommand, buildOptions);
+    try {
+      yield* this.streamProcess(buildCommand, buildOptions);
+    } finally {
+      // The image holds it now; removed so that no deploy uploads dev's profile.
+      if (boxDist === BOX_DEV_DIST) {
+        rmSync(join(context, BOX_DEV_DIST), { recursive: true, force: true });
+      }
+    }
 
     const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
     const forwardedEnv: Record<string, string> = {};
@@ -299,12 +325,14 @@ export class ContainerDevRunner implements DevRunner {
   }
 
   /**
-   * Stages box into the build context when the Dockerfile copies `.box-dist/`,
-   * with the project's box profile and the policy files it names, and says
-   * whether it did. The image then runs `box run`, which needs BOX_RUN_FLAGS.
+   * Stages box into the build context when the Dockerfile copies it, with the project's box
+   * profile and the policy files it names, and returns the folder it staged, or undefined for an
+   * image without box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
+   * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
+   * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private async stageBox(input: DevServerInput, context: string): Promise<boolean> {
-    if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
+  private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
+    if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
@@ -313,13 +341,17 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
+    const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
+      ? BOX_DEV_DIST
+      : BOX_IMAGE_DIST;
     stageBoxImage(
       context,
       readFileSync(profile, "utf8"),
       boxPolicyFileCopies(input.projectRoot),
       await this.resolveBox(input.runtime.box?.version),
+      folder,
     );
-    return true;
+    return folder;
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
