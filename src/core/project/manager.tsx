@@ -417,7 +417,7 @@ type ProjectManagerConfig = {
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
   /**
-   * The environment the CDK backend reads AGENTCORE_BOX_SOURCE from, and build reads box `env://`
+   * The environment the CDK backend reads HOME (the box cache) from, and build reads box `env://`
    * egress secrets from; process.env by default.
    */
   processEnv?: NodeJS.ProcessEnv;

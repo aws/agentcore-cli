@@ -12,6 +12,7 @@ import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testi
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { FsProjectManager } from "./manager";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
@@ -104,15 +105,17 @@ async function temporary(prefix: string): Promise<string> {
   return directory;
 }
 
-/** A box checkout with stand-in binaries, which staging copies into the CodeZip runtime. */
-async function boxSource(): Promise<string> {
-  const source = await temporary("agentcore-box-source-");
-  await mkdir(join(source, "target-al2023", "release"), { recursive: true });
+/** A home folder whose box cache holds the pinned release, with stand-in binaries. */
+async function boxHome(): Promise<string> {
+  const home = await temporary("agentcore-box-home-");
+  const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
+  await mkdir(join(root, "resources"), { recursive: true });
+  await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
   for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-    await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
+    await writeFile(join(root, binary), `#!${binary}\n`);
   }
-  await mkdir(join(source, "resources"), { recursive: true });
-  return source;
+  await writeFile(join(root, "release.json"), JSON.stringify({ box_version: BOX_RELEASE.version }));
+  return home;
 }
 
 async function drain<T>(generator: AsyncGenerator<{ type: string; message?: string }, T>) {
@@ -156,7 +159,7 @@ async function strandsProject(
     checkTool: async () => {},
     json,
     processEnv: {
-      AGENTCORE_BOX_SOURCE: await boxSource(),
+      HOME: await boxHome(),
       AWS_REGION: "us-west-2",
       ...options.env,
     },

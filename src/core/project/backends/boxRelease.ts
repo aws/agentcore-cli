@@ -99,49 +99,19 @@ export type ResolveBoxLinuxBuildOptions = {
   release?: BoxRelease;
 };
 
-/** The local build in a staging-boxy checkout that AGENTCORE_BOX_SOURCE names. */
-const SOURCE_BUILD = join("target-al2023", "release");
-const SOURCE_FFI = join("target-al2023", "ffi");
-
 /**
- * Where box for AgentCore Runtime comes from: the staging-boxy checkout AGENTCORE_BOX_SOURCE
- * names, for a local build, or else BOX_RELEASE. The release downloads once with curl from its public URL, into
- * `~/.agentcore/box/<version>-<target>/`, after its pinned checksums match; later runs reuse it.
- * Only CodeZip runtimes use it: a container image installs box itself, from its Dockerfile.
+ * The Linux box for AgentCore Runtime, from `release` (BOX_RELEASE by default). The release
+ * downloads once with curl from its public URL, into `~/.agentcore/box/<version>-<target>/`,
+ * after its checksums match; later runs reuse it.
  */
 export async function resolveBoxLinuxBuild(
   env: NodeJS.ProcessEnv,
   options: ResolveBoxLinuxBuildOptions = {},
 ): Promise<BoxLinuxBuild> {
-  const source = env.AGENTCORE_BOX_SOURCE;
   const release = options.release ?? BOX_RELEASE;
-  if (source) return sourceBuild(source, release);
   // HOME from the environment the CLI was given, so the cache follows it.
   const home = options.home ?? env.HOME ?? homedir();
   return releaseBuild(release, env, options.runner ?? runProcess, home, options.onDownload);
-}
-
-function sourceBuild(source: string, release: BoxRelease): BoxLinuxBuild {
-  const binaries = join(source, SOURCE_BUILD);
-  for (const binary of BOX_BINARIES) {
-    if (!isFile(join(binaries, binary))) {
-      throw new InvalidEnvironmentError(
-        `AGENTCORE_BOX_SOURCE has no ${join(binaries, binary)}. Build box on Amazon Linux 2023 ` +
-          `into ${SOURCE_BUILD} there, or unset AGENTCORE_BOX_SOURCE to use box ` +
-          `${release.version}.`,
-      );
-    }
-  }
-  const resources = join(source, "resources");
-  if (!existsSync(resources)) {
-    throw new InvalidEnvironmentError(`AGENTCORE_BOX_SOURCE has no box packs at ${resources}.`);
-  }
-  const ffi = join(source, SOURCE_FFI);
-  return {
-    binaries,
-    resources,
-    ffi: existsSync(ffi) ? { [release.ffi.runtimeVersion]: ffi } : {},
-  };
 }
 
 /** The installed release: release.json names the pinned version. */
@@ -225,8 +195,7 @@ async function download(
   runner: ProcessRunner,
   failure: (url: string) => string = (url) =>
     `a runtime runs its agent in a box, so this ships box ${release.version} to AgentCore ` +
-    `Runtime, downloaded from ${url}, which failed. Check your network, or set ` +
-    `AGENTCORE_BOX_SOURCE to a staging-boxy checkout with a Linux build.`,
+    `Runtime, downloaded from ${url}, which failed. Check your network, then retry.`,
 ): Promise<void> {
   const url = boxReleaseAssetUrl(release, asset);
   try {

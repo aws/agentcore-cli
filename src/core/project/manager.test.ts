@@ -1914,16 +1914,21 @@ describe("chinaModelProviderRestriction", () => {
 });
 
 describe("FsProjectManager.build", () => {
-  /** A staging-boxy checkout: the scaffolded runtime starts in a box, so build stages box. */
-  async function boxSource(): Promise<NodeJS.ProcessEnv> {
-    const source = await mkdtemp(join(tmpdir(), "agentcore-box-source-"));
-    tempDirectories.push(source);
-    await mkdir(join(source, "target-al2023", "release"), { recursive: true });
+  /** A home whose box cache holds the pinned release: the scaffolded runtime starts in a box. */
+  async function boxHome(): Promise<NodeJS.ProcessEnv> {
+    const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
+    tempDirectories.push(home);
+    const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
+    await mkdir(join(root, "resources"), { recursive: true });
+    await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
     for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-      await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
+      await writeFile(join(root, binary), `#!${binary}\n`);
     }
-    await mkdir(join(source, "resources"), { recursive: true });
-    return { AGENTCORE_BOX_SOURCE: source };
+    await writeFile(
+      join(root, "release.json"),
+      JSON.stringify({ box_version: BOX_RELEASE.version }),
+    );
+    return { HOME: home };
   }
 
   // build() requires the CDK app's node_modules; create() with skipInstall
@@ -1955,7 +1960,7 @@ describe("FsProjectManager.build", () => {
 
   test("compiles and synthesizes via the generated cdk script", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager(await boxSource());
+    const { manager: subject, commands } = manager(await boxHome());
     const project = await scaffolded(subject, directory);
     commands.length = 0; // discard create()'s commands
 
@@ -2003,7 +2008,7 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("downloads box from the public box release when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("downloads box from the public box release when it is not cached", async () => {
     const directory = await inTempDirectory();
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
     tempDirectories.push(home);
@@ -2045,7 +2050,7 @@ describe("FsProjectManager.build", () => {
 
   test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject } = manager(await boxSource());
+    const { manager: subject } = manager(await boxHome());
     const { project } = await runCreate(subject, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
@@ -2099,7 +2104,7 @@ describe("FsProjectManager.build", () => {
         throw new Error("cdk synth exploded");
       },
       checkTool: async () => {},
-      processEnv: await boxSource(),
+      processEnv: await boxHome(),
       boxProfileResolver: new FakeBoxProfileResolver(),
     });
 
