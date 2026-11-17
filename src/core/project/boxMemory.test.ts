@@ -97,14 +97,13 @@ describe("addBoxMemoryTarget", () => {
     expect(targets(project)).toEqual(["agentcore"]);
   });
 
-  test("marks a project without projectType as a Box project", async () => {
+  test("changes nothing in a project without projectType", async () => {
     const { projectType: _omitted, ...rest } = spec();
     const project = rest as ProjectSpec;
+    const before = structuredClone(project);
 
-    expect(addBoxMemoryTarget(project, await root())).toContain(
-      `setting "projectType": "box" in agentcore.json, for the Box gateway`,
-    );
-    expect(project.projectType).toBe("box");
+    expect(addBoxGatewayTargets(project, await root())).toEqual([]);
+    expect(project).toEqual(before);
   });
 
   test("refuses the target name on another gateway", async () => {

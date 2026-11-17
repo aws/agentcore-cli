@@ -70,6 +70,9 @@ function backend() {
     async resolveProjectResources() {
       throw new Error("project Harness logs resolve deployed resources");
     },
+    async recordedBoxGateways() {
+      return [];
+    },
   };
   return { calls, value };
 }

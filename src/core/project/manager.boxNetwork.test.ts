@@ -234,6 +234,21 @@ describe("build writes the Box network of the box profile", () => {
     expect(await boxFiles(root)).toEqual(before);
   });
 
+  test("leaves the user's other gateways as written, with no defaults added", async () => {
+    const { manager, root } = await strandsProject();
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    const spec = JSON.parse(await text(root, SPEC));
+    const tools = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
+    spec.agentCoreGateways.push(tools);
+    await writeFile(path(root, SPEC), JSON.stringify(spec));
+
+    await build(manager, root);
+
+    const gateways = JSON.parse(await text(root, SPEC)).agentCoreGateways;
+    expect(gateways.find(({ name }: { name: string }) => name === "tools")).toStrictEqual(tools);
+    expect(await targetNames(root)).toContain("egress-github");
+  });
+
   test("changes nothing on a second build", async () => {
     const { manager, root, counter } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
@@ -445,6 +460,9 @@ describe("deploy writes the Box network before the backend deploys", () => {
         return [];
       },
       async resolveProjectResources() {
+        return [];
+      },
+      async recordedBoxGateways() {
         return [];
       },
     };

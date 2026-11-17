@@ -481,10 +481,7 @@ export class CdkBackend implements ProjectBackend {
   private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
     if (!dropsBoxGateways(project.spec)) return;
     const { target } = input;
-    const gatewayNames = boxGatewaysOf(
-      await readDeployedState(this.json, project.rootPath),
-      target.name,
-    );
+    const gatewayNames = await this.recordedBoxGateways(project, target.name);
     if (gatewayNames.length === 0) return;
     const confirmed = await input.confirmBoxGatewayDeletion?.({
       projectName: project.name,
@@ -637,6 +634,10 @@ export class CdkBackend implements ProjectBackend {
       const id = findDeployedResourceId(stack, resource);
       return id ? [{ ...resource, id, target, credentialProvider: credentials }] : [];
     });
+  }
+
+  public async recordedBoxGateways(project: Project, targetName: string): Promise<string[]> {
+    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), targetName);
   }
 
   public async resolveProjectResources(
