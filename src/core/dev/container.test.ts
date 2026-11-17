@@ -14,7 +14,7 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import type { BoxLinuxBuild } from "../project/backends/boxRelease";
+import { BOX_RELEASE } from "../project/backends/boxRelease";
 import type { ResolveAwsCredentials } from "./boxAwsCredentials";
 import { ContainerDevRunner } from "./container";
 
@@ -61,17 +61,6 @@ async function projectRoot(projectRuntime: ProjectRuntime = runtime()): Promise<
   await mkdir(context, { recursive: true });
   await writeFile(join(context, projectRuntime.dockerfile ?? "Dockerfile"), "FROM scratch\n");
   return root;
-}
-
-/** The Linux box a box image gets in tests: its programs and packs, in a temp folder. */
-const FAKE_BOX_ROOT = join(tmpdir(), `agentcore-container-box-${process.pid}`);
-async function fakeBox(): Promise<BoxLinuxBuild> {
-  for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-    await mkdir(FAKE_BOX_ROOT, { recursive: true });
-    await writeFile(join(FAKE_BOX_ROOT, binary), `#!${binary}\n`);
-  }
-  await mkdir(join(FAKE_BOX_ROOT, "resources", "shared"), { recursive: true });
-  return { binaries: FAKE_BOX_ROOT, resources: join(FAKE_BOX_ROOT, "resources"), ffi: {} };
 }
 
 function harness(
@@ -123,9 +112,9 @@ function harness(
           return tool === "docker";
         }),
       awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
-      resolveBox: async (version) => {
+      releaseFor: async (version) => {
         boxVersions.push(version);
-        return fakeBox();
+        return { ...BOX_RELEASE, version: version ?? BOX_RELEASE.version };
       },
       processEnv: config.processEnv ?? {
         AWS_ACCESS_KEY_ID: "test-access-key",
@@ -875,13 +864,10 @@ describe("ContainerDevRunner", () => {
         imageTag(root),
         ".",
       ]);
-      // box of the pinned release, its packs, and the local profile.
+      // The box release the image downloads, and the local profile.
       expect((await readdir(join(context, ".box-dist"))).sort()).toEqual([
-        "box",
+        "box-release.env",
         "profile.toml",
-        "resources",
-        "strands-box-contain-trampoline",
-        "strands-box-sock-alias",
       ]);
       expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
         "# local profile\n",
