@@ -55,6 +55,7 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
   const files = boxFiles ?? {
     ...Object.fromEntries(BINARIES.map((binary) => [binary, `#!${binary}\n`])),
     "resources/shared/base/pack.toml": "[pack]\n",
+    "resources/config.toml": "",
     "release.json": JSON.stringify({ box_version: VERSION }),
   };
   const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);

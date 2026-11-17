@@ -15,7 +15,8 @@ import {
  */
 export async function seedBoxCache(home: string): Promise<void> {
   const root = boxCachePath(home, BOX_RELEASE.version, BOX_RELEASE.linux.target);
-  await mkdir(join(root, "resources", "shared"), { recursive: true });
+  await mkdir(join(root, "resources"), { recursive: true });
+  await writeFile(join(root, "resources", "config.toml"), "");
   for (const binary of BOX_BINARIES) await writeFile(join(root, binary), `#!${binary}\n`);
   await writeFile(join(root, "release.json"), JSON.stringify({ box_version: BOX_RELEASE.version }));
   for (const [runtimeVersion, { sha256 }] of Object.entries(FFI_RELEASE.pythons)) {

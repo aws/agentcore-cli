@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -181,7 +180,8 @@ function installedBox(version: string, root: string): boolean {
   }
   return (
     BOX_BINARIES.every((binary) => isFile(join(root, binary))) &&
-    existsSync(join(root, "resources", "shared"))
+    // Every box release ships resources/config.toml; the packs folder beside it has moved before.
+    isFile(join(root, "resources", "config.toml"))
   );
 }
 
