@@ -145,6 +145,23 @@ describe("agentcore create", () => {
     expect((await specOnDisk(project)).projectType).toBe("box");
     expect(project.spec.projectType).toBe("box");
   });
+
+  test.each([
+    ["no isolation", undefined, undefined, undefined],
+    ["sandboxed", "sandboxed" as const, undefined, undefined],
+    ["private-vpc", "private-vpc" as const, "ENABLED", { mode: "CONTAINED" }],
+  ])("with %s writes secureVpc %p", async (_name, isolation, secureVpc, network) => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      subject().create({ name: "example", skipInstall: true, skipGit: true, isolation }),
+    );
+
+    const spec = await specOnDisk(project);
+    expect(spec.secureVpc).toBe(secureVpc);
+    expect(spec.network).toEqual(network);
+  });
 });
 
 describe("gateway targets in a Box project", () => {
@@ -287,15 +304,34 @@ describe("gateway targets in a Box project", () => {
     expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["my-agent-box"]);
   });
 
-  test("remove all keeps projectType and removes every gateway entry", async () => {
+  test("remove all keeps projectType and removes secureVpc, network and every gateway entry", async () => {
     const manager = subject();
-    let project = await createdProject(manager);
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    let project = await drain(
+      manager.create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        isolation: "private-vpc",
+      }),
+    );
+    project = await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "agent", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
     project = await drain(manager.addResource(project, boxTarget("weather")));
+    expect((await specOnDisk(project)).secureVpc).toBe("ENABLED");
 
     const result = await manager.removeAllResources(project);
 
     const spec = await specOnDisk(result.project);
     expect(spec.projectType).toBe("box");
+    expect("secureVpc" in spec).toBe(false);
+    expect("network" in spec).toBe(false);
     expect(spec.agentCoreGateways).toEqual([]);
     expect(result.project.spec.projectType).toBe("box");
   });

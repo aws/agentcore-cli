@@ -19,7 +19,11 @@ import { projectSpec, writeProjectSpec } from "../add/gateway-test-support";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { readEnvFile } from "../../../io/envFile";
-import { APP_CODE_RETAINED_NOTICE, BOX_GATEWAY_STAYS_NOTICE } from "./notice";
+import {
+  APP_CODE_RETAINED_NOTICE,
+  SECURE_VPC_REMOVED_NOTICE,
+  BOX_GATEWAY_STAYS_NOTICE,
+} from "./notice";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -508,6 +512,24 @@ describe("project remove", () => {
 });
 
 describe("project remove all", () => {
+  test.each([
+    [
+      "a private VPC project says the private VPC setting is removed",
+      ["--isolation", "private-vpc"],
+      true,
+    ],
+    ["a sandboxed project says nothing about it", [], false],
+  ])("%s", async (_name, isolation, notified) => {
+    const { cleanup } = await initProject({
+      flags: ["--template", "agent-python-minimal", ...isolation],
+    });
+    cleanups.push(cleanup);
+
+    const { io } = await run(["remove", "all", "--yes"]);
+
+    expect(io.stderr().includes(SECURE_VPC_REMOVED_NOTICE)).toBe(notified);
+  });
+
   async function populatedProject(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
