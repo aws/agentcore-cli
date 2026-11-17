@@ -288,6 +288,24 @@ describe("build writes the Box network of the box profile", () => {
     expect(await boxFiles(root)).toEqual(before);
   });
 
+  test("leaves the user's other gateways as written, with no defaults added", async () => {
+    const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = JSON.parse(await text(root, SPEC));
+    const tools = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
+    spec.agentCoreGateways.push(tools);
+    await writeFile(path(root, SPEC), JSON.stringify(spec));
+
+    await build(manager, root);
+
+    const gateways = JSON.parse(await text(root, SPEC)).agentCoreGateways;
+    expect(gateways.find(({ name }: { name: string }) => name === "tools")).toStrictEqual(tools);
+    expect(await targetNames(root)).toContain("egress-github");
+    // The Box gateway gets only the fields build changed.
+    expect(Object.keys(await boxGateway(root))).not.toContain("enableSemanticSearch");
+  });
+
   test("writes no target for an env:// route whose key build cannot find, and says what to set", async () => {
     const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });

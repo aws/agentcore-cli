@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
   AddResourceOptions,
@@ -1615,9 +1616,18 @@ export class FsProjectManager implements ProjectManager {
     let result = project;
     if (edits.specChanged) {
       // Only the fields a writer changed are set, so every other field keeps its value and place.
+      // In the gateways and credentials, only the entries a writer changed, and only their
+      // changed fields, so schema defaults are not written into the user's other entries.
       const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
-      const changes = edits.changedFields.map((field) => [field, edits.spec[field]]);
+      const changes = edits.changedFields.map((field) => [
+        field,
+        field === "agentCoreGateways"
+          ? patchNamedEntries(raw[field], project.spec[field], edits.spec[field])
+          : field === "credentials"
+            ? patchNamedEntries(raw[field], project.spec[field], edits.spec[field])
+            : edits.spec[field],
+      ]);
       const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
@@ -2243,6 +2253,45 @@ function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: 
     );
   }
   spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, entry));
+}
+
+/**
+ * The raw agentcore.json array `raw` with the edits that turned the parsed entries `before` into
+ * `after`, matched by name: an entry `after` changed gets only its changed fields, so its other
+ * keys, their order, and fields the schema does not know about survive; a new entry is appended,
+ * and one `after` dropped is removed. Every other entry stays as the user wrote it.
+ */
+function patchNamedEntries<T extends { name: string }>(
+  raw: unknown,
+  before: readonly T[],
+  after: readonly T[],
+): unknown[] {
+  const entries = Array.isArray(raw) ? [...(raw as unknown[])] : [];
+  const nameOf = (entry: unknown) => (entry as { name?: unknown } | null)?.name;
+  const kept = new Set(after.map(({ name }) => name));
+  const patched = entries.filter((entry) => {
+    const name = nameOf(entry);
+    return typeof name !== "string" || kept.has(name) || !before.some((b) => b.name === name);
+  });
+  for (const entry of after) {
+    const old = before.find(({ name }) => name === entry.name);
+    if (old && isDeepStrictEqual(old, entry)) continue;
+    const index = patched.findIndex((candidate) => nameOf(candidate) === entry.name);
+    if (!old || index < 0) {
+      patched.push(entry);
+      continue;
+    }
+    const next: Record<string, unknown> = { ...(patched[index] as object) };
+    const oldFields = old as Record<string, unknown>;
+    const newFields = entry as Record<string, unknown>;
+    for (const key of new Set([...Object.keys(oldFields), ...Object.keys(newFields)])) {
+      if (isDeepStrictEqual(oldFields[key], newFields[key])) continue;
+      if (newFields[key] === undefined) delete next[key];
+      else next[key] = newFields[key];
+    }
+    patched[index] = next;
+  }
+  return patched;
 }
 
 function parseResource<TSchema extends z.ZodType>(
