@@ -10,7 +10,7 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
-import { BOX_RELEASE } from "./backends/boxRelease";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { FsProjectManager } from "./manager";
 
 const GATEWAY = "agent-python-strands-box";
@@ -57,13 +57,7 @@ async function temporary(prefix: string): Promise<string> {
 /** A home folder whose box cache holds the pinned release, with stand-in binaries. */
 async function boxHome(): Promise<string> {
   const home = await temporary("agentcore-box-home-");
-  const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
-  await mkdir(join(root, "resources"), { recursive: true });
-  await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
-  for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-    await writeFile(join(root, binary), `#!${binary}\n`);
-  }
-  await writeFile(join(root, "release.json"), JSON.stringify({ box_version: BOX_RELEASE.version }));
+  await seedBoxCache(home);
   return home;
 }
 

@@ -237,10 +237,10 @@ export class CdkBackend implements ProjectBackend {
       return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release,
-        onDownload: (url) =>
+        onDownload: (download) =>
           events.push({
             type: "step",
-            message: boxDownloadMessage(release.version, url, "AgentCore Runtime"),
+            message: boxDownloadMessage(download, "AgentCore Runtime"),
           }),
       });
     };
