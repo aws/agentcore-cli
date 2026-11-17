@@ -117,6 +117,20 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   );
 }
 
+/**
+ * Whether the project's box profile, `profileText`, was written for `runtime`. Create writes one
+ * profile, for the first runtime, and `add` writes none, so a runtime added later has no profile.
+ * A CodeZip profile names its runtime's folder; the container profile runs /app and names none.
+ */
+export function boxProfileIsFor(
+  profileText: string,
+  runtime: { build: string; codeLocation: string },
+): boolean {
+  const codeZip = profileText.includes("${{ workspace }}/app/");
+  if (runtime.build === "Container") return !codeZip;
+  return profileText.includes(`/${runtime.codeLocation}"`);
+}
+
 /** The Strands container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (

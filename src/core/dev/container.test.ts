@@ -717,7 +717,7 @@ describe("ContainerDevRunner", () => {
     expect(commandCall(calls, "stop")).toBeDefined();
   });
 
-  test("says how to remove the container when stop fails at shutdown", async () => {
+  test("warns how to remove the container when stop fails at shutdown", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
     const { calls, runner } = harness({
@@ -725,14 +725,28 @@ describe("ContainerDevRunner", () => {
         command[1] === "stop" ? rejectedEvents(new Error("daemon is slow")) : [],
     });
 
-    const error = await collect(runner.run(input(root, projectRuntime))).catch((caught) => caught);
+    const events = await collect(runner.run(input(root, projectRuntime)));
 
-    expect(error).toBeInstanceOf(InvalidEnvironmentError);
-    expect((error as Error).message).toContain(
-      `Could not stop the dev container ${containerName(root)}`,
+    const warning = events.find(
+      (event) => event.type === "status" && event.message.startsWith("Could not stop"),
     );
-    expect((error as Error).message).toContain(`'docker rm -f ${containerName(root)}'`);
+    expect(warning).toMatchObject({
+      message: expect.stringContaining(`'docker rm -f ${containerName(root)}'`),
+    });
     expect(calls.at(-1)?.command[1]).toBe("stop");
+  });
+
+  test("keeps the run's own error when stop fails too", async () => {
+    const projectRuntime = runtime();
+    const root = await projectRoot(projectRuntime);
+    const { runner } = harness({
+      stream: (command) =>
+        command[1] === "run" || command[1] === "stop"
+          ? rejectedEvents(new Error(`${command[1]} failed`))
+          : [],
+    });
+
+    await expect(collect(runner.run(input(root, projectRuntime)))).rejects.toThrow("run failed");
   });
 
   test("treats a container that already exited as stopped", async () => {
@@ -827,6 +841,45 @@ describe("ContainerDevRunner", () => {
       AWS_ACCESS_KEY_ID: "test-access-key",
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
     };
+
+    test("says where it staged box", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message: `Staged box for the image in ${join(context, ".box-dist")}`,
+      });
+    });
+
+    test("does not box an image whose Dockerfile only mentions .box-dist/ in a comment", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\n# TODO: COPY .box-dist/ later\n",
+      });
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readdir(context)).not.toContain(".box-dist");
+      expect(commandCall(calls, "run").command).not.toContain("--cap-add");
+    });
+
+    test("refuses a box profile written for a CodeZip runtime", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      await writeFile(
+        join(root, ".box", "profile.toml"),
+        'read = ["${{ workspace }}/app/other"]\n',
+      );
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const run = collect(runner.run(input(root, projectRuntime)));
+
+      await expect(run).rejects.toBeInstanceOf(InputValidationError);
+      await expect(run).rejects.toThrow("is the box profile of another runtime");
+      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
+    });
 
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
       const { projectRuntime, root, context } = await boxedScene();
