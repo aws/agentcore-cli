@@ -680,8 +680,8 @@ describe("hosts the model cannot carry", () => {
         'Box::Action::"net:connect".',
       '.box/policy.dw:4:1  The rule "query" reads context.input.query, which http:request does ' +
         "not have. Use one of context.input.host, context.input.port, context.input.method, " +
-        "context.input.path, context.input.body_bytes, context.input.intercepted, or " +
-        "context.output.status.",
+        "context.input.path, context.input.body_bytes, context.input.intercepted, " +
+        "context.input.upgrade, or context.output.status.",
     ]);
   });
 
@@ -780,6 +780,51 @@ describe("the default targets", () => {
       { targets: [getBoxGatewayAgentCoreTargetSpec()] },
     );
     expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "memory"]]);
+  });
+});
+
+describe("WebSocket", () => {
+  const WS = 'context.input.upgrade == "websocket"';
+  const chat = (rest: string) =>
+    connect("chat_connect", on("chat.example.com")) + permit("chat", on("chat.example.com", rest));
+
+  test("skips a permit that allows only WebSocket handshakes, with a warning and no failure", () => {
+    const r = model(chat(WS));
+    expect(r.failures()).toEqual([]);
+    expect(r.network.hosts.filter((h) => h.target !== undefined)).toEqual([]);
+    expect(r.network.warnings).toEqual([
+      '.box/policy.dw:2:1: The rule "chat" allows only WebSocket connections, and build adds no ' +
+        "gateway target for a WebSocket, so it skips this rule.",
+    ]);
+  });
+
+  test("keeps the HTTP requests of a permit that also allows a WebSocket", () => {
+    const r = model(chat(`(${WS} || context.input.method == "GET")`));
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual(["chat.example.com -> egress-chat-example-com"]);
+    expect(r.network.warnings.some((w) => w.includes("WebSocket"))).toBe(false);
+  });
+
+  test("reads upgrade as empty on every request the gateway carries", () => {
+    for (const test of ['context.input.upgrade == ""', 'context.input.upgrade != "websocket"']) {
+      const r = model(chat(test) + forbid("no_ws", on("chat.example.com", WS)));
+      expect(r.failures()).toEqual([]);
+      expect(r.targets()).toEqual(["chat.example.com -> egress-chat-example-com"]);
+      expect(r.network.warnings).toEqual([]);
+    }
+  });
+
+  test("skips the websocket:send and websocket:receive rules", () => {
+    const messages = rule(
+      "messages",
+      'permit (principal, action in [Box::Action::"websocket:send", ' +
+        'Box::Action::"websocket:receive"], resource) when { context.input.host == ' +
+        '"chat.example.com" && context.input.opcode == Box::WebSocketOpcode::"text" };',
+    );
+    const r = model(messages);
+    expect(r.failures()).toEqual([]);
+    expect(r.network.hosts).toEqual([]);
+    expect(r.network.warnings).toEqual([]);
   });
 });
 
