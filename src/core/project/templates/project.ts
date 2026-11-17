@@ -37,7 +37,7 @@ export async function createProjectTree(
 
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
-    if (isBoxedContainer(options.runtime)) withBoxContainerStartScript(config, template);
+    if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
     templates.push(template);
   }
 
@@ -100,17 +100,11 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
 }
 
 /**
- * The container image's entry point, start.sh, which the Dockerfile copies
- * into /opt/box: it fills in the deployed resources and starts `box run`.
- * Dev, build and deploy stage box into .box-dist/, which the Dockerfile copies.
+ * The box release a container image stages: build and deploy use `box.version` to download box in
+ * the Dockerfile. The image runs `box run` directly and needs no start script.
  */
-function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
-  template.tree.children.push(
-    FsTreeNode.createFile("start.sh", () =>
-      config.assetSource.read("templates/box-container/start.sh"),
-    ),
-  );
-  // The box release that dev, build and deploy stage into the image; change it to move to another.
+function withBoxContainerBoxVersion(template: Template): void {
+  // The box release that build and deploy stage into the image; change it to move to another.
   for (const runtime of template.spec.runtimes ?? [])
     runtime.box = { version: BOX_RELEASE.version };
 }

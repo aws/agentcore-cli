@@ -29,6 +29,8 @@ export async function stageBoxCodeZip(
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
+    // A CodeZip deploy has start.sh carry the deployed resources, not the box/agentcore pack.
+    container: false,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,

@@ -6,9 +6,12 @@ import { join } from "node:path";
 import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
-import { renderRuntimeBoxProfile } from "../templates/boxProfile";
+import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
+
+/** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
+const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
 
 const directories: string[] = [];
 
@@ -77,23 +80,25 @@ describe("stageBoxContainers", () => {
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
       renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
     );
-    expect((await readdir(dist)).sort()).toEqual(STAGED);
     expect(await readFile(join(dist, "box-release.env"), "utf8")).toBe(
       `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
+    // The container also stages the box/agentcore pack, beside box's own packs in the image.
+    expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
+    expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });
 
   test("replaces what an earlier build staged", async () => {
     const demo = await project(BOX_DOCKERFILE);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    await mkdir(join(dist), { recursive: true });
+    await mkdir(join(dist, "stale"), { recursive: true });
     await writeFile(join(dist, "box"), "old");
     await writeFile(join(dist, "stale.dw"), "old");
 
     await stageBoxContainers(demo, [], releaseOf().releaseFor);
 
-    expect((await readdir(dist)).sort()).toEqual(STAGED);
+    expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });
 
   test("stages nothing for an image that does not copy .box-dist/", async () => {
@@ -107,14 +112,13 @@ describe("stageBoxContainers", () => {
 
   test("copies each policy file of the model beside the profile, for an image that copies .box-dist/ whole", async () => {
     const demo = await project(TEMPLATE_DOCKERFILE);
-    await writeFile(join(demo.rootPath, "app", "agent", "start.sh"), START_SH);
     await mkdir(join(demo.rootPath, ".box"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
 
     await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED].sort());
+    expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED, "resources"].sort());
     expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
   });
 
@@ -131,8 +135,7 @@ describe("stageBoxContainers", () => {
 });
 
 const TEMPLATES = join(import.meta.dir, "..", "..", "..", "assets", "templates");
-/** The container start.sh and the Dockerfile that `agentcore create` writes. */
-const START_SH = readFileSync(join(TEMPLATES, "box-container", "start.sh"), "utf8");
+/** The container Dockerfile that `agentcore create` writes, which copies `.box-dist/` whole. */
 const TEMPLATE_DOCKERFILE = readFileSync(
   join(TEMPLATES, "agent-python-strands", "Dockerfile.template"),
   "utf8",

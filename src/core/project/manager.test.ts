@@ -372,14 +372,23 @@ describe("FsProjectManager.create", () => {
     });
 
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
-    expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
+    // The image runs `box run` directly; it needs no start script.
+    expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(false);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
     // The image downloads the release that box-release.env names, staged from the runtime's
     // box.version; dev names its own .box-dev/ with BOX_DIST.
     expect(dockerfile).toContain("ARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/box-release.env");
-    expect(dockerfile).toContain("COPY ${BOX_DIST}/ /opt/box/");
     expect(dockerfile).toContain("sha256sum -c");
     expect(dockerfile).not.toContain("--mount=type=secret");
+    // The profile and its policy files are staged into an agent-owned folder, not /opt/box.
+    expect(dockerfile).toContain(
+      "COPY --chown=bedrock_agentcore:bedrock_agentcore ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/",
+    );
+    // The entry point is box run on that profile, not a start script.
+    expect(dockerfile).toContain(
+      'ENTRYPOINT ["/opt/box/box", "run", "/home/bedrock_agentcore/box-profile/profile.toml",',
+    );
+    expect(dockerfile).not.toContain("start.sh");
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();

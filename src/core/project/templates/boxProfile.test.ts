@@ -14,6 +14,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   boxProfileWarnings,
   hasBoxProfile,
+  renderAgentCorePack,
   renderBoxProfile,
   renderRuntimeBoxProfile,
   runsBoxStartScript,
@@ -377,8 +378,13 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
   test.each(["agent-python-strands-container"] as const)(
     "runs %s from /app without --reload, signing calls with the Runtime's role",
     (name) => {
+      const text = renderBoxProfile("V3Demo", template(name), "runtime")!;
+      // No start.sh fills this profile in: the agentcore pack carries the deployed resources.
+      expect(text).toContain("The box/agentcore pack carries the deployed resources' variables.");
+      expect(text).not.toContain("# @AGENT_ENV@");
       expect(runtimeProfile(name)).toEqual({
-        packs: ["box/base", "box/bedrock"],
+        // The container reads the deployed resources from the environment through box/agentcore.
+        packs: ["box/base", "box/bedrock", "box/agentcore"],
         profile: { name: "V3Demo" },
         options: { bedrock: { region: "us-west-2" } },
         agent: {
@@ -462,11 +468,15 @@ describe("renderRuntimeBoxProfile", () => {
   ] as const)(
     "has one route for each Box gateway target, sent to that target (%s)",
     (_, targets, runtime) => {
+      const container = (runtime as { build?: string }).build === "Container";
       const egress = egressOf(spec([...targets], runtime as Partial<ProjectRuntime>));
 
       expect(Object.keys(egress).sort()).toEqual(targets.map(({ name }) => name).sort());
       for (const [name, route] of Object.entries(egress)) {
-        expect(route.backends?.map(({ url }) => url)).toEqual([`@GATEWAY_BOX_URL@/${name}`]);
+        // The container reads the gateway URL from the environment; a CodeZip deploy has start.sh
+        // fill the placeholder in.
+        const url = container ? `\${{ inputs.gateway.url }}/${name}` : `@GATEWAY_BOX_URL@/${name}`;
+        expect(route.backends?.map(({ url }) => url)).toEqual([url]);
         // Box refuses a signed destination secret beside a backend.
         expect(route.secret?.ref ?? "env://").toStartWith("env://");
       }
@@ -497,6 +507,24 @@ describe("renderRuntimeBoxProfile", () => {
           url: "@GATEWAY_BOX_URL@/agentcore",
           auth: {
             ref: "aws://default",
+            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+          },
+        },
+      ],
+    });
+  });
+
+  test("signs a container's gateway route with a bare aws://, from the gateway URL input", () => {
+    const container = spec([agentcore], { build: "Container", entrypoint: "main.py" });
+    expect(egressOf(container).agentcore as unknown).toEqual({
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+      backends: [
+        {
+          // The gateway URL comes from the agentcore pack's input, not a start.sh placeholder.
+          url: "${{ inputs.gateway.url }}/agentcore",
+          // A bare aws:// signs with the execution role via the default credential chain.
+          auth: {
+            ref: "aws://",
             aws: { service: "bedrock-agentcore", region: "us-west-2" },
           },
         },
@@ -547,5 +575,40 @@ describe("startsInBoxOnCodeZip", () => {
     expect(runsBoxStartScript("start.py")).toBe(true);
     expect(runsBoxStartScript("start.py:app")).toBe(true);
     expect(runsBoxStartScript("main.py")).toBe(false);
+  });
+});
+
+describe("renderAgentCorePack", () => {
+  function pack(memories: { name: string }[]) {
+    return parse(
+      renderAgentCorePack({ name: "V3Demo", memories } as unknown as ProjectSpec),
+    ) as Record<string, any>;
+  }
+
+  test("names itself box/agentcore and ships as a support pack", () => {
+    const toml = pack([]);
+    expect(toml.pack).toEqual({ name: "box/agentcore", version: 1, kind: "support" });
+  });
+
+  test("declares the gateway URL input from the environment, bounded by a pattern", () => {
+    const { inputs } = pack([]);
+    expect(inputs.gateway.url.from).toBe("env:AGENTCORE_GATEWAY_BOX_URL");
+    // The input reaches a backend url, so box needs a pattern or values on it.
+    expect(typeof inputs.gateway.url.pattern).toBe("string");
+    expect(inputs.gateway.url.pattern.length).toBeGreaterThan(0);
+  });
+
+  test("declares one input per memory and carries each ID into the agent's environment", () => {
+    const toml = pack([{ name: "agentMemory" }, { name: "notes" }]);
+    expect(toml.inputs.memory.agentMemory.id.from).toBe("env:MEMORY_AGENTMEMORY_ID");
+    expect(toml.inputs.memory.notes.id.from).toBe("env:MEMORY_NOTES_ID");
+    expect(toml.agent.env).toEqual({
+      MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
+      MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
+    });
+  });
+
+  test("has no agent.env when the project has no memory", () => {
+    expect(pack([]).agent).toBeUndefined();
   });
 });
