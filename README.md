@@ -238,7 +238,7 @@ ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
 
 `build` and `deploy` read the box profile as box resolves it, with `box profile show
-.box/profile.toml --full`, so they need `box` on your `PATH`.
+.box/profile.toml --format json`, so they need a `box` on your `PATH` that has it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
 the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and

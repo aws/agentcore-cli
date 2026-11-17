@@ -4,8 +4,16 @@ import { parseResolvedProfile, profilePlaces, profilePolicyFiles } from "./profi
 describe("parseResolvedProfile", () => {
   test("reads [egress] and [mcp] of Box's resolved box.toml, and keeps the profile's policy files", () => {
     const { profile, failures } = parseResolvedProfile(
-      'name = "demo-preview"\n\n[egress.bedrock]\ndestinations = ["bedrock-runtime.eu-west-1.amazonaws.com"]\n\n' +
-        '[egress.bedrock.secret]\nref = "aws://default"\n\n[mcp.docs]\ndestinations = ["docs.example.com"]\ntype = "http"\n',
+      {
+        name: "demo-preview",
+        egress: {
+          bedrock: {
+            destinations: ["bedrock-runtime.eu-west-1.amazonaws.com"],
+            secret: { ref: "aws://default" },
+          },
+        },
+        mcp: { docs: { destinations: ["docs.example.com"], type: "http" } },
+      },
       ["policy.dw"],
     );
 
@@ -24,17 +32,17 @@ describe("parseResolvedProfile", () => {
 
   test.each([
     [
-      "egress = 3",
+      { egress: 3 },
       "Box resolves `egress` in this profile to a value that is not a table. Write each entry " +
         "as a table, such as [egress.github].",
     ],
     [
-      "[egress",
-      "Build cannot read the settings that Box resolves this profile to (incomplete " +
-        "key-value: cannot find end of key). Update Box, then retry.",
+      { mcp: ["docs"] },
+      "Box resolves `mcp` in this profile to a value that is not a table. Write each entry " +
+        "as a table, such as [mcp.github].",
     ],
-  ])("fails a box.toml it cannot read, at the profile: %s", (text, reason) => {
-    expect(parseResolvedProfile(text, []).failures).toEqual([
+  ])("fails a box.toml it cannot read, at the profile: %j", (table, reason) => {
+    expect(parseResolvedProfile(table, []).failures).toEqual([
       { code: "INVALID_PROFILE", reason, place: ".box/profile.toml" },
     ]);
   });

@@ -62,9 +62,11 @@ class RegionalBoxProfileResolver extends FakeBoxProfileResolver {
       // Box refuses a profile that is not TOML; build reports that failure itself.
     }
     const host = (name: string) => `bedrock-runtime.${name}.amazonaws.com`;
+    const moved = (text: string) => text.replaceAll(host("us-west-2"), host(region));
     return {
-      boxToml: answer.boxToml.replaceAll(host("us-west-2"), host(region)),
-      policy: answer.policy.replaceAll(host("us-west-2"), host(region)),
+      ...answer,
+      boxToml: JSON.parse(moved(JSON.stringify(answer.boxToml))) as Record<string, unknown>,
+      policy: moved(answer.policy),
     };
   }
 }
@@ -514,7 +516,7 @@ describe("build reads the box profile as box resolves it", () => {
       path(root, ".box/profile.toml"),
       profile.replace('"box/bedrock"]', '"box/bedrock", "box/anthropic"]'),
     );
-    // `box profile show --full` resolves box/anthropic to this route, with its secret.
+    // `box profile show --format json` resolves box/anthropic to this route, with its secret.
     box.answer = shows({
       anthropic: {
         destinations: ["api.anthropic.com"],
@@ -541,7 +543,7 @@ describe("build reads the box profile as box resolves it", () => {
   test("stops with box's error when box refuses the profile, and writes nothing", async () => {
     const { manager, root, counter, box } = await strandsProject();
     box.answer = new InvalidEnvironmentError(
-      "`box profile show .box/profile.toml --full` failed in the project (exit code 1)",
+      "`box profile show .box/profile.toml --format json` failed in the project (exit code 1)",
     );
     const spec = await text(root, SPEC);
 
