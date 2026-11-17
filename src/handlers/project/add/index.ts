@@ -11,6 +11,7 @@ import { createAddOnlineEvalHandler } from "./online-eval";
 import { createAddEvaluatorHandler } from "./evaluator";
 import { createAddGatewayHandler } from "./gateway";
 import { createAddGatewayTargetHandler } from "./gateway-target";
+import { createAddKnowledgeBaseHandler } from "./knowledge-base";
 import { createAddGatewayConnectorHandler } from "./gateway-connector";
 import { createAddPolicyEngineHandler } from "./policy-engine";
 import { createAddPolicyHandler } from "./policy";
@@ -28,6 +29,7 @@ export function createAddProjectResourceHandler(
     "runtime",
     "runtime-endpoint",
     "memory",
+    "knowledge-base",
     "gateway",
     "gateway-target",
     "gateway-connector",
@@ -65,6 +67,7 @@ export function createAddProjectResourceHandler(
   projectAdd.handler(createAddPolicyHandler(config));
   projectAdd.handler(createAddCredentialsHandler(config, core));
   projectAdd.handler(createAddMemoryHandler(config));
+  projectAdd.handler(createAddKnowledgeBaseHandler(config));
   projectAdd.handler(createAddEvaluatorHandler(config, core));
   projectAdd.handler(createAddOnlineEvalHandler(config));
   projectAdd.handler(createAddConfigBundleHandler(config));
