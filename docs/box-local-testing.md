@@ -149,18 +149,18 @@ bun run "$CLI" build
 grep AGENTCORE_CREDENTIAL_GITHUB agentcore/.env.local
 ```
 
-If you added the `github` egress credential in step 4, this first standalone `build` warns that it
-stood in a placeholder, then finishes:
+If you added the `github` egress credential in step 4, this first standalone `build` warns that the
+credential is unresolved, then finishes:
 
 ```
-build used placeholder values for credentials not yet provisioned: github. Run 'agentcore deploy' to provision them; the deployed stack uses the real values.
+build left a credential unresolved: github. The first 'agentcore deploy' provisions it; the build template references it as a deploy-time parameter.
 ```
 
 An `env://` credential must exist in AgentCore Identity before synthesis can resolve its ARN, and
-only `deploy` provisions it. So before the first deploy, build synthesizes a throwaway template with
-a placeholder ARN for `github` instead of failing. `deploy` provisions the credential and
-re-synthesizes with the real ARN, so the placeholder never reaches a deployed stack. After the first
-deploy, `build` resolves the real ARN and warns no more.
+only `deploy` provisions it. So before the first deploy, build synthesizes the template with a
+CloudFormation parameter for the `github` credential ARN instead of failing. `deploy` provisions the
+credential and re-synthesizes with the real ARN. After the first deploy, `build` resolves the real
+ARN and warns no more.
 
 ## 7. Deploy
 
@@ -204,7 +204,7 @@ bun run "$CLI" deploy
   dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in
   the CLI checkout (see "Install the CLI's dependencies").
 - **Build says it cannot resolve credential "github" before its first deployment.** Your generated
-  CDK app predates placeholder support. Regenerate the project with this CLI (step 3) and relink the
+  CDK app predates deploy-time parameter support. Regenerate the project with this CLI (step 3) and relink the
   local L3 (step 5), or run `agentcore deploy`, which provisions the credential and builds. See step 6.
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set

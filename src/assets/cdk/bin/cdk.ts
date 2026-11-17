@@ -5,8 +5,8 @@ import { AgentCoreStack } from '../lib/cdk-stack';
 
 try {
   // `agentcore build` sets this so a project can synthesize a template before its first deploy
-  // provisions its credential providers. Any credential deployed state lacks then resolves to a
-  // placeholder ARN instead of throwing. Deploy does not set it, so a missing credential still fails.
+  // provisions its credential providers. A credential deployed state lacks then renders as a
+  // CloudFormation parameter instead of throwing. Deploy does not set it, so a missing credential still fails.
   const allowUnresolvedCredentials = process.env.AGENTCORE_BUILD_ALLOW_UNRESOLVED_CREDENTIALS === '1';
   // The AgentCore CLI runs this app from agentcore/cdk/; readAgentCoreProject walks up to agentcore/.
   const project = readAgentCoreProject();

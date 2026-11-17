@@ -416,7 +416,7 @@ describe("CdkBackend.build", () => {
     );
   });
 
-  test("tells the vended app to stand in placeholders for undeployed credentials", async () => {
+  test("tells the vended app to render undeployed credentials as deploy-time parameters", async () => {
     const input = await project();
     const subject = harness();
 
@@ -445,8 +445,8 @@ describe("CdkBackend.build", () => {
     expect(events).toContainEqual({
       type: "warning",
       message:
-        "build used placeholder values for credentials not yet provisioned: github, openai. " +
-        "Run 'agentcore deploy' to provision them; the deployed stack uses the real values.",
+        "build left credentials unresolved: github, openai. " +
+        "The first 'agentcore deploy' provisions them; the build template references them as a deploy-time parameter.",
     });
   });
 
@@ -504,7 +504,7 @@ describe("CdkBackend.deploy", () => {
     expect(subject.templateLoads()).toBe(0);
   });
 
-  test("keeps strict credential resolution: no placeholder env flag on the deploy synth", async () => {
+  test("keeps strict credential resolution: no build env flag on the deploy synth", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
     const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });

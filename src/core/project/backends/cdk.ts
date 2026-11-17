@@ -99,10 +99,10 @@ type StackDescriber = typeof describeStack;
 const MAX_ERROR_OUTPUT_LINES = 20;
 
 /**
- * Env var the vended CDK app reads to synthesize with placeholder ARNs for credentials deployed
- * state lacks, instead of throwing. `build` sets it so a project can synthesize before its first
- * deploy provisions the credential providers; `deploy` never sets it, so a missing credential still
- * fails deploy. The vended `bin/cdk.ts` reads the same literal.
+ * Env var the vended CDK app reads to render a credential's ARN that deployed state lacks as a
+ * CloudFormation parameter, instead of throwing. `build` sets it so a project can synthesize before
+ * its first deploy provisions the credential providers; `deploy` never sets it, so a missing
+ * credential still fails deploy. The vended `bin/cdk.ts` reads the same literal.
  */
 const BUILD_ALLOW_UNRESOLVED_CREDENTIALS_ENV = "AGENTCORE_BUILD_ALLOW_UNRESOLVED_CREDENTIALS";
 
@@ -276,8 +276,8 @@ export class CdkBackend implements ProjectBackend {
         const lines = createLineSplitter(emit);
         return this.runner(synthCommand(this.assemblyDirectory(project)), {
           cwd: this.cdkDirectory(project),
-          // Build synthesizes before its first deploy, so it lets the vended app stand in
-          // placeholder ARNs for credentials deployed state lacks. Deploy keeps strict resolution.
+          // Build synthesizes before its first deploy, so it lets the vended app render an
+          // unresolved credential ARN as a parameter. Deploy keeps strict resolution.
           env: explainUndeployedCredentials
             ? { ...this.processEnv, [BUILD_ALLOW_UNRESOLVED_CREDENTIALS_ENV]: "1" }
             : undefined,
@@ -306,24 +306,24 @@ export class CdkBackend implements ProjectBackend {
     project: Project,
     input: BuildBackendInput,
   ): AsyncGenerator<ProjectEvent, void> {
-    const placeholdered = await this.undeployedCredentialNames(project);
+    const unresolved = await this.undeployedCredentialNames(project);
     yield* this.synthesize(project, true, input.boxNetworks);
-    if (placeholdered.length > 0) {
-      const one = placeholdered.length === 1;
+    if (unresolved.length > 0) {
+      const one = unresolved.length === 1;
       yield {
         type: "warning",
         message:
-          `build used placeholder values for ${one ? "credential" : "credentials"} not yet provisioned: ` +
-          `${placeholdered.join(", ")}. Run 'agentcore deploy' to provision ${one ? "it" : "them"}; ` +
-          `the deployed stack uses the real values.`,
+          `build left ${one ? "a credential" : "credentials"} unresolved: ${unresolved.join(", ")}. ` +
+          `The first 'agentcore deploy' provisions ${one ? "it" : "them"}; the build template references ` +
+          `${one ? "it" : "them"} as a deploy-time parameter.`,
       };
     }
   }
 
   /**
    * The names of credentials the project declares that no deployment target has provisioned yet.
-   * These are the credentials build synthesizes with a placeholder ARN. Empty once every declared
-   * credential has a provider ARN in deployed state (that is, after the first deploy).
+   * These are the credentials a gateway synthesizes as a deploy-time parameter. Empty once every
+   * declared credential has a provider ARN in deployed state (that is, after the first deploy).
    */
   private async undeployedCredentialNames(project: Project): Promise<string[]> {
     const declared = (project.spec.credentials ?? []).map((credential) => credential.name);
