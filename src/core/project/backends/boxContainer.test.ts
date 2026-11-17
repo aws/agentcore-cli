@@ -91,6 +91,7 @@ describe("stageBoxContainers", () => {
 
     expect(versions).toEqual(["2.0.0"]);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    // The Runtime profile is rendered from agentcore.json.
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
       renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
     );

@@ -151,19 +151,6 @@ export async function stageBoxContainers(
 }
 
 /**
- * The runtimes whose image runs the agent in a box but whose agentcore.json still turns OpenTelemetry
- * on. The image does not run `opentelemetry-instrument`, so these send no traces.
- */
-export function boxedContainersWithOtel(project: Project): string[] {
-  return project.spec.runtimes
-    .filter(
-      (runtime) =>
-        imageCopiesBox(project.rootPath, runtime) && (runtime.instrumentation?.enableOtel ?? true),
-    )
-    .map((runtime) => runtime.name);
-}
-
-/**
  * Whether a runtime runs its agent in a box on AgentCore Runtime: a CodeZip
  * runtime whose entry point is the box start script, or a container runtime
  * whose Dockerfile copies `.box-dist/`.
