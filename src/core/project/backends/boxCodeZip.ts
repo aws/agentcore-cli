@@ -20,7 +20,7 @@ import { assertStartScriptCopiesPolicyFiles } from "./boxStaging";
 export async function stageBoxCodeZip(
   project: Project,
   networks: readonly BoxNetwork[],
-  box: () => Promise<BoxLinuxBuild>,
+  box: (version: string | undefined) => Promise<BoxLinuxBuild>,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
     (runtime) => runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint),
@@ -29,6 +29,8 @@ export async function stageBoxCodeZip(
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
+    // A CodeZip deploy has start.sh carry the deployed resources, not the box/agentcore pack.
+    container: false,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,
@@ -43,10 +45,16 @@ export async function stageBoxCodeZip(
       networks.find((network) => network.runtime === runtime.name)?.policyFiles ?? [],
     );
   }
-  const build = await box();
+  // One build for each box version the runtimes name, so each downloads once.
+  const builds = new Map<string | undefined, BoxLinuxBuild>();
+  for (const runtime of runtimes) {
+    const version = runtime.box?.version;
+    if (!builds.has(version)) builds.set(version, await box(version));
+  }
 
   for (const { runtime, dist } of staged) {
     const entry = runtimes.find(({ name }) => name === runtime)!;
+    const build = builds.get(entry.box?.version)!;
     const folder = join(project.rootPath, ...dist.split("/"));
     rmSync(folder, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });

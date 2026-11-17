@@ -1,9 +1,6 @@
 FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
 
-# curl downloads box from the box release below.
-RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
 
@@ -24,39 +21,44 @@ ENV UV_SYSTEM_PYTHON=1 \
 
 RUN useradd -m -u 1000 bedrock_agentcore
 
+# box, its two helpers and its packs, from the public box release (Linux arm64). The CLI names the
+# release in box-release.env, from box.version in agentcore.json (else the box release it pins),
+# with the archive's SHA-256, so a changed asset fails the build. `agentcore dev` stages the folder
+# as .box-dev/ and names it with BOX_DIST, so it never overwrites what build and deploy staged.
+# Before the app is copied, so a code change does not download box again.
+ARG BOX_DIST=.box-dist
+COPY ${BOX_DIST}/box-release.env /tmp/box-release.env
+RUN . /tmp/box-release.env \
+    && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${BOX_ASSET}" \
+    && echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/box && tar -xzf /tmp/box.tar.gz -C /opt/box && rm /tmp/box.tar.gz /tmp/box-release.env
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY --chown=bedrock_agentcore:bedrock_agentcore . .
 RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
-USER bedrock_agentcore
-
-# box, from the box release (Linux arm64): download the archive from its public GitHub release, check
-# its pinned SHA-256 and unpack box, its two helpers and its packs into /opt/box. The box profile
-# and the policy files it names come from .box-dist/, which dev, build and deploy stage: dev the
-# project's .box/profile.toml, build and deploy the AgentCore Runtime profile. The folder is copied
-# whole, so each policy file stays beside the profile. start.sh runs box with the profile's path,
-# outside /app, the workspace.
-USER root
-ARG BOX_REPO={{box.repo}}
-ARG BOX_VERSION={{box.version}}
-ARG BOX_SHA256={{box.sha256}}
+# The box profile, its policy files, and the generated box/agentcore pack, which build and deploy
+# stage in the box dist folder; dev stages the project's .box/profile.toml there. The profile reads
+# the gateway URL and the deployed resources from the environment through the pack and signs with a
+# bare `aws://`, so the image runs `box run` directly, with no start script. box requires the profile
+# be owned by the agent and writable only by it, and outside /app; the generated pack joins box's own
+# packs beside the binary.
+COPY --chown=bedrock_agentcore:bedrock_agentcore ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/
 RUN set -eu; \
-    curl -fsSL --retry 3 -o /tmp/box.tar.gz \
-      "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/box-v${BOX_VERSION}-aarch64-unknown-linux-gnu.tar.gz"; \
-    echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -; \
-    mkdir -p /opt/box; \
-    tar -C /opt/box -xzf /tmp/box.tar.gz --no-same-owner; \
-    rm /tmp/box.tar.gz; \
-    /opt/box/box --version
-COPY .box-dist/ /opt/box/
-COPY start.sh /opt/box/
-# box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
-# /app/.box-dist is not the agent's, so it goes.
-RUN rm -rf /app/.box-dist \
-    && chmod 0755 /opt/box/start.sh \
-    && chown bedrock_agentcore:bedrock_agentcore /app
+    if [ -d /home/bedrock_agentcore/box-profile/resources ]; then \
+      cp -a /home/bedrock_agentcore/box-profile/resources/. /opt/box/resources/; \
+      rm -rf /home/bedrock_agentcore/box-profile/resources; \
+    fi; \
+    rm -f /home/bedrock_agentcore/box-profile/box-release.env; \
+    chmod 0700 /home/bedrock_agentcore/box-profile; \
+    find /home/bedrock_agentcore/box-profile -type f -exec chmod 0600 {} +; \
+    rm -rf /app/.box-dist /app/.box-dev; \
+    /opt/box/box --version; \
+    chown bedrock_agentcore:bedrock_agentcore /app
 USER bedrock_agentcore
 
 # AgentCore Runtime service contract ports
@@ -66,5 +68,5 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
-# start.sh starts box in /app; box listens on 8080 and runs the agent in its sandbox on 8081.
-ENTRYPOINT ["/opt/box/start.sh"]
+# box starts in /app, listens on 8080 and runs the agent in its sandbox on 8081.
+ENTRYPOINT ["/opt/box/box", "run", "/home/bedrock_agentcore/box-profile/profile.toml", "--no-banner"]

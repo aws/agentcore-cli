@@ -2,10 +2,14 @@ import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "../source";
 import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtime/types";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
+import { isBoxedContainer } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
-import { BOX_RELEASE } from "../backends/boxRelease";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
-import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
+import type {
+  EnvLocalEntry,
+  ModelProvider,
+  ScaffoldRuntimeInput,
+} from "../../../handlers/project/types";
 import {
   credentialEnvVarName,
   credentialProviderNameEnvVarName,
@@ -29,12 +33,23 @@ type ModelProviderTemplateConfig = {
   envEntries: EnvLocalEntry[];
 };
 
+/**
+ * The project credential that holds a scaffolded runtime's model provider API
+ * key. The box profile names its variable, so both must build it the same way.
+ */
+export function modelProviderCredentialName(
+  runtimeName: string,
+  modelProvider: ModelProvider | undefined,
+): string {
+  return `${runtimeName}${modelProvider}ApiKey`;
+}
+
 function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProviderTemplateConfig {
   const { modelProvider, apiKey } = input.scaffoldRuntimeInput;
   if (apiKey === undefined) {
     return { templateRenderContext: { identityProviders: [] }, spec: {}, envEntries: [] };
   }
-  const credentialName = `${input.name}${modelProvider}ApiKey`;
+  const credentialName = modelProviderCredentialName(input.name, modelProvider);
   const envVarName = credentialEnvVarName(credentialName);
   const providerNameEnvVarName = credentialProviderNameEnvVarName(credentialName);
   return {
@@ -117,6 +132,8 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(scaffoldRuntimeInput.framework === "bma" && {
       bedrockManagedAgents: true,
     }),
+    // The boxed container's image does not run opentelemetry-instrument, so say so in agentcore.json.
+    ...(isBoxedContainer(scaffoldRuntimeInput) && { instrumentation: { enableOtel: false } }),
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
@@ -268,8 +285,6 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       enableOtel: true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
-      // The box release the container Dockerfile installs.
-      box: { repo: BOX_RELEASE.repo, version: BOX_RELEASE.version, sha256: BOX_RELEASE.box.sha256 },
     };
     const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(

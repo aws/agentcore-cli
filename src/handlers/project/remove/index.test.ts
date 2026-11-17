@@ -793,13 +793,13 @@ describe("project remove in a Box project", () => {
     expect(await projectSpec(projectRoot)).not.toHaveProperty("projectType");
   });
 
-  test("remove all removes projectType with the gateway entries", async () => {
+  test("remove all keeps projectType, so a runtime added later gets a Box gateway", async () => {
     const projectRoot = await boxProject();
 
     await run(["remove", "all", "--yes"]);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec).not.toHaveProperty("projectType");
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
   });
 });

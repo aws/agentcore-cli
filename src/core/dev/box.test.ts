@@ -8,6 +8,14 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
 import { BoxDevRunner } from "./box";
 
+/** The line of a CodeZip profile that names its runtime's folder. */
+const PROFILE = 'read = ["${{ workspace }}/app/agent"]\n';
+
+const TRACES_NOTICE = {
+  type: "status",
+  message: "Traces are not collected when the agent runs in a box",
+} as const;
+
 const tempDirectories: string[] = [];
 
 afterEach(async () => {
@@ -23,13 +31,14 @@ async function temp(prefix: string): Promise<string> {
 }
 
 /** A project named `Demo` that holds its box profile in .box/profile.toml when `profiled`. */
-async function scene(profiled: boolean) {
+async function scene(profiled: boolean, releaseBox?: string) {
   const projectRoot = await temp("agentcore-box-project-");
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
   if (profiled) {
     await mkdir(join(projectRoot, ".box"));
-    await writeFile(join(projectRoot, ".box", "profile.toml"), "");
+    await writeFile(join(projectRoot, ".box", "profile.toml"), PROFILE);
+    await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
   }
 
   const calls: { command: string[]; options: StreamProcessOptions }[] = [];
@@ -44,8 +53,17 @@ async function scene(profiled: boolean) {
       yield { type: "stdout", line: "fallback" };
     },
   };
-  const runner = new BoxDevRunner({ fallback, streamProcess });
-  return { projectRoot, calls, fallbackRuns, runner };
+  // No release build for this machine, so box comes from PATH, unless the test names one.
+  const versions: (string | undefined)[] = [];
+  const runner = new BoxDevRunner({
+    fallback,
+    streamProcess,
+    resolveBox: async (version) => {
+      versions.push(version);
+      return releaseBox;
+    },
+  });
+  return { projectRoot, calls, fallbackRuns, runner, versions };
 }
 
 function input(
@@ -55,7 +73,13 @@ function input(
   entrypoint = "main.py",
 ): DevServerInput {
   return {
-    runtime: { name: "agent", build: "CodeZip", protocol, entrypoint } as ProjectRuntime,
+    runtime: {
+      name: "agent",
+      build: "CodeZip",
+      codeLocation: "app/agent",
+      protocol,
+      entrypoint,
+    } as ProjectRuntime,
     projectRoot,
     port,
     env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318" },
@@ -70,6 +94,59 @@ async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
 }
 
 describe("BoxDevRunner", () => {
+  test("says box is downloading before it waits for a first download", async () => {
+    const projectRoot = await temp("agentcore-box-project-");
+    await mkdir(join(projectRoot, ".box"));
+    await writeFile(join(projectRoot, ".box", "profile.toml"), PROFILE);
+    await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
+    const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
+    const runner = new BoxDevRunner({
+      fallback: { async *run() {} },
+      streamProcess: async function* () {},
+      resolveBox: async (_version, onDownload) => {
+        onDownload("downloading box 1.0.0 for this machine from https://example.com/box.tar.gz");
+        return box;
+      },
+    });
+
+    const events = await collect(runner.run(input(projectRoot)));
+
+    expect(events).toEqual([
+      {
+        type: "status",
+        message: "downloading box 1.0.0 for this machine from https://example.com/box.tar.gz",
+      },
+      TRACES_NOTICE,
+      { type: "status", message: `Starting the agent in a box (${box} run .box/profile.toml)` },
+    ]);
+  });
+
+  test("asks for the box of the runtime's box.version", async () => {
+    const { projectRoot, runner, versions } = await scene(true);
+    const pinned = input(projectRoot);
+    pinned.runtime = { ...pinned.runtime, box: { version: "2.0.0" } };
+
+    await collect(runner.run(pinned));
+    await collect(runner.run(input(projectRoot)));
+
+    expect(versions).toEqual(["2.0.0", undefined]);
+  });
+
+  test("runs the release's box for this machine when it has one", async () => {
+    const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
+    const { projectRoot, calls, runner } = await scene(true, box);
+
+    const events = await collect(runner.run(input(projectRoot)));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      [box, "run", ".box/profile.toml", "--no-banner"],
+    ]);
+    expect(events[1]).toEqual({
+      type: "status",
+      message: `Starting the agent in a box (${box} run .box/profile.toml)`,
+    });
+  });
+
   test("runs the project's box profile from the project folder", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
 
@@ -81,6 +158,7 @@ describe("BoxDevRunner", () => {
     expect(calls[0]!.options.cwd).toBe(projectRoot);
     expect(fallbackRuns).toEqual([]);
     expect(events).toEqual([
+      TRACES_NOTICE,
       { type: "status", message: "Starting the agent in a box (box run .box/profile.toml)" },
       { type: "stdout", line: "Uvicorn running" },
     ]);
@@ -131,25 +209,69 @@ describe("BoxDevRunner", () => {
     expect(fallbackRuns).toHaveLength(0);
   });
 
-  test("expects the dev port of the runtime's protocol", async () => {
+  test("says nothing about traces when dev collects none", async () => {
+    const { projectRoot, runner } = await scene(true);
+
+    const events = await collect(runner.run({ ...input(projectRoot), env: {} }));
+
+    expect(events).not.toContainEqual(TRACES_NOTICE);
+  });
+
+  test("runs another runtime the usual way, since the profile is the first runtime's", async () => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
+    const second = input(projectRoot);
+    second.runtime = {
+      ...second.runtime,
+      name: "second",
+      codeLocation: "app/second",
+    } as ProjectRuntime;
+
+    const events = await collect(runner.run(second));
+
+    expect(calls).toEqual([]);
+    expect(fallbackRuns).toHaveLength(1);
+    expect(events).toEqual([
+      {
+        type: "status",
+        message: expect.stringContaining("is the box profile of another runtime"),
+      },
+      { type: "stdout", line: "fallback" },
+    ]);
+  });
+
+  test("tells the user to run uv sync when the runtime has no .venv", async () => {
     const { projectRoot, calls, runner } = await scene(true);
+    await rm(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
 
-    const error = await collect(runner.run(input(projectRoot, 8080, "MCP"))).catch(
-      (caught) => caught,
-    );
+    const run = collect(runner.run(input(projectRoot)));
 
-    expect(error).toBeInstanceOf(InputValidationError);
-    expect((error as Error).message).toContain("listens on port 8000, but dev chose port 8080");
+    await expect(run).rejects.toBeInstanceOf(ResourceNotFoundError);
+    await expect(run).rejects.toThrow("`uv sync` in app/agent");
     expect(calls).toEqual([]);
   });
 
-  test("refuses a dev port the box does not listen on", async () => {
+  test.each([
+    {
+      name: "expects the dev port of the runtime's protocol",
+      port: 8080,
+      protocol: "MCP",
+      listen: 8000,
+    },
+    {
+      name: "refuses a dev port the box does not listen on",
+      port: 8081,
+      protocol: undefined,
+      listen: 8080,
+    },
+  ] as const)("$name", async ({ port, protocol, listen }) => {
     const { projectRoot, calls, runner } = await scene(true);
 
-    const error = await collect(runner.run(input(projectRoot, 8081))).catch((caught) => caught);
+    const run = collect(runner.run(input(projectRoot, port, protocol)));
 
-    expect(error).toBeInstanceOf(InputValidationError);
-    expect((error as Error).message).toContain("listens on port 8080, but dev chose port 8081");
+    await expect(run).rejects.toBeInstanceOf(InputValidationError);
+    await expect(run).rejects.toThrow(
+      `listens on port ${listen}, but dev chose port ${port}. Free port ${listen}, then retry.`,
+    );
     expect(calls).toEqual([]);
   });
 });

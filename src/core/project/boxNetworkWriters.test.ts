@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getBoxGatewayBedrockEntry } from "../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../handlers/project/box-gateway-test-support";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
@@ -248,7 +248,9 @@ describe("defaultTargetsWriter", () => {
 
 describe("runtimeProfileWriter", () => {
   test("writes the Runtime profile and a byte copy of each policy file beside it", () => {
-    const writer = runtimeProfileWriter([{ runtime: "agent", dist: "app/agent/.box-dist" }]);
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", container: false },
+    ]);
     const models = [network({ policyFiles: ["policy.dw", "rules/extra.dw"] })];
 
     const { files } = run([writer], models);
