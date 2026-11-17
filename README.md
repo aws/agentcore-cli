@@ -244,7 +244,7 @@ directly.
 agentcore create --name MyBoxAgent --template agent-python-strands-container
 cd MyBoxAgent
 AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional
-CDK_DOCKER=finch agentcore deploy --yes
+agentcore deploy --yes
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"My favorite color is teal. Remember it."}'
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"What is my favorite color?"}'
 agentcore logs runtime --name agent --since 15m --query '"[box]"'
