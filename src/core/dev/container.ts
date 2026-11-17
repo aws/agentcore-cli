@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,8 +12,28 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
-import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import {
+  BOX_DEV_DIST,
+  BOX_DIST_ARG,
+  BOX_IMAGE_DIST,
+  imageCopiesBox,
+  imageTakesBoxDistArg,
+  stageBoxImage,
+} from "../project/backends/boxContainer";
+import {
+  boxReleaseFor,
+  resolveBoxLinuxBuild,
+  type BoxLinuxBuild,
+} from "../project/backends/boxRelease";
+import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import { boxProfilePath } from "../project/templates/boxProfile";
+import {
+  BOX_DEV_AWS_REFRESH_MS,
+  resolveDefaultAwsCredentials,
+  writeBoxDevAwsFiles,
+  type BoxDevAwsFiles,
+  type ResolveAwsCredentials,
+} from "./boxAwsCredentials";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
 
@@ -82,6 +102,13 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
+  /**
+   * The Linux box the image runs: the box release of the runtime's `box.version`, downloaded once
+   * into `~/.agentcore/box/`, as build and deploy stage it. Tests inject one.
+   */
+  resolveBox?: (version: string | undefined) => Promise<BoxLinuxBuild>;
+  /** Resolves the credentials a boxed container signs with; the default AWS SDK chain by default. */
+  resolveAwsCredentials?: ResolveAwsCredentials;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -89,12 +116,21 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly resolveBox: (version: string | undefined) => Promise<BoxLinuxBuild>;
+  private readonly resolveAwsCredentials: ResolveAwsCredentials;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
+    this.resolveBox =
+      config.resolveBox ??
+      (async (version) =>
+        resolveBoxLinuxBuild(this.processEnv, {
+          release: await boxReleaseFor(version, this.processEnv),
+        }));
+    this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -152,8 +188,22 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxed = this.stageBox(input, context);
-    const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
+    const boxDist = await this.stageBox(input, context);
+    const boxed = boxDist !== undefined;
+    // The folder dev staged, for a Dockerfile that takes it as a build argument.
+    const boxDistFlags =
+      boxDist === BOX_DEV_DIST ? ["--build-arg", `${BOX_DIST_ARG}=${BOX_DEV_DIST}`] : [];
+    const buildCommand = [
+      tool,
+      "build",
+      "-f",
+      dockerfile,
+      "-t",
+      imageTag,
+      ...buildArgFlags,
+      ...boxDistFlags,
+      ".",
+    ];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
       env: this.processEnv,
@@ -165,13 +215,21 @@ export class ContainerDevRunner implements DevRunner {
         "-t",
         imageTag,
         ...redactedBuildArgFlags,
+        ...boxDistFlags,
         ".",
       ],
       signal: input.signal,
     };
 
     yield { type: "status", message: `Building image with ${tool}` };
-    yield* this.streamProcess(buildCommand, buildOptions);
+    try {
+      yield* this.streamProcess(buildCommand, buildOptions);
+    } finally {
+      // The image holds it now; removed so that no deploy uploads dev's profile.
+      if (boxDist === BOX_DEV_DIST) {
+        rmSync(join(context, BOX_DEV_DIST), { recursive: true, force: true });
+      }
+    }
 
     const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
     const forwardedEnv: Record<string, string> = {};
@@ -185,8 +243,23 @@ export class ContainerDevRunner implements DevRunner {
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }
-    const awsMount = hasAwsConfig ? ["-v", `${this.awsDirectory}:/aws-config:ro`] : [];
-    if (awsMount.length) {
+    // Box in the container signs with the `[default]` profile, which it reads only from the AWS
+    // files, as the image's user. A boxed container gets its own copy of the resolved credentials
+    // as that profile, since that user cannot read ~/.aws; without credentials it gets ~/.aws.
+    const boxAws = boxed
+      ? await writeBoxDevAwsFiles(
+          this.resolveAwsCredentials,
+          forwardedEnv.AWS_REGION ?? forwardedEnv.AWS_DEFAULT_REGION,
+        )
+      : undefined;
+    let awsMount: string[] = [];
+    if (boxAws) {
+      awsMount = boxAws.mounts;
+      Object.assign(forwardedEnv, boxAws.env);
+      // The files hold only `[default]`, so a named profile would find nothing.
+      delete forwardedEnv.AWS_PROFILE;
+    } else if (hasAwsConfig) {
+      awsMount = ["-v", `${this.awsDirectory}:/aws-config:ro`];
       forwardedEnv.AWS_CONFIG_FILE = "/aws-config/config";
       forwardedEnv.AWS_SHARED_CREDENTIALS_FILE = "/aws-config/credentials";
     }
@@ -198,6 +271,7 @@ export class ContainerDevRunner implements DevRunner {
       });
     } catch (error) {
       await rm(envFile, { force: true });
+      await boxAws?.dispose();
       throw error;
     }
     const runCommand = [
@@ -220,7 +294,11 @@ export class ContainerDevRunner implements DevRunner {
       imageTag,
     ];
 
+    if (boxAws) {
+      yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
+    }
     yield { type: "status", message: "Starting container" };
+    const refresh = boxAws ? startRefresh(boxAws) : undefined;
     try {
       yield* this.streamProcess(runCommand, {
         cwd: context,
@@ -228,21 +306,25 @@ export class ContainerDevRunner implements DevRunner {
         signal: input.signal,
       });
     } finally {
+      if (refresh) clearInterval(refresh);
       try {
         await this.stopContainer(tool, containerName, context);
       } finally {
         await rm(envFile, { force: true });
+        await boxAws?.dispose();
       }
     }
   }
 
   /**
-   * Stages box into the build context when the Dockerfile copies `.box-dist/`,
-   * with the project's box profile, and says whether it did. The image then
+   * Stages box into the build context when the Dockerfile copies it, with the project's box
+   * profile and the policy files it names, and returns the folder it staged, or undefined for an
+   * image without box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
+   * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private stageBox(input: DevServerInput, context: string): boolean {
-    if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
+  private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
+    if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
@@ -251,8 +333,17 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
-    return true;
+    const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
+      ? BOX_DEV_DIST
+      : BOX_IMAGE_DIST;
+    stageBoxImage(
+      context,
+      readFileSync(profile, "utf8"),
+      boxPolicyFileCopies(input.projectRoot),
+      await this.resolveBox(input.runtime.box?.version),
+      folder,
+    );
+    return folder;
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {
@@ -342,6 +433,18 @@ function ensureBuildContextDockerignore(context: string): string | undefined {
   if (existsSync(dockerignore)) return undefined;
   writeFileSync(dockerignore, BUILD_CONTEXT_DOCKERIGNORE);
   return dockerignore;
+}
+
+/**
+ * Rewrites a boxed container's credentials every BOX_DEV_AWS_REFRESH_MS, so box keeps signing after
+ * temporary credentials expire. A failed refresh keeps the last credentials.
+ */
+function startRefresh(files: BoxDevAwsFiles): ReturnType<typeof setInterval> {
+  const timer = setInterval(() => {
+    files.refresh().catch(() => undefined);
+  }, BOX_DEV_AWS_REFRESH_MS);
+  timer.unref?.();
+  return timer;
 }
 
 function serializeEnvironment(env: Record<string, string>): string {

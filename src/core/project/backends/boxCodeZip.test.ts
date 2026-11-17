@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { InvalidEnvironmentError } from "../../../errors/errors";
-import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
+import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
+import type { BoxLinuxBuild } from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -24,23 +26,28 @@ async function temp(prefix: string): Promise<string> {
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
 
-/** A staging-boxy checkout with an Amazon Linux 2023 build, its packs, and optionally the shim. */
-async function boxSource(options: { ffi?: boolean } = {}): Promise<string> {
-  const source = await temp("box-source-");
-  await mkdir(join(source, "target-al2023", "release"), { recursive: true });
-  for (const binary of BINARIES) {
-    await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
-  }
-  await mkdir(join(source, "resources", "shared", "base"), { recursive: true });
-  await writeFile(join(source, "resources", "shared", "base", "pack.toml"), "[pack]\n");
+/**
+ * A Linux box build laid out as the release cache holds it, and as deploy resolves it: box, its
+ * helpers and its packs in one folder, and optionally the Python 3.14 shim under ffi/.
+ */
+async function linuxBuild(options: { ffi?: boolean } = {}): Promise<BoxLinuxBuild> {
+  const root = await temp("box-build-");
+  for (const binary of BINARIES) await writeFile(join(root, binary), `#!${binary}\n`);
+  await mkdir(join(root, "resources", "shared", "base"), { recursive: true });
+  await writeFile(join(root, "resources", "shared", "base", "pack.toml"), "[pack]\n");
+  const ffi = join(root, "ffi", "PYTHON_3_14");
   if (options.ffi) {
-    await mkdir(join(source, "target-al2023", "ffi"), { recursive: true });
-    await writeFile(join(source, "target-al2023", "ffi", "libffi.so.8"), "ffi");
+    await mkdir(ffi, { recursive: true });
+    await writeFile(join(ffi, "libffi.so.8"), "ffi");
   }
-  return source;
+  return {
+    binaries: root,
+    resources: join(root, "resources"),
+    ffi: options.ffi ? { PYTHON_3_14: ffi } : {},
+  };
 }
 
-async function project(entrypoint: string): Promise<Project> {
+async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Promise<Project> {
   const rootPath = await temp("box-project-");
   await mkdir(join(rootPath, "app", "agent"), { recursive: true });
   return {
@@ -54,6 +61,7 @@ async function project(entrypoint: string): Promise<Project> {
           build: "CodeZip",
           entrypoint,
           codeLocation: "app/agent",
+          runtimeVersion,
           modelProvider: "Bedrock",
         },
       ],
@@ -65,10 +73,10 @@ async function project(entrypoint: string): Promise<Project> {
 
 describe("stageBoxCodeZip", () => {
   test("stages box, its packs, the shim, and the Runtime profile into the code folder", async () => {
-    const source = await boxSource({ ffi: true });
+    const build = await linuxBuild({ ffi: true });
     const demo = await project("start.py");
 
-    expect(stageBoxCodeZip(demo, { AGENTCORE_BOX_SOURCE: source })).toEqual(["agent"]);
+    expect(await stageBoxCodeZip(demo, [], async () => build)).toEqual(["agent"]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     for (const binary of BINARIES) {
@@ -86,42 +94,123 @@ describe("stageBoxCodeZip", () => {
     );
   });
 
+  test("asks for the box of the runtime's box.version", async () => {
+    const build = await linuxBuild({ ffi: true });
+    const demo = await project("start.py");
+    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
+    const versions: (string | undefined)[] = [];
+
+    await stageBoxCodeZip(demo, [], async (version) => {
+      versions.push(version);
+      return build;
+    });
+
+    expect(versions).toEqual(["2.0.0"]);
+  });
+
+  test("ships no shim to a runtime whose Python it was not built for", async () => {
+    const build = await linuxBuild({ ffi: true });
+    const demo = await project("start.py", "PYTHON_3_13");
+
+    await stageBoxCodeZip(demo, [], async () => build);
+
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
+    expect(await Bun.file(join(dist, "ffi", "libffi.so.8")).exists()).toBe(false);
+  });
+
   test("replaces what an earlier deploy staged", async () => {
     const demo = await project("start.py");
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     await mkdir(join(dist, "ffi"), { recursive: true });
     await writeFile(join(dist, "ffi", "stale.so"), "old");
+    const build = await linuxBuild();
 
-    stageBoxCodeZip(demo, { AGENTCORE_BOX_SOURCE: await boxSource() });
+    await stageBoxCodeZip(demo, [], async () => build);
 
     expect(await Bun.file(join(dist, "ffi", "stale.so")).exists()).toBe(false);
     expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
   });
 
-  test("stages nothing for a runtime that does not start box", async () => {
+  test("asks for no box build for a runtime that does not start box", async () => {
     const demo = await project("main.py");
+    const box = mock(async (): Promise<BoxLinuxBuild> => {
+      throw new Error("not asked");
+    });
 
-    // No AGENTCORE_BOX_SOURCE is needed, and nothing is written.
-    expect(stageBoxCodeZip(demo, {})).toEqual([]);
+    expect(await stageBoxCodeZip(demo, [], box)).toEqual([]);
+    expect(box).not.toHaveBeenCalled();
     expect(await Bun.file(join(demo.rootPath, "app", "agent", ".box-dist", "box")).exists()).toBe(
       false,
     );
   });
 
-  test("refuses a runtime that starts box when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("copies each policy file of the model, byte for byte, beside the profile that names it", async () => {
+    const build = await linuxBuild();
     const demo = await project("start.py");
+    await mkdir(join(demo.rootPath, ".box", "rules"), { recursive: true });
+    const bytes = Buffer.from([0x2f, 0x2f, 0x20, 0xe2, 0x9c, 0x93, 0x0d, 0x0a]);
+    await writeFile(join(demo.rootPath, ".box", "policy.dw"), bytes);
+    await writeFile(join(demo.rootPath, ".box", "rules", "extra.dw"), "// extra\n");
+    await writeFile(join(demo.rootPath, "app", "agent", "start.sh"), START_SH);
 
-    expect(() => stageBoxCodeZip(demo, {})).toThrow(InvalidEnvironmentError);
-    expect(() => stageBoxCodeZip(demo, {})).toThrow(/Set AGENTCORE_BOX_SOURCE/);
-  });
+    await stageBoxCodeZip(demo, [model(["policy.dw", "rules/extra.dw"])], async () => build);
 
-  test("names the binary AGENTCORE_BOX_SOURCE lacks", async () => {
-    const source = await boxSource();
-    await rm(join(source, "target-al2023", "release", "strands-box-sock-alias"));
-    const demo = await project("start.py");
-
-    expect(() => stageBoxCodeZip(demo, { AGENTCORE_BOX_SOURCE: source })).toThrow(
-      /has no .*target-al2023\/release\/strands-box-sock-alias/,
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(Buffer.compare(await readFile(join(dist, "policy.dw")), bytes)).toBe(0);
+    expect(await readFile(join(dist, "rules", "extra.dw"), "utf8")).toBe("// extra\n");
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toContain(
+      'policies = ["policy.dw", "rules/extra.dw"]',
     );
   });
+
+  test("stages no policy file and names none when the model has none", async () => {
+    const build = await linuxBuild();
+    const demo = await project("start.py");
+
+    await stageBoxCodeZip(demo, [model([])], async () => build);
+
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).not.toContain("policies");
+  });
+
+  test("refuses an older start.sh before it asks for box, and stages nothing", async () => {
+    const demo = await project("start.py");
+    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await writeFile(
+      join(demo.rootPath, "app", "agent", "start.sh"),
+      "#!/bin/bash\nwrite_profile\n",
+    );
+    const box = mock(async (): Promise<BoxLinuxBuild> => linuxBuild());
+
+    await expect(stageBoxCodeZip(demo, [model(["policy.dw"])], box)).rejects.toThrow(
+      "copies no policy file of .box/profile.toml (policy.dw)",
+    );
+    expect(box).not.toHaveBeenCalled();
+    expect(
+      await Bun.file(join(demo.rootPath, "app", "agent", ".box-dist", "profile.toml")).exists(),
+    ).toBe(false);
+  });
 });
+
+/** The CodeZip start.sh that `agentcore create` writes. */
+const START_SH = readFileSync(
+  join(import.meta.dir, "..", "..", "..", "assets", "templates", "box-codezip", "start.sh"),
+  "utf8",
+);
+
+/** A model of runtime `agent` with the default Memory route and the policy files given. */
+function model(policyFiles: string[]): BoxNetwork {
+  return {
+    runtime: "agent",
+    gateway: "agent-box",
+    region: "us-west-2",
+    hosts: [],
+    credentials: [],
+    policyFiles,
+    grantedActions: [],
+    warnings: [],
+    failures: [],
+  };
+}

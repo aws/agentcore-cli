@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { InputValidationError, InvalidEnvironmentError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
@@ -13,12 +14,15 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import type { BoxLinuxBuild } from "../project/backends/boxRelease";
+import type { ResolveAwsCredentials } from "./boxAwsCredentials";
 import { ContainerDevRunner } from "./container";
 
 type ProcessCall = {
   command: string[];
   options: StreamProcessOptions;
   envFile?: { path: string; contents: string; mode: number };
+  awsCredentials?: { path: string; contents: string; mode: number; folderMode: number };
 };
 
 type StreamBehavior = (
@@ -59,12 +63,24 @@ async function projectRoot(projectRuntime: ProjectRuntime = runtime()): Promise<
   return root;
 }
 
+/** The Linux box a box image gets in tests: its programs and packs, in a temp folder. */
+const FAKE_BOX_ROOT = join(tmpdir(), `agentcore-container-box-${process.pid}`);
+async function fakeBox(): Promise<BoxLinuxBuild> {
+  for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
+    await mkdir(FAKE_BOX_ROOT, { recursive: true });
+    await writeFile(join(FAKE_BOX_ROOT, binary), `#!${binary}\n`);
+  }
+  await mkdir(join(FAKE_BOX_ROOT, "resources", "shared"), { recursive: true });
+  return { binaries: FAKE_BOX_ROOT, resources: join(FAKE_BOX_ROOT, "resources"), ffi: {} };
+}
+
 function harness(
   config: {
     available?: (tool: string, probeArgs?: string[]) => Promise<boolean>;
     stream?: StreamBehavior;
     awsDirectory?: string;
     processEnv?: NodeJS.ProcessEnv;
+    resolveAwsCredentials?: ResolveAwsCredentials;
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -77,10 +93,28 @@ function harness(
       const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
       call.envFile = { path, contents, mode: metadata.mode & 0o777 };
     }
+    const awsFlag = command.findIndex((part) => part.endsWith(":/aws-config/credentials:ro"));
+    if (awsFlag >= 0) {
+      const path = command[awsFlag]!.split(":")[0]!;
+      const [contents, file, folder] = await Promise.all([
+        readFile(path, "utf8"),
+        stat(path),
+        stat(dirname(path)),
+      ]);
+      call.awsCredentials = {
+        path,
+        contents,
+        mode: file.mode & 0o777,
+        folderMode: folder.mode & 0o777,
+      };
+    }
+
     if (config.stream) yield* config.stream(command, options);
   };
+  const boxVersions: (string | undefined)[] = [];
   return {
     calls,
+    boxVersions,
     runner: new ContainerDevRunner({
       streamProcess: fakeStreamProcess,
       toolAvailable:
@@ -89,10 +123,16 @@ function harness(
           return tool === "docker";
         }),
       awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
+      resolveBox: async (version) => {
+        boxVersions.push(version);
+        return fakeBox();
+      },
       processEnv: config.processEnv ?? {
         AWS_ACCESS_KEY_ID: "test-access-key",
         AWS_SECRET_ACCESS_KEY: "test-secret-key",
       },
+      // Never the real chain in a test: none unless the test gives some.
+      resolveAwsCredentials: config.resolveAwsCredentials ?? (async () => undefined),
     }),
   };
 }
@@ -751,39 +791,26 @@ describe("ContainerDevRunner", () => {
   });
 
   describe("with a box image", () => {
-    const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/box /opt/box/\n";
+    const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/profile.toml /opt/box/\n";
 
-    /** A project named `Demo` whose Dockerfile copies .box-dist/, and a box source with a Linux build. */
+    /** A project named `Demo` whose Dockerfile copies .box-dist/. */
     async function boxedScene(
       options: {
-        binaries?: string[];
         profile?: boolean;
         dockerfile?: string;
       } = {},
     ) {
-      const binaries = options.binaries ?? [
-        "box",
-        "strands-box-sock-alias",
-        "strands-box-contain-trampoline",
-      ];
       const projectRuntime = runtime();
       const root = await projectRoot(projectRuntime);
       const context = join(root, projectRuntime.codeLocation);
       await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
       await mkdir(join(root, "agentcore"));
       await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
-      const source = await mkdtemp(join(tmpdir(), "agentcore-container-box-source-"));
-      tempDirectories.push(source);
       if (options.profile ?? true) {
         await mkdir(join(root, ".box"));
         await writeFile(join(root, ".box", "profile.toml"), "# local profile\n");
       }
-      await mkdir(join(source, "target-al2023", "release"), { recursive: true });
-      for (const binary of binaries) {
-        await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
-      }
-      await mkdir(join(source, "resources", "shared"), { recursive: true });
-      return { projectRuntime, root, context, source };
+      return { projectRuntime, root, context };
     }
 
     const credentials = {
@@ -791,15 +818,13 @@ describe("ContainerDevRunner", () => {
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
     };
 
-    test("stages box and the local profile in .box-dist/, and lets box's sandbox run", async () => {
-      const { projectRuntime, root, context, source } = await boxedScene();
-      const { calls, runner } = harness({
-        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
-      });
+    test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, projectRuntime)));
 
-      // The Dockerfile copies .box-dist/, so the build takes no extra build context.
+      // Without build secrets the build is unchanged.
       expect(commandCall(calls, "build").command).toEqual([
         "docker",
         "build",
@@ -809,7 +834,14 @@ describe("ContainerDevRunner", () => {
         imageTag(root),
         ".",
       ]);
-      expect(await readFile(join(context, ".box-dist", "box"), "utf8")).toBe("#!box\n");
+      // box of the pinned release, its packs, and the local profile.
+      expect((await readdir(join(context, ".box-dist"))).sort()).toEqual([
+        "box",
+        "profile.toml",
+        "resources",
+        "strands-box-contain-trampoline",
+        "strands-box-sock-alias",
+      ]);
       expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
         "# local profile\n",
       );
@@ -826,25 +858,159 @@ describe("ContainerDevRunner", () => {
       ]);
     });
 
-    test("runs an image that does not copy box without box's flags, even with a profile", async () => {
-      const { projectRuntime, root, context, source } = await boxedScene({
-        dockerfile: "FROM scratch\n",
+    test("stages a BOX_DIST image in .box-dev/, leaving build and deploy's .box-dist/ alone", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\nARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/\n",
       });
+      await mkdir(join(context, ".box-dist"));
+      await writeFile(join(context, ".box-dist", "profile.toml"), "# runtime profile\n");
+      let staged: string | undefined;
       const { calls, runner } = harness({
-        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
+        processEnv: credentials,
+        stream: async function* (command) {
+          // What docker build sees: dev's folder, while it builds.
+          if (command[1] === "build") {
+            staged = await readFile(join(context, ".box-dev", "profile.toml"), "utf8");
+          }
+          yield* [];
+        },
       });
 
       await collect(runner.run(input(root, projectRuntime)));
 
+      expect(commandCall(calls, "build").command).toEqual([
+        "docker",
+        "build",
+        "-f",
+        "Dockerfile",
+        "-t",
+        imageTag(root),
+        "--build-arg",
+        "BOX_DIST=.box-dev",
+        ".",
+      ]);
+      expect(staged).toBe("# local profile\n");
+      // Removed once built, so no deploy uploads dev's profile.
+      expect(existsSync(join(context, ".box-dev"))).toBe(false);
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# runtime profile\n",
+      );
+      expect(commandCall(calls, "run").command).toContain("--cap-add");
+    });
+
+    test("removes .box-dev/ when the image build fails", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\nARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/\n",
+      });
+      const { runner } = harness({
+        processEnv: credentials,
+        stream: (command) =>
+          command[1] === "build"
+            ? rejectedEvents(new Error("build failed"))
+            : (async function* () {})(),
+      });
+
+      await expect(collect(runner.run(input(root, projectRuntime)))).rejects.toThrow(
+        "build failed",
+      );
+
+      expect(existsSync(join(context, ".box-dev"))).toBe(false);
+    });
+
+    test("stages box of the runtime's box.version", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const { boxVersions, runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, { ...projectRuntime, box: { version: "2.0.0" } })));
+
+      expect(boxVersions).toEqual(["2.0.0"]);
+    });
+
+    test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\n",
+      });
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
-      expect(await Bun.file(join(context, ".box-dist", "box")).exists()).toBe(false);
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+    });
+
+    test("passes box a readable copy of the resolved credentials as profile default", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const awsDirectory = join(root, ".aws");
+      await mkdir(awsDirectory);
+      const { calls, runner } = harness({
+        awsDirectory,
+        processEnv: { AWS_PROFILE: "sandbox", AWS_REGION: "us-west-2" },
+        resolveAwsCredentials: async () => ({
+          accessKeyId: "AKIDEXAMPLE",
+          secretAccessKey: "secret-example",
+          sessionToken: "token-example",
+        }),
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      // Not ~/.aws, which the image's user cannot read when only you may.
+      expect(run.command.join(" ")).not.toContain(`${awsDirectory}:/aws-config`);
+      expect(run.command.some((part) => part.endsWith(":/aws-config/config:ro"))).toBe(true);
+      expect(run.awsCredentials).toMatchObject({
+        contents:
+          "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret-example\n" +
+          "aws_session_token = token-example\n",
+        // Readable by the container's user; the folder keeps other host users out.
+        mode: 0o644,
+        folderMode: 0o700,
+      });
+      const env = parseEnv(run.envFile!.contents);
+      expect(env).toMatchObject({
+        AWS_CONFIG_FILE: "/aws-config/config",
+        AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
+        AWS_REGION: "us-west-2",
+      });
+      // The files hold only [default].
+      expect(env.AWS_PROFILE).toBeUndefined();
+      expect(existsSync(run.awsCredentials!.path)).toBe(false);
+    });
+
+    test("mounts ~/.aws for a box image when no credentials resolve", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const awsDirectory = join(root, ".aws");
+      await mkdir(awsDirectory);
+      const { calls, runner } = harness({ awsDirectory, processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
+    });
+
+    test("leaves an image without box on ~/.aws, without resolving credentials", async () => {
+      const { projectRuntime, root } = await boxedScene({ dockerfile: "FROM scratch\n" });
+      const awsDirectory = join(root, ".aws");
+      await mkdir(awsDirectory);
+      let resolved = 0;
+      const { calls, runner } = harness({
+        awsDirectory,
+        processEnv: credentials,
+        resolveAwsCredentials: async () => {
+          resolved += 1;
+          return { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "secret-example" };
+        },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(resolved).toBe(0);
+      expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
     });
 
     test("refuses a box image when the project has no box profile", async () => {
-      const { projectRuntime, root, source } = await boxedScene({ profile: false });
-      const { calls, runner } = harness({
-        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
-      });
+      const { projectRuntime, root } = await boxedScene({ profile: false });
+      const { calls, runner } = harness({ processEnv: credentials });
 
       const error = await collect(runner.run(input(root, projectRuntime))).catch(
         (caught) => caught,
@@ -853,34 +1019,6 @@ describe("ContainerDevRunner", () => {
       expect(error).toBeInstanceOf(ResourceNotFoundError);
       expect((error as Error).message).toContain("its Dockerfile copies .box-dist/");
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
-    });
-
-    test("says where to point AGENTCORE_BOX_SOURCE when it is unset", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      const { calls, runner } = harness({ processEnv: credentials });
-
-      const error = await collect(runner.run(input(root, projectRuntime))).catch(
-        (caught) => caught,
-      );
-
-      expect(error).toBeInstanceOf(InvalidEnvironmentError);
-      expect((error as Error).message).toContain("Set AGENTCORE_BOX_SOURCE");
-      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
-    });
-
-    test("names the Linux binary the box source lacks", async () => {
-      const { projectRuntime, root, source } = await boxedScene({ binaries: ["box"] });
-      const { runner } = harness({
-        processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
-      });
-
-      const error = await collect(runner.run(input(root, projectRuntime))).catch(
-        (caught) => caught,
-      );
-
-      expect((error as Error).message).toContain(
-        join(source, "target-al2023", "release", "strands-box-sock-alias"),
-      );
     });
   });
 });

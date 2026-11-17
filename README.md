@@ -195,6 +195,63 @@ yourself.
 Note that `agentcore status` reports only the resources `agentcore.json`
 declares, not the ones you add in the stack.
 
+## Running agents in Box (preview)
+
+The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
+Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.2` of
+[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases), pinned with its
+SHA-256 in `src/core/project/backends/boxRelease.ts`. No token or account is needed to download
+it:
+
+- A CodeZip agent's zip carries box. `build` and `deploy` download the release once with `curl`
+  into `~/.agentcore/box/`, check both archives against the pinned SHA-256s, and stage box, its
+  packs and the Python 3.14 ffi shim into the runtime's `.box-dist/`.
+- A container agent's image copies box in while it builds: dev, build and deploy download the same
+  Linux release into `~/.agentcore/box/` and stage box and its packs into the image's
+  `.box-dist/`, which the Dockerfile copies into `/opt/box`. `agentcore dev` builds the image on
+  your machine and `agentcore deploy` builds it in AWS CodeBuild.
+- A CodeZip agent under `agentcore dev` runs on your Mac in the release's macOS arm64 build, which
+  dev downloads once into `~/.agentcore/box/` and runs with its packs beside it. On a machine the
+  release has no build for, dev runs the `box` on your PATH.
+
+Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
+which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.ts`;
+another version takes them from its release's `SHA256SUMS.txt`. To try an unreleased box build,
+publish it as a pre-release with the same file names and set `box.version` to it.
+
+On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
+the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and
+rewrites it every 15 minutes, because box refuses the bare `aws://` that would read the role
+directly.
+
+### Create, run and deploy
+
+```sh
+agentcore create --name MyBoxAgent --template agent-python-strands-container
+cd MyBoxAgent
+AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional
+CDK_DOCKER=finch agentcore deploy --yes
+agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"My favorite color is teal. Remember it."}'
+agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"What is my favorite color?"}'
+agentcore logs runtime --name agent --since 15m --query '"[box]"'
+```
+
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.2`. The
+second answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK`,
+`blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
+`--template agent-python-strands` and skip the container settings.
+
+### Troubleshooting
+
+- `ExpiredTokenException` from `aws` or `deploy`: your AWS credentials expired. Refresh them and
+  run the command again.
+- `curl: (22) The requested URL returned error: 404` in the CodeBuild log, or a deploy error that
+  names the release URL: the pinned version is not published in `mquang-amazon/box-releases`.
+- `SHA-256 ... not the pinned` or `sha256sum: WARNING: 1 computed checksum did NOT match`: the
+  release asset changed after it was pinned. Nothing was installed.
+- `FALLBACK (box run exited with 1)` in the runtime log: box refused its profile. The line above it
+  names the reason.
+
 ## Documentation
 
 - [Command reference](command.md): every command and flag.

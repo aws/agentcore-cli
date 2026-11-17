@@ -32,37 +32,24 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
 /**
- * The region of the Bedrock target, fixed for now. `create` does not know the
- * deploy region (deploy resolves it, per target), so a project deployed
- * elsewhere still calls Bedrock in this region until the target is edited in
- * agentcore.json.
+ * The Bedrock region of the box profile `agentcore create` writes for `agentcore dev`. Build and
+ * deploy write the Box gateway's `bedrock` and `agentcore` targets, and the AgentCore Runtime
+ * profile, for the region they build for instead (see `boxBuildRegion`).
  */
 export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
 
-/**
- * The entry that `agentcore create` declares for a runtime whose agent calls
- * Bedrock: it adds a passthrough target for the Bedrock model endpoint to the
- * runtime's Box gateway, `<runtime>-box`, which the CDK library makes for each
- * runtime of a Box project. The entry has the settings `agentcore add
- * gateway-target` gives one, which are the Box gateway's own. Another model
- * provider's endpoint takes an API key that create has no credential for, so
- * such an agent gets no entry.
- */
-export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway {
-  const region = BOX_GATEWAY_BEDROCK_REGION;
+/** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
+export function getBoxGatewayBedrockTargetSpec(
+  region: string = BOX_GATEWAY_BEDROCK_REGION,
+): AgentCoreGatewayTarget {
   return {
-    ...getBoxGatewayEntry(runtimeName),
-    targets: [
-      {
-        name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
-        targetType: "passthrough",
-        passthrough: {
-          endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
-          protocolType: "CUSTOM",
-        },
-        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
-      },
-    ],
+    name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: {
+      endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+      protocolType: "CUSTOM",
+    },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
   };
 }
 
@@ -88,23 +75,23 @@ export function getBoxGatewayEntry(runtimeName: string): AgentCoreGateway {
  */
 export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
 
-/** The AgentCore data-plane host that the Box gateway's AgentCore target fronts. */
-export const BOX_GATEWAY_AGENTCORE_HOST = `bedrock-agentcore.${BOX_GATEWAY_BEDROCK_REGION}.amazonaws.com`;
+/** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
+export function boxGatewayAgentCoreHost(region: string = BOX_GATEWAY_BEDROCK_REGION): string {
+  return `bedrock-agentcore.${region}.amazonaws.com`;
+}
 
 /**
  * The Box gateway's passthrough target for the AgentCore data plane (Memory),
  * signed with the gateway's role.
  */
-export function getBoxGatewayAgentCoreTargetSpec(): AgentCoreGatewayTarget {
+export function getBoxGatewayAgentCoreTargetSpec(
+  region: string = BOX_GATEWAY_BEDROCK_REGION,
+): AgentCoreGatewayTarget {
   return {
     name: BOX_GATEWAY_AGENTCORE_TARGET_NAME,
     targetType: "passthrough",
-    passthrough: { endpoint: `https://${BOX_GATEWAY_AGENTCORE_HOST}`, protocolType: "CUSTOM" },
-    outboundAuth: {
-      type: "GATEWAY_IAM_ROLE",
-      service: "bedrock-agentcore",
-      region: BOX_GATEWAY_BEDROCK_REGION,
-    },
+    passthrough: { endpoint: `https://${boxGatewayAgentCoreHost(region)}`, protocolType: "CUSTOM" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
   };
 }
 
@@ -382,7 +369,8 @@ export function resolveRuntimeTemplateShortcut(
     // A template with no model provider (an MCP server, BMA) calls no model.
     ...(modelProvider !== undefined &&
       callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
-        boxGatewayEntry: getBoxGatewayBedrockEntry(runtimeName),
+        // Build adds the `bedrock` target, for the region it builds for.
+        boxGatewayEntry: getBoxGatewayEntry(runtimeName),
       }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride

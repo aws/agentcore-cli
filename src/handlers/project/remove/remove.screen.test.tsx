@@ -320,8 +320,8 @@ describe("project remove screen", () => {
 
     await waitForText(r.lastFrame, "all");
     // `all` = the sum of the listed rows: 1 runtime + 1 policy-engine + 1 policy,
-    // plus the agent-box gateway entry and its bedrock gateway-target.
-    expect(r.lastFrame()).toMatch(/all\s+5/);
+    // plus the agent-box gateway entry, which create declares with no target.
+    expect(r.lastFrame()).toMatch(/all\s+4/);
     r.unmount();
   });
 

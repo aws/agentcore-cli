@@ -11,6 +11,8 @@ import type {
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
+import { stageBoxContainers } from "./boxContainer";
+import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -31,6 +33,7 @@ import {
   isBoxProject,
 } from "../../../projectSchemas/project";
 import type {
+  BuildBackendInput,
   DeployBackendInput,
   ProjectBackend,
   ResolveDeployedResourcesBackendInput,
@@ -156,7 +159,7 @@ export type CdkBackendConfig = {
   removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
-  /** The environment AGENTCORE_BOX_SOURCE is read from; process.env by default. */
+  /** The environment box downloads read (HOME for the box cache); process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
 };
 
@@ -213,7 +216,10 @@ export class CdkBackend implements ProjectBackend {
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing
   // toolchain or dependencies fails without having provisioned credentials.
-  private async ensureCdkDependencies(project: Project): Promise<void> {
+  private async ensureCdkDependencies(
+    project: Project,
+    boxNetworks: BuildBackendInput["boxNetworks"],
+  ): Promise<ProjectEvent[]> {
     const cdkDir = this.cdkDirectory(project);
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
@@ -222,15 +228,32 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
-    // The zip carries box, so it is staged before synth packages the code.
-    stageBoxCodeZip(project, this.processEnv);
+    // The zip carries box and the image its box profile, so both are staged before synth packages
+    // the code. The box release downloads only when a CodeZip runtime runs in a box.
+    const events: ProjectEvent[] = [];
+    const box = async (version: string | undefined) => {
+      const release = await boxReleaseFor(version, this.processEnv, { runner: this.runner });
+      return resolveBoxLinuxBuild(this.processEnv, {
+        runner: this.runner,
+        release,
+        onDownload: (url) =>
+          events.push({
+            type: "step",
+            message: boxDownloadMessage(release.version, url, "AgentCore Runtime"),
+          }),
+      });
+    };
+    await stageBoxCodeZip(project, boxNetworks, box);
+    await stageBoxContainers(project, boxNetworks, box);
+    return events;
   }
 
   private async *synthesize(
     project: Project,
     explainUndeployedCredentials: boolean,
+    boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
-    await this.ensureCdkDependencies(project);
+    yield* await this.ensureCdkDependencies(project, boxNetworks);
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
@@ -266,8 +289,11 @@ export class CdkBackend implements ProjectBackend {
     }
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
-    yield* this.synthesize(project, true);
+  public async *build(
+    project: Project,
+    input: BuildBackendInput,
+  ): AsyncGenerator<ProjectEvent, void> {
+    yield* this.synthesize(project, true, input.boxNetworks);
   }
 
   public async *deploy(
@@ -281,7 +307,7 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    await this.ensureCdkDependencies(project);
+    yield* await this.ensureCdkDependencies(project, input.boxNetworks);
     await this.assertBoxGatewayKept(project, input);
 
     // Read before provisioning rewrites the credentials map: it is the only record
@@ -307,7 +333,7 @@ export class CdkBackend implements ProjectBackend {
       resources: { credentials: provisioned },
     });
 
-    yield* this.synthesize(project, false);
+    yield* this.synthesize(project, false, input.boxNetworks);
     const assemblyDirectory = this.assemblyDirectory(project);
     const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
     const options = { assemblyDirectory, credentials, region: target.region };

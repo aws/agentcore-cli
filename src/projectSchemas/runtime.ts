@@ -284,6 +284,11 @@ export const ModelProviderSchema = z.preprocess(
   z.enum(MODEL_PROVIDERS),
 );
 
+/** A box release version, as the tag `v<version>` of the box release names it. */
+export const BoxVersionSchema = z
+  .string()
+  .regex(/^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/, "a box version is letters, digits, '.', '+' and '-'");
+
 export const ProjectRuntimeSchema = z
   .object({
     name: AgentNameSchema,
@@ -312,6 +317,12 @@ export const ProjectRuntimeSchema = z
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
+    /**
+     * The box release a CodeZip runtime that runs its agent in a box uses: `agentcore dev` runs
+     * its build for your machine, and build and deploy ship its Linux build. Absent means the box
+     * release this CLI pins. A container runtime's Dockerfile names its own.
+     */
+    box: z.object({ version: BoxVersionSchema }).optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
     networkConfig: NetworkConfigSchema.optional(),
