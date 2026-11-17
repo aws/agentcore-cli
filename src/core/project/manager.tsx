@@ -113,6 +113,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { boxGatewaysOf, readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -1900,7 +1901,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    return this.backendFor(project).recordedBoxGateways(project, input.target);
+    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), input.target);
   }
 
   public async resolveDeployedResource(

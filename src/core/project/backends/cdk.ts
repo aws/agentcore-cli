@@ -237,10 +237,10 @@ export class CdkBackend implements ProjectBackend {
       return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release,
-        onDownload: (url) =>
+        onDownload: (download) =>
           events.push({
             type: "step",
-            message: boxDownloadMessage(release.version, url, "AgentCore Runtime"),
+            message: boxDownloadMessage(download, "AgentCore Runtime"),
           }),
       });
     };
@@ -495,7 +495,8 @@ export class CdkBackend implements ProjectBackend {
   private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
     if (!dropsBoxGateways(project.spec)) return;
     const { target } = input;
-    const gatewayNames = await this.recordedBoxGateways(project, target.name);
+    const state = await readDeployedState(this.json, project.rootPath);
+    const gatewayNames = boxGatewaysOf(state, target.name);
     if (gatewayNames.length === 0) return;
     const confirmed = await input.confirmBoxGatewayDeletion?.({
       projectName: project.name,
@@ -648,10 +649,6 @@ export class CdkBackend implements ProjectBackend {
       const id = findDeployedResourceId(stack, resource);
       return id ? [{ ...resource, id, target, credentialProvider: credentials }] : [];
     });
-  }
-
-  public async recordedBoxGateways(project: Project, targetName: string): Promise<string[]> {
-    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), targetName);
   }
 
   public async resolveProjectResources(

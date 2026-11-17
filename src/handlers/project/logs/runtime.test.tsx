@@ -88,9 +88,6 @@ function backend(options: { deployed?: boolean } = {}) {
     async resolveProjectResources() {
       throw new Error("project log resolves deployed resources, not project resources");
     },
-    async recordedBoxGateways() {
-      return [];
-    },
   };
   return { calls, value };
 }

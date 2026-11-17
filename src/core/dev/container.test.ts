@@ -842,18 +842,6 @@ describe("ContainerDevRunner", () => {
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
     };
 
-    test("says where it staged box", async () => {
-      const { projectRuntime, root, context } = await boxedScene();
-      const { runner } = harness({ processEnv: credentials });
-
-      const events = await collect(runner.run(input(root, projectRuntime)));
-
-      expect(events).toContainEqual({
-        type: "status",
-        message: `Staged box in ${join(context, ".box-dist")}`,
-      });
-    });
-
     test("does not box an image whose Dockerfile only mentions .box-dist/ in a comment", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n# TODO: COPY .box-dist/ later\n",

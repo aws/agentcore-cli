@@ -51,7 +51,7 @@ export class BoxDevRunner implements DevRunner {
         const release = await boxReleaseFor(version, process.env);
         return resolveBoxDevBinary(process.env, {
           release,
-          onDownload: (url) => onDownload(boxDownloadMessage(release.version, url, "this machine")),
+          onDownload: (download) => onDownload(boxDownloadMessage(download, "this machine")),
         });
       });
   }

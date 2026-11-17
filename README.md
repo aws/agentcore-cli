@@ -199,13 +199,24 @@ declares, not the ones you add in the stack.
 
 The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
 Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.2` of
-[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases), pinned with its
-SHA-256 in `src/core/project/backends/boxRelease.ts`. No token or account is needed to download
-it:
+[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
+is needed to download it.
 
-- A CodeZip agent's zip carries box. `build` and `deploy` download the release once with `curl`
-  into `~/.agentcore/box/`, check both archives against the pinned SHA-256s, and stage box, its
-  packs and the Python 3.14 ffi shim into the runtime's `.box-dist/`.
+`src/core/project/backends/boxRelease.json` pins two releases on their own, each with its
+repository, version and SHA-256s:
+
+- `box`: the Linux build that ships to AgentCore Runtime, and the builds `agentcore dev` runs.
+- `ffi`: the Python ffi shim a CodeZip agent needs in a box, by Python version. It can come from
+  another repository or version than box.
+
+`bun scripts/bump-box-release.ts --box <version>` (or `--ffi <version>`, with `--box-repo` or
+`--ffi-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
+
+How each command uses it:
+
+- A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
+  `~/.agentcore/box/` and the ffi shim into `~/.agentcore/box-ffi/`, check each against its pinned
+  SHA-256, and stage box, its packs and the shim into the runtime's `.box-dist/`.
 - A container agent's image copies box in while it builds: dev, build and deploy download the same
   Linux release into `~/.agentcore/box/` and stage box and its packs into the image's
   `.box-dist/`, which the Dockerfile copies into `/opt/box`. `agentcore dev` builds the image on
@@ -215,8 +226,9 @@ it:
   release has no build for, dev runs the `box` on your PATH.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
-which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.ts`;
-another version takes them from its release's `SHA256SUMS.txt`. To try an unreleased box build,
+which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
+another version takes them from its release's `SHA256SUMS.txt`. `box.version` picks box only: the
+ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
 
 `build` and `deploy` read the box profile as box resolves it, with `box profile show
