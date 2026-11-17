@@ -351,7 +351,7 @@ export class ContainerDevRunner implements DevRunner {
     // CLI answers `build --help` even when its engine is down, so a Finch user sets this.
     const chosen = this.processEnv.AGENTCORE_CONTAINER_TOOL;
     if (chosen) {
-      if (!(CONTAINER_TOOLS as readonly string[]).includes(chosen)) {
+      if (!isContainerTool(chosen)) {
         throw new InputValidationError(
           `AGENTCORE_CONTAINER_TOOL is '${chosen}'; use ${CONTAINER_TOOLS.join(", ")}.`,
         );
@@ -361,7 +361,7 @@ export class ContainerDevRunner implements DevRunner {
         throw new MissingToolError(chosen, CONTAINER_RUNTIME_INSTALL_HINT);
       }
       signal.throwIfAborted();
-      return chosen as ContainerTool;
+      return chosen;
     }
     for (const tool of CONTAINER_TOOLS) {
       const hasVersion = await this.toolAvailable(tool);
@@ -423,9 +423,12 @@ export class ContainerDevRunner implements DevRunner {
       env: this.processEnv,
       signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
     })) {
-      // Cleanup output is not shown.
     }
   }
+}
+
+function isContainerTool(value: string): value is ContainerTool {
+  return CONTAINER_TOOLS.some((tool) => tool === value);
 }
 
 function ensureBuildContextDockerignore(context: string): string | undefined {
