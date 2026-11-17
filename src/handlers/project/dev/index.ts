@@ -1,9 +1,11 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import z from "zod";
 import { createInspectorHandler } from "../../../core/dev/inspector/server";
 import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
+import { boxProfilePath, boxWorkloadPort } from "../../../core/project/templates/boxProfile";
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
@@ -466,8 +468,23 @@ async function runRuntimeDev({
           return;
         }
 
-        const uiPort = (await findFreePort(UI_DEFAULT_PORT, input.uiPort, config.checkPort, signal))
-          .port;
+        // On macOS the box refuses to start when another process listens on its agent's port.
+        const boxPorts = existsSync(boxProfilePath(project.rootPath))
+          ? new Set(
+              runtimes
+                .filter(({ build }) => build === "CodeZip")
+                .map(({ protocol }) => boxWorkloadPort(protocol)),
+            )
+          : new Set<number>();
+        const uiPort = (
+          await findFreePort(
+            UI_DEFAULT_PORT,
+            input.uiPort,
+            async (candidate, checkSignal) =>
+              !boxPorts.has(candidate) && config.checkPort(candidate, checkSignal),
+            signal,
+          )
+        ).port;
         const server = await config.startServer(
           createInspectorHandler({
             supervisor,

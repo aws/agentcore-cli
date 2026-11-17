@@ -281,7 +281,7 @@ describe("streamProcess", () => {
     }
   });
 
-  test("finishes when a detached process outside its group keeps the pipes open", async () => {
+  test("finishes when a detached process outside its group keeps the pipes open, with a pipe grace", async () => {
     // Like `finch run`, which hands its stdout and stderr to a shared, longer-lived ssh connection:
     // the child exits, but its pipes stay open in a process that killTree does not reach.
     const holder = await script(
@@ -297,10 +297,29 @@ process.exit(0);
 `,
     );
     const started = Date.now();
-    const events = await collect(streamProcess(["node", holder], { cwd: process.cwd() }));
+    const events = await collect(
+      streamProcess(["node", holder], { cwd: process.cwd(), pipeCloseGraceMs: 1000 }),
+    );
 
     expect(events).toContainEqual({ type: "stdout", line: "done" });
     expect(Date.now() - started).toBeLessThan(3000);
+  });
+
+  test("keeps output a child's descendant prints after the child exits, without a pipe grace", async () => {
+    const parent = await script(
+      "late-output.mjs",
+      `import { spawn } from "node:child_process";
+spawn("sh", ["-c", "sleep 1.5; echo LATE_LINE"], { stdio: ["ignore", "inherit", "inherit"] });
+console.log("early");
+`,
+    );
+
+    const events = await collect(streamProcess(["node", parent], { cwd: process.cwd() }));
+
+    expect(events.map((event) => (event.type === "stdout" ? event.line : ""))).toEqual([
+      "early",
+      "LATE_LINE",
+    ]);
   });
 
   test("kills descendants when the parent exits first", async () => {

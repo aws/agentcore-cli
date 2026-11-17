@@ -73,6 +73,11 @@ export function boxIngressPort(protocol: Protocol | undefined): number {
   return DEV_PORTS[protocol ?? "HTTP"];
 }
 
+/** The port the boxed agent's server listens on inside the box, one above its ingress port. */
+export function boxWorkloadPort(protocol: Protocol | undefined): number {
+  return boxIngressPort(protocol) + 1;
+}
+
 /**
  * The project's box profile, relative to the project root: `box run
  * .box/profile.toml` there runs it. box keeps the agent out of the project's
@@ -94,6 +99,20 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   return (
     (runtime.language === "Python" && runtime.build === "CodeZip") || isBoxedContainer(runtime)
   );
+}
+
+/**
+ * Whether the project's box profile, `profileText`, was written for `runtime`. Create writes one
+ * profile, for the first runtime, and `add` writes none, so a runtime added later has no profile.
+ * A CodeZip profile names its runtime's folder; the container profile runs /app and names none.
+ */
+export function boxProfileIsFor(
+  profileText: string,
+  runtime: { build: string; codeLocation: string },
+): boolean {
+  const codeZip = profileText.includes("${{ workspace }}/app/");
+  if (runtime.build === "Container") return !codeZip;
+  return profileText.includes(`/${runtime.codeLocation}"`);
 }
 
 /** The Strands container template, whose image starts `box run` in /app. */
@@ -343,7 +362,7 @@ export function renderBoxProfile(
   const protocol = runtime.protocol ?? "HTTP";
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
   const ingressPort = boxIngressPort(protocol);
-  const workloadPort = ingressPort + 1;
+  const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
   const codeZipOnRuntime = onRuntime && !container;
@@ -517,7 +536,9 @@ function apiKeyVariable(runtime: ScaffoldRuntimeInput, route: ApiKeyRoute): stri
   if (runtime.apiKey === undefined && route.providerVariable !== undefined) {
     return route.providerVariable;
   }
-  return credentialEnvVarName(modelProviderCredentialName(runtime.runtimeName, runtime.modelProvider));
+  return credentialEnvVarName(
+    modelProviderCredentialName(runtime.runtimeName, runtime.modelProvider),
+  );
 }
 
 /**
