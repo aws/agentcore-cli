@@ -536,7 +536,9 @@ function apiKeyVariable(runtime: ScaffoldRuntimeInput, route: ApiKeyRoute): stri
   if (runtime.apiKey === undefined && route.providerVariable !== undefined) {
     return route.providerVariable;
   }
-  return credentialEnvVarName(modelProviderCredentialName(runtime.runtimeName, runtime.modelProvider));
+  return credentialEnvVarName(
+    modelProviderCredentialName(runtime.runtimeName, runtime.modelProvider),
+  );
 }
 
 /**
