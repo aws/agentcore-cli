@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
   AddResourceOptions,
@@ -111,7 +112,6 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
-import { readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -1620,9 +1620,16 @@ export class FsProjectManager implements ProjectManager {
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
       const updated = {
         ...raw,
-        projectType: edits.spec.projectType,
-        agentCoreGateways: edits.spec.agentCoreGateways,
-        credentials: edits.spec.credentials,
+        agentCoreGateways: patchNamedEntries(
+          raw.agentCoreGateways,
+          project.spec.agentCoreGateways,
+          edits.spec.agentCoreGateways,
+        ),
+        credentials: patchNamedEntries(
+          raw.credentials,
+          project.spec.credentials,
+          edits.spec.credentials,
+        ),
       };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
@@ -1878,8 +1885,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    const state = await readDeployedState(this.json, project.rootPath);
-    return (state.targets[input.target]?.resources?.boxGateways ?? []).map(({ name }) => name);
+    return this.backendFor(project).recordedBoxGateways(project, input.target);
   }
 
   public async resolveDeployedResource(
@@ -2228,6 +2234,45 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/**
+ * The raw agentcore.json array `raw` with the edits that turned the parsed entries `before` into
+ * `after`, matched by name: an entry `after` changed gets only its changed fields, so its other
+ * keys, their order, and fields the schema does not know about survive; a new entry is appended,
+ * and one `after` dropped is removed. Every other entry stays as the user wrote it.
+ */
+function patchNamedEntries<T extends { name: string }>(
+  raw: unknown,
+  before: readonly T[],
+  after: readonly T[],
+): unknown[] {
+  const entries = Array.isArray(raw) ? [...(raw as unknown[])] : [];
+  const nameOf = (entry: unknown) => (entry as { name?: unknown } | null)?.name;
+  const kept = new Set(after.map(({ name }) => name));
+  const patched = entries.filter((entry) => {
+    const name = nameOf(entry);
+    return typeof name !== "string" || kept.has(name) || !before.some((b) => b.name === name);
+  });
+  for (const entry of after) {
+    const old = before.find(({ name }) => name === entry.name);
+    if (old && isDeepStrictEqual(old, entry)) continue;
+    const index = patched.findIndex((candidate) => nameOf(candidate) === entry.name);
+    if (!old || index < 0) {
+      patched.push(entry);
+      continue;
+    }
+    const next: Record<string, unknown> = { ...(patched[index] as object) };
+    const oldFields = old as Record<string, unknown>;
+    const newFields = entry as Record<string, unknown>;
+    for (const key of new Set([...Object.keys(oldFields), ...Object.keys(newFields)])) {
+      if (isDeepStrictEqual(oldFields[key], newFields[key])) continue;
+      if (newFields[key] === undefined) delete next[key];
+      else next[key] = newFields[key];
+    }
+    patched[index] = next;
+  }
+  return patched;
 }
 
 /** A hint that lists the Box gateways of a Box project, for errors about gateway names. */

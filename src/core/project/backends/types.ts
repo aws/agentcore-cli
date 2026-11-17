@@ -55,4 +55,6 @@ export interface ProjectBackend {
     project: Project,
     input: ResolveProjectResourcesBackendInput,
   ): Promise<ResolvedProjectResource[]>;
+  /** The names of the Box gateways the last deploy to `targetName` recorded. */
+  recordedBoxGateways(project: Project, targetName: string): Promise<string[]>;
 }
