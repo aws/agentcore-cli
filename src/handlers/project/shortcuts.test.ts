@@ -3,7 +3,6 @@ import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
-  getBoxGatewayBedrockEntry,
   getBoxGatewayBedrockTargetSpec,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
@@ -11,6 +10,7 @@ import {
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
 } from "./shortcuts";
+import { getBoxGatewayBedrockEntry } from "./box-gateway-test-support";
 
 describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {

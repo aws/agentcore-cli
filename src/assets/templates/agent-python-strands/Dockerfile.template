@@ -1,9 +1,6 @@
 FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
 
-# curl downloads box from the box release below.
-RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
 
@@ -30,44 +27,19 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY --chown=bedrock_agentcore:bedrock_agentcore . .
 RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
-USER bedrock_agentcore
-
-# box, from the box release (Linux arm64): download the archive, check its pinned SHA-256 and
-# unpack box, its two helpers and its packs into /opt/box. The release is private, so a GitHub token
-# that can read it comes in as the BuildKit secret gh_token: on deploy CodeBuild reads it from Secrets
-# Manager (dockerBuildSecrets in agentcore.json), and `agentcore dev` passes your GitHub login. It is
-# never a build arg and never lands in the image. A private release's file downloads only through
-# the GitHub API, by its asset URL; curl does not send the token on to the storage it redirects to.
-# Without the secret, the public download URL is used. The box profile and the policy files it names
-# come from .box-dist/, which dev, build and deploy stage: dev the project's .box/profile.toml, build
-# and deploy the AgentCore Runtime profile. The folder is copied whole, so each policy file stays
-# beside the profile. start.sh runs box with the profile's path, outside /app, the workspace.
-USER root
-ARG BOX_REPO={{box.repo}}
-ARG BOX_VERSION={{box.version}}
-ARG BOX_SHA256={{box.sha256}}
-RUN --mount=type=secret,id=gh_token \
-    set -eu; \
-    asset="box-v${BOX_VERSION}-aarch64-unknown-linux-gnu.tar.gz"; \
-    if [ -s /run/secrets/gh_token ]; then \
-      auth="Authorization: Bearer $(cat /run/secrets/gh_token)"; \
-      url=$(curl -fsSL -H "$auth" -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/${BOX_REPO}/releases/tags/v${BOX_VERSION}" \
-        | /usr/local/bin/python -c 'import json, sys; print(next(a["url"] for a in json.load(sys.stdin)["assets"] if a["name"] == sys.argv[1]))' "$asset"); \
-      curl -fsSL -H "$auth" -H "Accept: application/octet-stream" -o /tmp/box.tar.gz "$url"; \
-    else \
-      curl -fsSL -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${asset}"; \
-    fi; \
-    echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -; \
-    mkdir -p /opt/box; \
-    tar -C /opt/box -xzf /tmp/box.tar.gz --no-same-owner; \
-    rm /tmp/box.tar.gz; \
-    /opt/box/box --version
-COPY .box-dist/ /opt/box/
+# box, from the staged folder, which build and deploy stage: box, its two helpers and its packs, from
+# the box release (Linux arm64) that box.version in agentcore.json names, checked against its
+# SHA-256; and the AgentCore Runtime box profile with the policy files it names. `agentcore dev`
+# stages the project's .box/profile.toml into .box-dev/ instead and names it with BOX_DIST, so it
+# never overwrites what build and deploy staged. The folder is copied whole, so each policy file
+# stays beside the profile. start.sh runs box with the profile's path, outside /app, the workspace.
+ARG BOX_DIST=.box-dist
+COPY ${BOX_DIST}/ /opt/box/
+RUN /opt/box/box --version
 COPY start.sh /opt/box/
-# box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
-# /app/.box-dist is not the agent's, so it goes.
-RUN rm -rf /app/.box-dist \
+# box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copies
+# in /app are not the agent's, so they go.
+RUN rm -rf /app/.box-dist /app/.box-dev \
     && chmod 0755 /opt/box/start.sh \
     && chown bedrock_agentcore:bedrock_agentcore /app
 USER bedrock_agentcore

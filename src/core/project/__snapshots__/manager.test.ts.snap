@@ -72,6 +72,9 @@ exports[`FsProjectManager.create snapshots the Strands project manifest and runt
   ],
   "runtimes": [
     {
+      "box": {
+        "version": "0.1.11-linux-preview.2",
+      },
       "build": "CodeZip",
       "codeLocation": "app/agent_python_strands",
       "entrypoint": "start.py",
@@ -193,6 +196,9 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
   ],
   "runtimes": [
     {
+      "box": {
+        "version": "0.1.11-linux-preview.2",
+      },
       "build": "CodeZip",
       "codeLocation": "app/a2a_python_strands",
       "entrypoint": "start.py",
@@ -231,6 +237,9 @@ exports[`FsProjectManager.create snapshots the LangChain project manifest and ru
   "memories": undefined,
   "runtimes": [
     {
+      "box": {
+        "version": "0.1.11-linux-preview.2",
+      },
       "build": "CodeZip",
       "codeLocation": "app/agent_python_langchain",
       "entrypoint": "start.py",

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getBoxGatewayBedrockEntry } from "../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../handlers/project/box-gateway-test-support";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";

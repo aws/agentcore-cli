@@ -16,6 +16,7 @@ import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { resolveScaffoldHarnessInput } from "./create/index";
 import { readEnvFile } from "../../io/envFile";
+import { BOX_RELEASE } from "../../core/project/backends/boxRelease";
 
 async function run(
   args: string[],
@@ -140,12 +141,30 @@ describe("project create", () => {
   });
 
   test.each([
-    ["agent-python-strands-box", []],
-    ["agent-python-strands-box-container", []],
-    ["agent-python-minimal-box", []],
-    ["agent-python-langchain-box", []],
-    ["a2a-python-strands-box", []],
-    ["agui-python-strands-box", []],
+    ["agent-python-strands", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-container", { version: BOX_RELEASE.version }],
+  ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      template,
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].box).toEqual(box);
+  });
+
+  test.each([
+    ["agent-python-strands", []],
+    ["agent-python-minimal", []],
+    ["mcp-python-fastmcp", undefined],
+    ["empty", undefined],
   ] as const)(
     "create --template %s writes the agent-box entry targets %j to agentcore.json",
     async (template, targetNames) => {
@@ -501,6 +520,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "CodeZip",
+        box: { version: BOX_RELEASE.version },
         entrypoint: "start.py",
         codeLocation: "app/agent",
         runtimeVersion: "PYTHON_3_14",

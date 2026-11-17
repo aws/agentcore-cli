@@ -19,6 +19,7 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import type { BoxLinuxBuild } from "../project/backends/boxRelease";
 import { ContainerDevRunner } from "./container";
 
 type ProcessCall = {
@@ -65,6 +66,17 @@ async function projectRoot(projectRuntime: ProjectRuntime = runtime()): Promise<
   return root;
 }
 
+/** The Linux box a box image gets in tests: its programs and packs, in a temp folder. */
+const FAKE_BOX_ROOT = join(tmpdir(), `agentcore-container-box-${process.pid}`);
+async function fakeBox(): Promise<BoxLinuxBuild> {
+  for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
+    await mkdir(FAKE_BOX_ROOT, { recursive: true });
+    await writeFile(join(FAKE_BOX_ROOT, binary), `#!${binary}\n`);
+  }
+  await mkdir(join(FAKE_BOX_ROOT, "resources", "shared"), { recursive: true });
+  return { binaries: FAKE_BOX_ROOT, resources: join(FAKE_BOX_ROOT, "resources"), ffi: {} };
+}
+
 function harness(
   config: {
     available?: (tool: string, probeArgs?: string[]) => Promise<boolean>;
@@ -86,8 +98,10 @@ function harness(
 
     if (config.stream) yield* config.stream(command, options);
   };
+  const boxVersions: (string | undefined)[] = [];
   return {
     calls,
+    boxVersions,
     runner: new ContainerDevRunner({
       streamProcess: fakeStreamProcess,
       toolAvailable:
@@ -96,6 +110,10 @@ function harness(
           return tool === "docker";
         }),
       awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
+      resolveBox: async (version) => {
+        boxVersions.push(version);
+        return fakeBox();
+      },
       processEnv: config.processEnv ?? {
         AWS_ACCESS_KEY_ID: "test-access-key",
         AWS_SECRET_ACCESS_KEY: "test-secret-key",
@@ -803,7 +821,14 @@ describe("ContainerDevRunner", () => {
         imageTag(root),
         ".",
       ]);
-      expect(await readdir(join(context, ".box-dist"))).toEqual(["profile.toml"]);
+      // box of the pinned release, its packs, and the local profile.
+      expect((await readdir(join(context, ".box-dist"))).sort()).toEqual([
+        "box",
+        "profile.toml",
+        "resources",
+        "strands-box-contain-trampoline",
+        "strands-box-sock-alias",
+      ]);
       expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
         "# local profile\n",
       );
@@ -818,6 +843,74 @@ describe("ContainerDevRunner", () => {
         "--security-opt",
         "systempaths=unconfined",
       ]);
+    });
+
+    test("stages a BOX_DIST image in .box-dev/, leaving build and deploy's .box-dist/ alone", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\nARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/\n",
+      });
+      await mkdir(join(context, ".box-dist"));
+      await writeFile(join(context, ".box-dist", "profile.toml"), "# runtime profile\n");
+      let staged: string | undefined;
+      const { calls, runner } = harness({
+        processEnv: credentials,
+        stream: async function* (command) {
+          // What docker build sees: dev's folder, while it builds.
+          if (command[1] === "build") {
+            staged = await readFile(join(context, ".box-dev", "profile.toml"), "utf8");
+          }
+          yield* [];
+        },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(commandCall(calls, "build").command).toEqual([
+        "docker",
+        "build",
+        "-f",
+        "Dockerfile",
+        "-t",
+        imageTag(root),
+        "--build-arg",
+        "BOX_DIST=.box-dev",
+        ".",
+      ]);
+      expect(staged).toBe("# local profile\n");
+      // Removed once built, so no deploy uploads dev's profile.
+      expect(existsSync(join(context, ".box-dev"))).toBe(false);
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# runtime profile\n",
+      );
+      expect(commandCall(calls, "run").command).toContain("--cap-add");
+    });
+
+    test("removes .box-dev/ when the image build fails", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        dockerfile: "FROM scratch\nARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/\n",
+      });
+      const { runner } = harness({
+        processEnv: credentials,
+        stream: (command) =>
+          command[1] === "build"
+            ? rejectedEvents(new Error("build failed"))
+            : (async function* () {})(),
+      });
+
+      await expect(collect(runner.run(input(root, projectRuntime)))).rejects.toThrow(
+        "build failed",
+      );
+
+      expect(existsSync(join(context, ".box-dev"))).toBe(false);
+    });
+
+    test("stages box of the runtime's box.version", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const { boxVersions, runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, { ...projectRuntime, box: { version: "2.0.0" } })));
+
+      expect(boxVersions).toEqual(["2.0.0"]);
     });
 
     test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {

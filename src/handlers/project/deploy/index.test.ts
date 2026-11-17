@@ -84,6 +84,14 @@ function fakeBackend(
     async resolveProjectResources() {
       return [];
     },
+    // The Box gateways the deployed state of the test project records, as the CDK backend reads it.
+    async recordedBoxGateways(project, targetName) {
+      const statePath = join(project.rootPath, "agentcore", ".cli", "deployed-state.json");
+      const state = JSON.parse(await readFile(statePath, "utf8").catch(() => "{}")) as {
+        targets?: Record<string, { resources?: { boxGateways?: { name: string }[] } }>;
+      };
+      return (state.targets?.[targetName]?.resources?.boxGateways ?? []).map(({ name }) => name);
+    },
   };
   return { calls, confirmations, backend };
 }

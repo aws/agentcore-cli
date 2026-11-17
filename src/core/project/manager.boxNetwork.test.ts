@@ -10,6 +10,7 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { FsProjectManager } from "./manager";
 
 const GATEWAY = "agent-python-strands-box";
@@ -53,15 +54,17 @@ async function temporary(prefix: string): Promise<string> {
   return directory;
 }
 
-/** A staging-boxy checkout with stand-in binaries, which staging copies into the zip. */
-async function boxSource(): Promise<string> {
-  const source = await temporary("agentcore-box-source-");
-  await mkdir(join(source, "target-al2023", "release"), { recursive: true });
+/** A home folder whose box cache holds the pinned release, with stand-in binaries. */
+async function boxHome(): Promise<string> {
+  const home = await temporary("agentcore-box-home-");
+  const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
+  await mkdir(join(root, "resources"), { recursive: true });
+  await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
   for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-    await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
+    await writeFile(join(root, binary), `#!${binary}\n`);
   }
-  await mkdir(join(source, "resources"), { recursive: true });
-  return source;
+  await writeFile(join(root, "release.json"), JSON.stringify({ box_version: BOX_RELEASE.version }));
+  return home;
 }
 
 async function drain<T>(generator: AsyncGenerator<{ type: string; message?: string }, T>) {
@@ -104,7 +107,7 @@ async function strandsProject(
     checkTool: async () => {},
     json,
     processEnv: {
-      AGENTCORE_BOX_SOURCE: await boxSource(),
+      HOME: await boxHome(),
       AWS_REGION: "us-west-2",
       ...options.env,
     },
@@ -229,6 +232,21 @@ describe("build writes the Box network of the box profile", () => {
       backends: GATEWAY_BACKEND("egress-httpbin-org"),
     });
     expect(await boxFiles(root)).toEqual(before);
+  });
+
+  test("leaves the user's other gateways as written, with no defaults added", async () => {
+    const { manager, root } = await strandsProject();
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    const spec = JSON.parse(await text(root, SPEC));
+    const tools = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
+    spec.agentCoreGateways.push(tools);
+    await writeFile(path(root, SPEC), JSON.stringify(spec));
+
+    await build(manager, root);
+
+    const gateways = JSON.parse(await text(root, SPEC)).agentCoreGateways;
+    expect(gateways.find(({ name }: { name: string }) => name === "tools")).toStrictEqual(tools);
+    expect(await targetNames(root)).toContain("egress-github");
   });
 
   test("changes nothing on a second build", async () => {
@@ -441,6 +459,9 @@ describe("deploy writes the Box network before the backend deploys", () => {
         return [];
       },
       async resolveProjectResources() {
+        return [];
+      },
+      async recordedBoxGateways() {
         return [];
       },
     };

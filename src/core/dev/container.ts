@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -17,9 +17,20 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
-import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import {
+  BOX_DEV_DIST,
+  BOX_DIST_ARG,
+  BOX_IMAGE_DIST,
+  imageCopiesBox,
+  imageTakesBoxDistArg,
+  stageBoxImage,
+} from "../project/backends/boxContainer";
+import {
+  boxReleaseFor,
+  resolveBoxLinuxBuild,
+  type BoxLinuxBuild,
+} from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
-import { BOX_GITHUB_TOKEN_SECRET_ID, BOX_RELEASE } from "../project/backends/boxRelease";
 import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
@@ -89,8 +100,11 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
-  /** The home folder build secrets are written under; the user's home by default. */
-  homeDirectory?: string;
+  /**
+   * The Linux box the image runs: the box release of the runtime's `box.version`, downloaded once
+   * into `~/.agentcore/box/`, as build and deploy stage it. Tests inject one.
+   */
+  resolveBox?: (version: string | undefined) => Promise<BoxLinuxBuild>;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -98,14 +112,19 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
-  private readonly homeDirectory: string;
+  private readonly resolveBox: (version: string | undefined) => Promise<BoxLinuxBuild>;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
-    this.homeDirectory = config.homeDirectory ?? homedir();
+    this.resolveBox =
+      config.resolveBox ??
+      (async (version) =>
+        resolveBoxLinuxBuild(this.processEnv, {
+          release: await boxReleaseFor(version, this.processEnv),
+        }));
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -163,43 +182,47 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxed = this.stageBox(input, context);
-    const secrets = await this.buildSecretFiles(input);
-    try {
-      const buildCommand = [
+    const boxDist = await this.stageBox(input, context);
+    const boxed = boxDist !== undefined;
+    // The folder dev staged, for a Dockerfile that takes it as a build argument.
+    const boxDistFlags =
+      boxDist === BOX_DEV_DIST ? ["--build-arg", `${BOX_DIST_ARG}=${BOX_DEV_DIST}`] : [];
+    const buildCommand = [
+      tool,
+      "build",
+      "-f",
+      dockerfile,
+      "-t",
+      imageTag,
+      ...buildArgFlags,
+      ...boxDistFlags,
+      ".",
+    ];
+    const buildOptions: StreamProcessOptions = {
+      cwd: context,
+      env: this.processEnv,
+      redactedCommand: [
         tool,
         "build",
         "-f",
         dockerfile,
         "-t",
         imageTag,
-        ...buildArgFlags,
-        ...secrets.flags,
+        ...redactedBuildArgFlags,
+        ...boxDistFlags,
         ".",
-      ];
-      const buildOptions: StreamProcessOptions = {
-        cwd: context,
-        // BuildKit runs the RUN --mount=type=secret steps; Docker's legacy builder refuses them.
-        env:
-          secrets.flags.length > 0 ? { ...this.processEnv, DOCKER_BUILDKIT: "1" } : this.processEnv,
-        redactedCommand: [
-          tool,
-          "build",
-          "-f",
-          dockerfile,
-          "-t",
-          imageTag,
-          ...redactedBuildArgFlags,
-          ...secrets.flags,
-          ".",
-        ],
-        signal: input.signal,
-      };
+      ],
+      signal: input.signal,
+    };
 
-      yield { type: "status", message: `Building image with ${tool}` };
+    yield { type: "status", message: `Building image with ${tool}` };
+    try {
       yield* this.streamProcess(buildCommand, buildOptions);
     } finally {
-      secrets.remove();
+      // The image holds it now; removed so that no deploy uploads dev's profile.
+      if (boxDist === BOX_DEV_DIST) {
+        rmSync(join(context, BOX_DEV_DIST), { recursive: true, force: true });
+      }
     }
 
     const containerPort = DEV_PORTS[input.runtime.protocol ?? "HTTP"];
@@ -266,21 +289,15 @@ export class ContainerDevRunner implements DevRunner {
   }
 
   /**
-   * Stages box into the build context when the Dockerfile copies `.box-dist/`,
-   * with the project's box profile and the policy files it names, and says
-   * whether it did. The image then runs `box run`, which needs BOX_RUN_FLAGS.
+   * Stages box into the build context when the Dockerfile copies it, with the project's box
+   * profile and the policy files it names, and returns the folder it staged, or undefined for an
+   * image without box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
+   * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
+   * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private stageBox(input: DevServerInput, context: string): boolean {
-    if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
-    // The image installs box and starts `box run`, which needs the Box project's profile.
-    if (!input.boxProject) {
-      throw new ProjectStateError(
-        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile installs box), ` +
-          `but agentcore.json has no "projectType": "box". Add "projectType": "box" back to ` +
-          "agentcore.json, then retry.",
-      );
-    }
-    const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
+  private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
+    if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
+    const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
@@ -288,65 +305,17 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    stageBoxImage(context, readFileSync(profile, "utf8"), boxPolicyFileCopies(input.projectRoot));
-    return true;
-  }
-
-  /**
-   * The runtime's dockerBuildSecrets, as `--secret id=<id>,src=<file>` flags. On deploy CodeBuild
-   * reads them from Secrets Manager; here the box release's GitHub token is your GitHub login:
-   * GH_TOKEN, or else `gh auth token`. Each value goes in a file only you can read, in your home
-   * folder so Finch's VM can see it, which `remove` deletes after the build. A file, not an env
-   * source, because Finch does not pass the CLI's environment to its VM.
-   */
-  private async buildSecretFiles(
-    input: DevServerInput,
-  ): Promise<{ flags: string[]; remove: () => void }> {
-    const ids = Object.keys(input.runtime.dockerBuildSecrets ?? {});
-    if (ids.length === 0) return { flags: [], remove: () => {} };
-    const unsupported = ids.filter((id) => id !== BOX_GITHUB_TOKEN_SECRET_ID);
-    if (unsupported.length > 0) {
-      throw new InvalidEnvironmentError(
-        `runtime "${input.runtime.name}" builds with the dockerBuildSecrets ` +
-          `${unsupported.map((id) => `"${id}"`).join(", ")}, which agentcore dev cannot supply: it ` +
-          `supplies only "${BOX_GITHUB_TOKEN_SECRET_ID}", from your GitHub login.`,
-      );
-    }
-    const token = this.processEnv.GH_TOKEN?.trim() || (await this.githubToken(input));
-    const folder = join(this.homeDirectory, ".agentcore", "build-secrets");
-    mkdirSync(folder, { recursive: true, mode: 0o700 });
-    const directory = mkdtempSync(join(folder, "dev-"));
-    const file = join(directory, BOX_GITHUB_TOKEN_SECRET_ID);
-    writeFileSync(file, token, { mode: 0o600 });
-    return {
-      flags: ["--secret", `id=${BOX_GITHUB_TOKEN_SECRET_ID},src=${file}`],
-      remove: () => rmSync(directory, { recursive: true, force: true }),
-    };
-  }
-
-  private async githubToken(input: DevServerInput): Promise<string> {
-    const lines: string[] = [];
-    try {
-      for await (const event of this.streamProcess(["gh", "auth", "token"], {
-        cwd: input.projectRoot,
-        env: this.processEnv,
-        redactedCommand: ["gh", "auth", "token"],
-        signal: input.signal,
-      })) {
-        if (event.type === "stdout") lines.push(event.line);
-      }
-    } catch {
-      lines.length = 0;
-    }
-    const token = lines.join("").trim();
-    if (!token) {
-      throw new InvalidEnvironmentError(
-        `runtime "${input.runtime.name}" installs box from a GitHub release at build time, which ` +
-          "needs a GitHub token. Run `gh auth login` with an account that can read " +
-          `${BOX_RELEASE.repo}, or set GH_TOKEN, then retry.`,
-      );
-    }
-    return token;
+    const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
+      ? BOX_DEV_DIST
+      : BOX_IMAGE_DIST;
+    stageBoxImage(
+      context,
+      readFileSync(profile, "utf8"),
+      boxPolicyFileCopies(input.projectRoot),
+      await this.resolveBox(input.runtime.box?.version),
+      folder,
+    );
+    return folder;
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {

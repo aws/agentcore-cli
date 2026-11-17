@@ -9,7 +9,7 @@ import {
   getBoxGatewayEntry,
 } from "../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import { boxGatewayName, type ProjectSpec } from "../../projectSchemas/project";
+import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { runsAgentInBox } from "./backends/boxContainer";
@@ -123,9 +123,9 @@ export function boxBedrockPolicy(
  * that runs its agent in a box and has its default Memory, so the box can send the agent's Memory
  * calls through the gateway, and lists {@link BOX_MEMORY_POLICY_FILE} in that gateway's
  * `additionalPolicies` so its role may make them (unless the gateway imports its role). Recreates
- * a gateway entry that was removed, and marks the project `"projectType": "box"` so the CDK
- * library deploys the Box gateways the entries extend. Changes `spec` in place, and returns the
- * step messages; none when nothing changed. The target name on a gateway that is not a Box
+ * a gateway entry that was removed. Changes nothing outside a Box project (`"projectType": "box"`),
+ * since only there does the CDK library deploy the Box gateways the entries extend. Changes `spec`
+ * in place, and returns the step messages; none when nothing changed. The target name on a gateway that is not a Box
  * gateway is an error.
  */
 export function addBoxMemoryTarget(
@@ -133,6 +133,7 @@ export function addBoxMemoryTarget(
   projectRoot: string,
   region: string = BOX_GATEWAY_BEDROCK_REGION,
 ): string[] {
+  if (!isBoxProject(spec)) return [];
   const runtimes = boxedRuntimesWithMemory(spec, projectRoot);
   if (runtimes.length === 0) return [];
 
@@ -170,15 +171,10 @@ export function addBoxMemoryTarget(
 }
 
 /**
- * The Box gateway entry of `runtime`, `<runtime>-box`: recreated when it was removed, with the
- * project marked `"projectType": "box"` so the CDK library deploys the gateway the entry extends.
- * Pushes a step message for each change.
+ * The Box gateway entry of `runtime`, `<runtime>-box`: recreated when it was removed, with a step
+ * message.
  */
 function boxGatewayFor(spec: ProjectSpec, runtime: ProjectRuntime, messages: string[]) {
-  if (spec.projectType !== "box") {
-    spec.projectType = "box";
-    messages.push(`setting "projectType": "box" in agentcore.json, for the Box gateway`);
-  }
   const name = boxGatewayName(runtime.name);
   let gateway = spec.agentCoreGateways.find((entry) => entry.name === name);
   if (!gateway) {
@@ -252,14 +248,15 @@ function callsBedrock(runtime: ProjectRuntime): boolean {
  * model calls: the profile has a route for each target of the Box gateway, and no other. Build
  * and deploy write the target, for `region`. Lists {@link BOX_BEDROCK_POLICY_FILE}
  * in that gateway's `additionalPolicies`, since the target signs the model calls with the
- * gateway's role (unless the gateway imports its role). Changes `spec` in place, and returns the
- * step messages; none when nothing changed.
+ * gateway's role (unless the gateway imports its role). Changes nothing outside a Box project.
+ * Changes `spec` in place, and returns the step messages; none when nothing changed.
  */
 export function addBoxBedrockTarget(
   spec: ProjectSpec,
   projectRoot: string,
   region: string = BOX_GATEWAY_BEDROCK_REGION,
 ): string[] {
+  if (!isBoxProject(spec)) return [];
   const messages: string[] = [];
   for (const runtime of spec.runtimes) {
     if (!runsAgentInBox(projectRoot, runtime) || !callsBedrock(runtime)) continue;

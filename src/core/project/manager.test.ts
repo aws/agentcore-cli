@@ -333,6 +333,7 @@ describe("FsProjectManager.create", () => {
       {
         name: "agent_python_minimal",
         build: "CodeZip",
+        box: { version: BOX_RELEASE.version },
         entrypoint: "start.py",
         codeLocation: "app/agent_python_minimal",
         runtimeVersion: "PYTHON_3_14",
@@ -358,7 +359,7 @@ describe("FsProjectManager.create", () => {
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
   });
 
-  test("scaffolds a container image that installs box from the pinned box release", async () => {
+  test("scaffolds a container image that runs the box dev, build and deploy stage", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
@@ -368,15 +369,13 @@ describe("FsProjectManager.create", () => {
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
-    expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
-    expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
-    expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
+    // box comes from .box-dist/, staged from the release of the runtime's box.version; dev names
+    // its own .box-dev/ with BOX_DIST.
+    expect(dockerfile).toContain("ARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/");
+    expect(dockerfile).not.toContain("curl");
     expect(dockerfile).not.toContain("--mount=type=secret");
-    // The download is checked against the pinned SHA-256 before it is unpacked.
-    expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
-    // The release is public, so the build needs no token.
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
-    expect(spec.runtimes[0].dockerBuildSecrets).toBeUndefined();
+    expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
 
@@ -1085,6 +1084,9 @@ describe("FsProjectManager.addResource", () => {
           return [];
         },
         async resolveProjectResources() {
+          return [];
+        },
+        async recordedBoxGateways() {
           return [];
         },
       };
@@ -1857,16 +1859,21 @@ describe("chinaModelProviderRestriction", () => {
 });
 
 describe("FsProjectManager.build", () => {
-  /** A staging-boxy checkout: the scaffolded runtime starts in a box, so build stages box. */
-  async function boxSource(): Promise<NodeJS.ProcessEnv> {
-    const source = await mkdtemp(join(tmpdir(), "agentcore-box-source-"));
-    tempDirectories.push(source);
-    await mkdir(join(source, "target-al2023", "release"), { recursive: true });
+  /** A home whose box cache holds the pinned release: the scaffolded runtime starts in a box. */
+  async function boxHome(): Promise<NodeJS.ProcessEnv> {
+    const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
+    tempDirectories.push(home);
+    const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
+    await mkdir(join(root, "resources"), { recursive: true });
+    await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
     for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-      await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
+      await writeFile(join(root, binary), `#!${binary}\n`);
     }
-    await mkdir(join(source, "resources"), { recursive: true });
-    return { AGENTCORE_BOX_SOURCE: source };
+    await writeFile(
+      join(root, "release.json"),
+      JSON.stringify({ box_version: BOX_RELEASE.version }),
+    );
+    return { HOME: home };
   }
 
   // build() requires the CDK app's node_modules; create() with skipInstall
@@ -1898,7 +1905,7 @@ describe("FsProjectManager.build", () => {
 
   test("compiles and synthesizes via the generated cdk script", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager(await boxSource());
+    const { manager: subject, commands } = manager(await boxHome());
     const project = await scaffolded(subject, directory);
     commands.length = 0; // discard create()'s commands
 
@@ -1941,7 +1948,7 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("downloads box from the public box release when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("downloads box from the public box release when it is not cached", async () => {
     const directory = await inTempDirectory();
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
     tempDirectories.push(home);
@@ -1983,7 +1990,7 @@ describe("FsProjectManager.build", () => {
 
   test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject } = manager(await boxSource());
+    const { manager: subject } = manager(await boxHome());
     const { project } = await runCreate(subject, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
@@ -2036,7 +2043,7 @@ describe("FsProjectManager.build", () => {
         throw new Error("cdk synth exploded");
       },
       checkTool: async () => {},
-      processEnv: await boxSource(),
+      processEnv: await boxHome(),
     });
 
     await expect(drain(failing.build(project))).rejects.toThrow("cdk synth exploded");
@@ -2062,6 +2069,9 @@ describe("FsProjectManager.deploy", () => {
         return [];
       },
       async resolveProjectResources() {
+        return [];
+      },
+      async recordedBoxGateways() {
         return [];
       },
     };
@@ -2508,6 +2518,9 @@ describe("FsProjectManager.resolve", () => {
       async resolveProjectResources() {
         return [];
       },
+      async recordedBoxGateways() {
+        return [];
+      },
     };
     const subject = new FsProjectManager({
       logger: createSilentLogger(),
@@ -2912,6 +2925,9 @@ describe("docs-only runtimes", () => {
         return [];
       },
       async resolveProjectResources() {
+        return [];
+      },
+      async recordedBoxGateways() {
         return [];
       },
     };

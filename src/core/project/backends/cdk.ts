@@ -11,8 +11,8 @@ import type {
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { stageBoxContainers } from "./boxContainer";
-import { resolveBoxLinuxBuild } from "./boxRelease";
+import { imageCopiesBox, stageBoxContainers } from "./boxContainer";
+import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -28,8 +28,8 @@ import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import {
   boxGatewayAwsName,
+  declaresNoResources,
   describeBoxGateways,
-  dropsBoxGateways,
   isBoxProject,
 } from "../../../projectSchemas/project";
 import type {
@@ -60,7 +60,6 @@ import {
   type StackArtifact,
 } from "./cdk/assembly";
 import {
-  boxGatewaysOf,
   readDeployedState,
   removeTargetState,
   stackReferenceOf,
@@ -160,7 +159,7 @@ export type CdkBackendConfig = {
   removeCredentials?: CredentialRemover;
   describeStack?: StackDescriber;
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
-  /** The environment AGENTCORE_BOX_SOURCE and gh read; process.env by default. */
+  /** The environment box downloads read (HOME for the box cache); process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
 };
 
@@ -220,7 +219,7 @@ export class CdkBackend implements ProjectBackend {
   private async ensureCdkDependencies(
     project: Project,
     boxNetworks: BuildBackendInput["boxNetworks"],
-  ): Promise<void> {
+  ): Promise<ProjectEvent[]> {
     const cdkDir = this.cdkDirectory(project);
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
@@ -231,10 +230,22 @@ export class CdkBackend implements ProjectBackend {
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     // The zip carries box and the image its box profile, so both are staged before synth packages
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
-    await stageBoxCodeZip(project, boxNetworks, () =>
-      resolveBoxLinuxBuild(this.processEnv, { runner: this.runner }),
-    );
-    stageBoxContainers(project, boxNetworks);
+    const events: ProjectEvent[] = [];
+    const box = async (version: string | undefined) => {
+      const release = await boxReleaseFor(version, this.processEnv, { runner: this.runner });
+      return resolveBoxLinuxBuild(this.processEnv, {
+        runner: this.runner,
+        release,
+        onDownload: (url) =>
+          events.push({
+            type: "step",
+            message: boxDownloadMessage(release.version, url, "AgentCore Runtime"),
+          }),
+      });
+    };
+    await stageBoxCodeZip(project, boxNetworks, box);
+    await stageBoxContainers(project, boxNetworks, box);
+    return events;
   }
 
   private async *synthesize(
@@ -242,7 +253,21 @@ export class CdkBackend implements ProjectBackend {
     explainUndeployedCredentials: boolean,
     boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
-    await this.ensureCdkDependencies(project, boxNetworks);
+    yield* await this.ensureCdkDependencies(project, boxNetworks);
+
+    for (const runtime of project.spec.runtimes) {
+      if (
+        imageCopiesBox(project.rootPath, runtime) &&
+        (runtime.instrumentation?.enableOtel ?? true)
+      ) {
+        yield {
+          type: "warning",
+          message:
+            `Runtime '${runtime.name}' runs its agent in a box, whose image does not run ` +
+            `opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.`,
+        };
+      }
+    }
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
@@ -296,7 +321,7 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    await this.ensureCdkDependencies(project, input.boxNetworks);
+    yield* await this.ensureCdkDependencies(project, input.boxNetworks);
     await this.assertBoxGatewayKept(project, input);
 
     // Read before provisioning rewrites the credentials map: it is the only record
@@ -467,12 +492,9 @@ export class CdkBackend implements ProjectBackend {
    * after `agentcore remove all`, and the teardown confirmation already covers every resource.
    */
   private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
-    if (!dropsBoxGateways(project.spec)) return;
+    if (isBoxProject(project.spec) || declaresNoResources(project.spec)) return;
     const { target } = input;
-    const gatewayNames = boxGatewaysOf(
-      await readDeployedState(this.json, project.rootPath),
-      target.name,
-    );
+    const gatewayNames = await this.recordedBoxGateways(project, target.name);
     if (gatewayNames.length === 0) return;
     const confirmed = await input.confirmBoxGatewayDeletion?.({
       projectName: project.name,
@@ -625,6 +647,11 @@ export class CdkBackend implements ProjectBackend {
       const id = findDeployedResourceId(stack, resource);
       return id ? [{ ...resource, id, target, credentialProvider: credentials }] : [];
     });
+  }
+
+  public async recordedBoxGateways(project: Project, targetName: string): Promise<string[]> {
+    const state = await readDeployedState(this.json, project.rootPath);
+    return (state.targets[targetName]?.resources?.boxGateways ?? []).map(({ name }) => name);
   }
 
   public async resolveProjectResources(
