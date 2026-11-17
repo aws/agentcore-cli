@@ -50,6 +50,7 @@ import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templa
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -1917,16 +1918,7 @@ describe("FsProjectManager.build", () => {
   async function boxHome(): Promise<NodeJS.ProcessEnv> {
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
     tempDirectories.push(home);
-    const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
-    await mkdir(join(root, "resources"), { recursive: true });
-    await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
-    for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-      await writeFile(join(root, binary), `#!${binary}\n`);
-    }
-    await writeFile(
-      join(root, "release.json"),
-      JSON.stringify({ box_version: BOX_RELEASE.version }),
-    );
+    await seedBoxCache(home);
     return { HOME: home };
   }
 
