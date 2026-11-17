@@ -20,11 +20,7 @@ import {
   imageTakesBoxDistArg,
   stageBoxImage,
 } from "../project/backends/boxContainer";
-import {
-  boxReleaseFor,
-  resolveBoxLinuxBuild,
-  type BoxLinuxBuild,
-} from "../project/backends/boxRelease";
+import { boxReleaseFor, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import { boxProfileIsFor, boxProfilePath } from "../project/templates/boxProfile";
 import {
@@ -109,11 +105,8 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
-  /**
-   * The Linux box the image runs: the box release of the runtime's `box.version`, downloaded once
-   * into `~/.agentcore/box/`, as build and deploy stage it. Tests inject one.
-   */
-  resolveBox?: (version: string | undefined) => Promise<BoxLinuxBuild>;
+  /** The box release of the runtime's `box.version`, which the image downloads. Tests inject one. */
+  releaseFor?: (version: string | undefined) => Promise<BoxRelease>;
   /** Resolves the credentials a boxed container signs with; the default AWS SDK chain by default. */
   resolveAwsCredentials?: ResolveAwsCredentials;
 };
@@ -123,7 +116,7 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
-  private readonly resolveBox: (version: string | undefined) => Promise<BoxLinuxBuild>;
+  private readonly releaseFor: (version: string | undefined) => Promise<BoxRelease>;
   private readonly resolveAwsCredentials: ResolveAwsCredentials;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
@@ -131,12 +124,7 @@ export class ContainerDevRunner implements DevRunner {
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
-    this.resolveBox =
-      config.resolveBox ??
-      (async (version) =>
-        resolveBoxLinuxBuild(this.processEnv, {
-          release: await boxReleaseFor(version, this.processEnv),
-        }));
+    this.releaseFor = config.releaseFor ?? ((version) => boxReleaseFor(version, this.processEnv));
     this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
   }
 
@@ -359,7 +347,7 @@ export class ContainerDevRunner implements DevRunner {
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot),
-      await this.resolveBox(input.runtime.box?.version),
+      await this.releaseFor(input.runtime.box?.version),
       folder,
     );
     return folder;

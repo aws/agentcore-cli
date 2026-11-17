@@ -238,7 +238,9 @@ export class CdkBackend implements ProjectBackend {
       });
     };
     await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, box);
+    await stageBoxContainers(project, boxNetworks, (version) =>
+      boxReleaseFor(version, this.processEnv, { runner: this.runner }),
+    );
     return events;
   }
 

@@ -8,7 +8,7 @@ import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxContainers } from "./boxContainer";
-import type { BoxLinuxBuild } from "./boxRelease";
+import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -51,43 +51,26 @@ async function project(dockerfile: string): Promise<Project> {
 }
 
 const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/profile.toml /opt/box/\n";
-const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
-/** What the box release unpacks, as build and deploy resolve it. */
-const STAGED = [
-  "box",
-  "profile.toml",
-  "resources",
-  "strands-box-contain-trampoline",
-  "strands-box-sock-alias",
-];
+/** What build and deploy stage beside the Dockerfile. */
+const STAGED = ["box-release.env", "profile.toml"];
 
-/** A Linux box build: its programs, and its packs. */
-async function linuxBuild(): Promise<BoxLinuxBuild> {
-  const root = await temp("box-build-");
-  for (const binary of BINARIES) await writeFile(join(root, binary), `#!${binary}\n`);
-  await mkdir(join(root, "resources", "shared", "base"), { recursive: true });
-  await writeFile(join(root, "resources", "shared", "base", "pack.toml"), "[pack]\n");
-  return { binaries: root, resources: join(root, "resources"), ffi: {} };
-}
-
-/** The box getter build and deploy pass, which records the version each runtime asks for. */
-async function boxOf() {
-  const build = await linuxBuild();
+/** The release getter build and deploy pass, which records the version each runtime asks for. */
+function releaseOf() {
   const versions: (string | undefined)[] = [];
-  const box = async (version: string | undefined) => {
+  const releaseFor = async (version: string | undefined): Promise<BoxRelease> => {
     versions.push(version);
-    return build;
+    return { ...BOX_RELEASE, version: version ?? BOX_RELEASE.version };
   };
-  return { box, versions };
+  return { releaseFor, versions };
 }
 
 describe("stageBoxContainers", () => {
-  test("stages box of the runtime's box.version, its packs, and the Runtime profile into the build context", async () => {
+  test("stages the box release of the runtime's box.version, and the Runtime profile, into the build context", async () => {
     const demo = await project(BOX_DOCKERFILE);
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
-    const { box, versions } = await boxOf();
+    const { releaseFor, versions } = releaseOf();
 
-    expect(await stageBoxContainers(demo, [], box)).toEqual(["agent"]);
+    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual(["agent"]);
 
     expect(versions).toEqual(["2.0.0"]);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
@@ -96,29 +79,29 @@ describe("stageBoxContainers", () => {
       renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
     );
     expect((await readdir(dist)).sort()).toEqual(STAGED);
-    expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
-      "[pack]\n",
+    expect(await readFile(join(dist, "box-release.env"), "utf8")).toBe(
+      `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
+        `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
   });
 
   test("replaces what an earlier build staged", async () => {
     const demo = await project(BOX_DOCKERFILE);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    await mkdir(join(dist, "resources"), { recursive: true });
+    await mkdir(join(dist), { recursive: true });
     await writeFile(join(dist, "box"), "old");
     await writeFile(join(dist, "stale.dw"), "old");
 
-    await stageBoxContainers(demo, [], (await boxOf()).box);
+    await stageBoxContainers(demo, [], releaseOf().releaseFor);
 
     expect((await readdir(dist)).sort()).toEqual(STAGED);
-    expect(await readFile(join(dist, "box"), "utf8")).toBe("#!box\n");
   });
 
   test("stages nothing for an image that does not copy .box-dist/", async () => {
     const demo = await project("FROM scratch\n");
 
-    const { box, versions } = await boxOf();
-    expect(await stageBoxContainers(demo, [], box)).toEqual([]);
+    const { releaseFor, versions } = releaseOf();
+    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual([]);
     expect(versions).toEqual([]);
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
@@ -129,7 +112,7 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
 
-    await stageBoxContainers(demo, [model(["policy.dw"])], (await boxOf()).box);
+    await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED].sort());
@@ -142,7 +125,7 @@ describe("stageBoxContainers", () => {
     await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
 
     await expect(
-      stageBoxContainers(demo, [model(["policy.dw"])], (await boxOf()).box),
+      stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor),
     ).rejects.toThrow("does not copy .box-dist/ whole into the image");
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
