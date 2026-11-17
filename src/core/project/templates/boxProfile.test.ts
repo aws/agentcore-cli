@@ -226,9 +226,9 @@ describe("renderBoxProfile", () => {
   test("does not warn when the LiteLLM agent has a key, or calls Bedrock", () => {
     const keyed = { modelProvider: "LiteLLM", modelId: "openai/gpt-4o", apiKey: "sk-test" };
     expect(boxProfileWarnings(template("agent-python-strands", keyed))).toEqual([]);
-    expect(boxProfileWarnings(template("agent-python-strands", { modelProvider: "LiteLLM" }))).toEqual(
-      [],
-    );
+    expect(
+      boxProfileWarnings(template("agent-python-strands", { modelProvider: "LiteLLM" })),
+    ).toEqual([]);
   });
 
   test("calls Bedrock in the region create resolved", () => {
@@ -314,7 +314,9 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     // What deploy renders from agentcore.json, which records no --api-base.
     const spec = {
       name: "V3Demo",
-      runtimes: [{ name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAICompatible" }],
+      runtimes: [
+        { name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAICompatible" },
+      ],
       agentCoreGateways: [],
     } as unknown as ProjectSpec;
     const text = renderRuntimeBoxProfile(spec, spec.runtimes[0]!);
@@ -359,33 +361,30 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     });
   });
 
-  test.each(["agent-python-strands-container"] as const)(
-    "runs %s from /app without --reload, signing calls with the Runtime's role",
-    (name) => {
-      expect(runtimeProfile(name)).toEqual({
-        packs: ["box/base", "box/bedrock"],
-        profile: { name: "V3Demo" },
-        options: { bedrock: { region: "us-west-2" } },
-        agent: {
-          command: [
-            "${{ workspace }}/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081",
-          ],
-          env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1", ...AWS_STAND_INS },
-          filesystem: IMAGE_PYTHON_FILESYSTEM,
-          ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
-        },
-      });
-    },
-  );
+  test("runs agent-python-strands-container from /app without --reload, signing calls with the Runtime's role", () => {
+    expect(runtimeProfile("agent-python-strands-container")).toEqual({
+      packs: ["box/base", "box/bedrock"],
+      profile: { name: "V3Demo" },
+      options: { bedrock: { region: "us-west-2" } },
+      agent: {
+        command: [
+          "${{ workspace }}/.venv/bin/python",
+          "-m",
+          "uvicorn",
+          "main:app",
+          "--app-dir",
+          "${{ workspace }}",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "8081",
+        ],
+        env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1", ...AWS_STAND_INS },
+        filesystem: IMAGE_PYTHON_FILESYSTEM,
+        ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
+      },
+    });
+  });
 
   test("serves the MCP server on all interfaces on the Runtime", () => {
     const mcp = runtimeProfile("mcp-python-fastmcp");
