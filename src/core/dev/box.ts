@@ -72,7 +72,7 @@ export class BoxDevRunner implements DevRunner {
     if (input.port !== listen) {
       throw new InputValidationError(
         `the box profile ${profile} listens on port ${listen}, but dev chose port ` +
-          `${input.port}. Free port ${listen}, or change [[agent.ingress]] listen in the profile.`,
+          `${input.port}. Free port ${listen}, then retry.`,
       );
     }
     // The runtime's box.version in agentcore.json, else the box release this CLI pins. A first

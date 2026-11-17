@@ -431,9 +431,12 @@ export class ContainerDevRunner implements DevRunner {
       env: this.processEnv,
       signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
     })) {
-      // Cleanup output is not shown.
     }
   }
+}
+
+function isContainerTool(value: string): value is ContainerTool {
+  return CONTAINER_TOOLS.some((tool) => tool === value);
 }
 
 function ensureBuildContextDockerignore(context: string): string | undefined {
