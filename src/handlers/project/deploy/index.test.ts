@@ -84,6 +84,14 @@ function fakeBackend(
     async resolveProjectResources() {
       return [];
     },
+    // The Box gateways the deployed state of the test project records, as the CDK backend reads it.
+    async recordedBoxGateways(project, targetName) {
+      const statePath = join(project.rootPath, "agentcore", ".cli", "deployed-state.json");
+      const state = JSON.parse(await readFile(statePath, "utf8").catch(() => "{}")) as {
+        targets?: Record<string, { resources?: { boxGateways?: { name: string }[] } }>;
+      };
+      return (state.targets?.[targetName]?.resources?.boxGateways ?? []).map(({ name }) => name);
+    },
   };
   return { calls, confirmations, backend };
 }
@@ -841,7 +849,8 @@ describe("project deploy and the Box gateway", () => {
     expect(subject.io.stderr()).not.toContain("(y/N)");
   });
 
-  test("a project with only projectType is a deploy, not a teardown", async () => {
+  test("a Box project with no runtimes asks before the teardown", async () => {
+    // Box gateways come with runtimes, so this is the state after `agentcore remove all`.
     const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
     const projectRoot = await inProjectWithTargets();
     await writeFile(
@@ -851,7 +860,7 @@ describe("project deploy and the Box gateway", () => {
 
     await subject.run();
 
-    expect(subject.io.stderr()).not.toContain("(y/N)");
-    expect(await subject.calls[0]!.input.confirmTeardown(TEARDOWN)).toBe(false);
+    expect(subject.io.stderr()).toContain("(y/N)");
+    expect(await subject.calls[0]!.input.confirmTeardown(TEARDOWN)).toBe(true);
   });
 });

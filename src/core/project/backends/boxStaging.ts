@@ -7,7 +7,7 @@ import { BOX_PROFILE_FILE } from "../templates/boxProfile";
 const START_SCRIPT_COPIES_POLICY_FILES = "copy_policy_files";
 
 /** A `COPY` of the whole staged folder, which takes the policy files in with the profile. */
-const COPIES_WHOLE_DIST = /^\s*COPY\s+(?:--\S+\s+)*\.box-dist\/?\s/m;
+const COPIES_WHOLE_DIST = /^\s*COPY\s+(?:--\S+\s+)*(?:\.box-dist|\$\{BOX_DIST\})\/?\s/m;
 
 /**
  * Throws when the runtime's start.sh cannot carry `policyFiles`: one from an older template fills

@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getBoxGatewayBedrockEntry } from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { type BoxLinuxBuild, resolveBoxLinuxBuild } from "./boxRelease";
+import type { BoxLinuxBuild } from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -26,20 +26,25 @@ async function temp(prefix: string): Promise<string> {
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
 
-/** A staging-boxy checkout with an Amazon Linux 2023 build, its packs, and optionally the shim. */
-async function boxSource(options: { ffi?: boolean } = {}): Promise<string> {
-  const source = await temp("box-source-");
-  await mkdir(join(source, "target-al2023", "release"), { recursive: true });
-  for (const binary of BINARIES) {
-    await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
-  }
-  await mkdir(join(source, "resources", "shared", "base"), { recursive: true });
-  await writeFile(join(source, "resources", "shared", "base", "pack.toml"), "[pack]\n");
+/**
+ * A Linux box build laid out as the release cache holds it, and as deploy resolves it: box, its
+ * helpers and its packs in one folder, and optionally the Python 3.14 shim under ffi/.
+ */
+async function linuxBuild(options: { ffi?: boolean } = {}): Promise<BoxLinuxBuild> {
+  const root = await temp("box-build-");
+  for (const binary of BINARIES) await writeFile(join(root, binary), `#!${binary}\n`);
+  await mkdir(join(root, "resources", "shared", "base"), { recursive: true });
+  await writeFile(join(root, "resources", "shared", "base", "pack.toml"), "[pack]\n");
+  const ffi = join(root, "ffi", "PYTHON_3_14");
   if (options.ffi) {
-    await mkdir(join(source, "target-al2023", "ffi"), { recursive: true });
-    await writeFile(join(source, "target-al2023", "ffi", "libffi.so.8"), "ffi");
+    await mkdir(ffi, { recursive: true });
+    await writeFile(join(ffi, "libffi.so.8"), "ffi");
   }
-  return source;
+  return {
+    binaries: root,
+    resources: join(root, "resources"),
+    ffi: options.ffi ? { PYTHON_3_14: ffi } : {},
+  };
 }
 
 async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Promise<Project> {
@@ -66,14 +71,9 @@ async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Prom
   } as unknown as Project;
 }
 
-/** The box build a staging-boxy checkout gives, as deploy resolves it. */
-async function sourceBuild(options: { ffi?: boolean } = {}): Promise<BoxLinuxBuild> {
-  return resolveBoxLinuxBuild({ AGENTCORE_BOX_SOURCE: await boxSource(options) });
-}
-
 describe("stageBoxCodeZip", () => {
   test("stages box, its packs, the shim, and the Runtime profile into the code folder", async () => {
-    const build = await sourceBuild({ ffi: true });
+    const build = await linuxBuild({ ffi: true });
     const demo = await project("start.py");
 
     expect(await stageBoxCodeZip(demo, [], async () => build)).toEqual(["agent"]);
@@ -94,8 +94,22 @@ describe("stageBoxCodeZip", () => {
     );
   });
 
+  test("asks for the box of the runtime's box.version", async () => {
+    const build = await linuxBuild({ ffi: true });
+    const demo = await project("start.py");
+    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
+    const versions: (string | undefined)[] = [];
+
+    await stageBoxCodeZip(demo, [], async (version) => {
+      versions.push(version);
+      return build;
+    });
+
+    expect(versions).toEqual(["2.0.0"]);
+  });
+
   test("ships no shim to a runtime whose Python it was not built for", async () => {
-    const build = await sourceBuild({ ffi: true });
+    const build = await linuxBuild({ ffi: true });
     const demo = await project("start.py", "PYTHON_3_13");
 
     await stageBoxCodeZip(demo, [], async () => build);
@@ -110,7 +124,7 @@ describe("stageBoxCodeZip", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     await mkdir(join(dist, "ffi"), { recursive: true });
     await writeFile(join(dist, "ffi", "stale.so"), "old");
-    const build = await sourceBuild();
+    const build = await linuxBuild();
 
     await stageBoxCodeZip(demo, [], async () => build);
 
@@ -132,7 +146,7 @@ describe("stageBoxCodeZip", () => {
   });
 
   test("copies each policy file of the model, byte for byte, beside the profile that names it", async () => {
-    const build = await sourceBuild();
+    const build = await linuxBuild();
     const demo = await project("start.py");
     await mkdir(join(demo.rootPath, ".box", "rules"), { recursive: true });
     const bytes = Buffer.from([0x2f, 0x2f, 0x20, 0xe2, 0x9c, 0x93, 0x0d, 0x0a]);
@@ -151,7 +165,7 @@ describe("stageBoxCodeZip", () => {
   });
 
   test("stages no policy file and names none when the model has none", async () => {
-    const build = await sourceBuild();
+    const build = await linuxBuild();
     const demo = await project("start.py");
 
     await stageBoxCodeZip(demo, [model([])], async () => build);
@@ -168,7 +182,7 @@ describe("stageBoxCodeZip", () => {
       join(demo.rootPath, "app", "agent", "start.sh"),
       "#!/bin/bash\nwrite_profile\n",
     );
-    const box = mock(async (): Promise<BoxLinuxBuild> => sourceBuild());
+    const box = mock(async (): Promise<BoxLinuxBuild> => linuxBuild());
 
     await expect(stageBoxCodeZip(demo, [model(["policy.dw"])], box)).rejects.toThrow(
       "copies no policy file of .box/profile.toml (policy.dw)",
@@ -191,6 +205,7 @@ function model(policyFiles: string[]): BoxNetwork {
   return {
     runtime: "agent",
     gateway: "agent-box",
+    region: "us-west-2",
     hosts: [],
     credentials: [],
     policyFiles,

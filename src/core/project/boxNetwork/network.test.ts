@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewayBedrockEntry,
-} from "../../../handlers/project/shortcuts";
+import { getBoxGatewayAgentCoreTargetSpec } from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -84,6 +82,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     spec,
     runtime: RUNTIME,
     gateway: "agent-box",
+    region: "us-west-2",
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
   });

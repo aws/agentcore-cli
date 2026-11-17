@@ -7,6 +7,7 @@ import type {
 } from "../../../handlers/project/add/runtime/types";
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
+import { BOX_RELEASE } from "../backends/boxRelease";
 import { BOX_CODEZIP_ENTRYPOINT, isBoxedContainer, startsInBoxOnCodeZip } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import type { Template, TemplateRenderer } from "./types";
@@ -90,13 +91,17 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
       FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${name}`)),
     );
   }
-  for (const runtime of template.spec.runtimes ?? []) runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+  for (const runtime of template.spec.runtimes ?? []) {
+    runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+    // The box release dev runs, and build and deploy ship; change it to move to another release.
+    runtime.box = { version: BOX_RELEASE.version };
+  }
 }
 
 /**
  * The container image's entry point, start.sh, which the Dockerfile copies
  * into /opt/box: it fills in the deployed resources and starts `box run`.
- * The Dockerfile installs box from the public box release at build time.
+ * Dev, build and deploy stage box into .box-dist/, which the Dockerfile copies.
  */
 function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
   template.tree.children.push(
@@ -104,6 +109,9 @@ function withBoxContainerStartScript(config: CreateProjectConfig, template: Temp
       config.assetSource.read("templates/box-container/start.sh"),
     ),
   );
+  // The box release that dev, build and deploy stage into the image; change it to move to another.
+  for (const runtime of template.spec.runtimes ?? [])
+    runtime.box = { version: BOX_RELEASE.version };
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

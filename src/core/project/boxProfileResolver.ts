@@ -41,7 +41,7 @@ export function parseBoxProfileShow(stdout: string): ResolvedBoxProfile | undefi
   };
 }
 
-/** Runs `box profile show --full` with the `box` on PATH, which `agentcore dev` runs too. */
+/** Runs `box profile show --full` with the `box` on PATH. */
 export class BoxCliProfileResolver implements BoxProfileResolver {
   private readonly env: NodeJS.ProcessEnv;
   private readonly streamProcess: ProcessStreamer;

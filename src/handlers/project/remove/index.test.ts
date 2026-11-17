@@ -725,11 +725,8 @@ describe("project remove in a Box project", () => {
         name: "agent-box",
         authorizerType: "AWS_IAM",
         protocolType: "None",
-        // create declares the Bedrock target for the template's Bedrock agent.
-        targets: [
-          { name: "bedrock", targetType: "passthrough" },
-          { name: "weather", targetType: "passthrough" },
-        ],
+        // create declares no target; build adds the Bedrock target.
+        targets: [{ name: "weather", targetType: "passthrough" }],
       },
     ]);
   });
@@ -737,9 +734,8 @@ describe("project remove in a Box project", () => {
   test("remove gateway-target of the last target removes the entry", async () => {
     const projectRoot = await boxProject();
 
+    // create declares no target, so weather is the only one; build adds the Bedrock target back.
     await run(["remove", "gateway-target", "--gateway", "agent-box", "--name", "weather"]);
-    expect((await projectSpec(projectRoot)).agentCoreGateways).toHaveLength(1);
-    await run(["remove", "gateway-target", "--gateway", "agent-box", "--name", "bedrock"]);
 
     const spec = await projectSpec(projectRoot);
     expect(spec.agentCoreGateways).toEqual([]);
@@ -775,13 +771,13 @@ describe("project remove in a Box project", () => {
     expect(await projectSpec(projectRoot)).not.toHaveProperty("projectType");
   });
 
-  test("remove all removes projectType with the gateway entries", async () => {
+  test("remove all keeps projectType, so a runtime added later gets a Box gateway", async () => {
     const projectRoot = await boxProject();
 
     await run(["remove", "all", "--yes"]);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec).not.toHaveProperty("projectType");
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
   });
 });

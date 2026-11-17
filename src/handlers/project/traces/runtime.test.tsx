@@ -87,6 +87,9 @@ function backend() {
     async resolveProjectResources() {
       throw new Error("project traces resolve deployed resources, not project resources");
     },
+    async recordedBoxGateways() {
+      return [];
+    },
   };
   return { calls, value };
 }

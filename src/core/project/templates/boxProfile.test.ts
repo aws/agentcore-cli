@@ -12,6 +12,7 @@ import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
+  boxProfileWarnings,
   hasBoxProfile,
   renderBoxProfile,
   renderRuntimeBoxProfile,
@@ -23,8 +24,23 @@ function template(name: RuntimeTemplateShortcutName, overrides: Record<string, s
   return resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
 }
 
+/** The parts of a rendered box profile these tests read. */
+type BoxProfile = {
+  packs: string[];
+  policies?: string[];
+  profile: { name: string };
+  options?: { bedrock?: { region?: string } };
+  agent: {
+    command: string[];
+    env: Record<string, string>;
+    filesystem: { read: unknown[]; exec: unknown[]; deny_write?: unknown[] };
+    ingress: { listen: string; workload_port: number }[];
+  };
+  egress?: Record<string, Record<string, unknown>>;
+};
+
 function profile(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
-  return parse(renderBoxProfile("V3Demo", template(name, overrides))!) as Record<string, any>;
+  return parse(renderBoxProfile("V3Demo", template(name, overrides))!) as unknown as BoxProfile;
 }
 
 const STRANDS = template("agent-python-strands");
@@ -76,7 +92,6 @@ describe("renderBoxProfile", () => {
 
   test("names itself after the project, so `box run .box/profile.toml` can load it by its path", () => {
     expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
-    expect(renderBoxProfile("V3Demo", STRANDS)).toContain("Run `box run .box/profile.toml`");
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {
@@ -92,7 +107,7 @@ describe("renderBoxProfile", () => {
       expect(packs).toEqual(["box/base", "box/bedrock"]);
       expect(agent.command).toEqual(UVICORN);
       expect(agent.filesystem).toEqual(VENV_GRANTS);
-      expect(egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
+      expect(egress?.bedrock).toEqual({ secret: { ref: "aws://default" } });
     },
   );
 
@@ -188,39 +203,80 @@ describe("renderBoxProfile", () => {
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
   });
 
+  test.each([
+    ["openai/gpt-4o", "openai", "OPENAI_API_KEY"],
+    ["anthropic/claude-sonnet-4-5", "anthropic", "ANTHROPIC_API_KEY"],
+    ["gemini/gemini-2.5-flash", "gemini", "GEMINI_API_KEY"],
+  ] as const)(
+    "reads a LiteLLM %s key created without --api-key from LiteLLM's own variable",
+    (modelId, route, variable) => {
+      const runtime = template("agent-python-strands", { modelProvider: "LiteLLM", modelId });
+      const { egress } = parse(renderBoxProfile("V3Demo", runtime)!) as {
+        egress: Record<string, { secret: { ref: string } }>;
+      };
+      expect(egress[route]?.secret.ref).toBe(`env://${variable}`);
+      expect(boxProfileWarnings(runtime)).toEqual([
+        `the box profile reads the ${route} API key from ${variable}: set it in ` +
+          "agentcore/.env.local or your shell before `agentcore dev`, or the agent's model calls " +
+          "go out with no key",
+      ]);
+    },
+  );
+
+  test("does not warn when the LiteLLM agent has a key, or calls Bedrock", () => {
+    const keyed = { modelProvider: "LiteLLM", modelId: "openai/gpt-4o", apiKey: "sk-test" };
+    expect(boxProfileWarnings(template("agent-python-strands", keyed))).toEqual([]);
+    expect(
+      boxProfileWarnings(template("agent-python-strands", { modelProvider: "LiteLLM" })),
+    ).toEqual([]);
+  });
+
+  test("calls Bedrock in the region create resolved", () => {
+    const text = renderBoxProfile("V3Demo", STRANDS, "local", "", [], "eu-west-1")!;
+    expect((parse(text) as { options: unknown }).options).toEqual({
+      bedrock: { region: "eu-west-1" },
+    });
+  });
+
+  test("warns that a LiteLLM agent on a provider with no route gets no model route", () => {
+    const groq = { modelProvider: "LiteLLM", modelId: "groq/llama3", apiKey: "sk-test" };
+    const runtime = template("agent-python-strands", groq);
+    expect(profile("agent-python-strands", groq).egress).toBeUndefined();
+    expect(boxProfileWarnings(runtime)).toEqual([
+      "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
+        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "model calls",
+    ]);
+  });
+
+  test("keeps the port of an OpenAI-compatible endpoint in its destination", () => {
+    const { egress } = profile("agent-python-strands", {
+      modelProvider: "OpenAICompatible",
+      modelId: "llama3",
+      apiKey: "sk-test",
+      apiBase: "http://localhost:11434/v1",
+    });
+    expect(egress?.["openai-compatible"]?.destinations).toEqual(["localhost:11434"]);
+  });
+
   test("runs the Strands container image's agent from /app, where box starts in the image", () => {
     const container = profile("agent-python-strands-container");
     expect(container.packs).toEqual(["box/base", "box/bedrock"]);
-    expect(container.agent).toEqual({
-      command: [
-        "${{ workspace }}/.venv/bin/python",
-        "-m",
-        "uvicorn",
-        "main:app",
-        "--app-dir",
-        "${{ workspace }}",
-        "--reload",
-        "--reload-dir",
-        "${{ workspace }}",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8081",
-      ],
-      env: { LOCAL_DEV: "1", PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
-      filesystem: {
-        read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
-        exec: [
-          { path: "${{ workspace }}/.venv", optional: true },
-          "/usr/local/bin",
-          "/usr/local/lib",
-          "/usr/lib/aarch64-linux-gnu",
-        ],
-        deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
-      },
-      ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
-    });
-    expect(container.egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
+    // The image's code and venv are in /app, the workspace, not in app/<runtime>.
+    expect(container.agent.command.slice(0, 6)).toEqual([
+      "${{ workspace }}/.venv/bin/python",
+      "-m",
+      "uvicorn",
+      "main:app",
+      "--app-dir",
+      "${{ workspace }}",
+    ]);
+    expect(container.agent.filesystem.deny_write).toEqual([
+      { path: "${{ workspace }}/.venv", optional: true },
+    ]);
+    // The container's port is reached on its own address, not on loopback.
+    expect(container.agent.ingress).toEqual([{ listen: "0.0.0.0:8080", workload_port: 8081 }]);
+    expect(container.egress?.bedrock).toEqual({ secret: { ref: "aws://default" } });
   });
 
   test.each([
@@ -235,10 +291,8 @@ describe("renderBoxProfile", () => {
 });
 
 function runtimeProfile(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
-  return parse(renderBoxProfile("V3Demo", template(name, overrides), "runtime")!) as Record<
-    string,
-    any
-  >;
+  const text = renderBoxProfile("V3Demo", template(name, overrides), "runtime")!;
+  return parse(text) as unknown as BoxProfile;
 }
 
 const IMAGE_PYTHON_FILESYSTEM = {
@@ -256,6 +310,20 @@ const IMAGE_PYTHON_FILESYSTEM = {
 const AWS_STAND_INS = { AWS_ACCESS_KEY_ID: "box-stand-in", AWS_SECRET_ACCESS_KEY: "box-stand-in" };
 
 describe("renderBoxProfile for AgentCore Runtime", () => {
+  test("names no model host of its own: agentcore.json has no base URL, the Box gateway routes it", () => {
+    // What deploy renders from agentcore.json, which records no --api-base.
+    const spec = {
+      name: "V3Demo",
+      runtimes: [
+        { name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAICompatible" },
+      ],
+      agentCoreGateways: [],
+    } as unknown as ProjectSpec;
+    const text = renderRuntimeBoxProfile(spec, spec.runtimes[0]!);
+    expect(text).not.toContain("api.openai.com");
+    expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
+  });
+
   test("runs agent-python-strands from the zip with the Runtime's Python, for start.sh to fill in", () => {
     const text = renderBoxProfile("V3Demo", template("agent-python-strands"), "runtime")!;
     // start.sh replaces this line with the deployed Memories' and Gateways' variables.

@@ -11,8 +11,6 @@ import { AgentCoreCLIError, ERROR_SOURCE } from "../errors";
 
 const isWindows = process.platform === "win32";
 const KILL_GRACE_MS = 2000;
-/** After a child exits, how long its stdout and stderr may stay open before they are abandoned. */
-const PIPE_CLOSE_GRACE_MS = 1000;
 const MAX_ERROR_OUTPUT_LINES = 20;
 const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 const WINDOWS_ENOENT_ERRNO = -4058;
@@ -236,6 +234,12 @@ export type StreamProcessOptions = {
   signal?: AbortSignal;
   /** Command rendered in errors when the actual arguments contain sensitive values. */
   redactedCommand?: string[];
+  /**
+   * After the child exits, how long its stdout and stderr may stay open before they are abandoned,
+   * for a child that hands its pipes to a longer-lived process (Finch's `finch run`). Unset waits
+   * for every holder to close them, so a wrapper's late output is kept.
+   */
+  pipeCloseGraceMs?: number;
 };
 
 export type ProcessStreamer = (
@@ -405,20 +409,20 @@ export async function* streamProcess(
     exitSignal = signal;
     finish();
   });
-  // "close" waits for every holder of the child's stdout and stderr to let go. A process that hands
-  // its pipes to a longer-lived one (Finch's `finch run` passes them to a shared ssh connection)
-  // never closes them, so after "exit" give the pipes a short grace, then stop waiting.
-  child.once("exit", (code, signal) => {
-    const timer = setTimeout(() => {
-      if (closed) return;
-      exitCode = code;
-      exitSignal = signal;
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-      finish();
-    }, PIPE_CLOSE_GRACE_MS);
-    timer.unref();
-  });
+  const pipeCloseGraceMs = options.pipeCloseGraceMs;
+  if (pipeCloseGraceMs !== undefined) {
+    child.once("exit", (code, signal) => {
+      const timer = setTimeout(() => {
+        if (closed) return;
+        exitCode = code;
+        exitSignal = signal;
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish();
+      }, pipeCloseGraceMs);
+      timer.unref();
+    });
+  }
   options.signal?.addEventListener("abort", terminate, { once: true });
 
   try {

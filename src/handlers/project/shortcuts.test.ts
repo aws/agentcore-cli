@@ -3,13 +3,14 @@ import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
-  getBoxGatewayBedrockEntry,
+  getBoxGatewayBedrockTargetSpec,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
   resolveRuntimeTemplateShortcut,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
 } from "./shortcuts";
+import { getBoxGatewayBedrockEntry } from "./box-gateway-test-support";
 
 describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {
@@ -82,15 +83,17 @@ test("default memory names fit the service limit for long runtime names", () => 
 });
 
 describe("Box gateway entry", () => {
-  const BEDROCK_TARGET = {
-    name: "bedrock",
-    targetType: "passthrough",
-    passthrough: {
-      endpoint: "https://bedrock-runtime.us-west-2.amazonaws.com",
-      protocolType: "CUSTOM",
-    },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-west-2" },
-  } as const;
+  test("the Bedrock target calls and signs for the region build gives it", () => {
+    expect(getBoxGatewayBedrockTargetSpec("eu-central-1")).toEqual({
+      name: "bedrock",
+      targetType: "passthrough",
+      passthrough: {
+        endpoint: "https://bedrock-runtime.eu-central-1.amazonaws.com",
+        protocolType: "CUSTOM",
+      },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "eu-central-1" },
+    });
+  });
 
   test("is a valid project gateway, named after the runtime's Box gateway", () => {
     const entry = getBoxGatewayBedrockEntry("my_agent");
@@ -107,7 +110,7 @@ describe("Box gateway entry", () => {
     "agent-python-langchain",
     "agent-typescript-vercel",
     "agent-python-minimal",
-  ] as const)("%s declares it with the Bedrock target by default", (template) => {
+  ] as const)("%s declares it with no target, which build adds", (template) => {
     expect(
       resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
     ).toEqual({
@@ -116,7 +119,7 @@ describe("Box gateway entry", () => {
       authorizerType: "AWS_IAM",
       enableSemanticSearch: true,
       exceptionLevel: "NONE",
-      targets: [BEDROCK_TARGET],
+      targets: [],
     });
   });
 
@@ -138,10 +141,10 @@ describe("Box gateway entry", () => {
     ).toBeUndefined();
   });
 
-  test("a LiteLLM agent on its default Bedrock model declares the Bedrock target", () => {
+  test("a LiteLLM agent on its default Bedrock model declares the Box gateway", () => {
     expect(
       resolveRuntimeTemplateShortcut("agent-python-strands", { modelProvider: "LiteLLM" })
         .boxGatewayEntry?.targets,
-    ).toEqual([BEDROCK_TARGET]);
+    ).toEqual([]);
   });
 });
