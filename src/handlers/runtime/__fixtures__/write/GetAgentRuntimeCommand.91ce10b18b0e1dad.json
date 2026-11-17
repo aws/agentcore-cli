@@ -1,0 +1,32 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:111122223333:runtime/AgentCoreCliRuntimeE2E-Ab12Cd34Ef",
+  "agentRuntimeName": "AgentCoreCliRuntimeE2E",
+  "agentRuntimeId": "AgentCoreCliRuntimeE2E-Ab12Cd34Ef",
+  "agentRuntimeVersion": "1",
+  "createdAt": {
+    "$date": "2026-11-17T18:00:00.000Z"
+  },
+  "lastUpdatedAt": {
+    "$date": "2026-11-17T18:00:00.000Z"
+  },
+  "roleArn": "arn:aws:iam::111122223333:role/AgentCoreRuntime-AgentCoreCliRuntimeE2E",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "status": "READY",
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 900,
+    "maxLifetime": 28800
+  },
+  "agentRuntimeArtifact": {
+    "containerConfiguration": {
+      "containerUri": "111122223333.dkr.ecr.us-west-2.amazonaws.com/agentcore-cli-e2e:v1"
+    }
+  },
+  "protocolConfiguration": {
+    "serverProtocol": "HTTP"
+  },
+  "environmentVariables": {
+    "LOG_LEVEL": "info"
+  }
+}

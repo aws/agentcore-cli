@@ -1,5 +1,12 @@
 import type {
+  AuthorizerConfiguration,
+  CreateAgentRuntimeResponse,
+  DeleteAgentRuntimeResponse,
   GetAgentRuntimeEndpointResponse,
+  LifecycleConfiguration,
+  NetworkConfiguration,
+  ServerProtocol,
+  UpdateAgentRuntimeResponse,
   GetAgentRuntimeResponse,
   ListAgentRuntimeEndpointsResponse,
   ListAgentRuntimesResponse,
@@ -80,7 +87,59 @@ export interface RuntimeShellSession extends AsyncIterable<RuntimeShellFrame> {
   close(): Promise<void>;
 }
 
+// The settings `agentcore runtime create` sends. A pre-built image Runtime:
+// containerUri becomes agentRuntimeArtifact.containerConfiguration. When
+// executionRoleArn is omitted, Core provisions a default role scoped to the image.
+export type CreateRuntimeInput = {
+  runtimeName: string;
+  containerUri: string;
+  executionRoleArn?: string;
+  description?: string;
+  protocol?: ServerProtocol;
+  environmentVariables?: Record<string, string>;
+  networkConfiguration?: NetworkConfiguration;
+  authorizerConfiguration?: AuthorizerConfiguration;
+  lifecycleConfiguration?: LifecycleConfiguration;
+  tags?: Record<string, string>;
+};
+
+// UpdateAgentRuntime replaces the whole configuration, so Core reads the current
+// version and sends it back with these changes. Omitted fields keep their value.
+export type UpdateRuntimeInput = {
+  runtimeId: string;
+  containerUri?: string;
+  executionRoleArn?: string;
+  description?: string;
+  protocol?: ServerProtocol;
+  environmentVariables?: Record<string, string>;
+  networkConfiguration?: NetworkConfiguration;
+  /** null removes the inbound authorizer (back to AWS IAM). */
+  authorizerConfiguration?: AuthorizerConfiguration | null;
+  lifecycleConfiguration?: LifecycleConfiguration;
+};
+
+export type DeleteRuntimeInput = {
+  runtimeId: string;
+  /** Also delete the execution role, only when it is the default role this CLI created. */
+  deleteExecutionRole?: boolean;
+};
+
+export type DeleteRuntimeResult = DeleteAgentRuntimeResponse & {
+  executionRole?: { roleArn: string; deleted: boolean };
+};
+
 export interface CoreRuntimeClient {
+  createRuntime(
+    input: CreateRuntimeInput,
+    options: CoreOptions,
+  ): Promise<CreateAgentRuntimeResponse>;
+  updateRuntime(
+    input: UpdateRuntimeInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentRuntimeResponse>;
+  deleteRuntime(input: DeleteRuntimeInput, options: CoreOptions): Promise<DeleteRuntimeResult>;
+  /** Resolves a Runtime name (via ListAgentRuntimes), ID, or ARN to its ID. */
+  resolveRuntimeId(identifier: string, options: CoreOptions): Promise<string>;
   invokeAgentRuntimeCommand(
     request: InvokeAgentRuntimeCommandRequest,
     options: CoreOptions,

@@ -25,6 +25,8 @@ import type {
   GetHarnessEndpointResponse,
   GetAgentRuntimeEndpointResponse,
   GetAgentRuntimeResponse,
+  CreateAgentRuntimeResponse,
+  UpdateAgentRuntimeResponse,
   GetMemoryOutput,
   ListApiKeyCredentialProvidersResponse,
   ListOauth2CredentialProvidersResponse,
@@ -169,6 +171,10 @@ import type {
 } from "../core/observability/types";
 import type {
   CoreRuntimeClient,
+  CreateRuntimeInput,
+  DeleteRuntimeInput,
+  DeleteRuntimeResult,
+  UpdateRuntimeInput,
   RuntimeInvokeRequest,
   RuntimeInvokeResponse,
   RuntimeShellRequest,
@@ -834,6 +840,52 @@ export class TestRuntimeClient implements CoreRuntimeClient {
   setError(error: Error | undefined): this {
     this.error = error;
     return this;
+  }
+
+  async createRuntime(
+    input: CreateRuntimeInput,
+    options: CoreOptions,
+  ): Promise<CreateAgentRuntimeResponse> {
+    this.calls.push({ method: "createRuntime", args: [input, options] });
+    if (this.error) throw this.error;
+    return {
+      agentRuntimeArn: `arn:aws:bedrock-agentcore:${options.region}:111122223333:runtime/${input.runtimeName}-a1b2c3d4e5`,
+      agentRuntimeId: `${input.runtimeName}-a1b2c3d4e5`,
+      agentRuntimeVersion: "1",
+      createdAt: new Date(0),
+      status: "CREATING",
+    };
+  }
+
+  async updateRuntime(
+    input: UpdateRuntimeInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentRuntimeResponse> {
+    this.calls.push({ method: "updateRuntime", args: [input, options] });
+    if (this.error) throw this.error;
+    return {
+      agentRuntimeArn: `arn:aws:bedrock-agentcore:${options.region}:111122223333:runtime/${input.runtimeId}`,
+      agentRuntimeId: input.runtimeId,
+      agentRuntimeVersion: "2",
+      createdAt: new Date(0),
+      lastUpdatedAt: new Date(0),
+      status: "UPDATING",
+    };
+  }
+
+  async deleteRuntime(
+    input: DeleteRuntimeInput,
+    options: CoreOptions,
+  ): Promise<DeleteRuntimeResult> {
+    this.calls.push({ method: "deleteRuntime", args: [input, options] });
+    if (this.error) throw this.error;
+    return { agentRuntimeId: input.runtimeId, status: "DELETING" };
+  }
+
+  async resolveRuntimeId(identifier: string, options: CoreOptions): Promise<string> {
+    this.calls.push({ method: "resolveRuntimeId", args: [identifier, options] });
+    if (this.error) throw this.error;
+    return identifier;
   }
 
   async getRuntime(

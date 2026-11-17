@@ -283,7 +283,7 @@ export function harnessRuntimeFromResponse(
 // validation error AgentCore raises for an execution role it cannot yet assume
 // (fresh IAM roles propagate over several seconds). Any other failure — or
 // exhausting the attempts — rethrows.
-async function retryWhileRoleUnassumable<T>(
+export async function retryWhileRoleUnassumable<T>(
   operation: () => Promise<T>,
   attempts = 8,
   delayMs = 2000,

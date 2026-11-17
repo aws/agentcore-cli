@@ -1,0 +1,8 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:111122223333:runtime/AgentCoreCliRuntimeE2E-Ab12Cd34Ef",
+  "agentRuntimeId": "AgentCoreCliRuntimeE2E-Ab12Cd34Ef",
+  "agentRuntimeVersion": "2",
+  "createdAt": "2026-11-17T18:00:00.000Z",
+  "lastUpdatedAt": "2026-11-17T18:05:00.000Z",
+  "status": "UPDATING"
+}

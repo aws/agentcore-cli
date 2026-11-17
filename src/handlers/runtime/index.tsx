@@ -3,6 +3,8 @@ import { Router } from "../../router";
 import { renderTui } from "../../tui";
 import type { AppIO } from "../../io";
 import type { Core } from "../types";
+import { createCreateRuntimeHandler } from "./create";
+import { createDeleteRuntimeHandler } from "./delete";
 import { createRuntimeEndpointHandler } from "./endpoint";
 import { createRuntimeExecHandler } from "./exec";
 import { createGetRuntimeHandler } from "./get";
@@ -11,6 +13,7 @@ import { createListRuntimesHandler } from "./list";
 import { createRuntimeLogsHandler } from "./logs";
 import { createRuntimeShellHandler } from "./shell";
 import { createRuntimeTracesHandler } from "./traces";
+import { createUpdateRuntimeHandler } from "./update";
 import { createRuntimeVersionHandler } from "./version";
 
 export function createRuntimeHandler(core: Core, io: AppIO): Router {
@@ -23,6 +26,9 @@ export function createRuntimeHandler(core: Core, io: AppIO): Router {
     .handler(createInvokeRuntimeHandler(core, io))
     .handler(createRuntimeShellHandler(core, io))
     .handler(createRuntimeExecHandler(core, io))
+    .handler(createCreateRuntimeHandler(core, io))
+    .handler(createUpdateRuntimeHandler(core))
+    .handler(createDeleteRuntimeHandler(core, io))
     .commandSection("resources")
     .handler(createRuntimeVersionHandler(core, io))
     .handler(createRuntimeEndpointHandler(core, io))
