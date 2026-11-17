@@ -1,17 +1,17 @@
 {
   "box": {
     "repo": "mquang-amazon/box-releases",
-    "version": "0.1.11-linux-preview.2",
+    "version": "0.1.11-linux-preview.3",
     "linux": {
       "target": "aarch64-unknown-linux-gnu",
-      "asset": "box-v0.1.11-linux-preview.2-aarch64-unknown-linux-gnu.tar.gz",
-      "sha256": "31605fd1c6e8d2d31e0222e3612ea978dc65c0c369e8a97e964bf848b460122c"
+      "asset": "box-v0.1.11-linux-preview.3-aarch64-unknown-linux-gnu.tar.gz",
+      "sha256": "c153574cc67711e25b3d779e6fffb6a9c6ddbe3a331c315f0309706e4654e80c"
     },
     "dev": {
       "darwin-arm64": {
         "target": "aarch64-apple-darwin",
-        "asset": "box-v0.1.11-linux-preview.2-aarch64-apple-darwin.tar.gz",
-        "sha256": "0d6d9ef1ab2e41068fd421d20383eb13b06797ff9962bf6e42336bc998c350ed"
+        "asset": "box-v0.1.11-linux-preview.3-aarch64-apple-darwin.tar.gz",
+        "sha256": "f9e5d7a25a57b97dbb5570c1b2a6f9c31547b5d7d84965d2a5375c068bc8c86e"
       }
     }
   },
