@@ -271,7 +271,24 @@ async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ n
   return status.agents;
 }
 
+const prebuiltRuntime = (name = "image"): ProjectRuntime => ({
+  ...runtime(name, "Container"),
+  containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+});
+
 describe("project dev build settings sync", () => {
+  test("pre-built images fail before any local builder, environment, or listener starts", async () => {
+    const subject = harness({ project: project(runtime("orders"), prebuiltRuntime()) });
+    await expect(subject.run({ agent: "image" })).rejects.toThrow(
+      "Runtime 'image' uses a pre-built containerUri. Deploy it with agentcore deploy, then use agentcore invoke.",
+    );
+    expect(subject.container.inputs).toEqual([]);
+    expect(subject.codeZip.inputs).toEqual([]);
+    expect(subject.environmentInputs).toEqual([]);
+    expect(subject.collector.starts).toEqual([]);
+    expect(subject.ui.starts).toEqual([]);
+  });
+
   async function codeProject(files: Record<string, string>) {
     const root = await mkdtemp(join(tmpdir(), "dev-sync-"));
     for (const [path, content] of Object.entries(files)) {
@@ -503,6 +520,34 @@ describe("project dev headless multi-agent", () => {
     expect(subject.collector.state.closed).toBe(1);
   });
 
+  test("a mixed project without --agent skips pre-built runtimes and runs the rest", async () => {
+    const codeZip = stayingRunner();
+    const container = stayingRunner();
+    const subject = harness({
+      project: project(runtime("orders"), prebuiltRuntime(), runtime("support", "Container")),
+      codeZip,
+      container,
+    });
+    const { pending } = await supervised(subject);
+
+    expect(subject.io.stderr()).toContain(
+      "Skipping runtime 'image': it deploys a pre-built image. Deploy it with agentcore deploy, then use agentcore invoke.",
+    );
+    expect(codeZip.inputs.map(({ runtime }) => runtime.name)).toEqual(["orders"]);
+    expect(container.inputs.map(({ runtime }) => runtime.name)).toEqual(["support"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+  });
+
+  test("a project of only pre-built runtimes gives the deploy-and-invoke guidance", async () => {
+    const subject = harness({ project: project(prebuiltRuntime("a"), prebuiltRuntime("b")) });
+    await expect(subject.run()).rejects.toThrow(
+      "Runtime 'a' uses a pre-built containerUri. Deploy it with agentcore deploy",
+    );
+    expect(subject.container.inputs).toEqual([]);
+  });
+
   test("assigns distinct ports to runtimes launched together", async () => {
     const codeZip = stayingRunner();
     const container = stayingRunner();
@@ -663,6 +708,21 @@ describe("project dev Inspector UI mode", () => {
       "support",
     ]);
     expect(subject.codeZip.inputs).toHaveLength(0);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("a reload never passes a newly added pre-built runtime to the local runner", async () => {
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders"), prebuiltRuntime()],
+    });
+    const { pending } = await runUi(subject);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(["orders"]);
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
