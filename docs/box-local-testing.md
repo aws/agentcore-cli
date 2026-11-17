@@ -107,7 +107,7 @@ printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env:
 
 ### What build and deploy do with the box profile
 
-Build and deploy run `box profile show .box/profile.toml --full` in the project folder, with the
+Build and deploy run `box profile show .box/profile.toml --format json` in the project folder, with the
 `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box resolves the profile to into
 the runtime's Box network. Every pack, option, and rule Box adds is already in them, so any pack
 works. They change nothing in `.box/`.

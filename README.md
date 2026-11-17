@@ -215,7 +215,7 @@ repository, version and SHA-256s:
   another repository or version than box.
 
 `build` and `deploy` read the box profile as box resolves it, with `box profile show
-.box/profile.toml --full`, so they need `box` on your `PATH`, as `agentcore dev` does.
+.box/profile.toml --format json`, so they need a `box` on your `PATH` that has it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
 the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and

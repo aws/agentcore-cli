@@ -1,6 +1,6 @@
 /**
  * Reads the network inputs of a box profile from Box's own resolution of it: the `[egress]` and
- * `[mcp]` tables of the `box.toml` that `box profile show --full` prints. The profile's own
+ * `[mcp]` tables of the `box.toml` that `box profile show --format json` prints. The profile's own
  * `policies` name the policy files that build stages beside the AgentCore Runtime profile, and its
  * own text places each entry, `packs`, and `policies` for a message.
  */
@@ -37,34 +37,24 @@ export interface ProfileFailure {
 
 /** The `[egress]` and `[mcp]` tables of the `box.toml` that Box resolves the profile to. */
 export function parseResolvedProfile(
-  boxToml: string,
+  boxToml: Readonly<Record<string, unknown>>,
   policyFiles: readonly string[],
 ): { readonly profile: ParsedProfile; readonly failures: readonly ProfileFailure[] } {
-  const fail = (reason: string) => ({
-    profile: { egress: {}, mcp: {}, policyFiles },
-    failures: [{ code: "INVALID_PROFILE" as const, reason, place: BOX_PROFILE_PATH }],
-  });
-  let table: Record<string, unknown>;
-  try {
-    table = parseToml(boxToml) as Record<string, unknown>;
-  } catch (error) {
-    return fail(
-      `Build cannot read the settings that Box resolves this profile to (${tomlProblem(error)}). ` +
-        "Update Box, then retry.",
-    );
-  }
   for (const key of ["egress", "mcp"] as const) {
-    if (table[key] !== undefined && !isTable(table[key])) {
-      return fail(
+    if (boxToml[key] !== undefined && !isTable(boxToml[key])) {
+      const reason =
         `Box resolves \`${key}\` in this profile to a value that is not a table. Write each ` +
-          `entry as a table, such as [${key}.github].`,
-      );
+        `entry as a table, such as [${key}.github].`;
+      return {
+        profile: { egress: {}, mcp: {}, policyFiles },
+        failures: [{ code: "INVALID_PROFILE", reason, place: BOX_PROFILE_PATH }],
+      };
     }
   }
   return {
     profile: {
-      egress: (table.egress as Record<string, unknown> | undefined) ?? {},
-      mcp: (table.mcp as Record<string, unknown> | undefined) ?? {},
+      egress: (boxToml.egress as Record<string, unknown> | undefined) ?? {},
+      mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
       policyFiles,
     },
     failures: [],

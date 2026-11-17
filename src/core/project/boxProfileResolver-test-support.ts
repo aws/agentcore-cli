@@ -1,9 +1,8 @@
 /**
- * A stand-in for `box profile show --full`, for the tests of the Box network, and the network
+ * A stand-in for `box profile show --format json`, for the tests of the Box network, and the network
  * rules that box 0.1.11 prints. `boxProfileResolver.test.ts` compares the rules with the real box
- * when one is on PATH.
+ * when one with `--format json` is on PATH.
  */
-import { stringify } from "smol-toml";
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
 
 const NC = 'action == Box::Action::"net:connect"';
@@ -68,9 +67,9 @@ export function boxNetworkRules(
 }
 
 /**
- * What `box profile show --full` prints for a profile whose routes resolve to `egress`: `box.toml`
+ * What `box profile show --format json` prints for a profile whose routes resolve to `egress`: `box_toml`
  * holds each route with a secret, a backend, or a protocol, as Box keeps the others only as rules,
- * and `policy.dw` holds the profile's own `policy`, then the rules Box adds.
+ * and `policy` holds the profile's own `policy`, then the rules Box adds.
  */
 export function boxShowOf(input: {
   readonly egress?: Readonly<Record<string, unknown>>;
@@ -85,12 +84,17 @@ export function boxShowOf(input: {
     ),
   );
   return {
-    boxToml: stringify({ name: "test-preview", egress: kept, mcp }),
+    boxToml: structuredClone({ name: "test-preview", egress: kept, mcp }),
     policy: `${input.policy ?? ""}\n${boxNetworkRules(egress, mcp)}`,
+    packs: [{ name: "box/base", version: "1" }],
+    warnings: [],
   };
 }
 
-/** Answers each `resolve` with `answer`, which a test may change, and records each call. */
+/**
+ * Answers each `resolve` with a copy of `answer`, as box prints a new document for each call, and
+ * records each call. A test may change `answer`.
+ */
 export class FakeBoxProfileResolver implements BoxProfileResolver {
   public readonly calls: { projectRoot: string; profilePath: string }[] = [];
 
@@ -100,6 +104,6 @@ export class FakeBoxProfileResolver implements BoxProfileResolver {
     this.calls.push({ projectRoot, profilePath });
     return this.answer instanceof Error
       ? Promise.reject(this.answer)
-      : Promise.resolve(this.answer);
+      : Promise.resolve(structuredClone(this.answer));
   }
 }

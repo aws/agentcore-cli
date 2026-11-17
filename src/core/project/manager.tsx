@@ -1603,7 +1603,7 @@ export class FsProjectManager implements ProjectManager {
 
   /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
-   * (`box profile show --full`), then writes what the Box network writers derive from it, before
+   * (`box profile show --format json`), then writes what the Box network writers derive from it, before
    * synth reads agentcore.json and build renders each Runtime profile's routes from its Box
    * gateway's targets: agentcore.json once, patched in the raw file so unknown fields and key order
    * survive and checked against the schema first, then the files, then `.env.local`. A failure of

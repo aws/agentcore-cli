@@ -64,7 +64,7 @@ describe("parseResolvedPolicy", () => {
   });
 
   test("takes each route that Box writes only as rules into [egress], after box.toml's routes", () => {
-    // `box profile show --full` for [egress.multi], [egress.my-api], and [egress."dot.name"] with
+    // `box profile show --format json` for [egress.multi], [egress.my-api], and [egress."dot.name"] with
     // no secret: Box sorts the routes by name and leaves them out of box.toml.
     const policy = [
       `@id("route_bedrock_connect") permit (principal, ${NC}, resource) when { (context.input.host == "bedrock-runtime.us-west-2.amazonaws.com" && context.input.port == 443) };`,

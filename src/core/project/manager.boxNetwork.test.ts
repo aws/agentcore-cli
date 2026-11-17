@@ -35,6 +35,39 @@ const GITHUB = { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_
 /** What box resolves the created profile to, with `routes` beside its Bedrock route. */
 const shows = (routes: Record<string, unknown> = {}, policy?: string) =>
   boxShowOf({ egress: { bedrock: BEDROCK, ...routes }, policy });
+/**
+ * A fake box that resolves box/bedrock for the Bedrock region of the profile it reads, as box does:
+ * its answer's Bedrock host moves from us-west-2 to that region. Records the text of each profile.
+ */
+class RegionalBoxProfileResolver extends FakeBoxProfileResolver {
+  public readonly profiles: string[] = [];
+
+  public override async resolve(
+    projectRoot: string,
+    profilePath: string,
+  ): Promise<ResolvedBoxProfile> {
+    const answer = await super.resolve(projectRoot, profilePath);
+    const text = await readFile(
+      isAbsolute(profilePath) ? profilePath : join(projectRoot, profilePath),
+      "utf8",
+    );
+    this.profiles.push(text);
+    let region = "us-west-2";
+    try {
+      const { options } = parse(text) as { options?: { bedrock?: { region?: string } } };
+      region = options?.bedrock?.region ?? region;
+    } catch {
+      // Box refuses a profile that is not TOML; build reports that failure itself.
+    }
+    const host = (name: string) => `bedrock-runtime.${name}.amazonaws.com`;
+    const moved = (text: string) => text.replaceAll(host("us-west-2"), host(region));
+    return {
+      ...answer,
+      boxToml: JSON.parse(moved(JSON.stringify(answer.boxToml))) as Record<string, unknown>,
+      policy: moved(answer.policy),
+    };
+  }
+}
 const GITHUB_KEY = {
   type: "API_KEY",
   credentialName: "github",
@@ -476,7 +509,7 @@ describe("build reads the box profile as box resolves it", () => {
       path(root, ".box/profile.toml"),
       profile.replace('"box/bedrock"]', '"box/bedrock", "box/anthropic"]'),
     );
-    // `box profile show --full` resolves box/anthropic to this route, with its secret.
+    // `box profile show --format json` resolves box/anthropic to this route, with its secret.
     box.answer = shows({
       anthropic: {
         destinations: ["api.anthropic.com"],
@@ -503,7 +536,7 @@ describe("build reads the box profile as box resolves it", () => {
   test("stops with box's error when box refuses the profile, and writes nothing", async () => {
     const { manager, root, counter, box } = await strandsProject();
     box.answer = new InvalidEnvironmentError(
-      "`box profile show .box/profile.toml --full` failed in the project (exit code 1)",
+      "`box profile show .box/profile.toml --format json` failed in the project (exit code 1)",
     );
     const spec = await text(root, SPEC);
 

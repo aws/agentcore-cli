@@ -1,17 +1,27 @@
 /**
- * Box's own resolution of a box profile. `box profile show <profile> --full` prints the `box.toml`
+ * Box's own resolution of a box profile. `box profile show <profile> --format json` prints the `box.toml`
  * and `policy.dw` that a run of the profile gets, with every pack, option, and rule Box adds
  * already in them, so build reads them rather than compiling the profile itself.
  */
 import { realpathSync } from "node:fs";
 import { isAbsolute, relative, sep } from "node:path";
+import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
 
+/** A pack of the profile, at the version Box resolves it to. */
+export interface BoxPack {
+  readonly name: string;
+  readonly version: string;
+}
+
 /** The `box.toml` and `policy.dw` that Box resolves a box profile to. */
 export interface ResolvedBoxProfile {
-  readonly boxToml: string;
+  /** The `box.toml` as a table, with its keys in the order of the file. */
+  readonly boxToml: Readonly<Record<string, unknown>>;
   readonly policy: string;
+  readonly packs: readonly BoxPack[];
+  readonly warnings: readonly string[];
 }
 
 /** Resolves the box profile at `profilePath`, relative to `projectRoot`, as a run there gets it. */
@@ -19,29 +29,64 @@ export interface BoxProfileResolver {
   resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile>;
 }
 
-const BOX_TOML_HEADING = "# box.toml";
-const POLICY_HEADING = "# policy.dw";
-
 /** Where to get box, which the error names when `box` is not on PATH. */
 const BOX_RELEASES_URL = "https://github.com/mquang-amazon/box-releases";
 
+/** The error of a box that has no `--format` option, as clap prints it. */
+const REFUSED_JSON = /(?:unexpected argument|Found argument) '--format'/;
+
+/** The parts of the document of `box profile show --format json` that build reads. */
+const BoxProfileShowSchema = z.object({
+  box_toml: z.record(z.string(), z.unknown()),
+  policy: z.string(),
+  packs: z.array(z.object({ name: z.string(), version: z.string() })).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+
+/** Each key of the document, as the error names it when Box prints it wrong or not at all. */
+const SHOWN_PARTS: Readonly<Record<keyof z.infer<typeof BoxProfileShowSchema>, string>> = {
+  box_toml: "a box.toml table",
+  policy: "the policy.dw text",
+  packs: "a list of packs",
+  warnings: "a list of warnings",
+};
+
+/** `a, b, or c`. */
+const LIST = new Intl.ListFormat("en", { type: "disjunction" });
+
 /**
- * The `box.toml` and `policy.dw` sections of the output of `box profile show --full`, or
- * `undefined` when it has no such sections. The policy cannot hold the `# policy.dw` line, as
- * Dogwood refuses it, so the last one starts the policy.
+ * The profile `profilePath` as Box resolves it, from the document that `box profile show --format json`
+ * prints on `stdout`. Throws when `stdout` is not one JSON document, or lacks a part build reads.
  */
-export function parseBoxProfileShow(stdout: string): ResolvedBoxProfile | undefined {
-  const lines = stdout.split(/\r?\n/);
-  const toml = lines.indexOf(BOX_TOML_HEADING);
-  const policy = lines.lastIndexOf(POLICY_HEADING);
-  if (toml === -1 || policy <= toml) return undefined;
-  return {
-    boxToml: lines.slice(toml + 1, policy).join("\n"),
-    policy: lines.slice(policy + 1).join("\n"),
-  };
+export function parseBoxProfileShow(stdout: string, profilePath: string): ResolvedBoxProfile {
+  let document: unknown;
+  try {
+    document = JSON.parse(stdout);
+  } catch (error) {
+    throw new InvalidEnvironmentError(
+      `Build cannot read what Box printed for the profile ${profilePath}, as it is not one JSON ` +
+        `document. Run 'box profile show ${profilePath} --format json' in the project folder to see it.`,
+      { cause: error },
+    );
+  }
+  const shown = BoxProfileShowSchema.safeParse(document);
+  if (!shown.success) {
+    const keys = new Set(shown.error.issues.map(({ path }) => path[0]));
+    const wrong = Object.entries(SHOWN_PARTS).filter(([key]) => keys.has(key));
+    // A document that is not an object holds none of the parts.
+    const parts =
+      wrong.length > 0 ? wrong.map(([, part]) => part) : [SHOWN_PARTS.box_toml, SHOWN_PARTS.policy];
+    throw new InvalidEnvironmentError(
+      `Box printed the profile ${profilePath} without ${LIST.format(parts)}, which build reads. ` +
+        `Install a newer Box (${BOX_RELEASES_URL}), then retry.`,
+      { cause: shown.error },
+    );
+  }
+  const { box_toml: boxToml, policy, packs, warnings } = shown.data;
+  return { boxToml, policy, packs, warnings };
 }
 
-/** Runs `box profile show --full` with the `box` on PATH, which `agentcore dev` runs too. */
+/** Runs `box profile show --format json` with the `box` on PATH. */
 export class BoxCliProfileResolver implements BoxProfileResolver {
   private readonly env: NodeJS.ProcessEnv;
   private readonly streamProcess: ProcessStreamer;
@@ -52,7 +97,7 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
   }
 
   public async resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile> {
-    const command = ["box", "profile", "show", profilePath, "--full"];
+    const command = ["box", "profile", "show", profilePath, "--format", "json"];
     const stdout: string[] = [];
     const stderr: string[] = [];
     try {
@@ -68,6 +113,13 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
       if (error.meta.exitCode === null && stderr.length === 0) {
         throw new InvalidEnvironmentError(
           `Box is not installed or not on PATH. Install it (${BOX_RELEASES_URL}), then retry.`,
+          { cause: error },
+        );
+      }
+      if (stderr.some((line) => REFUSED_JSON.test(line))) {
+        throw new InvalidEnvironmentError(
+          `This Box cannot print the profile ${profilePath} as JSON, which build reads. Install ` +
+            `a Box release with \`box profile show --format json\` (${BOX_RELEASES_URL}), then retry.`,
           { cause: error },
         );
       }
@@ -92,14 +144,7 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
         { cause: error },
       );
     }
-    const resolved = parseBoxProfileShow(stdout.join("\n"));
-    if (resolved === undefined) {
-      throw new InvalidEnvironmentError(
-        `This Box cannot show the full profile ${profilePath}, which build reads. Install a ` +
-          `newer Box (${BOX_RELEASES_URL}), then retry.`,
-      );
-    }
-    return resolved;
+    return parseBoxProfileShow(stdout.join("\n"), profilePath);
   }
 }
 
