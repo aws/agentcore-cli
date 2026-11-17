@@ -177,8 +177,9 @@ function apiKeyRoute(runtime: ScaffoldRuntimeInput): ApiKeyRoute | undefined {
     case "Gemini":
       return GEMINI;
     case "OpenAICompatible":
+      // The schema requires --api-base for this provider; the type still allows it to be absent.
       return runtime.apiBase === undefined
-        ? OPENAI
+        ? undefined
         : { name: "openai-compatible", host: new URL(runtime.apiBase).host };
     case "LiteLLM": {
       // LiteLLM picks the provider from the model ID's prefix.
@@ -355,7 +356,9 @@ export function renderBoxProfile(
   const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
   const callsModel = protocol !== "MCP";
   const bedrock = callsModel && callsBedrockModel(runtime);
-  const keyed = callsModel ? apiKeyRoute(runtime) : undefined;
+  // On the Runtime, each model route is a Box gateway target that build derives from the local
+  // profile's [egress] sections, so only the local profile names the provider's host here.
+  const keyed = callsModel && !onRuntime ? apiKeyRoute(runtime) : undefined;
   const environment = { ...runner.env, ...PYTHON_ENV };
 
   // The optional sections, each empty or ending in a newline.
@@ -393,14 +396,7 @@ export function renderBoxProfile(
 [egress.bedrock]
 secret.ref = "aws://default"
 `;
-  const keyedRoute = !keyed
-    ? ""
-    : onRuntime
-      ? `
-# Open: on AgentCore Runtime the agent reads its ${runtime.modelProvider} API key from
-# AgentCore Identity, so ${keyed.host} has no route here yet.
-`
-      : apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed));
+  const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed)) : "";
   const packs = list(["box/base", ...(bedrock ? ["box/bedrock"] : [])]);
   const env = Object.entries(environment)
     .map(([name, value]) => `${name} = ${str(value)}`)
