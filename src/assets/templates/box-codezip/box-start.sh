@@ -26,8 +26,10 @@
 # Box signs the AWS requests with the execution role, through the AWS profile default that this
 # script writes and refreshes.
 #
-# If box fails, or the agent in it does not answer by 22s, this serves main.py without box: the
-# Runtime allows 30s to start. Set BOX_START_DISABLE=1 on the Runtime to skip box.
+# If box fails, or the agent in it does not answer by 22s (the Runtime allows 30s to start), this
+# exits non-zero, so the Runtime reports the start as failed instead of serving the agent without
+# its box. Set BOX_START_FALLBACK=1 on the Runtime to serve main.py without box in that case, or
+# BOX_START_DISABLE=1 to skip box.
 set -u
 
 CODE=$(cd "$(dirname "$0")" && pwd)
@@ -51,6 +53,27 @@ pyq() { env PYTHONPATH="$CODE" "$PYTHON" "$@"; }
 serve_without_box() {
   log "FALLBACK ($1) after ${SECONDS}s: serving the agent without box"
   cd "$CODE" && exec "$PYTHON" main.py
+}
+
+# Box did not start. Unboxed, the agent would run with the execution role and no egress control,
+# so stop unless the Runtime opted in with BOX_START_FALLBACK=1.
+box_failed() {
+  [ "${BOX_START_FALLBACK:-}" = 1 ] && serve_without_box "$1"
+  log "FAILED ($1) after ${SECONDS}s: the agent does not start without box." \
+    "Set BOX_START_FALLBACK=1 on the Runtime to serve it without box."
+  exit 1
+}
+
+# Stops box run and waits up to 2s for it to free the ingress port, then kills it.
+stop_box() {
+  local tries=0
+  kill "$1" 2>/dev/null
+  while kill -0 "$1" 2>/dev/null && [ "$tries" -lt 4 ]; do
+    sleep 0.5
+    tries=$((tries + 1))
+  done
+  kill -KILL "$1" 2>/dev/null
+  wait "$1" 2>/dev/null
 }
 
 # --- Credentials (TEMPORARY) -----------------------------------------------------------------------
@@ -133,7 +156,7 @@ agent_ready() (
 start_box() {
   local port pid code
   port=$(grep -m1 -oE '^listen = "[0-9.]+:[0-9]+"' "$PROFILE" | grep -oE '[0-9]+"$' | tr -d '"')
-  cd "$WORKSPACE" || serve_without_box "no workspace"
+  cd "$WORKSPACE" || box_failed "no workspace"
   log "starting box run (ingress :${port:-8080})"
   # The prefix keeps box's own lines in a "[box]" log query.
   env HOME="$HOME_DIR" "$BOX" run "$PROFILE" --no-banner > >(sed -u 's/^/[box] box: /') 2>&1 &
@@ -141,7 +164,7 @@ start_box() {
   while [ "$SECONDS" -lt "$READY_BY" ]; do
     if ! kill -0 "$pid" 2>/dev/null; then
       wait "$pid"
-      serve_without_box "box run exited with $?"
+      box_failed "box run exited with $?"
     fi
     if agent_ready "${port:-8080}"; then
       log "the agent in box answers after ${SECONDS}s"
@@ -153,20 +176,20 @@ start_box() {
     fi
     sleep 0.5
   done
-  kill "$pid" 2>/dev/null
-  serve_without_box "the agent in box did not answer by ${READY_BY}s"
+  stop_box "$pid"
+  box_failed "the agent in box did not answer by ${READY_BY}s"
 }
 
 # --- Main --------------------------------------------------------------------------------------------
 [ "${BOX_START_DISABLE:-}" = 1 ] && serve_without_box "BOX_START_DISABLE=1"
-[ -x "$BOX" ] && [ -f "$DIST/profile.toml" ] || serve_without_box "no $DIST; deploy stages it"
+[ -x "$BOX" ] && [ -f "$DIST/profile.toml" ] || box_failed "no $DIST; deploy stages it"
 log "box: $("$BOX" --version 2>&1 | head -1)  python: $PYTHON  user: $(id -u)"
 
 mkdir -p "$WORKSPACE" "$HOME_DIR"
 chmod 0700 "$HOME_DIR"
 start_credentials
 
-write_profile || serve_without_box "cannot write $PROFILE and its policy files"
+write_profile || box_failed "cannot write $PROFILE and its policy files"
 log "profile:"
 sed 's/^/[box]   /' "$PROFILE"
 start_box
