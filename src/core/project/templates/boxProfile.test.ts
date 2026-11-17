@@ -317,6 +317,18 @@ const IMAGE_PYTHON_FILESYSTEM = {
 };
 
 describe("renderBoxProfile for AgentCore Runtime", () => {
+  test("names no model host of its own: agentcore.json has no base URL, the Box gateway routes it", () => {
+    // What deploy renders from agentcore.json, which records no --api-base.
+    const spec = {
+      name: "V3Demo",
+      runtimes: [{ name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAICompatible" }],
+      agentCoreGateways: [],
+    } as unknown as ProjectSpec;
+    const text = renderRuntimeBoxProfile(spec, spec.runtimes[0]!);
+    expect(text).not.toContain("api.openai.com");
+    expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
+  });
+
   test("runs agent-python-strands from the zip with the Runtime's Python, for start.sh to fill in", () => {
     const text = renderBoxProfile(
       "V3Demo",
