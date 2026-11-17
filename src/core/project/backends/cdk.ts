@@ -11,7 +11,7 @@ import type {
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { stageBoxContainers } from "./boxContainer";
+import { boxedContainersWithOtel, stageBoxContainers } from "./boxContainer";
 import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
@@ -248,6 +248,16 @@ export class CdkBackend implements ProjectBackend {
     boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
     yield* await this.ensureCdkDependencies(project, boxNetworks);
+
+    for (const name of boxedContainersWithOtel(project)) {
+      yield {
+        type: "warning",
+        message:
+          `Runtime '${name}' runs its agent in a box, and the box image does not run ` +
+          `opentelemetry-instrument, so it sends no traces to AgentCore Observability. ` +
+          `Set instrumentation.enableOtel to false in agentcore.json to silence this warning.`,
+      };
+    }
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
