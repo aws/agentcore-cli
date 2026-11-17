@@ -1,13 +1,6 @@
-import {
-  chmodSync,
-  copyFileSync,
-  cpSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
+import { chmod, copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
@@ -42,13 +35,15 @@ export function containerBuildContext(projectRoot: string, runtime: ProjectRunti
   return join(projectRoot, runtime.buildContextPath ?? runtime.codeLocation);
 }
 
-/** Whether a container runtime's Dockerfile copies the staged box in. */
-export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): boolean {
-  if (runtime.build !== "Container") return false;
-  const dockerfile = dockerfileOf(projectRoot, runtime);
-  if (!isFile(dockerfile)) return false;
-  const text = readFileSync(dockerfile, "utf8");
-  return text.includes(`${BOX_IMAGE_DIST}/`) || COPIES_DIST_ARG.test(text);
+/** A Dockerfile line that copies `.box-dist/` by name; a comment that names it does not count. */
+const COPIES_DIST_FOLDER = new RegExp(
+  `^\\s*(?:COPY|ADD)\\b[^\\n]*${BOX_IMAGE_DIST.replace(".", "\\.")}/`,
+  "im",
+);
+
+/** Whether a Dockerfile's text copies the staged box in. */
+export function dockerfileCopiesBox(text: string): boolean {
+  return COPIES_DIST_FOLDER.test(text) || COPIES_DIST_ARG.test(text);
 }
 
 /**
@@ -56,10 +51,15 @@ export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): bo
  * can stage into {@link BOX_DEV_DIST}. A Dockerfile from an older template copies `.box-dist/`
  * by name, and dev stages there as before.
  */
-export function imageTakesBoxDistArg(projectRoot: string, runtime: ProjectRuntime): boolean {
-  if (!imageCopiesBox(projectRoot, runtime)) return false;
-  const text = readFileSync(dockerfileOf(projectRoot, runtime), "utf8");
-  return DECLARES_DIST_ARG.test(text) && COPIES_DIST_ARG.test(text);
+export function dockerfileTakesBoxDistArg(text: string): boolean {
+  return dockerfileCopiesBox(text) && DECLARES_DIST_ARG.test(text) && COPIES_DIST_ARG.test(text);
+}
+
+/** Whether a container runtime's Dockerfile copies the staged box in. */
+export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): boolean {
+  if (runtime.build !== "Container") return false;
+  const dockerfile = dockerfileOf(projectRoot, runtime);
+  return isFile(dockerfile) && dockerfileCopiesBox(readFileSync(dockerfile, "utf8"));
 }
 
 /** The Dockerfile a container runtime's image builds from. */
@@ -78,22 +78,22 @@ export interface PolicyFileCopy {
  * the image runs, and each policy file of `policies` at its path from `.box/`. The image's
  * Dockerfile installs box itself, from the box release. The folder is rewritten each time.
  */
-export function stageBoxImage(
+export async function stageBoxImage(
   context: string,
   profileText: string,
   policies: readonly PolicyFileCopy[] = [],
   build?: BoxLinuxBuild,
   folder: string = BOX_IMAGE_DIST,
-): void {
+): Promise<void> {
   const dist = join(context, folder);
-  rmSync(dist, { recursive: true, force: true });
-  mkdirSync(dist, { recursive: true });
-  if (build) copyBox(build, dist);
-  writeFileSync(join(dist, "profile.toml"), profileText);
+  await rm(dist, { recursive: true, force: true });
+  await mkdir(dist, { recursive: true });
+  if (build) await copyBoxAsync(build, dist);
+  await writeFile(join(dist, "profile.toml"), profileText);
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
-    mkdirSync(dirname(to), { recursive: true });
-    copyFileSync(from, to);
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
   }
 }
 
@@ -165,6 +165,14 @@ export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): bo
  * Copies box, its helpers and its packs into an image's `.box-dist/`, which its Dockerfile copies
  * into /opt/box, so the image runs the box release of the runtime's `box.version`.
  */
+async function copyBoxAsync(build: BoxLinuxBuild, dist: string): Promise<void> {
+  for (const binary of BOX_BINARIES) {
+    await copyFile(join(build.binaries, binary), join(dist, binary));
+    await chmod(join(dist, binary), 0o755);
+  }
+  await cp(build.resources, join(dist, "resources"), { recursive: true });
+}
+
 function copyBox(build: BoxLinuxBuild, dist: string): void {
   for (const binary of BOX_BINARIES) {
     copyFileSync(join(build.binaries, binary), join(dist, binary));

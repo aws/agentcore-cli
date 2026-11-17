@@ -16,8 +16,8 @@ import {
   BOX_DEV_DIST,
   BOX_DIST_ARG,
   BOX_IMAGE_DIST,
-  imageCopiesBox,
-  imageTakesBoxDistArg,
+  dockerfileCopiesBox,
+  dockerfileTakesBoxDistArg,
   stageBoxImage,
 } from "../project/backends/boxContainer";
 import {
@@ -26,7 +26,7 @@ import {
   type BoxLinuxBuild,
 } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
-import { boxProfilePath } from "../project/templates/boxProfile";
+import { boxProfileIsFor, boxProfilePath } from "../project/templates/boxProfile";
 import {
   BOX_DEV_AWS_REFRESH_MS,
   resolveDefaultAwsCredentials,
@@ -49,6 +49,8 @@ const AWS_ENV_KEYS = [
 // Each container command in cleanup gets this long. Finch sends every command through its VM,
 // so a 2s limit cut cleanup short and left the dev container running.
 const CLEANUP_TIMEOUT_MS = 15_000;
+/** How long `finch run`'s pipes may stay open after it exits. */
+const PIPE_CLOSE_GRACE_MS = 1000;
 /** Seconds `stop` waits for the container to exit before it kills it. */
 const STOP_GRACE_SECONDS = 2;
 /** How Docker, Podman, and Finch report a container that does not exist. */
@@ -188,8 +190,9 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxDist = await this.stageBox(input, context);
+    const boxDist = await this.stageBox(input, context, dockerfilePath);
     const boxed = boxDist !== undefined;
+    if (boxed) yield { type: "status", message: `Staged box in ${join(context, boxDist)}` };
     // The folder dev staged, for a Dockerfile that takes it as a build argument.
     const boxDistFlags =
       boxDist === BOX_DEV_DIST ? ["--build-arg", `${BOX_DIST_ARG}=${BOX_DEV_DIST}`] : [];
@@ -304,15 +307,16 @@ export class ContainerDevRunner implements DevRunner {
         cwd: context,
         env: this.processEnv,
         signal: input.signal,
+        // `finch run` hands its pipes to Finch's ssh connection, which outlives it.
+        ...(tool === "finch" && { pipeCloseGraceMs: PIPE_CLOSE_GRACE_MS }),
       });
     } finally {
       if (refresh) clearInterval(refresh);
-      try {
-        await this.stopContainer(tool, containerName, context);
-      } finally {
-        await rm(envFile, { force: true });
-        await boxAws?.dispose();
-      }
+      const warning = await this.stopContainer(tool, containerName, context);
+      await rm(envFile, { force: true });
+      await boxAws?.dispose();
+      // A warning, not a throw, so a failed run keeps its own error.
+      if (warning) yield { type: "status", message: warning };
     }
   }
 
@@ -323,8 +327,13 @@ export class ContainerDevRunner implements DevRunner {
    * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
-    if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
+  private async stageBox(
+    input: DevServerInput,
+    context: string,
+    dockerfilePath: string,
+  ): Promise<string | undefined> {
+    const dockerfile = readFileSync(dockerfilePath, "utf8");
+    if (!dockerfileCopiesBox(dockerfile)) return undefined;
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
@@ -333,12 +342,18 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
-      ? BOX_DEV_DIST
-      : BOX_IMAGE_DIST;
-    stageBoxImage(
+    const profileText = readFileSync(profile, "utf8");
+    if (!boxProfileIsFor(profileText, input.runtime)) {
+      throw new InputValidationError(
+        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
+          `but ${profile} is the box profile of another runtime. Write a box profile for this ` +
+          "runtime there, or stop its Dockerfile from copying .box-dist/.",
+      );
+    }
+    const folder = dockerfileTakesBoxDistArg(dockerfile) ? BOX_DEV_DIST : BOX_IMAGE_DIST;
+    await stageBoxImage(
       context,
-      readFileSync(profile, "utf8"),
+      profileText,
       boxPolicyFileCopies(input.projectRoot),
       await this.resolveBox(input.runtime.box?.version),
       folder,
@@ -399,22 +414,27 @@ export class ContainerDevRunner implements DevRunner {
   /**
    * Stops the dev container at shutdown: `stop -t 2` gives it a short grace period, then kills it,
    * and `run --rm` removes it. A container that already exited is gone already. Any other failure
-   * leaves it running, so it is thrown with the command that removes it.
+   * leaves it running, so it returns a warning with the command that removes it.
    */
-  private async stopContainer(tool: ContainerTool, containerName: string, cwd: string) {
+  private async stopContainer(
+    tool: ContainerTool,
+    containerName: string,
+    cwd: string,
+  ): Promise<string | undefined> {
     try {
       await this.runCleanupCommand(
         [tool, "stop", "-t", String(STOP_GRACE_SECONDS), containerName],
         cwd,
       );
     } catch (error) {
-      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return;
-      throw new InvalidEnvironmentError(
-        `Could not stop the dev container ${containerName}; it may still be running. ` +
-          `Remove it with '${tool} rm -f ${containerName}'.`,
-        { cause: error, meta: { tool, containerName } },
+      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return undefined;
+      const reason = error instanceof Error ? error.message : String(error);
+      return (
+        `Could not stop the dev container ${containerName}; it may still be running ` +
+        `(${reason}). Remove it with '${tool} rm -f ${containerName}'.`
       );
     }
+    return undefined;
   }
 
   private async runCleanupCommand(command: string[], cwd: string): Promise<void> {
