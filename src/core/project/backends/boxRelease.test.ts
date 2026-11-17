@@ -55,7 +55,7 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     "libffi.so.8": "ffi",
   });
   const release: BoxRelease = {
-    repo: "owner/staging-boxy",
+    repo: "owner/box-releases",
     version: VERSION,
     target: "aarch64-unknown-linux-gnu",
     box: { asset: `box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, sha256: box.sha256 },
@@ -70,19 +70,19 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     [release.ffi.asset]: ffi.archive,
   };
   const commands: string[][] = [];
-  // gh copies the asset into --dir; tar runs for real.
+  // curl writes the asset its URL names to -o; tar runs for real.
   const runner: ProcessRunner = async (command, options) => {
     commands.push(command);
-    if (command[0] !== "gh") return runProcess(command, options);
-    const asset = command[command.indexOf("--pattern") + 1]!;
-    const into = command[command.indexOf("--dir") + 1]!;
-    await writeFile(join(into, asset), await readFile(assets[asset]!));
+    if (command[0] !== "curl") return runProcess(command, options);
+    const url = command.at(-1)!;
+    const output = command[command.indexOf("-o") + 1]!;
+    await writeFile(output, await readFile(assets[url.slice(url.lastIndexOf("/") + 1)]!));
   };
   return { release, runner, commands };
 }
 
 describe("resolveBoxLinuxBuild from the box release", () => {
-  test("downloads both assets with gh, checks them, and installs them under ~/.agentcore/box", async () => {
+  test("downloads both assets from the public release, checks them, and installs them under ~/.agentcore/box", async () => {
     const home = await temp("box-home-");
     const { release, runner, commands } = await fakeRelease();
 
@@ -96,18 +96,15 @@ describe("resolveBoxLinuxBuild from the box release", () => {
       expect((await stat(join(root, binary))).mode & 0o777).toBe(0o755);
     }
     expect(await readFile(join(root, "ffi", "PYTHON_3_14", "libffi.so.8"), "utf8")).toBe("ffi");
-    expect(commands.filter((command) => command[0] === "gh")).toEqual(
+    expect(commands.filter((command) => command[0] === "curl")).toEqual(
       [release.box.asset, release.ffi.asset].map((asset) => [
-        "gh",
-        "release",
-        "download",
-        `v${VERSION}`,
-        "--repo",
-        "owner/staging-boxy",
-        "--pattern",
-        asset,
-        "--dir",
-        expect.any(String) as unknown as string,
+        "curl",
+        "-fsSL",
+        "--retry",
+        "3",
+        "-o",
+        expect.stringContaining(asset) as unknown as string,
+        `https://github.com/owner/box-releases/releases/download/v${VERSION}/${asset}`,
       ]),
     );
   });
@@ -148,7 +145,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     );
   });
 
-  test("says how to log in when gh cannot download the release", async () => {
+  test("names the URL when the download fails", async () => {
     const home = await temp("box-home-");
     const { release } = await fakeRelease();
     const runner: ProcessRunner = async () => {
@@ -158,7 +155,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     const result = resolveBoxLinuxBuild({}, { runner, home, release });
 
     await expect(result).rejects.toThrow(
-      /Run `gh auth login` with an account that can read owner\/staging-boxy/,
+      /downloaded from https:\/\/github\.com\/owner\/box-releases\/releases\/download\/v9\.9\.9-linux-preview\.1\/box-v/,
     );
     await expect(result).rejects.toThrow(/HTTP 404: Not Found/);
   });

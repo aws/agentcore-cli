@@ -1,15 +1,8 @@
 import { join } from "node:path";
-import {
-  BOX_GATEWAY_AGENTCORE_HOST,
-  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
-  BOX_GATEWAY_BEDROCK_REGION,
-  BOX_GATEWAY_NAME,
-  callsBedrockModel,
-} from "../../../handlers/project/shortcuts";
+import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import { defaultMemoryName } from "../../../projectSchemas/memory";
-import type { ProjectSpec } from "../../../projectSchemas/project";
+import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 
@@ -46,10 +39,12 @@ const AGENT_ENV_MARKER = "# @AGENT_ENV@";
 export const BOX_GATEWAY_URL_PLACEHOLDER = "@GATEWAY_BOX_URL@";
 
 /**
- * The credential Box signs with on AgentCore Runtime: a bare `aws://` resolves the
- * AWS default credential chain, which finds the execution role and refreshes it.
+ * The credential Box signs with on AgentCore Runtime: the `default` AWS profile, which start.sh
+ * writes from the execution role and refreshes. box refuses a bare `aws://` (the AWS default
+ * credential chain), and Box Core reads a named profile only from its files. TEMPORARY: back to
+ * `aws://`, and drop start.sh's credentials step, once box accepts the default chain again.
  */
-const RUNTIME_AWS_SIGNER = "aws://";
+const RUNTIME_AWS_SIGNER = "aws://default";
 
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
@@ -351,11 +346,8 @@ export function renderBoxProfile(
   const bedrockRoute = !bedrock
     ? ""
     : onRuntime
-      ? `
-# Sign the model calls with the Runtime's execution role.
-[egress.bedrock]
-secret.ref = ${str(RUNTIME_AWS_SIGNER)}
-`
+      ? // The Box gateway's `bedrock` target makes this route, with the rest of runtimeRoutes.
+        ""
       : `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
 # rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
@@ -400,18 +392,20 @@ ${routes}${bedrockRoute}${keyedRoute}`;
 }
 
 /**
- * The route the agent's AgentCore Memory calls take on the Runtime: the box
- * sends them to the Box gateway's AgentCore passthrough target, signed with
- * the execution role. Starts with a blank line.
+ * A route the agent's calls take on the Runtime: the box re-routes calls to
+ * `host` to the runtime's Box gateway target of the same name, signing them for
+ * the gateway with the execution role; the gateway signs the call to `host`
+ * with its own role. Every `[egress.<name>]` on the Runtime is one of these, so
+ * every outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeMemoryRouteSection(): string {
-  const target = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
+function runtimeGatewayRouteSection(target: string, host: string): string {
+  const key = tomlKey(target);
   return `
-# AgentCore Memory, through the '${BOX_GATEWAY_NAME}' gateway's '${target}' target.
-[egress.${target}]
-destinations = [${str(BOX_GATEWAY_AGENTCORE_HOST)}]
+# Calls to ${host}, through the runtime's Box gateway's '${target}' target.
+[egress.${key}]
+destinations = [${str(host)}]
 
-[[egress.${target}.backends]]
+[[egress.${key}.backends]]
 url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
@@ -420,16 +414,33 @@ auth.aws.region = ${str(BOX_GATEWAY_BEDROCK_REGION)}
 }
 
 /**
+ * The Runtime routes of a runtime: one for each passthrough target of its Box
+ * gateway, `<runtime>-box`, named for the target and sent to it, so a target in
+ * agentcore.json is what gives the boxed agent a route. Build adds the targets
+ * the template's calls need (see `addBoxGatewayTargets`) before it renders.
+ * None outside a Box project, which has no Box gateway.
+ */
+function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime): string {
+  if (!isBoxProject(spec)) return "";
+  const gateway = spec.agentCoreGateways.find(({ name }) => name === boxGatewayName(runtime.name));
+  return (gateway?.targets ?? [])
+    .flatMap((target) =>
+      target.targetType === "passthrough" && target.passthrough
+        ? [runtimeGatewayRouteSection(target.name, new URL(target.passthrough.endpoint).host)]
+        : [],
+    )
+    .join("");
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
- * provider, and, when the project has the runtime's default Memory, the route
- * its Memory calls take through the Box gateway. agentcore.json does not
- * record the framework, and the profile does not depend on it beyond the
- * container case, so the input names Strands, one of the frameworks that run
- * in a box.
+ * provider, and a route for each passthrough target of its Box gateway.
+ * agentcore.json does not record the framework, and the profile does not
+ * depend on it beyond the container case, so the input names Strands, one of
+ * the frameworks that run in a box.
  */
 export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
-  const memory = spec.memories.some((entry) => entry.name === defaultMemoryName(runtime.name));
   const input = {
     runtimeName: runtime.name,
     build: runtime.build,
@@ -439,7 +450,7 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  return renderBoxProfile(spec.name, input, "runtime", memory ? runtimeMemoryRouteSection() : "")!;
+  return renderBoxProfile(spec.name, input, "runtime", runtimeGatewayRoutes(spec, runtime))!;
 }
 
 /** The variable that holds the model provider's API key, as the template's model code reads it. */
@@ -474,4 +485,9 @@ function optional(path: string): string {
 
 function list(values: string[]): string {
   return `[${values.map(str).join(", ")}]`;
+}
+
+/** A TOML key: bare when TOML allows it, else a quoted string. */
+function tomlKey(key: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : str(key);
 }

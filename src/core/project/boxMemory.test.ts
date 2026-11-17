@@ -8,7 +8,13 @@ import {
   getBoxGatewayBedrockEntry,
 } from "../../handlers/project/shortcuts";
 import type { ProjectSpec } from "../../projectSchemas/project";
-import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
+import {
+  addBoxBedrockTarget,
+  addBoxGatewayTargets,
+  addBoxMemoryTarget,
+  BOX_MEMORY_POLICY_FILE,
+  boxMemoryPolicy,
+} from "./boxMemory";
 
 const directories: string[] = [];
 
@@ -148,5 +154,61 @@ describe("boxMemoryPolicy", () => {
   test("is undefined when no boxed runtime has its default Memory", async () => {
     expect(boxMemoryPolicy(spec({ memories: ["ordersMemory"] }), await root())).toBeUndefined();
     expect(boxMemoryPolicy(spec({ entrypoint: "main.py" }), await root())).toBeUndefined();
+  });
+});
+
+describe("addBoxBedrockTarget", () => {
+  const without = (project: ProjectSpec) => {
+    project.agentCoreGateways[0]!.targets = [];
+    return project;
+  };
+
+  test("puts back the bedrock target a boxed Bedrock agent's route needs", async () => {
+    const project = without(spec());
+
+    expect(addBoxBedrockTarget(project, await root())).toEqual([
+      "adding target 'bedrock' to gateway 'agent-box' in agentcore.json, for the boxed agent's model calls",
+    ]);
+    expect(targets(project)).toEqual(["bedrock"]);
+  });
+
+  test("changes nothing when the target is there", async () => {
+    const project = spec();
+
+    expect(addBoxBedrockTarget(project, await root())).toEqual([]);
+    expect(targets(project)).toEqual(["bedrock"]);
+  });
+
+  test.each([
+    ["another model provider", { modelProvider: "OpenAI" }],
+    ["an MCP server", { protocol: "MCP" }],
+    ["an agent not in a box", { entrypoint: "main.py" }],
+  ])("adds no target for %s", async (_, runtime) => {
+    const project = without(spec());
+    Object.assign(project.runtimes[0]!, runtime);
+
+    expect(addBoxBedrockTarget(project, await root())).toEqual([]);
+    expect(targets(project)).toEqual([]);
+  });
+
+  test("recreates a removed Box gateway entry", async () => {
+    const project = spec();
+    project.agentCoreGateways = [];
+
+    expect(addBoxBedrockTarget(project, await root())).toContain(
+      "adding gateway 'agent-box' to agentcore.json",
+    );
+    expect(targets(project)).toEqual(["bedrock"]);
+  });
+});
+
+describe("addBoxGatewayTargets", () => {
+  test("adds the bedrock and agentcore targets a boxed agent's calls take", async () => {
+    const project = spec();
+    project.agentCoreGateways[0]!.targets = [];
+
+    addBoxGatewayTargets(project, await root());
+
+    expect(targets(project)).toEqual(["bedrock", "agentcore"]);
   });
 });

@@ -49,20 +49,20 @@ export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
  * such an agent gets no entry.
  */
 export function getBoxGatewayBedrockEntry(runtimeName: string): AgentCoreGateway {
+  return { ...getBoxGatewayEntry(runtimeName), targets: [getBoxGatewayBedrockTargetSpec()] };
+}
+
+/** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
+export function getBoxGatewayBedrockTargetSpec(): AgentCoreGatewayTarget {
   const region = BOX_GATEWAY_BEDROCK_REGION;
   return {
-    ...getBoxGatewayEntry(runtimeName),
-    targets: [
-      {
-        name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
-        targetType: "passthrough",
-        passthrough: {
-          endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
-          protocolType: "CUSTOM",
-        },
-        outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
-      },
-    ],
+    name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: {
+      endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+      protocolType: "CUSTOM",
+    },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
   };
 }
 
