@@ -4,6 +4,8 @@
 **[Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)**, the platform for building
 and running production AI agents ([documentation](https://docs.aws.amazon.com/bedrock-agentcore/)).
 
+**Foo change for a foo PR. This change won't merge as this PR is a planned closure**
+
 It gives you two ways to work, from the same package:
 
 - **A scriptable CLI** — flag-driven commands with JSON output (`--json`) for coding agents,
