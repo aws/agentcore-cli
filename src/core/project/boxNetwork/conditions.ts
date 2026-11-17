@@ -28,6 +28,8 @@ export const BOX_ACTIONS = new Set([
   "shell:exec",
   "shell:spawn",
   "mcp:call",
+  "websocket:send",
+  "websocket:receive",
 ]);
 
 export type RequestField = "host" | "port" | "method" | "path" | "ip4" | "ip6";
@@ -55,10 +57,16 @@ export interface OpaqueAtom {
 interface ConstantAtom {
   readonly kind: "constant";
   readonly value: boolean;
-  /** Why it is false: the gateway carries only TLS, or the rule names another identity. */
-  readonly cause: "intercepted" | "identity";
+  /**
+   * Why it is false: the gateway carries only TLS, the rule names another identity, or it reads
+   * a WebSocket handshake, which build gives no target.
+   */
+  readonly cause: DeadCause;
   readonly text: string;
 }
+
+/** Why a clause can never hold on a request the gateway carries. */
+export type DeadCause = "intercepted" | "identity" | "websocket";
 
 type Atom = FieldAtom | OpaqueAtom | ConstantAtom;
 
@@ -72,7 +80,7 @@ export type ClauseSet =
       readonly ok: true;
       readonly clauses: readonly Clause[];
       /** Why each clause that can never hold on the gateway was dropped. */
-      readonly dead: readonly ("intercepted" | "identity")[];
+      readonly dead: readonly DeadCause[];
     }
   | { readonly ok: false; readonly code: FailureCode; readonly reason: string };
 
@@ -80,7 +88,15 @@ export type ClauseSet =
 const MAX_CLAUSES = 256;
 
 const INPUT_FIELDS: Record<NetworkAction, ReadonlySet<string>> = {
-  "http:request": new Set(["host", "port", "method", "path", "body_bytes", "intercepted"]),
+  "http:request": new Set([
+    "host",
+    "port",
+    "method",
+    "path",
+    "body_bytes",
+    "intercepted",
+    "upgrade",
+  ]),
   "net:connect": new Set(["host", "port", "ip4", "ip6"]),
 };
 
@@ -110,7 +126,7 @@ export function clausesFor(statement: Statement, action: NetworkAction): ClauseS
       ...statement.conditions.map((condition) => conditionFormula(condition, action)),
     ];
     const clauses: Clause[] = [];
-    const dead: ("intercepted" | "identity")[] = [];
+    const dead: DeadCause[] = [];
     for (const atoms of disjunctiveNormalForm({ kind: "and", items: parts }, false)) {
       const falsified = atoms.find(
         (atom): atom is ConstantAtom => atom.kind === "constant" && !atom.value,
@@ -362,6 +378,15 @@ function leafFormula(expr: Expr, action: NetworkAction): Formula {
       return {
         kind: "atom",
         atom: { kind: "constant", value, cause: "intercepted", text: expr.text },
+      };
+    }
+    if (field === "upgrade" && typeof literal === "string" && (op === "==" || op === "!=")) {
+      // Box sets upgrade to "websocket" on a WebSocket handshake, and build gives a WebSocket no
+      // target, so every request the gateway carries has upgrade "".
+      const value = op === "==" ? literal === "" : literal !== "";
+      return {
+        kind: "atom",
+        atom: { kind: "constant", value, cause: "websocket", text: expr.text },
       };
     }
     if (field === "body_bytes") return opaque(expr.text);

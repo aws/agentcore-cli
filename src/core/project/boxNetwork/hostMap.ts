@@ -90,6 +90,8 @@ export interface HostMap {
   /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
   readonly hosts: readonly MappedHost[];
   readonly failures: readonly ConversionFailure[];
+  /** The permits that allow only WebSocket handshakes, which get no target and no failure. */
+  readonly websocketOnly: readonly { readonly ruleId: string; readonly span: SourceSpan }[];
 }
 
 /** The host map of the network inputs, and the policy's decision on each host. */
@@ -133,6 +135,7 @@ class HostMapBuilder {
   /** The rule ids the box CLI adds for an entry that failed, which fail with it. */
   private readonly covered = new Set<string>();
   private readonly mcpHosts = new Set<string>();
+  private readonly websocketOnly: { ruleId: string; span: SourceSpan }[] = [];
 
   run(input: HostMapInput): HostMap {
     const failedEntries: { name: string; destinations: Destination[] }[] = [];
@@ -173,7 +176,7 @@ class HostMapBuilder {
     this.addRuleNodes(rules);
     const live = livePolicy(rules);
     const hosts = [...this.nodes.values()].map((node) => decide(node, live));
-    return { hosts, failures: this.failures };
+    return { hosts, failures: this.failures, websocketOnly: this.websocketOnly };
   }
 
   // ---------------------------------------------------------------------------
@@ -362,6 +365,14 @@ class HostMapBuilder {
   private bindPermit(rule: Rule): void {
     const set = rule.actions.get("http:request");
     if (!set) return;
+    if (
+      set.clauses.length === 0 &&
+      set.dead.length > 0 &&
+      set.dead.every((c) => c === "websocket")
+    ) {
+      this.websocketOnly.push({ ruleId: rule.statement.id, span: rule.statement.span });
+      return;
+    }
     const bindings = set.clauses.flatMap((clause) => this.binding(rule, clause) ?? []);
     if (set.clauses.length === 0 && set.dead.includes("intercepted")) {
       this.ruleFailure(

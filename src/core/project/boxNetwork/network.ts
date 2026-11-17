@@ -164,7 +164,17 @@ export function buildBoxNetwork(
     credentials: credentials.needed,
     policyFiles: parsed.profile.policyFiles,
     grantedActions: project.grantedActions,
-    warnings: [...credentials.skipped, ...hostWarnings(targets.hosts)],
+    warnings: [
+      ...credentials.skipped,
+      ...hostWarnings(targets.hosts),
+      ...map.websocketOnly.map(({ ruleId, span }) => {
+        const { place, subject } = describeRule(parsed, ruleId, span);
+        return (
+          `${place}: ${subject} allows only WebSocket connections, and build adds no gateway ` +
+          "target for a WebSocket, so it skips this rule."
+        );
+      }),
+    ],
     failures,
   };
 }
