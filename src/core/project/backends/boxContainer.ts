@@ -1,6 +1,13 @@
-import { chmodSync, copyFileSync, cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, posix } from "node:path";
-import { chmod, copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
@@ -41,8 +48,12 @@ const COPIES_DIST_FOLDER = new RegExp(
   "im",
 );
 
-/** Whether a Dockerfile's text copies the staged box in. */
-export function dockerfileCopiesBox(text: string): boolean {
+/** Whether a container runtime's Dockerfile copies the staged box in. */
+export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): boolean {
+  if (runtime.build !== "Container") return false;
+  const dockerfile = dockerfileOf(projectRoot, runtime);
+  if (!isFile(dockerfile)) return false;
+  const text = readFileSync(dockerfile, "utf8");
   return COPIES_DIST_FOLDER.test(text) || COPIES_DIST_ARG.test(text);
 }
 
@@ -51,15 +62,10 @@ export function dockerfileCopiesBox(text: string): boolean {
  * can stage into {@link BOX_DEV_DIST}. A Dockerfile from an older template copies `.box-dist/`
  * by name, and dev stages there as before.
  */
-export function dockerfileTakesBoxDistArg(text: string): boolean {
-  return dockerfileCopiesBox(text) && DECLARES_DIST_ARG.test(text) && COPIES_DIST_ARG.test(text);
-}
-
-/** Whether a container runtime's Dockerfile copies the staged box in. */
-export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): boolean {
-  if (runtime.build !== "Container") return false;
-  const dockerfile = dockerfileOf(projectRoot, runtime);
-  return isFile(dockerfile) && dockerfileCopiesBox(readFileSync(dockerfile, "utf8"));
+export function imageTakesBoxDistArg(projectRoot: string, runtime: ProjectRuntime): boolean {
+  if (!imageCopiesBox(projectRoot, runtime)) return false;
+  const text = readFileSync(dockerfileOf(projectRoot, runtime), "utf8");
+  return DECLARES_DIST_ARG.test(text) && COPIES_DIST_ARG.test(text);
 }
 
 /** The Dockerfile a container runtime's image builds from. */
@@ -78,22 +84,22 @@ export interface PolicyFileCopy {
  * the image runs, and each policy file of `policies` at its path from `.box/`. The image's
  * Dockerfile installs box itself, from the box release. The folder is rewritten each time.
  */
-export async function stageBoxImage(
+export function stageBoxImage(
   context: string,
   profileText: string,
   policies: readonly PolicyFileCopy[] = [],
   build?: BoxLinuxBuild,
   folder: string = BOX_IMAGE_DIST,
-): Promise<void> {
+): void {
   const dist = join(context, folder);
-  await rm(dist, { recursive: true, force: true });
-  await mkdir(dist, { recursive: true });
-  if (build) await copyBoxAsync(build, dist);
-  await writeFile(join(dist, "profile.toml"), profileText);
+  rmSync(dist, { recursive: true, force: true });
+  mkdirSync(dist, { recursive: true });
+  if (build) copyBox(build, dist);
+  writeFileSync(join(dist, "profile.toml"), profileText);
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
-    await mkdir(dirname(to), { recursive: true });
-    await copyFile(from, to);
+    mkdirSync(dirname(to), { recursive: true });
+    copyFileSync(from, to);
   }
 }
 
@@ -166,14 +172,6 @@ export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): bo
  * Copies box, its helpers and its packs into an image's `.box-dist/`, which its Dockerfile copies
  * into /opt/box, so the image runs the box release of the runtime's `box.version`.
  */
-async function copyBoxAsync(build: BoxLinuxBuild, dist: string): Promise<void> {
-  for (const binary of BOX_BINARIES) {
-    await copyFile(join(build.binaries, binary), join(dist, binary));
-    await chmod(join(dist, binary), 0o755);
-  }
-  await cp(build.resources, join(dist, "resources"), { recursive: true });
-}
-
 function copyBox(build: BoxLinuxBuild, dist: string): void {
   for (const binary of BOX_BINARIES) {
     copyFileSync(join(build.binaries, binary), join(dist, binary));

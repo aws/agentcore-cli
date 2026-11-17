@@ -16,8 +16,8 @@ import {
   BOX_DEV_DIST,
   BOX_DIST_ARG,
   BOX_IMAGE_DIST,
-  dockerfileCopiesBox,
-  dockerfileTakesBoxDistArg,
+  imageCopiesBox,
+  imageTakesBoxDistArg,
   stageBoxImage,
 } from "../project/backends/boxContainer";
 import {
@@ -195,7 +195,7 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxDist = await this.stageBox(input, context, dockerfilePath);
+    const boxDist = await this.stageBox(input, context);
     const boxed = boxDist !== undefined;
     if (boxed) {
       yield { type: "status", message: `Staged box for the image in ${join(context, boxDist)}` };
@@ -334,13 +334,8 @@ export class ContainerDevRunner implements DevRunner {
    * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private async stageBox(
-    input: DevServerInput,
-    context: string,
-    dockerfilePath: string,
-  ): Promise<string | undefined> {
-    const dockerfile = readFileSync(dockerfilePath, "utf8");
-    if (!dockerfileCopiesBox(dockerfile)) return undefined;
+  private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
+    if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
@@ -357,8 +352,10 @@ export class ContainerDevRunner implements DevRunner {
           "runtime there, or stop its Dockerfile from copying .box-dist/.",
       );
     }
-    const folder = dockerfileTakesBoxDistArg(dockerfile) ? BOX_DEV_DIST : BOX_IMAGE_DIST;
-    await stageBoxImage(
+    const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
+      ? BOX_DEV_DIST
+      : BOX_IMAGE_DIST;
+    stageBoxImage(
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot),
@@ -373,7 +370,7 @@ export class ContainerDevRunner implements DevRunner {
     // CLI answers `build --help` even when its engine is down, so a Finch user sets this.
     const chosen = this.processEnv.AGENTCORE_CONTAINER_TOOL;
     if (chosen) {
-      if (!isContainerTool(chosen)) {
+      if (!(CONTAINER_TOOLS as readonly string[]).includes(chosen)) {
         throw new InputValidationError(
           `AGENTCORE_CONTAINER_TOOL is '${chosen}'; use ${CONTAINER_TOOLS.join(", ")}.`,
         );
@@ -383,7 +380,7 @@ export class ContainerDevRunner implements DevRunner {
         throw new MissingToolError(chosen, CONTAINER_RUNTIME_INSTALL_HINT);
       }
       signal.throwIfAborted();
-      return chosen;
+      return chosen as ContainerTool;
     }
     for (const tool of CONTAINER_TOOLS) {
       const hasVersion = await this.toolAvailable(tool);
@@ -434,7 +431,7 @@ export class ContainerDevRunner implements DevRunner {
         cwd,
       );
     } catch (error) {
-      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return undefined;
+      if (error instanceof Error && NO_SUCH_CONTAINER.test(error.message)) return;
       const reason = error instanceof Error ? error.message : String(error);
       return (
         `Could not stop the dev container ${containerName}; it may still be running ` +
@@ -450,6 +447,7 @@ export class ContainerDevRunner implements DevRunner {
       env: this.processEnv,
       signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS),
     })) {
+      // Cleanup output is not shown.
     }
   }
 }
