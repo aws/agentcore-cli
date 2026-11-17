@@ -248,7 +248,9 @@ describe("defaultTargetsWriter", () => {
 
 describe("runtimeProfileWriter", () => {
   test("writes the Runtime profile and a byte copy of each policy file beside it", () => {
-    const writer = runtimeProfileWriter([{ runtime: "agent", dist: "app/agent/.box-dist" }]);
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", container: false },
+    ]);
     const models = [network({ policyFiles: ["policy.dw", "rules/extra.dw"] })];
 
     const { files } = run([writer], models);

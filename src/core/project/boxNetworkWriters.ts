@@ -19,7 +19,11 @@ import {
   boxMemoryPolicy,
 } from "./boxMemory";
 import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
-import { renderRuntimeBoxProfile } from "./templates/boxProfile";
+import {
+  AGENTCORE_PACK_PATH,
+  renderAgentCorePack,
+  renderRuntimeBoxProfile,
+} from "./templates/boxProfile";
 
 /** Something exactly one writer owns. */
 export type BoxNetworkOutput =
@@ -233,6 +237,8 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
+  /** Whether the runtime is a container, which also stages the `box/agentcore` pack. */
+  readonly container: boolean;
 }
 
 /**
@@ -245,19 +251,24 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
   return {
     name: "runtime profile",
     writes: (networks) =>
-      staged.flatMap(({ runtime, dist }) => [
+      staged.flatMap(({ runtime, dist, container }) => [
         { kind: "file" as const, path: `${dist}/profile.toml` },
+        // The container reads the deployed resources from the environment through this pack.
+        ...(container ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` }] : []),
         ...(networkOf(networks, runtime)?.policyFiles ?? []).map((file) => ({
           kind: "file" as const,
           path: `${dist}/${file}`,
         })),
       ]),
     edits: (networks, { spec }) => ({
-      files: staged.flatMap(({ runtime, dist }) => {
+      files: staged.flatMap(({ runtime, dist, container }) => {
         const network = networkOf(networks, runtime);
         const entry = spec.runtimes.find(({ name }) => name === runtime)!;
         return [
           { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
+          ...(container
+            ? [{ path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) }]
+            : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
             copyOf: `.box/${file}`,
