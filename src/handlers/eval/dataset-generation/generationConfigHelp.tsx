@@ -30,7 +30,7 @@ JSON syntax:
       "identifiers": { "sessionIds": ["string"], "traceIds": ["string"] }
     },
     "sampling": { "maxScenarios": 100 },    // default 100, at most 1000
-    "groundTruth": {
+    "groundTruth": {                        // needs --scenario-type fixed
       "fields": ["expected_response", "expected_trajectory"],   // [required]
       "qualityFilters": [ ... ]             // same shape as evaluatorFilters
     },
@@ -43,9 +43,16 @@ JSON syntax:
 evaluatorFilters and qualityFilters need an onlineEvaluation or batchEvaluation
 source; a cloudWatchLogs source carries no evaluation results to compare.
 
+Generated examples are merged into the dataset's DRAFT. Before running
+eval dataset update, re-download the DRAFT with eval dataset get --file-path:
+update makes the DRAFT match your file, so a file saved before the generation
+removes the generated examples.
+
+Keys not shown above are rejected.
+
 See https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_TraceGenerationSource.html
 
-Example:
+Example (replace the region, account and ID with your batch evaluation's ARN):
   --generation-config '{"sourceConfig":{"batchEvaluation":{"batchEvaluationArn":"arn:aws:bedrock-agentcore:us-west-2:111122223333:batch-evaluate/nightly-a1b2c3d4e5"}}}'
 
   --generation-config file://generation.json`;

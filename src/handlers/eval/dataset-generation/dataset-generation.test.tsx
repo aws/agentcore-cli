@@ -44,9 +44,9 @@ function writeTempConfig(config: unknown): string {
   return path;
 }
 
-function testGenerationCommand(stdin?: string) {
+function testGenerationCommand(stdin?: string, isTTY = false) {
   const core = new TestCoreClient();
-  const io = testIO();
+  const io = testIO({ isTTY });
   if (stdin !== undefined) {
     io.io.stdin.push(stdin);
     io.io.stdin.push(null);
@@ -61,6 +61,7 @@ function testGenerationCommand(stdin?: string) {
     root,
     core,
     stdout: io.stdout,
+    stderr: io.stderr,
     route: (args: string[]) => root.route(["node", "agentcore", ...args, "--region", REGION]),
   };
 }
@@ -164,6 +165,109 @@ describe("dataset-generation start", () => {
     expect(JSON.parse(stdout())).toEqual(response);
   });
 
+  test("accepts --scenario-type in the service's upper case", async () => {
+    const { core, route } = testGenerationCommand();
+
+    await route([
+      ...START,
+      "--scenario-type",
+      "FIXED",
+      "--generation-config",
+      JSON.stringify(CONFIG),
+    ]);
+
+    expect(startInput(core).scenarioType).toBe("FIXED");
+  });
+
+  test("passes every documented config key through", async () => {
+    const { core, route } = testGenerationCommand();
+    const full = {
+      sourceConfig: {
+        cloudWatchLogs: {
+          logGroupNames: ["/aws/agent"],
+          serviceNames: ["agent"],
+          startTime: "2026-11-10T00:00:00Z",
+          endTime: "2026-11-11T00:00:00Z",
+        },
+      },
+      selection: {
+        filters: {
+          attributeFilters: [
+            { key: "attributes.x", operator: "Equals", value: { stringValue: "y" } },
+          ],
+          turnCount: { min: 1, max: 10 },
+        },
+      },
+      sampling: { maxScenarios: 5 },
+      groundTruth: { fields: ["expected_response"] },
+      redactionConfiguration: { identifiers: ["EMAIL_ADDRESS"], customDataIdentifiers: [] },
+    };
+
+    await route([...START, "--generation-config", JSON.stringify(full)]);
+
+    // Compared as plain JSON: the CLI forwards the document as parsed, not as SDK-typed values.
+    expect(startInput(core).source as unknown).toEqual({ traceGeneration: full });
+  });
+
+  // The SDK drops keys it does not model, so a misspelling would otherwise run with defaults:
+  // a typo in redactionConfiguration silently disables redaction.
+  test.each([
+    [
+      { ...CONFIG, redactionConfig: { identifiers: ["EMAIL_ADDRESS"] } },
+      "'redactionConfig'",
+      "'redactionConfiguration'",
+    ],
+    [
+      { ...CONFIG, sampling: { maxScenario: 2 } },
+      "'sampling.maxScenario'",
+      "'sampling.maxScenarios'",
+    ],
+    [{ sourceconfig: CONFIG.sourceConfig }, "'sourceconfig'", "'sourceConfig'"],
+  ])("rejects a misspelled config key and suggests the right one", async (config, bad, good) => {
+    const { core, route } = testGenerationCommand();
+
+    const promise = route([...START, "--generation-config", JSON.stringify(config)]);
+
+    await expectError(promise, new RegExp(`${bad}.*did you mean ${good}`), InputValidationError);
+    expect(core.eval.calls).toHaveLength(0);
+  });
+
+  test("rejects the design-era filterConfig key", async () => {
+    const { core, route } = testGenerationCommand();
+
+    const promise = route([
+      ...START,
+      "--generation-config",
+      JSON.stringify({ ...CONFIG, filterConfig: { sessionIds: ["s1"] } }),
+    ]);
+
+    await expectError(
+      promise,
+      /Unknown key 'filterConfig'.*Known keys here: sourceConfig, selection/,
+      InputValidationError,
+    );
+    expect(core.eval.calls).toHaveLength(0);
+  });
+
+  test("tells a terminal user that '-' is reading stdin", async () => {
+    const { core, route, stderr } = testGenerationCommand(JSON.stringify(CONFIG), true);
+
+    await route([...START, "--generation-config", "-"]);
+
+    expect(stderr()).toContain(
+      "Reading --generation-config JSON from stdin; press Ctrl-D when done.",
+    );
+    expect(startInput(core).source).toEqual({ traceGeneration: CONFIG });
+  });
+
+  test("stays quiet when '-' reads piped stdin", async () => {
+    const { route, stderr } = testGenerationCommand(JSON.stringify(CONFIG));
+
+    await route([...START, "--generation-config", "-"]);
+
+    expect(stderr()).not.toContain("Reading --generation-config");
+  });
+
   describe("input validation", () => {
     test("rejects an unknown --scenario-type", async () => {
       const { core, route } = testGenerationCommand();
@@ -262,6 +366,28 @@ describe("dataset-generation list", () => {
 
     expect(core.eval.calls[0]?.args.slice(0, 3)).toEqual([DATASET_ID, "page-2", 5]);
   });
+});
+
+describe("dataset-generation list bounds", () => {
+  test.each([["0"], ["101"], ["0.5"]])(
+    "rejects --max-results %s before calling the service",
+    async (n) => {
+      const { core, route } = testGenerationCommand();
+
+      const promise = route([
+        "eval",
+        "dataset-generation",
+        "list",
+        "--dataset-id",
+        DATASET_ID,
+        "--max-results",
+        n,
+      ]);
+
+      await expectError(promise, /--max-results/, InputValidationError);
+      expect(core.eval.calls).toHaveLength(0);
+    },
+  );
 });
 
 describe("dataset-generation delete", () => {

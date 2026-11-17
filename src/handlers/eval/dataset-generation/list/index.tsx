@@ -11,7 +11,11 @@ export const createListDatasetGenerationsHandler = (core: Core) =>
     flags: [
       flag("dataset-id", "the ID of the dataset", z.string().min(1)),
       flag("next-token", "pagination token returned by a previous request", z.string().optional()),
-      flag("max-results", "maximum number of items to return", z.number().optional()),
+      flag(
+        "max-results",
+        "maximum number of items to return (1-100)",
+        z.number().int().min(1).max(100).optional(),
+      ),
     ],
     handle: async (ctx, flags) => {
       const response = await core.eval.listDatasetGenerations(

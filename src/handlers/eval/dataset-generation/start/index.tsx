@@ -6,6 +6,7 @@ import { JsonRendererKey } from "../../../../tui";
 import type { Core } from "../../../types";
 import { coreOptsFromCtx, parseJsonObjectFlag } from "../../../utils";
 import { generationConfigHelp } from "../generationConfigHelp";
+import { assertKnownGenerationConfigKeys } from "../generationConfigKeys";
 import { SCENARIO_TYPE_ALIASES, scenarioType } from "../scenarioTypes";
 
 export const createStartDatasetGenerationHandler = (core: Core, io: AppIO) =>
@@ -21,7 +22,11 @@ export const createStartDatasetGenerationHandler = (core: Core, io: AppIO) =>
       flag(
         "scenario-type",
         `the kind of example every scenario becomes (${SCENARIO_TYPE_ALIASES.join(" | ")}); service defaults to dynamic when omitted`,
-        z.enum(SCENARIO_TYPE_ALIASES).optional(),
+        // Case-insensitive because get and list print the service's FIXED / DYNAMIC, and users paste those back.
+        z.preprocess(
+          (v) => (typeof v === "string" ? v.toLowerCase() : v),
+          z.enum(SCENARIO_TYPE_ALIASES).optional(),
+        ),
       ),
       flag(
         "generation-config",
@@ -32,10 +37,15 @@ export const createStartDatasetGenerationHandler = (core: Core, io: AppIO) =>
     ],
     handle: async (ctx, flags) => {
       const source = new SourceResolver({ stdin: io.stdin });
+      // Reading `-` from a terminal otherwise waits with no output, which reads as a hang.
+      if (flags["generation-config"] === "-" && io.stdin.isTTY) {
+        io.stderr.write("Reading --generation-config JSON from stdin; press Ctrl-D when done.\n");
+      }
       const traceGeneration = parseJsonObjectFlag<TraceGenerationSource>(
         "generation-config",
         await source.resolveText("generation-config", flags["generation-config"]),
       );
+      assertKnownGenerationConfigKeys(traceGeneration);
       const alias = flags["scenario-type"];
 
       const response = await core.eval.startDatasetGeneration(
