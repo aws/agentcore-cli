@@ -71,6 +71,11 @@ export function boxIngressPort(protocol: Protocol | undefined): number {
   return DEV_PORTS[protocol ?? "HTTP"];
 }
 
+/** The port the boxed agent's server listens on inside the box, one above its ingress port. */
+export function boxWorkloadPort(protocol: Protocol | undefined): number {
+  return boxIngressPort(protocol) + 1;
+}
+
 /**
  * The project's boxy profile, relative to the project root: `box run
  * .box/profile.toml` there runs it. box keeps the agent out of the project's
@@ -326,7 +331,7 @@ export function renderBoxProfile(
   const protocol = runtime.protocol ?? "HTTP";
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
   const ingressPort = boxIngressPort(protocol);
-  const workloadPort = ingressPort + 1;
+  const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
   const codeZipOnRuntime = onRuntime && !container;
