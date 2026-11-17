@@ -10,6 +10,7 @@ import {
   addBoxBedrockTarget,
   addBoxGatewayTargets,
   addBoxMemoryTarget,
+  BOX_BEDROCK_POLICY_FILE,
   BOX_MEMORY_POLICY_FILE,
   boxBedrockPolicy,
   boxMemoryPolicy,
@@ -267,6 +268,9 @@ describe("one target for one endpoint", () => {
     addBoxGatewayTargets(project, await root());
 
     expect(targets(project)).toEqual(["egress-models", "mem"]);
-    expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
+    expect(project.agentCoreGateways[0]!.additionalPolicies).toEqual([
+      BOX_BEDROCK_POLICY_FILE,
+      BOX_MEMORY_POLICY_FILE,
+    ]);
   });
 });

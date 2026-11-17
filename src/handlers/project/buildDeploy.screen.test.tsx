@@ -67,9 +67,6 @@ function fakeBackend(options: FakeBackendOptions = {}) {
     async resolveDeployedResources() {
       return [];
     },
-    async recordedBoxGateways() {
-      return [];
-    },
   };
   return { backend, deploys };
 }

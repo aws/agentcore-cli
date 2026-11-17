@@ -33,9 +33,6 @@ function testBuildCommand(options: TestBuildOptions = {}) {
     async resolveProjectResources() {
       return [];
     },
-    async recordedBoxGateways() {
-      return [];
-    },
   };
   const core = new TestCoreClient({ backends: { CDK: backend } });
   const root = createRootHandler(core, {

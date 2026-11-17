@@ -46,9 +46,10 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { BOX_PROFILE_FILE, renderBoxProfile } from "./templates/boxProfile";
+import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_RELEASE } from "./backends/boxRelease";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -91,12 +92,15 @@ afterEach(async () => {
 });
 
 // A manager whose runner records commands instead of spawning them.
+/** A command the manager ran, with the UV_MANAGED_PYTHON it set, if any. */
+type Command = { command: string[]; cwd: string; UV_MANAGED_PYTHON?: string };
+
 function manager(processEnv?: NodeJS.ProcessEnv): {
   manager: FsProjectManager;
-  commands: { command: string[]; cwd: string }[];
+  commands: Command[];
   checkedTools: string[];
 } {
-  const commands: { command: string[]; cwd: string }[] = [];
+  const commands: Command[] = [];
   const checkedTools: string[] = [];
   return {
     manager: new FsProjectManager({
@@ -104,8 +108,9 @@ function manager(processEnv?: NodeJS.ProcessEnv): {
       processEnv,
       identity: new TestIdentityClient(),
       enableTransactionSearch: async () => {},
-      runner: async (command, { cwd }) => {
-        commands.push({ command, cwd });
+      runner: async (command, { cwd, env }) => {
+        const managedPython = env?.UV_MANAGED_PYTHON;
+        commands.push({ command, cwd, ...(managedPython && { UV_MANAGED_PYTHON: managedPython }) });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -369,10 +374,11 @@ describe("FsProjectManager.create", () => {
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
-    // box comes from .box-dist/, staged from the release of the runtime's box.version; dev names
-    // its own .box-dev/ with BOX_DIST.
-    expect(dockerfile).toContain("ARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/ /opt/box/");
-    expect(dockerfile).not.toContain("curl");
+    // The image downloads the release that box-release.env names, staged from the runtime's
+    // box.version; dev names its own .box-dev/ with BOX_DIST.
+    expect(dockerfile).toContain("ARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/box-release.env");
+    expect(dockerfile).toContain("COPY ${BOX_DIST}/ /opt/box/");
+    expect(dockerfile).toContain("sha256sum -c");
     expect(dockerfile).not.toContain("--mount=type=secret");
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
@@ -475,7 +481,12 @@ describe("FsProjectManager.create", () => {
         command: ["npm", "install", "--loglevel=http"],
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python_minimal") },
+      // The minimal template runs in a box, whose profile grants exec only on uv-managed Pythons.
+      {
+        command: ["uv", "sync"],
+        cwd: join(projectRoot, "app", "agent_python_minimal"),
+        UV_MANAGED_PYTHON: "1",
+      },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
   });
@@ -733,11 +744,43 @@ describe("FsProjectManager.create box profile", () => {
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
       skipInstall,
       skipGit: true,
+      region: "eu-west-1",
     });
 
     const path = join(directory, "example", BOX_PROFILE_FILE);
-    expect(await readFile(path, "utf8")).toBe(renderBoxProfile("example", AGENT_PYTHON_STRANDS)!);
+    expect(await readFile(path, "utf8")).toBe(
+      renderBoxProfile("example", AGENT_PYTHON_STRANDS, "local", "", [], "eu-west-1")!,
+    );
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("calls Bedrock in the region build would use when create is given none", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager({ AWS_REGION: "ap-southeast-2" }).manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    const text = await readFile(join(directory, "example", BOX_PROFILE_FILE), "utf8");
+    expect(text).toContain('bedrock.region = "ap-southeast-2"');
+  });
+
+  test("warns when a LiteLLM agent's box profile reads a key that nothing set", async () => {
+    await inTempDirectory();
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "openai/gpt-4o",
+    });
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: runtime,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(events).toContainEqual({ type: "warning", message: boxProfileWarnings(runtime)[0]! });
   });
 
   test("leaves an existing box profile unchanged", async () => {
@@ -1084,9 +1127,6 @@ describe("FsProjectManager.addResource", () => {
           return [];
         },
         async resolveProjectResources() {
-          return [];
-        },
-        async recordedBoxGateways() {
           return [];
         },
       };
@@ -1863,16 +1903,7 @@ describe("FsProjectManager.build", () => {
   async function boxHome(): Promise<NodeJS.ProcessEnv> {
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
     tempDirectories.push(home);
-    const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
-    await mkdir(join(root, "resources"), { recursive: true });
-    await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
-    for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-      await writeFile(join(root, binary), `#!${binary}\n`);
-    }
-    await writeFile(
-      join(root, "release.json"),
-      JSON.stringify({ box_version: BOX_RELEASE.version }),
-    );
+    await seedBoxCache(home);
     return { HOME: home };
   }
 
@@ -2069,9 +2100,6 @@ describe("FsProjectManager.deploy", () => {
         return [];
       },
       async resolveProjectResources() {
-        return [];
-      },
-      async recordedBoxGateways() {
         return [];
       },
     };
@@ -2518,9 +2546,6 @@ describe("FsProjectManager.resolve", () => {
       async resolveProjectResources() {
         return [];
       },
-      async recordedBoxGateways() {
-        return [];
-      },
     };
     const subject = new FsProjectManager({
       logger: createSilentLogger(),
@@ -2925,9 +2950,6 @@ describe("docs-only runtimes", () => {
         return [];
       },
       async resolveProjectResources() {
-        return [];
-      },
-      async recordedBoxGateways() {
         return [];
       },
     };

@@ -105,9 +105,6 @@ function backend() {
     async resolveProjectResources() {
       throw new Error("invoke resolves deployed resources, not project resources");
     },
-    async recordedBoxGateways() {
-      return [];
-    },
   };
   return { targets, value };
 }

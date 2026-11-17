@@ -3,7 +3,7 @@ import { getBoxGatewayBedrockEntry } from "../../handlers/project/box-gateway-te
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
-import { BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
   boxNetworkEdits,
@@ -211,7 +211,7 @@ describe("credentialsWriter", () => {
 });
 
 describe("defaultTargetsWriter", () => {
-  test("adds the Memory target and writes its role policy, as addBoxGatewayTargets does", () => {
+  test("adds the Memory target and writes the role policies, as addBoxGatewayTargets does", () => {
     const project = spec();
     project.memories.push({
       name: "agentMemory",
@@ -222,7 +222,10 @@ describe("defaultTargetsWriter", () => {
     const edits = run([defaultTargetsWriter], [network()], project);
 
     expect(targetNames(edits.spec)).toEqual(["bedrock", "agentcore"]);
-    expect(edits.files.map(({ path }) => path)).toEqual([BOX_MEMORY_POLICY_FILE]);
+    expect(edits.files.map(({ path }) => path)).toEqual([
+      BOX_BEDROCK_POLICY_FILE,
+      BOX_MEMORY_POLICY_FILE,
+    ]);
   });
 
   test("adds no default target for an endpoint a target serves already", () => {
@@ -230,7 +233,10 @@ describe("defaultTargetsWriter", () => {
       passthrough("egress-models", "https://bedrock-runtime.us-west-2.amazonaws.com"),
     ]);
 
-    expect(run([defaultTargetsWriter], [network()], project).specChanged).toBe(false);
+    const edits = run([defaultTargetsWriter], [network()], project);
+
+    expect(targetNames(edits.spec)).toEqual(["egress-models"]);
+    expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_BEDROCK_POLICY_FILE]);
   });
 
   test("runs after the egress targets, so a new egress- target is not doubled", () => {

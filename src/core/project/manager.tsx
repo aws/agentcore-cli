@@ -57,7 +57,12 @@ import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
-import { boxProfilePath, renderBoxProfile } from "./templates/boxProfile";
+import {
+  boxProfilePath,
+  boxProfileWarnings,
+  hasBoxProfile,
+  renderBoxProfile,
+} from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -107,6 +112,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { boxGatewaysOf, readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -578,7 +584,12 @@ export class FsProjectManager implements ProjectManager {
     }
 
     if (scaffoldRuntimeInput) {
-      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput);
+      yield* this.writeBoxProfile(
+        destination,
+        input.name,
+        scaffoldRuntimeInput,
+        input.region ?? (await this.boxBuildRegion()),
+      );
     }
 
     if (!input.skipGit) {
@@ -944,7 +955,7 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // KD6: in a Box project, names that end in -box belong to the Box gateways, in any
+        // In a Box project, names that end in -box belong to the Box gateways, in any
         // letter case. The CDK library would refuse them at synth; refusing here keeps
         // agentcore.json unchanged.
         if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
@@ -1203,7 +1214,7 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-      // The Box gateway of a runtime goes with the runtime (KD4), so its targets go too. An
+      // The Box gateway of a runtime goes with the runtime, so its targets go too. An
       // entry for a runtime that no longer exists would fail the synth.
       if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
         const boxName = boxGatewayName(input.name);
@@ -1266,11 +1277,10 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
-    // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
-    // every resource, so the next deploy reaches the teardown confirmation as before.
-    const { projectType: _projectType, ...rest } = existingProjectSpec;
+    // The project type stays, so a runtime added later still gets its Box gateway. With no
+    // runtimes there is no Box gateway, so the next deploy reaches the teardown confirmation.
     const newSpec = {
-      ...rest,
+      ...existingProjectSpec,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1886,7 +1896,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    return this.backendFor(project).recordedBoxGateways(project, input.target);
+    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), input.target);
   }
 
   public async resolveDeployedResource(
@@ -2049,16 +2059,17 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Writes the boxy profile that runs the scaffolded agent into the project's
-   * `.box` folder, named after the project. An existing profile is the
-   * user's, so it is never overwritten.
+   * Writes the box profile that runs the scaffolded agent into the project's
+   * `.box` folder, named after the project, calling Bedrock in `region`. An
+   * existing profile is the user's, so it is never overwritten.
    */
   private async *writeBoxProfile(
     projectRoot: string,
     projectName: string,
     runtime: ScaffoldRuntimeInput,
+    region: string,
   ): AsyncGenerator<ProjectEvent, void> {
-    const text = renderBoxProfile(projectName, runtime);
+    const text = renderBoxProfile(projectName, runtime, "local", "", [], region);
     if (text === undefined) return;
     const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {
@@ -2068,6 +2079,7 @@ export class FsProjectManager implements ProjectManager {
     yield { type: "step", message: `writing box profile ${path}` };
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, text, { flag: "wx" });
+    for (const message of boxProfileWarnings(runtime)) yield { type: "warning", message };
   }
 
   /**
@@ -2082,7 +2094,11 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      yield* this.run(["uv", "sync"], appDir);
+      // A boxed agent's profile grants exec only on the uv-managed Pythons, so its venv must link
+      // to one of them, not to a Homebrew or system Python that uv would otherwise pick.
+      const env =
+        input && hasBoxProfile(input) ? { ...this.processEnv, UV_MANAGED_PYTHON: "1" } : undefined;
+      yield* this.run(["uv", "sync"], appDir, undefined, env);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
       yield { type: "step", message: "installing Node dependencies with npm" };
@@ -2129,6 +2145,7 @@ export class FsProjectManager implements ProjectManager {
     command: string[],
     cwd: string,
     formatLine: (line: string) => string | undefined = (line) => line,
+    env?: NodeJS.ProcessEnv,
   ): AsyncGenerator<ProjectEvent, void, unknown> {
     yield* withOutputEvents((emit) => {
       const lines = createLineSplitter((line) => {
@@ -2137,6 +2154,7 @@ export class FsProjectManager implements ProjectManager {
       });
       return this.runner(command, {
         cwd,
+        ...(env && { env }),
         onOutput: (chunk) => {
           this.logger.debug(chunk);
           lines.push(chunk);

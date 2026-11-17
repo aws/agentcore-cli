@@ -28,8 +28,8 @@ import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import {
   boxGatewayAwsName,
-  declaresNoResources,
   describeBoxGateways,
+  dropsBoxGateways,
   isBoxProject,
 } from "../../../projectSchemas/project";
 import type {
@@ -60,6 +60,7 @@ import {
   type StackArtifact,
 } from "./cdk/assembly";
 import {
+  boxGatewaysOf,
   readDeployedState,
   removeTargetState,
   stackReferenceOf,
@@ -236,15 +237,17 @@ export class CdkBackend implements ProjectBackend {
       return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release,
-        onDownload: (url) =>
+        onDownload: (download) =>
           events.push({
             type: "step",
-            message: boxDownloadMessage(release.version, url, "AgentCore Runtime"),
+            message: boxDownloadMessage(download, "AgentCore Runtime"),
           }),
       });
     };
     await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, box);
+    await stageBoxContainers(project, boxNetworks, (version) =>
+      boxReleaseFor(version, this.processEnv, { runner: this.runner }),
+    );
     return events;
   }
 
@@ -492,9 +495,10 @@ export class CdkBackend implements ProjectBackend {
    * after `agentcore remove all`, and the teardown confirmation already covers every resource.
    */
   private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
-    if (isBoxProject(project.spec) || declaresNoResources(project.spec)) return;
+    if (!dropsBoxGateways(project.spec)) return;
     const { target } = input;
-    const gatewayNames = await this.recordedBoxGateways(project, target.name);
+    const state = await readDeployedState(this.json, project.rootPath);
+    const gatewayNames = boxGatewaysOf(state, target.name);
     if (gatewayNames.length === 0) return;
     const confirmed = await input.confirmBoxGatewayDeletion?.({
       projectName: project.name,
@@ -647,11 +651,6 @@ export class CdkBackend implements ProjectBackend {
       const id = findDeployedResourceId(stack, resource);
       return id ? [{ ...resource, id, target, credentialProvider: credentials }] : [];
     });
-  }
-
-  public async recordedBoxGateways(project: Project, targetName: string): Promise<string[]> {
-    const state = await readDeployedState(this.json, project.rootPath);
-    return (state.targets[targetName]?.resources?.boxGateways ?? []).map(({ name }) => name);
   }
 
   public async resolveProjectResources(

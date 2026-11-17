@@ -10,7 +10,7 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
-import { BOX_RELEASE } from "./backends/boxRelease";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { FsProjectManager } from "./manager";
 
 const GATEWAY = "agent-python-strands-box";
@@ -34,7 +34,7 @@ const GITHUB_KEY = {
 const GATEWAY_BACKEND = (target: string) => [
   {
     url: `@GATEWAY_BOX_URL@/${target}`,
-    auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+    auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
   },
 ];
 
@@ -57,13 +57,7 @@ async function temporary(prefix: string): Promise<string> {
 /** A home folder whose box cache holds the pinned release, with stand-in binaries. */
 async function boxHome(): Promise<string> {
   const home = await temporary("agentcore-box-home-");
-  const root = join(home, ".agentcore", "box", `${BOX_RELEASE.version}-${BOX_RELEASE.target}`);
-  await mkdir(join(root, "resources"), { recursive: true });
-  await mkdir(join(root, "ffi", BOX_RELEASE.ffi.runtimeVersion), { recursive: true });
-  for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-    await writeFile(join(root, binary), `#!${binary}\n`);
-  }
-  await writeFile(join(root, "release.json"), JSON.stringify({ box_version: BOX_RELEASE.version }));
+  await seedBoxCache(home);
   return home;
 }
 
@@ -348,6 +342,7 @@ describe("build writes the Box network of the box profile", () => {
     );
     expect(counter.specWrites).toBe(0);
     expect(await text(root, SPEC)).toBe(spec);
+    expect(existsSync(path(root, "agentcore/box-bedrock-policy.json"))).toBe(false);
     expect(existsSync(path(root, "agentcore/box-memory-policy.json"))).toBe(false);
     expect(await text(root, "agentcore/.env.local")).toBe(envLocal);
     expect(existsSync(path(root, RUNTIME_PROFILE))).toBe(false);
@@ -459,9 +454,6 @@ describe("deploy writes the Box network before the backend deploys", () => {
         return [];
       },
       async resolveProjectResources() {
-        return [];
-      },
-      async recordedBoxGateways() {
         return [];
       },
     };
