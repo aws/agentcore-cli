@@ -44,9 +44,6 @@ function fakeBackend(deployed: ResolvedProjectResource[]) {
       targets.push(input.target);
       return deployed;
     },
-    async recordedBoxGateways() {
-      return [];
-    },
   };
   return { targets, backend };
 }

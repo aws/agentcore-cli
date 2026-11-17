@@ -75,9 +75,6 @@ function backend() {
     async resolveProjectResources() {
       throw new Error("project Harness traces resolve deployed resources");
     },
-    async recordedBoxGateways() {
-      return [];
-    },
   };
   return { calls, value };
 }

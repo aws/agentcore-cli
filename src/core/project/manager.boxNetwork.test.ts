@@ -456,9 +456,6 @@ describe("deploy writes the Box network before the backend deploys", () => {
       async resolveProjectResources() {
         return [];
       },
-      async recordedBoxGateways() {
-        return [];
-      },
     };
     const { manager, root } = await strandsProject({
       backends: { CDK: backend },

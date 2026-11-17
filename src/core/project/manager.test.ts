@@ -1081,9 +1081,6 @@ describe("FsProjectManager.addResource", () => {
         async resolveProjectResources() {
           return [];
         },
-        async recordedBoxGateways() {
-          return [];
-        },
       };
       const subject = new FsProjectManager({
         logger: createSilentLogger(),
@@ -2057,9 +2054,6 @@ describe("FsProjectManager.deploy", () => {
       async resolveProjectResources() {
         return [];
       },
-      async recordedBoxGateways() {
-        return [];
-      },
     };
     return {
       calls,
@@ -2504,9 +2498,6 @@ describe("FsProjectManager.resolve", () => {
       async resolveProjectResources() {
         return [];
       },
-      async recordedBoxGateways() {
-        return [];
-      },
     };
     const subject = new FsProjectManager({
       logger: createSilentLogger(),
@@ -2911,9 +2902,6 @@ describe("docs-only runtimes", () => {
         return [];
       },
       async resolveProjectResources() {
-        return [];
-      },
-      async recordedBoxGateways() {
         return [];
       },
     };
