@@ -98,6 +98,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
+    /** Runs the agent in Strands Box: set by the box templates only. */
+    box: z.boolean().optional(),
     /**
      * The entry that adds the template's targets (the Bedrock model endpoint) to this runtime's Box
      * gateway, `<runtime>-box`; absent when the agent calls no Bedrock model.

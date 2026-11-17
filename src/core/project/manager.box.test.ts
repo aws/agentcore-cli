@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ResourceNotFoundError } from "../../errors/errors";
-import type { AddResourceInput, Project } from "../../handlers/project/types";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
+import type { AddResourceInput, CreateProjectInput, Project } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 
@@ -41,15 +42,35 @@ async function drain<T>(generator: AsyncGenerator<unknown, T>): Promise<T> {
   }
 }
 
-/** A new Box project with the given runtimes. Each runtime gets the Box gateway `<runtime>-box`. */
-async function createdProject(
+/** A new project of `create`, in a fresh directory. */
+async function created(
   manager: FsProjectManager,
-  runtimes: string[] = ["agent"],
+  input: Partial<CreateProjectInput> = {},
 ): Promise<Project> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
   tempDirectories.push(directory);
   process.chdir(directory);
-  let project = await drain(manager.create({ name: "example", skipInstall: true, skipGit: true }));
+  return drain(
+    manager.create({ name: "example", skipInstall: true, skipGit: true, ...input } as never),
+  );
+}
+
+/**
+ * A Box project with the given runtimes. Each runtime gets the Box gateway `<runtime>-box`.
+ * Create writes `"projectType": "box"` only with a box template, which also adds a runtime and
+ * its gateway entry; these tests start from an empty project with the field set instead, so the
+ * entries they check are only the ones the commands make.
+ */
+async function createdProject(
+  manager: FsProjectManager,
+  runtimes: string[] = ["agent"],
+  fields: Record<string, unknown> = {},
+): Promise<Project> {
+  const empty = await created(manager);
+  const path = join(empty.rootPath, "agentcore", "agentcore.json");
+  const spec = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  await writeFile(path, `${JSON.stringify({ ...spec, projectType: "box", ...fields }, null, 2)}\n`);
+  let project = (await manager.resolve({ filePath: empty.rootPath }))!;
   for (const name of runtimes) {
     project = await drain(
       manager.addResource(project, {
@@ -139,11 +160,26 @@ const mcpTarget = (name: string, gatewayName = "agent-box"): AddResourceInput =>
 });
 
 describe("agentcore create", () => {
-  test('writes "projectType": "box" into the new project', async () => {
-    const project = await createdProject(subject());
+  const BOX_TEMPLATE = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+    runtimeName: "agent",
+  });
+
+  test('writes "projectType": "box" into a project made from a box template', async () => {
+    const project = await created(subject(), { scaffoldRuntimeInput: BOX_TEMPLATE });
 
     expect((await specOnDisk(project)).projectType).toBe("box");
     expect(project.spec.projectType).toBe("box");
+  });
+
+  test.each([
+    ["a template without box", resolveRuntimeTemplateShortcut("agent-python-strands")],
+    ["an empty project", undefined],
+  ])('writes no "projectType" for %s', async (_name, scaffoldRuntimeInput) => {
+    const project = await created(subject(), {
+      ...(scaffoldRuntimeInput && { scaffoldRuntimeInput }),
+    });
+
+    expect("projectType" in (await specOnDisk(project))).toBe(false);
   });
 
   test.each([
@@ -151,12 +187,7 @@ describe("agentcore create", () => {
     ["sandboxed", "sandboxed" as const, undefined, undefined],
     ["private-vpc", "private-vpc" as const, "ENABLED", { mode: "CONTAINED" }],
   ])("with %s writes secureVpc %p", async (_name, isolation, secureVpc, network) => {
-    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
-    tempDirectories.push(directory);
-    process.chdir(directory);
-    const project = await drain(
-      subject().create({ name: "example", skipInstall: true, skipGit: true, isolation }),
-    );
+    const project = await created(subject(), { scaffoldRuntimeInput: BOX_TEMPLATE, isolation });
 
     const spec = await specOnDisk(project);
     expect(spec.secureVpc).toBe(secureVpc);
@@ -306,23 +337,10 @@ describe("gateway targets in a Box project", () => {
 
   test("remove all keeps projectType and removes secureVpc, network and every gateway entry", async () => {
     const manager = subject();
-    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
-    tempDirectories.push(directory);
-    process.chdir(directory);
-    let project = await drain(
-      manager.create({
-        name: "example",
-        skipInstall: true,
-        skipGit: true,
-        isolation: "private-vpc",
-      }),
-    );
-    project = await drain(
-      manager.addResource(project, {
-        resourceType: "runtime",
-        resourceConfig: { name: "agent", language: "Python", protocol: "HTTP" },
-      } as never),
-    );
+    let project = await createdProject(manager, ["agent"], {
+      secureVpc: "ENABLED",
+      network: { mode: "CONTAINED" },
+    });
     project = await drain(manager.addResource(project, boxTarget("weather")));
     expect((await specOnDisk(project)).secureVpc).toBe("ENABLED");
 

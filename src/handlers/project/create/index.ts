@@ -113,7 +113,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       ),
       flag(
         "isolation",
-        "how isolated the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        "how isolated a box template's agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
         z.enum(ISOLATION_LEVELS).default("sandboxed"),
       ),
       flag(
@@ -150,6 +150,15 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
                 runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
               }),
             };
+
+      // A private VPC has no internet path, so only an agent whose calls go through its Box gateway
+      // works in one.
+      if (flags["isolation"] === "private-vpc" && !createInput.scaffoldRuntimeInput?.box) {
+        throw new InputValidationError(
+          "--isolation private-vpc needs a box template: agent-python-strands-box or " +
+            "agent-python-strands-box-container.",
+        );
+      }
 
       try {
         validateCreateRegionSupport(createInput, region);

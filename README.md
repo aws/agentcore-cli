@@ -197,8 +197,11 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
-Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.2` of
+Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+`agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
+`agentcore create --template <name>` makes a Box project from either; every other template runs
+its agent without box, and `--isolation private-vpc` needs a box template. box comes from the
+public GitHub release `v0.1.11-linux-preview.3` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 

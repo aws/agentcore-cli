@@ -56,14 +56,6 @@ const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5-5";
 const STRANDS_BEDROCK_MODEL_ID = DEFAULT_MODEL_IDS.Bedrock;
 const API_KEY_HELP = "file://<path> to the key file";
 
-async function passIsolationStep(r: {
-  lastFrame: () => string | undefined;
-  press: (key: "return") => Promise<void>;
-}) {
-  await waitForText(r.lastFrame, "how isolated should the agent be?");
-  await r.press("return");
-}
-
 describe("project create wizard", () => {
   test("harness flow: name → type → model provider → review → created", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -547,7 +539,6 @@ describe("project create wizard", () => {
     await r.press("return"); // accept model id
 
     // No memory step: memory is no longer a choice, so review follows directly.
-    await passIsolationStep(r);
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).not.toContain("choose a memory configuration");
     expect(r.lastFrame()).toContain("agent-python-strands");
@@ -677,8 +668,6 @@ describe("project create wizard", () => {
     await r.write(`file://${keyFile}`);
     await r.press("return");
 
-    await passIsolationStep(r);
-
     await waitForText(r.lastFrame, "this project will be created");
     const review = flatFrame(r.lastFrame);
     expect(review).toContain("model provider anthropic");
@@ -795,8 +784,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "optional");
     await r.press("return"); // skip it
 
-    await passIsolationStep(r);
-
     await waitForText(r.lastFrame, "this project will be created");
     expect(flatFrame(r.lastFrame)).toContain("model provider litellm");
     expect(r.lastFrame()).toContain("deepseek/deepseek-chat");
@@ -846,7 +833,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "● bedrock");
     await r.press("return");
     await r.press("return");
-    await passIsolationStep(r);
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
@@ -898,8 +884,6 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "enter the API base URL of the endpoint");
     await r.write("https://api.deepseek.com/v1");
     await r.press("return");
-
-    await passIsolationStep(r);
 
     await waitForText(r.lastFrame, "this project will be created");
     const review = flatFrame(r.lastFrame);
@@ -990,8 +974,6 @@ describe("project create wizard", () => {
     await r.write("https://api.deepseek.com/v1");
     await r.press("return");
 
-    await passIsolationStep(r);
-
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./CnTs", 5000);
@@ -1037,12 +1019,13 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
     await r.press("down"); // agent-python-strands-container
+    await r.press("down"); // agent-python-strands-box-container
     await r.press("down"); // agent-python-langchain
     await r.press("down"); // environment-python-bma
     await waitForText(r.lastFrame, "● environment-python-bma");
     await r.press("return");
-    await passIsolationStep(r);
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
 
@@ -1052,7 +1035,7 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
-  test("template flow: private VPC isolation reaches create and the spec", async () => {
+  test("template flow: a box template asks for isolation, and private VPC reaches the spec", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const core = new TestCoreClient();
@@ -1066,11 +1049,13 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
-    await r.press("down"); // agent-python-minimal
-    await waitForText(r.lastFrame, "● agent-python-minimal ");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    // The model step, as for agent-python-strands: keep Bedrock and its model id.
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return");
+    await waitForText(r.lastFrame, STRANDS_BEDROCK_MODEL_ID);
     await r.press("return");
 
     await waitForText(r.lastFrame, "how isolated should the agent be?");
@@ -1104,7 +1089,9 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
     await r.press("down"); // agent-python-strands-container
+    await r.press("down"); // agent-python-strands-box-container
     await r.press("down"); // agent-python-langchain
     await r.press("down"); // environment-python-bma
     await r.press("down"); // agent-python-minimal
@@ -1112,7 +1099,6 @@ describe("project create wizard", () => {
     await r.press("return");
 
     // Straight to review: the minimal template takes no model-provider override.
-    await passIsolationStep(r);
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).not.toContain("choose a model provider");
     await r.press("return");
@@ -1149,13 +1135,14 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
     await r.press("down"); // agent-python-strands-container
+    await r.press("down"); // agent-python-strands-box-container
     await r.press("down"); // agent-python-langchain
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
     // No model step: langchain is Bedrock-only today (no override support).
-    await passIsolationStep(r);
     await waitForText(r.lastFrame, "this project will be created");
     expect(r.lastFrame()).not.toContain("choose a model provider");
     expect(r.lastFrame()).toContain("agent-python-langchain");
@@ -1191,11 +1178,9 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
-    for (let i = 0; i < 10; i++) await r.press("down");
+    for (let i = 0; i < 12; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
-
-    await passIsolationStep(r);
 
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
@@ -1487,8 +1472,6 @@ describe("project create dispatch", () => {
     stdin.write("\r"); // focus the (Bedrock) model id
     await waitFor(() => streams.stdout().includes("model ID"));
     stdin.write("\r"); // accept it
-    await waitFor(() => streams.stdout().includes("how isolated should the agent be?"));
-    stdin.write("\r"); // sandboxed
     await waitFor(() => streams.stdout().includes("this project will be created"));
     stdin.write("\r");
     await waitFor(() => streams.stdout().includes("project created in ./DemoApp"));

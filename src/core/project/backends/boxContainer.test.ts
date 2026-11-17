@@ -137,7 +137,7 @@ describe("stageBoxContainers", () => {
 const TEMPLATES = join(import.meta.dir, "..", "..", "..", "assets", "templates");
 /** The container Dockerfile that `agentcore create` writes, which copies `.box-dist/` whole. */
 const TEMPLATE_DOCKERFILE = readFileSync(
-  join(TEMPLATES, "agent-python-strands", "Dockerfile.template"),
+  join(TEMPLATES, "agent-python-strands-box", "Dockerfile.template"),
   "utf8",
 );
 

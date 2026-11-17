@@ -21,8 +21,15 @@ import {
   startsInBoxOnCodeZip,
 } from "./boxProfile";
 
+/**
+ * The scaffold input of a template, as a box template would give it: the renderer takes every
+ * template's shape, though create writes a profile only for the box templates.
+ */
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
-  return resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
+  return {
+    ...resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides }),
+    box: true,
+  };
 }
 
 /** The parts of a rendered box profile these tests read. */
@@ -284,7 +291,11 @@ describe("renderBoxProfile", () => {
     "environment-python-bma",
     "agent-typescript-strands",
     "agent-typescript-vercel",
-  ] as const)("writes no profile for %s yet", (name) => {
+    "agent-python-strands",
+    "agent-python-strands-container",
+    "agent-python-langchain",
+    "mcp-python-fastmcp",
+  ] as const)("writes no profile for %s, which is not a box template", (name) => {
     const runtime = resolveRuntimeTemplateShortcut(name);
     expect(hasBoxProfile(runtime)).toBe(false);
     expect(renderBoxProfile("V3Demo", runtime)).toBeUndefined();
@@ -551,11 +562,13 @@ describe("renderRuntimeBoxProfile", () => {
 });
 
 describe("startsInBoxOnCodeZip", () => {
-  test("starts every Python CodeZip template in a box, and no container or TypeScript one", () => {
-    expect(startsInBoxOnCodeZip(template("agent-python-strands"))).toBe(true);
-    expect(startsInBoxOnCodeZip(template("mcp-python-fastmcp"))).toBe(true);
-    expect(startsInBoxOnCodeZip(template("agent-python-strands-container"))).toBe(false);
-    expect(startsInBoxOnCodeZip(template("agent-typescript-strands"))).toBe(false);
+  test("starts only the CodeZip box template in a box", () => {
+    const plain = (name: RuntimeTemplateShortcutName) => resolveRuntimeTemplateShortcut(name);
+    expect(startsInBoxOnCodeZip(plain("agent-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
   });
 
   test("recognizes the start script with or without a handler", () => {

@@ -54,8 +54,8 @@ export async function createProjectTree(
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
-          // Only new projects are Box projects; no other command adds this field.
-          projectType: "box",
+          // A project created from a box template is a Box project; no other command adds this field.
+          ...(options?.runtime?.box && { projectType: "box" }),
           ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),

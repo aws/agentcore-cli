@@ -85,7 +85,7 @@ npm pack
 rm -rf "$DEMO/$PROJECT"
 mkdir -p "$DEMO"
 cd "$DEMO"
-bun run "$CLI" create --name "$PROJECT" --template agent-python-strands-container
+bun run "$CLI" create --name "$PROJECT" --template agent-python-strands-box-container
 ```
 
 ## 4. (Optional) add an egress credential to test

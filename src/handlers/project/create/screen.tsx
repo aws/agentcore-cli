@@ -159,7 +159,8 @@ export function buildCreateInput(
       ...(apiKey !== undefined && { harnessApiKey: apiKey }),
     };
   }
-  const isolation = values.isolation === "private-vpc" && { isolation: values.isolation };
+  const isolation = isBoxTemplate(values.template) &&
+    values.isolation === "private-vpc" && { isolation: values.isolation };
   if (values.template === EMPTY_TEMPLATE_NAME) {
     return { name: values.name, skipInstall: false, skipGit: false, ...isolation };
   }
@@ -183,6 +184,12 @@ export function buildCreateInput(
   };
 }
 
+// isBoxTemplate says whether the template runs its agent in Strands Box, the only case where
+// isolation applies.
+function isBoxTemplate(template: CreateProjectFormValues["template"]): boolean {
+  return template !== EMPTY_TEMPLATE_NAME && RUNTIME_TEMPLATE_SHORTCUTS[template].box;
+}
+
 // summaryOf renders the review table: what will be created, and where.
 function summaryOf(values: CreateProjectFormValues): Record<string, string> {
   const base = { project: values.name };
@@ -200,7 +207,9 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     type,
     template: values.template,
     ...(templateTakesModelProvider(values.template) && runtimeModelSummary(values.runtimeModel)),
-    isolation: values.isolation === "private-vpc" ? "private VPC" : "sandboxed",
+    ...(isBoxTemplate(values.template) && {
+      isolation: values.isolation === "private-vpc" ? "private VPC" : "sandboxed",
+    }),
     directory: `./${values.name}`,
   };
 }
@@ -329,7 +338,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         </Step>
       )}
 
-      {values.kind === "agent" && (
+      {values.kind === "agent" && isBoxTemplate(values.template) && (
         <Step stepKey="isolation" prompt="how isolated should the agent be?">
           <ChoiceField<Isolation>
             choices={ISOLATION_CHOICES}
