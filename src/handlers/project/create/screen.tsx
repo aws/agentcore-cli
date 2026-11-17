@@ -226,7 +226,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         validateCreateRegionSupport(input, resolvedRegion);
         const stripped = stripCreateRegionUnavailableDefaults(input, resolvedRegion);
         if (stripped !== undefined) yield { type: "step" as const, message: stripped };
-        return yield* core.projectManager.create(input);
+        return yield* core.projectManager.create({ ...input, region: resolvedRegion });
       }}
       runningLabel={`creating ${values.name}…`}
       successLabel={

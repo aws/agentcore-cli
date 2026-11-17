@@ -34,6 +34,11 @@ type CreateProjectInputBase = {
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
   skipGit?: boolean;
+  /**
+   * The effective AWS region the CLI already resolved (--region flag, env,
+   * shared config file). The box profile create writes calls Bedrock there.
+   */
+  region?: string;
 };
 
 /** Set of arguments needed to scaffold a managed code-based evaluator. */
