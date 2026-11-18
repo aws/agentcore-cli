@@ -396,7 +396,7 @@ async function runRuntimeDev({
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );
-        // Each boxed agent reads its own .box/<name>/local profile for the env vars its routes name.
+        // Each boxed agent reads its own box/<name>/local profile for the env vars its routes name.
         for (const runtime of runtimes) {
           for (const message of await writeBoxDevEnvLocal(project.rootPath, runtime.name)) {
             renderStatus({ io: config.io, message, json });

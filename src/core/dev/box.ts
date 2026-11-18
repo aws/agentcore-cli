@@ -21,7 +21,7 @@ type BoxDevRunnerConfig = {
 };
 
 /**
- * Runs a CodeZip agent with `box run .box/<agentName>/local/profile.toml` in the project folder
+ * Runs a CodeZip agent with `box run box/<agentName>/local/profile.toml` in the project folder
  * when the project has that box profile, the one `agentcore create` writes,
  * and with the fallback runner otherwise. `box` is the one on PATH, which the
  * user installs from the box release. The box listens on the profile's

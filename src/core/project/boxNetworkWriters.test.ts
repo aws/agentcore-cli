@@ -158,7 +158,7 @@ describe("gatewayTargetsWriter", () => {
     });
     expect(edits.messages).toEqual([
       "updating target 'egress-github' of gateway 'agent-box' in agentcore.json, for api.github.com",
-      "removing target 'egress-old' from gateway 'agent-box' in agentcore.json: Box allows no request to its host in .box/agent/local/profile.toml",
+      "removing target 'egress-old' from gateway 'agent-box' in agentcore.json: Box allows no request to its host in box/agent/local/profile.toml",
       "adding target 'egress-httpbin-org' to gateway 'agent-box' in agentcore.json, for httpbin.org",
     ]);
   });
@@ -261,8 +261,8 @@ describe("runtimeProfileWriter", () => {
       { kind: "file", path: "app/agent/.box-dist/rules/extra.dw" },
     ]);
     expect(files.slice(1)).toEqual([
-      { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/agent/local/policy.dw" },
-      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/agent/local/rules/extra.dw" },
+      { path: "app/agent/.box-dist/policy.dw", copyOf: "box/agent/local/policy.dw" },
+      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: "box/agent/local/rules/extra.dw" },
     ]);
     expect("text" in files[0]! && files[0].text).toContain(
       'policies = ["policy.dw", "rules/extra.dw"]',

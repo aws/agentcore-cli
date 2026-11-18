@@ -6,7 +6,7 @@ import {
   parseProfile,
 } from "./profileParser";
 
-const PROFILE = ".box/agent/local/profile.toml";
+const PROFILE = "box/agent/local/profile.toml";
 
 function read(text: string) {
   const result = parseProfile(text, PROFILE);
@@ -54,12 +54,12 @@ describe("parseProfile", () => {
     expect(refusal('# a pack list\npacks = ["box/base", "box/uv", "team/tools"]\n')).toEqual([
       expect.objectContaining({
         code: "UNSUPPORTED_PACK",
-        place: ".box/agent/local/profile.toml:2",
+        place: "box/agent/local/profile.toml:2",
         reason: expect.stringContaining("box/uv"),
       }),
       expect.objectContaining({
         code: "UNSUPPORTED_PACK",
-        place: ".box/agent/local/profile.toml:2",
+        place: "box/agent/local/profile.toml:2",
         reason: expect.stringContaining("team/tools"),
       }),
     ]);
@@ -79,7 +79,7 @@ describe("parseProfile", () => {
         code: "UNSUPPORTED_POLICY_KEY",
         reason:
           "the profile names `policy`, which the box CLI refuses; list the files under `policies`",
-        place: ".box/agent/local/profile.toml:2",
+        place: "box/agent/local/profile.toml:2",
       },
     ]);
   });
@@ -102,7 +102,7 @@ describe("parseProfile", () => {
     expect(refusal("a = 1\n[egress\n")).toEqual([
       expect.objectContaining({
         code: "INVALID_PROFILE",
-        place: ".box/agent/local/profile.toml:2:8",
+        place: "box/agent/local/profile.toml:2:8",
       }),
     ]);
   });

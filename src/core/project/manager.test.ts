@@ -747,7 +747,7 @@ describe("FsProjectManager.create box profile", () => {
     ["after installing", false],
     ["with --skip-install", true],
   ])(
-    "writes the box profile into the agent's .box/<name>/local folder %s",
+    "writes the box profile into the agent's box/<name>/local folder %s",
     async (_label, skipInstall) => {
       const directory = await inTempDirectory();
       const { events } = await runCreate(manager().manager, {
@@ -2026,8 +2026,8 @@ describe("FsProjectManager.build", () => {
       BOX_TRACES_WARNING,
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
-    // Build generates the canonical AWS tree under .box/<agent>/aws.
-    const aws = join(directory, "example", ".box", "agent_python_strands_box", "aws");
+    // Build generates the canonical AWS tree under box/<agent>/aws.
+    const aws = join(directory, "example", "box", "agent_python_strands_box", "aws");
     expect(existsSync(join(aws, "box"))).toBe(true);
     expect(existsSync(join(aws, "profile.toml"))).toBe(true);
     // The zip carries box and the Runtime profile, copied into the code folder's .box-dist.
