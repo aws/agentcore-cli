@@ -33,7 +33,7 @@ async function temp(prefix: string): Promise<string> {
 }
 
 /** A project named `Demo` that holds its box profile in .box/profile.toml when `profiled`. */
-async function scene(profiled: boolean, releaseBox?: string) {
+async function scene(profiled: boolean, boxOnPath = true) {
   const projectRoot = await temp("agentcore-box-project-");
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
@@ -55,17 +55,16 @@ async function scene(profiled: boolean, releaseBox?: string) {
       yield { type: "stdout", line: "fallback" };
     },
   };
-  // No release build for this machine, so box comes from PATH, unless the test names one.
-  const versions: (string | undefined)[] = [];
+  const checked: string[] = [];
   const runner = new BoxDevRunner({
     fallback,
     streamProcess,
-    resolveBox: async (version) => {
-      versions.push(version);
-      return releaseBox;
+    checkTool: async (tool, installHint) => {
+      checked.push(tool);
+      if (!boxOnPath) throw new MissingToolError(tool, installHint);
     },
   });
-  return { projectRoot, calls, fallbackRuns, runner, versions };
+  return { projectRoot, calls, fallbackRuns, runner, checked };
 }
 
 function input(
@@ -98,57 +97,23 @@ async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
 }
 
 describe("BoxDevRunner", () => {
-  test("says box is downloading before it waits for a first download", async () => {
-    const projectRoot = await temp("agentcore-box-project-");
-    await mkdir(join(projectRoot, ".box"));
-    await writeFile(join(projectRoot, ".box", "profile.toml"), PROFILE);
-    await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
-    const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
-    const runner = new BoxDevRunner({
-      fallback: { async *run() {} },
-      streamProcess: async function* () {},
-      resolveBox: async (_version, onDownload) => {
-        onDownload("downloading box 1.0.0 for this machine from https://example.com/box.tar.gz");
-        return box;
-      },
-    });
+  test("asks the user to install box when it is not on PATH, and runs nothing", async () => {
+    const { projectRoot, calls, runner } = await scene(true, false);
 
-    const events = await collect(runner.run(input(projectRoot)));
+    const run = collect(runner.run(input(projectRoot)));
 
-    expect(events).toEqual([
-      {
-        type: "status",
-        message: "downloading box 1.0.0 for this machine from https://example.com/box.tar.gz",
-      },
-      TRACES_NOTICE,
-      { type: "status", message: `Starting the agent in a box (${box} run .box/profile.toml)` },
-    ]);
+    await expect(run).rejects.toBeInstanceOf(MissingToolError);
+    await expect(run).rejects.toThrow(`'box' was not found on your PATH. ${BOX_INSTALL_HINT}`);
+    expect(calls).toEqual([]);
   });
 
-  test("asks for the box of the runtime's box.version", async () => {
-    const { projectRoot, runner, versions } = await scene(true);
-    const pinned = input(projectRoot);
-    pinned.runtime = { ...pinned.runtime, box: { version: "2.0.0" } };
+  test("needs no box for a project without a box profile", async () => {
+    const { projectRoot, checked, fallbackRuns, runner } = await scene(false, false);
 
-    await collect(runner.run(pinned));
     await collect(runner.run(input(projectRoot)));
 
-    expect(versions).toEqual(["2.0.0", undefined]);
-  });
-
-  test("runs the release's box for this machine when it has one", async () => {
-    const box = "/home/me/.agentcore/box/1.0.0-aarch64-apple-darwin/box";
-    const { projectRoot, calls, runner } = await scene(true, box);
-
-    const events = await collect(runner.run(input(projectRoot)));
-
-    expect(calls.map(({ command }) => command)).toEqual([
-      [box, "run", ".box/profile.toml", "--no-banner"],
-    ]);
-    expect(events[1]).toEqual({
-      type: "status",
-      message: `Starting the agent in a box (${box} run .box/profile.toml)`,
-    });
+    expect(checked).toEqual([]);
+    expect(fallbackRuns).toHaveLength(1);
   });
 
   test("runs the project's box profile from the project folder", async () => {

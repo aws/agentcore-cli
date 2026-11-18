@@ -109,14 +109,12 @@ describe("Box gateway entry", () => {
   });
 
   test.each([
-    "agent-python-strands",
-    "agent-python-strands-container",
-    "agent-typescript-strands",
-    "a2a-python-strands",
-    "agui-python-strands",
-    "agent-python-langchain",
-    "agent-typescript-vercel",
-    "agent-python-minimal",
+    "agent-python-strands-box",
+    "agent-python-strands-box-container",
+    "agent-python-minimal-box",
+    "agent-python-langchain-box",
+    "a2a-python-strands-box",
+    "agui-python-strands-box",
   ] as const)("%s declares it with no target, which build adds", (template) => {
     expect(
       resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,

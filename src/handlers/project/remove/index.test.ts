@@ -522,7 +522,7 @@ describe("project remove all", () => {
     ["a sandboxed project says nothing about it", [], false],
   ])("%s", async (_name, isolation, notified) => {
     const { cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal", ...isolation],
+      flags: ["--template", "agent-python-strands-box", ...isolation],
     });
     cleanups.push(cleanup);
 

@@ -119,8 +119,9 @@ type RuntimeTemplateShortcut = {
   includesMemory: boolean;
   /**
    * Runs its agent in Strands Box: create makes a Box project (`"projectType": "box"`) with the
-   * runtime's Box gateway. Only the box templates do; every other template runs its agent the
-   * usual way.
+   * box profile, the runtime's Box gateway, and the box start (a start script for CodeZip, the
+   * Dockerfile for a container). Only the box templates do; every other template runs its agent
+   * the usual way.
    */
   box: boolean;
   /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
@@ -458,7 +459,9 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
     // A template with no model provider (an MCP server, BMA) calls no model.
-    ...(modelProvider !== undefined &&
+    ...(template.box && { box: true }),
+    ...(template.box &&
+      modelProvider !== undefined &&
       callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
         // Build adds the `bedrock` target, for the region it builds for.
         boxGatewayEntry: getBoxGatewayEntry(runtimeName),

@@ -17,8 +17,10 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
 `~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
-`agentcore dev` downloads the release's macOS arm64 build the same way for a CodeZip agent, and
-the Linux build for a container image. No local box checkout is needed.
+A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
+CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
+from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
+is needed.
 
 To try an unreleased box build, publish it as a pre-release with the same file names and set
 `box.version` to it: a version the CLI does not pin takes its checksums from the release's
@@ -85,7 +87,7 @@ npm pack
 rm -rf "$DEMO/$PROJECT"
 mkdir -p "$DEMO"
 cd "$DEMO"
-bun run "$CLI" create --name "$PROJECT" --template agent-python-strands-container
+bun run "$CLI" create --name "$PROJECT" --template agent-python-strands-box-container
 ```
 
 ## 4. (Optional) add an egress credential to test

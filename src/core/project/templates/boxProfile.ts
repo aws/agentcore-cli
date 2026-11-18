@@ -104,15 +104,11 @@ export function boxProfilePath(projectRoot: string): string {
 }
 
 /**
- * Whether create writes a box profile for this runtime: every Python CodeZip
- * template, and the Strands container template, whose image runs the agent
- * with `box run`. The Bedrock Managed Agents image has no box.
+ * Whether create writes a box profile for this runtime: a box template, CodeZip or container,
+ * which runs its agent in Strands Box. Every other template runs its agent the usual way.
  */
 export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
-  return (
-    runtime.box === true &&
-    ((runtime.language === "Python" && runtime.build === "CodeZip") || isBoxedContainer(runtime))
-  );
+  return startsInBoxOnCodeZip(runtime) || isBoxedContainer(runtime);
 }
 
 /**
@@ -129,7 +125,7 @@ export function boxProfileIsFor(
   return profileText.includes(`/${runtime.codeLocation}"`);
 }
 
-/** The Strands container template, whose image starts `box run` in /app. */
+/** The Strands box container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (
     runtime.box === true &&
@@ -147,13 +143,13 @@ const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = n
 ]);
 
 /**
- * Whether create writes the box start scripts, so a CodeZip deploy runs the
- * agent in a box: every Python CodeZip template (Strands over HTTP, A2A and
- * AG-UI, LangChain, minimal, and the FastMCP server). start.sh serves the
- * protocol's port, which the profile's ingress names.
+ * Whether create writes the box start scripts, so a CodeZip deploy runs the agent in a box: a
+ * Python CodeZip box template. start.sh serves the protocol's port, which the profile's ingress
+ * names.
  */
 export function startsInBoxOnCodeZip(runtime: ScaffoldRuntimeInput): boolean {
   return (
+    runtime.box === true &&
     runtime.build === "CodeZip" &&
     runtime.language === "Python" &&
     CODEZIP_BOX_FRAMEWORKS.has(runtime.framework)
@@ -546,6 +542,8 @@ export function renderRuntimeBoxProfile(
     protocol: runtime.protocol,
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
+    // Build and deploy render this only for a runtime that runs its agent in a box.
+    box: true,
   } as ScaffoldRuntimeInput;
   const region = network?.region ?? BOX_GATEWAY_BEDROCK_REGION;
   return renderBoxProfile(

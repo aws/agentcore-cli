@@ -110,7 +110,9 @@ async function strandsProject(
   const { value: created } = await drain(
     manager.create({
       name: "demo",
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+        runtimeName: "agent_python_strands",
+      }),
       skipInstall: true,
       skipGit: true,
     }),

@@ -54,8 +54,8 @@ export async function createProjectTree(
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
-          // Only new projects are Box projects; no other command adds this field.
-          projectType: "box",
+          // A project created from a box template is a Box project; no other command adds this field.
+          ...(options?.runtime?.box && { projectType: "box" }),
           ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
@@ -96,7 +96,8 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
   );
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
-    // The box release dev runs, and build and deploy ship; change it to move to another release.
+    // The box release build and deploy ship; change it to move to another release. dev runs the
+    // box on PATH.
     runtime.box = { version: BOX_RELEASE.version };
   }
 }
