@@ -98,6 +98,24 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(pyproject).toContain('"strands-agents >= 1.62.0, < 2.0.0"');
   });
 
+  test("writes the Box gateway of the exported runtime into a Box project", async () => {
+    const { manager: subject } = manager();
+    const project = await projectWithHarness(subject);
+    expect(project.spec.projectType).toBe("box");
+
+    await drain(subject.exportHarness(project, exportInput()));
+
+    const spec = (await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json()) as {
+      agentCoreGateways: { name: string }[];
+    };
+    const gateway = spec.agentCoreGateways.find(({ name }) => name === "assistantAgent-box-egress");
+    expect(gateway).toMatchObject({
+      boundRuntime: "assistantAgent",
+      discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+      targets: [],
+    });
+  });
+
   test("loads only the MCP tools allowedTools selects", async () => {
     const { manager: subject } = manager();
     const project = await projectWithHarness(subject, {

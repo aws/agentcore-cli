@@ -119,11 +119,12 @@ export const ProjectSpecSchema = z
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
     /**
-     * `"box"` for a Box project. `agentcore create` writes it into every new project, and the CDK
-     * library then adds one Box gateway for each runtime: logical name `<runtime>-box`, `AWS_IAM`
-     * auth, `protocolType: "None"`. A gateway entry with that name only adds targets to it. No default: the spec
-     * is written back to disk after each parse, so a default would add the field to every
-     * existing project.
+     * `"box"` for a Box project. `agentcore create` writes it into every new project. The CLI then
+     * keeps one `<runtime>-box-egress` gateway entry for each runtime (see `boxGatewaySpec`):
+     * `AWS_IAM` auth, `protocolType: "None"`, and `boundRuntime`/`discoveryPrefix`, from which the
+     * CDK library binds it. The CDK library does not read this field. No default: the spec is
+     * written back to disk after each parse, so a default would add the field to every existing
+     * project.
      */
     projectType: ProjectTypeSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),
@@ -158,6 +159,16 @@ export const ProjectSpecSchema = z
   .superRefine((spec, ctx) => {
     const agentNames = new Set(spec.runtimes.map((a) => a.name));
     const evaluatorNames = new Set(spec.evaluators.map((e) => e.name));
+    // A gateway bound to a runtime that does not exist binds to nothing and fails the synth.
+    for (const gateway of spec.agentCoreGateways) {
+      if (gateway.boundRuntime !== undefined && !agentNames.has(gateway.boundRuntime)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}", but no runtime has that name`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
     for (const config of spec.onlineEvalConfigs) {
       if (config.agent && !agentNames.has(config.agent)) {
         ctx.addIssue({

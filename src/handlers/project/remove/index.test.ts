@@ -785,13 +785,24 @@ describe("project remove in a Box project", () => {
     expect(after.agentCoreGateways).toEqual([]);
   });
 
-  test("remove all removes projectType with the gateway entries", async () => {
+  test("remove runtime says that the Box gateway and its targets went with it", async () => {
+    const projectRoot = await boxProject();
+
+    const { io } = await run(["remove", "runtime", "--name", "agent"]);
+
+    expect(io.stderr()).toContain(
+      "removed gateway 'agent-box-egress' and its 1 target: it is bound to runtime 'agent'",
+    );
+    expect((await projectSpec(projectRoot)).agentCoreGateways).toEqual([]);
+  });
+
+  test("remove all removes the gateway entries and keeps projectType", async () => {
     const projectRoot = await boxProject();
 
     await run(["remove", "all", "--yes"]);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec).not.toHaveProperty("projectType");
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
   });
 });

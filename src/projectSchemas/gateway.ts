@@ -1,6 +1,6 @@
 import { NetworkModeSchema, NodeRuntimeSchema, PythonRuntimeSchema } from "./constants";
 import type { DirectoryPath, FilePath } from "./types";
-import { EnvVarNameSchema, GatewayNameSchema } from "./runtime";
+import { AgentNameSchema, EnvVarNameSchema, GatewayNameSchema } from "./runtime";
 import { GatewayAuthorizerConfigSchema, GatewayAuthorizerTypeSchema } from "./auth";
 import { ToolDefinitionSchema } from "./mcp-defs";
 import { TagsSchema } from "./tags";
@@ -465,10 +465,12 @@ export const AgentCoreGatewaySchema = z
       .regex(/^arn:[^:]+:iam::\d{12}:role\/.+/, "Must be a valid IAM role ARN")
       .max(2048)
       .optional(),
-    // Bind this gateway to one runtime only. The CLI sets it on each Box gateway.
-    boundRuntime: z.string().optional(),
-    // The variable prefix for this gateway, in place of AGENTCORE_GATEWAY_<NAME>. Needs boundRuntime.
-    discoveryPrefix: z.string().optional(),
+    // Bind this gateway to one runtime only. The CLI sets it on each Box gateway. The project
+    // schema checks that it names one of runtimes[].name.
+    boundRuntime: AgentNameSchema.optional(),
+    // The variable prefix for this gateway, in place of AGENTCORE_GATEWAY_<NAME>. Each variable
+    // name starts with it, so it must be a valid variable name. Needs boundRuntime.
+    discoveryPrefix: EnvVarNameSchema.optional(),
     tags: TagsSchema.optional(),
   })
   .strict()

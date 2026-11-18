@@ -8,7 +8,7 @@ import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
 import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
-import { APP_CODE_RETAINED_NOTICE, shouldShowAppCodeNotice } from "./notice";
+import { APP_CODE_RETAINED_NOTICE, removedGatewayLines, shouldShowAppCodeNotice } from "./notice";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -168,6 +168,9 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
         },
         () => {
           config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`);
+          for (const line of removedGatewayLines(name, result.removedGateways)) {
+            config.io.stderr.write(`${line}\n`);
+          }
           if (showAppCodeNotice) {
             config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
           }

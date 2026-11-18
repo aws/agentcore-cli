@@ -314,8 +314,9 @@ describe("project remove screen", () => {
     const r = render("/agentcore/remove", core, project);
 
     await waitForText(r.lastFrame, "all");
-    // `all` = the sum of the listed rows: 1 runtime + 1 Box gateway + 1 policy-engine + 1 policy.
-    expect(r.lastFrame()).toMatch(/all\s+4/);
+    // `all` = the sum of the listed rows: 1 runtime + 1 policy-engine + 1 policy. The Box gateway
+    // is not listed: it belongs to its runtime, and `remove gateway` refuses it.
+    expect(r.lastFrame()).toMatch(/all\s+3/);
     r.unmount();
   });
 

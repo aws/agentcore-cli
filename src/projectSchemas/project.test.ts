@@ -428,3 +428,40 @@ describe("projectType", () => {
     expect(ProjectSpecSchema.safeParse({ ...minimalProject, box: {} }).success).toBe(false);
   });
 });
+
+describe("gateway boundRuntime and discoveryPrefix", () => {
+  const gateway = (fields: Record<string, unknown>) => ({
+    name: "agent-box-egress",
+    authorizerType: "AWS_IAM",
+    targets: [],
+    ...fields,
+  });
+  const parse = (fields: Record<string, unknown>) =>
+    ProjectSpecSchema.safeParse({
+      ...minimalProject,
+      runtimes: [runtime],
+      agentCoreGateways: [gateway(fields)],
+    });
+
+  test("accepts a boundRuntime that names a runtime, with a discoveryPrefix", () => {
+    expect(parse({ boundRuntime: "agent", discoveryPrefix: "AGENTCORE_GATEWAY_BOX" }).success).toBe(
+      true,
+    );
+  });
+
+  test("rejects a boundRuntime that names no runtime", () => {
+    const result = parse({ boundRuntime: "gone" });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map(({ message }) => message)).toContain(
+      'Gateway "agent-box-egress" has boundRuntime "gone", but no runtime has that name',
+    );
+  });
+
+  test("rejects a boundRuntime that is not a runtime name", () => {
+    expect(parse({ boundRuntime: "my agent" }).success).toBe(false);
+  });
+
+  test.each(["my-prefix", "", "1BOX"])("rejects discoveryPrefix %j", (discoveryPrefix) => {
+    expect(parse({ boundRuntime: "agent", discoveryPrefix }).success).toBe(false);
+  });
+});

@@ -303,7 +303,7 @@ async function resolveTeardownDecision(
     // fails with "no stack ... to remove" before consulting the decision.
     const target = await config.projectManager.resolveTarget(project, { target: targetName });
     if (target) {
-      if (!(await promptForConfirmation(config.io, teardownQuestion(project.name, target)))) {
+      if (!(await promptForTeardown(config.io, project.name, target))) {
         throw new UserCancellationError();
       }
       return async () => true;
@@ -316,7 +316,11 @@ async function resolveTeardownDecision(
   return async () => false;
 }
 
-async function promptForConfirmation(io: AppIO, question: string): Promise<boolean> {
+async function promptForTeardown(
+  io: AppIO,
+  projectName: string,
+  target: { name: string; account: string; region: string },
+): Promise<boolean> {
   const readline = createInterface({ input: io.stdin, output: io.stderr });
   try {
     const cancelled = new Promise<never>((_resolve, reject) => {
@@ -324,7 +328,10 @@ async function promptForConfirmation(io: AppIO, question: string): Promise<boole
       readline.once("SIGINT", cancel);
       readline.once("close", cancel);
     });
-    const answer = await Promise.race([readline.question(`${question} (y/N) `), cancelled]);
+    const answer = await Promise.race([
+      readline.question(`${teardownQuestion(projectName, target)} (y/N) `),
+      cancelled,
+    ]);
     return /^(?:y|yes)$/i.test(answer.trim());
   } finally {
     readline.close();

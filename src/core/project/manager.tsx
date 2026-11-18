@@ -27,6 +27,7 @@ import type {
   SyncRuntimeBuildsResult,
   RemoveResourceInput,
   RemoveResourceResult,
+  RemovedGateway,
   RemoveResourcesResult,
 } from "../../handlers/project/types";
 import { RESOURCE_LABELS } from "../../handlers/project/types";
@@ -980,8 +981,9 @@ export class FsProjectManager implements ProjectManager {
               `--target-configuration with "targetType": "passthrough".`,
           );
         }
-        // A new project writes one Box gateway entry for each runtime, so the entry normally
-        // exists. For a project made before that, write it here from the matching runtime.
+        // A Box project keeps one Box gateway entry for each runtime, so the entry normally
+        // exists. It is missing only if agentcore.json was edited by hand, or a code path added a
+        // runtime without its entry. Write it here from the matching runtime.
         if (gatewayIndex < 0 && boxEntry) {
           const runtime = projectSpec.runtimes.find(
             ({ name }) => boxGatewayName(name) === input.gatewayName,
@@ -994,7 +996,14 @@ export class FsProjectManager implements ProjectManager {
           }
         }
         if (gatewayIndex < 0) {
-          const hint = boxGatewayHint(projectSpec);
+          // `add gateway` reserves Box gateway names in any letter case, but gateway names are
+          // case-sensitive. Name the Box gateway that differs only in case, so both errors agree.
+          const caseMatch = boxGatewayNames(projectSpec).find(
+            (name) => name.toLowerCase() === input.gatewayName.toLowerCase(),
+          );
+          const hint = caseMatch
+            ? ` Gateway names are case-sensitive: the Box gateway is '${caseMatch}'.`
+            : boxGatewayHint(projectSpec);
           throw new ResourceNotFoundError(
             `no gateway named '${input.gatewayName}' exists in this project${hint ? `.${hint}` : ""}`,
           );
@@ -1102,6 +1111,7 @@ export class FsProjectManager implements ProjectManager {
     let removed = false;
     let newSpec: unknown;
     let removedResource = input;
+    let removedGateways: RemovedGateway[] = [];
     if (input.resourceType === "policy") {
       const candidates = existingProjectSpec.policyEngines.filter((engine) =>
         engine.policies.some((policy) => policy.name === input.name),
@@ -1189,16 +1199,18 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-      // The Box gateway of a runtime goes with the runtime (KD4), so its targets go too. An
-      // entry for a runtime that no longer exists would fail the synth.
-      if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
-        const boxName = boxGatewayName(input.name);
-        newSpec = {
-          ...(newSpec as object),
-          agentCoreGateways: existingProjectSpec.agentCoreGateways.filter(
-            (gateway) => gateway.name !== boxName,
-          ),
-        };
+      // A gateway bound to the runtime (each Box gateway is) goes with the runtime, and its
+      // targets go too. A gateway bound to a runtime that does not exist fails validation.
+      if (input.resourceType === "runtime" && removed) {
+        const gateways = existingProjectSpec.agentCoreGateways;
+        const bound = gateways.filter((gateway) => gateway.boundRuntime === input.name);
+        removedGateways = bound.map(({ name, targets }) => ({ name, targetCount: targets.length }));
+        if (bound.length > 0) {
+          newSpec = {
+            ...(newSpec as object),
+            agentCoreGateways: gateways.filter((gateway) => gateway.boundRuntime !== input.name),
+          };
+        }
       }
     }
 
@@ -1230,6 +1242,7 @@ export class FsProjectManager implements ProjectManager {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
       removedResource,
+      removedGateways,
     };
   }
 
@@ -1252,11 +1265,11 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
-    // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
-    // every resource, so the next deploy reaches the teardown confirmation as before.
-    const { projectType: _projectType, ...rest } = existingProjectSpec;
+    // `projectType` stays: a Box project with no runtimes has no Box gateways, so the next deploy
+    // still reaches the teardown confirmation. A runtime added later gets its Box gateway back
+    // under the same name, so a deploy updates that gateway in place and does not delete it.
     const newSpec = {
-      ...rest,
+      ...existingProjectSpec,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1495,6 +1508,7 @@ export class FsProjectManager implements ProjectManager {
 
       yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
       projectSpec.runtimes.push(plan.runtime);
+      ensureBoxGateway(projectSpec, plan.runtime.name);
       for (const credential of plan.credentials) {
         if (!projectSpec.credentials.some((candidate) => candidate.name === credential.name)) {
           projectSpec.credentials.push(credential);
@@ -2105,7 +2119,10 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
 
 /**
  * Adds the Box gateway of a runtime to a Box project, if it is not already there. A Box project
- * keeps one Box gateway for each runtime, so `agentcore create` and `add runtime` call this.
+ * keeps one Box gateway for each runtime, so every path that adds a runtime to an existing
+ * project calls this: `add runtime` (docs and template runtimes) and `export harness`.
+ * `agentcore create` does not call it: `createProjectTree` writes the entries from
+ * `boxGatewaySpec` directly.
  */
 function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: string): void {
   if (!isBoxProject(spec)) return;

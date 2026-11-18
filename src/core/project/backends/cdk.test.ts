@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { FsReadWriteJson, ProcessFailedError } from "../../../io";
-import { ProjectSpecSchema } from "../../../projectSchemas/project";
+import { boxGatewaySpec, ProjectSpecSchema } from "../../../projectSchemas/project";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
@@ -408,30 +408,67 @@ describe("CdkBackend.build", () => {
 });
 
 describe("CdkBackend.deploy", () => {
-  test("stops a Box project deploy when a runtime's Box gateway is missing from agentcore.json", async () => {
-    const base = await project();
-    const input: Project = {
-      ...base,
-      spec: ProjectSpecSchema.parse({
-        name: "example",
-        version: 2,
-        projectType: "box",
-        runtimes: [
-          {
-            name: "agent",
-            build: "CodeZip",
-            entrypoint: "main.py",
-            codeLocation: "app/agent",
-            runtimeVersion: "PYTHON_3_12",
-          },
-        ],
-      }),
-    };
-    const subject = harness();
+  describe("Box gateway guard", () => {
+    const runtime = (name: string) => ({
+      name,
+      build: "CodeZip",
+      entrypoint: "main.py",
+      codeLocation: `app/${name}`,
+      runtimeVersion: "PYTHON_3_12",
+    });
+    async function boxProject(runtimeNames: string[], gatewayRuntimes: string[]): Promise<Project> {
+      const base = await project();
+      return {
+        ...base,
+        spec: ProjectSpecSchema.parse({
+          name: "example",
+          version: 2,
+          projectType: "box",
+          runtimes: runtimeNames.map(runtime),
+          agentCoreGateways: gatewayRuntimes.map(boxGatewaySpec),
+        }),
+      };
+    }
 
-    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
-      "agentcore.json is missing the Box gateway 'agent-box-egress'",
-    );
+    test("stops a deploy when a runtime has no Box gateway entry, and prints the entry", async () => {
+      const input = await boxProject(["agent"], []);
+      const subject = harness();
+
+      const error = await collectDeploy(subject.backend.deploy(input, deployInput())).catch(
+        (caught: unknown) => caught as Error,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain(
+        "agentcore.json has no Box gateway entry for runtime 'agent'.",
+      );
+      expect((error as Error).message).toContain("Add this entry");
+      expect((error as Error).message).toContain(JSON.stringify(boxGatewaySpec("agent"), null, 2));
+      expect(subject.runs).toEqual([]);
+    });
+
+    test("names every runtime with no Box gateway entry", async () => {
+      const input = await boxProject(["agent", "search", "checkout"], ["search"]);
+      const subject = harness();
+
+      const error = await collectDeploy(subject.backend.deploy(input, deployInput())).catch(
+        (caught: unknown) => caught as Error,
+      );
+      expect((error as Error).message).toContain(
+        "agentcore.json has no Box gateway entry for runtimes 'agent', 'checkout'.",
+      );
+      expect((error as Error).message).toContain("Add these entries");
+    });
+
+    test("passes a Box project that has a Box gateway entry for each runtime", async () => {
+      const input = await boxProject(["agent", "search"], ["agent", "search"]);
+      await writeAssembly(input, [TARGET.name]);
+      const subject = harness({ outputs: {} });
+
+      const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+      expect(deployed.result).toEqual({ outputs: {} });
+      expect(subject.runs).toHaveLength(1);
+    });
   });
 
   test("preflights, synthesizes, and deploys the selected stack", async () => {
