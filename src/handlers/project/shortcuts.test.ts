@@ -20,6 +20,7 @@ describe("template order", () => {
       "agent-python-strands-container",
       "agent-python-strands-box-container",
       "agent-python-langchain",
+      "agent-python-langchain-box",
       "environment-python-bma",
       "agent-python-minimal",
       "agent-python-minimal-box",
@@ -108,6 +109,7 @@ describe("Box gateway entry", () => {
     "agent-python-strands-box",
     "agent-python-strands-box-container",
     "agent-python-minimal-box",
+    "agent-python-langchain-box",
   ] as const)("%s declares it with no target, which build adds", (template) => {
     expect(
       resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,

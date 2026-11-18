@@ -28,6 +28,12 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import { modelProviderOverridableCnMessage } from "../../../core/project/manager";
 
+/** Moves the template list's cursor from its first entry down to `name`. */
+async function selectTemplate(r: ReturnType<typeof renderScreen>, name: string): Promise<void> {
+  const index = PROJECT_TEMPLATE_NAMES.indexOf(name as (typeof PROJECT_TEMPLATE_NAMES)[number]);
+  for (let i = 0; i < index; i++) await r.press("down");
+}
+
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
 
@@ -1019,11 +1025,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-strands-box-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
+    await selectTemplate(r, "environment-python-bma");
     await waitForText(r.lastFrame, "● environment-python-bma");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -1049,7 +1051,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
+    await selectTemplate(r, "agent-python-strands-box");
     await waitForText(r.lastFrame, "● agent-python-strands-box ");
     await r.press("return");
     // The model step, as for agent-python-strands: keep Bedrock and its model id.
@@ -1089,12 +1091,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-strands-box-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
-    await r.press("down"); // agent-python-minimal
+    await selectTemplate(r, "agent-python-minimal");
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
 
@@ -1135,10 +1132,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-strands-box-container
-    await r.press("down"); // agent-python-langchain
+    await selectTemplate(r, "agent-python-langchain");
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
