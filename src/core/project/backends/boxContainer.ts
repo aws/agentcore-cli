@@ -159,19 +159,3 @@ export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): bo
     imageCopiesBox(projectRoot, runtime)
   );
 }
-
-/**
- * What build and deploy tell the user about the traces of a runtime that runs its agent in a box
- * with `instrumentation.enableOtel` on, or `undefined` for any other runtime. The Runtime profile
- * starts the agent under opentelemetry-instrument, but box sets the agent's OTLP endpoint to its own
- * collector, and nothing sends the traces on from there.
- */
-export function boxTracesWarning(projectRoot: string, runtime: ProjectRuntime): string | undefined {
-  if (!(runtime.instrumentation?.enableOtel ?? true)) return undefined;
-  if (!runsAgentInBox(projectRoot, runtime)) return undefined;
-  return (
-    `Runtime '${runtime.name}' runs its agent in a box under opentelemetry-instrument, but box ` +
-    `sends the agent's traces to its own collector, so they do not reach CloudWatch. Set ` +
-    `instrumentation.enableOtel to false to start the agent without it.`
-  );
-}
