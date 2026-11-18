@@ -3,7 +3,7 @@
  * edits for exactly those: changes to agentcore.json, files, and `.env.local` entries. One output
  * belongs to one writer, and {@link boxNetworkEdits} refuses two writers that declare it.
  */
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
@@ -26,6 +26,11 @@ import {
 } from "./boxMemory";
 import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
 import {
+  BOX_TELEMETRY_POLICY_FILE,
+  boxTelemetryPolicy,
+  placeBoxTelemetryPolicy,
+} from "./boxTelemetry";
+import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
   boxLocalDir,
@@ -41,13 +46,18 @@ export type BoxNetworkOutput =
   | { readonly kind: "defaultTargets" }
   | { readonly kind: "projectType" }
   | { readonly kind: "credentials" }
+  | { readonly kind: "runtimePolicies" }
   | { readonly kind: "envLocal" }
   | { readonly kind: "file"; readonly path: string };
 
-/** A file a writer writes, by its path from the project root: its text, or a byte copy. */
+/**
+ * A file a writer writes, by its path from the project root: its text, or a byte copy. Or a file
+ * that a writer wrote before and removes now.
+ */
 export type BoxNetworkFile =
   | { readonly path: string; readonly text: string }
-  | { readonly path: string; readonly copyOf: string };
+  | { readonly path: string; readonly copyOf: string }
+  | { readonly path: string; readonly remove: true };
 
 /** What a writer changes. */
 export interface BoxNetworkEdits {
@@ -123,10 +133,17 @@ export function boxNetworkEdits(
   };
 }
 
-/** Writes each file under `projectRoot`: its text, or a byte copy of the project file it names. */
+/**
+ * Writes each file under `projectRoot`: its text, or a byte copy of the project file it names. A
+ * file to remove goes when it exists.
+ */
 export function writeBoxNetworkFiles(projectRoot: string, files: readonly BoxNetworkFile[]): void {
   for (const file of files) {
     const to = join(projectRoot, ...file.path.split("/"));
+    if ("remove" in file) {
+      if (existsSync(to)) unlinkSync(to);
+      continue;
+    }
     mkdirSync(dirname(to), { recursive: true });
     if ("text" in file) writeFileSync(to, file.text);
     else copyFileSync(join(projectRoot, ...file.copyOf.split("/")), to);
@@ -241,6 +258,29 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
   }),
 };
 
+/**
+ * The policy that lets the execution role of each box runtime send the box profile's CloudWatch
+ * telemetry, and its entry in each such runtime's `additionalPolicies`. With no CloudWatch target,
+ * the file and the entries go.
+ */
+export const telemetryPolicyWriter: BoxNetworkWriter = {
+  name: "telemetry policy",
+  writes: () => [{ kind: "runtimePolicies" }, { kind: "file", path: BOX_TELEMETRY_POLICY_FILE }],
+  edits: (networks, { projectRoot }) => {
+    // Every box runtime runs the one box profile, so each network has the same telemetry.
+    const policy = boxTelemetryPolicy(networks.flatMap((network) => network.telemetry ?? []));
+    const boxed = policy ? networks.map((network) => network.runtime) : [];
+    return {
+      spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)],
+      files: [
+        policy
+          ? { path: BOX_TELEMETRY_POLICY_FILE, text: `${JSON.stringify(policy, undefined, 2)}\n` }
+          : { path: BOX_TELEMETRY_POLICY_FILE, remove: true },
+      ],
+    };
+  },
+};
+
 /** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */
 export interface StagedRuntime {
   readonly runtime: string;
@@ -308,4 +348,5 @@ export const BOX_NETWORK_WRITERS: readonly BoxNetworkWriter[] = [
   gatewayTargetsWriter,
   credentialsWriter,
   defaultTargetsWriter,
+  telemetryPolicyWriter,
 ];

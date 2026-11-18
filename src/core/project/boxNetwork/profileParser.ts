@@ -8,6 +8,7 @@
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
+import { cloudWatchTelemetry, type CloudWatchTelemetry } from "./telemetry";
 
 /** The packs the converter reads: `box/base` declares no route, and `box/bedrock` one. */
 const KNOWN_PACKS: ReadonlySet<string> = new Set(["box/base", BOX_BEDROCK_PACK]);
@@ -26,6 +27,8 @@ export interface ParsedProfile {
   readonly mcp: Record<string, unknown>;
   /** The profile's own policy files, relative to its folder, in the order it names them. */
   readonly policyFiles: readonly string[];
+  /** The CloudWatch targets of `[telemetry]` as Box resolves it; absent means none. */
+  readonly telemetry?: readonly CloudWatchTelemetry[];
   /** Where the profile's own text sets each entry; absent when build has no profile text. */
   readonly places?: ProfilePlaces;
 }
@@ -57,6 +60,7 @@ export function parseResolvedProfile(
     }
   }
   const egress: Record<string, unknown> = { ...(boxToml.egress as object | undefined) };
+  const telemetry = cloudWatchTelemetry(boxToml);
   for (const { route, destinations } of openRoutes) {
     if (!Object.hasOwn(egress, route)) egress[route] = { destinations };
   }
@@ -65,6 +69,7 @@ export function parseResolvedProfile(
       egress,
       mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
       policyFiles,
+      ...(telemetry.length > 0 && { telemetry }),
     },
     failures: [],
   };
