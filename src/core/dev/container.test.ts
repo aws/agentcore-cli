@@ -810,7 +810,7 @@ describe("ContainerDevRunner", () => {
       await mkdir(join(root, "agentcore"));
       await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
       if (options.profile ?? true) {
-        const local = join(root, "box", projectRuntime.name, "local");
+        const local = join(root, ".box", projectRuntime.name, "local");
         await mkdir(local, { recursive: true });
         await writeFile(join(local, "profile.toml"), "# local profile\n");
       }
