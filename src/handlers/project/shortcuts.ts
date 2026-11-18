@@ -323,6 +323,19 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
+  "agui-python-strands-box": {
+    runtimeName: "agui_python_strands_box",
+    description: "Strands agent speaking AG-UI in Strands Box, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    protocol: "AGUI",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
 } as const satisfies Record<string, RuntimeTemplateShortcut>;
 
 export type RuntimeTemplateShortcutName = keyof typeof RUNTIME_TEMPLATE_SHORTCUTS;

@@ -558,6 +558,8 @@ describe("startsInBoxOnCodeZip", () => {
     expect(startsInBoxOnCodeZip(plain("agent-python-langchain"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("a2a-python-strands-box"))).toBe(true);
     expect(startsInBoxOnCodeZip(plain("a2a-python-strands"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agui-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agui-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
