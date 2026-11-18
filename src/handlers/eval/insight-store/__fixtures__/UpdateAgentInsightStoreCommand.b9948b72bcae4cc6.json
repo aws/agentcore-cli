@@ -1,9 +1,9 @@
 {
-  "agentInsightStoreArn": "arn:aws:bedrock-agentcore:us-west-2:429583250834:agent-insight-store/default-insight-store",
+  "agentInsightStoreArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:agent-insight-store/default-insight-store",
   "agentInsightStoreId": "default-insight-store",
   "status": "UPDATING",
   "enablementStatus": "ENABLED",
   "updatedAt": {
-    "$date": "2026-11-10T21:14:03.881Z"
+    "$date": "2026-11-18T16:05:18.461Z"
   }
 }
