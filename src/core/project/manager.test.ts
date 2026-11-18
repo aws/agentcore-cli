@@ -1600,8 +1600,7 @@ describe("FsProjectManager.addResource", () => {
           httpRuntime: { runtime: "agent_python_minimal" },
         },
       });
-      const gw = added.spec.agentCoreGateways.find((gateway) => gateway.name === "gw");
-      expect(gw!.targets.map((target) => target.name)).toEqual(["rt"]);
+      expect(added.spec.agentCoreGateways[0]!.targets.map((target) => target.name)).toEqual(["rt"]);
     });
 
     test("deploy to a China target hard-fails a Gateway with a connector Target", async () => {

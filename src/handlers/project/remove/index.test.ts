@@ -20,6 +20,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { ENV_LOCAL_RELATIVE_PATH } from "../../../core/project/envLocal";
 import { readEnvFile } from "../../../io/envFile";
 import { APP_CODE_RETAINED_NOTICE } from "./notice";
+import { boxGatewaySpec } from "../../../projectSchemas/project";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(() => Promise.all(cleanups.splice(0).map((cleanup) => cleanup())));
@@ -84,8 +85,7 @@ describe("project remove", () => {
         ["remove", "gateway", "--name", "remove"],
       ],
       specKey: "agentCoreGateways",
-      // The Box gateway of the template's runtime stays, written at create time.
-      expectedRemaining: ["agent-box-egress", "keep"],
+      expectedRemaining: ["keep"],
     },
     {
       label: "config-bundle",
@@ -296,10 +296,9 @@ describe("project remove", () => {
     ]);
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    const tools = agentcoreJson.agentCoreGateways.find(
-      (gateway: { name: string }) => gateway.name === "tools",
-    );
-    expect(tools.targets.map((target: { name: string }) => target.name)).toEqual(["keep"]);
+    expect(
+      agentcoreJson.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+    ).toEqual(["keep"]);
     expect(JSON.parse(io.stdout())).toEqual({
       operation: "remove",
       project: { name: "TestProject", path: projectRoot },
@@ -695,11 +694,26 @@ describe("project remove all", () => {
 });
 
 describe("project remove in a Box project", () => {
-  async function boxProject(): Promise<string> {
+  /**
+   * A template project made into a Box project, as a Box template writes it: `projectType: "box"`
+   * and a Box gateway for its runtime `agent`.
+   */
+  async function boxProjectWithoutTargets(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
     cleanups.push(cleanup);
+    const spec = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      agentCoreGateways: [boxGatewaySpec("agent")],
+    });
+    return projectRoot;
+  }
+
+  async function boxProject(): Promise<string> {
+    const projectRoot = await boxProjectWithoutTargets();
     await run([
       "add",
       "gateway-target",
@@ -716,24 +730,15 @@ describe("project remove in a Box project", () => {
     return projectRoot;
   }
 
-  test("create writes a Box gateway for each runtime", async () => {
+  test("create from a template that is not a Box template writes no projectType and no Box gateway", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
     cleanups.push(cleanup);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec.projectType).toBe("box");
-    expect(spec.agentCoreGateways).toMatchObject([
-      {
-        name: "agent-box-egress",
-        authorizerType: "AWS_IAM",
-        protocolType: "None",
-        boundRuntime: "agent",
-        discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
-        targets: [],
-      },
-    ]);
+    expect(spec).not.toHaveProperty("projectType");
+    expect(spec.agentCoreGateways ?? []).toEqual([]);
   });
 
   test("add gateway-target --gateway agent-box-egress adds the target to its entry", async () => {
@@ -762,23 +767,21 @@ describe("project remove in a Box project", () => {
 
       await expect(
         run(["remove", "gateway", "--name", "agent-box-egress", ...extra]),
-      ).rejects.toThrow(/is a Box gateway and cannot be removed/);
+      ).rejects.toThrow(/is bound to runtime 'agent' and cannot be removed/);
       const spec = await projectSpec(projectRoot);
       expect(spec.agentCoreGateways).toMatchObject([{ name: "agent-box-egress" }]);
       expect(spec.projectType).toBe("box");
     },
   );
 
-  test("remove gateway of a normal gateway in a project without projectType works", async () => {
+  test("remove gateway of a gateway named like a Box gateway works in a project without projectType", async () => {
     const { projectRoot, cleanup } = await initProject({
       flags: ["--template", "agent-python-minimal"],
     });
     cleanups.push(cleanup);
-    const { projectType: _projectType, ...spec } = await projectSpec(projectRoot);
-    await writeProjectSpec(projectRoot, { ...spec, agentCoreGateways: [] });
-    await run(["add", "gateway", "--name", "box-egress"]);
+    await run(["add", "gateway", "--name", "agent-box-egress"]);
 
-    await run(["remove", "gateway", "--name", "box-egress"]);
+    await run(["remove", "gateway", "--name", "agent-box-egress"]);
 
     const after = await projectSpec(projectRoot);
     expect(after).not.toHaveProperty("projectType");
@@ -811,8 +814,7 @@ describe("project remove in a Box project", () => {
   });
 
   test("remove runtime leaves out the target clause for a Box gateway with no targets", async () => {
-    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
-    cleanups.push(cleanup);
+    await boxProjectWithoutTargets();
 
     const { io } = await run(["remove", "runtime", "--name", "agent"]);
 

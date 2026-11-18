@@ -279,8 +279,7 @@ describe("project deploy screen", () => {
       is_tui: true,
       project_runtime_count: 1,
       project_memory_count: 0,
-      // The Box gateway of the runtime, written at create time.
-      project_gateway_count: 1,
+      project_gateway_count: 0,
       project_harness_count: 0,
     });
     r.unmount();

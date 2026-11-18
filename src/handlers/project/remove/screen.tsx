@@ -6,7 +6,7 @@ import { Layout } from "../../../components/Layout";
 import { ConfirmAction, type SummaryRows } from "../../../components/ConfirmAction";
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { ProjectKey } from "../../../router";
-import { isBoxExtensionEntry, type ProjectSpec } from "../../../projectSchemas/project";
+import { isBoundGateway, type ProjectSpec } from "../../../projectSchemas/project";
 import type { Project, RemoveResourceInput } from "../types";
 import type { ScreenProps } from "../../types";
 import { ProjectGate, projectQueryKey } from "../ProjectGate";
@@ -62,9 +62,10 @@ const RESOURCE_PICKER_CONFIGS: RemovableResourcePickerConfig[] = [
     listResources: (spec) =>
       spec.onlineEvalConfigs.map(({ name }) => ({ resourceType: "online-eval", name })),
   },
-  // A Box gateway belongs to its runtime: `remove runtime` removes it, `remove gateway` refuses it.
+  // A gateway bound to a runtime belongs to it: `remove runtime` removes it, `remove gateway`
+  // refuses it.
   rootResourceTypePickerConfig("gateway", (spec) =>
-    spec.agentCoreGateways.filter((gateway) => !isBoxExtensionEntry(spec, gateway)),
+    spec.agentCoreGateways.filter((gateway) => !isBoundGateway(gateway)),
   ),
   rootResourceTypePickerConfig("policy-engine", (spec) => spec.policyEngines),
   rootResourceTypePickerConfig("payment-manager", (spec) => spec.payments ?? []),

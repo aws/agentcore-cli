@@ -14,6 +14,11 @@ export type SpecEntries = {
   memories?: z.infer<typeof MemorySchema>[];
   harnesses?: HarnessRegistryEntry[];
   evaluators?: Evaluator[];
+  /**
+   * `"box"` for a Box template. `agentcore create` then writes `projectType: "box"` and a Box
+   * gateway for each runtime. No other template sets it.
+   */
+  projectType?: "box";
 };
 
 /** A group of files and resources that can be rendered into a project **/

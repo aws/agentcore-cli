@@ -18,6 +18,7 @@ import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { authChoices, toGatewayTargetInput } from "./screen";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const ENDPOINT = "https://mcp.example.com";
 const OAUTH_CREDENTIAL = {
@@ -310,6 +311,21 @@ describe("project add gateway-target wizard", () => {
 
     await screen.press("escape");
     await waitForText(screen.lastFrame, "add project resources");
+    screen.unmount();
+  });
+
+  test("does not offer a Box gateway, which takes only passthrough targets", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
+    });
+    const screen = renderScreen("/agentcore/add/gateway-target");
+
+    await waitForText(screen.lastFrame, "no Gateways in this project");
+    expect(screen.lastFrame()).not.toContain("box-egress");
     screen.unmount();
   });
 

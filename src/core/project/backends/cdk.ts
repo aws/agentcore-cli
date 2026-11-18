@@ -23,7 +23,6 @@ import {
 import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
-import { boxGatewayName, boxGatewaySpec, isBoxProject } from "../../../projectSchemas/project";
 import type {
   DeployBackendInput,
   ProjectBackend,
@@ -270,7 +269,6 @@ export class CdkBackend implements ProjectBackend {
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
-    this.assertBoxGatewaysPresent(project);
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
@@ -422,31 +420,6 @@ export class CdkBackend implements ProjectBackend {
     });
 
     return { outputs };
-  }
-
-  /**
-   * Stops a deploy of a Box project that has no Box gateway entry for a runtime. The CLI keeps one
-   * entry for each runtime, and a deploy without it would delete the deployed gateway. The error
-   * prints each missing entry, so the user can paste it back into agentcore.json.
-   */
-  private assertBoxGatewaysPresent(project: Project): void {
-    if (!isBoxProject(project.spec)) return;
-    const present = new Set(project.spec.agentCoreGateways.map((gateway) => gateway.name));
-    const missing = project.spec.runtimes
-      .map((runtime) => runtime.name)
-      .filter((runtimeName) => !present.has(boxGatewayName(runtimeName)));
-    if (missing.length === 0) return;
-    const runtimes = missing.map((name) => `'${name}'`).join(", ");
-    const entries = missing
-      .map((name) => JSON.stringify(boxGatewaySpec(name), null, 2))
-      .join(",\n");
-    throw new ProjectStateError(
-      `agentcore.json has no Box gateway entry for ${missing.length === 1 ? "runtime" : "runtimes"} ` +
-        `${runtimes}. A Box project needs one for each runtime, and a deploy without it would ` +
-        `delete the deployed gateway. Add ${missing.length === 1 ? "this entry" : "these entries"} ` +
-        `to "agentCoreGateways" in agentcore.json:\n${entries}\n` +
-        `Or run 'agentcore remove runtime' to remove the runtime and its Box gateway.`,
-    );
   }
 
   /**

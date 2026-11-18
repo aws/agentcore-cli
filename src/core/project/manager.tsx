@@ -64,12 +64,9 @@ import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
   BOX_GATEWAY_TARGET_TYPE,
-  boxGatewayName,
-  boxGatewayNames,
   boxGatewaySpec,
-  isBoxExtensionEntry,
+  isBoundGateway,
   isBoxProject,
-  isReservedBoxGatewayName,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
@@ -922,15 +919,6 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // In a Box project, names that end in -box-egress belong to the Box gateways, in any
-        // letter case. Refusing here keeps agentcore.json unchanged.
-        if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
-          throw new InputValidationError(
-            `the gateway name '${input.resourceConfig.name}' is reserved: in this project, names that ` +
-              `end in '-box-egress' belong to the Box gateways of the runtimes. Give the gateway a name ` +
-              `that does not end in '-box-egress'.${boxGatewayHint(projectSpec)}`,
-          );
-        }
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
       case "payment-manager": {
@@ -969,43 +957,24 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway-target": {
-        let gatewayIndex = projectSpec.agentCoreGateways.findIndex(
+        const gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
         );
-        // The Box gateway takes only passthrough targets, because it has no MCP interface.
-        const boxEntry = isBoxExtensionEntry(projectSpec, { name: input.gatewayName });
-        if (boxEntry && input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE) {
-          throw new InputValidationError(
-            `the Box gateway takes only passthrough targets, but target ` +
-              `'${input.resourceConfig.name}' is ${input.resourceConfig.targetType}. Pass ` +
-              `--target-configuration with "targetType": "passthrough".`,
-          );
-        }
-        // A Box project keeps one Box gateway entry for each runtime, so the entry normally
-        // exists. It is missing only if agentcore.json was edited by hand, or a code path added a
-        // runtime without its entry. Write it here from the matching runtime.
-        if (gatewayIndex < 0 && boxEntry) {
-          const runtime = projectSpec.runtimes.find(
-            ({ name }) => boxGatewayName(name) === input.gatewayName,
-          );
-          if (runtime) {
-            gatewayIndex =
-              projectSpec.agentCoreGateways.push(
-                parseResource(AgentCoreGatewaySchema, boxGatewaySpec(runtime.name)),
-              ) - 1;
-          }
-        }
         if (gatewayIndex < 0) {
-          // `add gateway` reserves Box gateway names in any letter case, but gateway names are
-          // case-sensitive. Name the Box gateway that differs only in case, so both errors agree.
-          const caseMatch = boxGatewayNames(projectSpec).find(
-            (name) => name.toLowerCase() === input.gatewayName.toLowerCase(),
-          );
-          const hint = caseMatch
-            ? ` Gateway names are case-sensitive: the Box gateway is '${caseMatch}'.`
-            : boxGatewayHint(projectSpec);
           throw new ResourceNotFoundError(
-            `no gateway named '${input.gatewayName}' exists in this project${hint ? `.${hint}` : ""}`,
+            `no gateway named '${input.gatewayName}' exists in this project`,
+          );
+        }
+        // A Box gateway takes only passthrough targets, because it has no MCP interface.
+        if (
+          isBoundGateway(projectSpec.agentCoreGateways[gatewayIndex]!) &&
+          input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE
+        ) {
+          throw new InputValidationError(
+            `the gateway '${input.gatewayName}' is bound to a runtime and takes only passthrough ` +
+              `targets, but target '${input.resourceConfig.name}' is ` +
+              `${input.resourceConfig.targetType}. Pass --target-configuration with ` +
+              `"targetType": "passthrough".`,
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);
@@ -1095,16 +1064,16 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
-    // The CLI keeps one Box gateway for each runtime, so `remove gateway` cannot delete one. Its
-    // runtime owns it: `remove runtime` removes it. Its targets go with `remove gateway-target`.
-    if (
-      input.resourceType === "gateway" &&
-      isBoxExtensionEntry(existingProjectSpec, { name: input.name })
-    ) {
+    // A gateway bound to a runtime (each Box gateway is) belongs to that runtime: `remove runtime`
+    // removes it. Its targets go with `remove gateway-target`.
+    const boundGateway = existingProjectSpec.agentCoreGateways.find(
+      (gateway) => gateway.name === input.name && isBoundGateway(gateway),
+    );
+    if (input.resourceType === "gateway" && boundGateway) {
       throw new InputValidationError(
-        `the gateway '${input.name}' is a Box gateway and cannot be removed with 'remove gateway'. ` +
-          `It belongs to its runtime: 'remove runtime' removes it. To remove its targets, use ` +
-          `'remove gateway-target --gateway ${input.name}'.`,
+        `the gateway '${input.name}' is bound to runtime '${boundGateway.boundRuntime}' and cannot ` +
+          `be removed with 'remove gateway'. 'remove runtime' removes it. To remove its targets, ` +
+          `use 'remove gateway-target --gateway ${input.name}'.`,
       );
     }
 
@@ -2126,16 +2095,8 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
  */
 function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: string): void {
   if (!isBoxProject(spec)) return;
-  const name = boxGatewayName(runtimeName);
-  if (spec.agentCoreGateways.some((gateway) => gateway.name === name)) return;
+  if (spec.agentCoreGateways.some((gateway) => gateway.boundRuntime === runtimeName)) return;
   spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, boxGatewaySpec(runtimeName)));
-}
-
-/** A hint that lists the Box gateways of a Box project, for errors about gateway names. */
-function boxGatewayHint(spec: { projectType?: string; runtimes: { name: string }[] }): string {
-  const names = boxGatewayNames(spec);
-  if (names.length === 0) return "";
-  return ` The Box gateways in this project are: ${names.map((name) => `'${name}'`).join(", ")}.`;
 }
 
 function parseResource<TSchema extends z.ZodType>(
