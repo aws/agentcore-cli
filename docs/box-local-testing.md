@@ -16,7 +16,8 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
 `agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
-`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
+`~/.agentcore/box/`, check its SHA-256s, generate it into the agent's `.box/<runtime>/aws/`, and copy
+that into the zip or the image's `.box-dist/`.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: install it as in
 [Install box](#install-box). No local box checkout is needed.
@@ -159,15 +160,16 @@ credential's egress to any host not in the list. Each entry is a `<host>` or
 `<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
 
 ```
-printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/agent/local/profile.toml"
 ```
 
 ### What build and deploy do with the box profile
 
-Build and deploy run `box profile show .box/profile.toml --format json` in the project folder, with the
-`box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box resolves the profile to into
-the runtime's Box network. Every pack, option, and rule Box adds is already in them, so any pack
-works. They change nothing in `.box/`.
+Build and deploy run `box profile show .box/<runtime>/local/profile.toml --format json` in the
+project folder, with the `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box
+resolves the profile to into the runtime's Box network. Every pack, option, and rule Box adds is
+already in them, so any pack works. They change nothing in `.box/<runtime>/local/`; they generate
+the Runtime profile and its resources under `.box/<runtime>/aws/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
   with `type = "http"`, or a policy permit names, and that the policy allows at least one
@@ -190,11 +192,11 @@ works. They change nothing in `.box/`.
   AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
   the gateway's `additionalPolicies` that is missing or is not JSON, as it counts none of its
   actions.
-- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
-  `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. For the
-  target of an MCP server, the profile has an `[mcp.<server>]` server through the gateway, not
-  an `[egress]` route. That server keeps its `env://` secret, thus the agent keeps its stand-in
-  key. Each policy file is copied beside it, byte for byte, and listed under `policies`.
+- **The AgentCore Runtime profile.** The generated `.box/<runtime>/aws/profile.toml` (copied into
+  `.box-dist/`) has one `[egress.<target>]` route through the gateway for each target of
+  `<runtime>-box`. For the target of an MCP server, the profile has an `[mcp.<server>]` server
+  through the gateway, not an `[egress]` route. That server keeps its `env://` secret, thus the
+  agent keeps its stand-in key. Each policy file is copied beside it, byte for byte, and listed under `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.
@@ -212,7 +214,8 @@ npm install "$L3"/aws-agentcore-cdk-*.tgz
 
 `agentcore dev` runs the agent in a box on your machine, so you can try the project before you
 deploy. It deploys nothing. The agent signs its Bedrock calls with your `[default]` AWS profile
-(`secret.ref = "aws://default"` in `.box/profile.toml`), and Memory is off (`LOCAL_DEV=1`).
+(`secret.ref = "aws://default"` in `.box/agent/local/profile.toml`), and Memory is off
+(`LOCAL_DEV=1`).
 
 ### Which box builds exist
 
@@ -276,8 +279,8 @@ bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 t
 **CodeZip template** (`agent-python-strands-box`; create it in step 3 with
 `--template agent-python-strands-box`):
 
-- Dev runs `box run .box/profile.toml` in the project folder with the `box` on your `PATH`. The
-  box listens on 8080 and relays to the agent on 8081.
+- Dev runs `box run .box/<runtime>/local/profile.toml` in the project folder with the `box` on
+  your `PATH`. The box listens on 8080 and relays to the agent on 8081.
 - Invoke once the dev output shows `Uvicorn running on http://127.0.0.1:8081`.
 - Dev needs the agent's venv: `create` runs `uv sync` in `app/agent`. With `--skip-install`, run
   `uv sync` there first.
@@ -357,7 +360,7 @@ Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
    aws logs create-log-stream --log-group-name /aws/box/<project> --log-stream-name <agent>
    ```
 
-2. Add a target to the agent's box profile:
+2. Add a target to the agent's box profile, `.box/<agent>/local/profile.toml`:
 
    ```toml
    [telemetry.logs]
