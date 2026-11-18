@@ -44,21 +44,29 @@ macOS on an Apple chip (`aarch64-apple-darwin`) and Linux arm64 (`aarch64-unknow
 is no x86 build yet. Each archive unpacks flat: `box`, its two helpers, `release.json`, and
 `resources/` (box's packs, which it finds beside itself).
 
-Download the archive for your machine, check it, and unpack it into a versioned folder:
+Download the archive for your machine, check it, and unpack it into a versioned folder.
+
+macOS on an Apple chip:
 
 ```
-BOX_VERSION=0.1.11-linux-preview.5
-BOX_TARGET=aarch64-apple-darwin   # aarch64-unknown-linux-gnu on Linux arm64
-BOX_DIR="$HOME/.local/share/box/$BOX_VERSION"
-BOX_URL="https://github.com/mquang-amazon/box-releases/releases/download/v$BOX_VERSION"
-mkdir -p "$BOX_DIR" && cd "$BOX_DIR"
-curl -fsSLO "$BOX_URL/box-v$BOX_VERSION-$BOX_TARGET.tar.gz"
-curl -fsSLO "$BOX_URL/SHA256SUMS.txt"
-grep "$BOX_TARGET" SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf "box-v$BOX_VERSION-$BOX_TARGET.tar.gz"
+mkdir -p ~/.local/share/box/0.1.11-linux-preview.5 && cd ~/.local/share/box/0.1.11-linux-preview.5
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/box-v0.1.11-linux-preview.5-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/SHA256SUMS.txt
+grep aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-v0.1.11-linux-preview.5-aarch64-apple-darwin.tar.gz
 ```
 
-On Linux, use `sha256sum -c -` in place of `shasum -a 256 -c -`. The check must print `OK`.
+Linux arm64:
+
+```
+mkdir -p ~/.local/share/box/0.1.11-linux-preview.5 && cd ~/.local/share/box/0.1.11-linux-preview.5
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/box-v0.1.11-linux-preview.5-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/SHA256SUMS.txt
+grep aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-v0.1.11-linux-preview.5-aarch64-unknown-linux-gnu.tar.gz
+```
+
+The check must print `OK`.
 
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
 
@@ -85,16 +93,13 @@ to that folder.
 
 ## Settings
 
-Set these once per shell. Change the values for your machine.
+Set these once per shell. Change the values for your machine: `CLI` is the CLI run from source in
+your workspace checkout, `L3` is the local L3 constructs checkout, and `DEMO` and `PROJECT` say
+where the demo project goes.
 
 ```
-# The CLI, run from source. Point at your workspace checkout.
 CLI=/path/to/workspace/agentcore-cli/src/index.ts
-
-# The local L3 constructs checkout.
 L3=/path/to/workspace/agentcore-l3-cdk-constructs
-
-# Where the demo project goes.
 DEMO=/tmp/cliDemo
 PROJECT=cliDemo
 ```
