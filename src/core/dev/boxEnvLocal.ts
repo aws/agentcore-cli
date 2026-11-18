@@ -9,7 +9,7 @@ const ENV_SCHEME = "env://";
 
 /**
  * Writes into `agentcore/.env.local`, under its own name, each variable that a
- * `[egress.<name>] secret.ref = "env://<VAR>"` route of the project's box profile
+ * `[egress.<name>] secret.ref = "env://<VAR>"` route of the agent's box profile
  * names and `env` holds, so `box run` finds it under `agentcore dev`, on the host
  * and in a container alike. A variable `.env.local` holds already keeps its value,
  * and one that is unset or blank in `env` is left out, so box names it. Returns a

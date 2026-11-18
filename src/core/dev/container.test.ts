@@ -818,11 +818,9 @@ describe("ContainerDevRunner", () => {
       await mkdir(join(root, "agentcore"));
       await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
       if (options.profile ?? true) {
-        await mkdir(join(root, ".box"));
-        await writeFile(
-          join(root, ".box", "profile.toml"),
-          options.profileText ?? "# local profile\n",
-        );
+        const local = join(root, "box", projectRuntime.name, "local");
+        await mkdir(local, { recursive: true });
+        await writeFile(join(local, "profile.toml"), "# local profile\n");
       }
       return { projectRuntime, root, context };
     }
@@ -842,21 +840,6 @@ describe("ContainerDevRunner", () => {
 
       expect(await readdir(context)).not.toContain(".box-dist");
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
-    });
-
-    test("refuses a box profile written for a CodeZip runtime", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      await writeFile(
-        join(root, ".box", "profile.toml"),
-        'read = ["${{ workspace }}/app/other"]\n',
-      );
-      const { calls, runner } = harness({ processEnv: credentials });
-
-      const run = collect(runner.run(input(root, projectRuntime)));
-
-      await expect(run).rejects.toBeInstanceOf(InputValidationError);
-      await expect(run).rejects.toThrow("is the box profile of another runtime");
-      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
 
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {

@@ -218,12 +218,9 @@ describe("the gateway's targets", () => {
       },
     );
     expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "github"]]);
-    expect(r.lines()).toEqual([
-      "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends requests " +
-        "signed with the gateway's role for execute-api, and [egress.github] sends the API key " +
-        "credential 'github' in the header Authorization with the prefix Bearer. Make the two " +
-        "the same, in agentcore.json or in .box/profile.toml.",
-    ]);
+    expect(r.reasons()[0]).toBe(
+      "[egress.github]: the Box gateway's target gh sends GATEWAY_IAM_ROLE (execute-api, us-east-1) to api.github.com, and [egress.github] gives it API_KEY (github, header Authorization, prefix Bearer); one host has one target. Make the two the same, in agentcore.json or in the agent's box profile",
+    );
   });
 
   test("keeps the outbound auth of a target for a host that only the policy names", () => {

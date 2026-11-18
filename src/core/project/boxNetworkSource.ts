@@ -8,9 +8,10 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { ProjectStateError } from "../../errors/errors";
 import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
-import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import { BOX_GATEWAY_BEDROCK_REGION } from "../../handlers/project/shortcuts";
+import { addBoxGatewayTargets } from "./boxMemory";
+import { boxLocalDir, boxLocalProfileFile, boxLocalProfilePath } from "./templates/boxProfile";
 import {
-  BOX_PROFILE_PATH,
   buildBoxNetwork,
   parseResolvedPolicy,
   parseResolvedProfile,
@@ -43,12 +44,18 @@ export async function readBoxNetworks(
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
     : [];
   if (runtimes.length === 0) return [];
-  const { parsed, failures: found } = await readResolvedPolicy(projectRoot, resolver);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
   addBoxGatewayTargets(withDefaults, projectRoot, region);
   return runtimes.map((runtime) => {
+    // Each boxed agent reads its own box/<name>/local profile and policy files. The Runtime
+    // profile sets `[options] bedrock.region` to the region build builds for, so the model reads
+    // box/bedrock's route for that region, not the one `agentcore dev` uses.
+    const read = readProfile(projectRoot, runtime.name, region);
+    const files = readPolicyFiles(projectRoot, runtime.name, read.profile.policyFiles);
+    const { parsed, failures } = parsePolicyFiles(read.profile, files.texts);
+    const found = [...read.failures, ...files.failures, ...failures];
     const gateway = boxGatewayName(runtime.name);
     const entry = withDefaults.agentCoreGateways.find(({ name }) => name === gateway);
     const granted = grantedActions(projectRoot, gateway, entry?.additionalPolicies ?? []);
@@ -70,85 +77,60 @@ export async function readBoxNetworks(
  * model. Throws, with every failure where it is, for a profile whose policy files cannot be read
  * and for a policy file Box would refuse.
  */
-export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
-  const text = profileText(projectRoot);
-  const named = text === undefined ? { ok: true as const, files: [] } : profilePolicyFiles(text);
-  const policies = text === undefined ? undefined : profilePlaces(text).policies;
-  const files = readPolicyFiles(projectRoot, named.ok ? named.files : [], policies);
-  const failures = [...(named.ok ? [] : [named.failure]), ...files.failures];
+export function boxPolicyFileCopies(projectRoot: string, agentName: string): PolicyFileCopy[] {
+  const { profile } = readProfile(projectRoot, agentName);
+  const { failures } = readPolicyFiles(projectRoot, agentName, profile.policyFiles);
   if (failures.length > 0) {
     const lines = failureLines(failures);
     throw new ProjectStateError(
       [stoppedHeader("dev", lines.length, failures), ...lines].join("\n"),
     );
   }
-  return (named.ok ? named.files : []).map((relative) => ({
-    from: join(projectRoot, ".box", ...relative.split("/")),
+  return profile.policyFiles.map((relative) => ({
+    from: join(projectRoot, ...boxLocalDir(agentName).split("/"), ...relative.split("/")),
     relative,
   }));
 }
 
-/**
- * Box's resolution of the box profile, parsed, with the profile's own policy files to place its
- * rules and to stage; nothing when the project has no profile.
- */
-async function readResolvedPolicy(
+/** The local box profile of the agent, or an empty one when it has none. */
+function readProfile(
   projectRoot: string,
-  resolver: BoxProfileResolver,
-): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
-  const text = profileText(projectRoot);
-  if (text === undefined) return { parsed: NO_POLICY, failures: [] };
-  const resolved = await resolver.resolve(projectRoot, BOX_PROFILE_PATH);
-  const named = profilePolicyFiles(text);
-  const places = profilePlaces(text);
-  const files = readPolicyFiles(projectRoot, named.ok ? named.files : [], places.policies);
-  // The Runtime profile sets `[options] bedrock.region` to the region build builds for, so Box
-  // resolves box/bedrock's route for that region, not the one `agentcore dev` uses. A profile with
-  // a failure of its own stops build either way, so Box resolves it as it is.
-  const forRegion =
-    named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
-  const resolved =
-    forRegion === undefined
-      ? await resolver.resolve(projectRoot, BOX_PROFILE_PATH)
-      : await resolveCopy(projectRoot, resolver, forRegion, files.texts);
-  const profile = parseResolvedProfile(resolved, named.ok ? named.files : []);
-  const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
-  return {
-    parsed: policy.parsed,
-    failures: [
-      ...(named.ok ? [] : [named.failure]),
-      ...profile.failures,
-      ...files.failures,
-      ...policy.failures,
-    ],
-  };
-}
-
-/** The text of the box profile, or `undefined` when the project has none. */
-function profileText(projectRoot: string): string | undefined {
-  const path = join(projectRoot, ...BOX_PROFILE_PATH.split("/"));
-  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
+  agentName: string,
+  bedrockRegion?: string,
+): {
+  profile: ParsedProfile;
+  failures: readonly BoxNetworkFailure[];
+} {
+  const path = boxLocalProfilePath(projectRoot, agentName);
+  if (!existsSync(path)) return { profile: NO_PROFILE, failures: [] };
+  return parseProfile(readFileSync(path, "utf8"), boxLocalProfileFile(agentName), bedrockRegion);
 }
 
 /**
  * Each policy file the profile names, read as Box reads it: a regular file with one link, inside
- * `.box/`, and a failure for each other one, at `policies`, the place the profile names it.
+ * the agent's `box/<name>/local/` folder, and a failure for each other one.
  */
 function readPolicyFiles(
   projectRoot: string,
+  agentName: string,
   files: readonly string[],
   policies: string = BOX_PROFILE_PATH,
 ): { texts: PolicyFileText[]; failures: BoxNetworkFailure[] } {
-  const folder = join(projectRoot, ".box");
+  const localDir = boxLocalDir(agentName);
+  const folder = join(projectRoot, ...localDir.split("/"));
   const texts: PolicyFileText[] = [];
   const failures: BoxNetworkFailure[] = [];
   for (const file of files) {
-    const shown = `.box/${file}`;
+    const place = `${localDir}/${file}`;
     const problem =
       policyPathProblem(file, shown) ??
       policyFileProblem(folder, join(folder, ...file.split("/")), file, shown);
     if (problem !== undefined) {
-      failures.push({ code: "INVALID_POLICY_FILE", reason: problem, place: policies });
+      failures.push({
+        code: "INVALID_POLICY_FILE",
+        reason: `${boxLocalProfileFile(agentName)} names the policy file ${place}, which ${problem}`,
+        place,
+      });
       continue;
     }
     texts.push({ file: shown, text: readFileSync(join(folder, ...file.split("/")), "utf8") });
@@ -200,7 +182,7 @@ function policyFileProblem(
   }
   const inside = relative(realpathSync(folder), realpathSync(path));
   if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
-    return `${shown} is a symbolic link to a file outside .box/, which Box does not read. Put the policy file itself in .box/.`;
+    return "is a symlink that leaves the agent's local box folder";
   }
   const stat = statSync(path);
   if (stat.isDirectory())
@@ -294,19 +276,22 @@ function failureLine(failure: BoxNetworkFailure): string {
  * The lines of `failures`, each once, in order of file, line, and column, as a compiler lists
  * them; failures at one place keep their order.
  */
-function failureLines(failures: readonly BoxNetworkFailure[]): string[] {
-  const key = (failure: BoxNetworkFailure) => {
-    const place = failure.place ?? BOX_PROFILE_PATH;
-    const [, file = place, line = "0", column = "0"] = /^(.*?):(\d+):(\d+)$/.exec(place) ?? [];
-    return { file, line: Number(line), column: Number(column) };
-  };
-  const sorted = failures
-    .map((failure) => ({ failure, at: key(failure) }))
-    .sort(
-      (a, b) =>
-        (a.at.file < b.at.file ? -1 : a.at.file > b.at.file ? 1 : 0) ||
-        a.at.line - b.at.line ||
-        a.at.column - b.at.column,
+export function boxNetworkFailureMessage(networks: readonly BoxNetwork[]): string {
+  const groups = new Map<string, BoxNetwork[]>();
+  for (const network of networks) {
+    if (network.failures.length === 0) continue;
+    const lines = network.failures.map((failure) => `  - ${failureLine(failure)}`).join("\n");
+    groups.set(lines, [...(groups.get(lines) ?? []), network]);
+  }
+  const blocks = [...groups].map(([lines, group]) => {
+    const count = lines.split("\n").length;
+    const gateways = group.map(({ gateway }) => `'${gateway}'`).join(", ");
+    const runtimes = group.map(({ runtime }) => `'${runtime}'`).join(", ");
+    const profiles = group.map(({ runtime }) => boxLocalProfileFile(runtime)).join(", ");
+    return (
+      `${profiles} ${group.length === 1 ? "does" : "do"} not parse into the Box network of the ` +
+      `Box gateway ${gateways} of ${group.length === 1 ? "runtime" : "runtimes"} ${runtimes} ` +
+      `(${count} ${count === 1 ? "failure" : "failures"}):\n${lines}`
     );
   return unique(sorted.map(({ failure }) => failureLine(failure)));
 }

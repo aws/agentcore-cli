@@ -22,7 +22,7 @@ async function project(profile?: string): Promise<string> {
   roots.push(root);
   await mkdir(join(root, "agentcore"));
   if (profile !== undefined) {
-    const local = join(root, ".box", AGENT, "local");
+    const local = join(root, "box", AGENT, "local");
     await mkdir(local, { recursive: true });
     await writeFile(join(local, "profile.toml"), profile);
   }

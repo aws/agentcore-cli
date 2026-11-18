@@ -642,7 +642,7 @@ describe("project dev Inspector UI mode", () => {
   test("leaves the box's agent port to the box when a CodeZip runtime runs in one", async () => {
     const root = await mkdtemp(join(tmpdir(), "agentcore-dev-box-ui-"));
     try {
-      const local = join(root, ".box", "search", "local");
+      const local = join(root, "box", "search", "local");
       await mkdir(local, { recursive: true });
       await writeFile(join(local, "profile.toml"), "");
       const subject = harness({ project: { ...project(runtime("search")), rootPath: root } });

@@ -168,14 +168,15 @@ async function strandsProject(
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
 
-/** Adds `tables` to the end of the profile, `top` to its start, and writes `.box/policy.dw`. */
+/** Adds `tables` to the end of the profile, `top` to its start, and writes `box/agent_python_strands/local/policy.dw`. */
 async function editProfile(root: string, edit: { top?: string; tables?: string; policy?: string }) {
-  const profile = await text(root, ".box/profile.toml");
+  const profile = await text(root, "box/agent_python_strands/local/profile.toml");
   await writeFile(
-    path(root, ".box/profile.toml"),
+    path(root, "box/agent_python_strands/local/profile.toml"),
     `${edit.top ?? ""}${profile}${edit.tables ?? ""}`,
   );
-  if (edit.policy !== undefined) await writeFile(path(root, ".box/policy.dw"), edit.policy);
+  if (edit.policy !== undefined)
+    await writeFile(path(root, "box/agent_python_strands/local/policy.dw"), edit.policy);
 }
 
 /** Changes the Box gateway entry of agentcore.json, as a user does by hand. */
@@ -206,11 +207,13 @@ async function runtimeProfile(root: string): Promise<Record<string, unknown>> {
   return parse(await text(root, RUNTIME_PROFILE)) as Record<string, unknown>;
 }
 
-/** The text of every file under `.box/`, by path. */
+/** The text of every file under `box/agent_python_strands/local/`, by path. */
 async function boxFiles(root: string): Promise<Record<string, string>> {
-  const names = (await readdir(path(root, ".box"))).sort();
+  const names = (await readdir(path(root, "box/agent_python_strands/local"))).sort();
   return Object.fromEntries(
-    await Promise.all(names.map(async (name) => [name, await text(root, `.box/${name}`)])),
+    await Promise.all(
+      names.map(async (name) => [name, await text(root, `box/agent_python_strands/local/${name}`)]),
+    ),
   );
 }
 
@@ -328,16 +331,18 @@ describe("build writes the Box network of the box profile", () => {
     await editProfile(root, { tables: GITHUB_ROUTE });
     box.answer = shows({ github: GITHUB });
     await build(manager, root);
-    const profile = await text(root, ".box/profile.toml");
-    await writeFile(path(root, ".box/profile.toml"), profile.replace(GITHUB_ROUTE, ""));
-    box.answer = shows();
+    const profile = await text(root, "box/agent_python_strands/local/profile.toml");
+    await writeFile(
+      path(root, "box/agent_python_strands/local/profile.toml"),
+      profile.replace(GITHUB_ROUTE, ""),
+    );
 
     const { steps } = await build(manager, root);
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     expect(steps).toContain(
-      `removing gateway target 'egress-github' from '${GATEWAY}': the Box profile no longer ` +
-        "allows api.github.com",
+      `removing target 'egress-github' from gateway '${GATEWAY}' in agentcore.json: Box allows ` +
+        "no request to its host in box/agent_python_strands/local/profile.toml",
     );
   });
 
@@ -412,7 +417,18 @@ describe("build writes the Box network of the box profile", () => {
     );
 
     expect(error).toBeInstanceOf(InputValidationError);
-    matchGolden(FIXTURES, "box-network-build-stopped.golden.txt", (error as Error).message);
+    expect((error as Error).message).toBe(
+      "box/agent_python_strands/local/profile.toml does not parse into the Box network of the Box gateway " +
+        `'${GATEWAY}' of runtime 'agent_python_strands' (2 failures):\n` +
+        '  - WILDCARD_HOST, rule "wild", at box/agent_python_strands/local/policy.dw:2:1: it allows hosts by the pattern ' +
+        'context.input.host like "*.example.com"; a gateway target needs one fixed host, so ' +
+        "name each host\n" +
+        "  - UNSIGNABLE_HOST, [egress.signed]: it signs api.example.com with aws://default, but " +
+        "the host is not an AWS endpoint the gateway can sign for: bedrock, bedrock-runtime, " +
+        "bedrock-agentcore, or a Lambda function URL\n\n" +
+        "Nothing of the box profile was written: no gateway target, credential, Memory target, " +
+        "or file. Change the profile or its policy files, then retry.",
+    );
     expect(counter.specWrites).toBe(0);
     expect(await text(root, SPEC)).toBe(spec);
     expect(existsSync(path(root, "agentcore/box-bedrock-policy.json"))).toBe(false);

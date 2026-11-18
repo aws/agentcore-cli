@@ -9,15 +9,15 @@ import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
 
-/** The box profile, from the project root. */
-export const BOX_PROFILE_PATH = ".box/profile.toml";
+/** The packs the converter reads: `box/base` declares no route, and `box/bedrock` one. */
+const KNOWN_PACKS: ReadonlySet<string> = new Set(["box/base", BOX_BEDROCK_PACK]);
 
-/** Where the profile's own text sets a key, as `.box/profile.toml:line:column`. */
-export interface ProfilePlaces {
-  /** By `egress.<name>` and `mcp.<name>`, the first line that sets the entry. */
-  readonly entries: ReadonlyMap<string, string>;
-  readonly packs?: string;
-  readonly policies?: string;
+export interface ParsedProfile {
+  /** `[egress]`, with the route of `box/bedrock` merged under the profile's own. */
+  readonly egress: Record<string, unknown>;
+  readonly mcp: Record<string, unknown>;
+  /** The policy files, relative to the profile's folder, in the order the profile names them. */
+  readonly policyFiles: readonly string[];
 }
 
 export interface ParsedProfile {
@@ -71,20 +71,21 @@ export function parseResolvedProfile(
 }
 
 /**
- * The policy files that the box profile `text` names under `policies`, as Box reads them: files
- * inside the profile's folder, each named once. `agentcore dev` reads them with no box, so this
- * refuses the `policy` key, as box does.
+ * The network inputs of the box profile `text`, and every failure of the profile. `profilePath` is
+ * the profile's path from the project root, which the failures name. `bedrockRegion` is the region
+ * the AgentCore Runtime profile gives box/bedrock, when it replaces the profile's.
  */
 export function profilePolicyFiles(
   text: string,
-): { ok: true; files: string[] } | { ok: false; failure: ProfileFailure } {
-  const fail = (
-    reason: string,
-    place: string,
-    code: ProfileFailure["code"] = "INVALID_PROFILE",
-  ) => ({
-    ok: false as const,
-    failure: { code, reason, place },
+  profilePath: string,
+  bedrockRegion?: string,
+): {
+  readonly profile: ParsedProfile;
+  readonly failures: readonly ProfileFailure[];
+} {
+  const fail = (code: ProfileFailure["code"], reason: string, key?: string) => ({
+    profile: EMPTY_PROFILE,
+    failures: [{ code, reason, place: placeOfKey(text, profilePath, key) }],
   });
   let table: Record<string, unknown>;
   try {
@@ -92,8 +93,18 @@ export function profilePolicyFiles(
   } catch (error) {
     const at = error as { line?: number; column?: number };
     const place =
-      at.line !== undefined ? `${BOX_PROFILE_PATH}:${at.line}:${at.column ?? 1}` : BOX_PROFILE_PATH;
-    return fail(`This is not valid TOML (${tomlProblem(error)}). Correct the syntax.`, place);
+      at.line !== undefined ? `${profilePath}:${at.line}:${at.column ?? 1}` : profilePath;
+    const reason = (at.message ?? String(error)).split("\n")[0]!;
+    return { profile: EMPTY_PROFILE, failures: [{ code: "INVALID_PROFILE", reason, place }] };
+  }
+  const packs = table.packs ?? [];
+  if (!Array.isArray(packs) || !packs.every((pack) => typeof pack === "string")) {
+    return fail("INVALID_PROFILE", "`packs` is not a list of pack names", "packs");
+  }
+  for (const key of ["egress", "mcp"] as const) {
+    if (table[key] !== undefined && !isTable(table[key])) {
+      return fail("INVALID_PROFILE", `\`${key}\` is not a table`, key);
+    }
   }
   if (table.policy !== undefined) {
     return fail(
@@ -103,6 +114,70 @@ export function profilePolicyFiles(
       "UNSUPPORTED_POLICY_KEY",
     );
   }
+  const policyFiles = policyFilesOf(table);
+  if (!policyFiles.ok) return fail("INVALID_PROFILE", policyFiles.reason, "policies");
+
+  const failures: ProfileFailure[] = (packs as string[])
+    .filter((pack) => !KNOWN_PACKS.has(pack))
+    .map((pack) => ({
+      code: "UNSUPPORTED_PACK" as const,
+      reason:
+        `it names the pack ${pack}, whose routes and rules build does not read; ` +
+        "write its [egress] entries and rules into the profile, and remove the pack",
+      place: placeOfKey(text, profilePath, "packs"),
+    }));
+  let egress: Record<string, unknown> = {};
+  if ((packs as string[]).includes(BOX_BEDROCK_PACK)) {
+    egress = bedrockPackEgress(table, bedrockRegion);
+  }
+  egress = merged(egress, (table.egress as Record<string, unknown> | undefined) ?? {});
+  return {
+    profile: {
+      egress,
+      mcp: (table.mcp as Record<string, unknown> | undefined) ?? {},
+      policyFiles: policyFiles.files,
+    },
+    failures,
+  };
+}
+
+/** `<profilePath>:<line>` of the first line that sets `key`, or the file when none does. */
+function placeOfKey(text: string, profilePath: string, key: string | undefined): string {
+  if (key === undefined) return profilePath;
+  const index = text.split("\n").findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
+  return index === -1 ? profilePath : `${profilePath}:${index + 1}`;
+}
+
+/**
+ * The `[egress.bedrock]` route of `box/bedrock`: for `bedrockRegion`, the region the AgentCore
+ * Runtime profile sets, else the region the profile's `[options]` set.
+ */
+function bedrockPackEgress(
+  table: Record<string, unknown>,
+  bedrockRegion: string | undefined,
+): Record<string, unknown> {
+  const options = isTable(table.options) ? table.options : {};
+  const bedrock = isTable(options.bedrock) ? options.bedrock : {};
+  const quoted = options["bedrock.region"];
+  const region = bedrockRegion
+    ? bedrockRegion
+    : typeof bedrock.region === "string"
+      ? bedrock.region
+      : typeof quoted === "string"
+        ? quoted
+        : BOX_BEDROCK_PACK_DEFAULT_REGION;
+  return {
+    bedrock: {
+      destinations: [`bedrock-runtime.${region}.amazonaws.com`],
+      secret: { ref: BOX_BEDROCK_PACK_SECRET },
+    },
+  };
+}
+
+/** The profile's `policies`, as the box CLI reads it: files inside the profile's folder. */
+function policyFilesOf(
+  table: Record<string, unknown>,
+): { ok: true; files: string[] } | { ok: false; reason: string } {
   const named = table.policies ?? [];
   const place = placeOfKey(text, "policies");
   if (!Array.isArray(named) || !named.every((file) => typeof file === "string" && file !== "")) {

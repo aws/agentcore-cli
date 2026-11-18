@@ -1,21 +1,80 @@
 import { describe, expect, test } from "bun:test";
 import { parseResolvedProfile, profilePlaces, profilePolicyFiles } from "./profileParser";
 
-describe("parseResolvedProfile", () => {
-  test("reads [egress] and [mcp] of Box's resolved box.toml, and keeps the profile's policy files", () => {
-    const { profile, failures } = parseResolvedProfile(
+const PROFILE = "box/agent/local/profile.toml";
+
+function read(text: string) {
+  const result = parseProfile(text, PROFILE);
+  if (result.failures.length > 0) throw new Error(JSON.stringify(result.failures));
+  return result.profile;
+}
+
+const refusal = (text: string) => parseProfile(text, PROFILE).failures;
+
+describe("parseProfile", () => {
+  test("merges the box/bedrock route under the profile's own [egress.bedrock]", () => {
+    const profile = read(
+      'packs = ["box/base", "box/bedrock"]\n[options]\nbedrock.region = "eu-west-1"\n' +
+        '[egress.bedrock]\nsecret.ref = "aws://default"\n',
+    );
+    expect(profile.egress).toEqual({
+      bedrock: {
+        destinations: ["bedrock-runtime.eu-west-1.amazonaws.com"],
+        secret: { ref: "aws://default" },
+      },
+    });
+  });
+
+  test("reads the region of a quoted dotted option key, as Box does", () => {
+    expect(
+      read('packs = ["box/bedrock"]\noptions = { "bedrock.region" = "ap-south-1" }\n').egress,
+    ).toEqual({
+      bedrock: {
+        destinations: ["bedrock-runtime.ap-south-1.amazonaws.com"],
+        secret: { ref: "env://AWS_BEARER_TOKEN_BEDROCK" },
+      },
+    });
+  });
+
+  test("uses box/bedrock's default region, and its own secret when the profile sets none", () => {
+    expect(read('packs = ["box/bedrock"]\n').egress).toEqual({
+      bedrock: {
+        destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
+        secret: { ref: "env://AWS_BEARER_TOKEN_BEDROCK" },
+      },
+    });
+  });
+
+  test("fails each pack it does not read, at the line of `packs`", () => {
+    expect(refusal('# a pack list\npacks = ["box/base", "box/uv", "team/tools"]\n')).toEqual([
+      expect.objectContaining({
+        code: "UNSUPPORTED_PACK",
+        place: "box/agent/local/profile.toml:2",
+        reason: expect.stringContaining("box/uv"),
+      }),
+      expect.objectContaining({
+        code: "UNSUPPORTED_PACK",
+        place: "box/agent/local/profile.toml:2",
+        reason: expect.stringContaining("team/tools"),
+      }),
+    ]);
+  });
+
+  test("reads the policy files of `policies`, inside the profile's folder", () => {
+    expect(read('policies = ["a.dw", "./rules/b.dw"]\n').policyFiles).toEqual([
+      "a.dw",
+      "rules/b.dw",
+    ]);
+    expect(read("[agent]\n").policyFiles).toEqual([]);
+  });
+
+  test("refuses `policy`, which the box CLI refuses, and names `policies`", () => {
+    expect(refusal('\npolicy = "policy.dw"\n')).toEqual([
       {
-        boxToml: {
-          name: "demo-preview",
-          egress: {
-            bedrock: {
-              destinations: ["bedrock-runtime.eu-west-1.amazonaws.com"],
-              secret: { ref: "aws://default" },
-            },
-          },
-          mcp: { docs: { destinations: ["docs.example.com"], type: "http" } },
-        },
-        openRoutes: [],
+        code: "UNSUPPORTED_POLICY_KEY",
+        reason:
+          "the profile names `policy`, which the box CLI refuses; list the files under `policies`",
+        place: "box/agent/local/profile.toml:2",
       },
       ["policy.dw"],
     );
@@ -136,11 +195,12 @@ describe("profilePolicyFiles", () => {
   });
 
   test("places a TOML syntax error at its line and column", () => {
-    expect(refusal("a = 1\n[egress\n")).toEqual({
-      code: "INVALID_PROFILE",
-      reason: "This is not valid TOML (illegal character in key). Correct the syntax.",
-      place: ".box/profile.toml:2:8",
-    });
+    expect(refusal("a = 1\n[egress\n")).toEqual([
+      expect.objectContaining({
+        code: "INVALID_PROFILE",
+        place: "box/agent/local/profile.toml:2:8",
+      }),
+    ]);
   });
 });
 
