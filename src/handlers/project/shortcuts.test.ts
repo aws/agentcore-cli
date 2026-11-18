@@ -25,6 +25,7 @@ describe("template order", () => {
       "a2a-python-strands",
       "a2a-python-strands-box",
       "agui-python-strands",
+      "agui-python-strands-box",
       "mcp-python-fastmcp",
       "empty",
     ]);
