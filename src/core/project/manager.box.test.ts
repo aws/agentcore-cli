@@ -272,6 +272,31 @@ describe("gateway targets in a Box project", () => {
     expect(await specText(project)).toBe(before);
   });
 
+  test("add runtime fails clearly when a user gateway has the runtime's Box gateway name", async () => {
+    const manager = subject();
+    let project = await createdProject(manager);
+    project = await drain(
+      manager.addResource(project, {
+        resourceType: "gateway",
+        resourceConfig: { name: "search-box-egress", targets: [], authorizerType: "NONE" } as never,
+      }),
+    );
+    const before = await specText(project);
+
+    const add = drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+
+    await expect(add).rejects.toBeInstanceOf(InputValidationError);
+    await expect(add).rejects.toThrow(
+      "the runtime 'search' needs its Box gateway 'search-box-egress', but a gateway with that name already exists.",
+    );
+    expect(await specText(project)).toBe(before);
+  });
+
   test("add gateway --name other-box-egress works: only the prefix must be unique", async () => {
     const manager = subject();
     let project = await createdProject(manager);

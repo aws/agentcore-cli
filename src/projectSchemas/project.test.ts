@@ -497,6 +497,8 @@ describe("Box project gateways", () => {
     const found = messages(result);
     expect(found).toHaveLength(2);
     expect(found[0]).toContain('Runtime "agent" has no Box gateway.');
+    expect(found[0]).toContain('delete the runtime from "runtimes" by hand');
+    expect(found[0]).not.toContain("remove runtime");
     expect(found[0]).toContain(JSON.stringify(boxGatewaySpec("agent"), null, 2));
     expect(found[1]).toContain('Runtime "checkout" has no Box gateway.');
   });
@@ -529,6 +531,16 @@ describe("gateway variable prefixes", () => {
     const result = parse([{ name: "box", targets: [] }, boxGatewaySpec("agent")]);
     expect(result.error?.issues.map(({ message }) => message)).toEqual([
       'Gateways "box" and "agent-box-egress" both set AGENTCORE_GATEWAY_BOX_* on runtime "agent". Rename one gateway or give it a different discoveryPrefix',
+    ]);
+  });
+
+  test("rejects two unbound gateways whose names differ only in letter case, once", () => {
+    const result = parse([
+      { name: "Foo", targets: [] },
+      { name: "foo", targets: [] },
+    ]);
+    expect(result.error?.issues.map(({ message }) => message)).toEqual([
+      'Gateways "Foo" and "foo" both set AGENTCORE_GATEWAY_FOO_* on every runtime and harness. Rename one gateway or give it a different discoveryPrefix',
     ]);
   });
 

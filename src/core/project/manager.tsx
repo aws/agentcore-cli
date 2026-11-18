@@ -2090,13 +2090,21 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
  * Adds the Box gateway of a runtime to a Box project, if it is not already there. A Box project
  * keeps one Box gateway for each runtime, so every path that adds a runtime to an existing
  * project calls this: `add runtime` (docs and template runtimes) and `export harness`.
- * `agentcore create` does not call it: `createProjectTree` writes the entries from
- * `boxGatewaySpec` directly.
+ * `agentcore create` does not call it: `newProjectSpec` (templates/project.ts) writes the
+ * entries for a Box template.
  */
 function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: string): void {
   if (!isBoxProject(spec)) return;
   if (spec.agentCoreGateways.some((gateway) => gateway.boundRuntime === runtimeName)) return;
-  spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, boxGatewaySpec(runtimeName)));
+  const entry = boxGatewaySpec(runtimeName);
+  if (spec.agentCoreGateways.some((gateway) => gateway.name === entry.name)) {
+    throw new InputValidationError(
+      `the runtime '${runtimeName}' needs its Box gateway '${entry.name}', but a gateway with that ` +
+        `name already exists. Remove or rename the gateway '${entry.name}', or give the runtime ` +
+        `another name.`,
+    );
+  }
+  spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, entry));
 }
 
 function parseResource<TSchema extends z.ZodType>(

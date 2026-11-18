@@ -171,8 +171,8 @@ export const ProjectSpecSchema = z
           message:
             `Runtime "${runtime.name}" has no Box gateway. A Box project needs a gateway with ` +
             `boundRuntime "${runtime.name}" for each runtime, and a deploy without it would delete ` +
-            `the deployed gateway. Add this entry to "agentCoreGateways" in agentcore.json, or run ` +
-            `'agentcore remove runtime' to remove the runtime:\n` +
+            `the deployed gateway. Add this entry to "agentCoreGateways" in agentcore.json, or ` +
+            `delete the runtime from "runtimes" by hand:\n` +
             JSON.stringify(boxGatewaySpec(runtime.name), null, 2),
           path: ["agentCoreGateways"],
         });
