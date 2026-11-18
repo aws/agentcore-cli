@@ -360,34 +360,44 @@ bun run "$CLI" identity api-key-credential-provider get --name github
 
 Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
 
-1. Create the log group and the log stream. Box does not create them.
+1. Set the region of the log group, then create the log group and the log stream. Box does not
+   create them.
 
    ```sh
-   aws logs create-log-group --log-group-name /aws/box/$PROJECT
-   aws logs create-log-stream --log-group-name /aws/box/$PROJECT --log-stream-name agent
+   REGION=us-west-2
+   aws logs create-log-group --region "$REGION" --log-group-name /aws/box/$PROJECT
+   aws logs create-log-stream --region "$REGION" --log-group-name /aws/box/$PROJECT --log-stream-name agent
    ```
 
-2. Add a target to the agent's box profile, `.box/agent/local/profile.toml`:
+2. Add a target to the agent's box profile, `.box/agent/local/profile.toml`. Set `region` to the
+   same region as `$REGION`, where you created the log group:
 
    ```toml
    [telemetry.logs]
    kind = "cloudwatch_logs"
-   region = "us-west-2"
+   region = "us-west-2"   # your $REGION
    log_group = "/aws/box/cliDemo"   # your $PROJECT
    log_stream = "agent"
    include = ["deny", "permit", "trace"]
    secret.ref = "aws://"
    ```
 
-3. Run `agentcore deploy`. Build copies the table into the Runtime profile, so on AgentCore Runtime
-   box signs with the execution role. It also grants that role `logs:PutLogEvents` on the stream,
+3. Deploy the project:
+
+   ```sh
+   cd "$DEMO/$PROJECT"
+   bun run "$CLI" deploy
+   ```
+
+   Build copies the table into the Runtime profile, so on AgentCore Runtime box signs with the
+   execution role. It also grants that role `logs:PutLogEvents` on the stream,
    in `agentcore/box-telemetry-policy-agent.json`, which it lists in the runtime's
    `additionalPolicies`.
 
 4. Invoke the agent, then read the records:
 
    ```sh
-   aws logs filter-log-events --log-group-name /aws/box/$PROJECT --filter-pattern '"deny"'
+   aws logs filter-log-events --region "$REGION" --log-group-name /aws/box/$PROJECT --filter-pattern '"deny"'
    ```
 
    Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`.
