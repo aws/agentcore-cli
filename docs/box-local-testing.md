@@ -301,8 +301,10 @@ bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 t
 - Dev runs `box run .box/<runtime>/local/profile.toml` in the project folder with the `box` on
   your `PATH`. The box listens on 8080 and relays to the agent on 8081.
 - Invoke once the dev output shows `Uvicorn running on http://127.0.0.1:8081`.
-- Dev needs the agent's venv: `create` runs `uv sync` in `app/agent`. With `--skip-install`, run
-  `uv sync` there first.
+- Dev needs the agent's venv: `create` runs `uv sync` in `app/agent`, on a uv-managed Python in
+  `~/.local/share/uv/python`, the only Python folder the profile lets box run. With
+  `--skip-install`, or to rebuild the venv, run this there first:
+  `UV_MANAGED_PYTHON=1 UV_PYTHON_INSTALL_DIR="$HOME/.local/share/uv/python" uv sync`.
 - Port 8080 must be free. Dev refuses another port, because the profile's ingress listens on 8080.
 - On macOS the box runs under Seatbelt, which cannot start inside another sandbox. Run dev from a
   normal terminal, not from an agent's sandboxed shell.

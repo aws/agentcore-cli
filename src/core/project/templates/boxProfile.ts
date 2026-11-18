@@ -10,8 +10,20 @@ import { PYTHON_ENV } from "../../dev/codezip";
 import type { BoxNetwork, BoxNetworkSource, CloudWatchTelemetry } from "../boxNetwork";
 import { modelProviderCredentialName } from "./runtime";
 
-/** Where uv installs the Pythons it manages, as a boxy path. */
-const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
+/** Where a box template's venv gets its uv-managed Python, relative to the home folder. */
+const UV_PYTHON_HOME_DIR = ".local/share/uv/python";
+
+/** That folder as a boxy path. */
+const UV_PYTHON_INSTALL_DIR = "${{ home }}/" + UV_PYTHON_HOME_DIR;
+
+/**
+ * The environment `uv sync` builds a box template's venv with: a uv-managed Python, installed in
+ * the folder the profile grants, so a user's UV_PYTHON_INSTALL_DIR or XDG_DATA_HOME cannot move
+ * it out of the grant.
+ */
+export function boxUvSyncEnv(home: string): Record<string, string> {
+  return { UV_MANAGED_PYTHON: "1", UV_PYTHON_INSTALL_DIR: join(home, UV_PYTHON_HOME_DIR) };
+}
 
 /** The system libraries of the Linux arm64 image, such as libssl. */
 const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
@@ -306,7 +318,7 @@ type Runner = {
 /** A CodeZip agent: its code and venv are in the project's app/<runtime> folder. */
 function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number): Runner {
   const { command, env } = serve(protocol, appDir, workloadPort, true);
-  // Create runs `uv sync` with UV_MANAGED_PYTHON=1, so the venv links to a Python in this folder.
+  // Create runs `uv sync` with boxUvSyncEnv, so the venv links to a Python in this folder.
   // Optional, so a venv rebuilt on another Python still starts; that Python then needs its own grant.
   const uvPython = `{ path = ${str(UV_PYTHON_INSTALL_DIR)}, optional = true }`;
   return {

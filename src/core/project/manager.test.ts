@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import semver from "semver";
 import {
   DeserializationError,
@@ -97,8 +97,13 @@ afterEach(async () => {
 });
 
 // A manager whose runner records commands instead of spawning them.
-/** A command the manager ran, with the UV_MANAGED_PYTHON it set, if any. */
-type Command = { command: string[]; cwd: string; UV_MANAGED_PYTHON?: string };
+/** A command the manager ran, with the uv Python settings it set, if any. */
+type Command = {
+  command: string[];
+  cwd: string;
+  UV_MANAGED_PYTHON?: string;
+  UV_PYTHON_INSTALL_DIR?: string;
+};
 
 function manager(processEnv?: NodeJS.ProcessEnv): {
   manager: FsProjectManager;
@@ -116,7 +121,13 @@ function manager(processEnv?: NodeJS.ProcessEnv): {
       enableTransactionSearch: async () => {},
       runner: async (command, { cwd, env }) => {
         const managedPython = env?.UV_MANAGED_PYTHON;
-        commands.push({ command, cwd, ...(managedPython && { UV_MANAGED_PYTHON: managedPython }) });
+        const installDir = env?.UV_PYTHON_INSTALL_DIR;
+        commands.push({
+          command,
+          cwd,
+          ...(managedPython && { UV_MANAGED_PYTHON: managedPython }),
+          ...(installDir && { UV_PYTHON_INSTALL_DIR: installDir }),
+        });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -579,6 +590,32 @@ describe("FsProjectManager.create", () => {
       skipInstall: true,
     });
     expect(skipInstall.checkedTools).toEqual(["git"]);
+  });
+
+  test("syncs a box template's venv on a uv-managed Python in the folder its profile grants", async () => {
+    const directory = await inTempDirectory();
+    // The user's own folder would put the venv's Python outside the profile's exec grant.
+    const userEnv = { UV_PYTHON_INSTALL_DIR: "/opt/pythons", XDG_DATA_HOME: "/xdg" };
+
+    const boxed = manager(userEnv);
+    await runCreate(boxed.manager, {
+      name: "boxed",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+    });
+    expect(boxed.commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "boxed", "app", AGENT_PYTHON_STRANDS_BOX.runtimeName),
+      UV_MANAGED_PYTHON: "1",
+      UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+    });
+
+    // Another template keeps the user's uv settings.
+    const plain = manager(userEnv);
+    await runCreate(plain.manager, { name: "plain", scaffoldRuntimeInput: AGENT_PYTHON });
+    expect(plain.commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "plain", "app", "agent_python_minimal"),
+    });
   });
 
   test("fails before writing files when box is not on PATH, with the install hint", async () => {
