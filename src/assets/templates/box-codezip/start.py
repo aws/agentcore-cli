@@ -10,7 +10,11 @@
 import os
 import shutil
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10: the template depends on tomli there.
+    import tomli as tomllib
 
 CODE = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(CODE, ".box-dist")
