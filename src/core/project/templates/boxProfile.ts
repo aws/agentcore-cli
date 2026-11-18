@@ -161,9 +161,15 @@ function serve(
   // The box starts the agent in the project folder, and boxy refuses a script path inside it,
   // so the module is found through PYTHONPATH. `agentcore dev` runs these without a reload too.
   const portVariable = { AGUI: "PORT", A2A: "A2A_PORT", MCP: "FASTMCP_PORT" }[protocol];
+  // serve_a2a puts its listen port in the agent card's URL, but callers reach the agent only
+  // through box's ingress port, so the card names that port instead.
+  const cardUrl: Record<string, string> =
+    protocol === "A2A"
+      ? { AGENTCORE_RUNTIME_URL: `http://localhost:${boxIngressPort(protocol)}/` }
+      : {};
   return {
     command: [python, "-m", "main"],
-    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort) },
+    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...cardUrl },
   };
 }
 

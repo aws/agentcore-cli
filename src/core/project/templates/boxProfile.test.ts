@@ -99,6 +99,15 @@ describe("renderBoxProfile", () => {
     expect(agent.filesystem).toEqual(VENV_GRANTS);
   });
 
+  test("names box's ingress port, not the agent's, in the A2A agent card", () => {
+    const { agent } = profile("a2a-python-strands");
+    expect(agent.env).toMatchObject({
+      A2A_PORT: "9001",
+      AGENTCORE_RUNTIME_URL: "http://localhost:9000/",
+    });
+    expect(profile("agui-python-strands").agent.env).not.toHaveProperty("AGENTCORE_RUNTIME_URL");
+  });
+
   test("gives the MCP server no route, because it calls no model", () => {
     const mcp = profile("mcp-python-fastmcp");
     expect(mcp.packs).toEqual(["box/base"]);
