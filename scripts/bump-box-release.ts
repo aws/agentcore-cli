@@ -21,8 +21,6 @@ const FILE = join(
   "boxRelease.json",
 );
 const LINUX_TARGET = "aarch64-unknown-linux-gnu";
-/** The machines a box release may have a dev build for, as boxRelease.ts names them. */
-const DEV_TARGETS: Record<string, string> = { "darwin-arm64": "aarch64-apple-darwin" };
 /** box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz is the shim for PYTHON_3_14. */
 const FFI_ASSET = new RegExp(`^box-ffi-python(\\d+)\\.(\\d+)-${LINUX_TARGET}\\.tar\\.gz$`);
 
@@ -62,18 +60,11 @@ if (values.box) {
   const asset = (target: string) => `box-v${version}-${target}.tar.gz`;
   const linux = sums.get(asset(LINUX_TARGET));
   if (!linux) throw new Error(`${repo} v${version} lists no ${asset(LINUX_TARGET)}`);
-  const dev: Record<string, unknown> = {};
-  for (const [machine, target] of Object.entries(DEV_TARGETS)) {
-    const sha256 = sums.get(asset(target));
-    if (sha256) dev[machine] = { target, asset: asset(target), sha256 };
-    else console.warn(`warning: ${repo} v${version} has no dev build for ${machine}`);
-  }
   console.log(`box: ${pinned.box.repo} ${pinned.box.version} → ${repo} ${version}`);
   pinned.box = {
     repo,
     version,
     linux: { target: LINUX_TARGET, asset: asset(LINUX_TARGET), sha256: linux },
-    dev,
   };
 }
 

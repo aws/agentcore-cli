@@ -13,7 +13,6 @@ import {
   type BoxRelease,
   type FfiRelease,
   boxReleaseFor,
-  resolveBoxDevBinary,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
 
@@ -59,7 +58,6 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     "release.json": JSON.stringify({ box_version: VERSION }),
   };
   const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
-  const mac = await tarball(`box-v${VERSION}-aarch64-apple-darwin.tar.gz`, files);
   const ffi = await tarball("box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz", {
     "libffi.so.8": "ffi",
   });
@@ -70,13 +68,6 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
       target: "aarch64-unknown-linux-gnu",
       asset: `box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
       sha256: box.sha256,
-    },
-    dev: {
-      "darwin-arm64": {
-        target: "aarch64-apple-darwin",
-        asset: `box-v${VERSION}-aarch64-apple-darwin.tar.gz`,
-        sha256: mac.sha256,
-      },
     },
   };
   // The ffi shim ships from its own repository and version.
@@ -93,7 +84,6 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
   const assets: Record<string, string> = {
     [release.linux.asset]: box.archive,
     [ffiRelease.pythons.PYTHON_3_14!.asset]: ffi.archive,
-    [`box-v${VERSION}-aarch64-apple-darwin.tar.gz`]: mac.archive,
   };
   const commands: string[][] = [];
   // curl writes the asset its URL names to -o; tar runs for real. The tests pass an empty
@@ -213,90 +203,6 @@ describe("resolveBoxLinuxBuild from the box release", () => {
   });
 });
 
-describe("resolveBoxDevBinary from the box release", () => {
-  const mac = { platform: "darwin", arch: "arm64" };
-
-  test("downloads this machine's build once, with its packs beside box, and returns its box", async () => {
-    const home = await temp("box-home-");
-    const { release, runner, commands } = await fakeRelease();
-
-    const downloads: string[] = [];
-    const box = await resolveBoxDevBinary(
-      {},
-      {
-        runner,
-        home,
-        release,
-        ...mac,
-        onDownload: ({ url }) => downloads.push(url),
-      },
-    );
-    expect(downloads).toEqual([
-      `https://github.com/owner/box-releases/releases/download/v${VERSION}/box-v${VERSION}-aarch64-apple-darwin.tar.gz`,
-    ]);
-
-    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-apple-darwin`);
-    expect(box).toBe(join(root, "box"));
-    expect(existsSync(join(root, "resources", "shared", "base", "pack.toml"))).toBe(true);
-    // Windows has no mode bits.
-    if (process.platform !== "win32") {
-      for (const binary of BINARIES) {
-        expect((await stat(join(root, binary))).mode & 0o777).toBe(0o755);
-      }
-    }
-    expect(
-      commands.filter((command) => command[0] === "curl").map((command) => command.at(-1)),
-    ).toEqual([
-      `https://github.com/owner/box-releases/releases/download/v${VERSION}/box-v${VERSION}-aarch64-apple-darwin.tar.gz`,
-    ]);
-
-    commands.length = 0;
-    const later: string[] = [];
-    const again = await resolveBoxDevBinary(
-      {},
-      {
-        runner,
-        home,
-        release,
-        ...mac,
-        onDownload: ({ url }) => later.push(url),
-      },
-    );
-    expect(again).toBe(box);
-    expect(commands).toEqual([]);
-    expect(later).toEqual([]);
-  });
-
-  test("is undefined on a machine the release has no build for, so dev runs box from PATH", async () => {
-    const home = await temp("box-home-");
-    const { release, runner, commands } = await fakeRelease();
-
-    const box = await resolveBoxDevBinary(
-      {},
-      { runner, home, release, platform: "linux", arch: "x64" },
-    );
-
-    expect(box).toBeUndefined();
-    expect(commands).toEqual([]);
-  });
-
-  test("installs nothing when the build's checksum is not the pinned one", async () => {
-    const home = await temp("box-home-");
-    const { release, runner } = await fakeRelease();
-    const pinned = {
-      ...release,
-      dev: { "darwin-arm64": { ...release.dev["darwin-arm64"]!, sha256: "0".repeat(64) } },
-    };
-
-    const result = resolveBoxDevBinary({}, { runner, home, release: pinned, ...mac });
-
-    await expect(result).rejects.toThrow(/not the pinned 0{64}\. Nothing was installed/);
-    expect(existsSync(join(home, ".agentcore", "box", `${VERSION}-aarch64-apple-darwin`))).toBe(
-      false,
-    );
-  });
-});
-
 describe("boxReleaseFor a runtime's box.version", () => {
   /** A runner whose curl serves SHA256SUMS.txt with `text`, and records each URL. */
   function sumsServer(text: string) {
@@ -335,11 +241,6 @@ describe("boxReleaseFor a runtime's box.version", () => {
       target: "aarch64-unknown-linux-gnu",
       asset: "box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz",
       sha256: linux,
-    });
-    expect(release.dev["darwin-arm64"]).toEqual({
-      target: "aarch64-apple-darwin",
-      asset: "box-v2.0.0-aarch64-apple-darwin.tar.gz",
-      sha256: mac,
     });
   });
 

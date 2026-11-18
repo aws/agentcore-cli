@@ -24,15 +24,13 @@ const AssetSchema = z.object({
 const TargetAssetSchema = AssetSchema.extend({ target: z.string().min(1) });
 
 /**
- * A box release: the Linux arm64 build that ships to AgentCore Runtime, and the builds `agentcore
- * dev` runs a CodeZip agent with, by `<platform>-<arch>` of Node (`darwin-arm64`). Each archive
- * holds box, its helpers, its packs and release.json.
+ * A box release: the Linux arm64 build that ships to AgentCore Runtime. Its archive holds box,
+ * its helpers, its packs and release.json.
  */
 const BoxReleaseSchema = z.object({
   repo: z.string().min(1),
   version: z.string().min(1),
   linux: TargetAssetSchema,
-  dev: z.record(z.string(), TargetAssetSchema),
 });
 
 /**
@@ -73,10 +71,14 @@ export const BOX_BINARIES = [
   "strands-box-contain-trampoline",
 ] as const;
 
-/** The machines a box release may have a dev build for, by `<platform>-<arch>` of Node. */
-export const BOX_DEV_TARGETS: Readonly<Record<string, string>> = {
-  "darwin-arm64": "aarch64-apple-darwin",
-};
+/**
+ * How to install the `box` that `agentcore dev` runs a CodeZip box agent with, which create and
+ * dev ask for when it is not on PATH. The release has a build for each machine it supports.
+ */
+export const BOX_INSTALL_HINT =
+  `Install box: download the build for your machine from ` +
+  `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}, unpack it into ` +
+  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.";
 
 /** A Linux arm64 box for AgentCore Runtime, and the Python ffi shims, by runtimeVersion. */
 export type BoxLinuxBuild = {
@@ -323,46 +325,6 @@ async function download(
   }
 }
 
-export type ResolveBoxDevBinaryOptions = {
-  /** Runs curl and tar; tests inject one. */
-  runner?: ProcessRunner;
-  /** The home folder the cache is in, `~/.agentcore/`. */
-  home?: string;
-  /** The release to install; BOX_RELEASE by default. */
-  release?: BoxRelease;
-  onDownload?: OnBoxDownload;
-  /** Node's `process.platform` and `process.arch`, which pick the build; tests pin them. */
-  platform?: string;
-  arch?: string;
-};
-
-/**
- * The `box` that `agentcore dev` runs a CodeZip agent with: the release's build for this machine,
- * which downloads once with curl into `~/.agentcore/box/<version>-<target>/` after its pinned
- * checksum matches, with its packs beside it; later runs reuse it. `undefined` when the release
- * has no build for this machine, so dev runs the `box` on PATH.
- */
-export async function resolveBoxDevBinary(
-  env: NodeJS.ProcessEnv,
-  options: ResolveBoxDevBinaryOptions = {},
-): Promise<string | undefined> {
-  const release = options.release ?? BOX_RELEASE;
-  const machine = `${options.platform ?? process.platform}-${options.arch ?? process.arch}`;
-  const build = release.dev[machine];
-  if (!build) return undefined;
-  const home = options.home ?? env.HOME ?? homedir();
-  const root = await installBox(
-    release,
-    build,
-    env,
-    options.runner ?? runProcess,
-    home,
-    options.onDownload,
-    { forWhat: "agentcore dev on this machine" },
-  );
-  return join(root, "box");
-}
-
 /**
  * The box release of `version`, which a runtime's `box.version` names: the pinned one, else one
  * in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
@@ -387,13 +349,7 @@ export async function boxReleaseFor(
         `release has, or remove box.version to use box ${BOX_RELEASE.version}.`,
     );
   }
-  const dev: BoxRelease["dev"] = {};
-  for (const [machine, devTarget] of Object.entries(BOX_DEV_TARGETS)) {
-    const asset = `box-v${version}-${devTarget}.tar.gz`;
-    const sha256 = sums.get(asset);
-    if (sha256) dev[machine] = { target: devTarget, asset, sha256 };
-  }
-  return { ...release, linux: { target, asset: linux, sha256: linuxSha }, dev };
+  return { ...release, linux: { target, asset: linux, sha256: linuxSha } };
 }
 
 /** The SHA-256 of each asset of `release`, from the SHA256SUMS.txt it publishes. */
