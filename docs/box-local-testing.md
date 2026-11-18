@@ -106,7 +106,8 @@ DEMO=/tmp/cliDemo
 PROJECT=cliDemo
 ```
 
-`echo "$CLI"` must print a path that starts with `/`.
+`echo "$CLI"` must print a path that starts with `/`. Write `$HOME`, not `~`, inside quotes: the
+shell expands `~` only outside quotes, so `CLI="~/..."` makes bun look for a folder named `~`.
 
 ## Install the CLI's dependencies
 
