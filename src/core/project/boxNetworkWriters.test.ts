@@ -158,9 +158,9 @@ describe("gatewayTargetsWriter", () => {
       prefix: "Bearer",
     });
     expect(edits.messages).toEqual([
-      "updating target 'egress-github' of gateway 'agent-box' in agentcore.json, for api.github.com",
-      "removing target 'egress-old' from gateway 'agent-box' in agentcore.json: Box allows no request to its host in .box/profile.toml",
-      "adding target 'egress-httpbin-org' to gateway 'agent-box' in agentcore.json, for httpbin.org",
+      "updating gateway target 'egress-github' of 'agent-box' for api.github.com",
+      "removing gateway target 'egress-old' from 'agent-box': the Box profile no longer allows old.example.com",
+      "adding gateway target 'egress-httpbin-org' to 'agent-box' for httpbin.org",
     ]);
   });
 

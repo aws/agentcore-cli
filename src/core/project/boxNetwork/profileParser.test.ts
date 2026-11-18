@@ -7,10 +7,17 @@ describe("parseResolvedProfile", () => {
   test("reads [egress] and [mcp] of Box's resolved box.toml, and keeps the profile's policy files", () => {
     const { profile, failures } = parseResolvedProfile(
       {
-        code: "UNSUPPORTED_POLICY_KEY",
-        reason:
-          "the profile names `policy`, which the box CLI refuses; list the files under `policies`",
-        place: ".box/profile.toml:2",
+        boxToml: {
+          name: "demo-preview",
+          egress: {
+            bedrock: {
+              destinations: ["bedrock-runtime.eu-west-1.amazonaws.com"],
+              secret: { ref: "aws://default" },
+            },
+          },
+          mcp: { docs: { destinations: ["docs.example.com"], type: "http" } },
+        },
+        openRoutes: [],
       },
       ["policy.dw"],
       PROFILE,

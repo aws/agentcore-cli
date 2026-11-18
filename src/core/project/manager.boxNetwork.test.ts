@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { parse } from "smol-toml";
 import { InputValidationError, InvalidEnvironmentError } from "../../errors/errors";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
@@ -10,6 +10,8 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { seedBoxCache } from "./backends/box-release-test-support";
+import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { FsProjectManager } from "./manager";
 
@@ -137,7 +139,7 @@ async function strandsProject(
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
   const { json, counter } = countingJson();
-  const box = new FakeBoxProfileResolver(shows());
+  const box = new RegionalBoxProfileResolver(shows());
   const manager = new FsProjectManager({
     logger: createSilentLogger(),
     identity: new TestIdentityClient(),
@@ -145,7 +147,11 @@ async function strandsProject(
     runner: async () => {},
     checkTool: async () => {},
     json,
-    processEnv: { AGENTCORE_BOX_SOURCE: await boxSource(), ...options.env },
+    processEnv: {
+      HOME: await boxHome(),
+      AWS_REGION: "us-west-2",
+      ...options.env,
+    },
     boxProfileResolver: box,
     ...(options.backends && { backends: options.backends }),
   });
@@ -316,8 +322,9 @@ describe("build writes the Box network of the box profile", () => {
   });
 
   test("leaves the user's other gateways as written, with no defaults added", async () => {
-    const { manager, root } = await strandsProject();
+    const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
     const spec = JSON.parse(await text(root, SPEC));
     const tools = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
     spec.agentCoreGateways.push(tools);
@@ -381,8 +388,8 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     expect(steps).toContain(
-      `removing target 'egress-github' from gateway '${GATEWAY}' in agentcore.json: Box allows ` +
-        "no request to its host in .box/profile.toml",
+      `removing gateway target 'egress-github' from '${GATEWAY}': the Box profile no longer ` +
+        "allows api.github.com",
     );
   });
 
@@ -457,18 +464,7 @@ describe("build writes the Box network of the box profile", () => {
     );
 
     expect(error).toBeInstanceOf(InputValidationError);
-    expect((error as Error).message).toBe(
-      ".box/profile.toml does not parse into the Box network of the Box gateway " +
-        `'${GATEWAY}' of runtime 'agent_python_strands' (2 failures):\n` +
-        '  - WILDCARD_HOST, rule "wild", at .box/policy.dw:2:1: it allows hosts by the pattern ' +
-        'context.input.host like "*.example.com"; a gateway target needs one fixed host, so ' +
-        "name each host\n" +
-        "  - UNSIGNABLE_HOST, [egress.signed]: it signs api.example.com with aws://default, but " +
-        "the host is not an AWS endpoint the gateway can sign for: bedrock, bedrock-runtime, " +
-        "bedrock-agentcore, or a Lambda function URL\n\n" +
-        "Nothing of the box profile was written: no gateway target, credential, Memory target, " +
-        "or file. Change the profile or its policy files, then retry.",
-    );
+    matchGolden(FIXTURES, "box-network-build-stopped.golden.txt", (error as Error).message);
     expect(counter.specWrites).toBe(0);
     expect(await text(root, SPEC)).toBe(spec);
     expect(existsSync(path(root, "agentcore/box-bedrock-policy.json"))).toBe(false);

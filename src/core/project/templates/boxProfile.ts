@@ -75,6 +75,12 @@ const RUNTIME_AWS_STAND_IN_LINES = [
   'AWS_SECRET_ACCESS_KEY = "box-stand-in"',
 ].join("\n");
 
+/**
+ * The tools of box/base that get the project's write grant: box gives each one its own grant, so
+ * each lists the agent's `deny_write` folders as well.
+ */
+const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
+
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
 /**
@@ -395,6 +401,12 @@ export function renderBoxProfile(
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
+  // The image's agent reads /app and writes nothing there. Build resolves the profile on the host,
+  // where the image's /app/.venv does not exist, so a write grant would leave its Python unprotected
+  // and box would refuse the profile. A CodeZip agent writes in the folder box starts in.
+  const projectSection = container
+    ? '# The agent, and the tools its packs add, can read the folder box starts in.\n[project]\naccess = "read"\n'
+    : '# The agent, and the tools its packs add, can read and write the folder box starts in.\n[project]\naccess = "write"\n';
   const codeZipOnRuntime = onRuntime && !container;
   const runner = container
     ? containerRunner(workloadPort, !onRuntime)
@@ -427,6 +439,14 @@ export function renderBoxProfile(
   const execComment = runner.execComment ?? "";
   const denyWrite =
     runner.denyWrite.length > 0 ? `deny_write = [${runner.denyWrite.join(", ")}]\n` : "";
+  // box refuses to run a program from a folder that any process in the box can write, so each
+  // tool that gets the project's write grant lists the venv too.
+  const toolDenyWrite =
+    !container && runner.denyWrite.length > 0
+      ? BOX_BASE_PROJECT_WRITE_TOOLS.map(
+          (tool) => `\n[tool.${tool}.filesystem]\ndeny_write = [${runner.denyWrite.join(", ")}]\n`,
+        ).join("")
+      : "";
   // Only the Runtime agent calls AgentCore: locally, LOCAL_DEV=1 skips Identity, and no memory ID
   // reaches the box, so Memory is off.
   const routes = onRuntime ? runtimeRoutes : "";
@@ -482,7 +502,7 @@ ${denyWrite}
 [[agent.ingress]]
 listen = ${str(`${listenHost}:${ingressPort}`)}
 workload_port = ${workloadPort}
-${routes}${bedrockRoute}${keyedRoute}`;
+${toolDenyWrite}${routes}${bedrockRoute}${keyedRoute}`;
 }
 
 /**

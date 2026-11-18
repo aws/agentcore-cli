@@ -48,7 +48,9 @@ import {
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
-import { BOX_RELEASE } from "./backends/boxRelease";
+import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
+import { MissingToolError } from "../../io/exec";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
@@ -1994,7 +1996,22 @@ describe("FsProjectManager.build", () => {
       {
         type: "step",
         message:
-          "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-python-minimal-box', so the gateway can call the Bedrock model",
+          "adding gateway target 'bedrock' to 'agent-python-strands-box-box' for the agent's model calls",
+      },
+      {
+        type: "step",
+        message:
+          "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-python-strands-box-box', so the gateway can call the Bedrock model",
+      },
+      {
+        type: "step",
+        message:
+          "adding gateway target 'agentcore' to 'agent-python-strands-box-box' for the agent's Memory calls",
+      },
+      {
+        type: "step",
+        message:
+          "adding agentcore/box-memory-policy.json to additionalPolicies of 'agent-python-strands-box-box', so the gateway can call Memory",
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
@@ -2105,7 +2122,7 @@ describe("FsProjectManager.build", () => {
         throw new Error("cdk synth exploded");
       },
       checkTool: async () => {},
-      processEnv: await boxSource(),
+      processEnv: await boxHome(),
       boxProfileResolver: new FakeBoxProfileResolver(),
     });
 

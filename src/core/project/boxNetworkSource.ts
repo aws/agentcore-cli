@@ -4,9 +4,12 @@
  * model of each runtime that runs its agent in a box.
  */
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
-import { ProjectStateError } from "../../errors/errors";
+import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
 import { BOX_GATEWAY_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
@@ -22,7 +25,7 @@ import {
   type ParsedPolicy,
   type PolicyFileText,
 } from "./boxNetwork";
-import type { BoxProfileResolver } from "./boxProfileResolver";
+import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
 
 /** The policy of an agent that has no local box profile at `profilePath`. */
 const noPolicy = (profilePath: string): ParsedPolicy => ({
@@ -40,6 +43,7 @@ export async function readBoxNetworks(
   spec: ProjectSpec,
   projectRoot: string,
   resolver: BoxProfileResolver,
+  region: string = BOX_GATEWAY_BEDROCK_REGION,
 ): Promise<BoxNetwork[]> {
   const runtimes = isBoxProject(spec)
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
@@ -248,11 +252,7 @@ function readPolicyFiles(
       policyPathProblem(file, shown) ??
       policyFileProblem(folder, join(folder, ...file.split("/")), file, shown, localDir);
     if (problem !== undefined) {
-      failures.push({
-        code: "INVALID_POLICY_FILE",
-        reason: `${BOX_PROFILE_PATH} names the policy file ${place}, which ${problem}`,
-        place,
-      });
+      failures.push({ code: "INVALID_POLICY_FILE", reason: problem, place: policies });
       continue;
     }
     texts.push({ file: shown, text: readFileSync(join(folder, ...file.split("/")), "utf8") });

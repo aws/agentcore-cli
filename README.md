@@ -214,8 +214,8 @@ repository, version and SHA-256s:
 - `ffi`: the Python ffi shim a CodeZip agent needs in a box, by Python version. It can come from
   another repository or version than box.
 
-`build` and `deploy` read the box profile as box resolves it, with `box profile show
-.box/profile.toml --format json`, so they need a `box` on your `PATH` that has it.
+`bun scripts/bump-box-release.ts --box <version>` (or `--ffi <version>`, with `--box-repo` or
+`--ffi-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
 
 How each command uses it:
 

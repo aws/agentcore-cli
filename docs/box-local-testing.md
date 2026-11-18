@@ -19,9 +19,8 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `~/.agentcore/box/`, check its SHA-256s, generate it into the agent's `.box/<runtime>/aws/`, and copy
 that into the zip or the image's `.box-dist/`.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
-CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
-from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
-is needed.
+CodeZip agent, `agentcore dev` runs the `box` on your PATH: install it as in
+[Install box](#install-box). No local box checkout is needed.
 
 To try an unreleased box build, publish it as a pre-release with the same file names and set
 `box.version` to it: a version the CLI does not pin takes its checksums from the release's
@@ -30,11 +29,68 @@ To try an unreleased box build, publish it as a pre-release with the same file n
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- A box checkout for `AGENTCORE_BOX_SOURCE`, built for Amazon Linux 2023 (see above).
-- `box` on your `PATH`, the one `agentcore dev` runs. Build and deploy run it to read the box
-  profile.
-- AWS credentials for a **dev or test** account. Box uses `us-west-2` Bedrock.
+- `box` `0.1.11-linux-preview.5` or later on your `PATH`. Build, deploy and dev run it to read
+  the box profile with `box profile show --format json`, and CodeZip dev runs the agent with it.
+  See [Install box](#install-box).
+- AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
+  Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
+  region.
 - `bun` for the CLI, `npm` for the generated CDK app.
+
+## Install box
+
+box ships as a release archive per machine on
+[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). There are builds for
+macOS on an Apple chip (`aarch64-apple-darwin`) and Linux arm64 (`aarch64-unknown-linux-gnu`); there
+is no x86 build yet. Each archive unpacks flat: `box`, its two helpers, `release.json`, and
+`resources/` (box's packs, which it finds beside itself).
+
+Download the archive for your machine, check it, and unpack it into a versioned folder.
+
+macOS on an Apple chip:
+
+```
+mkdir -p ~/.local/share/box/0.1.11-linux-preview.5 && cd ~/.local/share/box/0.1.11-linux-preview.5
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/box-v0.1.11-linux-preview.5-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/SHA256SUMS.txt
+grep aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-v0.1.11-linux-preview.5-aarch64-apple-darwin.tar.gz
+```
+
+Linux arm64:
+
+```
+mkdir -p ~/.local/share/box/0.1.11-linux-preview.5 && cd ~/.local/share/box/0.1.11-linux-preview.5
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/box-v0.1.11-linux-preview.5-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.5/SHA256SUMS.txt
+grep aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-v0.1.11-linux-preview.5-aarch64-unknown-linux-gnu.tar.gz
+```
+
+The check must print `OK`.
+
+Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
+
+```
+export PATH="$HOME/.local/share/box/0.1.11-linux-preview.5:$PATH"
+echo 'export PATH="$HOME/.local/share/box/0.1.11-linux-preview.5:$PATH"' >> ~/.zshrc
+```
+
+Check it:
+
+```
+which box
+box --version
+```
+
+- `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
+  source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
+- `box --version` must print `box 0.1.11-linux-preview.5` or later.
+- On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-linux-preview.5"`.
+
+To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
+to that folder.
 
 ## Settings
 
@@ -56,6 +112,9 @@ Check that both paths exist. This prints `ok`, or nothing if a placeholder is st
 ```
 test -f "$CLI" && test -d "$L3" && echo ok
 ```
+
+Write `$HOME`, not `~`, inside quotes: the shell expands `~` only outside quotes, so `CLI="~/..."`
+makes bun look for a folder named `~`.
 
 ## Install the CLI's dependencies
 
@@ -165,6 +224,11 @@ deploy. It deploys nothing. The agent signs its Bedrock calls with your `[defaul
 (`secret.ref = "aws://default"` in `.box/agent/local/profile.toml`), and Memory is off
 (`LOCAL_DEV=1`).
 
+Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must
+have `"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a
+plain runtime the usual way, and stops on one that starts box (a CodeZip `start.py` entrypoint, or
+a Dockerfile that installs box) with `agentcore.json has no "projectType": "box"`.
+
 ### Which box builds exist
 
 The box release has these builds:
@@ -272,10 +336,10 @@ Run 'agentcore deploy' to provision the credential and build the project.
 
 This is expected. An `env://` credential must exist in AgentCore Identity before synthesis can
 resolve it, and only `deploy` provisions it. So on the **first** run with an egress credential,
-skip straight to step 7: `deploy` provisions the credential and then builds in one step (keep
+skip straight to step 8: `deploy` provisions the credential and then builds in one step (keep
 `GITHUB_TOKEN` exported). After that first deploy, `build` runs standalone as above.
 
-## 7. Deploy
+## 8. Deploy
 
 ```
 bun run "$CLI" deploy
@@ -284,7 +348,7 @@ bun run "$CLI" deploy
 Deploy synthesizes the CDK app you linked in step 5, so the stack uses your local L3 constructs.
 The first deploy makes the `default` target from your account and region.
 
-## 8. Verify the gateway, its targets, and the credential
+## 9. Verify the gateway, its targets, and the credential
 
 Local checks, in `agentcore/agentcore.json`:
 
@@ -347,13 +411,29 @@ bun run "$CLI" deploy
 
 ## Troubleshooting
 
-- **Build says Box is not installed or not on PATH.** Install `box` as for `agentcore dev`,
+- **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
+  box release, unpack it into a folder, add that folder to your `PATH`, then retry.
+- **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
+  older than `0.1.11-linux-preview.5`. Install that release or later.
+- **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
+  set. Run `unset BOX_RESOURCES`, or open a new terminal.
+- **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials
+  expired. Refresh them and restart dev.
+- **Dev on macOS fails with `sandbox initialization failed: Operation not permitted`.** Dev is
+  running inside another sandbox. Run it from a normal terminal.
+- **Build says Box is not installed or not on PATH.** Install `box` and put it on your `PATH`,
   then build again.
 - **Build says Box refused the profile.** The lines under it are box's own error. A fresh
   checkout often has no agent venv yet, and box then names `.venv/bin/python` under a write
   grant. The error then says to run `uv sync` in the agent's folder (`app/<agent>`).
-- **Build cannot find the box binaries.** `AGENTCORE_BOX_SOURCE` is unset or does not hold
-  `target-al2023/release`. Build box for Amazon Linux 2023 in that checkout first.
+- **Build cannot download box.** The error names the release URL. Check your network; a 404
+  means the pinned version is not published in `mquang-amazon/box-releases`.
+- **`create` fails with `ENOENT while resolving package '@opentelemetry/core'`.** The CLI's
+  dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in
+  the CLI checkout (see "Install the CLI's dependencies").
+- **Build says it cannot resolve credential "github" before its first deployment.** Expected
+  when step 4's egress credential has never been deployed. Run `agentcore deploy` instead; it
+  provisions the credential and builds. Standalone `build` works after that. See step 7.
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InputValidationError, ResourceNotFoundError } from "../../errors";
+import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
@@ -177,6 +177,35 @@ describe("BoxDevRunner", () => {
     expect(error).toBeInstanceOf(ResourceNotFoundError);
     expect((error as Error).message).toContain(
       'runtime "agent" runs its agent in a box (entrypoint start.py)',
+    );
+    expect(calls).toEqual([]);
+    expect(fallbackRuns).toHaveLength(0);
+  });
+
+  test("runs the agent the usual way outside a Box project, even with a box profile", async () => {
+    const { projectRoot, calls, fallbackRuns, runner, checked } = await scene(true);
+
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false)),
+    );
+
+    expect(calls).toEqual([]);
+    expect(checked).toEqual([]);
+    expect(fallbackRuns).toHaveLength(1);
+    expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
+  });
+
+  test('refuses a runtime that starts box when agentcore.json has no "projectType": "box"', async () => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
+
+    const error = await collect(
+      runner.run(input(projectRoot, 8080, "HTTP", "start.py", /* boxProject */ false)),
+    ).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ProjectStateError);
+    expect((error as Error).message).toBe(
+      'runtime "agent" runs its agent in a box (start.py), but agentcore.json has no ' +
+        '"projectType": "box". Add "projectType": "box" back to agentcore.json, then retry.',
     );
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(0);

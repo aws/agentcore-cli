@@ -135,11 +135,12 @@ function input(
   root: string,
   projectRuntime: ProjectRuntime,
   signal = new AbortController().signal,
+  boxProject = true,
 ): DevServerInput {
   return {
     runtime: projectRuntime,
     projectRoot: root,
-    boxProject: true,
+    boxProject,
     port: 3000,
     env: { API_KEY: "super-secret" },
     signal,
@@ -938,6 +939,23 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(context, ".box-dev"))).toBe(false);
     });
 
+    test('refuses an image that installs box when agentcore.json has no "projectType": "box"', async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const error = await collect(
+        runner.run(input(root, projectRuntime, undefined, /* boxProject */ false)),
+      ).catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect((error as Error).message).toContain(
+        'runs its agent in a box (its Dockerfile installs box), but agentcore.json has no "projectType": "box"',
+      );
+      expect(calls.map(({ command }) => command[1])).not.toContain("build");
+      expect(calls.map(({ command }) => command[1])).not.toContain("run");
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+    });
+
     test("stages box of the runtime's box.version", async () => {
       const { projectRuntime, root } = await boxedScene();
       const { boxVersions, runner } = harness({ processEnv: credentials });
@@ -993,6 +1011,76 @@ describe("ContainerDevRunner", () => {
       );
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
+    });
+
+    test("passes box a readable copy of the resolved credentials as profile default", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const awsDirectory = join(root, ".aws");
+      await mkdir(awsDirectory);
+      const { calls, runner } = harness({
+        awsDirectory,
+        processEnv: { AWS_PROFILE: "sandbox", AWS_REGION: "us-west-2" },
+        resolveAwsCredentials: async () => ({
+          accessKeyId: "AKIDEXAMPLE",
+          secretAccessKey: "secret-example",
+          sessionToken: "token-example",
+        }),
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      // Not ~/.aws, which the image's user cannot read when only you may.
+      expect(run.command.join(" ")).not.toContain(`${awsDirectory}:/aws-config`);
+      expect(run.command.some((part) => part.endsWith(":/aws-config/config:ro"))).toBe(true);
+      expect(run.awsCredentials).toMatchObject({
+        contents:
+          "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret-example\n" +
+          "aws_session_token = token-example\n",
+        // Readable by the container's user; the folder keeps other host users out.
+        mode: 0o644,
+        folderMode: 0o700,
+      });
+      const env = parseEnv(run.envFile!.contents);
+      expect(env).toMatchObject({
+        AWS_CONFIG_FILE: "/aws-config/config",
+        AWS_SHARED_CREDENTIALS_FILE: "/aws-config/credentials",
+        AWS_REGION: "us-west-2",
+      });
+      // The files hold only [default].
+      expect(env.AWS_PROFILE).toBeUndefined();
+      expect(existsSync(run.awsCredentials!.path)).toBe(false);
+    });
+
+    test("mounts ~/.aws for a box image when no credentials resolve", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const awsDirectory = join(root, ".aws");
+      await mkdir(awsDirectory);
+      const { calls, runner } = harness({ awsDirectory, processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
+    });
+
+    test("leaves an image without box on ~/.aws, without resolving credentials", async () => {
+      const { projectRuntime, root } = await boxedScene({ dockerfile: "FROM scratch\n" });
+      const awsDirectory = join(root, ".aws");
+      await mkdir(awsDirectory);
+      let resolved = 0;
+      const { calls, runner } = harness({
+        awsDirectory,
+        processEnv: credentials,
+        resolveAwsCredentials: async () => {
+          resolved += 1;
+          return { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "secret-example" };
+        },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(resolved).toBe(0);
+      expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
     });
 
     test("refuses a box image when the project has no box profile", async () => {

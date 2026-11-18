@@ -184,8 +184,8 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     if (!host) {
       const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
       messages.push(
-        `removing target '${target.name}' from gateway '${network.gateway}' in agentcore.json: ` +
-          "Box allows no request to its host in .box/profile.toml",
+        `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
+          `longer allows ${at ? hostKey(at.host, at.port) : "its host"}`,
       );
       continue;
     }

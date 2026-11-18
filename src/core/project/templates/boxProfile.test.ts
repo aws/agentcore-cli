@@ -39,6 +39,7 @@ type BoxProfile = {
   packs: string[];
   policies?: string[];
   profile: { name: string };
+  project?: { access: string };
   options?: { bedrock?: { region?: string } };
   agent: {
     command: string[];
@@ -46,6 +47,7 @@ type BoxProfile = {
     filesystem: { read: unknown[]; exec: unknown[]; deny_write?: unknown[] };
     ingress: { listen: string; workload_port: number }[];
   };
+  tool?: Record<string, { filesystem: { deny_write: unknown[] } }>;
   egress?: Record<string, Record<string, unknown>>;
 };
 
@@ -348,6 +350,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     expect(parse(text)).toEqual({
       packs: ["box/base", "box/bedrock", "box/agentcore", "box/agentcore-codezip"],
       profile: { name: "V3Demo" },
+      project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
         command: [
@@ -389,6 +392,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
         // The container reads the deployed resources from the environment through box/agentcore.
         packs: ["box/base", "box/bedrock", "box/agentcore"],
         profile: { name: "V3Demo" },
+        project: { access: "read" },
         options: { bedrock: { region: "us-west-2" } },
         agent: {
           command: [

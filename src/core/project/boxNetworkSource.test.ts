@@ -187,6 +187,7 @@ describe("the telemetry of each box runtime", () => {
       ".box/agent/local/profile.toml": "group-a",
       ".box/second/local/profile.toml": "group-b",
     };
+    const calls: string[] = [];
     const resolver: BoxProfileResolver = {
       resolve: async (_root, profilePath) => {
         calls.push(profilePath);

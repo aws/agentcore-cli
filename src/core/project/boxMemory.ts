@@ -154,12 +154,7 @@ export function addBoxMemoryTarget(
   for (const runtime of runtimes) {
     const gateway = boxGatewayFor(spec, runtime, messages);
     const name = gateway.name;
-    if (!servesTarget(gateway.targets, getBoxGatewayAgentCoreTargetSpec())) {
-      gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
-      messages.push(
-        `adding gateway target '${BOX_MEMORY_TARGET}' to '${name}' for the agent's Memory calls`,
-      );
-    }
+    placeTarget(gateway, getBoxGatewayAgentCoreTargetSpec, region, messages, "Memory calls");
     // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
     if (
       !gateway.executionRoleArn &&
@@ -222,8 +217,8 @@ function placeTarget(
     if (isDeepStrictEqual(existing, targetFor(writtenRegion))) {
       gateway.targets[index] = wanted;
       messages.push(
-        `updating target '${wanted.name}' of gateway '${gateway.name}' in agentcore.json from ` +
-          `${writtenRegion} to ${region}`,
+        `updating gateway target '${wanted.name}' of '${gateway.name}' from ${writtenRegion} ` +
+          `to ${region}`,
       );
     }
     return;
@@ -231,8 +226,7 @@ function placeTarget(
   if (servesTarget(gateway.targets, wanted)) return;
   gateway.targets.push(wanted);
   messages.push(
-    `adding target '${wanted.name}' to gateway '${gateway.name}' in agentcore.json, for the ` +
-      `boxed agent's ${calls}`,
+    `adding gateway target '${wanted.name}' to '${gateway.name}' for the agent's ${calls}`,
   );
 }
 
@@ -266,13 +260,7 @@ export function addBoxBedrockTarget(
   for (const runtime of spec.runtimes) {
     if (!runsAgentInBox(projectRoot, runtime) || !callsBedrock(runtime)) continue;
     const gateway = boxGatewayFor(spec, runtime, messages);
-    if (!servesTarget(gateway.targets, getBoxGatewayBedrockTargetSpec())) {
-      gateway.targets.push(getBoxGatewayBedrockTargetSpec());
-      messages.push(
-        `adding gateway target '${BOX_GATEWAY_BEDROCK_TARGET_NAME}' to '${gateway.name}' for the ` +
-          "agent's model calls",
-      );
-    }
+    placeTarget(gateway, getBoxGatewayBedrockTargetSpec, region, messages, "model calls");
     // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
     if (
       !gateway.executionRoleArn &&

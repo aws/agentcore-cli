@@ -3,7 +3,7 @@
  * host's outbound auth and gateway target, the credentials it needs, the policy files to stage,
  * and every warning and failure. Build, deploy, and staging write from it.
  */
-import { BOX_GATEWAY_AGENTCORE_HOST } from "../../../handlers/project/shortcuts";
+import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -12,9 +12,11 @@ import { boxEgressCredentialName, boxEgressCredentials } from "../boxProfileCred
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
+  awsEndpoint,
   outboundAuthFor,
   parseEndpoint,
   targetNameFor,
+  type AwsEndpointApi,
   type BoxEgressSecret,
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";

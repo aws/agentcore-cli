@@ -9,6 +9,7 @@ import {
   ProjectStateError,
   ResourceNotFoundError,
 } from "../../errors";
+import { notBoxProjectMessage } from "./box";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -321,6 +322,12 @@ export class ContainerDevRunner implements DevRunner {
    */
   private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
     if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
+    // The image installs box and starts `box run`, which needs the Box project's profile.
+    if (!input.boxProject) {
+      throw new ProjectStateError(
+        notBoxProjectMessage(input.runtime.name, "its Dockerfile installs box"),
+      );
+    }
     const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
