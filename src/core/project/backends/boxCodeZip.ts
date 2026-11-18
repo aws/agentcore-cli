@@ -5,7 +5,6 @@ import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { BOX_CODEZIP_DIST, runsBoxStartScript } from "../templates/boxProfile";
 import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
-import { assertStartScriptCopiesPolicyFiles } from "./boxStaging";
 
 /**
  * Stages box into each CodeZip runtime whose entry point is the box start
@@ -29,8 +28,10 @@ export async function stageBoxCodeZip(
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
-    // A CodeZip deploy has start.sh carry the deployed resources, not the box/agentcore pack.
+    // A CodeZip deploy reads the deployed resources, its Python and its code path through the
+    // box/agentcore and box/agentcore-codezip packs, so it is not a container.
     container: false,
+    codezip: true,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,
@@ -38,13 +39,6 @@ export async function stageBoxCodeZip(
     env: {},
   });
   const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
-  for (const runtime of runtimes) {
-    assertStartScriptCopiesPolicyFiles(
-      join(project.rootPath, runtime.codeLocation, "start.sh"),
-      runtime.name,
-      networks.find((network) => network.runtime === runtime.name)?.policyFiles ?? [],
-    );
-  }
   // One build for each box version the runtimes name, so each downloads once.
   const builds = new Map<string | undefined, BoxLinuxBuild>();
   for (const runtime of runtimes) {

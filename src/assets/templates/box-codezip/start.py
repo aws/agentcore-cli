@@ -1,7 +1,48 @@
-# Starts the agent in a box on AgentCore Runtime. The Runtime's entry point must be a .py file, so
-# this hands over to start.sh, and tells it which Python the Runtime runs.
+# Runs the agent in a box on AgentCore Runtime (CodeZip). The Runtime's entry point must be a .py
+# file, so this prepares a writable HOME and workspace, copies the box profile out of the read-only
+# zip into a folder this user owns (box runs only a profile its user owns), exports the Python and
+# code paths that only the microVM knows, and hands over to `box run`.
+#
+# The box profile reads the deployed resources, the gateway URL, the Python interpreter and the code
+# directory from the environment through the box/agentcore and box/agentcore-codezip packs, and
+# signs AWS routes with the execution role through a bare `aws://`. So there is nothing to fill in,
+# no credentials to write, and no start.sh.
 import os
+import shutil
 import sys
+import tomllib
 
-script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "start.sh")
-os.execve("/bin/bash", ["bash", script], {**os.environ, "BOX_START_PYTHON": sys.executable})
+CODE = os.path.dirname(os.path.abspath(__file__))
+DIST = os.path.join(CODE, ".box-dist")
+BOX = os.path.join(DIST, "box")
+HOME = "/tmp/box/home"
+WORKSPACE = "/tmp/box/workspace"
+PROFILE_DIR = "/tmp/box/profile"
+PROFILE = os.path.join(PROFILE_DIR, "profile.toml")
+
+for directory in (HOME, WORKSPACE, PROFILE_DIR):
+    os.makedirs(directory, exist_ok=True)
+
+# box reads a profile's policy files from beside it, so copy the profile and each file its
+# `policies` names out of the read-only zip, into this user's folder, outside the workspace.
+staged_profile = os.path.join(DIST, "profile.toml")
+shutil.copyfile(staged_profile, PROFILE)
+with open(staged_profile, "rb") as handle:
+    policies = tomllib.load(handle).get("policies", [])
+for policy in policies:
+    destination = os.path.join(PROFILE_DIR, policy)
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    shutil.copyfile(os.path.join(DIST, policy), destination)
+
+os.chdir(WORKSPACE)
+os.execve(
+    BOX,
+    ["box", "run", PROFILE, "--no-banner"],
+    {
+        **os.environ,
+        "HOME": HOME,
+        "BOX_CODE": CODE,
+        "BOX_PYTHON": sys.executable,
+        "BOX_PYTHON_PREFIX": sys.base_prefix,
+    },
+)
