@@ -11,9 +11,6 @@ import {
 import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/memory";
 import { credentialProviderNameEnvVarName } from "../../../projectSchemas/credential";
 import { LATEST_NODE, LATEST_PYTHON } from "../runtimeBuild";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { InputValidationError, ResourceNotFoundError } from "../../../errors";
 
 /**
  * The discovery prefix @aws/agentcore-cdk gives a project gateway:
@@ -53,8 +50,8 @@ export function docsRuntimeEntrypoint(language: RuntimeDocsConfig["language"]): 
  * The README.md and AGENTS.md for a runtime the user writes themselves,
  * rendered for its language and protocol.
  */
-export async function runtimeDocsTree(
-  config: { assetSource: AssetSource; templateRenderer: TemplateRenderer; projectRoot?: string },
+export function runtimeDocsTree(
+  config: { assetSource: AssetSource; templateRenderer: TemplateRenderer },
   input: RuntimeDocsConfig,
 ): Promise<FsTreeNode> {
   const protocol = input.protocol ?? "HTTP";
@@ -85,7 +82,7 @@ export async function runtimeDocsTree(
       env: credentialProviderNameEnvVarName("openai-key"),
     },
   };
-  const tree = await FsTreeNode.fromAssetSource(
+  return FsTreeNode.fromAssetSource(
     { assetSource: config.assetSource },
     {
       assetDir: `templates/runtime-docs/${input.language === "TypeScript" ? "typescript" : "python"}`,
@@ -95,28 +92,6 @@ export async function runtimeDocsTree(
       transformContent: (raw) => config.templateRenderer.render(raw, context),
     },
   );
-  if (input.dockerfile) {
-    if (input.buildContextPath && !config.projectRoot) {
-      throw new InputValidationError("projectRoot is required for a build context override.");
-    }
-    const dockerfile = input.buildContextPath
-      ? resolve(config.projectRoot!, input.buildContextPath, input.dockerfile)
-      : input.dockerfile;
-    if (!existsSync(dockerfile))
-      throw new ResourceNotFoundError(`no dockerfile exists at ${dockerfile}`);
-    // Without a build context the Dockerfile is copied into the resource directory;
-    // a Dockerfile-specific ignore file, which Docker reads instead of .dockerignore,
-    // goes with it under the copied name.
-    if (!input.buildContextPath) {
-      tree.children.push(FsTreeNode.fromTextFile("Dockerfile", dockerfile));
-      if (existsSync(`${dockerfile}.dockerignore`)) {
-        tree.children.push(
-          FsTreeNode.fromTextFile("Dockerfile.dockerignore", `${dockerfile}.dockerignore`),
-        );
-      }
-    }
-  }
-  return tree;
 }
 
 /**
@@ -129,17 +104,8 @@ export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
   return {
     name,
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
-    build: input.build ?? "CodeZip",
-    ...((input.build === undefined || input.build === "CodeZip") && {
-      runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
-    }),
-    ...(input.dockerfile && {
-      dockerfile: input.buildContextPath ? input.dockerfile : "Dockerfile",
-    }),
-    ...(input.buildContextPath !== undefined && { buildContextPath: input.buildContextPath }),
-    ...(input.customDockerBuildArgs !== undefined && {
-      customDockerBuildArgs: input.customDockerBuildArgs,
-    }),
+    build: "CodeZip",
+    runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
     entrypoint: docsRuntimeEntrypoint(language),
     protocol: infra.protocol ?? "HTTP",
     ...(infra.description && { description: infra.description }),

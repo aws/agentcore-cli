@@ -24,14 +24,7 @@ import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionExplicitKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
-import type {
-  DeployResult,
-  Project,
-  ProjectManager,
-  TeardownConfirmationHandler,
-  WorkloadBuildMode,
-  WorkloadBuilds,
-} from "../types";
+import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
 export type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -137,7 +130,6 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         confirmTeardown,
         transactionSearch: globalConfig.transactionSearch,
         skipBootstrap: flags["skip-bootstrap"],
-        onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.
@@ -161,24 +153,6 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       if (!result.tornDown) config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
-
-/**
- * Records how many runtimes and harnesses deploy with each build type. Deploy
- * reports the effective build modes, after Dockerfile auto-detection, through
- * DeployProjectInput.onWorkloadBuilds; pass this as that callback.
- */
-export function recordBuildTypeCounts(ctx: Context, builds: WorkloadBuilds): void {
-  const entries = Object.entries(builds);
-  const count = (kind: "runtime" | "harness", build: WorkloadBuildMode) =>
-    entries.filter(([key, value]) => key.startsWith(`${kind}/`) && value === build).length;
-  ctx.value(CommandRunMetricEventKey)?.setAttributes({
-    project_runtime_codezip_count: count("runtime", "CodeZip"),
-    project_runtime_container_count: count("runtime", "Container"),
-    project_runtime_container_local_count: count("runtime", "ContainerLocal"),
-    project_harness_container_count: count("harness", "Container"),
-    project_harness_container_local_count: count("harness", "ContainerLocal"),
-  });
-}
 
 export function recordProjectResourceCounts(ctx: Context, project: Project): void {
   const { spec } = project;

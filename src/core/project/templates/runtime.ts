@@ -14,7 +14,6 @@ import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
 import { templateUsesModel } from "../../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../../handlers/project/runtimeTemplateProfile";
-import { isContainerBuild } from "../../../projectSchemas/constants";
 
 /** A model provider's render context, spec entries, and .env.local secrets for a scaffolded runtime. */
 type ModelProviderTemplateConfig = {
@@ -108,7 +107,7 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(scaffoldRuntimeInput.runtimeVersion && {
       runtimeVersion: scaffoldRuntimeInput.runtimeVersion,
     }),
-    ...(isContainerBuild({ build: scaffoldRuntimeInput.build }) && {
+    ...(scaffoldRuntimeInput.build === "Container" && {
       dockerfile: runtimeProfile?.dockerfile ?? "Dockerfile",
     }),
     ...(infra.description && { description: infra.description }),
@@ -269,7 +268,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
     };
-    const isContainer = isContainerBuild({ build: input.scaffoldRuntimeInput.build });
+    const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
       { assetDir: "templates/agent-python-strands" },

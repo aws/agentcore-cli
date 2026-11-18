@@ -6,6 +6,7 @@ import {
   SECURITY_GROUP_ID_PATTERN,
   SUBNET_ID_PATTERN,
   VPC_ID_PATTERN,
+  isContainerBuild,
 } from "./constants";
 import type { DirectoryPath } from "./types";
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from "./auth";
@@ -40,7 +41,7 @@ export const AccessSchema = z.enum(["read", "readwrite"]);
 export type Access = z.infer<typeof AccessSchema>;
 export const AgentTypeSchema = z.literal("AgentCoreRuntime");
 export type AgentType = z.infer<typeof AgentTypeSchema>;
-export const BuildTypeSchema = z.enum(["CodeZip", "Container", "ContainerLocal"]);
+export const BuildTypeSchema = z.enum(["CodeZip", "Container"]);
 export type BuildType = z.infer<typeof BuildTypeSchema>;
 export const EntrypointSchema = z
   .string()
@@ -346,7 +347,7 @@ export const ProjectRuntimeSchema = z
     }
     if (
       data.networkMode === "VPC" &&
-      data.build === "Container" &&
+      isContainerBuild(data) &&
       data.networkConfig &&
       data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
@@ -388,7 +389,7 @@ export const ProjectRuntimeSchema = z
     // runtimeVersion: it is the field that selects the packager. Validating it here
     // means the CLI reports it against agentcore.json instead of letting synthesis
     // fail later with the same rule.
-    if (data.build === "CodeZip" && !data.runtimeVersion) {
+    if (data.build !== "Container" && !data.runtimeVersion) {
       ctx.addIssue({
         code: "custom",
         message: "runtimeVersion is required for CodeZip builds",
@@ -396,7 +397,7 @@ export const ProjectRuntimeSchema = z
       });
     }
     for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
-      if (data.build === "CodeZip" && data[field]) {
+      if (data.build !== "Container" && data[field]) {
         ctx.addIssue({
           code: "custom",
           message: `${field} is only allowed for Container builds`,

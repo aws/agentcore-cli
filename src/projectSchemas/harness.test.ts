@@ -286,16 +286,15 @@ describe("harness custom validation", () => {
       }).success,
     ).toBe(false);
   });
-  it("applies the CodeBuild security-group cap only when building in CodeBuild", () => {
+  it("applies the CodeBuild security-group cap to every container build source", () => {
     const securityGroups = Array.from(
       { length: 6 },
       (_, index) => `sg-${String(index + 1).padStart(17, "0")}`,
     );
-    for (const [source, expected] of [
-      [{ dockerfile: "Dockerfile" }, false],
-      [{ dockerfile: "Dockerfile", build: "ContainerLocal" }, true],
-      [{ containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag" }, true],
-    ] as const) {
+    for (const source of [
+      { dockerfile: "Dockerfile" },
+      { containerUri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/repo:tag" },
+    ]) {
       expect(
         HarnessSpecSchema.safeParse({
           ...minimalHarness,
@@ -303,7 +302,7 @@ describe("harness custom validation", () => {
           networkMode: "VPC",
           networkConfig: { ...networkConfig, securityGroups },
         }).success,
-      ).toBe(expected);
+      ).toBe(false);
     }
   });
 });
