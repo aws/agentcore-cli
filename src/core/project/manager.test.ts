@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import semver from "semver";
 import {
   DeserializationError,
@@ -87,8 +87,13 @@ afterEach(async () => {
   );
 });
 
-/** A command the manager ran, with the UV_MANAGED_PYTHON it set, if any. */
-type Command = { command: string[]; cwd: string; UV_MANAGED_PYTHON?: string };
+/** A command the manager ran, with the uv Python settings it set, if any. */
+type Command = {
+  command: string[];
+  cwd: string;
+  UV_MANAGED_PYTHON?: string;
+  UV_PYTHON_INSTALL_DIR?: string;
+};
 
 // A manager whose runner records commands instead of spawning them.
 function manager(): {
@@ -105,7 +110,13 @@ function manager(): {
       enableTransactionSearch: async () => {},
       runner: async (command, { cwd, env }) => {
         const managedPython = env?.UV_MANAGED_PYTHON;
-        commands.push({ command, cwd, ...(managedPython && { UV_MANAGED_PYTHON: managedPython }) });
+        const installDir = env?.UV_PYTHON_INSTALL_DIR;
+        commands.push({
+          command,
+          cwd,
+          ...(managedPython && { UV_MANAGED_PYTHON: managedPython }),
+          ...(installDir && { UV_PYTHON_INSTALL_DIR: installDir }),
+        });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -459,6 +470,7 @@ describe("FsProjectManager.create", () => {
         command: ["uv", "sync"],
         cwd: join(projectRoot, "app", "agent_python_minimal"),
         UV_MANAGED_PYTHON: "1",
+        UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
       },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
@@ -516,6 +528,27 @@ describe("FsProjectManager.create", () => {
       },
     });
     expect(harness.checkedTools).toEqual(["npm", "git"]);
+  });
+
+  test("syncs a boxed agent's venv on a uv-managed Python in the folder its profile grants", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    // A user's own UV_PYTHON_INSTALL_DIR would put the Python outside the profile's exec grant.
+    const userDir = process.env.UV_PYTHON_INSTALL_DIR;
+    process.env.UV_PYTHON_INSTALL_DIR = "/opt/pythons";
+    try {
+      await runCreate(subject, { name: "example", scaffoldRuntimeInput: AGENT_PYTHON });
+    } finally {
+      if (userDir === undefined) delete process.env.UV_PYTHON_INSTALL_DIR;
+      else process.env.UV_PYTHON_INSTALL_DIR = userDir;
+    }
+
+    expect(commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "example", "app", "agent_python_minimal"),
+      UV_MANAGED_PYTHON: "1",
+      UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+    });
   });
 
   test("defers template-managed local dependency setup", async () => {

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import type {
@@ -56,6 +57,7 @@ import { createProjectTree } from "./templates/project";
 import {
   boxProfilePath,
   boxProfileWarnings,
+  boxUvSyncEnv,
   hasBoxProfile,
   renderBoxProfile,
 } from "./templates/boxProfile";
@@ -1955,10 +1957,11 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      // A boxed agent's profile grants exec only on the uv-managed Pythons, so its venv must link
-      // to one of them, not to a Homebrew or system Python that uv would otherwise pick.
+      // A boxed agent's profile grants exec only on the uv-managed Pythons in uv's default folder,
+      // so its venv must link to one there, not to a Homebrew or system Python, or to a Python in
+      // the user's own UV_PYTHON_INSTALL_DIR.
       const env =
-        input && hasBoxProfile(input) ? { ...process.env, UV_MANAGED_PYTHON: "1" } : undefined;
+        input && hasBoxProfile(input) ? { ...process.env, ...boxUvSyncEnv(homedir()) } : undefined;
       yield* this.run(["uv", "sync"], appDir, undefined, env);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
