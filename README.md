@@ -239,10 +239,9 @@ another version takes them from its release's `SHA256SUMS.txt`. `box.version` pi
 ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
 
-On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
-the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and
-rewrites it every 15 minutes, because box refuses the bare `aws://` that would read the role
-directly.
+On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
+profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes
+itself.
 
 ### Create, run and deploy
 
