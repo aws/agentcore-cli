@@ -66,6 +66,153 @@ async function runtimeOf(projectRoot: string, name: string) {
 }
 
 describe("project add runtime", () => {
+  test.each(["Container", "ContainerLocal"])(
+    "--build-config with build %s persists it and copies the Dockerfile",
+    async (build) => {
+      const { projectRoot, cleanup } = await initProject();
+      cleanups.push(cleanup);
+      const dockerfile = join(projectRoot, "Dockerfile");
+      await writeFile(dockerfile, "FROM scratch\n");
+      await run([
+        "add",
+        "runtime",
+        "--name",
+        "local",
+        "--language",
+        "python",
+        "--build-config",
+        JSON.stringify({ build, dockerfile, customDockerBuildArgs: { VERSION: "v1" } }),
+      ]);
+      const runtime = await runtimeOf(projectRoot, "local");
+      expect(runtime).toMatchObject({
+        build,
+        dockerfile: "Dockerfile",
+        codeLocation: "app/local",
+        customDockerBuildArgs: { VERSION: "v1" },
+      });
+      expect(runtime.runtimeVersion).toBeUndefined();
+      expect(await Bun.file(join(projectRoot, "app", "local", "Dockerfile")).text()).toBe(
+        "FROM scratch\n",
+      );
+    },
+  );
+  test("--build-config with buildContextPath keeps the Dockerfile in that context", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await mkdir(join(projectRoot, "docker"), { recursive: true });
+    await writeFile(join(projectRoot, "docker", "Agent.Dockerfile"), "FROM scratch\n");
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "local",
+      "--language",
+      "python",
+      "--build-config",
+      JSON.stringify({
+        build: "ContainerLocal",
+        dockerfile: "Agent.Dockerfile",
+        buildContextPath: "docker",
+      }),
+    ]);
+    expect(await runtimeOf(projectRoot, "local")).toMatchObject({
+      build: "ContainerLocal",
+      dockerfile: "Agent.Dockerfile",
+      buildContextPath: "docker",
+    });
+    expect(await Bun.file(join(projectRoot, "app", "local", "Dockerfile")).exists()).toBe(false);
+  });
+  test("copies a Dockerfile-specific ignore file along with the Dockerfile, renamed to match", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dockerfile = join(projectRoot, "Agent.Dockerfile");
+    await writeFile(dockerfile, "FROM scratch\n");
+    await writeFile(`${dockerfile}.dockerignore`, "*.log\n");
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "local",
+      "--language",
+      "python",
+      "--build-config",
+      JSON.stringify({ build: "ContainerLocal", dockerfile }),
+    ]);
+    const appDir = join(projectRoot, "app", "local");
+    expect(await Bun.file(join(appDir, "Dockerfile")).text()).toBe("FROM scratch\n");
+    expect(await Bun.file(join(appDir, "Dockerfile.dockerignore")).text()).toBe("*.log\n");
+  });
+  test("accepts a Dockerfile-specific ignore file in an existing build context", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await mkdir(join(projectRoot, "docker"), { recursive: true });
+    await writeFile(join(projectRoot, "docker", "Agent.Dockerfile"), "FROM scratch\n");
+    await writeFile(join(projectRoot, "docker", "Agent.Dockerfile.dockerignore"), "*.log\n");
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "local",
+      "--language",
+      "python",
+      "--build-config",
+      JSON.stringify({
+        build: "ContainerLocal",
+        dockerfile: "Agent.Dockerfile",
+        buildContextPath: "docker",
+      }),
+    ]);
+    expect(await runtimeOf(projectRoot, "local")).toMatchObject({ buildContextPath: "docker" });
+    expect(
+      await Bun.file(join(projectRoot, "app", "local", "Dockerfile.dockerignore")).exists(),
+    ).toBe(false);
+  });
+  test("without --build-config a runtime stays CodeZip", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run(["add", "runtime", "--name", "plain", "--language", "python"]);
+    const runtime = await runtimeOf(projectRoot, "plain");
+    expect(runtime.build).toBe("CodeZip");
+    expect(runtime.runtimeVersion).toBeDefined();
+    expect(runtime.dockerfile).toBeUndefined();
+  });
+  test.each<[string, string, string]>([
+    ["invalid JSON", "{bad}", "Invalid JSON for option '--build-config'"],
+    ["an unknown key", '{"build":"Container","image":"x"}', "--build-config"],
+    ["an unknown build", '{"build":"Local","dockerfile":"Dockerfile"}', "--build-config"],
+    [
+      "a reserved build argument",
+      '{"build":"Container","dockerfile":"Dockerfile","customDockerBuildArgs":{"AWS_REGION":"x"}}',
+      "--build-config",
+    ],
+    [
+      "a container build without a Dockerfile",
+      '{"build":"ContainerLocal"}',
+      "dockerfile is required",
+    ],
+    [
+      "container settings without a container build",
+      '{"dockerfile":"Dockerfile"}',
+      "dockerfile requires build Container or ContainerLocal",
+    ],
+  ])("rejects --build-config with %s and writes nothing", async (_label, value, message) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await writeFile(join(projectRoot, "Dockerfile"), "FROM scratch\n");
+    await expectError(
+      run(["add", "runtime", "--name", "local", "--language", "python", "--build-config", value]),
+      message,
+      InputValidationError,
+    );
+    expect((await specOf(projectRoot)).runtimes ?? []).toEqual([]);
+  });
+  test("--dockerfile is not an add runtime option", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run(["add", "runtime", "--name", "local", "--language", "python", "--dockerfile", "x"]),
+    ).rejects.toThrow("unknown option '--dockerfile'");
+  });
   const allInfrastructureFlags = [
     "--description",
     "Configured runtime",
@@ -527,5 +674,8 @@ describe("project add runtime --agent-id (Bedrock Agent import)", () => {
     await expect(run([...importArgs, "--protocol", "MCP"])).rejects.toThrow(
       /--protocol cannot be combined/,
     );
+    await expect(
+      run([...importArgs, "--build-config", '{"build":"Container","dockerfile":"Dockerfile"}']),
+    ).rejects.toThrow(/--build-config cannot be combined/);
   });
 });

@@ -1,0 +1,1690 @@
+{
+ "Description": "AgentCore stack for Fixture (no deployment target configured)",
+ "Metadata": {
+  "agentcore:builds": {
+   "runtime/orders": "ContainerLocal",
+   "runtime/billing": "Container",
+   "harness/assistant": "ContainerLocal"
+  },
+  "agentcore:localImages": {
+   "runtime/orders": "b418ebb81dba09fd5bd243309dc187c231c9f8ae8396e578aec20d56b26dc08e",
+   "harness/assistant": "312890e9c6b30db7140a9db65b441447cec73a6a420ad53b95972974e99aa624"
+  }
+ },
+ "Resources": {
+  "ApplicationRuntimeOrdersRuntimeExecutionRoleA14806EC": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": {
+          "Ref": "AWS::AccountId"
+         }
+        },
+        "ArnLike": {
+         "aws:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":bedrock-agentcore:",
+            {
+             "Ref": "AWS::Region"
+            },
+            ":",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":runtime/Fixture_orders*"
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Execution role for Bedrock Agent Core Runtime",
+    "MaxSessionDuration": 28800
+   }
+  },
+  "ApplicationRuntimeOrdersRuntimeExecutionRoleDefaultPolicy76731360": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:DescribeLogStreams",
+        "logs:CreateLogGroup"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*"
+         ]
+        ]
+       },
+       "Sid": "LogGroupAccess"
+      },
+      {
+       "Action": "logs:DescribeLogGroups",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:*"
+         ]
+        ]
+       },
+       "Sid": "DescribeLogGroups"
+      },
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
+         ]
+        ]
+       },
+       "Sid": "LogStreamAccess"
+      },
+      {
+       "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets"
+       ],
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "XRayAccess"
+      },
+      {
+       "Action": "cloudwatch:PutMetricData",
+       "Condition": {
+        "StringEquals": {
+         "cloudwatch:namespace": "bedrock-agentcore"
+        }
+       },
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "CloudWatchMetrics"
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:GetWorkloadAccessToken",
+        "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+        "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock-agentcore:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":workload-identity-directory/default"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock-agentcore:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":workload-identity-directory/default/workload-identity/*"
+          ]
+         ]
+        }
+       ],
+       "Sid": "GetAgentAccessToken"
+      },
+      {
+       "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:CountTokens"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:*::foundation-model/*"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:*:",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":inference-profile/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:PutResourcePolicy"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:GetConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundleVersion",
+        "bedrock-agentcore:ListConfigurationBundles",
+        "bedrock-agentcore:ListConfigurationBundleVersions",
+        "bedrock-agentcore:CreateConfigurationBundle",
+        "bedrock-agentcore:UpdateConfigurationBundle",
+        "bedrock-agentcore:DeleteConfigurationBundle"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":bedrock-agentcore:*:*:configuration-bundle/*"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": "ecr:GetAuthorizationToken",
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchCheckLayerAvailability"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":ecr:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":repository/",
+          {
+           "Fn::Sub": "cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}"
+          }
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationRuntimeOrdersRuntimeExecutionRoleDefaultPolicy76731360",
+    "Roles": [
+     {
+      "Ref": "ApplicationRuntimeOrdersRuntimeExecutionRoleA14806EC"
+     }
+    ]
+   }
+  },
+  "ApplicationRuntimeOrdersRuntimeACF3F5A3": {
+   "Type": "AWS::BedrockAgentCore::Runtime",
+   "Properties": {
+    "AgentRuntimeArtifact": {
+     "ContainerConfiguration": {
+      "ContainerUri": {
+       "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:b418ebb81dba09fd5bd243309dc187c231c9f8ae8396e578aec20d56b26dc08e"
+      }
+     }
+    },
+    "AgentRuntimeName": "Fixture_orders",
+    "Description": "AgentCore Runtime: Fixture_orders",
+    "LifecycleConfiguration": {},
+    "NetworkConfiguration": {
+     "NetworkMode": "PUBLIC"
+    },
+    "ProtocolConfiguration": "HTTP",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationRuntimeOrdersRuntimeExecutionRoleA14806EC",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "ApplicationRuntimeOrdersRuntimeExecutionRoleDefaultPolicy76731360",
+    "ApplicationRuntimeOrdersRuntimeExecutionRoleA14806EC"
+   ]
+  },
+  "ApplicationRuntimeBillingContainerRepositoryEncryptionKey6FF9F400": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "ECR encryption key for fixture/billing",
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
+  "ApplicationRuntimeBillingContainerRepositoryD276BA4F": {
+   "Type": "AWS::ECR::Repository",
+   "Properties": {
+    "EmptyOnDelete": true,
+    "EncryptionConfiguration": {
+     "EncryptionType": "KMS",
+     "KmsKey": {
+      "Fn::GetAtt": [
+       "ApplicationRuntimeBillingContainerRepositoryEncryptionKey6FF9F400",
+       "Arn"
+      ]
+     }
+    },
+    "ImageScanningConfiguration": {
+     "ScanOnPush": true
+    },
+    "LifecyclePolicy": {
+     "LifecyclePolicyText": "{\"rules\":[{\"rulePriority\":1,\"description\":\"Keep last 10 images\",\"selection\":{\"tagStatus\":\"any\",\"countType\":\"imageCountMoreThan\",\"countNumber\":10},\"action\":{\"type\":\"expire\"}}]}"
+    },
+    "RepositoryName": "fixture/billing"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
+  "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   }
+  },
+  "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRoleDefaultPolicyC42F517C": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "codebuild:StartBuild",
+        "codebuild:BatchGetBuilds"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ContainerBuildProject5A4F8922",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRoleDefaultPolicyC42F517C",
+    "Roles": [
+     {
+      "Ref": "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48"
+     }
+    ]
+   }
+  },
+  "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandler61CCAB6F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "ZipFile": "\nconst { CodeBuildClient, StartBuildCommand, BatchGetBuildsCommand } = require('@aws-sdk/client-codebuild');\nconst codebuild = new CodeBuildClient();\n\nexports.handler = async function(event, context) {\n  const props = event.ResourceProperties;\n  const requestType = event.RequestType;\n\n  // Build the response object\n  const response = {\n    Status: 'SUCCESS',\n    PhysicalResourceId: props.ImageUri || 'container-build',\n    StackId: event.StackId,\n    RequestId: event.RequestId,\n    LogicalResourceId: event.LogicalResourceId,\n    Data: {},\n  };\n\n  try {\n    if (requestType === 'Delete') {\n      response.Data = {};\n      await sendResponse(event, response);\n      return;\n    }\n\n    // Docker build args: forward each as its own build environment variable and reference it with\n    // '--build-arg NAME' (no value), so docker inherits the value from the environment. This keeps\n    // arbitrary values off the shell command line (no quoting/word-splitting hazards). BUILD_ARG_FLAGS\n    // is the space-separated flag list the buildspec interpolates; it is empty when there are no args.\n    const buildArgs = props.BuildArgs ? JSON.parse(props.BuildArgs) : {};\n    const buildArgNames = Object.keys(buildArgs);\n    const buildArgEnv = buildArgNames.map(name => ({ name, value: String(buildArgs[name]), type: 'PLAINTEXT' }));\n    const buildArgFlags = buildArgNames.map(name => '--build-arg ' + name).join(' ');\n\n    // Start CodeBuild\n    const startResult = await codebuild.send(new StartBuildCommand({\n      projectName: props.ProjectName,\n      sourceTypeOverride: 'S3',\n      sourceLocationOverride: props.SourceBucket + '/' + props.SourceKey,\n      environmentVariablesOverride: [\n        { name: 'ECR_REGISTRY', value: props.EcrRegistry, type: 'PLAINTEXT' },\n        { name: 'IMAGE_URI', value: props.ImageUri, type: 'PLAINTEXT' },\n        { name: 'DOCKERFILE_PATH', value: props.DockerfilePath, type: 'PLAINTEXT' },\n        { name: 'BUILD_ARG_FLAGS', value: buildArgFlags, type: 'PLAINTEXT' },\n        ...buildArgEnv,\n      ],\n    }));\n\n    const buildId = startResult.build.id;\n    console.log('Started build:', buildId);\n\n    // Poll until complete (14 minutes max to stay within Lambda's 15-minute timeout)\n    const maxWaitMs = 14 * 60 * 1000;\n    const start = Date.now();\n    while (Date.now() - start < maxWaitMs) {\n      const result = await codebuild.send(new BatchGetBuildsCommand({ ids: [buildId] }));\n      const build = result.builds[0];\n      if (build.buildStatus !== 'IN_PROGRESS') {\n        if (build.buildStatus === 'SUCCEEDED') {\n          response.Data = { ContainerUri: props.ImageUri };\n          await sendResponse(event, response);\n          return;\n        } else {\n          const logsUrl = build.logs && build.logs.deepLink ? build.logs.deepLink : 'Check CloudWatch Logs';\n          response.Status = 'FAILED';\n          response.Reason = 'CodeBuild build failed. Status: ' + build.buildStatus + '. Logs: ' + logsUrl;\n          await sendResponse(event, response);\n          return;\n        }\n      }\n      await new Promise(r => setTimeout(r, 10000));\n    }\n\n    response.Status = 'FAILED';\n    response.Reason = 'Build timed out after 14 minutes';\n    await sendResponse(event, response);\n  } catch (err) {\n    response.Status = 'FAILED';\n    response.Reason = err.message || 'Unknown error';\n    await sendResponse(event, response);\n  }\n};\n\nasync function sendResponse(event, response) {\n  const https = require('https');\n  const responseBody = JSON.stringify(response);\n  const parsedUrl = new URL(event.ResponseURL);\n  const options = {\n    hostname: parsedUrl.hostname,\n    port: 443,\n    path: parsedUrl.pathname + parsedUrl.search,\n    method: 'PUT',\n    headers: { 'content-type': '', 'content-length': responseBody.length },\n  };\n  return new Promise((resolve, reject) => {\n    const req = https.request(options, resolve);\n    req.on('error', reject);\n    req.write(responseBody);\n    req.end();\n  });\n}\n"
+    },
+    "Handler": "index.handler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Timeout": 900
+   },
+   "DependsOn": [
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRoleDefaultPolicyC42F517C",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48"
+   ]
+  },
+  "ApplicationRuntimeBillingContainerImageBuilderContainerBuildTrigger9F6BC73F": {
+   "Type": "AWS::CloudFormation::CustomResource",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandler61CCAB6F",
+      "Arn"
+     ]
+    },
+    "ProjectName": {
+     "Ref": "ContainerBuildProject5A4F8922"
+    },
+    "SourceBucket": {
+     "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+    },
+    "SourceKey": "cc27b6ff04dc894279081033893efad16fb5f9031cb6c33727543f56ec2edf6c.zip",
+    "ImageUri": {
+     "Fn::Join": [
+      "",
+      [
+       {
+        "Fn::Select": [
+         4,
+         {
+          "Fn::Split": [
+           ":",
+           {
+            "Fn::GetAtt": [
+             "ApplicationRuntimeBillingContainerRepositoryD276BA4F",
+             "Arn"
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       ".dkr.ecr.",
+       {
+        "Fn::Select": [
+         3,
+         {
+          "Fn::Split": [
+           ":",
+           {
+            "Fn::GetAtt": [
+             "ApplicationRuntimeBillingContainerRepositoryD276BA4F",
+             "Arn"
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       ".",
+       {
+        "Ref": "AWS::URLSuffix"
+       },
+       "/",
+       {
+        "Ref": "ApplicationRuntimeBillingContainerRepositoryD276BA4F"
+       },
+       ":cc27b6ff04dc894279081033893efad16fb5f9031cb6c33727543f56ec2edf6c"
+      ]
+     ]
+    },
+    "DockerfilePath": "Dockerfile",
+    "EcrRegistry": {
+     "Fn::Join": [
+      "",
+      [
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ".dkr.ecr.",
+       {
+        "Ref": "AWS::Region"
+       },
+       ".",
+       {
+        "Ref": "AWS::URLSuffix"
+       }
+      ]
+     ]
+    },
+    "SourceHash": "cc27b6ff04dc894279081033893efad16fb5f9031cb6c33727543f56ec2edf6c"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
+  "ApplicationRuntimeBillingRuntimeExecutionRole70B57E19": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": {
+          "Ref": "AWS::AccountId"
+         }
+        },
+        "ArnLike": {
+         "aws:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":bedrock-agentcore:",
+            {
+             "Ref": "AWS::Region"
+            },
+            ":",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":runtime/Fixture_billing*"
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Execution role for Bedrock Agent Core Runtime",
+    "MaxSessionDuration": 28800
+   },
+   "DependsOn": [
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandler61CCAB6F",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRoleDefaultPolicyC42F517C",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildTrigger9F6BC73F"
+   ]
+  },
+  "ApplicationRuntimeBillingRuntimeExecutionRoleDefaultPolicyA3FC57FC": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:DescribeLogStreams",
+        "logs:CreateLogGroup"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*"
+         ]
+        ]
+       },
+       "Sid": "LogGroupAccess"
+      },
+      {
+       "Action": "logs:DescribeLogGroups",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:*"
+         ]
+        ]
+       },
+       "Sid": "DescribeLogGroups"
+      },
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
+         ]
+        ]
+       },
+       "Sid": "LogStreamAccess"
+      },
+      {
+       "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets"
+       ],
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "XRayAccess"
+      },
+      {
+       "Action": "cloudwatch:PutMetricData",
+       "Condition": {
+        "StringEquals": {
+         "cloudwatch:namespace": "bedrock-agentcore"
+        }
+       },
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "CloudWatchMetrics"
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:GetWorkloadAccessToken",
+        "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+        "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock-agentcore:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":workload-identity-directory/default"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock-agentcore:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":workload-identity-directory/default/workload-identity/*"
+          ]
+         ]
+        }
+       ],
+       "Sid": "GetAgentAccessToken"
+      },
+      {
+       "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:CountTokens"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:*::foundation-model/*"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:*:",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":inference-profile/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:PutResourcePolicy"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:GetConfigurationBundle",
+        "bedrock-agentcore:GetConfigurationBundleVersion",
+        "bedrock-agentcore:ListConfigurationBundles",
+        "bedrock-agentcore:ListConfigurationBundleVersions",
+        "bedrock-agentcore:CreateConfigurationBundle",
+        "bedrock-agentcore:UpdateConfigurationBundle",
+        "bedrock-agentcore:DeleteConfigurationBundle"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":bedrock-agentcore:*:*:configuration-bundle/*"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": "ecr:GetAuthorizationToken",
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchCheckLayerAvailability"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ApplicationRuntimeBillingContainerRepositoryD276BA4F",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": "kms:Decrypt",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ApplicationRuntimeBillingContainerRepositoryEncryptionKey6FF9F400",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationRuntimeBillingRuntimeExecutionRoleDefaultPolicyA3FC57FC",
+    "Roles": [
+     {
+      "Ref": "ApplicationRuntimeBillingRuntimeExecutionRole70B57E19"
+     }
+    ]
+   },
+   "DependsOn": [
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandler61CCAB6F",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRoleDefaultPolicyC42F517C",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildTrigger9F6BC73F"
+   ]
+  },
+  "ApplicationRuntimeBillingRuntime3CC6043B": {
+   "Type": "AWS::BedrockAgentCore::Runtime",
+   "Properties": {
+    "AgentRuntimeArtifact": {
+     "ContainerConfiguration": {
+      "ContainerUri": {
+       "Fn::GetAtt": [
+        "ApplicationRuntimeBillingContainerImageBuilderContainerBuildTrigger9F6BC73F",
+        "ContainerUri"
+       ]
+      }
+     }
+    },
+    "AgentRuntimeName": "Fixture_billing",
+    "Description": "AgentCore Runtime: Fixture_billing",
+    "LifecycleConfiguration": {},
+    "NetworkConfiguration": {
+     "NetworkMode": "PUBLIC"
+    },
+    "ProtocolConfiguration": "HTTP",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationRuntimeBillingRuntimeExecutionRole70B57E19",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandler61CCAB6F",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRoleDefaultPolicyC42F517C",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildHandlerServiceRole13C12C48",
+    "ApplicationRuntimeBillingContainerImageBuilderContainerBuildTrigger9F6BC73F",
+    "ApplicationRuntimeBillingRuntimeExecutionRoleDefaultPolicyA3FC57FC",
+    "ApplicationRuntimeBillingRuntimeExecutionRole70B57E19"
+   ]
+  },
+  "ApplicationHarnessAssistantRoleExecutionRole1A384D55": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": {
+          "Ref": "AWS::AccountId"
+         }
+        },
+        "ArnLike": {
+         "aws:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":bedrock-agentcore:",
+            {
+             "Ref": "AWS::Region"
+            },
+            ":",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":*"
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "bedrock-agentcore.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "AgentCore Harness assistant execution role"
+   }
+  },
+  "ApplicationHarnessAssistantRoleExecutionRoleDefaultPolicy21682F13": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:*::foundation-model/*"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":*"
+          ]
+         ]
+        }
+       ],
+       "Sid": "BedrockModelInvocation"
+      },
+      {
+       "Action": "ecr-public:GetAuthorizationToken",
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "EcrPublicTokenAccess"
+      },
+      {
+       "Action": "sts:GetServiceBearerToken",
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "StsForEcrPublicPull"
+      },
+      {
+       "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets"
+       ],
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "XRayTracingAccess"
+      },
+      {
+       "Action": [
+        "logs:CreateLogGroup",
+        "logs:DescribeLogStreams"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*"
+         ]
+        ]
+       },
+       "Sid": "CloudWatchLogsGroup"
+      },
+      {
+       "Action": "logs:DescribeLogGroups",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:*"
+         ]
+        ]
+       },
+       "Sid": "CloudWatchLogsDescribeGroups"
+      },
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
+         ]
+        ]
+       },
+       "Sid": "CloudWatchLogsStream"
+      },
+      {
+       "Action": "cloudwatch:PutMetricData",
+       "Condition": {
+        "StringEquals": {
+         "cloudwatch:namespace": "bedrock-agentcore"
+        }
+       },
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "CloudWatchMetricsPublish"
+      },
+      {
+       "Action": [
+        "bedrock-agentcore:GetWorkloadAccessToken",
+        "bedrock-agentcore:GetWorkloadAccessTokenForJWT"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock-agentcore:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":workload-identity-directory/default"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":bedrock-agentcore:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":workload-identity-directory/default/workload-identity/harness_Fixture_assistant-*"
+          ]
+         ]
+        }
+       ],
+       "Sid": "AgentCoreWorkloadIdentity"
+      },
+      {
+       "Action": "ecr:GetAuthorizationToken",
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "ECRTokenAccess"
+      },
+      {
+       "Action": [
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":ecr:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":repository/",
+          {
+           "Fn::Sub": "cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}"
+          }
+         ]
+        ]
+       },
+       "Sid": "ECRImageAccess"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApplicationHarnessAssistantRoleExecutionRoleDefaultPolicy21682F13",
+    "Roles": [
+     {
+      "Ref": "ApplicationHarnessAssistantRoleExecutionRole1A384D55"
+     }
+    ]
+   }
+  },
+  "ApplicationHarnessAssistantHarness1F2A9185": {
+   "Type": "AWS::BedrockAgentCore::Harness",
+   "Properties": {
+    "EnvironmentArtifact": {
+     "ContainerConfiguration": {
+      "ContainerUri": {
+       "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:312890e9c6b30db7140a9db65b441447cec73a6a420ad53b95972974e99aa624"
+      }
+     }
+    },
+    "ExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "ApplicationHarnessAssistantRoleExecutionRole1A384D55",
+      "Arn"
+     ]
+    },
+    "HarnessName": "Fixture_assistant",
+    "Memory": {
+     "Disabled": {}
+    },
+    "Model": {
+     "BedrockModelConfig": {
+      "ModelId": "global.anthropic.claude-sonnet-4-6"
+     }
+    }
+   },
+   "DependsOn": [
+    "ApplicationHarnessAssistantRoleExecutionRoleDefaultPolicy21682F13",
+    "ApplicationHarnessAssistantRoleExecutionRole1A384D55"
+   ]
+  },
+  "ContainerBuildProjectContainerBuildExecutionRole69AD3217": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "codebuild.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   }
+  },
+  "ContainerBuildProjectContainerBuildExecutionRoleDefaultPolicyE43AE239": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "ecr:GetAuthorizationToken",
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":logs:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":log-group:/aws/codebuild/*"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "ApplicationRuntimeBillingContainerRepositoryD276BA4F",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":s3:::",
+           {
+            "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+           }
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":s3:::",
+           {
+            "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ContainerBuildProjectContainerBuildExecutionRoleDefaultPolicyE43AE239",
+    "Roles": [
+     {
+      "Ref": "ContainerBuildProjectContainerBuildExecutionRole69AD3217"
+     }
+    ]
+   }
+  },
+  "ContainerBuildProject5A4F8922": {
+   "Type": "AWS::CodeBuild::Project",
+   "Properties": {
+    "Artifacts": {
+     "Type": "NO_ARTIFACTS"
+    },
+    "Cache": {
+     "Modes": [
+      "LOCAL_DOCKER_LAYER_CACHE"
+     ],
+     "Type": "LOCAL"
+    },
+    "EncryptionKey": "alias/aws/s3",
+    "Environment": {
+     "ComputeType": "BUILD_GENERAL1_SMALL",
+     "Image": "aws/codebuild/amazonlinux-aarch64-standard:3.0",
+     "ImagePullCredentialsType": "CODEBUILD",
+     "PrivilegedMode": true,
+     "Type": "ARM_CONTAINER"
+    },
+    "Name": "AgentCore-Fixture-container-builder",
+    "ServiceRole": {
+     "Fn::GetAtt": [
+      "ContainerBuildProjectContainerBuildExecutionRole69AD3217",
+      "Arn"
+     ]
+    },
+    "Source": {
+     "BuildSpec": "{\n  \"version\": \"0.2\",\n  \"phases\": {\n    \"pre_build\": {\n      \"commands\": [\n        \"echo \\\"Logging in to Amazon ECR...\\\"\",\n        \"aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY\"\n      ]\n    },\n    \"build\": {\n      \"commands\": [\n        \"echo \\\"Building container image...\\\"\",\n        \"docker build -t $IMAGE_URI -f $DOCKERFILE_PATH $BUILD_ARG_FLAGS .\"\n      ]\n    },\n    \"post_build\": {\n      \"commands\": [\n        \"echo \\\"Pushing image to ECR...\\\"\",\n        \"docker push $IMAGE_URI\",\n        \"echo \\\"Image pushed: $IMAGE_URI\\\"\"\n      ]\n    }\n  }\n}",
+     "Type": "NO_SOURCE"
+    },
+    "TimeoutInMinutes": 30
+   },
+   "DependsOn": [
+    "ContainerBuildProjectContainerBuildExecutionRoleDefaultPolicyE43AE239",
+    "ContainerBuildProjectContainerBuildExecutionRole69AD3217"
+   ]
+  }
+ },
+ "Outputs": {
+  "ApplicationRuntimeOrdersRuntimeIdOutput16125101": {
+   "Description": "Runtime ID for: orders",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeOrdersRuntimeACF3F5A3",
+     "AgentRuntimeId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-orders-RuntimeId"
+   }
+  },
+  "ApplicationRuntimeOrdersRuntimeArnOutputFC642947": {
+   "Description": "Runtime ARN for: orders",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeOrdersRuntimeACF3F5A3",
+     "AgentRuntimeArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-orders-RuntimeArn"
+   }
+  },
+  "ApplicationRuntimeOrdersRoleArnOutputC7A8CEC9": {
+   "Description": "Execution Role ARN for: orders",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeOrdersRuntimeExecutionRoleA14806EC",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-orders-RoleArn"
+   }
+  },
+  "ApplicationRuntimeBillingRuntimeIdOutputBCE2E749": {
+   "Description": "Runtime ID for: billing",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeBillingRuntime3CC6043B",
+     "AgentRuntimeId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-billing-RuntimeId"
+   }
+  },
+  "ApplicationRuntimeBillingRuntimeArnOutputB69FF2F2": {
+   "Description": "Runtime ARN for: billing",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeBillingRuntime3CC6043B",
+     "AgentRuntimeArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-billing-RuntimeArn"
+   }
+  },
+  "ApplicationRuntimeBillingRoleArnOutputC3A2D95A": {
+   "Description": "Execution Role ARN for: billing",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationRuntimeBillingRuntimeExecutionRole70B57E19",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-billing-RoleArn"
+   }
+  },
+  "ApplicationHarnessAssistantImageUriOutput444CA041": {
+   "Description": "Container image URI for harness \"assistant\"",
+   "Value": {
+    "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:312890e9c6b30db7140a9db65b441447cec73a6a420ad53b95972974e99aa624"
+   }
+  },
+  "ApplicationHarnessAssistantRoleRoleArnOutput0DE2C07F": {
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationHarnessAssistantRoleExecutionRole1A384D55",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-Harness-assistant-RoleArn"
+   }
+  },
+  "ApplicationHarnessAssistantIdOutputBA102026": {
+   "Description": "Harness ID for: assistant",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationHarnessAssistantHarness1F2A9185",
+     "HarnessId"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-Harness-assistant-Id"
+   }
+  },
+  "ApplicationHarnessAssistantArnOutput31DCA32F": {
+   "Description": "Harness ARN for: assistant",
+   "Value": {
+    "Ref": "ApplicationHarnessAssistantHarness1F2A9185"
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-Harness-assistant-Arn"
+   }
+  },
+  "ApplicationHarnessAssistantStatusOutput0CFD8979": {
+   "Description": "Harness status for: assistant",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationHarnessAssistantHarness1F2A9185",
+     "Status"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-Harness-assistant-Status"
+   }
+  },
+  "ApplicationHarnessAssistantVersionOutputBBE292E0": {
+   "Description": "Harness config version for: assistant",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationHarnessAssistantHarness1F2A9185",
+     "Version"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-Harness-assistant-Version"
+   }
+  },
+  "ApplicationHarnessAssistantAgentRuntimeArnOutput6F4D9700": {
+   "Description": "Underlying AgentCore Runtime ARN for harness: assistant",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApplicationHarnessAssistantHarness1F2A9185",
+     "Environment.AgentCoreRuntimeEnvironment.AgentRuntimeArn"
+    ]
+   },
+   "Export": {
+    "Name": "AgentCore-Fixture-Harness-assistant-AgentRuntimeArn"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}
