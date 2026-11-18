@@ -562,6 +562,7 @@ describe("startsInBoxOnCodeZip", () => {
     expect(startsInBoxOnCodeZip(plain("agui-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp-box"))).toBe(true);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
   });

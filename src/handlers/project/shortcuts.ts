@@ -283,6 +283,18 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
+  "mcp-python-fastmcp-box": {
+    runtimeName: "mcp_python_fastmcp_box",
+    description: "MCP server exposing tools with FastMCP, in Strands Box",
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    protocol: "MCP",
+    includesMemory: false,
+    box: true,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "a2a-python-strands": {
     runtimeName: "a2a_python_strands",
     description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",

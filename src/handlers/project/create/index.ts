@@ -155,8 +155,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       // works in one.
       if (flags["isolation"] === "private-vpc" && !createInput.scaffoldRuntimeInput?.box) {
         throw new InputValidationError(
-          "--isolation private-vpc needs a box template: agent-python-strands-box or " +
-            "agent-python-strands-box-container.",
+          "--isolation private-vpc needs a box template, one whose name has -box in it, such as " +
+            "agent-python-strands-box.",
         );
       }
 
