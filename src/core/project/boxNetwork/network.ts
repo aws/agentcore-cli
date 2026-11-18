@@ -20,6 +20,7 @@ import {
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
+import type { CloudWatchTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import { MAX_GATEWAY_TARGETS, hostKey, type ConversionFailure, type FailureCode } from "./types";
 import type { SourceSpan } from "./dogwood";
@@ -105,6 +106,8 @@ export interface BoxNetwork {
   readonly credentials: readonly BoxEgressCredential[];
   /** The policy files, relative to the agent's local box folder, to copy beside the AgentCore Runtime profile. */
   readonly policyFiles: readonly string[];
+  /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
+  readonly telemetry?: readonly CloudWatchTelemetry[];
   /**
    * The IAM actions that the gateway's `additionalPolicies` files grant its role, except the
    * policy files that build writes.
@@ -172,6 +175,7 @@ export function buildBoxNetwork(
     hosts: targets.hosts,
     credentials: credentials.needed,
     policyFiles: parsed.profile.policyFiles,
+    ...(parsed.profile.telemetry && { telemetry: parsed.profile.telemetry }),
     grantedActions: project.grantedActions,
     warnings: [
       ...credentials.skipped,

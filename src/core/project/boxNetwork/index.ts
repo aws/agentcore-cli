@@ -19,4 +19,5 @@ export {
   profilePolicyFiles,
   type ParsedProfile,
 } from "./profileParser";
+export { cloudWatchTelemetry, type CloudWatchTelemetry } from "./telemetry";
 export { FAILURE_CODES, hostKey, type FailureCode } from "./types";

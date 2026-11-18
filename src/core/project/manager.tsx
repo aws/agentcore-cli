@@ -1662,6 +1662,7 @@ export class FsProjectManager implements ProjectManager {
           project.spec.credentials,
           edits.spec.credentials,
         ),
+        runtimes: patchNamedEntries(raw.runtimes, project.spec.runtimes, edits.spec.runtimes),
       };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
@@ -1670,8 +1671,13 @@ export class FsProjectManager implements ProjectManager {
       await this.json.write(specPath, updated);
       result = { ...project, spec: parsed.data };
     }
-    for (const { path } of edits.files) {
-      if (!existsSync(join(project.rootPath, ...path.split("/")))) messages.push(`writing ${path}`);
+    for (const file of edits.files) {
+      const exists = existsSync(join(project.rootPath, ...file.path.split("/")));
+      if ("remove" in file) {
+        if (exists) messages.push(`removing ${file.path}`);
+      } else if (!exists) {
+        messages.push(`writing ${file.path}`);
+      }
     }
     writeBoxNetworkFiles(project.rootPath, edits.files);
     if (edits.envLocal.length > 0) {

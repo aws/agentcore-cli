@@ -562,6 +562,116 @@ describe("build reads the box profile as box resolves it", () => {
   });
 });
 
+describe("build writes the telemetry policy of the box profile", () => {
+  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy.json";
+  const ENTRY = "../../agentcore/box-telemetry-policy.json";
+  const LOGS = {
+    kind: "cloudwatch_logs",
+    region: "us-west-2",
+    log_group: "my-group",
+    log_stream: "my-stream",
+    secret: { ref: "aws://my-profile" },
+  };
+  const TRACES = {
+    kind: "cloudwatch_traces",
+    region: "us-west-2",
+    secret: { ref: "aws://my-profile" },
+  };
+  const LOGS_STATEMENT = {
+    Sid: "BoxTelemetryToCloudWatchLogs",
+    Effect: "Allow",
+    Action: ["logs:PutLogEvents"],
+    Resource: ["arn:aws:logs:us-west-2:*:log-group:my-group:log-stream:my-stream"],
+  };
+  const TRACES_STATEMENT = {
+    Sid: "BoxTelemetryToXRay",
+    Effect: "Allow",
+    Action: ["xray:PutSpans"],
+    Resource: "*",
+  };
+  const ADDED =
+    `adding ${TELEMETRY_POLICY} to additionalPolicies of 'agent_python_strands', so its box can ` +
+    "send telemetry to CloudWatch";
+
+  /** What box resolves the created profile to, with `telemetry` as its [telemetry] tables. */
+  const showsTelemetry = (telemetry: Record<string, unknown>) => {
+    const answer = shows();
+    return { ...answer, boxToml: { ...answer.boxToml, telemetry } };
+  };
+
+  async function runtimeEntry(root: string) {
+    const spec = JSON.parse(await text(root, SPEC));
+    return spec.runtimes[0] as { codeLocation: string; additionalPolicies?: string[] };
+  }
+
+  test.each([
+    ["CloudWatch Logs", { logs: LOGS }, [LOGS_STATEMENT]],
+    ["X-Ray", { traces: TRACES }, [TRACES_STATEMENT]],
+    ["both", { logs: LOGS, traces: TRACES }, [LOGS_STATEMENT, TRACES_STATEMENT]],
+  ])(
+    "for %s, writes the grant and lists it on the box runtime",
+    async (_label, telemetry, statements) => {
+      const { manager, root, box } = await strandsProject();
+      box.answer = showsTelemetry(telemetry);
+
+      const { steps } = await build(manager, root);
+
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY))).toEqual({
+        Version: "2012-10-17",
+        Statement: statements,
+      });
+      const runtime = await runtimeEntry(root);
+      expect(runtime.additionalPolicies).toEqual([ENTRY]);
+      // The CDK library reads a runtime's policy files from its codeLocation.
+      expect(join(root, runtime.codeLocation, ENTRY)).toBe(path(root, TELEMETRY_POLICY));
+      expect(steps).toContain(ADDED);
+      expect(steps).toContain(`writing ${TELEMETRY_POLICY}`);
+    },
+  );
+
+  test("changes nothing on a second build", async () => {
+    const { manager, root, counter, box } = await strandsProject();
+    box.answer = showsTelemetry({ logs: LOGS, traces: TRACES });
+    await build(manager, root);
+    const policy = await text(root, TELEMETRY_POLICY);
+    counter.specWrites = 0;
+
+    const { steps } = await build(manager, root);
+
+    expect(steps).toEqual(["synthesizing CloudFormation templates"]);
+    expect(counter.specWrites).toBe(0);
+    expect(await text(root, TELEMETRY_POLICY)).toBe(policy);
+  });
+
+  test("writes no file and lists nothing when the profile sends no telemetry to CloudWatch", async () => {
+    const { manager, root, box } = await strandsProject();
+    box.answer = showsTelemetry({ langfuse: { kind: "langfuse", secret: { ref: "env://KEY" } } });
+
+    const { steps } = await build(manager, root);
+
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect((await runtimeEntry(root)).additionalPolicies).toBeUndefined();
+    expect(steps.filter((step) => step.includes(TELEMETRY_POLICY))).toEqual([]);
+  });
+
+  test("removes the file and the entry when the profile no longer sends telemetry to CloudWatch", async () => {
+    const { manager, root, box } = await strandsProject();
+    box.answer = showsTelemetry({ logs: LOGS });
+    await build(manager, root);
+    box.answer = shows();
+
+    const { steps } = await build(manager, root);
+
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect((await runtimeEntry(root)).additionalPolicies).toBeUndefined();
+    expect(steps).toContain(
+      `removing ${TELEMETRY_POLICY} from additionalPolicies of 'agent_python_strands': its box ` +
+        "sends no telemetry to CloudWatch",
+    );
+    expect(steps).toContain(`removing ${TELEMETRY_POLICY}`);
+  });
+});
+
 describe("build writes the Bedrock and Memory targets for the region it builds for", () => {
   const bedrockTarget = (region: string) => ({
     name: "bedrock",
