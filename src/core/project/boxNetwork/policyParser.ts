@@ -1,6 +1,6 @@
 import { parsePolicy, type SourceSpan, type Statement } from "./dogwood";
 import type { BoxNetworkFailure } from "./network";
-import type { ParsedProfile } from "./profileParser";
+import { BOX_PROFILE_PATH, type ParsedProfile } from "./profileParser";
 
 /** Box's resolved policy, beside the profile it belongs to. */
 export interface ParsedPolicy {
@@ -55,7 +55,7 @@ export function parseResolvedPolicy(
         reason:
           `Build cannot read a rule that Box or a pack adds to this profile (syntax error: ` +
           `${error.message}). Update the AgentCore CLI, then retry.`,
-        place: profile.path,
+        place: BOX_PROFILE_PATH,
       });
     }
   }

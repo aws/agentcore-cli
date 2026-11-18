@@ -28,7 +28,6 @@ import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxPr
 import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
-  boxLocalDir,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
   renderRuntimeBoxProfile,
@@ -294,7 +293,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
             : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
-            copyOf: `${boxLocalDir(runtime)}/${file}`,
+            copyOf: `.box/${file}`,
           })),
         ];
       }),

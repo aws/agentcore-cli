@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { ProjectStateError } from "../../../errors/errors";
 import { isFile } from "../runtimeBuild";
-import { boxLocalProfileFile } from "../templates/boxProfile";
+import { BOX_PROFILE_FILE } from "../templates/boxProfile";
 
 /** The function of a start.sh that copies the profile's policy files to where box reads them. */
 const START_SCRIPT_COPIES_POLICY_FILES = "copy_policy_files";
@@ -22,7 +22,7 @@ export function assertStartScriptCopiesPolicyFiles(
   if (policyFiles.length === 0 || !isFile(startScript)) return;
   if (readFileSync(startScript, "utf8").includes(START_SCRIPT_COPIES_POLICY_FILES)) return;
   throw new ProjectStateError(
-    `runtime "${runtimeName}": ${startScript} copies no policy file of ${boxLocalProfileFile(runtimeName)} ` +
+    `runtime "${runtimeName}": ${startScript} copies no policy file of ${BOX_PROFILE_FILE} ` +
       `(${policyFiles.join(", ")}). Box would refuse the AgentCore Runtime profile, and start.sh ` +
       "would serve the agent without box. Replace start.sh with the one a new `agentcore create` " +
       "project has, then retry.",
@@ -40,7 +40,7 @@ export function assertImageCopiesPolicyFiles(
 ): void {
   if (policyFiles.length === 0 || COPIES_WHOLE_DIST.test(readFileSync(dockerfile, "utf8"))) return;
   throw new ProjectStateError(
-    `runtime "${runtimeName}" takes the policy files of ${boxLocalProfileFile(runtimeName)} to AgentCore Runtime ` +
+    `runtime "${runtimeName}" takes the policy files of ${BOX_PROFILE_FILE} to AgentCore Runtime ` +
       `(${policyFiles.join(", ")}), but ${dockerfile} does not copy .box-dist/ whole into the ` +
       "image. Box would refuse its profile there, and start.sh would serve the agent without " +
       "box. Copy it with `COPY .box-dist/ /opt/box/`, as the Dockerfile of a new " +
