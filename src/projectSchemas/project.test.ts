@@ -461,6 +461,14 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
     expect(parse({ boundRuntime: "my agent" }).success).toBe(false);
   });
 
+  test("rejects discoveryPrefix without boundRuntime", () => {
+    const result = parse({ discoveryPrefix: "AGENTCORE_GATEWAY_BOX" });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map(({ message }) => message)).toContain(
+      'Gateway "agent-box-egress" sets discoveryPrefix without boundRuntime',
+    );
+  });
+
   test.each(["my-prefix", "", "1BOX"])("rejects discoveryPrefix %j", (discoveryPrefix) => {
     expect(parse({ boundRuntime: "agent", discoveryPrefix }).success).toBe(false);
   });
