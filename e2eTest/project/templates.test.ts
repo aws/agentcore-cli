@@ -14,8 +14,8 @@ type RuntimeTemplateTestCase = {
   protocol: "HTTP" | "MCP" | "A2A" | "AGUI";
   payload: Record<string, unknown>;
   invokeFlags?: string[];
-  /** The port `agentcore dev` serves on; LOCAL_DEV_PORT_BASE plus the case's index otherwise. */
-  devPort?: number;
+  /** Skips the `agentcore dev` step and its local invoke; deploy and the remote invoke still run. */
+  skipDev?: boolean;
   skip?: boolean;
   /**
    * A Strands Box template: it runs its agent in a box on AgentCore Runtime. Create needs `box` on
@@ -87,16 +87,15 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     // windows are also unable to run the linux container without a vm.
     skip: process.env.CI === "true" && process.platform !== "linux",
   },
-  // The box templates run their agent in Strands Box. CI deploys with the released
-  // @aws/agentcore-cdk, which has no Box support yet, and its runners have no box on PATH for a
-  // CodeZip `agentcore dev`, so they run only outside CI for now.
+  // The box templates run their agent in Strands Box on AgentCore Runtime; the cases test create,
+  // deploy and invoke, not `agentcore dev`. CI deploys with the released @aws/agentcore-cdk, which
+  // has no Box support yet, so they run only outside CI for now.
   {
     name: "py_strands_box",
     template: "agent-python-strands-box",
     protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
-    // A CodeZip box agent's dev serves on the box profile's ingress port, 8080 for HTTP.
-    devPort: 8080,
+    skipDev: true,
     skip: process.env.CI === "true",
   },
   {
@@ -104,6 +103,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     template: "agent-python-strands-box-container",
     protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
+    skipDev: true,
     skip: process.env.CI === "true",
   },
   {
@@ -259,12 +259,14 @@ describe(
         const projectDir = await createTemplateProject(cli, runtime);
         let scenarioCompleted = false;
         try {
-          await invokeLocally(
-            cli,
-            runtime,
-            projectDir,
-            runtime.devPort ?? LOCAL_DEV_PORT_BASE + RUNTIME_TEMPLATES.indexOf(runtime),
-          );
+          if (!runtime.skipDev) {
+            await invokeLocally(
+              cli,
+              runtime,
+              projectDir,
+              LOCAL_DEV_PORT_BASE + RUNTIME_TEMPLATES.indexOf(runtime),
+            );
+          }
 
           const deployment = parseResult(
             DeployResponseSchema,
