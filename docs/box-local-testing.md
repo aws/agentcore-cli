@@ -29,7 +29,8 @@ To try an unreleased box build, publish it as a pre-release with the same file n
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- `box` on your `PATH`. Build and deploy run it to read the box profile.
+- `box` `0.1.11-linux-preview.5` or later on your `PATH`. Build, deploy and dev run it to read
+  the box profile with `box profile show --format json`, and CodeZip dev runs the agent with it.
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
   Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
   region.
@@ -151,7 +152,97 @@ rm -rf node_modules/@aws/agentcore-cdk
 npm install "$L3"/aws-agentcore-cdk-*.tgz
 ```
 
-## 6. Build
+## 6. Test locally with `agentcore dev`
+
+`agentcore dev` runs the agent in a box on your machine, so you can try the project before you
+deploy. It deploys nothing. The agent signs its Bedrock calls with your `[default]` AWS profile
+(`secret.ref = "aws://default"` in `.box/profile.toml`), and Memory is off (`LOCAL_DEV=1`).
+
+### Which box builds exist
+
+The box release has these builds:
+
+| Machine             | Build                                      | CodeZip dev    | Container dev |
+| ------------------- | ------------------------------------------ | -------------- | ------------- |
+| macOS, Apple chip   | `box-v<version>-aarch64-apple-darwin`      | yes            | yes           |
+| Linux, arm64        | `box-v<version>-aarch64-unknown-linux-gnu` | yes (untested) | yes           |
+| Linux or macOS, x86 | none                                       | no             | no            |
+
+- The **container** image always uses the Linux arm64 build, because AgentCore Runtime is arm64.
+  It runs on an Apple chip Mac through Finch or Docker, and on an arm64 Linux host. An x86 host
+  would need to emulate arm64.
+- **CodeZip** dev runs the `box` on your `PATH` natively, so it needs the build for your machine.
+  On an arm64 Linux host it uses the same Linux build as the Runtime; that path is not yet tested.
+- Build and deploy need a `box` on your `PATH` on every machine, to read the profile. So for now
+  build and deploy work only on an Apple chip Mac or an arm64 Linux host.
+
+### Before you start
+
+In the shell you run dev from:
+
+```
+unset BOX_RESOURCES
+box --version
+aws sts get-caller-identity
+```
+
+- `box --version` must print `0.1.11-linux-preview.5` or later. Dev and build read the profile
+  with `box profile show --format json`, which older builds do not have.
+- A `BOX_RESOURCES` left over from a source build makes a release box look for its packs in the
+  wrong place, so unset it.
+- The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
+  After you refresh them, restart dev.
+
+### Run dev
+
+In the project from step 3:
+
+```
+cd "$DEMO/$PROJECT"
+bun run "$CLI" dev
+```
+
+Then, in a second shell in the project folder:
+
+```
+bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 times 23?"}'
+```
+
+**Container template** (`agent-python-strands-box-container`, the one step 3 creates):
+
+- Dev builds the image with Docker, Podman or Finch. Set `AGENTCORE_CONTAINER_TOOL=finch` (or
+  `docker`, `podman`) to pick one. The image downloads the Linux box release while it builds.
+- Dev passes your resolved AWS credentials into the container as profile `default`, and refreshes
+  them while it runs.
+- Invoke once the dev output shows `0.0.0.0:8080 is relayed to the agent's port 8081`.
+- The container runs with `--cap-add SYS_ADMIN` and unconfined seccomp, AppArmor and system paths,
+  which box's Linux sandbox needs. A container tool that refuses these flags cannot run it.
+- The agent has read-only access to `/app`, plus exec on `/app/.venv`, so it can run its venv but
+  not change it.
+
+**CodeZip template** (`agent-python-strands-box`; create it in step 3 with
+`--template agent-python-strands-box`):
+
+- Dev runs `box run .box/profile.toml` in the project folder with the `box` on your `PATH`. The
+  box listens on 8080 and relays to the agent on 8081.
+- Invoke once the dev output shows `Uvicorn running on http://127.0.0.1:8081`.
+- Dev needs the agent's venv: `create` runs `uv sync` in `app/agent`. With `--skip-install`, run
+  `uv sync` there first.
+- Port 8080 must be free. Dev refuses another port, because the profile's ingress listens on 8080.
+- On macOS the box runs under Seatbelt, which cannot start inside another sandbox. Run dev from a
+  normal terminal, not from an agent's sandboxed shell.
+
+### What to check
+
+- The answer comes back from `invoke --local`.
+- The dev output shows box starting the agent: `box: running profile <project>` and the
+  `[agent]` filesystem summary, with `deny_write  .../.venv  (read-only)` for CodeZip.
+- With the step 4 `[egress]` entry, calls to its host go out, and calls to other hosts are blocked
+  (`ProxyConnectionError ... 127.0.0.1:<port>` in the agent's log means box blocked the host).
+
+Stop dev with Ctrl+C before you build.
+
+## 7. Build
 
 Export `GITHUB_TOKEN` before build. Build reads it and writes its value into
 `agentcore/.env.local` under the credential's reserved name `AGENTCORE_CREDENTIAL_GITHUB`.
@@ -174,10 +265,10 @@ Run 'agentcore deploy' to provision the credential and build the project.
 
 This is expected. An `env://` credential must exist in AgentCore Identity before synthesis can
 resolve it, and only `deploy` provisions it. So on the **first** run with an egress credential,
-skip straight to step 7: `deploy` provisions the credential and then builds in one step (keep
+skip straight to step 8: `deploy` provisions the credential and then builds in one step (keep
 `GITHUB_TOKEN` exported). After that first deploy, `build` runs standalone as above.
 
-## 7. Deploy
+## 8. Deploy
 
 ```
 bun run "$CLI" deploy
@@ -186,7 +277,7 @@ bun run "$CLI" deploy
 Deploy synthesizes the CDK app you linked in step 5, so the stack uses your local L3 constructs.
 The first deploy makes the `default` target from your account and region.
 
-## 8. Verify the gateway, its targets, and the credential
+## 9. Verify the gateway, its targets, and the credential
 
 Local checks, in `agentcore/agentcore.json`:
 
@@ -202,7 +293,7 @@ bun run "$CLI" gateway list
 bun run "$CLI" identity api-key-credential-provider get --name github
 ```
 
-## 9. Tear down
+## 10. Tear down
 
 Deploy bills you while resources exist. Remove them when done.
 
@@ -213,6 +304,16 @@ bun run "$CLI" deploy
 
 ## Troubleshooting
 
+- **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
+  box release, unpack it into a folder, add that folder to your `PATH`, then retry.
+- **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
+  older than `0.1.11-linux-preview.5`. Install that release or later.
+- **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
+  set. Run `unset BOX_RESOURCES`, or open a new terminal.
+- **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials
+  expired. Refresh them and restart dev.
+- **Dev on macOS fails with `sandbox initialization failed: Operation not permitted`.** Dev is
+  running inside another sandbox. Run it from a normal terminal.
 - **Build says Box is not installed or not on PATH.** Install `box` and put it on your `PATH`,
   then build again.
 - **Build says Box refused the profile.** The lines under it are box's own error. A fresh
@@ -225,7 +326,7 @@ bun run "$CLI" deploy
   the CLI checkout (see "Install the CLI's dependencies").
 - **Build says it cannot resolve credential "github" before its first deployment.** Expected
   when step 4's egress credential has never been deployed. Run `agentcore deploy` instead; it
-  provisions the credential and builds. Standalone `build` works after that. See step 6.
+  provisions the credential and builds. Standalone `build` works after that. See step 7.
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.
