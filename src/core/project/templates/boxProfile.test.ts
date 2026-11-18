@@ -20,7 +20,7 @@ const STRANDS = template("agent-python-strands");
 const VENV_GRANTS = {
   read: [
     "${{ workspace }}/app/agent",
-    "${{ workspace }}/app/agent/.venv",
+    { path: "${{ workspace }}/app/agent/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
   exec: [
@@ -256,42 +256,22 @@ describe("renderBoxProfile", () => {
     expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
   });
 
-  test("runs the Strands container image's agent from /app, where box starts in the image", () => {
-    const container = profile("agent-python-strands-container");
-    expect(container.packs).toEqual(["box/base", "box/bedrock"]);
-    expect(container.agent).toEqual({
-      command: [
-        "${{ workspace }}/.venv/bin/python",
-        "-m",
-        "uvicorn",
-        "main:app",
-        "--app-dir",
-        "${{ workspace }}",
-        "--reload",
-        "--reload-dir",
-        "${{ workspace }}",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8081",
-      ],
-      env: { LOCAL_DEV: "1", PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
-      filesystem: {
-        read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
-        exec: [
-          { path: "${{ workspace }}/.venv", optional: true },
-          "/usr/local/bin",
-          "/usr/local/lib",
-          "/usr/lib/aarch64-linux-gnu",
-        ],
-        deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
-      },
-      ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
+  test("names the provider section generically for a LiteLLM model ID with no prefix", () => {
+    const runtime = template("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "gpt-4o",
+      apiKey: "sk-test",
     });
-    expect(container.egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
+    expect(boxProfileWarnings(runtime)).toEqual([
+      "the box profile has no route for the LiteLLM model 'gpt-4o': add an [egress.<provider>] " +
+        "section with its provider's host to .box/profile.toml (or use an openai/, anthropic/ or " +
+        "gemini/ model ID), or the box blocks the agent's model calls",
+    ]);
   });
 
   test.each([
+    // Its image does not run `box run` yet, and a profile written here would not reach the image.
+    "agent-python-strands-container",
     "environment-python-bma",
     "agent-typescript-strands",
     "agent-typescript-vercel",

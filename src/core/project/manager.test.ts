@@ -354,7 +354,8 @@ describe("FsProjectManager.create", () => {
 
   test("scaffolds the container template with a Dockerfile and .dockerignore", async () => {
     const directory = await inTempDirectory();
-    await runCreate(manager().manager, {
+    const setup = manager();
+    await runCreate(setup.manager, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER,
     });
@@ -367,6 +368,9 @@ describe("FsProjectManager.create", () => {
 
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    // The image does not run box, so the host venv may use any Python and no profile is written.
+    expect(setup.commands).toContainEqual({ command: ["uv", "sync"], cwd: appDir });
+    expect(await Bun.file(join(directory, "example", BOX_PROFILE_FILE)).exists()).toBe(false);
   });
 
   test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {

@@ -25,9 +25,6 @@ export function boxUvSyncEnv(home: string): Record<string, string> {
   return { UV_MANAGED_PYTHON: "1", UV_PYTHON_INSTALL_DIR: join(home, UV_PYTHON_HOME_DIR) };
 }
 
-/** The system libraries of the Linux arm64 image, such as libssl. */
-const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
-
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
 /**
@@ -53,22 +50,11 @@ export function boxProfilePath(projectRoot: string): string {
 
 /**
  * Whether create writes a box profile for this runtime: every Python CodeZip
- * template, and the Strands container template, whose image runs the agent
- * with `box run`. The Bedrock Managed Agents image has no box.
+ * template. A container template gets none until its image runs `box run`,
+ * and the Bedrock Managed Agents image has no box.
  */
 export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
-  return (
-    (runtime.language === "Python" && runtime.build === "CodeZip") || isBoxedContainer(runtime)
-  );
-}
-
-/** The Strands container template, whose image starts `box run` in /app. */
-function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
-  return (
-    runtime.build === "Container" &&
-    runtime.language === "Python" &&
-    runtime.framework === "strands"
-  );
+  return runtime.language === "Python" && runtime.build === "CodeZip";
 }
 
 /**
@@ -197,32 +183,8 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
   return {
     command,
     env,
-    read: [str(appDir), str(`${appDir}/.venv`), uvPython],
+    read: [str(appDir), optional(`${appDir}/.venv`), uvPython],
     exec: [optional(`${appDir}/.venv`), uvPython],
-    denyWrite: [optional(`${appDir}/.venv`)],
-  };
-}
-
-/**
- * The Strands container image's agent: the code and its venv are in /app,
- * where box starts, and the venv links to the image's own Python in
- * /usr/local.
- */
-function containerRunner(workloadPort: number): Runner {
-  const appDir = "${{ workspace }}";
-  const { command, env } = serve("HTTP", appDir, workloadPort);
-  return {
-    command,
-    env,
-    // The image's Python loads its own native modules (lib-dynload) from /usr/local/lib, and the
-    // system libraries they link, such as libssl, from the multiarch folder.
-    read: [str(appDir), str("/usr/local/lib"), str(LINUX_LIBRARIES)],
-    exec: [
-      optional(`${appDir}/.venv`),
-      str("/usr/local/bin"),
-      str("/usr/local/lib"),
-      str(LINUX_LIBRARIES),
-    ],
     denyWrite: [optional(`${appDir}/.venv`)],
   };
 }
@@ -246,21 +208,14 @@ export function renderBoxProfile(
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = ingressPort + 1;
-  const container = isBoxedContainer(runtime);
-  const runner = container
-    ? containerRunner(workloadPort)
-    : codeZipRunner(protocol, appDir, workloadPort);
-  // In the image, Docker forwards the host's port to the container's own address, not loopback.
-  const listenHost = container ? "0.0.0.0" : "127.0.0.1";
+  const runner = codeZipRunner(protocol, appDir, workloadPort);
   const callsModel = protocol !== "MCP";
   const bedrock = callsModel && callsBedrockModel(runtime);
   const keyed = callsModel ? apiKeyRoute(runtime) : undefined;
   const environment = { LOCAL_DEV: "1", ...runner.env, ...PYTHON_ENV };
 
   // The optional sections, each empty or ending in a newline.
-  const header = container
-    ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-    : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
+  const header = `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
   const regionComment =
     "# The AWS region `agentcore create` resolved. Change it to call Bedrock in another region\n" +
     "# under `agentcore dev`; build and deploy set the region they deploy to.\n";
@@ -298,7 +253,7 @@ exec = [${runner.exec.join(", ")}]
 deny_write = [${runner.denyWrite.join(", ")}]
 
 [[agent.ingress]]
-listen = ${str(`${listenHost}:${ingressPort}`)}
+listen = ${str(`127.0.0.1:${ingressPort}`)}
 workload_port = ${workloadPort}
 ${bedrockRoute}${keyedRoute}`;
 }
@@ -330,11 +285,16 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
   const route = apiKeyRoute(runtime);
   if (route === undefined) {
     const modelId = runtime.modelId ?? DEFAULT_MODEL_IDS.LiteLLM;
-    const prefix = modelId.split("/")[0];
+    // With no provider prefix (`gpt-4o`), LiteLLM guesses the provider, so the section has no
+    // name to suggest; a prefix the profile knows gets its route without editing.
+    const [prefix, model] = modelId.split("/");
+    const section = model === undefined ? "[egress.<provider>]" : `[egress.${prefix}]`;
+    const prefixHint =
+      model === undefined ? " (or use an openai/, anthropic/ or gemini/ model ID)" : "";
     return [
       `the box profile has no route for the LiteLLM model '${modelId}': add an ` +
-        `[egress.${prefix}] section with its provider's host to ${BOX_PROFILE_FILE}, or the box ` +
-        "blocks the agent's model calls",
+        `${section} section with its provider's host to ${BOX_PROFILE_FILE}${prefixHint}, or the ` +
+        "box blocks the agent's model calls",
     ];
   }
   if (runtime.apiKey !== undefined || route.providerVariable === undefined) return [];

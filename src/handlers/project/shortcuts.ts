@@ -27,8 +27,8 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 }
 
 /**
- * The Bedrock region a boxed agent's model calls go to, fixed for now.
- * `create` does not know the deploy region (deploy resolves it, per target).
+ * The Bedrock region of the box profile `agentcore create` writes when the
+ * caller passes no region. Both create paths pass the region they resolved.
  */
 export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
 

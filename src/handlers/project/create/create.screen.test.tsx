@@ -112,7 +112,8 @@ describe("project create wizard", () => {
       {
         name: "DemoApp",
         skipInstall: false,
-        skipGit: false, region: REGION,
+        skipGit: false,
+        region: REGION,
         scaffoldHarnessInput: {
           name: "DemoApp",
           model: { provider: "bedrock", modelId: DEFAULT_MODEL_ID },
@@ -152,7 +153,8 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "TunedApp",
       skipInstall: false,
-      skipGit: false, region: REGION,
+      skipGit: false,
+      region: REGION,
       scaffoldHarnessInput: {
         name: "TunedApp",
         model: { provider: "bedrock", modelId: `${DEFAULT_MODEL_ID}-test` },
@@ -201,7 +203,8 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "OpenAIApp",
       skipInstall: false,
-      skipGit: false, region: REGION,
+      skipGit: false,
+      region: REGION,
       scaffoldHarnessInput: {
         name: "OpenAIApp",
         model: {
@@ -252,7 +255,8 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "KeyApp",
       skipInstall: false,
-      skipGit: false, region: REGION,
+      skipGit: false,
+      region: REGION,
       scaffoldHarnessInput: {
         name: "KeyApp",
         model: {
@@ -553,7 +557,8 @@ describe("project create wizard", () => {
       {
         name: "StrandsApp",
         skipInstall: false,
-        skipGit: false, region: REGION,
+        skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
         }),
@@ -680,7 +685,8 @@ describe("project create wizard", () => {
       {
         name: "KeyedApp",
         skipInstall: false,
-        skipGit: false, region: REGION,
+        skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
           modelProvider: "Anthropic",
@@ -890,7 +896,8 @@ describe("project create wizard", () => {
       {
         name: "BaseApp",
         skipInstall: false,
-        skipGit: false, region: REGION,
+        skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
           modelProvider: "OpenAICompatible",
@@ -1056,7 +1063,8 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "HelloApp",
       skipInstall: false,
-      skipGit: false, region: REGION,
+      skipGit: false,
+      region: REGION,
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-minimal", {
         runtimeName: "agent",
       }),
@@ -1099,7 +1107,8 @@ describe("project create wizard", () => {
       {
         name: "LangChainApp",
         skipInstall: false,
-        skipGit: false, region: REGION,
+        skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-langchain", {
           runtimeName: "agent",
         }),
@@ -1138,7 +1147,12 @@ describe("project create wizard", () => {
     expect(frame).toContain("agentcore add --help");
     expect(frame).not.toContain("agentcore dev");
 
-    expect(inputs[0]).toEqual({ name: "EmptyApp", skipInstall: false, skipGit: false, region: REGION });
+    expect(inputs[0]).toEqual({
+      name: "EmptyApp",
+      skipInstall: false,
+      skipGit: false,
+      region: REGION,
+    });
 
     const spec = await Bun.file(join(directory, "EmptyApp", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes ?? []).toHaveLength(0);
