@@ -224,6 +224,11 @@ deploy. It deploys nothing. The agent signs its Bedrock calls with your `[defaul
 (`secret.ref = "aws://default"` in `.box/agent/local/profile.toml`), and Memory is off
 (`LOCAL_DEV=1`).
 
+Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must
+have `"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a
+plain runtime the usual way, and stops on one that starts box (a CodeZip `start.py` entrypoint, or
+a Dockerfile that installs box) with `agentcore.json has no "projectType": "box"`.
+
 ### Which box builds exist
 
 The box release has these builds:

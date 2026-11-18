@@ -135,10 +135,12 @@ function input(
   root: string,
   projectRuntime: ProjectRuntime,
   signal = new AbortController().signal,
+  boxProject = true,
 ): DevServerInput {
   return {
     runtime: projectRuntime,
     projectRoot: root,
+    boxProject,
     port: 3000,
     env: { API_KEY: "super-secret" },
     signal,
@@ -935,6 +937,23 @@ describe("ContainerDevRunner", () => {
       );
 
       expect(existsSync(join(context, ".box-dev"))).toBe(false);
+    });
+
+    test('refuses an image that installs box when agentcore.json has no "projectType": "box"', async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const error = await collect(
+        runner.run(input(root, projectRuntime, undefined, /* boxProject */ false)),
+      ).catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect((error as Error).message).toContain(
+        'runs its agent in a box (its Dockerfile installs box), but agentcore.json has no "projectType": "box"',
+      );
+      expect(calls.map(({ command }) => command[1])).not.toContain("build");
+      expect(calls.map(({ command }) => command[1])).not.toContain("run");
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
     });
 
     test("stages box of the runtime's box.version", async () => {
