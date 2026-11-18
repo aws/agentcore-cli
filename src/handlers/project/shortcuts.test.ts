@@ -18,6 +18,7 @@ describe("template order", () => {
       "agent-python-langchain",
       "environment-python-bma",
       "agent-python-minimal",
+      "agent-python-minimal-box",
       "agent-typescript-strands",
       "agent-typescript-vercel",
       "a2a-python-strands",
