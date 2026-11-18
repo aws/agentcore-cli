@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import z from "zod";
@@ -16,6 +16,8 @@ type RuntimeTemplateTestCase = {
   invokeFlags?: string[];
   /** Skips the `agentcore dev` step and its local invoke; deploy and the remote invoke still run. */
   skipDev?: boolean;
+  /** The runtime's runtimeVersion, written into agentcore.json after create; the template's otherwise. */
+  runtimeVersion?: string;
   skip?: boolean;
   /**
    * A Strands Box template: it runs its agent in a box on AgentCore Runtime. Create needs `box` on
@@ -98,6 +100,18 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     skipDev: true,
     skip: process.env.CI === "true",
   },
+  // The CodeZip box template on each other Python the CodeZip Runtime supports; it defaults to 3.14.
+  ...(["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"] as const).map(
+    (runtimeVersion) => ({
+      name: `py_strands_box_${runtimeVersion.slice("PYTHON_".length)}`,
+      template: "agent-python-strands-box",
+      protocol: "HTTP" as const,
+      payload: { prompt: "Reply with a short greeting." },
+      skipDev: true,
+      runtimeVersion,
+      skip: process.env.CI === "true",
+    }),
+  ),
   {
     name: "py_strands_box_container",
     template: "agent-python-strands-box-container",
@@ -292,6 +306,10 @@ describe(
             ),
           );
           expect(response.complete).toBe(true);
+          // As locally: an agent that failed to start answers with an error status or nothing.
+          expect(response.statusCode).toBeGreaterThanOrEqual(200);
+          expect(response.statusCode).toBeLessThan(300);
+          expect(response.body.trim()).not.toBe("");
           if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
             assertProtocolResponse(runtime, response.body);
           }
@@ -431,6 +449,14 @@ async function createTemplateProject(
       parent,
     ),
   );
+  if (runtime.runtimeVersion) {
+    const specPath = join(created.project.path, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8")) as {
+      runtimes: { runtimeVersion?: string }[];
+    };
+    for (const entry of spec.runtimes) entry.runtimeVersion = runtime.runtimeVersion;
+    await writeFile(specPath, `${JSON.stringify(spec, null, 2)}\n`);
+  }
   return created.project.path;
 }
 
