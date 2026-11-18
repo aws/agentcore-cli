@@ -49,7 +49,7 @@ export async function readBoxNetworks(
   const withDefaults = structuredClone(spec);
   addBoxGatewayTargets(withDefaults, projectRoot, region);
   return runtimes.map((runtime) => {
-    // Each boxed agent reads its own box/<name>/local profile and policy files. The Runtime
+    // Each boxed agent reads its own .box/<name>/local profile and policy files. The Runtime
     // profile sets `[options] bedrock.region` to the region build builds for, so the model reads
     // box/bedrock's route for that region, not the one `agentcore dev` uses.
     const read = readProfile(projectRoot, runtime.name, region);
@@ -108,7 +108,7 @@ function readProfile(
 
 /**
  * Each policy file the profile names, read as Box reads it: a regular file with one link, inside
- * the agent's `box/<name>/local/` folder, and a failure for each other one.
+ * the agent's `.box/<name>/local/` folder, and a failure for each other one.
  */
 function readPolicyFiles(
   projectRoot: string,

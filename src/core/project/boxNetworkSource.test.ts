@@ -25,16 +25,16 @@ const SPEC = {
   agentCoreGateways: [],
 } as unknown as ProjectSpec;
 
-/** A project root whose profile names `policies`, with `box/agent/local/policy.dw` in it. */
+/** A project root whose profile names `policies`, with `.box/agent/local/policy.dw` in it. */
 async function project(policies: string[]): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
   directories.push(root);
-  await mkdir(join(root, "box", "agent", "local"), { recursive: true });
+  await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
   await writeFile(
-    join(root, "box", "agent", "local", "profile.toml"),
+    join(root, ".box", "agent", "local", "profile.toml"),
     `policies = ${JSON.stringify(policies)}\n[egress.api]\ndestinations = ["api.example.com"]\n`,
   );
-  await writeFile(join(root, "box", "agent", "local", "policy.dw"), "// no rule\n");
+  await writeFile(join(root, ".box", "agent", "local", "policy.dw"), "// no rule\n");
   return root;
 }
 
@@ -119,36 +119,36 @@ describe("readBoxNetworks", () => {
     ]);
     const elsewhere = join(root, "elsewhere.dw");
     await writeFile(elsewhere, "// outside\n");
-    await symlink(elsewhere, join(root, "box", "agent", "local", "outside.dw"));
+    await symlink(elsewhere, join(root, ".box", "agent", "local", "outside.dw"));
     await link(
-      join(root, "box", "agent", "local", "policy.dw"),
-      join(root, "box", "agent", "local", "linked.dw"),
+      join(root, ".box", "agent", "local", "policy.dw"),
+      join(root, ".box", "agent", "local", "linked.dw"),
     );
-    await mkdir(join(root, "box", "agent", "local", "folder.dw"));
+    await mkdir(join(root, ".box", "agent", "local", "folder.dw"));
 
     expect(failuresOf(root)).toEqual([
       expect.objectContaining({
-        place: "box/agent/local/missing.dw",
+        place: ".box/agent/local/missing.dw",
         reason: expect.stringContaining("does not exist"),
       }),
       expect.objectContaining({
-        place: "box/agent/local/outside.dw",
+        place: ".box/agent/local/outside.dw",
         reason: expect.stringContaining("a symlink that leaves the agent's local box folder"),
       }),
       expect.objectContaining({
-        place: "box/agent/local/linked.dw",
+        place: ".box/agent/local/linked.dw",
         reason: expect.stringContaining("has 2 hard links"),
       }),
       expect.objectContaining({
-        place: "box/agent/local/folder.dw",
+        place: ".box/agent/local/folder.dw",
         reason: expect.stringContaining("is a directory"),
       }),
       expect.objectContaining({
-        place: "box/agent/local/box",
+        place: ".box/agent/local/box",
         reason: expect.stringContaining("takes the name box"),
       }),
       expect.objectContaining({
-        place: "box/agent/local/a b.dw",
+        place: ".box/agent/local/a b.dw",
         reason: expect.stringContaining("cannot copy"),
       }),
     ]);
@@ -157,8 +157,8 @@ describe("readBoxNetworks", () => {
   test("reads a symlink that stays inside the agent's local box folder", async () => {
     const root = await project(["inner.dw"]);
     await symlink(
-      join(root, "box", "agent", "local", "policy.dw"),
-      join(root, "box", "agent", "local", "inner.dw"),
+      join(root, ".box", "agent", "local", "policy.dw"),
+      join(root, ".box", "agent", "local", "inner.dw"),
     );
 
     expect(await failuresOf(root)).toEqual([]);
@@ -275,14 +275,14 @@ describe("the IAM policy files of the Box gateway", () => {
 
 describe("boxNetworkFailureMessage", () => {
   test("lists every failure of an agent under its own profile, and says nothing was written", async () => {
-    // Each boxed agent reads its own box/<name>/local profile, so a failure names that path.
+    // Each boxed agent reads its own .box/<name>/local profile, so a failure names that path.
     const root = await project(["missing.dw"]);
 
     expect(boxNetworkFailureMessage(readBoxNetworks(SPEC, root))).toBe(
-      "box/agent/local/profile.toml does not parse into the Box network of the Box gateway " +
+      ".box/agent/local/profile.toml does not parse into the Box network of the Box gateway " +
         "'agent-box' of runtime 'agent' (1 failure):\n" +
-        "  - INVALID_POLICY_FILE, at box/agent/local/missing.dw: box/agent/local/profile.toml " +
-        "names the policy file box/agent/local/missing.dw, which does not exist\n\n" +
+        "  - INVALID_POLICY_FILE, at .box/agent/local/missing.dw: .box/agent/local/profile.toml " +
+        "names the policy file .box/agent/local/missing.dw, which does not exist\n\n" +
         "Nothing of the box profile was written: no gateway target, credential, Memory target, " +
         "or file. Change the profile or its policy files, then retry.",
     );

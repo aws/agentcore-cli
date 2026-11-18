@@ -102,7 +102,7 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run box/agent/local/profile.toml` can load it by its path", () => {
+  test("names itself after the project, so `box run .box/agent/local/profile.toml` can load it by its path", () => {
     expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
   });
 
@@ -256,7 +256,7 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-strands", groq).egress).toBeUndefined();
     expect(boxProfileWarnings(runtime)).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
-        "section with its provider's host to box/agent/local/profile.toml, or the box blocks the agent's " +
+        "section with its provider's host to .box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
     ]);
   });
