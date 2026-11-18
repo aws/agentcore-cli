@@ -234,6 +234,12 @@ export type StreamProcessOptions = {
   signal?: AbortSignal;
   /** Command rendered in errors when the actual arguments contain sensitive values. */
   redactedCommand?: string[];
+  /**
+   * After the child exits, how long its stdout and stderr may stay open before they are abandoned,
+   * for a child that hands its pipes to a longer-lived process (Finch's `finch run`). Unset waits
+   * for every holder to close them, so a wrapper's late output is kept.
+   */
+  pipeCloseGraceMs?: number;
 };
 
 export type ProcessStreamer = (
@@ -403,6 +409,20 @@ export async function* streamProcess(
     exitSignal = signal;
     finish();
   });
+  const pipeCloseGraceMs = options.pipeCloseGraceMs;
+  if (pipeCloseGraceMs !== undefined) {
+    child.once("exit", (code, signal) => {
+      const timer = setTimeout(() => {
+        if (closed) return;
+        exitCode = code;
+        exitSignal = signal;
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish();
+      }, pipeCloseGraceMs);
+      timer.unref();
+    });
+  }
   options.signal?.addEventListener("abort", terminate, { once: true });
 
   try {

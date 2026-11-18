@@ -442,6 +442,17 @@ describe("project dev selection and dispatch", () => {
     expect(subject.io.stderr()).not.toContain("Skipping runtime");
   });
 
+  test('tells the runner whether agentcore.json has "projectType": "box", as build reads it', async () => {
+    const plain = harness({ project: project(runtime("orders")) });
+    await plain.run({ agent: "orders", port: 4567 });
+    expect(plain.codeZip.inputs[0]).toMatchObject({ boxProject: false });
+
+    const boxed = project(runtime("orders"));
+    const box = harness({ project: { ...boxed, spec: { ...boxed.spec, projectType: "box" } } });
+    await box.run({ agent: "orders", port: 4567 });
+    expect(box.codeZip.inputs[0]).toMatchObject({ boxProject: true });
+  });
+
   test("announces an automatically selected port", async () => {
     const checked: number[] = [];
     const subject = harness({
@@ -628,6 +639,25 @@ async function runUi(subject: ReturnType<typeof harness>, args: readonly string[
 }
 
 describe("project dev Inspector UI mode", () => {
+  test("leaves the box's agent port to the box when a CodeZip runtime runs in one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-dev-box-ui-"));
+    try {
+      const local = join(root, ".box", "search", "local");
+      await mkdir(local, { recursive: true });
+      await writeFile(join(local, "profile.toml"), "");
+      const subject = harness({ project: { ...project(runtime("search")), rootPath: root } });
+
+      const { pending } = await runUi(subject);
+
+      expect(subject.ui.starts).toEqual([{ port: 8082 }]);
+
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("starts the Inspector, prints the URL, and opens the browser on a TTY", async () => {
     const subject = harness({ tty: true });
     const { pending } = await runUi(subject);

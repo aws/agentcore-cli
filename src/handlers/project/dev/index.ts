@@ -1,9 +1,12 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import z from "zod";
 import { createInspectorHandler } from "../../../core/dev/inspector/server";
 import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
+import { writeBoxDevEnvLocal } from "../../../core/dev/boxEnvLocal";
+import { boxLocalProfilePath, boxWorkloadPort } from "../../../core/project/templates/boxProfile";
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
@@ -26,6 +29,7 @@ import { JsonKey, RegionKey } from "../../keys";
 import { coreOptsFromCtx } from "../../utils";
 import type { CoreHarnessClient } from "../../harness/types";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
+import { isBoxProject } from "../../../projectSchemas/project";
 import { createDeployProjectHandler, DEPLOY_NEXT_STEP } from "../deploy";
 import type { Project, ProjectManager } from "../types";
 import { BMA_TEMPLATE_NAME, isBmaRuntime } from "../bma";
@@ -393,6 +397,12 @@ async function runRuntimeDev({
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );
+        // Each boxed agent reads its own .box/<name>/local profile for the env vars its routes name.
+        for (const runtime of runtimes) {
+          for (const message of await writeBoxDevEnvLocal(project.rootPath, runtime.name)) {
+            renderStatus({ io: config.io, message, json });
+          }
+        }
 
         collector = input.traces
           ? await startRuntimeTraceCollector({ config, project, runtimes, json })
@@ -433,6 +443,7 @@ async function runRuntimeDev({
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
+          boxProject: isBoxProject(project.spec),
           runners: config.runners,
           getDevEnvVarsForRuntime,
           // The --port guard above rejects an explicit port with more than one
@@ -466,8 +477,24 @@ async function runRuntimeDev({
           return;
         }
 
-        const uiPort = (await findFreePort(UI_DEFAULT_PORT, input.uiPort, config.checkPort, signal))
-          .port;
+        // On macOS the box refuses to start when another process listens on its agent's port.
+        const boxPorts = new Set(
+          runtimes
+            .filter(
+              ({ build, name }) =>
+                build === "CodeZip" && existsSync(boxLocalProfilePath(project.rootPath, name)),
+            )
+            .map(({ protocol }) => boxWorkloadPort(protocol)),
+        );
+        const uiPort = (
+          await findFreePort(
+            UI_DEFAULT_PORT,
+            input.uiPort,
+            async (candidate, checkSignal) =>
+              !boxPorts.has(candidate) && config.checkPort(candidate, checkSignal),
+            signal,
+          )
+        ).port;
         const server = await config.startServer(
           createInspectorHandler({
             supervisor,
@@ -628,6 +655,7 @@ async function runWithoutUi({
   for await (const event of runner.run({
     runtime,
     projectRoot: project.rootPath,
+    boxProject: isBoxProject(project.spec),
     port: devPort.port,
     env,
     signal,

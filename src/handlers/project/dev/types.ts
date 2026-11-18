@@ -9,6 +9,11 @@ export type DevEvent =
 export type DevServerInput = {
   runtime: ProjectRuntime;
   projectRoot: string;
+  /**
+   * Whether agentcore.json has `"projectType": "box"` (`isBoxProject`), which build and deploy
+   * read to give each runtime its Box gateway. Dev runs an agent in a box only then.
+   */
+  boxProject: boolean;
   port: number;
   env?: Record<string, string>;
   signal: AbortSignal;
