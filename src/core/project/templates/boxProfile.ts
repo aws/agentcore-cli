@@ -449,6 +449,12 @@ export function renderBoxProfile(
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
+  // The image's agent reads /app and writes nothing there. Build resolves the profile on the host,
+  // where the image's /app/.venv does not exist, so a write grant would leave its Python unprotected
+  // and box would refuse the profile. A CodeZip agent writes in the folder box starts in.
+  const projectSection = container
+    ? '# The agent, and the tools its packs add, can read the folder box starts in.\n[project]\naccess = "read"\n'
+    : '# The agent, and the tools its packs add, can read and write the folder box starts in.\n[project]\naccess = "write"\n';
   const codeZipOnRuntime = onRuntime && !container;
   const runner = container
     ? containerRunner(workloadPort, !onRuntime)
@@ -488,7 +494,7 @@ export function renderBoxProfile(
   // box refuses to run a program from a folder that any process in the box can write, so each
   // tool that gets the project's write grant lists the venv too.
   const toolDenyWrite =
-    runner.denyWrite.length > 0
+    !container && runner.denyWrite.length > 0
       ? BOX_BASE_PROJECT_WRITE_TOOLS.map(
           (tool) => `\n[tool.${tool}.filesystem]\ndeny_write = [${runner.denyWrite.join(", ")}]\n`,
         ).join("")
@@ -534,10 +540,7 @@ ${policies}
 [profile]
 name = ${str(projectName)}
 
-# The agent, and the tools its packs add, can read and write the folder box starts in.
-[project]
-access = "write"
-
+${projectSection}
 ${options}[agent]
 command = ${list(runner.command)}
 
