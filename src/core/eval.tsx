@@ -67,6 +67,7 @@ import {
   type UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  DeleteDatasetGenerationCommand,
   DeleteRecommendationCommand,
   EvaluateCommand,
   CreateABTestCommand,
@@ -75,12 +76,16 @@ import {
   UpdateABTestCommand,
   DeleteABTestCommand,
   GetBatchEvaluationCommand,
+  GetDatasetGenerationCommand,
   GetRecommendationCommand,
   ListBatchEvaluationsCommand,
+  ListDatasetGenerationsCommand,
   ListRecommendationsCommand,
   StartBatchEvaluationCommand,
+  StartDatasetGenerationCommand,
   StartRecommendationCommand,
   StopBatchEvaluationCommand,
+  type DeleteDatasetGenerationResponse,
   type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
@@ -92,11 +97,14 @@ import {
   type ABTestExecutionStatus,
   type UpdateABTestResponse,
   type DeleteABTestResponse,
+  type GetDatasetGenerationResponse,
   type GetRecommendationResponse,
   type ListBatchEvaluationsResponse,
+  type ListDatasetGenerationsResponse,
   type ListRecommendationsResponse,
   type RecommendationStatus,
   type StartBatchEvaluationResponse,
+  type StartDatasetGenerationResponse,
   type StartRecommendationResponse,
   type StopBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
@@ -159,6 +167,7 @@ import type {
   InvokeDatasetResult,
   SpanRecord,
   StartBatchEvaluationInput,
+  StartDatasetGenerationInput,
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -484,6 +493,46 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .data(toClientConfig(options))
       .send(new DeleteRecommendationCommand({ recommendationId: id }));
+  }
+
+  async startDatasetGeneration(
+    input: StartDatasetGenerationInput,
+    options: CoreOptions,
+  ): Promise<StartDatasetGenerationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new StartDatasetGenerationCommand(input));
+  }
+
+  async getDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<GetDatasetGenerationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new GetDatasetGenerationCommand({ datasetId, generationId }));
+  }
+
+  async listDatasetGenerations(
+    datasetId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetGenerationsResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new ListDatasetGenerationsCommand({ datasetId, nextToken, maxResults }));
+  }
+
+  async deleteDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetGenerationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new DeleteDatasetGenerationCommand({ datasetId, generationId }));
   }
 
   // getBatchEvaluation returns the service-side job (status + evaluator summaries
