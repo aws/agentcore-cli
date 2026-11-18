@@ -23,6 +23,7 @@ import {
 import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import { boxGatewayName, isBoxProject } from "../../../projectSchemas/project";
 import type {
   DeployBackendInput,
   ProjectBackend,
@@ -269,6 +270,7 @@ export class CdkBackend implements ProjectBackend {
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
+    this.assertBoxGatewaysPresent(project);
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
@@ -420,6 +422,27 @@ export class CdkBackend implements ProjectBackend {
     });
 
     return { outputs };
+  }
+
+  /**
+   * Stops a deploy of a Box project that is missing a runtime's Box gateway in agentcore.json.
+   * The CLI keeps one Box gateway for each runtime, so a missing one means the file was hand-edited.
+   * The gateway belongs to its runtime and cannot be removed this way; the deploy would delete it.
+   */
+  private assertBoxGatewaysPresent(project: Project): void {
+    if (!isBoxProject(project.spec)) return;
+    const present = new Set(project.spec.agentCoreGateways.map((gateway) => gateway.name));
+    const missing = project.spec.runtimes
+      .map((runtime) => boxGatewayName(runtime.name))
+      .filter((name) => !present.has(name));
+    if (missing.length === 0) return;
+    const plural = missing.length === 1 ? "gateway" : "gateways";
+    throw new ProjectStateError(
+      `agentcore.json is missing the Box ${plural} ${missing.map((name) => `'${name}'`).join(", ")}. ` +
+        `A Box gateway belongs to its runtime and cannot be removed by editing agentcore.json. ` +
+        `Restore the ${missing.length === 1 ? "entry" : "entries"}, or run 'agentcore remove runtime' ` +
+        `to remove the runtime and its Box gateway.`,
+    );
   }
 
   /**

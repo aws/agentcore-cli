@@ -408,6 +408,32 @@ describe("CdkBackend.build", () => {
 });
 
 describe("CdkBackend.deploy", () => {
+  test("stops a Box project deploy when a runtime's Box gateway is missing from agentcore.json", async () => {
+    const base = await project();
+    const input: Project = {
+      ...base,
+      spec: ProjectSpecSchema.parse({
+        name: "example",
+        version: 2,
+        projectType: "box",
+        runtimes: [
+          {
+            name: "agent",
+            build: "CodeZip",
+            entrypoint: "main.py",
+            codeLocation: "app/agent",
+            runtimeVersion: "PYTHON_3_12",
+          },
+        ],
+      }),
+    };
+    const subject = harness();
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      "agentcore.json is missing the Box gateway 'agent-box-egress'",
+    );
+  });
+
   test("preflights, synthesizes, and deploys the selected stack", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
