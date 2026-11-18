@@ -32,13 +32,13 @@ async function temp(prefix: string): Promise<string> {
   return directory;
 }
 
-/** A project named `Demo` that holds the agent's box profile in box/agent/local when `profiled`. */
+/** A project named `Demo` that holds the agent's box profile in .box/agent/local when `profiled`. */
 async function scene(profiled: boolean, boxOnPath = true) {
   const projectRoot = await temp("agentcore-box-project-");
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
   if (profiled) {
-    const local = join(projectRoot, "box", "agent", "local");
+    const local = join(projectRoot, ".box", "agent", "local");
     await mkdir(local, { recursive: true });
     await writeFile(join(local, "profile.toml"), PROFILE);
     await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
@@ -121,7 +121,7 @@ describe("BoxDevRunner", () => {
     const events = await collect(runner.run(input(projectRoot)));
 
     expect(calls.map(({ command }) => command)).toEqual([
-      ["box", "run", "box/agent/local/profile.toml", "--no-banner"],
+      ["box", "run", ".box/agent/local/profile.toml", "--no-banner"],
     ]);
     expect(calls[0]!.options.cwd).toBe(projectRoot);
     expect(fallbackRuns).toEqual([]);
@@ -129,7 +129,7 @@ describe("BoxDevRunner", () => {
       TRACES_NOTICE,
       {
         type: "status",
-        message: "Starting the agent in a box (box run box/agent/local/profile.toml)",
+        message: "Starting the agent in a box (box run .box/agent/local/profile.toml)",
       },
       { type: "stdout", line: "Uvicorn running" },
     ]);

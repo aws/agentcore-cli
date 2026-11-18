@@ -893,7 +893,7 @@ export class FsProjectManager implements ProjectManager {
           outputPath,
           input.resourceConfig.scaffoldRuntimeInput,
         );
-        // Each boxed agent gets its own box/<name>/local profile, so a runtime added later is
+        // Each boxed agent gets its own .box/<name>/local profile, so a runtime added later is
         // not left without one. Create writes the first runtime's profile on its own path.
         const addedRuntimeInput = input.resourceConfig.scaffoldRuntimeInput;
         if (addedRuntimeInput && hasBoxProfile(addedRuntimeInput)) {
@@ -2064,7 +2064,7 @@ export class FsProjectManager implements ProjectManager {
 
   /**
    * Writes the box profile that runs the scaffolded agent into the agent's
-   * `box/<agentName>/local/` folder, named after the project, calling Bedrock in
+   * `.box/<agentName>/local/` folder, named after the project, calling Bedrock in
    * `region`. An existing profile is the user's, so it is never overwritten.
    */
   private async *writeBoxProfile(

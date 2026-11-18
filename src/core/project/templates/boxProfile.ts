@@ -98,7 +98,7 @@ export function boxWorkloadPort(protocol: Protocol | undefined): number {
 }
 
 /** The box folder at the project root that holds every agent's profiles. */
-export const BOX_ROOT = "box";
+export const BOX_ROOT = ".box";
 
 /** An agent's box folder, relative to the project root: `box/<agentName>`. */
 export function boxAgentDir(agentName: string): string {
@@ -107,7 +107,7 @@ export function boxAgentDir(agentName: string): string {
 
 /**
  * An agent's local profile folder, relative to the project root:
- * `box/<agentName>/local`. It holds the profile `agentcore dev` runs and the
+ * `.box/<agentName>/local`. It holds the profile `agentcore dev` runs and the
  * policy files it names. box keeps the agent out of this folder, so the agent
  * cannot change its own profile.
  */
@@ -116,7 +116,7 @@ export function boxLocalDir(agentName: string): string {
 }
 
 /**
- * An agent's AWS folder, relative to the project root: `box/<agentName>/aws`.
+ * An agent's AWS folder, relative to the project root: `.box/<agentName>/aws`.
  * Build and deploy generate the AgentCore Runtime profile and its resources
  * here, then copy the folder into the deploy artifact's `.box-dist/` staging.
  */
@@ -126,7 +126,7 @@ export function boxAwsDir(agentName: string): string {
 
 /**
  * An agent's local box profile, relative to the project root: `box run
- * box/<agentName>/local/profile.toml` there runs it.
+ * .box/<agentName>/local/profile.toml` there runs it.
  */
 export function boxLocalProfileFile(agentName: string): string {
   return posix.join(boxLocalDir(agentName), "profile.toml");
