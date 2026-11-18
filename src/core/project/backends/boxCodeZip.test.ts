@@ -147,7 +147,7 @@ describe("stageBoxCodeZip", () => {
   test("copies each policy file of the model, byte for byte, beside the profile that names it", async () => {
     const build = await linuxBuild();
     const demo = await project("start.py");
-    const local = join(demo.rootPath, "box", "agent", "local");
+    const local = join(demo.rootPath, ".box", "agent", "local");
     await mkdir(join(local, "rules"), { recursive: true });
     const bytes = Buffer.from([0x2f, 0x2f, 0x20, 0xe2, 0x9c, 0x93, 0x0d, 0x0a]);
     await writeFile(join(local, "policy.dw"), bytes);
