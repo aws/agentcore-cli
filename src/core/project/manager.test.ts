@@ -395,6 +395,8 @@ describe("FsProjectManager.create", () => {
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
+    // As for a plain runtime, so the Runtime profile starts the agent under opentelemetry-instrument.
+    expect(spec.runtimes[0].instrumentation).toBeUndefined();
   });
 
   test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {
@@ -1964,6 +1966,15 @@ describe("FsProjectManager.build", () => {
     return events;
   }
 
+  /** What build says of the boxed agent's traces, since create leaves instrumentation.enableOtel on. */
+  const BOX_TRACES_WARNING: ProjectEvent = {
+    type: "warning",
+    message:
+      "Runtime 'agent_python_strands_box' runs its agent in a box under opentelemetry-instrument, " +
+      "but box sends the agent's traces to its own collector, so they do not reach CloudWatch. " +
+      "Set instrumentation.enableOtel to false to start the agent without it.",
+  };
+
   test("compiles and synthesizes via the generated cdk script", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager(await boxHome());
@@ -2012,6 +2023,7 @@ describe("FsProjectManager.build", () => {
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
+      BOX_TRACES_WARNING,
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     // Build generates the canonical AWS tree under box/<agent>/aws.
@@ -2104,7 +2116,10 @@ describe("FsProjectManager.build", () => {
     // A second build, of the project as it now reads, changes nothing in agentcore.json.
     const reread = await subject.resolve({ filePath: root });
     const again = await drain(subject.build(reread!));
-    expect(again).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
+    expect(again).toEqual([
+      BOX_TRACES_WARNING,
+      { type: "step", message: "synthesizing CloudFormation templates" },
+    ]);
   });
 
   test("propagates a synthesis failure", async () => {
