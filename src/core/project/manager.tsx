@@ -114,8 +114,6 @@ import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
 import { assertNoPendingMigration } from "./migrate/journal";
 import { prepareRuntimes } from "./runtimeBuild";
-import { isContainerBuild } from "../../projectSchemas/constants";
-import { resolveWorkloadBuilds } from "./backends/cdk/localContainers";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -549,8 +547,7 @@ export class FsProjectManager implements ProjectManager {
         yield* this.installRuntimeDependencies(appDir, scaffoldRuntimeInput);
       }
     } else if (
-      scaffoldRuntimeInput !== undefined &&
-      isContainerBuild({ build: scaffoldRuntimeInput.build }) &&
+      scaffoldRuntimeInput?.build === "Container" &&
       templateManagesDependencies(resolveRuntimeTemplateProfile(scaffoldRuntimeInput))
     ) {
       // Container builds install from a lockfile, so generate it even with no-install.
@@ -761,7 +758,6 @@ export class FsProjectManager implements ProjectManager {
         if (!existsSync(outputPath)) scaffoldedPaths.push(outputPath);
 
         const resolver = getHarnessTemplateResolver({
-          projectRoot: project.rootPath,
           assetSource: this.assetSource,
           templateRenderer: this.templateRenderer,
         });
@@ -797,11 +793,7 @@ export class FsProjectManager implements ProjectManager {
           const relativeFolder = `app/${input.resourceConfig.name}`;
           yield { type: "step", message: `writing runtime docs to '${relativeFolder}'` };
           const tree = await runtimeDocsTree(
-            {
-              assetSource: this.assetSource,
-              templateRenderer: this.templateRenderer,
-              projectRoot: project.rootPath,
-            },
+            { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
             input.resourceConfig,
           );
           // Tracked as each file is written, so a write that fails partway is
@@ -1594,10 +1586,6 @@ export class FsProjectManager implements ProjectManager {
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
     project = synced.project;
-    // Resolved once, after auto-detection, so the caller (telemetry) and the
-    // backend see the build modes this deploy actually uses.
-    const workloadBuilds = resolveWorkloadBuilds(project);
-    input.onWorkloadBuilds?.(workloadBuilds);
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor
@@ -1699,7 +1687,6 @@ export class FsProjectManager implements ProjectManager {
       confirmTeardown: input.confirmTeardown,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
-      workloadBuilds,
     });
   }
 

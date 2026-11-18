@@ -4,7 +4,6 @@ import semver from "semver";
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { ProjectStateError } from "../../errors";
 import {
-  isContainerBuild,
   NodeRuntimeSchema,
   PythonRuntimeSchema,
   type RuntimeVersion,
@@ -91,7 +90,7 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
     next.build = "Container";
     next.dockerfile = DOCKERFILE_NAME;
     reasons.build = reasons.dockerfile = `${DOCKERFILE_NAME} in ${contextLabel}`;
-  } else if (isContainerBuild({ build: runtime.build }) && runtime.dockerfile === undefined) {
+  } else if (runtime.build === "Container" && runtime.dockerfile === undefined) {
     next.dockerfile = DOCKERFILE_NAME;
     reasons.dockerfile = "default";
   }
@@ -112,7 +111,7 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
   }
 
   // runtimeVersion: CodeZip only; a Container image picks its own.
-  if (isContainerBuild({ build: next.build })) {
+  if (next.build === "Container") {
     delete next.runtimeVersion;
     reasons.runtimeVersion = "Container build";
   } else {
@@ -565,7 +564,7 @@ function runtimeProblems(
   const folder = resolve(projectRoot, runtime.codeLocation);
   const folderLabel = `${displayPath(projectRoot, folder)}/`;
   const problems: string[] = [];
-  if (isContainerBuild(runtime)) {
+  if (runtime.build === "Container") {
     const context = contextDir(runtime, projectRoot);
     const dockerfile = runtime.dockerfile ?? DOCKERFILE_NAME;
     if (!isFile(join(context, dockerfile))) {
@@ -579,11 +578,7 @@ function runtimeProblems(
           `${codeZipRevertEdits(runtime)}.`,
       );
     }
-    if (
-      runtime.build === "Container" &&
-      runtime.networkMode === "VPC" &&
-      !runtime.networkConfig?.vpcId
-    ) {
+    if (runtime.networkMode === "VPC" && !runtime.networkConfig?.vpcId) {
       problems.push(
         `${prefix} networkConfig.vpcId is required for Container builds in VPC mode ` +
           `(CodeBuild cannot infer the VPC from subnets).`,
