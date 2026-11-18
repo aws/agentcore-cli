@@ -20,7 +20,9 @@ import {
 } from "./boxMemory";
 import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
 import {
+  AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
+  renderAgentCoreCodeZipPack,
   renderAgentCorePack,
   renderRuntimeBoxProfile,
 } from "./templates/boxProfile";
@@ -237,8 +239,10 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
-  /** Whether the runtime is a container, which also stages the `box/agentcore` pack. */
+  /** Whether the runtime is a container. Both runtimes stage the `box/agentcore` pack. */
   readonly container: boolean;
+  /** Whether the runtime is a CodeZip deploy, which also stages the `box/agentcore-codezip` pack. */
+  readonly codezip: boolean;
 }
 
 /**
@@ -251,23 +255,37 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
   return {
     name: "runtime profile",
     writes: (networks) =>
-      staged.flatMap(({ runtime, dist, container }) => [
+      staged.flatMap(({ runtime, dist, container, codezip }) => [
         { kind: "file" as const, path: `${dist}/profile.toml` },
-        // The container reads the deployed resources from the environment through this pack.
-        ...(container ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` }] : []),
+        // Both Runtime profiles read the deployed resources through this pack.
+        ...(container || codezip
+          ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` }]
+          : []),
+        // The CodeZip Runtime also reads its Python and code paths through this one.
+        ...(codezip
+          ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_CODEZIP_PACK_PATH}` }]
+          : []),
         ...(networkOf(networks, runtime)?.policyFiles ?? []).map((file) => ({
           kind: "file" as const,
           path: `${dist}/${file}`,
         })),
       ]),
     edits: (networks, { spec }) => ({
-      files: staged.flatMap(({ runtime, dist, container }) => {
+      files: staged.flatMap(({ runtime, dist, container, codezip }) => {
         const network = networkOf(networks, runtime);
         const entry = spec.runtimes.find(({ name }) => name === runtime)!;
         return [
           { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
-          ...(container
+          ...(container || codezip
             ? [{ path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) }]
+            : []),
+          ...(codezip
+            ? [
+                {
+                  path: `${dist}/${AGENTCORE_CODEZIP_PACK_PATH}`,
+                  text: renderAgentCoreCodeZipPack(),
+                },
+              ]
             : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
