@@ -7,7 +7,18 @@ import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../project
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
-import type { BoxNetwork, BoxNetworkSource, CloudWatchTelemetry } from "../boxNetwork";
+import type {
+  BoxNetwork,
+  BoxNetworkSource,
+  CloudWatchTelemetry,
+  ThirdPartyTelemetry,
+} from "../boxNetwork";
+import {
+  BOX_SECRETS_MANAGER_PLUGIN,
+  boxTelemetrySecretField,
+  boxTelemetrySecretName,
+  boxTelemetrySecretRef,
+} from "../boxTelemetrySecrets";
 import { modelProviderCredentialName } from "./runtime";
 
 /** Where a box template's venv gets its uv-managed Python, relative to the home folder. */
@@ -96,17 +107,19 @@ export function boxTelemetryLogGroup(projectName: string, runtimeName: string): 
 
 /**
  * The CloudWatch targets of the Runtime profile of `runtime`: those of its box profile, and, when
- * none of them is a `cloudwatch_logs` target, the runtime's Box telemetry log group in `region`.
+ * none of them is a `cloudwatch_logs` target, the runtime's Box telemetry log group in `region`,
+ * under a name that no CloudWatch target and no `thirdParty` target of the profile has.
  */
 export function runtimeTelemetryTargets(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
   telemetry: readonly CloudWatchTelemetry[] = [],
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  thirdParty: readonly ThirdPartyTelemetry[] = [],
 ): { readonly target: CloudWatchTelemetry; readonly isDefault: boolean }[] {
   const own = telemetry.map((target) => ({ target, isDefault: false }));
   if (telemetry.some(({ kind }) => kind === "cloudwatch_logs")) return own;
-  const names = new Set(telemetry.map(({ name }) => name));
+  const names = new Set([...telemetry, ...thirdParty].map(({ name }) => name));
   const name = names.has("agentcore") ? "agentcore_default" : "agentcore";
   return [
     ...own,
@@ -460,6 +473,7 @@ export function renderBoxProfile(
   runtimeRoutes = "",
   runtimePolicies: readonly string[] = [],
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  runtimePlugins: readonly string[] = [],
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
@@ -522,6 +536,11 @@ export function renderBoxProfile(
     onRuntime && runtimePolicies.length > 0
       ? `# The policy files of ${boxLocalProfileFile(runtime.runtimeName)}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
       : "";
+  // Only the profile may list a plugin: box stops a run whose pack lists one.
+  const plugins =
+    onRuntime && runtimePlugins.length > 0
+      ? `# Box reads the telemetry keys from AWS Secrets Manager through this plugin.\nplugins = ${list([...runtimePlugins])}\n`
+      : "";
   const bedrockRoute = !bedrock
     ? ""
     : onRuntime
@@ -552,7 +571,7 @@ secret.ref = "aws://default"
   return `# Runs the agent of the AgentCore project '${projectName}' in a box.
 ${header}
 packs = ${packs}
-${policies}
+${policies}${plugins}
 [profile]
 name = ${str(projectName)}
 
@@ -709,12 +728,47 @@ ${logs}${include}secret.ref = ${str(RUNTIME_AWS_SIGNER)}
 }
 
 /**
+ * A third-party target of the box profile `profileFile` on the Runtime: its `[telemetry.<name>]`
+ * table with the same keys. Its key, when it has one, comes from its field of the runtime's AWS
+ * Secrets Manager secret `secretName`, which deploy writes, and not from the variable the box
+ * profile names. Starts with a blank line.
+ */
+function runtimeThirdPartyTelemetrySection(
+  target: ThirdPartyTelemetry,
+  secretName: string,
+  profileFile: string,
+): string {
+  const key = tomlKey(target.name);
+  const value = (field: string, item: ThirdPartyTelemetry["keys"][number][1]) => {
+    if (typeof item === "string") return `${field} = ${str(item)}\n`;
+    if (Array.isArray(item)) return `${field} = ${list([...item])}\n`;
+    return Object.entries(item)
+      .map(([name, text]) => `${field}.${tomlKey(name)} = ${str(text)}\n`)
+      .join("");
+  };
+  const keys = target.keys.map(([field, item]) => value(field, item)).join("");
+  const ref = boxTelemetrySecretRef(secretName, boxTelemetrySecretField(target.name));
+  const secret = target.secret
+    ? `secret.ref = ${str(ref)}\n` +
+      target.secret.keys.map(([field, text]) => `secret.${field} = ${str(text)}\n`).join("")
+    : "";
+  const source = target.secret
+    ? ` The box reads its key from AWS Secrets Manager, not from ${target.secret.variable}.`
+    : "";
+  return `
+# The [telemetry.${key}] target of ${profileFile}.${source}
+[telemetry.${key}]
+kind = ${str(target.kind)}
+${keys}${secret}`;
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and a route for each passthrough target of its Box gateway; and,
  * from the runtime's Box network model, the box profile's policy files under
- * `policies`, the HTTP MCP server that a target serves, and each CloudWatch
- * `[telemetry]` target. agentcore.json does not record the framework, and the profile
+ * `policies`, the HTTP MCP server that a target serves, each CloudWatch
+ * `[telemetry]` target, and each third-party one. agentcore.json does not record the framework, and the profile
  * does not depend on it beyond the container case, so the input names Strands,
  * one of the frameworks that run in a box.
  */
@@ -722,7 +776,7 @@ export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
   network?: Pick<BoxNetwork, "policyFiles"> &
-    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry">>,
+    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry" | "thirdPartyTelemetry">>,
 ): string {
   const input = {
     runtimeName: runtime.name,
@@ -735,6 +789,7 @@ export function renderRuntimeBoxProfile(
     // Build and deploy render this only for a runtime that runs its agent in a box.
     box: true,
   } as ScaffoldRuntimeInput;
+  const readsSecretsManager = (network?.thirdPartyTelemetry ?? []).some(({ secret }) => secret);
   const profile = renderBoxProfile(
     spec.name,
     input,
@@ -742,12 +797,28 @@ export function renderRuntimeBoxProfile(
     runtimeGatewayRoutes(spec, runtime, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
     network?.region,
+    readsSecretsManager ? [BOX_SECRETS_MANAGER_PLUGIN] : [],
   )!;
   const profileFile = boxLocalProfileFile(runtime.name);
   return (
     profile +
-    runtimeTelemetryTargets(spec, runtime, network?.telemetry, network?.region)
+    runtimeTelemetryTargets(
+      spec,
+      runtime,
+      network?.telemetry,
+      network?.region,
+      network?.thirdPartyTelemetry,
+    )
       .map(({ target, isDefault }) => runtimeTelemetrySection(target, profileFile, isDefault))
+      .join("") +
+    (network?.thirdPartyTelemetry ?? [])
+      .map((target) =>
+        runtimeThirdPartyTelemetrySection(
+          target,
+          boxTelemetrySecretName(spec.name, runtime.name),
+          profileFile,
+        ),
+      )
       .join("")
   );
 }

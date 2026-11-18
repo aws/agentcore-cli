@@ -6,9 +6,9 @@ import type { CloudWatchTelemetry } from "./boxNetwork";
 
 /**
  * The policy file, relative to the project root, that lets the execution role of the box runtime
- * `runtimeName` send the CloudWatch telemetry of its own box profile. On AgentCore Runtime, Box
- * signs each CloudWatch target with that role. The CLI rewrites it on build, and removes it when
- * the profile sends no telemetry to CloudWatch.
+ * `runtimeName` send the CloudWatch telemetry of its own box profile, and read the key of each of
+ * its third-party targets. On AgentCore Runtime, Box signs each CloudWatch target and each read of
+ * a key with that role. The CLI rewrites it on build, and removes it when the profile has neither.
  */
 export function boxTelemetryPolicyFile(runtimeName: string): string {
   return `agentcore/box-telemetry-policy-${runtimeName}.json`;

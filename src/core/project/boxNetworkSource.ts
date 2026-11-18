@@ -44,6 +44,7 @@ export async function readBoxNetworks(
   projectRoot: string,
   resolver: BoxProfileResolver,
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  secretsManager = false,
 ): Promise<BoxNetwork[]> {
   const runtimes = isBoxProject(spec)
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
@@ -72,6 +73,7 @@ export async function readBoxNetworks(
       region,
       targets: entry?.targets ?? [],
       grantedActions: granted.actions,
+      secretsManager,
     });
     networks.push({ ...network, warnings: [...network.warnings, ...granted.warnings] });
   }

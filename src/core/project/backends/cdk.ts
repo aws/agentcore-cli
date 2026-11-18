@@ -39,8 +39,13 @@ import type {
   ResolveDeployedResourcesBackendInput,
   ResolveProjectResourcesBackendInput,
 } from "./types";
-import { createCloudFormationClient } from "../../factories";
-import type { AwsCredentials, CreateCloudFormationClient } from "../../types";
+import { createCloudFormationClient, createSecretsManagerClient } from "../../factories";
+import type {
+  AwsCredentials,
+  CreateCloudFormationClient,
+  CreateSecretsManagerClient,
+} from "../../types";
+import { boxTelemetrySecrets } from "../boxTelemetrySecrets";
 import {
   assertPaymentConnectorCredentials,
   createCredentialProvisioner,
@@ -67,6 +72,15 @@ import {
   updateTargetState,
 } from "./cdk/deployedState";
 import {
+  orphanedTelemetrySecrets,
+  provisionTelemetrySecrets,
+  removeTelemetrySecrets,
+  secretsManagerCalls,
+  telemetrySecretsOfOtherTargets,
+  type DeployedTelemetrySecrets,
+  type TelemetrySecretCalls,
+} from "./cdk/telemetrySecrets";
+import {
   bootstrapStackReader,
   createCloudFormationStackReader,
   probeBootstrap,
@@ -92,6 +106,15 @@ import {
 import { describeStack } from "./cdk/stackReader";
 
 type StackDescriber = typeof describeStack;
+
+/** The telemetry secrets of one deployment target, and how deploy reaches them. */
+interface TelemetrySecretsOfTarget {
+  readonly calls: TelemetrySecretCalls;
+  /** The secrets the target records, by name. */
+  readonly recorded: DeployedTelemetrySecrets;
+  /** The ARNs another deployment target records, which deploy never deletes. */
+  readonly kept: ReadonlySet<string>;
+}
 
 /**
  * How many trailing Toolkit lines an operation keeps for error context. Matches
@@ -148,6 +171,8 @@ export type CdkBackendConfig = {
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
   createCloudFormationClient?: CreateCloudFormationClient;
+  /** The Secrets Manager client deploy writes the box profiles' telemetry secrets with. */
+  createSecretsManagerClient?: CreateSecretsManagerClient;
   /** Identity client used to provision the project's credential providers. */
   identity: CredentialProviderCalls;
   cdk?: CdkRunner;
@@ -181,10 +206,13 @@ export class CdkBackend implements ProjectBackend {
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly createSecretsManagerClient: CreateSecretsManagerClient;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
     this.processEnv = config.processEnv ?? process.env;
+    this.createSecretsManagerClient =
+      config.createSecretsManagerClient ?? createSecretsManagerClient;
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
@@ -330,11 +358,20 @@ export class CdkBackend implements ProjectBackend {
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
     // credential has since left the spec.
-    const recorded =
-      (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
-        ?.credentials ?? {};
+    const state = await readDeployedState(this.json, project.rootPath);
+    const recorded = state.targets[target.name]?.resources?.credentials ?? {};
     assertPaymentConnectorCredentials(project, target.name, recorded);
     const orphaned = orphanedCredentials(recorded, project.spec.credentials);
+    // Read before deploy writes the secrets, for the same reason as the credentials.
+    const secrets: TelemetrySecretsOfTarget = {
+      calls: secretsManagerCalls(
+        this.createSecretsManagerClient({ region: target.region, credentials }),
+      ),
+      recorded: state.targets[target.name]?.resources?.boxTelemetrySecrets ?? {},
+      kept: telemetrySecretsOfOtherTargets(state, target.name),
+    };
+    const declaredSecrets = boxTelemetrySecrets(project.spec.name, input.boxNetworks);
+    const orphanedSecrets = orphanedTelemetrySecrets(secrets.recorded, declaredSecrets);
 
     // Credential providers aren't stack resources; the synthesized app reads their
     // ARNs from deployed-state.json, so they must exist and be recorded before synth.
@@ -350,6 +387,19 @@ export class CdkBackend implements ProjectBackend {
       resources: { credentials: provisioned },
     });
 
+    // The box on the Runtime reads its telemetry keys from these when it starts. The orphans
+    // stay recorded until the stack no longer uses them, so a failed stack update forgets none.
+    const stored = yield* provisionTelemetrySecrets(
+      secrets.calls,
+      project,
+      declaredSecrets,
+      this.processEnv,
+    );
+    await this.recordTelemetrySecrets(project, target.name, secrets.recorded, {
+      ...orphanedSecrets,
+      ...stored,
+    });
+
     yield* this.synthesize(project, false, input.boxNetworks);
     const assemblyDirectory = this.assemblyDirectory(project);
     const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
@@ -359,7 +409,15 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
+      return yield* this.teardown({
+        project,
+        artifact,
+        input,
+        options,
+        orphaned,
+        recorded,
+        secrets: { ...secrets, recorded: { ...orphanedSecrets, ...stored } },
+      });
     }
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
@@ -476,6 +534,13 @@ export class CdkBackend implements ProjectBackend {
       targetName: target.name,
       providers: orphaned,
     });
+    const undeleted = yield* removeTelemetrySecrets(secrets.calls, orphanedSecrets, secrets.kept);
+    await this.recordTelemetrySecrets(
+      project,
+      target.name,
+      { ...orphanedSecrets, ...stored },
+      { ...undeleted, ...stored },
+    );
 
     // Reported after the stack is up and its ARN recorded: a Quick Create
     // connector is deployed but unusable until someone follows its authorization
@@ -531,6 +596,7 @@ export class CdkBackend implements ProjectBackend {
     options,
     orphaned,
     recorded,
+    secrets,
   }: {
     project: Project;
     artifact: StackArtifact;
@@ -539,6 +605,8 @@ export class CdkBackend implements ProjectBackend {
     /** Providers recorded for this target before the deploy that the spec no longer declares. */
     orphaned: CredentialProviderRef[];
     recorded: DeployedCredentials;
+    /** Every telemetry secret recorded for this target. */
+    secrets: TelemetrySecretsOfTarget;
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
@@ -580,8 +648,26 @@ export class CdkBackend implements ProjectBackend {
         ),
       ],
     });
+    // After the stack, since its Runtime may still be reading them.
+    yield* removeTelemetrySecrets(secrets.calls, secrets.recorded, secrets.kept);
     await removeTargetState(this.json, project.rootPath, target.name);
     return { outputs: {}, tornDown: true };
+  }
+
+  /**
+   * Records `next` as the telemetry secrets of `targetName`, unless neither it nor `previous` holds
+   * one, so a project with no third-party telemetry target records nothing.
+   */
+  private async recordTelemetrySecrets(
+    project: Project,
+    targetName: string,
+    previous: DeployedTelemetrySecrets,
+    next: DeployedTelemetrySecrets,
+  ): Promise<void> {
+    if (Object.keys(previous).length === 0 && Object.keys(next).length === 0) return;
+    await updateTargetState(this.json, project.rootPath, targetName, {
+      resources: { boxTelemetrySecrets: Object.keys(next).length > 0 ? next : undefined },
+    });
   }
 
   /**

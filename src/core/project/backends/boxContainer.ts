@@ -80,6 +80,27 @@ function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
 }
 
 /**
+ * The AWS CLI v2 for Linux arm64 that a box image installs when its Runtime profile reads a key
+ * from AWS Secrets Manager: Box runs `aws` outside the sandbox to read it. The checksum is of the
+ * archive at `url`.
+ */
+export const AWS_CLI_RELEASE = {
+  version: "2.41.1",
+  url: "https://awscli.amazonaws.com/awscli-exe-linux-aarch64-2.41.1.zip",
+  sha256: "83f3bb8440cf6a05e6289f8024126b8c8e15e9513adfe0d6c059747350cdb1e2",
+} as const;
+
+/** The lines of {@link BOX_RELEASE_ENV} that make the image install {@link AWS_CLI_RELEASE}. */
+export function awsCliReleaseEnv(): string {
+  return `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n`;
+}
+
+/** Whether the Runtime profile of `network` reads a key from AWS Secrets Manager. */
+function readsSecretsManager(network: BoxNetwork | undefined): boolean {
+  return (network?.thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined);
+}
+
+/**
  * Writes `<context>/<folder>` for a box image: `profileText`, the profile the image runs, each
  * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
  * The folder is rewritten each time.
@@ -105,7 +126,8 @@ export async function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime whose Dockerfile copies `.box-dist/`.
- * It generates the canonical AWS tree in `.box/<name>/aws/`: the box release its `box.version` names,
+ * It generates the canonical AWS tree in `.box/<name>/aws/`: the box release its `box.version` names
+ * (and the AWS CLI, when the Runtime profile reads a key from AWS Secrets Manager),
  * and what the runtime profile writer writes from the runtime's Box network model (the Runtime
  * profile and a byte copy of each policy file it names). It then copies that tree into the build
  * context's `.box-dist/`, so the image copies it. Returns the names of the runtimes it staged.
@@ -145,7 +167,11 @@ export async function stageBoxContainers(
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
     const release = await releaseFor(runtime.box?.version);
-    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
+    const network = networks.find((candidate) => candidate.runtime === runtime.name);
+    await writeFile(
+      join(folder, BOX_RELEASE_ENV),
+      boxReleaseEnv(release) + (readsSecretsManager(network) ? awsCliReleaseEnv() : ""),
+    );
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     // Copy the canonical AWS tree into the build context's .box-dist so the image copies it.
     const contextDist = join(containerBuildContext(project.rootPath, runtime), BOX_IMAGE_DIST);

@@ -52,6 +52,14 @@ const ResourceStateSchema = z
      * delete the gateways.
      */
     boxGateways: z.array(z.object({ name: z.string() }).passthrough()).optional(),
+    /**
+     * The AWS Secrets Manager secret of each third-party telemetry target of a box profile, by the
+     * secret's name. Deploy writes each one outside the stack, so this is the only record of what
+     * a later deploy or a teardown deletes.
+     */
+    boxTelemetrySecrets: z
+      .record(z.string(), z.object({ secretArn: z.string() }).passthrough())
+      .optional(),
     // The legacy deployer recorded the CloudFormation stack name
     // here. New deploys record the stack ARN instead. Keep this
     // field so projects can be correctly inspected after upgrading.

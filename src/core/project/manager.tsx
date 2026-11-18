@@ -58,6 +58,7 @@ import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
+import { boxSecretsManagerEnabled } from "./boxTelemetrySecrets";
 import { createProjectTree } from "./templates/project";
 import {
   boxLocalProfilePath,
@@ -1645,6 +1646,7 @@ export class FsProjectManager implements ProjectManager {
       project.rootPath,
       this.boxProfileResolver,
       region,
+      boxSecretsManagerEnabled(this.processEnv),
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));

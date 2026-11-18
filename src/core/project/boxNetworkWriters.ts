@@ -31,6 +31,11 @@ import {
   placeBoxTelemetryPolicy,
 } from "./boxTelemetry";
 import {
+  boxTelemetrySecretEnvEntries,
+  boxTelemetrySecrets,
+  boxTelemetrySecretsStatement,
+} from "./boxTelemetrySecrets";
+import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
   boxLocalDir,
@@ -212,15 +217,21 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   return messages;
 }
 
-/** The API key credentials the box profile's `env://` routes need, and their `.env.local` keys. */
+/**
+ * The API key credentials the box profile's `env://` routes need, and their `.env.local` keys, and
+ * the `.env.local` key of each third-party telemetry target's secret.
+ */
 export const credentialsWriter: BoxNetworkWriter = {
   name: "credentials",
   writes: () => [{ kind: "credentials" }, { kind: "envLocal" }],
-  edits: (networks, { env }) => {
+  edits: (networks, { env, spec }) => {
     const needed = uniqueCredentials(networks);
     return {
-      spec: [(spec) => addBoxEgressCredentials(spec, needed)],
-      envLocal: boxProfileCredentialEnvEntries(needed, env),
+      spec: [(copy) => addBoxEgressCredentials(copy, needed)],
+      envLocal: [
+        ...boxProfileCredentialEnvEntries(needed, env),
+        ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), env),
+      ],
     };
   },
 };
@@ -259,8 +270,9 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its own box profile, and the entry in that runtime's `additionalPolicies`. A runtime with no
- * CloudWatch target gets neither, and loses the file and the entry it had.
+ * its own box profile and read the secrets of its third-party targets, and the entry in that
+ * runtime's `additionalPolicies`. A runtime with neither gets no policy, and loses the file and
+ * the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
@@ -278,7 +290,11 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     const boxed: string[] = [];
     for (const { name } of spec.runtimes) {
       const network = networks.find(({ runtime }) => runtime === name);
-      const policy = boxTelemetryPolicy(network?.telemetry ?? []);
+      const policy = withStatement(
+        boxTelemetryPolicy(network?.telemetry ?? []),
+        network &&
+          boxTelemetrySecretsStatement(boxTelemetrySecrets(spec.name, [network]), network.region),
+      );
       const path = boxTelemetryPolicyFile(name);
       if (policy) {
         boxed.push(name);
@@ -290,6 +306,16 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     return { spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)], files };
   },
 };
+
+/** `policy` with `statement` after its own statements, or a policy of `statement` alone. */
+function withStatement(
+  policy: Record<string, unknown> | undefined,
+  statement: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (statement === undefined) return policy;
+  const statements = (policy?.Statement as unknown[] | undefined) ?? [];
+  return { Version: "2012-10-17", ...policy, Statement: [...statements, statement] };
+}
 
 /** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */
 export interface StagedRuntime {

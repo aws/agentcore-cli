@@ -9,7 +9,7 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
-import { cloudWatchTelemetry, type BoxNetworkHost } from "../boxNetwork";
+import { cloudWatchTelemetry, thirdPartyTelemetry, type BoxNetworkHost } from "../boxNetwork";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -723,6 +723,73 @@ describe("renderRuntimeBoxProfile", () => {
       ).toEqual({ agentcore: defaultTarget("eu-west-1") });
     });
 
+    test("copies each third-party target, and names its key's secret in AWS Secrets Manager", () => {
+      const project = spec([bedrock]);
+      const collector = {
+        kind: "otlp",
+        destination: "https://collector.example.com/otlp",
+        include: ["trace", "logs"],
+        accepts: ["traces"],
+        headers: { "x-team": "box" },
+        secret: { ref: "secret://COLLECTOR_TOKEN", header: "x-api-key", prefix: "Key " },
+      };
+      const open = { kind: "otlp", destination: "https://open.example.com" };
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        region: "eu-west-1",
+        thirdPartyTelemetry: thirdPartyTelemetry({
+          telemetry: { ...TELEMETRY, collector, open },
+        }).targets,
+      });
+      const secret = (target: string) =>
+        `aws-secretsmanager://agentcore/${project.name}/agent/box#telemetry.${target}`;
+
+      expect((parse(text) as { telemetry?: unknown }).telemetry).toEqual({
+        // The profile has no cloudwatch_logs target, so the Runtime profile adds the default one.
+        agentcore: defaultTarget("eu-west-1"),
+        langfuse: { kind: "langfuse", secret: { ref: secret("langfuse") } },
+        langsmith: { kind: "langsmith", secret: { ref: secret("langsmith") } },
+        collector: { ...collector, secret: { ...collector.secret, ref: secret("collector") } },
+        // A target with no key keeps none.
+        open,
+      });
+      expect(text).toContain(
+        "\n# The [telemetry.collector] target of .box/agent/local/profile.toml. The box reads " +
+          "its key from AWS Secrets Manager, not from COLLECTOR_TOKEN.\n" +
+          '[telemetry.collector]\nkind = "otlp"\n' +
+          'destination = "https://collector.example.com/otlp"\ninclude = ["trace", "logs"]\n' +
+          'accepts = ["traces"]\nheaders.x-team = "box"\n' +
+          `secret.ref = "${secret("collector")}"\n` +
+          'secret.header = "x-api-key"\nsecret.prefix = "Key "\n',
+      );
+      for (const variable of ["COLLECTOR_TOKEN", "LANGFUSE_AUTH", "LANGSMITH_KEY"]) {
+        expect(text).not.toContain(`env://${variable}`);
+        expect(text).not.toContain(`secret://${variable}`);
+      }
+      // The plugin that reads the scheme: one top-level line, above the first table.
+      const toml = parse(text) as { plugins?: unknown };
+      expect(toml.plugins).toEqual(["box/aws-secrets-manager"]);
+      expect(text.indexOf('plugins = ["box/aws-secrets-manager"]')).toBeLessThan(
+        text.indexOf("\n["),
+      );
+      expect(text.match(/^plugins = /gm)).toHaveLength(1);
+      expect(text).not.toContain("secret-source");
+      expect(text).not.toContain("experimental-features");
+    });
+
+    test("lists no plugin when no target reads a key from AWS Secrets Manager", () => {
+      const project = spec([bedrock]);
+      const open = { kind: "otlp", destination: "https://open.example.com" };
+      for (const thirdParty of [undefined, thirdPartyTelemetry({ telemetry: { open } }).targets]) {
+        const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+          policyFiles: [],
+          ...(thirdParty && { thirdPartyTelemetry: thirdParty }),
+        });
+
+        expect((parse(text) as { plugins?: unknown }).plugins).toBeUndefined();
+      }
+    });
+
     test("copies no CloudWatch target that Box refuses, and adds the default target", () => {
       const logs = { ...TELEMETRY.logs, log_stream: "a:b" };
 
@@ -751,6 +818,27 @@ describe("renderRuntimeBoxProfile", () => {
 
       expect(Object.keys(telemetry ?? {})).toEqual(["agentcore", "agentcore_default"]);
       expect(telemetry?.agentcore_default).toEqual(defaultTarget("eu-west-1"));
+    });
+
+    test("names the default target agentcore_default when a third-party target is agentcore", () => {
+      const project = spec([bedrock]);
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        region: "eu-west-1",
+        thirdPartyTelemetry: thirdPartyTelemetry({ telemetry: { agentcore: TELEMETRY.langfuse } })
+          .targets,
+      });
+      const telemetry = (parse(text) as { telemetry?: Record<string, unknown> }).telemetry;
+
+      expect(text.match(/^\[telemetry\.agentcore\]$/gm)).toHaveLength(1);
+      expect(Object.keys(telemetry ?? {})).toEqual(["agentcore_default", "agentcore"]);
+      expect(telemetry?.agentcore_default).toEqual(defaultTarget("eu-west-1"));
+      expect(telemetry?.agentcore).toEqual({
+        kind: "langfuse",
+        secret: {
+          ref: `aws-secretsmanager://agentcore/${project.name}/agent/box#telemetry.agentcore`,
+        },
+      });
     });
 
     test("adds no default target when the profile has its own cloudwatch_logs target", () => {
