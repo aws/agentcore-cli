@@ -18,9 +18,8 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
 `~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
-CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
-from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
-is needed.
+CodeZip agent, `agentcore dev` runs the `box` on your PATH: install it as in
+[Install box](#install-box). No local box checkout is needed.
 
 To try an unreleased box build, publish it as a pre-release with the same file names and set
 `box.version` to it: a version the CLI does not pin takes its checksums from the release's
@@ -31,10 +30,58 @@ To try an unreleased box build, publish it as a pre-release with the same file n
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
 - `box` `0.1.11-linux-preview.5` or later on your `PATH`. Build, deploy and dev run it to read
   the box profile with `box profile show --format json`, and CodeZip dev runs the agent with it.
+  See [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
   Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
   region.
 - `bun` for the CLI, `npm` for the generated CDK app.
+
+## Install box
+
+box ships as a release archive per machine on
+[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). There are builds for
+macOS on an Apple chip (`aarch64-apple-darwin`) and Linux arm64 (`aarch64-unknown-linux-gnu`); there
+is no x86 build yet. Each archive unpacks flat: `box`, its two helpers, `release.json`, and
+`resources/` (box's packs, which it finds beside itself).
+
+Download the archive for your machine, check it, and unpack it into a versioned folder:
+
+```
+BOX_VERSION=0.1.11-linux-preview.5
+BOX_TARGET=aarch64-apple-darwin   # aarch64-unknown-linux-gnu on Linux arm64
+BOX_DIR="$HOME/.local/share/box/$BOX_VERSION"
+BOX_URL="https://github.com/mquang-amazon/box-releases/releases/download/v$BOX_VERSION"
+mkdir -p "$BOX_DIR" && cd "$BOX_DIR"
+curl -fsSLO "$BOX_URL/box-v$BOX_VERSION-$BOX_TARGET.tar.gz"
+curl -fsSLO "$BOX_URL/SHA256SUMS.txt"
+grep "$BOX_TARGET" SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf "box-v$BOX_VERSION-$BOX_TARGET.tar.gz"
+```
+
+On Linux, use `sha256sum -c -` in place of `shasum -a 256 -c -`. The check must print `OK`.
+
+Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
+
+```
+export PATH="$HOME/.local/share/box/0.1.11-linux-preview.5:$PATH"
+echo 'export PATH="$HOME/.local/share/box/0.1.11-linux-preview.5:$PATH"' >> ~/.zshrc
+```
+
+Check it:
+
+```
+which box
+box --version
+```
+
+- `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
+  source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
+- `box --version` must print `box 0.1.11-linux-preview.5` or later.
+- On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-linux-preview.5"`.
+
+To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
+to that folder.
 
 ## Settings
 
@@ -162,17 +209,17 @@ deploy. It deploys nothing. The agent signs its Bedrock calls with your `[defaul
 
 The box release has these builds:
 
-| Machine             | Build                                      | CodeZip dev    | Container dev |
-| ------------------- | ------------------------------------------ | -------------- | ------------- |
-| macOS, Apple chip   | `box-v<version>-aarch64-apple-darwin`      | yes            | yes           |
-| Linux, arm64        | `box-v<version>-aarch64-unknown-linux-gnu` | yes (untested) | yes           |
-| Linux or macOS, x86 | none                                       | no             | no            |
+| Machine             | Build                                      | CodeZip dev | Container dev |
+| ------------------- | ------------------------------------------ | ----------- | ------------- |
+| macOS, Apple chip   | `box-v<version>-aarch64-apple-darwin`      | yes         | yes           |
+| Linux, arm64        | `box-v<version>-aarch64-unknown-linux-gnu` | yes         | yes           |
+| Linux or macOS, x86 | none                                       | no          | no            |
 
 - The **container** image always uses the Linux arm64 build, because AgentCore Runtime is arm64.
   It runs on an Apple chip Mac through Finch or Docker, and on an arm64 Linux host. An x86 host
   would need to emulate arm64.
 - **CodeZip** dev runs the `box` on your `PATH` natively, so it needs the build for your machine.
-  On an arm64 Linux host it uses the same Linux build as the Runtime; that path is not yet tested.
+  On an arm64 Linux host it uses the same Linux build as the Runtime.
 - Build and deploy need a `box` on your `PATH` on every machine, to read the profile. So for now
   build and deploy work only on an Apple chip Mac or an arm64 Linux host.
 
@@ -181,15 +228,12 @@ The box release has these builds:
 In the shell you run dev from:
 
 ```
-unset BOX_RESOURCES
 box --version
 aws sts get-caller-identity
 ```
 
 - `box --version` must print `0.1.11-linux-preview.5` or later. Dev and build read the profile
   with `box profile show --format json`, which older builds do not have.
-- A `BOX_RESOURCES` left over from a source build makes a release box look for its packs in the
-  wrong place, so unset it.
 - The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
   After you refresh them, restart dev.
 
