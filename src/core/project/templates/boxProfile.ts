@@ -17,12 +17,6 @@ const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
 const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
 
 /**
- * The aws-opentelemetry-distro console script the plain templates start the agent with when
- * `instrumentation.enableOtel` is on. Each Runtime runner says where its image or zip installs it.
- */
-const OTEL_INSTRUMENT = "opentelemetry-instrument";
-
-/**
  * The entry point of a runtime that runs its agent in a box on a CodeZip
  * deploy: start.py runs start.sh, which starts `box run`. Create writes both.
  */
@@ -302,18 +296,12 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
  * The Strands container image's agent: the code and its venv are in /app,
  * where box starts, and the venv links to the image's own Python in
  * /usr/local. `agentcore dev` sets LOCAL_DEV and reloads it on edits.
- *
- * With `instrument`, the venv's opentelemetry-instrument starts the agent, as
- * the plain template's CMD does. uv writes that script with the venv's Python
- * as its shebang, so the `.venv` and /usr/local/bin exec grants already cover
- * it. The agent's Python follows as a path, because box/base sets PATH to
- * /usr/bin:/bin, where a bare `python` is not the venv's.
  */
-function containerRunner(workloadPort: number, dev: boolean, instrument: boolean): Runner {
+function containerRunner(workloadPort: number, dev: boolean): Runner {
   const appDir = "${{ workspace }}";
   const { command, env } = serve("HTTP", appDir, workloadPort, dev);
   return {
-    command: instrument ? [`${appDir}/.venv/bin/${OTEL_INSTRUMENT}`, ...command] : command,
+    command,
     env: { ...(dev && { LOCAL_DEV: "1" }), ...env },
     // The image's Python loads its own native modules (lib-dynload) from /usr/local/lib, and the
     // system libraries they link, such as libssl, from the multiarch folder.
@@ -335,24 +323,14 @@ function containerRunner(workloadPort: number, dev: boolean, instrument: boolean
  * exports (`${{ inputs.code.dir }}`, `${{ inputs.python.path }}`,
  * `${{ inputs.python.prefix }}`), and the box starts in a writable folder
  * outside the code, so nothing the agent runs needs `deny_write`.
- *
- * With `instrument`, the zip's opentelemetry-instrument starts the agent, as
- * the Runtime starts a plain CodeZip agent. Deploy packages it in the zip's
- * bin/ folder with a `#!/usr/bin/env python3` shebang, and running that would
- * need exec on /usr/bin. So the Runtime's Python runs the script, which the
- * code directory's read grant covers.
  */
-function runtimeCodeZipRunner(
-  protocol: Protocol,
-  workloadPort: number,
-  instrument: boolean,
-): Runner {
+function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner {
   const code = "${{ inputs.code.dir }}";
   const python = "${{ inputs.python.path }}";
   const pythonPrefix = "${{ inputs.python.prefix }}";
   const { command, env } = serve(protocol, code, workloadPort, false, python);
   return {
-    command: instrument ? [python, `${code}/bin/${OTEL_INSTRUMENT}`, ...command] : command,
+    command,
     env: {
       ...env,
       // Python finds the _ctypes that deploy stages before its own: its libffi uses static
@@ -383,11 +361,9 @@ export type BoxProfileTarget = "local" | "runtime";
  * - `runtime`: what AgentCore Runtime runs, with no reload, signed with the
  *   execution role. Build and deploy render it from agentcore.json with
  *   {@link renderRuntimeBoxProfile}; `runtimeRoutes` holds the routes they
- *   derive from it, as sections that start with a blank line,
+ *   derive from it, as sections that start with a blank line, and
  *   `runtimePolicies` the box profile's policy files, which staging copies
- *   beside it, and `runtimeOtel` the runtime's `instrumentation.enableOtel`,
- *   which starts the agent under opentelemetry-instrument. The `local` profile
- *   ignores it.
+ *   beside it.
  */
 export function renderBoxProfile(
   projectName: string,
@@ -396,7 +372,6 @@ export function renderBoxProfile(
   runtimeRoutes = "",
   runtimePolicies: readonly string[] = [],
   region: string = BOX_GATEWAY_BEDROCK_REGION,
-  runtimeOtel = false,
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
@@ -405,13 +380,12 @@ export function renderBoxProfile(
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
-  const instrument = onRuntime && runtimeOtel;
   const container = isBoxedContainer(runtime);
   const codeZipOnRuntime = onRuntime && !container;
   const runner = container
-    ? containerRunner(workloadPort, !onRuntime, instrument)
+    ? containerRunner(workloadPort, !onRuntime)
     : onRuntime
-      ? runtimeCodeZipRunner(protocol, workloadPort, instrument)
+      ? runtimeCodeZipRunner(protocol, workloadPort)
       : codeZipRunner(protocol, appDir, workloadPort);
   // In an image or the Runtime's microVM, the port is reached on the machine's own address.
   const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
@@ -613,9 +587,7 @@ function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpSe
  * from the runtime's Box network model, the box profile's policy files under
  * `policies`, and the HTTP MCP server that a target serves. agentcore.json does not record the framework, and the profile
  * does not depend on it beyond the container case, so the input names Strands,
- * one of the frameworks that run in a box. The agent starts under
- * opentelemetry-instrument unless `instrumentation.enableOtel` is false, as a
- * plain runtime's does.
+ * one of the frameworks that run in a box.
  */
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
@@ -641,7 +613,6 @@ export function renderRuntimeBoxProfile(
     runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
     network?.region,
-    runtime.instrumentation?.enableOtel ?? true,
   )!;
 }
 
