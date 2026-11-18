@@ -68,7 +68,7 @@ export function boxNetworkRules(
 
 /**
  * What `box profile show --format json` prints for a profile whose routes resolve to `egress`: `box_toml`
- * holds each route with a secret, a backend, or a protocol, as Box keeps the others only as rules,
+ * holds each route with a secret, a backend, or a protocol, `open_routes` holds the others by name,
  * and `policy` holds the profile's own `policy`, then the rules Box adds.
  */
 export function boxShowOf(input: {
@@ -78,17 +78,23 @@ export function boxShowOf(input: {
 }): ResolvedBoxProfile {
   const egress = input.egress ?? {};
   const mcp = input.mcp ?? {};
-  const kept = Object.fromEntries(
-    Object.entries(egress).filter(([, entry]) =>
-      ["secret", "backends", "protocol"].some((key) => key in (entry as object)),
-    ),
-  );
-  return {
-    boxToml: structuredClone({ name: "test-preview", egress: kept, mcp }),
+  const isKept = (entry: unknown) =>
+    ["secret", "backends", "protocol"].some((key) => key in (entry as object));
+  const kept = Object.fromEntries(Object.entries(egress).filter(([, entry]) => isKept(entry)));
+  const openRoutes = Object.entries(egress)
+    .filter(([, entry]) => !isKept(entry))
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([route, entry]) => ({
+      route,
+      destinations: (entry as { destinations: string[] }).destinations,
+    }));
+  return structuredClone({
+    boxToml: { name: "test-preview", egress: kept, mcp },
     policy: `${input.policy ?? ""}\n${boxNetworkRules(egress, mcp)}`,
+    openRoutes,
     packs: [{ name: "box/base", version: "1" }],
     warnings: [],
-  };
+  });
 }
 
 /**

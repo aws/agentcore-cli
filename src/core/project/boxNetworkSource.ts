@@ -116,7 +116,7 @@ async function readResolvedPolicy(
     forRegion === undefined
       ? await resolver.resolve(projectRoot, BOX_PROFILE_PATH)
       : await resolveCopy(projectRoot, resolver, forRegion, files.texts);
-  const profile = parseResolvedProfile(resolved.boxToml, named.ok ? named.files : []);
+  const profile = parseResolvedProfile(resolved, named.ok ? named.files : []);
   const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
   return {
     parsed: policy.parsed,

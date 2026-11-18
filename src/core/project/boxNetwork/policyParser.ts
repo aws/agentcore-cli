@@ -1,12 +1,8 @@
-import { clausesFor, pinnedValue } from "./conditions";
 import { parsePolicy, type SourceSpan, type Statement } from "./dogwood";
 import type { BoxNetworkFailure } from "./network";
 import { BOX_PROFILE_PATH, type ParsedProfile } from "./profileParser";
 
-/** The `net:connect` permit Box writes for each route, by the route's name. */
-const ROUTE_CONNECT_ID = /^route_(.+)_connect$/;
-
-/** Box's resolved policy, and the profile with every route Box resolves. */
+/** Box's resolved policy, beside the profile it belongs to. */
 export interface ParsedPolicy {
   readonly profile: ParsedProfile;
   /** The statements of Box's resolved policy. */
@@ -68,12 +64,7 @@ export function parseResolvedPolicy(
     const place = held.get(matchKey(statement))?.shift();
     if (place !== undefined) places.set(spanKey(statement.span), place);
   }
-  const added = resolved.statements.filter(({ span }) => !places.has(spanKey(span)));
-  const egress = { ...profile.egress, ...routesOnlyInRules(added, profile.egress) };
-  return {
-    parsed: { profile: { ...profile, egress }, statements: resolved.statements, places },
-    failures,
-  };
+  return { parsed: { profile, statements: resolved.statements, places }, failures };
 }
 
 /**
@@ -85,34 +76,6 @@ export function placeOf(
   span: SourceSpan,
 ): string | undefined {
   return parsed.places.get(spanKey(span));
-}
-
-/**
- * Each route that Box's `box.toml` leaves out, as an `[egress]` entry. Box writes a route with no
- * secret, no backend, and no protocol only as its `route_<name>_connect` and
- * `route_<name>_request` permits, and refuses such a route unless each destination is a host with
- * an optional port, which the connect permit holds.
- */
-function routesOnlyInRules(
-  added: readonly Statement[],
-  egress: Readonly<Record<string, unknown>>,
-): Record<string, unknown> {
-  const routes: Record<string, unknown> = {};
-  for (const statement of added) {
-    const name = ROUTE_CONNECT_ID.exec(statement.annotations.id ?? "")?.[1];
-    if (name === undefined || statement.effect !== "permit") continue;
-    if (Object.hasOwn(egress, name) || Object.hasOwn(routes, name)) continue;
-    const set = clausesFor(statement, "net:connect");
-    if (!set.ok || set.clauses.length === 0) continue;
-    const destinations = set.clauses.map((clause) => {
-      const host = pinnedValue(clause.fields, "host");
-      const port = pinnedValue(clause.fields, "port");
-      if (typeof host !== "string" || typeof port !== "number") return undefined;
-      return port === 443 ? host : `${host}:${port}`;
-    });
-    if (destinations.every((d) => d !== undefined)) routes[name] = { destinations };
-  }
-  return routes;
 }
 
 /** What pairs a statement of Box's policy with one of a policy file. */
