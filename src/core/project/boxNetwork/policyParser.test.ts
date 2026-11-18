@@ -21,10 +21,15 @@ const RESOLVED = [
   "",
 ].join("\n");
 const FILES: PolicyFileText[] = [
-  { file: ".box/policy.dw", text: `// No admin paths on GitHub.\n${NO_ADMIN}\n` },
-  { file: ".box/sub/more.dw", text: `// more\n\n${MORE}\n` },
+  { file: ".box/agent/local/policy.dw", text: `// No admin paths on GitHub.\n${NO_ADMIN}\n` },
+  { file: ".box/agent/local/sub/more.dw", text: `// more\n\n${MORE}\n` },
 ];
-const NO_ROUTES = { egress: {}, mcp: {}, policyFiles: ["policy.dw", "sub/more.dw"] };
+const NO_ROUTES = {
+  path: ".box/agent/local/profile.toml",
+  egress: {},
+  mcp: {},
+  policyFiles: ["policy.dw", "sub/more.dw"],
+};
 
 function parsed(policy: string, files: PolicyFileText[], egress: Record<string, unknown> = {}) {
   return parseResolvedPolicy({ ...NO_ROUTES, egress }, policy, files);
@@ -41,8 +46,8 @@ describe("parseResolvedPolicy", () => {
 
     expect(result.failures).toEqual([]);
     expect(places(result)).toEqual([
-      ["no_admin", ".box/policy.dw:2:1"],
-      ["more_rule", ".box/sub/more.dw:3:1"],
+      ["no_admin", ".box/agent/local/policy.dw:2:1"],
+      ["more_rule", ".box/agent/local/sub/more.dw:3:1"],
       ["shell_commands", undefined],
       ["route_github_connect", undefined],
       ["route_github_request", undefined],
@@ -54,31 +59,37 @@ describe("parseResolvedPolicy", () => {
       `permit (principal, ${HR}, resource) when { context.input.host == "a.example.com" };\n` +
       `@id("dup") forbid (principal, ${HR}, resource) when { context.input.host == "a.example.com" };\n` +
       `@id("dup") forbid (principal, ${HR}, resource) when { context.input.host == "b.example.com" };\n`;
-    const result = parsed(`${own}\n${RESOLVED}`, [{ file: ".box/policy.dw", text: own }]);
+    const result = parsed(`${own}\n${RESOLVED}`, [
+      { file: ".box/agent/local/policy.dw", text: own },
+    ]);
 
     expect(places(result).slice(0, 3)).toEqual([
-      ["policy0", ".box/policy.dw:1:1"],
-      ["dup", ".box/policy.dw:2:1"],
-      ["dup", ".box/policy.dw:3:1"],
+      ["policy0", ".box/agent/local/policy.dw:1:1"],
+      ["dup", ".box/agent/local/policy.dw:2:1"],
+      ["dup", ".box/agent/local/policy.dw:3:1"],
     ]);
   });
 
   test("takes no route from a rule of the profile's own policy files that Box's naming fits", () => {
     const own = `@id("route_mine_connect") permit (principal, ${NC}, resource) when { context.input.host == "x.example.com" && context.input.port == 443 };\n`;
 
-    expect(parsed(own, [{ file: ".box/policy.dw", text: own }]).parsed.profile.egress).toEqual({});
+    expect(
+      parsed(own, [{ file: ".box/agent/local/policy.dw", text: own }]).parsed.profile.egress,
+    ).toEqual({});
   });
 
   test("fails a syntax error once, at its place in a policy file, or else in Box's policy", () => {
     const broken = `permit (principal, ${HR}, resource) when { context.input.host == };\n`;
-    const inFile = parsed(`${broken}\n${RESOLVED}`, [{ file: ".box/policy.dw", text: broken }]);
+    const inFile = parsed(`${broken}\n${RESOLVED}`, [
+      { file: ".box/agent/local/policy.dw", text: broken },
+    ]);
     const inBox = parsed(`${RESOLVED}${broken}`, FILES);
 
     expect(inFile.failures).toEqual([
       {
         code: "PARSE_ERROR",
         reason: "Syntax error: unexpected } in a condition. Correct the rule at this place.",
-        place: `.box/policy.dw:1:${broken.indexOf("}") + 1}`,
+        place: `.box/agent/local/policy.dw:1:${broken.indexOf("}") + 1}`,
       },
     ]);
     expect(inBox.failures).toEqual([
@@ -87,7 +98,7 @@ describe("parseResolvedPolicy", () => {
         reason:
           "Build cannot read a rule that Box or a pack adds to this profile (syntax error: " +
           "unexpected } in a condition). Update the AgentCore CLI, then retry.",
-        place: ".box/profile.toml",
+        place: ".box/agent/local/profile.toml",
       },
     ]);
   });

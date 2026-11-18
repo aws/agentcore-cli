@@ -6,7 +6,7 @@ import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
 import { writeBoxDevEnvLocal } from "../../../core/dev/boxEnvLocal";
-import { boxProfilePath, boxWorkloadPort } from "../../../core/project/templates/boxProfile";
+import { boxLocalProfilePath, boxWorkloadPort } from "../../../core/project/templates/boxProfile";
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
@@ -393,12 +393,15 @@ async function runRuntimeDev({
           runtimeNames,
         });
         for (const message of synced.messages) renderStatus({ io: config.io, message, json });
-        for (const message of await writeBoxDevEnvLocal(project.rootPath)) {
-          renderStatus({ io: config.io, message, json });
-        }
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );
+        // Each boxed agent reads its own .box/<name>/local profile for the env vars its routes name.
+        for (const runtime of runtimes) {
+          for (const message of await writeBoxDevEnvLocal(project.rootPath, runtime.name)) {
+            renderStatus({ io: config.io, message, json });
+          }
+        }
 
         collector = input.traces
           ? await startRuntimeTraceCollector({ config, project, runtimes, json })
@@ -473,13 +476,14 @@ async function runRuntimeDev({
         }
 
         // On macOS the box refuses to start when another process listens on its agent's port.
-        const boxPorts = existsSync(boxProfilePath(project.rootPath))
-          ? new Set(
-              runtimes
-                .filter(({ build }) => build === "CodeZip")
-                .map(({ protocol }) => boxWorkloadPort(protocol)),
+        const boxPorts = new Set(
+          runtimes
+            .filter(
+              ({ build, name }) =>
+                build === "CodeZip" && existsSync(boxLocalProfilePath(project.rootPath, name)),
             )
-          : new Set<number>();
+            .map(({ protocol }) => boxWorkloadPort(protocol)),
+        );
         const uiPort = (
           await findFreePort(
             UI_DEFAULT_PORT,

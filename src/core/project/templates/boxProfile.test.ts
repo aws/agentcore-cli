@@ -104,7 +104,7 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run .box/profile.toml` can load it by its path", () => {
+  test("names itself after the project, so `box run .box/agent/local/profile.toml` can load it by its path", () => {
     expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
   });
 
@@ -258,7 +258,7 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-strands", groq).egress).toBeUndefined();
     expect(boxProfileWarnings(runtime)).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
-        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "section with its provider's host to .box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
     ]);
   });
@@ -666,7 +666,8 @@ describe("renderRuntimeBoxProfile", () => {
         "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
       });
       expect(text).toContain(
-        "\n# The [telemetry.logs] target of .box/profile.toml, signed with the execution role.\n" +
+        "\n# The [telemetry.logs] target of .box/agent/local/profile.toml, signed with the " +
+          "execution role.\n" +
           '[telemetry.logs]\nkind = "cloudwatch_logs"\nregion = "us-west-2"\n' +
           'log_group = "/aws/box"\nlog_stream = "agent"\ninclude = ["logs", "trace"]\n' +
           'secret.ref = "aws://"\n',
