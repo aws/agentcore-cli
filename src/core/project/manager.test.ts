@@ -46,11 +46,14 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
+import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
 const AGENT_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("agent-python-strands");
+const AGENT_PYTHON_STRANDS_BOX = resolveRuntimeTemplateShortcut("agent-python-strands-box");
+const BOX_PROFILE_FILE = boxLocalProfileFile(AGENT_PYTHON_STRANDS_BOX.runtimeName);
 const AGENT_PYTHON_STRANDS_CONTAINER = resolveRuntimeTemplateShortcut(
   "agent-python-strands-container",
 );
@@ -87,20 +90,24 @@ afterEach(async () => {
 });
 
 // A manager whose runner records commands instead of spawning them.
+/** A command the manager ran, with the UV_MANAGED_PYTHON it set, if any. */
+type Command = { command: string[]; cwd: string; UV_MANAGED_PYTHON?: string };
+
 function manager(): {
   manager: FsProjectManager;
-  commands: { command: string[]; cwd: string }[];
+  commands: Command[];
   checkedTools: string[];
 } {
-  const commands: { command: string[]; cwd: string }[] = [];
+  const commands: Command[] = [];
   const checkedTools: string[] = [];
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
       enableTransactionSearch: async () => {},
-      runner: async (command, { cwd }) => {
-        commands.push({ command, cwd });
+      runner: async (command, { cwd, env }) => {
+        const managedPython = env?.UV_MANAGED_PYTHON;
+        commands.push({ command, cwd, ...(managedPython && { UV_MANAGED_PYTHON: managedPython }) });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -648,6 +655,92 @@ describe("FsProjectManager.create", () => {
         scaffoldRuntimeInput: AGENT_PYTHON,
       }),
     ).rejects.toBeInstanceOf(ProjectStateError);
+  });
+});
+
+describe("FsProjectManager.create box profile", () => {
+  test.each([
+    ["after installing", false],
+    ["with --skip-install", true],
+  ])("writes the box profile into the agent's .box/<name>/local folder %s", async (_label, skipInstall) => {
+    const directory = await inTempDirectory();
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipInstall,
+      skipGit: true,
+      region: "eu-west-1",
+    });
+
+    const path = join(directory, "example", BOX_PROFILE_FILE);
+    expect(await readFile(path, "utf8")).toBe(
+      renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
+    );
+    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("syncs a box template's venv onto a uv-managed Python, which its profile grants", async () => {
+    await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    await runCreate(subject, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipGit: true,
+    });
+
+    expect(commands.find(({ command }) => command[0] === "uv")?.UV_MANAGED_PYTHON).toBe("1");
+  });
+
+  test("warns when a LiteLLM agent's box profile reads a key that nothing set", async () => {
+    await inTempDirectory();
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+      modelProvider: "LiteLLM",
+      modelId: "openai/gpt-4o",
+    });
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: runtime,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(events).toContainEqual({ type: "warning", message: boxProfileWarnings(runtime)[0]! });
+  });
+
+  test("leaves an existing box profile unchanged", async () => {
+    const directory = await inTempDirectory();
+    const path = join(directory, "example", BOX_PROFILE_FILE);
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, "# mine\n");
+
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(await readFile(path, "utf8")).toBe("# mine\n");
+    expect(events).toContainEqual({
+      type: "warning",
+      message: `box profile ${path} already exists; left unchanged`,
+    });
+  });
+
+  test.each([
+    ["a template with no box profile", AGENT_TYPESCRIPT_STRANDS],
+    ["a Python template without box", AGENT_PYTHON_STRANDS],
+    ["an empty project", undefined],
+  ])("writes no box profile for %s", async (_label, runtime) => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      ...(runtime && { scaffoldRuntimeInput: runtime }),
+      skipInstall: true,
+      skipGit: true,
+    } as CreateProjectInput);
+
+    expect(existsSync(join(directory, "example", ".box"))).toBe(false);
   });
 });
 

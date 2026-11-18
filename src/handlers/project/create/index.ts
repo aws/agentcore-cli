@@ -125,10 +125,12 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
 
       const template = flags["template"];
+      const region = ctx.require(RegionKey);
       const base = {
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
+        region,
       };
 
       const createInput: CreateProjectInput =
@@ -141,7 +143,6 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
               }),
             };
 
-      const region = ctx.require(RegionKey);
       try {
         validateCreateRegionSupport(createInput, region);
       } catch (error) {

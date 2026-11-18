@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import type {
@@ -28,6 +28,7 @@ import type {
   RemoveResourceInput,
   RemoveResourceResult,
   RemoveResourcesResult,
+  ScaffoldRuntimeInput,
 } from "../../handlers/project/types";
 import { RESOURCE_LABELS } from "../../handlers/project/types";
 import type { Logger } from "../../logging";
@@ -51,6 +52,12 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { createProjectTree } from "./templates/project";
+import {
+  boxLocalProfilePath,
+  boxProfileWarnings,
+  hasBoxProfile,
+  renderBoxProfile,
+} from "./templates/boxProfile";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -555,6 +562,10 @@ export class FsProjectManager implements ProjectManager {
       yield* this.ensureLockFileExists(appDir);
     }
 
+    if (scaffoldRuntimeInput) {
+      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);
+    }
+
     if (!input.skipGit) {
       yield { type: "step", message: "initializing git repository" };
       yield* this.run(["git", "init"], destination);
@@ -854,6 +865,17 @@ export class FsProjectManager implements ProjectManager {
           outputPath,
           input.resourceConfig.scaffoldRuntimeInput,
         );
+        // Each boxed agent gets its own .box/<name>/local profile, so a runtime added later is
+        // not left without one. Create writes the first runtime's profile on its own path.
+        const addedRuntimeInput = input.resourceConfig.scaffoldRuntimeInput;
+        if (addedRuntimeInput && hasBoxProfile(addedRuntimeInput)) {
+          yield* this.writeBoxProfile(
+            project.rootPath,
+            projectSpec.name,
+            addedRuntimeInput,
+            options.region,
+          );
+        }
         break;
       }
       case "credential": {
@@ -1865,6 +1887,30 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
+   * Writes the box profile that runs the scaffolded agent into the agent's
+   * `.box/<agentName>/local/` folder, named after the project, calling Bedrock in
+   * `region`. An existing profile is the user's, so it is never overwritten.
+   */
+  private async *writeBoxProfile(
+    projectRoot: string,
+    projectName: string,
+    runtime: ScaffoldRuntimeInput,
+    region: string | undefined,
+  ): AsyncGenerator<ProjectEvent, void> {
+    const text = renderBoxProfile(projectName, runtime, region);
+    if (text === undefined) return;
+    const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
+    if (existsSync(path)) {
+      yield { type: "warning", message: `box profile ${path} already exists; left unchanged` };
+      return;
+    }
+    yield { type: "step", message: `writing box profile ${path}` };
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, text, { flag: "wx" });
+    for (const message of boxProfileWarnings(runtime)) yield { type: "warning", message };
+  }
+
+  /**
    * Installs dependencies for a scaffolded runtime directory (e.g. `uv sync`
    * for Python). No-ops if the runtime has no recognized dependency manifest.
    */
@@ -1876,7 +1922,11 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      yield* this.run(["uv", "sync"], appDir);
+      // A boxed agent's profile grants exec only on the uv-managed Pythons, so its venv must link
+      // to one of them, not to a Homebrew or system Python that uv would otherwise pick.
+      const env =
+        input && hasBoxProfile(input) ? { ...process.env, UV_MANAGED_PYTHON: "1" } : undefined;
+      yield* this.run(["uv", "sync"], appDir, undefined, env);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);
       yield { type: "step", message: "installing Node dependencies with npm" };
@@ -1923,6 +1973,7 @@ export class FsProjectManager implements ProjectManager {
     command: string[],
     cwd: string,
     formatLine: (line: string) => string | undefined = (line) => line,
+    env?: NodeJS.ProcessEnv,
   ): AsyncGenerator<ProjectEvent, void, unknown> {
     yield* withOutputEvents((emit) => {
       const lines = createLineSplitter((line) => {
@@ -1931,6 +1982,7 @@ export class FsProjectManager implements ProjectManager {
       });
       return this.runner(command, {
         cwd,
+        ...(env && { env }),
         onOutput: (chunk) => {
           this.logger.debug(chunk);
           lines.push(chunk);

@@ -18,7 +18,7 @@ type CodeZipDevRunnerConfig = {
 
 const SITECUSTOMIZE_MARKER = "AGENTCORE_OTEL_SITECUSTOMIZE=";
 // Windows Python defaults piped stdout to the ANSI code page and block buffering.
-const PYTHON_ENV = { PYTHONUTF8: "1", PYTHONUNBUFFERED: "1" } as const;
+export const PYTHON_ENV = { PYTHONUTF8: "1", PYTHONUNBUFFERED: "1" } as const;
 
 export class CodeZipDevRunner implements DevRunner {
   private readonly streamProcess: ProcessStreamer;

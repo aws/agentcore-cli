@@ -30,6 +30,11 @@ type CreateProjectInputBase = {
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
   skipGit?: boolean;
+  /**
+   * The effective AWS region the CLI already resolved (--region flag, env,
+   * shared config file). The box profile create writes calls Bedrock there.
+   */
+  region?: string;
 };
 
 /** Set of arguments needed to scaffold a managed code-based evaluator. */
@@ -81,6 +86,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
+    /** Runs the agent in Strands Box: set by the box templates only. */
+    box: z.boolean().optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),

@@ -6,6 +6,7 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -25,6 +26,23 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   };
 }
 
+/**
+ * The Bedrock region of the box profile `agentcore create` writes for `agentcore dev`, when
+ * create is given none.
+ */
+export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
+
+/**
+ * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
+ * provider, or LiteLLM with a `bedrock/` model id (its default).
+ */
+export function callsBedrockModel(input: Pick<ScaffoldRuntimeInput, "modelProvider" | "modelId">) {
+  const provider = input.modelProvider ?? "Bedrock";
+  if (provider === "Bedrock") return true;
+  if (provider !== "LiteLLM") return false;
+  return (input.modelId ?? DEFAULT_MODEL_IDS.LiteLLM).startsWith("bedrock/");
+}
+
 type RuntimeTemplateShortcut = {
   runtimeName: string;
   /** One line shown next to the template name in the create wizard. */
@@ -36,6 +54,11 @@ type RuntimeTemplateShortcut = {
   modelProvider?: ModelProvider;
   /** Ships with memory. */
   includesMemory: boolean;
+  /**
+   * Runs its agent in Strands Box: create writes the box profile that runs it. Only the box
+   * templates do; every other template runs its agent the usual way.
+   */
+  box: boolean;
   /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
   supportsModelProviderOverride: boolean;
   runtimeVersion?: NonNullable<ScaffoldRuntimeInput["runtimeVersion"]>;
@@ -57,6 +80,19 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     modelProvider: "Bedrock",
     includesMemory: false,
+    box: false,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "agent-python-minimal-box": {
+    runtimeName: "agent_python_minimal_box",
+    description: "minimal Python project in Strands Box, no agent framework",
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    box: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -68,6 +104,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    box: false,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -80,6 +117,32 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    box: false,
+    supportsModelProviderOverride: true,
+  },
+  "agent-python-strands-box": {
+    runtimeName: "agent_python_strands_box",
+    description:
+      "Strands agent in Strands Box with AgentCore Memory, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "agent-python-strands-box-container": {
+    runtimeName: "agent_python_strands_box_container",
+    description:
+      "Strands agent in Strands Box with AgentCore Memory, Bedrock or another model provider, container-based deployment",
+    build: "Container",
+    language: "Python",
+    framework: "strands",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
     supportsModelProviderOverride: true,
   },
   "agent-typescript-strands": {
@@ -91,6 +154,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    box: false,
     supportsModelProviderOverride: true,
     runtimeVersion: "NODE_22",
   },
@@ -102,6 +166,19 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "langchain",
     modelProvider: "Bedrock",
     includesMemory: false,
+    box: false,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "agent-python-langchain-box": {
+    runtimeName: "agent_python_langchain_box",
+    description: "LangChain agent in Strands Box with Bedrock for inference",
+    build: "CodeZip",
+    language: "Python",
+    framework: "langchain",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    box: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -113,6 +190,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "vercelai",
     modelProvider: "Bedrock",
     includesMemory: false,
+    box: false,
     supportsModelProviderOverride: false,
     runtimeVersion: "NODE_22",
   },
@@ -124,6 +202,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "bma",
     protocol: "HTTP",
     includesMemory: false,
+    box: false,
     supportsModelProviderOverride: false,
     profile: BMA_TEMPLATE_PROFILE,
   },
@@ -135,6 +214,19 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "none",
     protocol: "MCP",
     includesMemory: false,
+    box: false,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "mcp-python-fastmcp-box": {
+    runtimeName: "mcp_python_fastmcp_box",
+    description: "MCP server exposing tools with FastMCP, in Strands Box",
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    protocol: "MCP",
+    includesMemory: false,
+    box: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -147,6 +239,21 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     protocol: "A2A",
     modelProvider: "Bedrock",
     includesMemory: true,
+    box: false,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "a2a-python-strands-box": {
+    runtimeName: "a2a_python_strands_box",
+    description:
+      "Strands agent speaking the A2A protocol in Strands Box, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    protocol: "A2A",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -159,6 +266,20 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     protocol: "AGUI",
     modelProvider: "Bedrock",
     includesMemory: true,
+    box: false,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "agui-python-strands-box": {
+    runtimeName: "agui_python_strands_box",
+    description: "Strands agent speaking AG-UI in Strands Box, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    protocol: "AGUI",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -191,6 +312,8 @@ function templateSortKey(template: RuntimeTemplateShortcut): number[] {
     LANGUAGE_ORDER[template.language],
     FRAMEWORK_ORDER[template.framework],
     BUILD_ORDER[template.build],
+    // A box template follows the template it runs in a box.
+    template.box ? 1 : 0,
   ];
 }
 
@@ -255,19 +378,22 @@ export function resolveRuntimeTemplateShortcut(
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
 
+  const modelProvider = template.supportsModelProviderOverride
+    ? (overrides?.modelProvider ?? template.modelProvider)
+    : template.modelProvider;
+
   const input = {
     runtimeName,
     build: template.build,
     language: template.language,
     framework: template.framework,
     protocol: template.protocol,
-    modelProvider: template.supportsModelProviderOverride
-      ? (overrides?.modelProvider ?? template.modelProvider)
-      : template.modelProvider,
+    modelProvider,
     ...(overrides?.modelId !== undefined && { modelId: overrides.modelId }),
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
+    ...(template.box && { box: true }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

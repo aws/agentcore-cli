@@ -4,7 +4,11 @@ import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtim
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
-import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
+import type {
+  EnvLocalEntry,
+  ModelProvider,
+  ScaffoldRuntimeInput,
+} from "../../../handlers/project/types";
 import {
   credentialEnvVarName,
   credentialProviderNameEnvVarName,
@@ -28,12 +32,23 @@ type ModelProviderTemplateConfig = {
   envEntries: EnvLocalEntry[];
 };
 
+/**
+ * The project credential that holds a scaffolded runtime's model provider API
+ * key. The box profile names its variable, so both must build it the same way.
+ */
+export function modelProviderCredentialName(
+  runtimeName: string,
+  modelProvider: ModelProvider | undefined,
+): string {
+  return `${runtimeName}${modelProvider}ApiKey`;
+}
+
 function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProviderTemplateConfig {
   const { modelProvider, apiKey } = input.scaffoldRuntimeInput;
   if (apiKey === undefined) {
     return { templateRenderContext: { identityProviders: [] }, spec: {}, envEntries: [] };
   }
-  const credentialName = `${input.name}${modelProvider}ApiKey`;
+  const credentialName = modelProviderCredentialName(input.name, modelProvider);
   const envVarName = credentialEnvVarName(credentialName);
   const providerNameEnvVarName = credentialProviderNameEnvVarName(credentialName);
   return {
@@ -271,7 +286,12 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
-      { assetDir: "templates/agent-python-strands" },
+      {
+        // The box templates have their own folder: its Dockerfile runs the agent with `box run`.
+        assetDir: input.scaffoldRuntimeInput.box
+          ? "templates/agent-python-strands-box"
+          : "templates/agent-python-strands",
+      },
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),

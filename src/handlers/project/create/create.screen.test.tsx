@@ -19,7 +19,7 @@ import {
 import { createRootHandler } from "../../index";
 import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
-import { resolveRuntimeTemplateShortcut } from "../shortcuts";
+import { PROJECT_TEMPLATE_NAMES, resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
@@ -27,6 +27,12 @@ import { readEnvFile } from "../../../io/envFile";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import { modelProviderOverridableCnMessage } from "../../../core/project/manager";
+
+/** Moves the template list's cursor from its first entry down to `name`. */
+async function selectTemplate(r: ReturnType<typeof renderScreen>, name: string): Promise<void> {
+  const index = PROJECT_TEMPLATE_NAMES.indexOf(name as (typeof PROJECT_TEMPLATE_NAMES)[number]);
+  for (let i = 0; i < index; i++) await r.press("down");
+}
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -50,6 +56,8 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
   return inputs;
 }
 
+/** The region renderScreen resolves; create hands it to the manager for the box profile. */
+const REGION = "us-east-1";
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5-5";
 const STRANDS_BEDROCK_MODEL_ID = DEFAULT_MODEL_IDS.Bedrock;
 const API_KEY_HELP = "file://<path> to the key file";
@@ -110,7 +118,7 @@ describe("project create wizard", () => {
       {
         name: "DemoApp",
         skipInstall: false,
-        skipGit: false,
+        skipGit: false, region: REGION,
         scaffoldHarnessInput: {
           name: "DemoApp",
           model: { provider: "bedrock", modelId: DEFAULT_MODEL_ID },
@@ -150,7 +158,7 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "TunedApp",
       skipInstall: false,
-      skipGit: false,
+      skipGit: false, region: REGION,
       scaffoldHarnessInput: {
         name: "TunedApp",
         model: { provider: "bedrock", modelId: `${DEFAULT_MODEL_ID}-test` },
@@ -199,7 +207,7 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "OpenAIApp",
       skipInstall: false,
-      skipGit: false,
+      skipGit: false, region: REGION,
       scaffoldHarnessInput: {
         name: "OpenAIApp",
         model: {
@@ -250,7 +258,7 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "KeyApp",
       skipInstall: false,
-      skipGit: false,
+      skipGit: false, region: REGION,
       scaffoldHarnessInput: {
         name: "KeyApp",
         model: {
@@ -551,7 +559,7 @@ describe("project create wizard", () => {
       {
         name: "StrandsApp",
         skipInstall: false,
-        skipGit: false,
+        skipGit: false, region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
         }),
@@ -678,7 +686,7 @@ describe("project create wizard", () => {
       {
         name: "KeyedApp",
         skipInstall: false,
-        skipGit: false,
+        skipGit: false, region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
           modelProvider: "Anthropic",
@@ -792,7 +800,13 @@ describe("project create wizard", () => {
     });
     expected.memory = undefined;
     expect(inputs).toEqual([
-      { name: "CnApp", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+      {
+        name: "CnApp",
+        skipInstall: false,
+        skipGit: false,
+        region: "cn-north-1",
+        scaffoldRuntimeInput: expected,
+      },
     ]);
     expect(r.lastFrame()).toContain("AgentCore Memory is not available in China regions");
     const spec = await Bun.file(join(directory, "CnApp", "agentcore", "agentcore.json")).json();
@@ -882,7 +896,7 @@ describe("project create wizard", () => {
       {
         name: "BaseApp",
         skipInstall: false,
-        skipGit: false,
+        skipGit: false, region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
           modelProvider: "OpenAICompatible",
@@ -972,7 +986,13 @@ describe("project create wizard", () => {
     });
     expected.memory = undefined;
     expect(inputs).toEqual([
-      { name: "CnTs", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+      {
+        name: "CnTs",
+        skipInstall: false,
+        skipGit: false,
+        region: "cn-north-1",
+        scaffoldRuntimeInput: expected,
+      },
     ]);
     const loadModel = await Bun.file(
       join(directory, "CnTs", "app", "agent", "model", "load.ts"),
@@ -998,9 +1018,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
+    await selectTemplate(r, "environment-python-bma");
     await waitForText(r.lastFrame, "● environment-python-bma");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -1026,10 +1044,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
-    await r.press("down"); // agent-python-minimal
+    await selectTemplate(r, "agent-python-minimal");
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
 
@@ -1042,7 +1057,7 @@ describe("project create wizard", () => {
     expect(inputs[0]).toEqual({
       name: "HelloApp",
       skipInstall: false,
-      skipGit: false,
+      skipGit: false, region: REGION,
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-minimal", {
         runtimeName: "agent",
       }),
@@ -1069,8 +1084,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
+    await selectTemplate(r, "agent-python-langchain");
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
@@ -1085,7 +1099,7 @@ describe("project create wizard", () => {
       {
         name: "LangChainApp",
         skipInstall: false,
-        skipGit: false,
+        skipGit: false, region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-langchain", {
           runtimeName: "agent",
         }),
@@ -1109,7 +1123,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
-    for (let i = 0; i < 10; i++) await r.press("down");
+    for (let i = 0; i < PROJECT_TEMPLATE_NAMES.length - 1; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
 
@@ -1124,7 +1138,7 @@ describe("project create wizard", () => {
     expect(frame).toContain("agentcore add --help");
     expect(frame).not.toContain("agentcore dev");
 
-    expect(inputs[0]).toEqual({ name: "EmptyApp", skipInstall: false, skipGit: false });
+    expect(inputs[0]).toEqual({ name: "EmptyApp", skipInstall: false, skipGit: false, region: REGION });
 
     const spec = await Bun.file(join(directory, "EmptyApp", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes ?? []).toHaveLength(0);

@@ -4,6 +4,7 @@ import {
   formatTemplateParameterHelp,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
+  resolveRuntimeTemplateShortcut,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
 } from "./shortcuts";
@@ -12,15 +13,22 @@ describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {
     expect(PROJECT_TEMPLATE_NAMES).toEqual([
       "agent-python-strands",
+      "agent-python-strands-box",
       "agent-python-strands-container",
+      "agent-python-strands-box-container",
       "agent-python-langchain",
+      "agent-python-langchain-box",
       "environment-python-bma",
       "agent-python-minimal",
+      "agent-python-minimal-box",
       "agent-typescript-strands",
       "agent-typescript-vercel",
       "a2a-python-strands",
+      "a2a-python-strands-box",
       "agui-python-strands",
+      "agui-python-strands-box",
       "mcp-python-fastmcp",
+      "mcp-python-fastmcp-box",
       "empty",
     ]);
   });
@@ -76,4 +84,30 @@ test("default memory names fit the service limit for long runtime names", () => 
 
   expect(memory.name).toBe(`${"a".repeat(42)}Memory`);
   expect(memory.name).toHaveLength(48);
+});
+
+describe("box templates", () => {
+  test.each([
+    "agent-python-strands-box",
+    "agent-python-strands-box-container",
+    "agent-python-minimal-box",
+    "agent-python-langchain-box",
+    "a2a-python-strands-box",
+    "agui-python-strands-box",
+    "mcp-python-fastmcp-box",
+  ] as const)("%s runs its agent in a box", (template) => {
+    expect(resolveRuntimeTemplateShortcut(template).box).toBe(true);
+  });
+
+  test.each([
+    "agent-python-strands",
+    "agent-python-strands-container",
+    "agent-typescript-strands",
+    "agent-python-langchain",
+    "agent-python-minimal",
+    "mcp-python-fastmcp",
+    "environment-python-bma",
+  ] as const)("%s, which is not a box template, runs its agent the usual way", (template) => {
+    expect(resolveRuntimeTemplateShortcut(template).box).toBeUndefined();
+  });
 });
