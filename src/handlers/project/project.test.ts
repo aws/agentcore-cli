@@ -141,8 +141,10 @@ describe("project create", () => {
   });
 
   test.each([
-    ["agent-python-strands", { version: BOX_RELEASE.version }],
-    ["agent-python-strands-container", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-box", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-box-container", { version: BOX_RELEASE.version }],
+    ["agent-python-strands", undefined],
+    ["agent-python-strands-container", undefined],
   ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
@@ -161,10 +163,8 @@ describe("project create", () => {
   });
 
   test.each([
-    ["agent-python-strands", []],
-    ["agent-python-minimal", []],
-    ["mcp-python-fastmcp", undefined],
-    ["empty", undefined],
+    ["agent-python-strands-box", []],
+    ["agent-python-strands-box-container", []],
   ] as const)(
     "create --template %s writes the agent-box entry targets %j to agentcore.json",
     async (template, targetNames) => {
@@ -181,12 +181,8 @@ describe("project create", () => {
       ]);
 
       const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
-      // Every new project is a Box project; the CDK library makes each runtime's Box gateway.
+      // A box template makes a Box project; the CDK library makes each runtime's Box gateway.
       expect(spec.projectType).toBe("box");
-      if (targetNames === undefined) {
-        expect(spec.agentCoreGateways ?? []).toEqual([]);
-        return;
-      }
       expect(spec.agentCoreGateways).toHaveLength(1);
       expect(spec.agentCoreGateways[0]).toMatchObject({
         name: "agent-box",
@@ -198,6 +194,39 @@ describe("project create", () => {
       ).toEqual(targetNames);
     },
   );
+
+  test.each([
+    "agent-python-strands",
+    "agent-python-minimal",
+    "mcp-python-fastmcp",
+    "empty",
+  ] as const)("create --template %s makes no Box project", async (template) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run(["create", "--name", "App", "--template", template, "--skip-install", "--skip-git"]);
+
+    const projectRoot = join(directory, "App");
+    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
+    expect(spec.projectType).toBeUndefined();
+    expect(spec.agentCoreGateways ?? []).toEqual([]);
+    expect(existsSync(join(projectRoot, ".box", "profile.toml"))).toBe(false);
+  });
+
+  test("refuses --isolation private-vpc without a box template", async () => {
+    await expect(
+      run([
+        "create",
+        "--name",
+        "App",
+        "--template",
+        "agent-python-strands",
+        "--isolation",
+        "private-vpc",
+        "--skip-install",
+        "--skip-git",
+      ]),
+    ).rejects.toThrow("--isolation private-vpc needs a box template");
+  });
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>
@@ -507,8 +536,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "CodeZip",
-        box: { version: BOX_RELEASE.version },
-        entrypoint: "start.py",
+        entrypoint: "main.py",
         codeLocation: "app/agent",
         runtimeVersion: "PYTHON_3_14",
       },

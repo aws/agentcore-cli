@@ -416,7 +416,7 @@ describe("project deploy handler", () => {
       project_runtime_count: 1,
       project_memory_count: 0,
       // the agent-box gateway entry that create declares.
-      project_gateway_count: 1,
+      project_gateway_count: 0,
       project_harness_count: 0,
     });
     expect(subject.calls).toHaveLength(1);

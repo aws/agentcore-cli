@@ -239,7 +239,8 @@ describe("project add memory wizard", () => {
     await waitForText(r.lastFrame, "this Memory will be added to agentcore.json");
     expect(flatFrame(r.lastFrame)).toContain("memory orders_memory");
 
-    expect((await projectSpec(projectRoot)).memories).toHaveLength(1);
+    // The box template's default memory, and the one this test added.
+    expect((await projectSpec(projectRoot)).memories).toHaveLength(2);
     r.unmount();
   }, 15000);
 

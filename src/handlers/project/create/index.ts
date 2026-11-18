@@ -11,6 +11,8 @@ import {
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
 import {
+  ISOLATION_LEVELS,
+  PRIVATE_VPC_NOTE,
   type CreateProjectInput,
   type ModelProvider,
   type ProjectManager,
@@ -110,6 +112,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         { help: formatTemplateParameterHelp({ includeEmpty: true }) },
       ),
       flag(
+        "isolation",
+        "how isolated a box template's agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        z.enum(ISOLATION_LEVELS).default("sandboxed"),
+      ),
+      flag(
         "skip-install",
         "skip installing dependencies (npm install, uv sync)",
         z.boolean().default(false),
@@ -130,6 +137,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
+        isolation: flags["isolation"],
         region,
       };
 
@@ -142,6 +150,15 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
                 runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
               }),
             };
+
+      // A private VPC has no internet path, so only an agent whose calls go through its Box gateway
+      // works in one.
+      if (flags["isolation"] === "private-vpc" && !createInput.scaffoldRuntimeInput?.box) {
+        throw new InputValidationError(
+          "--isolation private-vpc needs a box template: agent-python-strands-box or " +
+            "agent-python-strands-box-container.",
+        );
+      }
 
       try {
         validateCreateRegionSupport(createInput, region);
@@ -179,12 +196,13 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
             config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
-            return;
+          } else {
+            config.io.stderr.write(`created project '${name}' in ./${name}\n`);
+            config.io.stderr.write(
+              `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+            );
           }
-          config.io.stderr.write(`created project '${name}' in ./${name}\n`);
-          config.io.stderr.write(
-            `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
-          );
+          if (flags["isolation"] === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
         },
       );
     },

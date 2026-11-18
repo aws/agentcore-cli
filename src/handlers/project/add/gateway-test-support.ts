@@ -12,7 +12,7 @@ import { getBoxGatewayEntry } from "../shortcuts";
 
 /**
  * The Box gateway entry (`agent-box`, with no targets: build adds the Bedrock target) that
- * `agentcore create --template agent-python-minimal` declares for its Bedrock agent, so every
+ * `agentcore create --template agent-python-strands-box` declares for its Bedrock agent, so every
  * harness project starts with it at index 0.
  */
 export const DEFAULT_BOX_GATEWAY = getBoxGatewayEntry(DEFAULT_CREATE_RUNTIME_NAME);
@@ -58,7 +58,7 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
   async function inProject(name = "TestProject"): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
       name,
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
       prefix: `agentcore-${directoryPrefix}-`,
     });
     cleanups.push(cleanup);

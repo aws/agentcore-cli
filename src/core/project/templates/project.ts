@@ -20,7 +20,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; secureVpc?: boolean },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -37,7 +37,7 @@ export async function createProjectTree(
 
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
-    if (isBoxedContainer(options.runtime)) withBoxContainerStartScript(config, template);
+    if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
     templates.push(template);
   }
 
@@ -54,8 +54,9 @@ export async function createProjectTree(
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
-          // Only new projects are Box projects; no other command adds this field.
-          projectType: "box",
+          // A project created from a box template is a Box project; no other command adds this field.
+          ...(options?.runtime?.box && { projectType: "box" }),
+          ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
             // The entry that adds the template's targets (a model endpoint) to the runtime's
@@ -86,30 +87,27 @@ export async function createProjectTree(
  * Create alone writes them, because only create writes the box profiles.
  */
 function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
-  for (const name of [BOX_CODEZIP_ENTRYPOINT, "start.sh"]) {
-    template.tree.children.push(
-      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${name}`)),
-    );
-  }
+  // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
+  // Python and code paths the box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+  template.tree.children.push(
+    FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
+      config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
+    ),
+  );
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
-    // The box release dev runs, and build and deploy ship; change it to move to another release.
+    // The box release build and deploy ship; change it to move to another release. dev runs the
+    // box on PATH.
     runtime.box = { version: BOX_RELEASE.version };
   }
 }
 
 /**
- * The container image's entry point, start.sh, which the Dockerfile copies
- * into /opt/box: it fills in the deployed resources and starts `box run`.
- * Dev, build and deploy stage box into .box-dist/, which the Dockerfile copies.
+ * The box release a container image stages: build and deploy use `box.version` to download box in
+ * the Dockerfile. The image runs `box run` directly and needs no start script.
  */
-function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
-  template.tree.children.push(
-    FsTreeNode.createFile("start.sh", () =>
-      config.assetSource.read("templates/box-container/start.sh"),
-    ),
-  );
-  // The box release that dev, build and deploy stage into the image; change it to move to another.
+function withBoxContainerBoxVersion(template: Template): void {
+  // The box release that build and deploy stage into the image; change it to move to another.
   for (const runtime of template.spec.runtimes ?? [])
     runtime.box = { version: BOX_RELEASE.version };
 }

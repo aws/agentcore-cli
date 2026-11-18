@@ -63,7 +63,9 @@ import {
   boxProfileWarnings,
   hasBoxProfile,
   renderBoxProfile,
+  startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
+import { BOX_INSTALL_HINT } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -541,7 +543,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, secureVpc: input.isolation === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -1277,8 +1279,11 @@ export class FsProjectManager implements ProjectManager {
     // so a following deploy can tear down the target's stack.
     // The project type stays, so a runtime added later still gets its Box gateway. With no
     // runtimes there is no Box gateway, so the next deploy reaches the teardown confirmation.
+    // The private VPC goes, though: with "secureVpc": "ENABLED" the CDK library builds the VPC
+    // even with no runtimes, and the next deploy would not tear the stack down.
+    const { secureVpc: _secureVpc, network: _network, ...rest } = existingProjectSpec;
     const newSpec = {
-      ...existingProjectSpec,
+      ...rest,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -2040,6 +2045,10 @@ export class FsProjectManager implements ProjectManager {
         templateManagesDependencies(resolveRuntimeTemplateProfile(input.scaffoldRuntimeInput))
       ) {
         await this.checkTool("uv", UV_INSTALL_HINT);
+      }
+      // `agentcore dev` runs a CodeZip box agent with the box on PATH; a container's image has its own.
+      if (input.scaffoldRuntimeInput && startsInBoxOnCodeZip(input.scaffoldRuntimeInput)) {
+        await this.checkTool("box", BOX_INSTALL_HINT);
       }
     }
     if (!input.skipGit) {

@@ -197,15 +197,18 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
-Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.2` of
+Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+`agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
+`agentcore create --template <name>` makes a Box project from either; every other template runs
+its agent without box, and `--isolation private-vpc` needs a box template. box comes from the
+public GitHub release `v0.1.11-linux-preview.3` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 
 `src/core/project/backends/boxRelease.json` pins two releases on their own, each with its
 repository, version and SHA-256s:
 
-- `box`: the Linux build that ships to AgentCore Runtime, and the builds `agentcore dev` runs.
+- `box`: the Linux build that ships to AgentCore Runtime.
 - `ffi`: the Python ffi shim a CodeZip agent needs in a box, by Python version. It can come from
   another repository or version than box.
 
@@ -217,13 +220,16 @@ How each command uses it:
 - A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
   `~/.agentcore/box/` and the ffi shim into `~/.agentcore/box-ffi/`, check each against its pinned
   SHA-256, and stage box, its packs and the shim into the runtime's `.box-dist/`.
-- A container agent's image copies box in while it builds: dev, build and deploy download the same
-  Linux release into `~/.agentcore/box/` and stage box and its packs into the image's
-  `.box-dist/`, which the Dockerfile copies into `/opt/box`. `agentcore dev` builds the image on
-  your machine and `agentcore deploy` builds it in AWS CodeBuild.
-- A CodeZip agent under `agentcore dev` runs on your Mac in the release's macOS arm64 build, which
-  dev downloads once into `~/.agentcore/box/` and runs with its packs beside it. On a machine the
-  release has no build for, dev runs the `box` on your PATH.
+- A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
+  release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
+  (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
+  checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
+  the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
+  builds the image on your machine and `agentcore deploy` builds it in AWS CodeBuild.
+- A CodeZip agent under `agentcore dev` runs in the `box` on your PATH, which you install from
+  the release: download the build for your machine, unpack it into a folder, and add that folder
+  to your PATH. `agentcore create --template agent-python-strands-box` and `agentcore dev` stop
+  with that instruction when `box` is not on your PATH. Container agents need no local box.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
 which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
@@ -245,7 +251,7 @@ directly.
 agentcore create --name MyBoxAgent --template agent-python-strands-container
 cd MyBoxAgent
 AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional
-CDK_DOCKER=finch agentcore deploy --yes
+agentcore deploy --yes
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"My favorite color is teal. Remember it."}'
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"What is my favorite color?"}'
 agentcore logs runtime --name agent --since 15m --query '"[box]"'

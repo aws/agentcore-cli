@@ -289,7 +289,12 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
     const isContainer = input.scaffoldRuntimeInput.build === "Container";
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
-      { assetDir: "templates/agent-python-strands" },
+      {
+        // The box templates have their own folder: its Dockerfile runs the agent with `box run`.
+        assetDir: input.scaffoldRuntimeInput.box
+          ? "templates/agent-python-strands-box"
+          : "templates/agent-python-strands",
+      },
       {
         rootDirName: input.name,
         transformContent: (raw) => templateRenderer.render(raw, context),

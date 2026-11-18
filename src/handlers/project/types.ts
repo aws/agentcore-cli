@@ -27,9 +27,17 @@ import type { AwsCredentialProvider } from "../../core/types";
 import type { LegacyProjectInfo } from "../../core/project/legacy/types";
 import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
+export const ISOLATION_LEVELS = ["sandboxed", "private-vpc"] as const;
+export type Isolation = (typeof ISOLATION_LEVELS)[number];
+export const PRIVATE_VPC_COST =
+  "about $58 to $75/month while deployed · uses 1 of the account's VPCs (default 5 per region)";
+export const PRIVATE_VPC_NOTE = `isolation: private VPC with no internet path · ${PRIVATE_VPC_COST}`;
+
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
+  /** `private-vpc` writes `"secureVpc": "ENABLED"`. Missing means `sandboxed`. */
+  isolation?: Isolation;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
@@ -90,6 +98,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
+    /** Runs the agent in Strands Box: set by the box templates only. */
+    box: z.boolean().optional(),
     /**
      * The entry that adds the template's targets (the Bedrock model endpoint) to this runtime's Box
      * gateway, `<runtime>-box`; absent when the agent calls no Bedrock model.

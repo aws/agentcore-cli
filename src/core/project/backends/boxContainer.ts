@@ -1,12 +1,4 @@
-import {
-  chmodSync,
-  copyFileSync,
-  cpSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -14,8 +6,8 @@ import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
 import { runsBoxStartScript } from "../templates/boxProfile";
-import { assertImageCopiesPolicyFiles, assertStartScriptCopiesPolicyFiles } from "./boxStaging";
-import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
+import type { BoxRelease } from "./boxRelease";
+import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
 export const BOX_IMAGE_DIST = ".box-dist";
@@ -79,23 +71,30 @@ export interface PolicyFileCopy {
   readonly relative: string;
 }
 
+/** The file that tells the image's Dockerfile which box release to download, and its checksum. */
+const BOX_RELEASE_ENV = "box-release.env";
+
+function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
+  return `BOX_REPO=${repo}\nBOX_VERSION=${version}\nBOX_ASSET=${linux.asset}\nBOX_SHA256=${linux.sha256}\n`;
+}
+
 /**
- * Writes `<context>/.box-dist/` for a box image under `agentcore dev`: `profileText`, the profile
- * the image runs, and each policy file of `policies` at its path from `.box/`. The image's
- * Dockerfile installs box itself, from the box release. The folder is rewritten each time.
+ * Writes `<context>/<folder>` for a box image: `profileText`, the profile the image runs, each
+ * policy file of `policies` at its path from `.box/`, and the box release the Dockerfile downloads.
+ * The folder is rewritten each time.
  */
 export function stageBoxImage(
   context: string,
   profileText: string,
-  policies: readonly PolicyFileCopy[] = [],
-  build?: BoxLinuxBuild,
+  policies: readonly PolicyFileCopy[],
+  release: BoxRelease,
   folder: string = BOX_IMAGE_DIST,
 ): void {
   const dist = join(context, folder);
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(dist, { recursive: true });
-  if (build) copyBox(build, dist);
   writeFileSync(join(dist, "profile.toml"), profileText);
+  writeFileSync(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(release));
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
     mkdirSync(dirname(to), { recursive: true });
@@ -105,14 +104,14 @@ export function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime whose
- * Dockerfile copies `.box-dist/`: what the runtime profile writer writes from
- * the runtime's Box network model, the Runtime profile and a byte copy of each
- * policy file it names. Returns the names of the runtimes it staged.
+ * Dockerfile copies `.box-dist/`: the box release its `box.version` names, and
+ * what the runtime profile writer writes from the runtime's Box network model,
+ * the Runtime profile and a byte copy of each policy file it names. Returns the names of the runtimes it staged.
  */
 export async function stageBoxContainers(
   project: Project,
   networks: readonly BoxNetwork[],
-  box: (version: string | undefined) => Promise<BoxLinuxBuild>,
+  releaseFor: (version: string | undefined) => Promise<BoxRelease>,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter((runtime) =>
     imageCopiesBox(project.rootPath, runtime),
@@ -121,6 +120,8 @@ export async function stageBoxContainers(
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
+    container: runtime.build === "Container",
+    codezip: false,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,
@@ -130,26 +131,18 @@ export async function stageBoxContainers(
   const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
   for (const runtime of runtimes) {
     const policyFiles = networks.find((n) => n.runtime === runtime.name)?.policyFiles ?? [];
-    const context = containerBuildContext(project.rootPath, runtime);
     assertImageCopiesPolicyFiles(
       dockerfileOf(project.rootPath, runtime),
       runtime.name,
       policyFiles,
     );
-    assertStartScriptCopiesPolicyFiles(join(context, "start.sh"), runtime.name, policyFiles);
   }
-  // One build for each box version the runtimes name, so each downloads once.
-  const builds = new Map<string | undefined, BoxLinuxBuild>();
-  for (const runtime of runtimes) {
-    const version = runtime.box?.version;
-    if (!builds.has(version)) builds.set(version, await box(version));
-  }
-  for (const { runtime, dist } of staged) {
-    const entry = runtimes.find(({ name }) => name === runtime)!;
+  for (const [index, { dist }] of staged.entries()) {
     const folder = join(project.rootPath, ...dist.split("/"));
     rmSync(folder, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
-    copyBox(builds.get(entry.box?.version)!, folder);
+    const release = await releaseFor(runtimes[index]!.box?.version);
+    writeFileSync(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
   }
   return runtimes.map((runtime) => runtime.name);
@@ -165,16 +158,4 @@ export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): bo
     (runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint)) ||
     imageCopiesBox(projectRoot, runtime)
   );
-}
-
-/**
- * Copies box, its helpers and its packs into an image's `.box-dist/`, which its Dockerfile copies
- * into /opt/box, so the image runs the box release of the runtime's `box.version`.
- */
-function copyBox(build: BoxLinuxBuild, dist: string): void {
-  for (const binary of BOX_BINARIES) {
-    copyFileSync(join(build.binaries, binary), join(dist, binary));
-    chmodSync(join(dist, binary), 0o755);
-  }
-  cpSync(build.resources, join(dist, "resources"), { recursive: true });
 }
