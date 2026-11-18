@@ -98,16 +98,20 @@ Set these once per shell. Change the values for your machine: `CLI` is the CLI r
 your workspace checkout, `L3` is the local L3 constructs checkout, and `DEMO` and `PROJECT` say
 where the demo project goes. Use absolute paths: the steps below `cd` into other folders, where a
 relative path no longer resolves (`bun` then says `Module not found "./agentcore-cli/src/index.ts"`).
-From the folder that holds both checkouts, `$PWD` gives them:
+Replace `/path/to/workspace` with the folder that holds both checkouts:
 
 ```
-CLI="$PWD/agentcore-cli/src/index.ts"
-L3="$PWD/agentcore-l3-cdk-constructs"
+CLI=/path/to/workspace/agentcore-cli/src/index.ts
+L3=/path/to/workspace/agentcore-l3-cdk-constructs
 DEMO=/tmp/cliDemo
 PROJECT=cliDemo
 ```
 
-`echo "$CLI"` must print a path that starts with `/`.
+Check that both paths exist. This prints `ok`, or nothing if a placeholder is still there:
+
+```
+test -f "$CLI" && test -d "$L3" && echo ok
+```
 
 ## Install the CLI's dependencies
 
@@ -251,10 +255,13 @@ aws sts get-caller-identity
 
 ### Run dev
 
-In the project from step 3:
+In the project from step 3, start dev. If you added the `[egress.github]` entry in step 4, first
+export `GITHUB_TOKEN`, which that entry reads. A placeholder value is enough for the local check, as
+in step 7:
 
 ```
 cd "$DEMO/$PROJECT"
+export GITHUB_TOKEN=ghp_demo_value
 bun run "$CLI" dev
 ```
 
@@ -291,7 +298,7 @@ bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 t
 ### What to check
 
 - The answer comes back from `invoke --local`.
-- The dev output shows box starting the agent: `box: running profile <project>` and the
+- The dev output shows box starting the agent: `box: running profile cliDemo` (your `$PROJECT`) and the
   `[agent]` filesystem summary, with `deny_write  .../.venv  (read-only)` for CodeZip.
 - With the step 4 `[egress]` entry, calls to its host go out, and calls to other hosts are blocked
   (`ProxyConnectionError ... 127.0.0.1:<port>` in the agent's log means box blocked the host).
@@ -356,31 +363,31 @@ Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
 1. Create the log group and the log stream. Box does not create them.
 
    ```sh
-   aws logs create-log-group --log-group-name /aws/box/<project>
-   aws logs create-log-stream --log-group-name /aws/box/<project> --log-stream-name <agent>
+   aws logs create-log-group --log-group-name /aws/box/$PROJECT
+   aws logs create-log-stream --log-group-name /aws/box/$PROJECT --log-stream-name agent
    ```
 
-2. Add a target to the agent's box profile, `.box/<agent>/local/profile.toml`:
+2. Add a target to the agent's box profile, `.box/agent/local/profile.toml`:
 
    ```toml
    [telemetry.logs]
    kind = "cloudwatch_logs"
    region = "us-west-2"
-   log_group = "/aws/box/<project>"
-   log_stream = "<agent>"
+   log_group = "/aws/box/cliDemo"   # your $PROJECT
+   log_stream = "agent"
    include = ["deny", "permit", "trace"]
    secret.ref = "aws://"
    ```
 
 3. Run `agentcore deploy`. Build copies the table into the Runtime profile, so on AgentCore Runtime
    box signs with the execution role. It also grants that role `logs:PutLogEvents` on the stream,
-   in `agentcore/box-telemetry-policy-<agent>.json`, which it lists in the runtime's
+   in `agentcore/box-telemetry-policy-agent.json`, which it lists in the runtime's
    `additionalPolicies`.
 
 4. Invoke the agent, then read the records:
 
    ```sh
-   aws logs filter-log-events --log-group-name /aws/box/<project> --filter-pattern '"deny"'
+   aws logs filter-log-events --log-group-name /aws/box/$PROJECT --filter-pattern '"deny"'
    ```
 
    Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`.
