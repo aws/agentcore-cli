@@ -59,7 +59,7 @@ import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
-  boxProfilePath,
+  boxLocalProfilePath,
   boxProfileWarnings,
   hasBoxProfile,
   renderBoxProfile,
@@ -902,6 +902,17 @@ export class FsProjectManager implements ProjectManager {
           outputPath,
           input.resourceConfig.scaffoldRuntimeInput,
         );
+        // Each boxed agent gets its own box/<name>/local profile, so a runtime added later is
+        // not left without one. Create writes the first runtime's profile on its own path.
+        const addedRuntimeInput = input.resourceConfig.scaffoldRuntimeInput;
+        if (addedRuntimeInput && hasBoxProfile(addedRuntimeInput)) {
+          yield* this.writeBoxProfile(
+            project.rootPath,
+            projectSpec.name,
+            addedRuntimeInput,
+            await this.boxBuildRegion(),
+          );
+        }
         break;
       }
       case "credential": {
@@ -2068,9 +2079,9 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Writes the box profile that runs the scaffolded agent into the project's
-   * `.box` folder, named after the project, calling Bedrock in `region`. An
-   * existing profile is the user's, so it is never overwritten.
+   * Writes the box profile that runs the scaffolded agent into the agent's
+   * `box/<agentName>/local/` folder, named after the project, calling Bedrock in
+   * `region`. An existing profile is the user's, so it is never overwritten.
    */
   private async *writeBoxProfile(
     projectRoot: string,
@@ -2080,7 +2091,7 @@ export class FsProjectManager implements ProjectManager {
   ): AsyncGenerator<ProjectEvent, void> {
     const text = renderBoxProfile(projectName, runtime, "local", "", [], region);
     if (text === undefined) return;
-    const path = boxProfilePath(projectRoot);
+    const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {
       yield { type: "warning", message: `box profile ${path} already exists; left unchanged` };
       return;

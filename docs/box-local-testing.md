@@ -16,7 +16,8 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
 `agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
-`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
+`~/.agentcore/box/`, check its SHA-256s, generate it into the agent's `box/<runtime>/aws/`, and copy
+that into the zip or the image's `.box-dist/`.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
 from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
@@ -102,15 +103,16 @@ credential's egress to any host not in the list. Each entry is a `<host>` or
 `<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
 
 ```
-printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/box/agent/local/profile.toml"
 ```
 
 ### What build and deploy do with the box profile
 
-Build and deploy run `box profile show .box/profile.toml --format json` in the project folder, with the
-`box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box resolves the profile to into
-the runtime's Box network. Every pack, option, and rule Box adds is already in them, so any pack
-works. They change nothing in `.box/`.
+Build and deploy run `box profile show box/<runtime>/local/profile.toml --format json` in the
+project folder, with the `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box
+resolves the profile to into the runtime's Box network. Every pack, option, and rule Box adds is
+already in them, so any pack works. They change nothing in `box/<runtime>/local/`; they generate
+the Runtime profile and its resources under `box/<runtime>/aws/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
@@ -131,9 +133,9 @@ works. They change nothing in `.box/`.
   AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
   the gateway's `additionalPolicies` that is missing or is not JSON, as it counts none of its
   actions.
-- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
-  `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. Each policy
-  file is copied beside it, byte for byte, and listed under `policies`.
+- **The AgentCore Runtime profile.** The generated `box/<runtime>/aws/profile.toml` (copied into
+  `.box-dist/`) has one `[egress.<target>]` route through the gateway for each target of
+  `<runtime>-box`. Each policy file is copied beside it, byte for byte, and listed under `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.

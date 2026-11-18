@@ -99,7 +99,7 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run .box/profile.toml` can load it by its path", () => {
+  test("names itself after the project, so `box run box/agent/local/profile.toml` can load it by its path", () => {
     expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
   });
 
@@ -253,7 +253,7 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-strands", groq).egress).toBeUndefined();
     expect(boxProfileWarnings(runtime)).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
-        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "section with its provider's host to box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
     ]);
   });
@@ -545,6 +545,116 @@ describe("renderRuntimeBoxProfile", () => {
     expect(renderRuntimeBoxProfile(container, container.runtimes[0]!)).toContain(
       '"${{ workspace }}/.venv/bin/python"',
     );
+  });
+
+  describe("with instrumentation.enableOtel", () => {
+    const CODEZIP = { build: "CodeZip", entrypoint: "start.py" } as const;
+    const CONTAINER = { build: "Container", entrypoint: "main.py" } as const;
+
+    /** The agent the CodeZip profile starts: the Runtime's Python serving the zip's code. */
+    const CODEZIP_AGENT = [
+      "${{ inputs.python.path }}",
+      "-m",
+      "uvicorn",
+      "main:app",
+      "--app-dir",
+      "${{ inputs.code.dir }}",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8081",
+    ];
+    /** The agent the container profile starts: the image venv's Python serving /app. */
+    const CONTAINER_AGENT = [
+      "${{ workspace }}/.venv/bin/python",
+      "-m",
+      "uvicorn",
+      "main:app",
+      "--app-dir",
+      "${{ workspace }}",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8081",
+    ];
+    /** Where deploy packages opentelemetry-instrument in the zip, and where uv installs it in the image. */
+    const ZIP_INSTRUMENT = "${{ inputs.code.dir }}/bin/opentelemetry-instrument";
+    const IMAGE_INSTRUMENT = "${{ workspace }}/.venv/bin/opentelemetry-instrument";
+
+    const INSTRUMENTED = [
+      // The zip's script starts `#!/usr/bin/env python3`, so the Runtime's Python runs it.
+      ["CodeZip", CODEZIP, ["${{ inputs.python.path }}", ZIP_INSTRUMENT, ...CODEZIP_AGENT]],
+      // As the plain template's CMD runs it, with the venv's Python named by its path.
+      ["container", CONTAINER, [IMAGE_INSTRUMENT, ...CONTAINER_AGENT]],
+    ] as const;
+
+    function agentOf(runtime: Partial<ProjectRuntime>) {
+      const project = spec([bedrock], runtime);
+      return (parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)) as BoxProfile).agent;
+    }
+
+    test.each(INSTRUMENTED)(
+      "starts the %s agent under opentelemetry-instrument when agentcore.json leaves it unset",
+      (_, runtime, command) => {
+        expect(agentOf(runtime).command).toEqual([...command]);
+      },
+    );
+
+    test.each(INSTRUMENTED)(
+      "starts the %s agent under opentelemetry-instrument when it is true",
+      (_, runtime, command) => {
+        const agent = agentOf({ ...runtime, instrumentation: { enableOtel: true } });
+        expect(agent.command).toEqual([...command]);
+      },
+    );
+
+    test.each([
+      ["CodeZip", CODEZIP, CODEZIP_AGENT],
+      ["container", CONTAINER, CONTAINER_AGENT],
+    ] as const)("starts the %s agent itself when it is false", (_, runtime, command) => {
+      const agent = agentOf({ ...runtime, instrumentation: { enableOtel: false } });
+      expect(agent.command).toEqual([...command]);
+    });
+
+    test("wraps a CodeZip agent that runs as a module the same way", () => {
+      expect(agentOf({ ...CODEZIP, protocol: "A2A" }).command).toEqual([
+        "${{ inputs.python.path }}",
+        ZIP_INSTRUMENT,
+        "${{ inputs.python.path }}",
+        "-m",
+        "main",
+      ]);
+    });
+
+    /** Whether an entry of `grants` is `path` or a folder above it. */
+    function covers(grants: unknown[], path: string): boolean {
+      return grants.some((grant) => {
+        const granted = typeof grant === "string" ? grant : (grant as { path: string }).path;
+        return path === granted || path.startsWith(`${granted}/`);
+      });
+    }
+
+    test.each([
+      ["CodeZip", CODEZIP],
+      ["container", CONTAINER],
+    ] as const)("adds no filesystem grant to the %s profile", (_, runtime) => {
+      const on = agentOf(runtime).filesystem;
+      const off = agentOf({ ...runtime, instrumentation: { enableOtel: false } }).filesystem;
+      expect(on).toEqual(off);
+      // What running the zip's `#!/usr/bin/env python3` script directly would need.
+      expect(covers(on.exec, "/usr/bin/env")).toBe(false);
+    });
+
+    test("reads the zip's opentelemetry-instrument through the code directory's grant", () => {
+      expect(covers(agentOf(CODEZIP).filesystem.read, ZIP_INSTRUMENT)).toBe(true);
+    });
+
+    test("runs the image's opentelemetry-instrument and its shebang's Python through the venv's grant", () => {
+      const { read, exec } = agentOf(CONTAINER).filesystem;
+      expect(covers(read, IMAGE_INSTRUMENT)).toBe(true);
+      expect(covers(exec, IMAGE_INSTRUMENT)).toBe(true);
+      expect(covers(exec, "${{ workspace }}/.venv/bin/python")).toBe(true);
+    });
   });
 });
 

@@ -27,17 +27,25 @@ const SPEC = {
 /** What box resolves the profile of {@link project} to: its route `api`, which has no secret. */
 const API_ROUTE = { api: { destinations: ["api.example.com"] } };
 
-/** A project root whose profile names `policies`, with `.box/policy.dw` in it. */
+/** The local box folder of the runtime `agent`, from the project root. */
+const LOCAL = ["box", "agent", "local"];
+
+/** A project root whose profile names `policies`, with `box/agent/local/policy.dw` in it. */
 async function project(policies: string[]): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
   directories.push(root);
-  await mkdir(join(root, ".box"), { recursive: true });
+  await writeProfile(root, "agent", policies);
+  await writeFile(join(root, ...LOCAL, "policy.dw"), "// no rule\n");
+  return root;
+}
+
+/** Writes the local box profile of the runtime `agentName`, which names `policies`. */
+async function writeProfile(root: string, agentName: string, policies: string[]): Promise<void> {
+  await mkdir(join(root, "box", agentName, "local"), { recursive: true });
   await writeFile(
-    join(root, ".box", "profile.toml"),
+    join(root, "box", agentName, "local", "profile.toml"),
     `policies = ${JSON.stringify(policies)}\n[egress.api]\ndestinations = ["api.example.com"]\n`,
   );
-  await writeFile(join(root, ".box", "policy.dw"), "// no rule\n");
-  return root;
 }
 
 const failuresOf = async (root: string) =>
@@ -46,7 +54,7 @@ const failuresOf = async (root: string) =>
   );
 
 describe("readBoxNetworks", () => {
-  test("reads box's resolution of .box/profile.toml, in the project folder, into one model per box runtime", async () => {
+  test("reads box's resolution of box/agent/local/profile.toml, in the project folder, into one model per box runtime", async () => {
     const root = await project(["policy.dw"]);
     const box = new FakeBoxProfileResolver(
       boxShowOf({ egress: API_ROUTE, policy: "// no rule\n" }),
@@ -54,7 +62,7 @@ describe("readBoxNetworks", () => {
 
     const [network] = await readBoxNetworks(SPEC, root, box);
 
-    expect(box.calls).toEqual([{ projectRoot: root, profilePath: ".box/profile.toml" }]);
+    expect(box.calls).toEqual([{ projectRoot: root, profilePath: "box/agent/local/profile.toml" }]);
     expect(network?.gateway).toBe("agent-box");
     expect(network?.policyFiles).toEqual(["policy.dw"]);
     // Box writes a route with no secret only as rules, and the target still takes its name.
@@ -64,13 +72,13 @@ describe("readBoxNetworks", () => {
   test("places a rule of a policy file at its line, and an entry at its line in the profile", async () => {
     const root = await project(["policy.dw"]);
     await writeFile(
-      join(root, ".box", "profile.toml"),
+      join(root, ...LOCAL, "profile.toml"),
       'policies = ["policy.dw"]\n\n[egress.wide]\ndestinations = ["*.wide.example.com"]\n' +
         'secret.ref = "env://KEY"\n',
     );
     const wild =
       '@id("wild") permit (principal, action == Box::Action::"http:request", resource) when { context.input.host like "*.example.com" };\n';
-    await writeFile(join(root, ".box", "policy.dw"), `// every subdomain\n${wild}`);
+    await writeFile(join(root, ...LOCAL, "policy.dw"), `// every subdomain\n${wild}`);
     const box = new FakeBoxProfileResolver(
       boxShowOf({
         egress: { wide: { destinations: ["*.wide.example.com"], secret: { ref: "env://KEY" } } },
@@ -87,8 +95,8 @@ describe("readBoxNetworks", () => {
         place,
       ]),
     ).toEqual([
-      ["EGRESS_WILDCARD_DESTINATION", "wide", ".box/profile.toml:3:1"],
-      ["WILDCARD_HOST", "wild", ".box/policy.dw:2:1"],
+      ["EGRESS_WILDCARD_DESTINATION", "wide", "box/agent/local/profile.toml:3:1"],
+      ["WILDCARD_HOST", "wild", "box/agent/local/policy.dw:2:1"],
     ]);
   });
 
@@ -97,7 +105,7 @@ describe("readBoxNetworks", () => {
     const root = await project([]);
 
     expect(await readBoxNetworks({ ...SPEC, projectType: undefined }, root, box)).toEqual([]);
-    await rm(join(root, ".box", "profile.toml"));
+    await rm(join(root, ...LOCAL, "profile.toml"));
     expect((await readBoxNetworks(SPEC, root, box))[0]?.hosts).toEqual([]);
     expect(box.calls).toEqual([]);
   });
@@ -121,32 +129,32 @@ describe("readBoxNetworks", () => {
     ]);
     const elsewhere = join(root, "elsewhere.dw");
     await writeFile(elsewhere, "// outside\n");
-    await symlink(elsewhere, join(root, ".box", "outside.dw"));
-    await link(join(root, ".box", "policy.dw"), join(root, ".box", "linked.dw"));
-    await mkdir(join(root, ".box", "folder.dw"));
+    await symlink(elsewhere, join(root, ...LOCAL, "outside.dw"));
+    await link(join(root, ...LOCAL, "policy.dw"), join(root, ...LOCAL, "linked.dw"));
+    await mkdir(join(root, ...LOCAL, "folder.dw"));
 
     const reasons = await failuresOf(root);
     expect(reasons.map(({ code, place }) => [code, place])).toEqual(
-      Array(6).fill(["INVALID_POLICY_FILE", ".box/profile.toml:1:1"]),
+      Array(6).fill(["INVALID_POLICY_FILE", "box/agent/local/profile.toml:1:1"]),
     );
     expect(reasons.map(({ reason }) => reason)).toEqual([
-      "`policies` names missing.dw, but .box/missing.dw does not exist. Create it, or remove " +
-        "it from `policies`.",
-      ".box/outside.dw is a symbolic link to a file outside .box/, which Box does not read. Put " +
-        "the policy file itself in .box/.",
-      ".box/linked.dw has 2 hard links, and Box reads only a policy file with one. Replace it " +
-        "with a copy.",
-      ".box/folder.dw is a folder, not a policy file. Name a file in `policies`.",
-      '.box/box takes the name "box", which Box keeps for its own files on AgentCore Runtime. ' +
-        "Rename the file.",
-      '.box/a b.dw has a character other than a letter, a digit, ".", "_", "-", or "/" in its ' +
-        "path, and deploy cannot copy it to AgentCore Runtime. Rename the file.",
+      "`policies` names missing.dw, but box/agent/local/missing.dw does not exist. Create it, or " +
+        "remove it from `policies`.",
+      "box/agent/local/outside.dw is a symbolic link to a file outside box/agent/local/, which " +
+        "Box does not read. Put the policy file itself in box/agent/local/.",
+      "box/agent/local/linked.dw has 2 hard links, and Box reads only a policy file with one. " +
+        "Replace it with a copy.",
+      "box/agent/local/folder.dw is a folder, not a policy file. Name a file in `policies`.",
+      'box/agent/local/box takes the name "box", which Box keeps for its own files on AgentCore ' +
+        "Runtime. Rename the file.",
+      'box/agent/local/a b.dw has a character other than a letter, a digit, ".", "_", "-", or "/" ' +
+        "in its path, and deploy cannot copy it to AgentCore Runtime. Rename the file.",
     ]);
   });
 
-  test("reads a symlink that stays inside .box/", async () => {
+  test("reads a symlink that stays inside the agent's local box folder", async () => {
     const root = await project(["inner.dw"]);
-    await symlink(join(root, ".box", "policy.dw"), join(root, ".box", "inner.dw"));
+    await symlink(join(root, ...LOCAL, "policy.dw"), join(root, ...LOCAL, "inner.dw"));
 
     expect(await failuresOf(root)).toEqual([]);
   });
@@ -187,24 +195,22 @@ describe("the IAM policy files of the Box gateway", () => {
 });
 
 describe("boxNetworkFailureMessage", () => {
-  test("lists a problem of every box runtime once, with no runtime, and says nothing changed", async () => {
+  test("lists a problem of the one box runtime with no runtime, and says nothing changed", async () => {
+    // Each boxed agent reads its own box/<name>/local profile, so a failure names that path.
     const root = await project(["missing.dw"]);
-    const spec = {
-      ...SPEC,
-      runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
-    } as ProjectSpec;
 
-    const networks = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
+    const networks = await readBoxNetworks(SPEC, root, new FakeBoxProfileResolver());
 
     expect(boxNetworkFailureMessage(networks, "deploy")).toBe(
       "Deploy stopped: 1 problem in the Box profile. Nothing was changed.\n" +
-        ".box/profile.toml:1:1  `policies` names missing.dw, but .box/missing.dw does not exist. " +
-        "Create it, or remove it from `policies`.",
+        "box/agent/local/profile.toml:1:1  `policies` names missing.dw, but " +
+        "box/agent/local/missing.dw does not exist. Create it, or remove it from `policies`.",
     );
   });
 
   test("names the runtime of a problem that only some box runtimes have", async () => {
     const root = await project(["missing.dw"]);
+    await writeProfile(root, "second", ["missing.dw"]);
     const spec = {
       ...SPEC,
       runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
@@ -229,13 +235,16 @@ describe("boxNetworkFailureMessage", () => {
     );
 
     expect(boxNetworkFailureMessage(networks, "build")).toBe(
-      "Build stopped: 2 problems in the Box profile and agentcore.json. Nothing was changed.\n" +
-        ".box/profile.toml:1:1  `policies` names missing.dw, but .box/missing.dw does not exist. " +
-        "Create it, or remove it from `policies`.\n" +
+      "Build stopped: 3 problems in the Box profile and agentcore.json. Nothing was changed.\n" +
+        "In runtime agent:\n" +
+        "  box/agent/local/profile.toml:1:1  `policies` names missing.dw, but " +
+        "box/agent/local/missing.dw does not exist. Create it, or remove it from `policies`.\n" +
         "In runtime second:\n" +
         "  agentcore/agentcore.json  The gateway target 'api' for api.example.com has the path " +
         "/v1 in its endpoint, and the agent's requests do not include it. Remove /v1 from the " +
-        "endpoint, or remove the target.",
+        "endpoint, or remove the target.\n" +
+        "  box/second/local/profile.toml:1:1  `policies` names missing.dw, but " +
+        "box/second/local/missing.dw does not exist. Create it, or remove it from `policies`.",
     );
   });
 });

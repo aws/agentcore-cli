@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
@@ -15,6 +15,12 @@ const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
 
 /** The system libraries of the Linux arm64 image, such as libssl. */
 const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
+
+/**
+ * The aws-opentelemetry-distro console script the plain templates start the agent with when
+ * `instrumentation.enableOtel` is on. Each Runtime runner says where its image or zip installs it.
+ */
+const OTEL_INSTRUMENT = "opentelemetry-instrument";
 
 /**
  * The entry point of a runtime that runs its agent in a box on a CodeZip
@@ -91,16 +97,44 @@ export function boxWorkloadPort(protocol: Protocol | undefined): number {
   return boxIngressPort(protocol) + 1;
 }
 
-/**
- * The project's box profile, relative to the project root: `box run
- * .box/profile.toml` there runs it. box keeps the agent out of the project's
- * `.box` folder, so the agent cannot change its own profile.
- */
-export const BOX_PROFILE_FILE = ".box/profile.toml";
+/** The box folder at the project root that holds every agent's profiles. */
+export const BOX_ROOT = "box";
 
-/** The box profile of the project at `projectRoot`. */
-export function boxProfilePath(projectRoot: string): string {
-  return join(projectRoot, BOX_PROFILE_FILE);
+/** An agent's box folder, relative to the project root: `box/<agentName>`. */
+export function boxAgentDir(agentName: string): string {
+  return posix.join(BOX_ROOT, agentName);
+}
+
+/**
+ * An agent's local profile folder, relative to the project root:
+ * `box/<agentName>/local`. It holds the profile `agentcore dev` runs and the
+ * policy files it names. box keeps the agent out of this folder, so the agent
+ * cannot change its own profile.
+ */
+export function boxLocalDir(agentName: string): string {
+  return posix.join(boxAgentDir(agentName), "local");
+}
+
+/**
+ * An agent's AWS folder, relative to the project root: `box/<agentName>/aws`.
+ * Build and deploy generate the AgentCore Runtime profile and its resources
+ * here, then copy the folder into the deploy artifact's `.box-dist/` staging.
+ */
+export function boxAwsDir(agentName: string): string {
+  return posix.join(boxAgentDir(agentName), "aws");
+}
+
+/**
+ * An agent's local box profile, relative to the project root: `box run
+ * box/<agentName>/local/profile.toml` there runs it.
+ */
+export function boxLocalProfileFile(agentName: string): string {
+  return posix.join(boxLocalDir(agentName), "profile.toml");
+}
+
+/** An agent's local box profile at `projectRoot`. */
+export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
+  return join(projectRoot, boxLocalProfileFile(agentName));
 }
 
 /**
@@ -109,20 +143,6 @@ export function boxProfilePath(projectRoot: string): string {
  */
 export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   return startsInBoxOnCodeZip(runtime) || isBoxedContainer(runtime);
-}
-
-/**
- * Whether the project's box profile, `profileText`, was written for `runtime`. Create writes one
- * profile, for the first runtime, and `add` writes none, so a runtime added later has no profile.
- * A CodeZip profile names its runtime's folder; the container profile runs /app and names none.
- */
-export function boxProfileIsFor(
-  profileText: string,
-  runtime: { build: string; codeLocation: string },
-): boolean {
-  const codeZip = profileText.includes("${{ workspace }}/app/");
-  if (runtime.build === "Container") return !codeZip;
-  return profileText.includes(`/${runtime.codeLocation}"`);
 }
 
 /** The Strands box container template, whose image starts `box run` in /app. */
@@ -296,12 +316,18 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
  * The Strands container image's agent: the code and its venv are in /app,
  * where box starts, and the venv links to the image's own Python in
  * /usr/local. `agentcore dev` sets LOCAL_DEV and reloads it on edits.
+ *
+ * With `instrument`, the venv's opentelemetry-instrument starts the agent, as
+ * the plain template's CMD does. uv writes that script with the venv's Python
+ * as its shebang, so the `.venv` and /usr/local/bin exec grants already cover
+ * it. The agent's Python follows as a path, because box/base sets PATH to
+ * /usr/bin:/bin, where a bare `python` is not the venv's.
  */
-function containerRunner(workloadPort: number, dev: boolean): Runner {
+function containerRunner(workloadPort: number, dev: boolean, instrument: boolean): Runner {
   const appDir = "${{ workspace }}";
   const { command, env } = serve("HTTP", appDir, workloadPort, dev);
   return {
-    command,
+    command: instrument ? [`${appDir}/.venv/bin/${OTEL_INSTRUMENT}`, ...command] : command,
     env: { ...(dev && { LOCAL_DEV: "1" }), ...env },
     // The image's Python loads its own native modules (lib-dynload) from /usr/local/lib, and the
     // system libraries they link, such as libssl, from the multiarch folder.
@@ -323,14 +349,24 @@ function containerRunner(workloadPort: number, dev: boolean): Runner {
  * exports (`${{ inputs.code.dir }}`, `${{ inputs.python.path }}`,
  * `${{ inputs.python.prefix }}`), and the box starts in a writable folder
  * outside the code, so nothing the agent runs needs `deny_write`.
+ *
+ * With `instrument`, the zip's opentelemetry-instrument starts the agent, as
+ * the Runtime starts a plain CodeZip agent. Deploy packages it in the zip's
+ * bin/ folder with a `#!/usr/bin/env python3` shebang, and running that would
+ * need exec on /usr/bin. So the Runtime's Python runs the script, which the
+ * code directory's read grant covers.
  */
-function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner {
+function runtimeCodeZipRunner(
+  protocol: Protocol,
+  workloadPort: number,
+  instrument: boolean,
+): Runner {
   const code = "${{ inputs.code.dir }}";
   const python = "${{ inputs.python.path }}";
   const pythonPrefix = "${{ inputs.python.prefix }}";
   const { command, env } = serve(protocol, code, workloadPort, false, python);
   return {
-    command,
+    command: instrument ? [python, `${code}/bin/${OTEL_INSTRUMENT}`, ...command] : command,
     env: {
       ...env,
       // Python finds the _ctypes that deploy stages before its own: its libffi uses static
@@ -361,9 +397,11 @@ export type BoxProfileTarget = "local" | "runtime";
  * - `runtime`: what AgentCore Runtime runs, with no reload, signed with the
  *   execution role. Build and deploy render it from agentcore.json with
  *   {@link renderRuntimeBoxProfile}; `runtimeRoutes` holds the routes they
- *   derive from it, as sections that start with a blank line, and
+ *   derive from it, as sections that start with a blank line,
  *   `runtimePolicies` the box profile's policy files, which staging copies
- *   beside it.
+ *   beside it, and `runtimeOtel` the runtime's `instrumentation.enableOtel`,
+ *   which starts the agent under opentelemetry-instrument. The `local` profile
+ *   ignores it.
  */
 export function renderBoxProfile(
   projectName: string,
@@ -372,6 +410,7 @@ export function renderBoxProfile(
   runtimeRoutes = "",
   runtimePolicies: readonly string[] = [],
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  runtimeOtel = false,
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
@@ -380,12 +419,13 @@ export function renderBoxProfile(
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
+  const instrument = onRuntime && runtimeOtel;
   const container = isBoxedContainer(runtime);
   const codeZipOnRuntime = onRuntime && !container;
   const runner = container
-    ? containerRunner(workloadPort, !onRuntime)
+    ? containerRunner(workloadPort, !onRuntime, instrument)
     : onRuntime
-      ? runtimeCodeZipRunner(protocol, workloadPort)
+      ? runtimeCodeZipRunner(protocol, workloadPort, instrument)
       : codeZipRunner(protocol, appDir, workloadPort);
   // In an image or the Runtime's microVM, the port is reached on the machine's own address.
   const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
@@ -403,7 +443,7 @@ export function renderBoxProfile(
       ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore pack carries the deployed resources' variables."
       : container
         ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-        : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
+        : `# Written by \`agentcore create\`. Run \`box run ${boxLocalProfileFile(runtime.runtimeName)}\` in the project folder.`;
   const regionComment = onRuntime
     ? ""
     : "# The AWS region `agentcore create` resolved. Change it to call Bedrock in another region\n" +
@@ -418,7 +458,7 @@ export function renderBoxProfile(
   const routes = onRuntime ? runtimeRoutes : "";
   const policies =
     onRuntime && runtimePolicies.length > 0
-      ? `# The policy files of ${BOX_PROFILE_FILE}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
+      ? `# The policy files of ${boxLocalProfileFile(runtime.runtimeName)}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
       : "";
   const bedrockRoute = !bedrock
     ? ""
@@ -526,7 +566,9 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region
  * from the runtime's Box network model, the box profile's policy files under
  * `policies`. agentcore.json does not record the framework, and the profile
  * does not depend on it beyond the container case, so the input names Strands,
- * one of the frameworks that run in a box.
+ * one of the frameworks that run in a box. The agent starts under
+ * opentelemetry-instrument unless `instrumentation.enableOtel` is false, as a
+ * plain runtime's does.
  */
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
@@ -552,6 +594,7 @@ export function renderRuntimeBoxProfile(
     runtimeGatewayRoutes(spec, runtime, region),
     network?.policyFiles,
     network?.region,
+    runtime.instrumentation?.enableOtel ?? true,
   )!;
 }
 
@@ -585,7 +628,7 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
     const prefix = modelId.split("/")[0];
     return [
       `the box profile has no route for the LiteLLM model '${modelId}': add an ` +
-        `[egress.${prefix}] section with its provider's host to ${BOX_PROFILE_FILE}, or the box ` +
+        `[egress.${prefix}] section with its provider's host to ${boxLocalProfileFile(runtime.runtimeName)}, or the box ` +
         "blocks the agent's model calls",
     ];
   }

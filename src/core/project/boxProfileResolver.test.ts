@@ -18,7 +18,7 @@ const HR = 'action == Box::Action::"http:request"';
  * `keyed` and the HTTP MCP server `docs`, trimmed, with this test's profile and paths in it.
  */
 const SHOWN = String.raw`{
-  "profile": ".box/profile.toml",
+  "profile": "box/agent/local/profile.toml",
   "packs": [
     {
       "name": "box/base",
@@ -120,7 +120,7 @@ const OPEN_ROUTES_SHOWN = readFileSync(
 
 describe("parseBoxProfileShow", () => {
   test("takes the box.toml as a table in the order of the file, the policy.dw, the packs, and the warnings", () => {
-    const resolved = parseBoxProfileShow(SHOWN, ".box/profile.toml");
+    const resolved = parseBoxProfileShow(SHOWN, "box/agent/local/profile.toml");
 
     expect(resolved).toEqual({
       boxToml: {
@@ -153,20 +153,20 @@ describe("parseBoxProfileShow", () => {
   test("refuses output that is not one JSON document, such as the text that `show` prints", () => {
     expect(() =>
       parseBoxProfileShow(
-        "profile .box/profile.toml resolves for this directory\n  packs    box/base 1\n",
-        ".box/profile.toml",
+        "profile box/agent/local/profile.toml resolves for this directory\n  packs    box/base 1\n",
+        "box/agent/local/profile.toml",
       ),
     ).toThrow(
       new InvalidEnvironmentError(
-        "Build cannot read what Box printed for the profile .box/profile.toml, as it is not one " +
-          "JSON document. Run 'box profile show .box/profile.toml --format json' in the project folder " +
+        "Build cannot read what Box printed for the profile box/agent/local/profile.toml, as it is not one " +
+          "JSON document. Run 'box profile show box/agent/local/profile.toml --format json' in the project folder " +
           "to see it.",
       ),
     );
   });
 
   test("takes each open route, with its destinations as a list, which box.toml leaves out", () => {
-    const resolved = parseBoxProfileShow(OPEN_ROUTES_SHOWN, ".box/profile.toml");
+    const resolved = parseBoxProfileShow(OPEN_ROUTES_SHOWN, "box/agent/local/profile.toml");
 
     expect(resolved.openRoutes).toEqual([
       { route: "auth", destinations: ["login.example.com", "auth.example.com:8443"] },
@@ -192,9 +192,11 @@ describe("parseBoxProfileShow", () => {
     ["packs as text", { ...document, packs: "box/base 1" }, "a list of packs"],
     ["a list, not an object", [], "a box.toml table or the policy.dw text"],
   ])("refuses a document with %s, and names what it lacks", (_, shown, lacks) => {
-    expect(() => parseBoxProfileShow(JSON.stringify(shown), ".box/profile.toml")).toThrow(
+    expect(() =>
+      parseBoxProfileShow(JSON.stringify(shown), "box/agent/local/profile.toml"),
+    ).toThrow(
       new InvalidEnvironmentError(
-        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. Install ` +
+        `Box printed the profile box/agent/local/profile.toml without ${lacks}, which build reads. Install ` +
           `a newer Box (${RELEASES}), then retry.`,
       ),
     );
@@ -233,18 +235,18 @@ describe("BoxCliProfileResolver", () => {
     const fake = streamer(stdout(SHOWN));
     const resolver = new BoxCliProfileResolver({ env: { PATH: "/bin" }, ...fake });
 
-    const resolved = await resolver.resolve("/work/demo", ".box/profile.toml");
+    const resolved = await resolver.resolve("/work/demo", "box/agent/local/profile.toml");
 
-    expect(resolved).toEqual(parseBoxProfileShow(SHOWN, ".box/profile.toml"));
+    expect(resolved).toEqual(parseBoxProfileShow(SHOWN, "box/agent/local/profile.toml"));
     expect(fake.calls).toEqual([
       {
-        command: ["box", "profile", "show", ".box/profile.toml", "--format", "json"],
+        command: ["box", "profile", "show", "box/agent/local/profile.toml", "--format", "json"],
         options: { cwd: "/work/demo", env: { PATH: "/bin", NO_COLOR: "1" } },
       },
     ]);
   });
 
-  const COMMAND = ["box", "profile", "show", ".box/profile.toml", "--format", "json"];
+  const COMMAND = ["box", "profile", "show", "box/agent/local/profile.toml", "--format", "json"];
   const refusal = (lines: string[], exitCode: number | null = 1) =>
     streamer(
       lines.map((line) => ({ type: "stderr", line })),
@@ -252,13 +254,13 @@ describe("BoxCliProfileResolver", () => {
     );
   const failure = (fake: ReturnType<typeof streamer>) =>
     new BoxCliProfileResolver(fake)
-      .resolve("/work/demo", ".box/profile.toml")
+      .resolve("/work/demo", "box/agent/local/profile.toml")
       .catch((caught: unknown) => caught);
 
   test("shows Box's own error, and not its usage text, when Box refuses the profile", async () => {
     const error = await failure(
       refusal([
-        "box: error: /work/demo/.box/profile.toml:4: a profile holds no `policy`; list authored files in `policies`",
+        "box: error: /work/demo/box/agent/local/profile.toml:4: a profile holds no `policy`; list authored files in `policies`",
         "Usage: box profile show [OPTIONS] <NAME>",
         "For more information, try '--help'.",
       ]),
@@ -266,8 +268,8 @@ describe("BoxCliProfileResolver", () => {
 
     expect(error).toBeInstanceOf(InvalidEnvironmentError);
     expect((error as Error).message).toBe(
-      "Box refused the profile .box/profile.toml:\n" +
-        "  box: error: /work/demo/.box/profile.toml:4: a profile holds no `policy`; list authored " +
+      "Box refused the profile box/agent/local/profile.toml:\n" +
+        "  box: error: /work/demo/box/agent/local/profile.toml:4: a profile holds no `policy`; list authored " +
         "files in `policies`\n" +
         "Fix what Box reports, then retry.",
     );
@@ -281,7 +283,7 @@ describe("BoxCliProfileResolver", () => {
     );
 
     expect((error as Error).message).toBe(
-      "Box refused the profile .box/profile.toml:\n" +
+      "Box refused the profile box/agent/local/profile.toml:\n" +
         "  box: error: /work/demo/app/agent/.venv/bin/python lies under the write grant " +
         "/work/demo, so the workload can replace it\n" +
         "Run 'uv sync' in app/agent, then retry.",
@@ -290,8 +292,8 @@ describe("BoxCliProfileResolver", () => {
 
   test("says how to see why when Box fails and prints no error", async () => {
     expect(((await failure(refusal([], 2))) as Error).message).toBe(
-      "Box stopped on .box/profile.toml with exit code 2 and printed no error. Run " +
-        "'box profile show .box/profile.toml' in the project folder to see why.",
+      "Box stopped on box/agent/local/profile.toml with exit code 2 and printed no error. Run " +
+        "'box profile show box/agent/local/profile.toml' in the project folder to see why.",
     );
   });
 
@@ -302,7 +304,7 @@ describe("BoxCliProfileResolver", () => {
     );
 
     await expect(
-      new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/profile.toml"),
+      new BoxCliProfileResolver(fake).resolve("/work/demo", "box/agent/local/profile.toml"),
     ).rejects.toThrow(
       new InvalidEnvironmentError(
         "Box is not installed or not on PATH. Install it " +
@@ -316,18 +318,20 @@ describe("BoxCliProfileResolver", () => {
 
     expect(error).toBeInstanceOf(InvalidEnvironmentError);
     expect((error as Error).message).toBe(
-      "This Box cannot print the profile .box/profile.toml as JSON, which build reads. Install " +
+      "This Box cannot print the profile box/agent/local/profile.toml as JSON, which build reads. Install " +
         `a Box release with \`box profile show --format json\` (${RELEASES}), then retry.`,
     );
   });
 
   test("refuses the output of a box that prints no JSON document", async () => {
-    const fake = streamer(stdout("profile .box/profile.toml resolves for this directory"));
+    const fake = streamer(
+      stdout("profile box/agent/local/profile.toml resolves for this directory"),
+    );
 
     await expect(
-      new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/profile.toml"),
+      new BoxCliProfileResolver(fake).resolve("/work/demo", "box/agent/local/profile.toml"),
     ).rejects.toThrow(
-      "Build cannot read what Box printed for the profile .box/profile.toml, as it is not one " +
+      "Build cannot read what Box printed for the profile box/agent/local/profile.toml, as it is not one " +
         "JSON document.",
     );
   });
@@ -363,9 +367,9 @@ describe("the copy of the profile for the build region", () => {
   async function regionalProject(): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "box-profile-region-"));
     directories.push(root);
-    await mkdir(join(root, ".box"));
+    await mkdir(join(root, "box", "agent", "local"), { recursive: true });
     await writeFile(
-      join(root, ".box", "profile.toml"),
+      join(root, "box", "agent", "local", "profile.toml"),
       'packs = ["box/base", "box/bedrock"]\n\n[options]\nbedrock.region = "us-west-2"\n',
     );
     return root;
@@ -403,13 +407,13 @@ describe("the copy of the profile for the build region", () => {
     [
       "refuses the copy",
       (copy: string) => [`box: error: ${copy}:4: bad`],
-      "Box refused the profile .box/profile.toml:\n  box: error: .box/profile.toml:4: bad\n" +
+      "Box refused the profile box/agent/local/profile.toml:\n  box: error: box/agent/local/profile.toml:4: bad\n" +
         "Fix what Box reports, then retry.",
     ],
     [
       "has no --format json",
       () => NO_JSON_FLAG,
-      "This Box cannot print the profile .box/profile.toml as JSON, which build reads. Install " +
+      "This Box cannot print the profile box/agent/local/profile.toml as JSON, which build reads. Install " +
         `a Box release with \`box profile show --format json\` (${RELEASES}), then retry.`,
     ],
   ])("names the profile, not the copy, when box %s", async (_, stderr, message) => {
@@ -431,9 +435,9 @@ describe("the open routes of the profile", () => {
   test("gives one [egress] entry to an open route with two destinations, and names its targets after it", async () => {
     const root = await mkdtemp(join(tmpdir(), "box-profile-open-routes-"));
     directories.push(root);
-    await mkdir(join(root, ".box"));
-    await writeFile(join(root, ".box", "profile.toml"), OPEN_ROUTES_PROFILE);
-    await writeFile(join(root, ".box", "policy.dw"), POLICY);
+    await mkdir(join(root, "box", "agent", "local"), { recursive: true });
+    await writeFile(join(root, "box", "agent", "local", "profile.toml"), OPEN_ROUTES_PROFILE);
+    await writeFile(join(root, "box", "agent", "local", "policy.dw"), POLICY);
     const resolver = new BoxCliProfileResolver(streamer(stdout(OPEN_ROUTES_SHOWN)));
 
     const [network] = await readBoxNetworks(SPEC, root, resolver);
@@ -489,18 +493,18 @@ describe("the box on PATH", () => {
     async () => {
       const root = await mkdtemp(join(tmpdir(), "box-profile-resolver-"));
       directories.push(root);
-      await mkdir(join(root, ".box"));
+      await mkdir(join(root, "box", "agent", "local"), { recursive: true });
       await writeFile(
-        join(root, ".box", "profile.toml"),
+        join(root, "box", "agent", "local", "profile.toml"),
         'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
           '[agent]\ncommand = ["/bin/sh"]\n\n[egress.github]\ndestinations = ["api.github.com"]\n\n' +
           '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n\n' +
           '[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',
       );
-      await writeFile(join(root, ".box", "policy.dw"), POLICY);
+      await writeFile(join(root, "box", "agent", "local", "policy.dw"), POLICY);
       const resolver = new BoxCliProfileResolver();
 
-      const resolved = await resolver.resolve(root, ".box/profile.toml");
+      const resolved = await resolver.resolve(root, "box/agent/local/profile.toml");
       const [network] = await readBoxNetworks(SPEC, root, resolver);
 
       const lines = resolved.policy.split("\n");

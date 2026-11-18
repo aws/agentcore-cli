@@ -3,3 +3,4 @@ blocked.example.com: your policy allows no request to this host (the rule "no_bl
 httpbin.org: the gateway allows every request to this host; Box still applies the rule "httpbin_get". On AgentCore Runtime, Box applies only your forbid rules to this host, so write each limit as a forbid rule to keep it there.
 agentcore/extra-policy.json, in additionalPolicies of the gateway 'agent-python-strands-box', is not a JSON object, so build cannot check the permissions it grants. Make it an IAM policy document.
 Target 'egress-fn' calls lambda with the gateway's role, which has no lambda permissions. Add an IAM policy file to additionalPolicies of the 'agent-python-strands-box' gateway.
+Runtime 'agent_python_strands' runs its agent in a box under opentelemetry-instrument, but box sends the agent's traces to its own collector, so they do not reach CloudWatch. Set instrumentation.enableOtel to false to start the agent without it.

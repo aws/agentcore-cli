@@ -45,8 +45,11 @@ interface Options {
   readonly executionRoleArn?: string;
 }
 
+/** The local box profile of runtime `agent`. */
+const PROFILE = "box/agent/local/profile.toml";
+
 /**
- * The model of runtime `agent` for `policy` in `.box/policy.dw` and the routes `egress`, as Box
+ * The model of runtime `agent` for `policy` in `box/agent/local/policy.dw` and the routes `egress`, as Box
  * resolves them: its policy holds the file, then the rules Box adds for each route. The profile
  * sets `packs` on line 1, then each entry of `egress` and `mcp` on a line of its own.
  */
@@ -74,9 +77,15 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
   ].join("\n");
   const { parsed, failures } = parseResolvedPolicy(
-    { egress, mcp, policyFiles: policy ? ["policy.dw"] : [], places: profilePlaces(profile) },
+    {
+      path: PROFILE,
+      egress,
+      mcp,
+      policyFiles: policy ? ["policy.dw"] : [],
+      places: profilePlaces(profile, PROFILE),
+    },
     `${options.boxFirst ?? ""}${policy}\n${options.packRules ?? ""}${boxNetworkRules(egress, mcp)}`,
-    policy ? [{ file: ".box/policy.dw", text: policy }] : [],
+    policy ? [{ file: "box/agent/local/policy.dw", text: policy }] : [],
   );
   const network = buildBoxNetwork(parsed, failures, {
     spec,
@@ -222,7 +231,7 @@ describe("the gateway's targets", () => {
       "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends requests " +
         "signed with the gateway's role for execute-api, and [egress.github] sends the API key " +
         "credential 'github' in the header Authorization with the prefix Bearer. Make the two " +
-        "the same, in agentcore.json or in .box/profile.toml.",
+        "the same, in agentcore.json or in box/agent/local/profile.toml.",
     ]);
   });
 
@@ -351,7 +360,7 @@ describe("the gateway's targets", () => {
     });
     expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "my-api"]]);
     expect(r.lines()).toEqual([
-      ".box/profile.toml:3:1  [egress.my-api] would name the gateway target for b.example.com " +
+      "box/agent/local/profile.toml:3:1  [egress.my-api] would name the gateway target for b.example.com " +
         "'egress-my-api', and [egress.my_api] for a.example.com has that name. Rename the entry.",
     ]);
   });
@@ -362,7 +371,7 @@ describe("the gateway's targets", () => {
     });
     expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "gh_connect"]]);
     expect(r.lines()).toEqual([
-      '.box/policy.dw:1:1  The rule "gh_connect" allows api.github.com, and its gateway target ' +
+      'box/agent/local/policy.dw:1:1  The rule "gh_connect" allows api.github.com, and its gateway target ' +
         "would have the name 'egress-api-github-com', which [egress.api-github-com] for " +
         "other.example.com has. Add an [egress] entry with another name for api.github.com.",
     ]);
@@ -382,7 +391,7 @@ describe("the gateway's targets", () => {
         ?.target,
     ).toBe(`egress-${"x".repeat(93)}`);
     expect(model("", { ___: { destinations: ["a.example.com"] } }).lines()).toEqual([
-      ".box/profile.toml:2:1  [egress.___] has no letter or digit in its name, so build cannot " +
+      "box/agent/local/profile.toml:2:1  [egress.___] has no letter or digit in its name, so build cannot " +
         "name a gateway target after it. Rename the entry.",
     ]);
   });
@@ -402,7 +411,7 @@ describe("the gateway's targets", () => {
     });
     expect(r.failures()).toEqual([["TOO_MANY_TARGETS", undefined]]);
     expect(r.lines()).toEqual([
-      ".box/profile.toml  The gateway 'agent-box' needs 101 targets, 99 for the hosts of the " +
+      "box/agent/local/profile.toml  The gateway 'agent-box' needs 101 targets, 99 for the hosts of the " +
         "Box profile and 2 of your own, and a gateway can have at most 100. Remove hosts from " +
         "the profile, or targets from the gateway.",
     ]);
@@ -463,14 +472,14 @@ describe("outbound auth", () => {
     );
     expect(taken.failures()).toEqual([["API_KEY_CREDENTIAL_MISSING", "github"]]);
     expect(taken.lines()).toEqual([
-      ".box/profile.toml:2:1  [egress.github] needs an API key credential named 'github' for " +
+      "box/agent/local/profile.toml:2:1  [egress.github] needs an API key credential named 'github' for " +
         "env://GITHUB_TOKEN, and agentcore.json has a credential of another type with that " +
         "name. Rename the entry, or that credential.",
     ]);
     expect(
       model("", { ab: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } } }).lines(),
     ).toEqual([
-      ".box/profile.toml:2:1  [egress.ab] needs an API key credential named after it for " +
+      "box/agent/local/profile.toml:2:1  [egress.ab] needs an API key credential named after it for " +
         'env://KEY, and "ab" is not a valid credential name (3 to 128 letters, digits, "-", ' +
         'or "_"). Rename the entry.',
     ]);
@@ -528,13 +537,13 @@ describe("hosts the model cannot carry", () => {
     ]);
     const example = 'for example context.input.host == "api.example.com".';
     expect(r.lines()).toEqual([
-      '.box/profile.toml:2:1  [egress.wide] has the wildcard destination "*.example.com", and ' +
+      'box/agent/local/profile.toml:2:1  [egress.wide] has the wildcard destination "*.example.com", and ' +
         "each gateway target needs one fixed host. Name each host in `destinations`.",
-      '.box/policy.dw:1:1  The rule "wild" allows each host that matches "*.example.com", and ' +
+      'box/agent/local/policy.dw:1:1  The rule "wild" allows each host that matches "*.example.com", and ' +
         `each gateway target needs one fixed host. Name each host in the rule, ${example}`,
-      '.box/policy.dw:2:1  The rule "anywhere" allows requests to every host, and each gateway ' +
+      'box/agent/local/policy.dw:2:1  The rule "anywhere" allows requests to every host, and each gateway ' +
         `target needs one fixed host. Add a condition that names each host, ${example}`,
-      '.box/policy.dw:3:1  The rule "not_one" allows every host except the ones it excludes ' +
+      'box/agent/local/policy.dw:3:1  The rule "not_one" allows every host except the ones it excludes ' +
         '(context.input.host != "evil.example.com"), and each gateway target needs one fixed ' +
         `host. Name each host it allows, ${example}`,
     ]);
@@ -594,9 +603,9 @@ describe("hosts the model cannot carry", () => {
       ["EGRESS_ENTRY_FAILED", "x_get"],
     ]);
     expect(r.lines()).toEqual([
-      ".box/profile.toml:2:1  [egress.x] already has `backends`, and build sends each host " +
+      "box/agent/local/profile.toml:2:1  [egress.x] already has `backends`, and build sends each host " +
         "through the gateway itself. Remove `backends` from the entry.",
-      '.box/policy.dw:1:1  The rule "x_get" allows a.example.com, and [egress.x] for that host ' +
+      'box/agent/local/policy.dw:1:1  The rule "x_get" allows a.example.com, and [egress.x] for that host ' +
         "has a problem. Fix [egress.x] first.",
     ]);
   });
@@ -614,10 +623,10 @@ describe("hosts the model cannot carry", () => {
       ["MCP_OVER_HTTP", "tools"],
     ]);
     expect(r.lines()).toEqual([
-      '.box/profile.toml:2:1  [egress.m] is an MCP server (protocol = "mcp"), and the deployed ' +
+      'box/agent/local/profile.toml:2:1  [egress.m] is an MCP server (protocol = "mcp"), and the deployed ' +
         "agent cannot reach it through the gateway. Run the server as a stdio server under " +
         "[mcp], or remove the entry.",
-      ".box/profile.toml:3:1  [mcp.tools] is an MCP server over HTTP, and the deployed agent " +
+      "box/agent/local/profile.toml:3:1  [mcp.tools] is an MCP server over HTTP, and the deployed agent " +
         "cannot reach it through the gateway. Make it a stdio server, or remove it.",
     ]);
   });
@@ -671,14 +680,14 @@ describe("hosts the model cannot carry", () => {
       ["UNKNOWN_ATTRIBUTE", "query"],
     ]);
     expect(r.lines()).toEqual([
-      ".box/policy.dw:5:67  Syntax error: unexpected } in a condition. Correct the rule at this " +
+      "box/agent/local/policy.dw:5:67  Syntax error: unexpected } in a condition. Correct the rule at this " +
         "place.",
-      '.box/policy.dw:2:1  The rule "dup" has the same @id as the rule at .box/policy.dw:1:1. ' +
+      'box/agent/local/policy.dw:2:1  The rule "dup" has the same @id as the rule at box/agent/local/policy.dw:1:1. ' +
         "Give each rule its own @id.",
-      '.box/policy.dw:3:1  The rule "verb" names the action Box::Action::"http:get", which Box ' +
+      'box/agent/local/policy.dw:3:1  The rule "verb" names the action Box::Action::"http:get", which Box ' +
         'does not have. Use a Box action, such as Box::Action::"http:request" or ' +
         'Box::Action::"net:connect".',
-      '.box/policy.dw:4:1  The rule "query" reads context.input.query, which http:request does ' +
+      'box/agent/local/policy.dw:4:1  The rule "query" reads context.input.query, which http:request does ' +
         "not have. Use one of context.input.host, context.input.port, context.input.method, " +
         "context.input.path, context.input.body_bytes, context.input.intercepted, " +
         "context.input.upgrade, or context.output.status.",
@@ -714,13 +723,13 @@ describe("hosts the model cannot carry", () => {
       ...metadata.lines(),
       ...packed.lines(),
     ]).toEqual([
-      '.box/policy.dw:2:1  The rule "route_github_connect" is one Box adds itself for ' +
-        "[egress.github]. Remove it from .box/policy.dw.",
-      '.box/policy.dw:1:1  The rule "shared" has the same @id as a rule that a pack in ' +
+      'box/agent/local/policy.dw:2:1  The rule "route_github_connect" is one Box adds itself for ' +
+        "[egress.github]. Remove it from box/agent/local/policy.dw.",
+      'box/agent/local/policy.dw:1:1  The rule "shared" has the same @id as a rule that a pack in ' +
         "`packs` adds. Give your rule another @id.",
-      '.box/policy.dw:1:1  The rule "metadata_hosts" is one Box adds itself to every profile. ' +
-        "Remove it from .box/policy.dw.",
-      '.box/policy.dw:1:1  The rule "pack_rule" has the same @id as a rule that a pack in ' +
+      'box/agent/local/policy.dw:1:1  The rule "metadata_hosts" is one Box adds itself to every profile. ' +
+        "Remove it from box/agent/local/policy.dw.",
+      'box/agent/local/policy.dw:1:1  The rule "pack_rule" has the same @id as a rule that a pack in ' +
         "`packs` adds. Give your rule another @id.",
     ]);
   });
@@ -741,12 +750,12 @@ describe("hosts the model cannot carry", () => {
 
     const rest = "and each gateway target needs one fixed host.";
     expect(r.lines().map((line) => line.slice(0, line.indexOf(rest) + rest.length))).toEqual([
-      '.box/profile.toml:1:1  The rule "pack_wild", which a pack in `packs` adds, allows each ' +
+      'box/agent/local/profile.toml:1:1  The rule "pack_wild", which a pack in `packs` adds, allows each ' +
         `host that matches "*.pack.example.com", ${rest}`,
-      `.box/profile.toml:1:1  A rule that a pack in \`packs\` adds allows requests to every host, ${rest}`,
+      `box/agent/local/profile.toml:1:1  A rule that a pack in \`packs\` adds allows requests to every host, ${rest}`,
     ]);
     expect(unnamed.lines()).toEqual([
-      `.box/policy.dw:1:1  This rule allows requests to every host, ${rest} Add a condition ` +
+      `box/agent/local/policy.dw:1:1  This rule allows requests to every host, ${rest} Add a condition ` +
         'that names each host, for example context.input.host == "api.example.com".',
     ]);
   });
@@ -793,7 +802,7 @@ describe("WebSocket", () => {
     expect(r.failures()).toEqual([]);
     expect(r.network.hosts.filter((h) => h.target !== undefined)).toEqual([]);
     expect(r.network.warnings).toEqual([
-      '.box/policy.dw:2:1: The rule "chat" allows only WebSocket connections, and build adds no ' +
+      'box/agent/local/policy.dw:2:1: The rule "chat" allows only WebSocket connections, and build adds no ' +
         "gateway target for a WebSocket, so it skips this rule.",
     ]);
   });

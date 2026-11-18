@@ -13,7 +13,6 @@ import { buildHostMap, type MappedHost } from "./hostMap";
 import { BOX_EGRESS_TARGET_PREFIX, outboundAuthFor, parseEndpoint, targetNameFor } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
-import { BOX_PROFILE_PATH } from "./profileParser";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import { MAX_GATEWAY_TARGETS, hostKey, type ConversionFailure, type FailureCode } from "./types";
 import type { SourceSpan } from "./dogwood";
@@ -97,7 +96,7 @@ export interface BoxNetwork {
   /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
   readonly hosts: readonly BoxNetworkHost[];
   readonly credentials: readonly BoxEgressCredential[];
-  /** The policy files, relative to `.box/`, to copy beside the AgentCore Runtime profile. */
+  /** The policy files, relative to the agent's local box folder, to copy beside the AgentCore Runtime profile. */
   readonly policyFiles: readonly string[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant its role. */
   readonly grantedActions: readonly string[];
@@ -149,11 +148,11 @@ export function buildBoxNetwork(
           : failure.mcpEntry !== undefined
             ? describeEntry(parsed, "mcp", failure.mcpEntry)
             : undefined;
-    if (!where) return { ...rest, reason, place: BOX_PROFILE_PATH };
+    if (!where) return { ...rest, reason, place: parsed.profile.path };
     return { ...rest, reason: `${where.subject} ${reason}`, place: where.place };
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
-  const targets = hostTargets(map.hosts, project, located);
+  const targets = hostTargets(map.hosts, project, located, parsed.profile.path);
   failures.push(...targets.failures);
   const credentials = boxEgressCredentials(parsed.profile.egress, project.spec.credentials);
   return {
@@ -236,6 +235,7 @@ function hostTargets(
   mapped: readonly MappedHost[],
   project: BoxNetworkProject,
   located: (failure: ConversionFailure) => BoxNetworkFailure,
+  profilePath: string,
 ): { hosts: BoxNetworkHost[]; failures: BoxNetworkFailure[] } {
   const existing = project.targets;
   const failures: BoxNetworkFailure[] = [];
@@ -285,7 +285,9 @@ function hostTargets(
       if (held) {
         claimed.add(held.name);
         reused.add(index);
-        const conflict = isManagedTarget(held) ? undefined : targetConflict(held, host, auth);
+        const conflict = isManagedTarget(held)
+          ? undefined
+          : targetConflict(held, host, auth, profilePath);
         if (conflict) {
           failures.push({
             code: "EXISTING_TARGET_CONFLICT",
@@ -380,7 +382,7 @@ function hostTargets(
         `The gateway '${project.gateway}' needs ${served + kept.length} targets, ${served} for ` +
         `the hosts of the Box profile and ${kept.length} of your own, and a gateway can have at ` +
         `most ${MAX_GATEWAY_TARGETS}. Remove hosts from the profile, or targets from the gateway.`,
-      place: BOX_PROFILE_PATH,
+      place: profilePath,
     });
   }
   return { hosts, failures };
@@ -424,6 +426,7 @@ function targetConflict(
   target: AgentCoreGatewayTarget,
   host: MappedHost,
   auth: BoxEgressAuth,
+  profilePath: string,
 ): string | undefined {
   const endpoint = target.passthrough && parseEndpoint(target.passthrough.endpoint);
   const named = `The gateway target '${target.name}' for ${host.authority}`;
@@ -446,7 +449,7 @@ function targetConflict(
   return (
     `${named} sends ${outboundAuthWords(target.outboundAuth)}, and ` +
     `[egress.${host.entry.egressEntry}] sends ${outboundAuthWords(wanted)}. Make the two the ` +
-    `same, in agentcore.json or in ${BOX_PROFILE_PATH}.`
+    `same, in agentcore.json or in ${profilePath}.`
   );
 }
 

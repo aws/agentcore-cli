@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
+import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
-import { stageBoxContainers } from "./boxContainer";
+import { boxTracesWarning, stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 /** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
@@ -112,8 +113,8 @@ describe("stageBoxContainers", () => {
 
   test("copies each policy file of the model beside the profile, for an image that copies .box-dist/ whole", async () => {
     const demo = await project(TEMPLATE_DOCKERFILE);
-    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
-    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await mkdir(join(demo.rootPath, "box", "agent", "local"), { recursive: true });
+    await writeFile(join(demo.rootPath, "box", "agent", "local", "policy.dw"), "// rules\n");
 
     await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
 
@@ -124,8 +125,8 @@ describe("stageBoxContainers", () => {
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {
     const demo = await project(BOX_DOCKERFILE);
-    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
-    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await mkdir(join(demo.rootPath, "box", "agent", "local"), { recursive: true });
+    await writeFile(join(demo.rootPath, "box", "agent", "local", "policy.dw"), "// rules\n");
 
     await expect(
       stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor),
@@ -140,6 +141,63 @@ const TEMPLATE_DOCKERFILE = readFileSync(
   join(TEMPLATES, "agent-python-strands-box", "Dockerfile.template"),
   "utf8",
 );
+
+const PLAIN_DOCKERFILE = readFileSync(
+  join(TEMPLATES, "agent-python-strands", "Dockerfile.template"),
+  "utf8",
+);
+
+describe("boxTracesWarning", () => {
+  const WARNING =
+    "Runtime 'agent' runs its agent in a box under opentelemetry-instrument, but box sends the " +
+    "agent's traces to its own collector, so they do not reach CloudWatch. Set " +
+    "instrumentation.enableOtel to false to start the agent without it.";
+
+  /** The project's one runtime, with `changes` applied. */
+  async function runtimeOf(dockerfile: string, changes: Partial<ProjectRuntime> = {}) {
+    const demo = await project(dockerfile);
+    return { root: demo.rootPath, runtime: { ...demo.spec.runtimes[0]!, ...changes } };
+  }
+
+  test.each([
+    ["the container image", TEMPLATE_DOCKERFILE, {}],
+    ["the CodeZip start.py", PLAIN_DOCKERFILE, { build: "CodeZip", entrypoint: "start.py" }],
+  ] as const)(
+    "warns that a box keeps the traces when %s runs the agent in a box",
+    async (_, dockerfile, changes) => {
+      const { root, runtime } = await runtimeOf(dockerfile, changes);
+      expect(boxTracesWarning(root, runtime)).toBe(WARNING);
+      expect(boxTracesWarning(root, { ...runtime, instrumentation: { enableOtel: true } })).toBe(
+        WARNING,
+      );
+    },
+  );
+
+  test.each([
+    ["the container image", TEMPLATE_DOCKERFILE, {}],
+    ["the CodeZip start.py", PLAIN_DOCKERFILE, { build: "CodeZip", entrypoint: "start.py" }],
+  ] as const)(
+    "does not warn when enableOtel is false and %s runs the agent in a box",
+    async (_, dockerfile, changes) => {
+      const { root, runtime } = await runtimeOf(dockerfile, {
+        ...changes,
+        instrumentation: { enableOtel: false },
+      });
+      expect(boxTracesWarning(root, runtime)).toBeUndefined();
+    },
+  );
+
+  test.each([
+    ["a plain container image", PLAIN_DOCKERFILE, {}],
+    ["a plain CodeZip entry point", PLAIN_DOCKERFILE, { build: "CodeZip", entrypoint: "main.py" }],
+  ] as const)(
+    "does not warn for %s, which sends its own traces",
+    async (_, dockerfile, changes) => {
+      const { root, runtime } = await runtimeOf(dockerfile, changes);
+      expect(boxTracesWarning(root, runtime)).toBeUndefined();
+    },
+  );
+});
 
 function model(policyFiles: string[]): BoxNetwork {
   return {
