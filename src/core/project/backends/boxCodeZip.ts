@@ -1,21 +1,20 @@
 import { chmodSync, copyFileSync, cpSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
-import { BOX_CODEZIP_DIST, boxAwsDir, runsBoxStartScript } from "../templates/boxProfile";
+import { BOX_CODEZIP_DIST, runsBoxStartScript } from "../templates/boxProfile";
 import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
 
 /**
  * Stages box into each CodeZip runtime whose entry point is the box start
- * script. It generates the canonical AWS tree in `box/<name>/aws/`: box, its
+ * script, so the zip carries it: `<codeLocation>/.box-dist/` gets box, its
  * helpers, its packs, the libffi shim built for the runtime's Python, and what
- * the runtime profile writer writes from the runtime's Box network model (the
- * Runtime profile and a byte copy of each policy file it names). It then copies
- * that tree into `<codeLocation>/.box-dist/`, so the zip carries it. Both
- * folders are rewritten on every build and deploy. `box` is asked for only when
- * a runtime needs it, after each start.sh passes. Returns the names of the
- * runtimes it staged.
+ * the runtime profile writer writes from the runtime's Box network model: the
+ * Runtime profile and a byte copy of each policy file it names. The folder is
+ * rewritten on every build and deploy. `box` is asked for only when a runtime
+ * needs it, after each start.sh passes. Returns the names of the runtimes it
+ * staged.
  */
 export async function stageBoxCodeZip(
   project: Project,
@@ -28,7 +27,7 @@ export async function stageBoxCodeZip(
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
-    dist: boxAwsDir(runtime.name),
+    dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
     // A CodeZip deploy reads the deployed resources, its Python and its code path through the
     // box/agentcore and box/agentcore-codezip packs, so it is not a container.
     container: false,
@@ -61,10 +60,6 @@ export async function stageBoxCodeZip(
     const ffi = entry.runtimeVersion ? build.ffi[entry.runtimeVersion] : undefined;
     if (ffi) cpSync(ffi, join(folder, "ffi"), { recursive: true });
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
-    // Copy the canonical AWS tree into the code folder's .box-dist so the zip carries it.
-    const codeDist = join(project.rootPath, ...entry.codeLocation.split("/"), BOX_CODEZIP_DIST);
-    rmSync(codeDist, { recursive: true, force: true });
-    cpSync(folder, codeDist, { recursive: true });
   }
   return runtimes.map((runtime) => runtime.name);
 }

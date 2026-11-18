@@ -14,6 +14,7 @@ export {
 export { parseResolvedPolicy, type ParsedPolicy, type PolicyFileText } from "./policyParser";
 export { gatewayTargetFor } from "./projectSpec";
 export {
+  BOX_PROFILE_PATH,
   parseResolvedProfile,
   profilePlaces,
   profilePolicyFiles,

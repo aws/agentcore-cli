@@ -21,3 +21,11 @@ run through a shell, so paths containing spaces, quoting, and shell syntax are n
 ```sh
 AGENTCORE_CLI_PATH=/path/to/agentcore bun run test:e2e
 ```
+
+The `box` tests deploy the Strands Box templates, which run their agent in a box on AgentCore
+Runtime. They need `box` on your PATH, because `agentcore create` checks for it, and they skip
+`agentcore dev`:
+
+```sh
+bun run test:e2e -- --tagsFilter='box'
+```
