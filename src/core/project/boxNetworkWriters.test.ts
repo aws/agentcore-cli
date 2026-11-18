@@ -249,7 +249,13 @@ describe("defaultTargetsWriter", () => {
 
 describe("telemetryPolicyWriter", () => {
   const logs = (logGroup: string) =>
-    ({ kind: "cloudwatch_logs", region: "us-west-2", logGroup, logStream: "s" }) as const;
+    ({
+      name: "logs",
+      kind: "cloudwatch_logs",
+      region: "us-west-2",
+      logGroup,
+      logStream: "s",
+    }) as const;
   const statementOf = (text: string) =>
     (JSON.parse(text) as { Statement: { Resource: unknown }[] }).Statement.map(
       ({ Resource }) => Resource,

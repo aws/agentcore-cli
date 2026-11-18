@@ -657,6 +657,21 @@ describe("build writes the telemetry policy of the box profile", () => {
     },
   );
 
+  test("copies both CloudWatch targets into the Runtime profile, signed with a bare aws://", async () => {
+    const { manager, root, box } = await strandsProject();
+    const records = { kind: "file", destination: "/tmp/records.jsonl" };
+    box.answer = showsTelemetry({ logs: LOGS, traces: TRACES, records });
+
+    await build(manager, root);
+
+    // On the Runtime, a bare aws:// signs with the execution role that the policy file grants.
+    expect((await runtimeProfile(root)).telemetry).toEqual({
+      logs: { ...LOGS, secret: { ref: "aws://" } },
+      traces: { ...TRACES, secret: { ref: "aws://" } },
+    });
+    expect(await text(root, RUNTIME_PROFILE)).not.toContain("my-profile");
+  });
+
   test("changes nothing on a second build", async () => {
     const { manager, root, counter, box } = await strandsProject();
     box.answer = showsTelemetry({ logs: LOGS, traces: TRACES });

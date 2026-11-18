@@ -18,6 +18,7 @@ describe("cloudWatchTelemetry", () => {
   test("reads a cloudwatch_logs table: its region, group, and stream", () => {
     expect(cloudWatchTelemetry({ telemetry: { logs: LOGS } })).toEqual([
       {
+        name: "logs",
         kind: "cloudwatch_logs",
         region: "us-west-2",
         logGroup: "my-group",
@@ -28,7 +29,7 @@ describe("cloudWatchTelemetry", () => {
 
   test("reads a cloudwatch_traces table: its region", () => {
     expect(cloudWatchTelemetry({ telemetry: { traces: TRACES } })).toEqual([
-      { kind: "cloudwatch_traces", region: "us-east-1" },
+      { name: "traces", kind: "cloudwatch_traces", region: "us-east-1" },
     ]);
   });
 
@@ -48,7 +49,13 @@ describe("cloudWatchTelemetry", () => {
   test("trims the region, group, and stream, as Box does", () => {
     const logs = { ...LOGS, region: " us-west-2 ", log_group: " /aws/box ", log_stream: " run " };
     expect(cloudWatchTelemetry({ telemetry: { logs } })).toEqual([
-      { kind: "cloudwatch_logs", region: "us-west-2", logGroup: "/aws/box", logStream: "run" },
+      {
+        name: "logs",
+        kind: "cloudwatch_logs",
+        region: "us-west-2",
+        logGroup: "/aws/box",
+        logStream: "run",
+      },
     ]);
   });
 
@@ -63,6 +70,24 @@ describe("cloudWatchTelemetry", () => {
     ["no region", { region: undefined }],
   ])("leaves out a cloudwatch_logs target that Box refuses: %s", (_label, change) => {
     expect(cloudWatchTelemetry({ telemetry: { logs: { ...LOGS, ...change } } })).toEqual([]);
+  });
+
+  test("reads the name of each table, and its include", () => {
+    const telemetry = { audit: { ...TRACES, include: ["deny", "trace"] }, logs: LOGS };
+    expect(cloudWatchTelemetry({ telemetry }).map(({ name, include }) => [name, include])).toEqual([
+      ["audit", ["deny", "trace"]],
+      ["logs", undefined],
+    ]);
+  });
+
+  test.each([
+    ["an empty include", []],
+    ["a repeated word", ["logs", "logs"]],
+    ["a word Box does not take", ["spans"]],
+    ["a string", "logs"],
+  ])("leaves out a target with an include that Box refuses: %s", (_label, include) => {
+    expect(cloudWatchTelemetry({ telemetry: { logs: { ...LOGS, include } } })).toEqual([]);
+    expect(cloudWatchTelemetry({ telemetry: { traces: { ...TRACES, include } } })).toEqual([]);
   });
 
   test("reads nothing from a box.toml with no telemetry table", () => {
