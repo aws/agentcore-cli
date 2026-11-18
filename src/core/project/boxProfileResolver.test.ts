@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -35,6 +35,7 @@ const SHOWN = String.raw`{
   ],
   "skipped": [],
   "dropped": [],
+  "open_routes": [],
   "copies": [],
   "links": [],
   "parts": [],
@@ -98,6 +99,25 @@ const SHOWN_POLICY =
 
 const RELEASES = "https://github.com/mquang-amazon/box-releases";
 
+/**
+ * The profile of {@link OPEN_ROUTES_SHOWN}: the routes `auth` and `github` with no secret, and the
+ * route `keyed` with one.
+ */
+const OPEN_ROUTES_PROFILE =
+  'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[agent]\ncommand = ["/bin/sh"]\n\n' +
+  '[egress.auth]\ndestinations = ["login.example.com", "auth.example.com:8443"]\n\n' +
+  '[egress.github]\ndestinations = ["api.github.com"]\n\n' +
+  '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n';
+
+/**
+ * `box profile show open --format json` of the staging-boxy draft for {@link OPEN_ROUTES_PROFILE}
+ * and {@link POLICY}, as box prints it, with HOME at /tmp/acbox/home.
+ */
+const OPEN_ROUTES_SHOWN = readFileSync(
+  join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes.json"),
+  "utf8",
+);
+
 describe("parseBoxProfileShow", () => {
   test("takes the box.toml as a table in the order of the file, the policy.dw, the packs, and the warnings", () => {
     const resolved = parseBoxProfileShow(SHOWN, ".box/profile.toml");
@@ -114,6 +134,7 @@ describe("parseBoxProfileShow", () => {
         telemetry: { records: { kind: "file", include: ["deny"] } },
       },
       policy: SHOWN_POLICY,
+      openRoutes: [],
       packs: [{ name: "box/base", version: "1" }],
       warnings: [],
     });
@@ -144,10 +165,24 @@ describe("parseBoxProfileShow", () => {
     );
   });
 
+  test("takes each open route, with its destinations as a list, which box.toml leaves out", () => {
+    const resolved = parseBoxProfileShow(OPEN_ROUTES_SHOWN, ".box/profile.toml");
+
+    expect(resolved.openRoutes).toEqual([
+      { route: "auth", destinations: ["login.example.com", "auth.example.com:8443"] },
+      { route: "github", destinations: ["api.github.com"] },
+    ]);
+    expect(resolved.boxToml.egress).toEqual({
+      keyed: { destinations: ["k.example.com:8443"], secret: { ref: "env://KEY" } },
+    });
+  });
+
   const document = JSON.parse(SHOWN) as Record<string, unknown>;
   const { box_toml: _boxToml, ...noBoxToml } = document;
+  const { open_routes: _openRoutes, ...noOpenRoutes } = document;
   test.each([
     ["no box_toml", noBoxToml, "a box.toml table"],
+    ["no open_routes", noOpenRoutes, "a list of open routes"],
     ["box_toml as TOML text", { ...document, box_toml: 'name = "x"' }, "a box.toml table"],
     [
       "box_toml as a list, and no policy",
@@ -389,6 +424,55 @@ describe("the copy of the profile for the build region", () => {
     await expect(readBoxNetworks(SPEC, root, resolver, "eu-central-1")).rejects.toThrow(
       new InvalidEnvironmentError(message),
     );
+  });
+});
+
+describe("the open routes of the profile", () => {
+  test("gives one [egress] entry to an open route with two destinations, and names its targets after it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "box-profile-open-routes-"));
+    directories.push(root);
+    await mkdir(join(root, ".box"));
+    await writeFile(join(root, ".box", "profile.toml"), OPEN_ROUTES_PROFILE);
+    await writeFile(join(root, ".box", "policy.dw"), POLICY);
+    const resolver = new BoxCliProfileResolver(streamer(stdout(OPEN_ROUTES_SHOWN)));
+
+    const [network] = await readBoxNetworks(SPEC, root, resolver);
+
+    expect(network?.failures).toEqual([]);
+    const reachable = network?.hosts.filter((host) => host.reachable) ?? [];
+    expect(
+      reachable.map((h) => [
+        h.authority,
+        h.target,
+        h.outboundAuth.kind,
+        h.sources.filter(({ kind }) => kind === "entry"),
+      ]),
+    ).toEqual([
+      [
+        "k.example.com:8443",
+        "egress-keyed",
+        "apiKey",
+        [{ kind: "entry", egressEntry: "keyed", destinations: ["k.example.com:8443"] }],
+      ],
+      [
+        "login.example.com",
+        "egress-auth-login-example-com",
+        "none",
+        [{ kind: "entry", egressEntry: "auth", destinations: ["login.example.com"] }],
+      ],
+      [
+        "auth.example.com:8443",
+        "egress-auth-auth-example-com-8443",
+        "none",
+        [{ kind: "entry", egressEntry: "auth", destinations: ["auth.example.com:8443"] }],
+      ],
+      [
+        "api.github.com",
+        "egress-github",
+        "none",
+        [{ kind: "entry", egressEntry: "github", destinations: ["api.github.com"] }],
+      ],
+    ]);
   });
 });
 

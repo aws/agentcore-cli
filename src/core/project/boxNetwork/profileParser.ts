@@ -1,11 +1,13 @@
 /**
  * Reads the network inputs of a box profile from Box's own resolution of it: the `[egress]` and
- * `[mcp]` tables of the `box.toml` that `box profile show --format json` prints. The profile's own
- * `policies` name the policy files that build stages beside the AgentCore Runtime profile, and its
- * own text places each entry, `packs`, and `policies` for a message.
+ * `[mcp]` tables of the `box.toml` that `box profile show --format json` prints, and its open
+ * routes. The profile's own `policies` name the policy files that build stages beside the
+ * AgentCore Runtime profile, and its own text places each entry, `packs`, and `policies` for a
+ * message.
  */
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
+import type { ResolvedBoxProfile } from "../boxProfileResolver";
 
 /** The box profile, from the project root. */
 export const BOX_PROFILE_PATH = ".box/profile.toml";
@@ -19,7 +21,7 @@ export interface ProfilePlaces {
 }
 
 export interface ParsedProfile {
-  /** `[egress]` as Box resolves it, with each route that Box writes only as rules. */
+  /** `[egress]` as Box resolves it, with each open route. */
   readonly egress: Record<string, unknown>;
   readonly mcp: Record<string, unknown>;
   /** The profile's own policy files, relative to its folder, in the order it names them. */
@@ -35,9 +37,12 @@ export interface ProfileFailure {
   readonly place: string;
 }
 
-/** The `[egress]` and `[mcp]` tables of the `box.toml` that Box resolves the profile to. */
+/**
+ * The `[egress]` and `[mcp]` tables of the `box.toml` that Box resolves the profile to, with each
+ * open route after the routes of `[egress]`.
+ */
 export function parseResolvedProfile(
-  boxToml: Readonly<Record<string, unknown>>,
+  { boxToml, openRoutes }: Pick<ResolvedBoxProfile, "boxToml" | "openRoutes">,
   policyFiles: readonly string[],
 ): { readonly profile: ParsedProfile; readonly failures: readonly ProfileFailure[] } {
   for (const key of ["egress", "mcp"] as const) {
@@ -51,9 +56,13 @@ export function parseResolvedProfile(
       };
     }
   }
+  const egress: Record<string, unknown> = { ...(boxToml.egress as object | undefined) };
+  for (const { route, destinations } of openRoutes) {
+    if (!Object.hasOwn(egress, route)) egress[route] = { destinations };
+  }
   return {
     profile: {
-      egress: (boxToml.egress as Record<string, unknown> | undefined) ?? {},
+      egress,
       mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
       policyFiles,
     },

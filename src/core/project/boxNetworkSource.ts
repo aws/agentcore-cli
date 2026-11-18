@@ -102,7 +102,16 @@ async function readResolvedPolicy(
   const named = profilePolicyFiles(text);
   const places = profilePlaces(text);
   const files = readPolicyFiles(projectRoot, named.ok ? named.files : [], places.policies);
-  const profile = parseResolvedProfile(resolved.boxToml, named.ok ? named.files : []);
+  // The Runtime profile sets `[options] bedrock.region` to the region build builds for, so Box
+  // resolves box/bedrock's route for that region, not the one `agentcore dev` uses. A profile with
+  // a failure of its own stops build either way, so Box resolves it as it is.
+  const forRegion =
+    named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
+  const resolved =
+    forRegion === undefined
+      ? await resolver.resolve(projectRoot, BOX_PROFILE_PATH)
+      : await resolveCopy(projectRoot, resolver, forRegion, files.texts);
+  const profile = parseResolvedProfile(resolved, named.ok ? named.files : []);
   const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
   return {
     parsed: policy.parsed,

@@ -15,11 +15,18 @@ export interface BoxPack {
   readonly version: string;
 }
 
+/** A route with no secret, which Box leaves out of `box.toml` and writes only as rules. */
+export interface BoxOpenRoute {
+  readonly route: string;
+  readonly destinations: readonly string[];
+}
+
 /** The `box.toml` and `policy.dw` that Box resolves a box profile to. */
 export interface ResolvedBoxProfile {
   /** The `box.toml` as a table, with its keys in the order of the file. */
   readonly boxToml: Readonly<Record<string, unknown>>;
   readonly policy: string;
+  readonly openRoutes: readonly BoxOpenRoute[];
   readonly packs: readonly BoxPack[];
   readonly warnings: readonly string[];
 }
@@ -39,6 +46,7 @@ const REFUSED_JSON = /(?:unexpected argument|Found argument) '--format'/;
 const BoxProfileShowSchema = z.object({
   box_toml: z.record(z.string(), z.unknown()),
   policy: z.string(),
+  open_routes: z.array(z.object({ route: z.string(), destinations: z.string() })),
   packs: z.array(z.object({ name: z.string(), version: z.string() })).default([]),
   warnings: z.array(z.string()).default([]),
 });
@@ -47,6 +55,7 @@ const BoxProfileShowSchema = z.object({
 const SHOWN_PARTS: Readonly<Record<keyof z.infer<typeof BoxProfileShowSchema>, string>> = {
   box_toml: "a box.toml table",
   policy: "the policy.dw text",
+  open_routes: "a list of open routes",
   packs: "a list of packs",
   warnings: "a list of warnings",
 };
@@ -82,8 +91,13 @@ export function parseBoxProfileShow(stdout: string, profilePath: string): Resolv
       { cause: shown.error },
     );
   }
-  const { box_toml: boxToml, policy, packs, warnings } = shown.data;
-  return { boxToml, policy, packs, warnings };
+  const { box_toml: boxToml, policy, open_routes: open, packs, warnings } = shown.data;
+  // Box joins the destinations of an open route with ", ".
+  const openRoutes = open.map(({ route, destinations }) => ({
+    route,
+    destinations: destinations.split(", "),
+  }));
+  return { boxToml, policy, openRoutes, packs, warnings };
 }
 
 /** Runs `box profile show --format json` with the `box` on PATH. */

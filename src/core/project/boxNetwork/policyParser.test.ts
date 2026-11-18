@@ -63,29 +63,6 @@ describe("parseResolvedPolicy", () => {
     ]);
   });
 
-  test("takes each route that Box writes only as rules into [egress], after box.toml's routes", () => {
-    // `box profile show --format json` for [egress.multi], [egress.my-api], and [egress."dot.name"] with
-    // no secret: Box sorts the routes by name and leaves them out of box.toml.
-    const policy = [
-      `@id("route_bedrock_connect") permit (principal, ${NC}, resource) when { (context.input.host == "bedrock-runtime.us-west-2.amazonaws.com" && context.input.port == 443) };`,
-      `@id("route_dot.name_connect") permit (principal, ${NC}, resource) when { (context.input.host == "e.example.com" && context.input.port == 443) };`,
-      `@id("route_multi_connect") permit (principal, ${NC}, resource) when { (context.input.host == "a.example.com" && context.input.port == 443) || (context.input.host == "b.example.com" && context.input.port == 8443) };`,
-      `@id("route_multi_request") permit (principal, ${HR}, resource) when { context.input.host == "a.example.com" || context.input.host == "b.example.com" };`,
-      `@id("route_my-api_connect") permit (principal, ${NC}, resource) when { (context.input.host == "d.example.com" && context.input.port == 443) };`,
-    ].join("\n");
-    const bedrock = {
-      destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
-      secret: { ref: "aws://default" },
-    };
-
-    expect(parsed(policy, [], { bedrock }).parsed.profile.egress).toEqual({
-      bedrock,
-      "dot.name": { destinations: ["e.example.com"] },
-      multi: { destinations: ["a.example.com", "b.example.com:8443"] },
-      "my-api": { destinations: ["d.example.com"] },
-    });
-  });
-
   test("takes no route from a rule of the profile's own policy files that Box's naming fits", () => {
     const own = `@id("route_mine_connect") permit (principal, ${NC}, resource) when { context.input.host == "x.example.com" && context.input.port == 443 };\n`;
 

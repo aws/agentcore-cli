@@ -5,14 +5,17 @@ describe("parseResolvedProfile", () => {
   test("reads [egress] and [mcp] of Box's resolved box.toml, and keeps the profile's policy files", () => {
     const { profile, failures } = parseResolvedProfile(
       {
-        name: "demo-preview",
-        egress: {
-          bedrock: {
-            destinations: ["bedrock-runtime.eu-west-1.amazonaws.com"],
-            secret: { ref: "aws://default" },
+        boxToml: {
+          name: "demo-preview",
+          egress: {
+            bedrock: {
+              destinations: ["bedrock-runtime.eu-west-1.amazonaws.com"],
+              secret: { ref: "aws://default" },
+            },
           },
+          mcp: { docs: { destinations: ["docs.example.com"], type: "http" } },
         },
-        mcp: { docs: { destinations: ["docs.example.com"], type: "http" } },
+        openRoutes: [],
       },
       ["policy.dw"],
     );
@@ -30,6 +33,40 @@ describe("parseResolvedProfile", () => {
     });
   });
 
+  test("takes each open route into [egress], after box.toml's routes, as Box leaves it out of box.toml", () => {
+    // `open_routes` for [egress.multi], [egress.my-api], and [egress."dot.name"] with no secret:
+    // Box sorts the routes by name.
+    const bedrock = {
+      destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
+      secret: { ref: "aws://default" },
+    };
+    const openRoutes = [
+      { route: "dot.name", destinations: ["e.example.com"] },
+      { route: "multi", destinations: ["a.example.com", "b.example.com:8443"] },
+      { route: "my-api", destinations: ["d.example.com"] },
+    ];
+
+    expect(
+      parseResolvedProfile({ boxToml: { egress: { bedrock } }, openRoutes }, []).profile.egress,
+    ).toEqual({
+      bedrock,
+      "dot.name": { destinations: ["e.example.com"] },
+      multi: { destinations: ["a.example.com", "b.example.com:8443"] },
+      "my-api": { destinations: ["d.example.com"] },
+    });
+  });
+
+  test("keeps a route of box.toml as box.toml has it when an open route has its name", () => {
+    const bedrock = { destinations: ["bedrock.example.com"], secret: { ref: "aws://default" } };
+    const openRoutes = [{ route: "bedrock", destinations: ["other.example.com"] }];
+
+    expect(
+      parseResolvedProfile({ boxToml: { egress: { bedrock } }, openRoutes }, []).profile.egress,
+    ).toEqual({
+      bedrock,
+    });
+  });
+
   test.each([
     [
       { egress: 3 },
@@ -42,7 +79,7 @@ describe("parseResolvedProfile", () => {
         "as a table, such as [mcp.github].",
     ],
   ])("fails a box.toml it cannot read, at the profile: %j", (table, reason) => {
-    expect(parseResolvedProfile(table, []).failures).toEqual([
+    expect(parseResolvedProfile({ boxToml: table, openRoutes: [] }, []).failures).toEqual([
       { code: "INVALID_PROFILE", reason, place: ".box/profile.toml" },
     ]);
   });
