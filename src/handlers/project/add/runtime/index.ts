@@ -139,7 +139,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "filesystem-configurations",
-        "filesystem mount configurations (JSON)",
+        "filesystem mount configurations (JSON); an s3BucketMount needs --platform-version V2",
         z.string().optional(),
         { group: ENVIRONMENT },
       ),

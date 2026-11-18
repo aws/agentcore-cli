@@ -191,12 +191,45 @@ export const S3FilesAccessPointConfigSchema = z.object({
     ),
 });
 export type S3FilesAccessPointConfig = z.infer<typeof S3FilesAccessPointConfigSchema>;
+// Only the shape is checked here; the CDK app and the service check the bucket and prefix rules.
+// Strict so a misspelled optional key, such as s3BucketOwner, fails instead of being dropped.
+export const S3BucketMountConfigSchema = z.strictObject({
+  /** General purpose or directory bucket name. */
+  bucket: z.string().min(3).max(63),
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(
+      /^\/mnt\/[a-zA-Z0-9._-]+\/?$/,
+      "Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/bucket)",
+    ),
+  /**
+   * Key prefix to mount; the whole bucket when omitted. {runtimeSessionId} gives each session
+   * its own prefix (e.g. "data/{runtimeSessionId}/").
+   */
+  prefix: z.string().min(1).max(1024).optional(),
+  /** Account that must own the bucket; defaults to the runtime's account. */
+  s3BucketOwner: z
+    .string()
+    .regex(/^[0-9]{12}$/, "Must be a 12-digit AWS account ID")
+    .optional(),
+  /** Region of the bucket; defaults to the runtime's Region. */
+  s3BucketRegion: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(/^([a-z]+-){2,3}\d+$/, "Must be an AWS Region code (e.g. us-west-2)")
+    .optional(),
+});
+export type S3BucketMountConfig = z.infer<typeof S3BucketMountConfigSchema>;
 export const MAX_EFS_MOUNTS = 2;
 export const MAX_S3_MOUNTS = 2;
 export const FilesystemConfigurationSchema = z.union([
   z.strictObject({ sessionStorage: SessionStorageSchema }),
   z.strictObject({ efsAccessPoint: EfsAccessPointConfigSchema }),
   z.strictObject({ s3FilesAccessPoint: S3FilesAccessPointConfigSchema }),
+  z.strictObject({ s3BucketMount: S3BucketMountConfigSchema }),
 ]);
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 export const LIFECYCLE_TIMEOUT_MIN = 60;
@@ -460,12 +493,25 @@ export const ProjectRuntimeSchema = z
           path: ["filesystemConfigurations"],
         });
       }
+      // The service mounts only on V2. Its default when the field is unset depends on partition and
+      // account rollout, and an update without the field keeps the current version; the CLI sees
+      // neither, so it requires V2 explicitly.
+      if (fcs.some((fc) => "s3BucketMount" in fc) && data.platformVersion !== "V2") {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "s3BucketMount filesystem mounts require platformVersion: V2 (--platform-version V2)",
+          path: ["platformVersion"],
+        });
+      }
       const mountPaths = fcs.map((fc) =>
         ("sessionStorage" in fc
           ? fc.sessionStorage.mountPath
           : "efsAccessPoint" in fc
             ? fc.efsAccessPoint.mountPath
-            : fc.s3FilesAccessPoint.mountPath
+            : "s3FilesAccessPoint" in fc
+              ? fc.s3FilesAccessPoint.mountPath
+              : fc.s3BucketMount.mountPath
         ).replace(/\/$/, ""),
       );
       if (new Set(mountPaths).size !== mountPaths.length) {
