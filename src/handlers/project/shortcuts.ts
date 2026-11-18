@@ -6,7 +6,9 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import type { AgentCoreGateway } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { boxGatewayName } from "../../projectSchemas/project";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -33,6 +35,22 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 export const BOX_GATEWAY_BEDROCK_REGION = "us-west-2";
 
 /**
+ * An entry for the runtime's Box gateway, `<runtime>-box`, with no targets yet. It has the
+ * settings `agentcore add gateway-target` gives one, which are the Box gateway's own.
+ */
+export function getBoxGatewayEntry(runtimeName: string): AgentCoreGateway {
+  return {
+    name: boxGatewayName(runtimeName),
+    protocolType: "None",
+    authorizerType: "AWS_IAM",
+    // The value the gateway schema fills in; it has no effect without MCP.
+    enableSemanticSearch: true,
+    exceptionLevel: "NONE",
+    targets: [],
+  };
+}
+
+/**
  * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
  * provider, or LiteLLM with a `bedrock/` model id (its default).
  */
@@ -55,8 +73,9 @@ type RuntimeTemplateShortcut = {
   /** Ships with memory. */
   includesMemory: boolean;
   /**
-   * Runs its agent in Strands Box: create writes the box profile that runs it. Only the box
-   * templates do; every other template runs its agent the usual way.
+   * Runs its agent in Strands Box: create makes a Box project (`"projectType": "box"`) with the
+   * runtime's Box gateway. Only the box templates do; every other template runs its agent the
+   * usual way.
    */
   box: boolean;
   /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
@@ -393,7 +412,13 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
+    // A template with no model provider (an MCP server, BMA) calls no model.
     ...(template.box && { box: true }),
+    ...(template.box &&
+      modelProvider !== undefined &&
+      callsBedrockModel({ modelProvider, modelId: overrides?.modelId }) && {
+        boxGatewayEntry: getBoxGatewayEntry(runtimeName),
+      }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

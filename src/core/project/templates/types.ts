@@ -4,6 +4,7 @@ import type { MemorySchema } from "../../../projectSchemas/memory";
 import type { CredentialSchema } from "../../../projectSchemas/credential";
 import type { HarnessRegistryEntry } from "../../../projectSchemas/harness";
 import type { Evaluator } from "../../../projectSchemas/evaluator";
+import type { AgentCoreGateway } from "../../../projectSchemas/gateway";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 import type z from "zod";
 
@@ -14,6 +15,7 @@ export type SpecEntries = {
   memories?: z.infer<typeof MemorySchema>[];
   harnesses?: HarnessRegistryEntry[];
   evaluators?: Evaluator[];
+  agentCoreGateways?: AgentCoreGateway[];
 };
 
 /** A group of files and resources that can be rendered into a project **/

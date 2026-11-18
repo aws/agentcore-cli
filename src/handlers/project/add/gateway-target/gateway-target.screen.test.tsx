@@ -16,7 +16,7 @@ import {
 import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
-import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { createGatewayProjectTestHarness, removeDefaultBoxGateway } from "../gateway-test-support";
 import { authChoices, toGatewayTargetInput } from "./screen";
 
 const ENDPOINT = "https://mcp.example.com";
@@ -58,9 +58,12 @@ async function projectWith(extra: {
   return projectRoot;
 }
 
-// reachKindStep confirms the only Gateway, leaving the wizard on the kind step.
+// reachKindStep picks the test's Gateway, "tools" (listed after the project's
+// "agent-box" gateway entry), leaving the wizard on the kind step.
 async function reachKindStep(screen: RenderScreenResult): Promise<void> {
   await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
+  await screen.press("down");
+  await waitForText(screen.lastFrame, "❯ ● tools");
   await screen.press("return");
   await waitForText(screen.lastFrame, "what is the Target?");
 }
@@ -110,7 +113,9 @@ describe("project add gateway-target wizard", () => {
     const screen = renderScreen("/agentcore/add/gateway-target");
 
     await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
-    expect(screen.lastFrame()).toContain("❯ ● tools");
+    expect(screen.lastFrame()).toContain("❯ ● agent-box");
+    await screen.press("down");
+    await waitForText(screen.lastFrame, "❯ ● tools");
     expect(screen.lastFrame()).toContain("0 Targets · MCP servers and Runtimes");
     await screen.press("return");
 
@@ -302,7 +307,7 @@ describe("project add gateway-target wizard", () => {
   });
 
   test("without a Gateway the first step says what to add and esc returns to the menu", async () => {
-    await inProject();
+    await removeDefaultBoxGateway(await inProject());
     const screen = renderScreen("/agentcore/add/gateway-target");
 
     await waitForText(screen.lastFrame, "no Gateways in this project");
@@ -320,6 +325,8 @@ describe("project add gateway-target wizard", () => {
 
     await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
     expect(screen.lastFrame()).toContain("MCP servers only");
+    await screen.press("down");
+    await waitForText(screen.lastFrame, "❯ ● mcp");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "what is the Target?");

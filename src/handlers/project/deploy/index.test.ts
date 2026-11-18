@@ -415,6 +415,7 @@ describe("project deploy handler", () => {
       exit_reason: "success",
       project_runtime_count: 1,
       project_memory_count: 0,
+      // the agent-box gateway entry that create declares.
       project_gateway_count: 0,
       project_harness_count: 0,
     });
@@ -840,7 +841,8 @@ describe("project deploy and the Box gateway", () => {
     expect(subject.io.stderr()).not.toContain("(y/N)");
   });
 
-  test("a project with only projectType is a deploy, not a teardown", async () => {
+  test("a Box project with no runtimes asks before the teardown", async () => {
+    // Box gateways come with runtimes, so this is the state after `agentcore remove all`.
     const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
     const projectRoot = await inProjectWithTargets();
     await writeFile(
@@ -850,7 +852,7 @@ describe("project deploy and the Box gateway", () => {
 
     await subject.run();
 
-    expect(subject.io.stderr()).not.toContain("(y/N)");
-    expect(await subject.calls[0]!.input.confirmTeardown(TEARDOWN)).toBe(false);
+    expect(subject.io.stderr()).toContain("(y/N)");
+    expect(await subject.calls[0]!.input.confirmTeardown(TEARDOWN)).toBe(true);
   });
 });

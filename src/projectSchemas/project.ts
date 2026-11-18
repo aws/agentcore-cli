@@ -29,6 +29,7 @@ export const ProjectNameSchema = z
   });
 /** The kind of project. `box` is the only kind: each runtime of a Box project gets a Box gateway. */
 export const ProjectTypeSchema = z.enum(["box"]);
+export type ProjectType = z.infer<typeof ProjectTypeSchema>;
 /** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box`. */
@@ -75,6 +76,14 @@ export const boxGatewayAwsName = (
 /** "the Box gateway 'a'" or "the Box gateways 'a', 'b'", for messages about recorded gateways. */
 export const describeBoxGateways = (names: string[]): string =>
   `the Box gateway${names.length === 1 ? "" : "s"} ${names.map((name) => `'${name}'`).join(", ")}`;
+/**
+ * Whether a deploy of the spec would delete the Box gateways a previous deploy recorded because
+ * agentcore.json lost its `"projectType": "box"`. A spec with no resources is left out: that is a
+ * teardown, which its own confirmation covers.
+ */
+export function dropsBoxGateways(spec: ProjectSpec): boolean {
+  return !isBoxProject(spec) && !declaresNoResources(spec);
+}
 /** Whether every resource collection of the spec is empty, as after `agentcore remove all`. */
 export function declaresNoResources(spec: ProjectSpec): boolean {
   const collections = [

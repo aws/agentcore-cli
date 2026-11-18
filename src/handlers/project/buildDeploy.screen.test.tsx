@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeMigrationState } from "../../core/project/migrate/journal";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
@@ -279,6 +279,7 @@ describe("project deploy screen", () => {
       is_tui: true,
       project_runtime_count: 1,
       project_memory_count: 0,
+      // the agent-box gateway entry that create declares.
       project_gateway_count: 0,
       project_harness_count: 0,
     });
@@ -460,6 +461,35 @@ describe("project deploy screen", () => {
     });
     // Nothing is left to invoke.
     expect(r.lastFrame()).not.toContain("agentcore invoke");
+    r.unmount();
+  });
+
+  test("a project that lost projectType asks before deleting the recorded Box gateways", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    const projectRoot = await inProject(core);
+    const specPath = join(projectRoot, "agentcore", "agentcore.json");
+    const { projectType: _projectType, ...spec } = JSON.parse(await readFile(specPath, "utf8"));
+    await writeFile(specPath, JSON.stringify(spec));
+    core.projectManager.recordedBoxGateways = async () => ["orders-default-agent-box"];
+
+    const r = renderScreen("/agentcore/deploy", { core });
+
+    await waitForFlatText(r.lastFrame, "so this deploy will delete the Box gateway");
+    // Confirm lays its (y/N) inline, so the question wraps around it.
+    expect(flatFrame(r.lastFrame)).toContain("'orders-default-agent-box'. Continue?");
+    expect(deploys).toHaveLength(0);
+    await r.write("y");
+
+    await waitFor(() => deploys.length === 1);
+    const input = deploys[0]!.input;
+    expect(
+      await input.confirmBoxGatewayDeletion?.({
+        projectName: "orders",
+        targetName: "default",
+        gatewayNames: ["orders-default-agent-box"],
+      }),
+    ).toBe(true);
     r.unmount();
   });
 

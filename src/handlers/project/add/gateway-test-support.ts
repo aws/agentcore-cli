@@ -7,6 +7,15 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
+import { DEFAULT_CREATE_RUNTIME_NAME } from "../create";
+import { getBoxGatewayEntry } from "../shortcuts";
+
+/**
+ * The Box gateway entry (`agent-box`, with no targets: build adds the Bedrock target) that
+ * `agentcore create --template agent-python-strands-box` declares for its Bedrock agent, so every
+ * harness project starts with it at index 0.
+ */
+export const DEFAULT_BOX_GATEWAY = getBoxGatewayEntry(DEFAULT_CREATE_RUNTIME_NAME);
 
 export async function projectSpec(projectRoot: string) {
   return Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
@@ -17,6 +26,18 @@ export async function writeProjectSpec(projectRoot: string, spec: unknown): Prom
     join(projectRoot, "agentcore", "agentcore.json"),
     JSON.stringify(spec, undefined, 2),
   );
+}
+
+/**
+ * Removes the Box gateway entry that a templated project starts with, for
+ * a test about a project that has no gateways at all.
+ */
+export async function removeDefaultBoxGateway(projectRoot: string): Promise<void> {
+  const spec = await projectSpec(projectRoot);
+  spec.agentCoreGateways = spec.agentCoreGateways.filter(
+    (gateway: { name: string }) => gateway.name !== DEFAULT_BOX_GATEWAY.name,
+  );
+  await writeProjectSpec(projectRoot, spec);
 }
 
 export function createGatewayProjectTestHarness(directoryPrefix: string) {
@@ -37,7 +58,7 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
   async function inProject(name = "TestProject"): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
       name,
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
       prefix: `agentcore-${directoryPrefix}-`,
     });
     cleanups.push(cleanup);

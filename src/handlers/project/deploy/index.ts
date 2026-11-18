@@ -14,7 +14,7 @@ import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
 import {
   declaresNoResources,
   describeBoxGateways,
-  isBoxProject,
+  dropsBoxGateways,
 } from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
@@ -298,8 +298,8 @@ async function delegateV0Deploy(
  * decides whether to ask the user before starting.
  */
 export function declaresNothingDeployable(project: Project): boolean {
-  // A Box project deploys the Box gateway, so it is never empty.
-  return !isBoxProject(project.spec) && declaresNoResources(project.spec);
+  // A Box project makes a Box gateway for each runtime only, so with no runtimes it is empty too.
+  return declaresNoResources(project.spec);
 }
 
 /**
@@ -335,8 +335,8 @@ async function resolveTeardownDecision(
   return async () => false;
 }
 
-/** The question the deploy command asks before it deletes the Box gateways. */
-function boxGatewayDeletionQuestion(gatewayNames: string[]): string {
+/** The question deploy asks before it deletes the Box gateways. */
+export function boxGatewayDeletionQuestion(gatewayNames: string[]): string {
   return (
     `agentcore.json has no "projectType": "box", so this deploy will delete ` +
     `${describeBoxGateways(gatewayNames)}. Continue?`
@@ -356,7 +356,7 @@ async function resolveBoxGatewayDecision(
   canPrompt: boolean,
 ): Promise<BoxGatewayDeletionHandler> {
   if (confirmed) return async () => true;
-  if (canPrompt && !isBoxProject(project.spec) && !declaresNoResources(project.spec)) {
+  if (canPrompt && dropsBoxGateways(project.spec)) {
     const gatewayNames = await config.projectManager.recordedBoxGateways(project, {
       target: targetName,
     });

@@ -107,7 +107,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
-import { readDeployedState } from "./backends/cdk/deployedState";
+import { boxGatewaysOf, readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -940,7 +940,7 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // KD6: in a Box project, names that end in -box belong to the Box gateways, in any
+        // In a Box project, names that end in -box belong to the Box gateways, in any
         // letter case. The CDK library would refuse them at synth; refusing here keeps
         // agentcore.json unchanged.
         if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
@@ -1199,7 +1199,7 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-      // The Box gateway of a runtime goes with the runtime (KD4), so its targets go too. An
+      // The Box gateway of a runtime goes with the runtime, so its targets go too. An
       // entry for a runtime that no longer exists would fail the synth.
       if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
         const boxName = boxGatewayName(input.name);
@@ -1262,11 +1262,10 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
-    // The project type goes too: the L3 makes the Box gateway from it, and `remove all` removes
-    // every resource, so the next deploy reaches the teardown confirmation as before.
-    const { projectType: _projectType, ...rest } = existingProjectSpec;
+    // The project type stays, so a runtime added later still gets its Box gateway. With no
+    // runtimes there is no Box gateway, so the next deploy reaches the teardown confirmation.
     const newSpec = {
-      ...rest,
+      ...existingProjectSpec,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1797,8 +1796,7 @@ export class FsProjectManager implements ProjectManager {
   }
 
   public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    const state = await readDeployedState(this.json, project.rootPath);
-    return (state.targets[input.target]?.resources?.boxGateways ?? []).map(({ name }) => name);
+    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), input.target);
   }
 
   public async resolveDeployedResource(

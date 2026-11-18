@@ -25,8 +25,8 @@ import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import {
   boxGatewayAwsName,
-  declaresNoResources,
   describeBoxGateways,
+  dropsBoxGateways,
   isBoxProject,
 } from "../../../projectSchemas/project";
 import type {
@@ -56,6 +56,7 @@ import {
   type StackArtifact,
 } from "./cdk/assembly";
 import {
+  boxGatewaysOf,
   readDeployedState,
   removeTargetState,
   stackReferenceOf,
@@ -445,11 +446,11 @@ export class CdkBackend implements ProjectBackend {
    * after `agentcore remove all`, and the teardown confirmation already covers every resource.
    */
   private async assertBoxGatewayKept(project: Project, input: DeployBackendInput): Promise<void> {
-    if (isBoxProject(project.spec) || declaresNoResources(project.spec)) return;
+    if (!dropsBoxGateways(project.spec)) return;
     const { target } = input;
-    const state = await readDeployedState(this.json, project.rootPath);
-    const gatewayNames = (state.targets[target.name]?.resources?.boxGateways ?? []).map(
-      ({ name }) => name,
+    const gatewayNames = boxGatewaysOf(
+      await readDeployedState(this.json, project.rootPath),
+      target.name,
     );
     if (gatewayNames.length === 0) return;
     const confirmed = await input.confirmBoxGatewayDeletion?.({

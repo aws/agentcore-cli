@@ -3,13 +3,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ResourceNotFoundError } from "../../errors/errors";
-import type { AddResourceInput, Project } from "../../handlers/project/types";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
+import type { AddResourceInput, CreateProjectInput, Project } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 
 /**
- * `"projectType": "box"` is written by `agentcore create` only. In a project with the
- * Box project, the gateway entry named `box` holds the targets of the Box gateway, which the CDK
+ * `"projectType": "box"` is written by `agentcore create` only. In a Box project, the gateway
+ * entry named `<runtime>-box` holds the targets of that runtime's Box gateway, which the CDK
  * library makes from the project type, so the entry comes and goes with its targets. A project
  * without the field behaves as before and never gets it.
  */
@@ -41,15 +42,35 @@ async function drain<T>(generator: AsyncGenerator<unknown, T>): Promise<T> {
   }
 }
 
-/** A new Box project with the given runtimes. Each runtime gets the Box gateway `<runtime>-box`. */
-async function createdProject(
+/** A new project of `create`, in a fresh directory. */
+async function created(
   manager: FsProjectManager,
-  runtimes: string[] = ["agent"],
+  input: Partial<CreateProjectInput> = {},
 ): Promise<Project> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
   tempDirectories.push(directory);
   process.chdir(directory);
-  let project = await drain(manager.create({ name: "example", skipInstall: true, skipGit: true }));
+  return drain(
+    manager.create({ name: "example", skipInstall: true, skipGit: true, ...input } as never),
+  );
+}
+
+/**
+ * A Box project with the given runtimes. Each runtime gets the Box gateway `<runtime>-box`.
+ * Create writes `"projectType": "box"` only with a box template, which also adds a runtime and
+ * its gateway entry; these tests start from an empty project with the field set instead, so the
+ * entries they check are only the ones the commands make.
+ */
+async function createdProject(
+  manager: FsProjectManager,
+  runtimes: string[] = ["agent"],
+  fields: Record<string, unknown> = {},
+): Promise<Project> {
+  const empty = await created(manager);
+  const path = join(empty.rootPath, "agentcore", "agentcore.json");
+  const spec = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  await writeFile(path, `${JSON.stringify({ ...spec, projectType: "box", ...fields }, null, 2)}\n`);
+  let project = (await manager.resolve({ filePath: empty.rootPath }))!;
   for (const name of runtimes) {
     project = await drain(
       manager.addResource(project, {
@@ -139,11 +160,26 @@ const mcpTarget = (name: string, gatewayName = "agent-box"): AddResourceInput =>
 });
 
 describe("agentcore create", () => {
-  test('writes "projectType": "box" into the new project', async () => {
-    const project = await createdProject(subject());
+  const BOX_TEMPLATE = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+    runtimeName: "agent",
+  });
+
+  test('writes "projectType": "box" into a project made from a box template', async () => {
+    const project = await created(subject(), { scaffoldRuntimeInput: BOX_TEMPLATE });
 
     expect((await specOnDisk(project)).projectType).toBe("box");
     expect(project.spec.projectType).toBe("box");
+  });
+
+  test.each([
+    ["a template without box", resolveRuntimeTemplateShortcut("agent-python-strands")],
+    ["an empty project", undefined],
+  ])('writes no "projectType" for %s', async (_name, scaffoldRuntimeInput) => {
+    const project = await created(subject(), {
+      ...(scaffoldRuntimeInput && { scaffoldRuntimeInput }),
+    });
+
+    expect("projectType" in (await specOnDisk(project))).toBe(false);
   });
 });
 
@@ -287,7 +323,7 @@ describe("gateway targets in a Box project", () => {
     expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["my-agent-box"]);
   });
 
-  test("remove all removes projectType with every gateway entry", async () => {
+  test("remove all keeps projectType and removes every gateway entry", async () => {
     const manager = subject();
     let project = await createdProject(manager);
     project = await drain(manager.addResource(project, boxTarget("weather")));
@@ -295,9 +331,9 @@ describe("gateway targets in a Box project", () => {
     const result = await manager.removeAllResources(project);
 
     const spec = await specOnDisk(result.project);
-    expect("projectType" in spec).toBe(false);
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
-    expect(result.project.spec.projectType).toBeUndefined();
+    expect(result.project.spec.projectType).toBe("box");
   });
 });
 

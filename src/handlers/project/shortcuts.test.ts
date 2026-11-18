@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
+  getBoxGatewayEntry,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
   resolveRuntimeTemplateShortcut,
@@ -86,7 +88,13 @@ test("default memory names fit the service limit for long runtime names", () => 
   expect(memory.name).toHaveLength(48);
 });
 
-describe("box templates", () => {
+describe("Box gateway entry", () => {
+  test("is a valid project gateway, named after the runtime's Box gateway", () => {
+    const entry = getBoxGatewayEntry("my_agent");
+    expect(AgentCoreGatewaySchema.parse(entry)).toEqual(entry);
+    expect(entry.name).toBe("my-agent-box");
+  });
+
   test.each([
     "agent-python-strands-box",
     "agent-python-strands-box-container",
@@ -94,9 +102,17 @@ describe("box templates", () => {
     "agent-python-langchain-box",
     "a2a-python-strands-box",
     "agui-python-strands-box",
-    "mcp-python-fastmcp-box",
-  ] as const)("%s runs its agent in a box", (template) => {
-    expect(resolveRuntimeTemplateShortcut(template).box).toBe(true);
+  ] as const)("%s declares it with no target", (template) => {
+    expect(
+      resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
+    ).toEqual({
+      name: "agent-box",
+      protocolType: "None",
+      authorizerType: "AWS_IAM",
+      enableSemanticSearch: true,
+      exceptionLevel: "NONE",
+      targets: [],
+    });
   });
 
   test.each([
@@ -107,7 +123,25 @@ describe("box templates", () => {
     "agent-python-minimal",
     "mcp-python-fastmcp",
     "environment-python-bma",
-  ] as const)("%s, which is not a box template, runs its agent the usual way", (template) => {
-    expect(resolveRuntimeTemplateShortcut(template).box).toBeUndefined();
+  ] as const)("%s, which is not a box template, declares none", (template) => {
+    expect(resolveRuntimeTemplateShortcut(template).boxGatewayEntry).toBeUndefined();
+  });
+
+  test.each([
+    ["OpenAI", { modelProvider: "OpenAI", apiKey: "sk-test" }],
+    ["Anthropic", { modelProvider: "Anthropic", apiKey: "sk-test" }],
+    ["Gemini", { modelProvider: "Gemini", apiKey: "test" }],
+    ["LiteLLM with a non-Bedrock model", { modelProvider: "LiteLLM", modelId: "openai/gpt-4o" }],
+  ] as const)("%s: the agent declares none", (_label, overrides) => {
+    expect(
+      resolveRuntimeTemplateShortcut("agent-python-strands-box", overrides).boxGatewayEntry,
+    ).toBeUndefined();
+  });
+
+  test("a LiteLLM agent on its default Bedrock model declares the Box gateway", () => {
+    expect(
+      resolveRuntimeTemplateShortcut("agent-python-strands-box", { modelProvider: "LiteLLM" })
+        .boxGatewayEntry?.targets,
+    ).toEqual([]);
   });
 });

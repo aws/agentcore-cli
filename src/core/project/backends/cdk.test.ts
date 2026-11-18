@@ -1670,7 +1670,8 @@ describe("CdkBackend.deploy and the Box gateway", () => {
   });
 
   test("leaves a project with no resources to the teardown confirmation alone", async () => {
-    // The state after `agentcore remove all`: no projectType and no resources.
+    // No projectType and no resources: a hand-edited project, or one emptied by an older CLI's
+    // `agentcore remove all`, which dropped the field.
     const input = await boxProject({});
     await recordBoxGateways(input);
     await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });

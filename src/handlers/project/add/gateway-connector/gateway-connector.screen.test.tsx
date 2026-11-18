@@ -18,7 +18,7 @@ import {
 import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
-import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { createGatewayProjectTestHarness, removeDefaultBoxGateway } from "../gateway-test-support";
 import { knowledgeBaseSchema } from "./screen";
 
 const KB_HELP =
@@ -37,10 +37,12 @@ async function targetsOf(projectRoot: string, gateway = "tools") {
     .targets;
 }
 
-// reachConnectorStep confirms the only Gateway, leaving the wizard on the
-// connector step.
+// reachConnectorStep picks the test's Gateway, "tools" (listed after the
+// project's "agent-box" gateway entry), leaving the wizard on the connector step.
 async function reachConnectorStep(screen: RenderScreenResult): Promise<void> {
   await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
+  await screen.press("down");
+  await waitForText(screen.lastFrame, "❯ ● tools");
   await screen.press("return");
   await waitForText(screen.lastFrame, "which connector?");
 }
@@ -72,7 +74,9 @@ describe("project add gateway-connector wizard", () => {
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
     await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
-    expect(screen.lastFrame()).toContain("❯ ● tools");
+    expect(screen.lastFrame()).toContain("❯ ● agent-box");
+    await screen.press("down");
+    await waitForText(screen.lastFrame, "❯ ● tools");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "which connector?");
@@ -220,7 +224,7 @@ describe("project add gateway-connector wizard", () => {
   });
 
   test("without a Gateway the first step says what to add and esc returns to the menu", async () => {
-    await inProject();
+    await removeDefaultBoxGateway(await inProject());
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
     await waitForText(screen.lastFrame, "no Gateways in this project");

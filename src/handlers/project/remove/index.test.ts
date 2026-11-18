@@ -84,7 +84,8 @@ describe("project remove", () => {
         ["remove", "gateway", "--name", "remove"],
       ],
       specKey: "agentCoreGateways",
-      expectedRemaining: ["keep"],
+      // The agent-box entry that create declares for the Bedrock agent stays.
+      expectedRemaining: ["agent-box", "keep"],
     },
     {
       label: "config-bundle",
@@ -129,11 +130,12 @@ describe("project remove", () => {
         ["remove", "memory", "--name", "recall"],
       ],
       specKey: "memories",
-      expectedRemaining: [],
+      // The box template's own default memory stays.
+      expectedRemaining: ["agentMemory"],
     },
   ])("$label", async ({ commands, specKey, expectedRemaining, showsAppCodeNotice }) => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
 
@@ -151,7 +153,7 @@ describe("project remove", () => {
 
   test("removing a non-existent resource fails with a not-found error", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
@@ -165,7 +167,7 @@ describe("project remove", () => {
   });
 
   test("removing a target of a non-existent gateway names the missing gateway", async () => {
-    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-strands-box"] });
     cleanups.push(cleanup);
     await expect(
       run(["remove", "gateway-target", "--gateway", "ghost", "--name", "t"]),
@@ -174,7 +176,7 @@ describe("project remove", () => {
 
   test("removing a credential deletes its .env.local entry and reports it", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
@@ -195,7 +197,7 @@ describe("project remove", () => {
 
   test("--json reports a removal and its cleaned environment keys", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "credentials", "api-key", "--name", "svc-key", "--api-key", "-"], {
@@ -217,7 +219,7 @@ describe("project remove", () => {
 
   test("removing a secret-reference credential leaves .env.local alone", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run([
@@ -268,7 +270,7 @@ describe("project remove", () => {
     },
   ])("removes a nested $resource while preserving sibling Targets", async ({ resource, add }) => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "gateway", "--name", "tools"]);
@@ -296,7 +298,7 @@ describe("project remove", () => {
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     expect(
-      agentcoreJson.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
+      agentcoreJson.agentCoreGateways[1].targets.map((target: { name: string }) => target.name),
     ).toEqual(["keep"]);
     expect(JSON.parse(io.stdout())).toEqual({
       operation: "remove",
@@ -312,7 +314,7 @@ describe("project remove", () => {
 
   test("removes a payment manager with its connectors while preserving reusable credentials", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "credentials", "payment", "--name", "shared", "--provider", "CoinbaseCDP"]);
@@ -346,7 +348,7 @@ describe("project remove", () => {
 
   test("removes a nested payment connector while preserving siblings and credentials", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "credentials", "payment", "--name", "shared", "--provider", "CoinbaseCDP"]);
@@ -427,7 +429,7 @@ describe("project remove", () => {
       ["remove", "payment-manager", "--manager", "payments", "--name", "payments"],
     ],
   ])("%s", async (_label, args) => {
-    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-strands-box"] });
     cleanups.push(cleanup);
     await expect(run(args)).rejects.toBeInstanceOf(InputValidationError);
   });
@@ -450,7 +452,7 @@ describe("project remove", () => {
     ["resolving the engine from an unambiguous name", []],
   ])("removes a policy from its engine %s", async (_label, engineArgs) => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "policy-engine", "--name", "Guardrails"]);
@@ -473,7 +475,7 @@ describe("project remove", () => {
 
   test("rejects an ambiguous policy name without --engine", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "policy-engine", "--name", "First"]);
@@ -492,7 +494,7 @@ describe("project remove", () => {
 
   test("removing an engine strips gateway references", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "gateway", "--name", "tools"]);
@@ -509,7 +511,7 @@ describe("project remove", () => {
 describe("project remove all", () => {
   async function populatedProject(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["add", "harness", "--name", "my_harness"]);
@@ -634,7 +636,7 @@ describe("project remove all", () => {
 
   test("prompts on a TTY and proceeds on 'y'", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
 
@@ -646,7 +648,7 @@ describe("project remove all", () => {
 
   test("declining the prompt cancels without touching the spec", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
@@ -660,7 +662,7 @@ describe("project remove all", () => {
 
   test("without --yes and without a TTY it fails rather than proceeding", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     const before = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).text();
@@ -673,7 +675,7 @@ describe("project remove all", () => {
   });
 
   test("rejects --name alongside all", async () => {
-    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-strands-box"] });
     cleanups.push(cleanup);
     await expect(run(["remove", "all", "--name", "x", "--yes"])).rejects.toThrow(
       "--name is not valid when removing all resources",
@@ -682,7 +684,7 @@ describe("project remove all", () => {
 
   test("is idempotent on an already-empty project", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run(["remove", "all", "--yes"]);
@@ -695,7 +697,7 @@ describe("project remove all", () => {
 describe("project remove in a Box project", () => {
   async function boxProject(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     await run([
@@ -724,6 +726,7 @@ describe("project remove in a Box project", () => {
         name: "agent-box",
         authorizerType: "AWS_IAM",
         protocolType: "None",
+        // create declares no target; build adds the Bedrock target.
         targets: [{ name: "weather", targetType: "passthrough" }],
       },
     ]);
@@ -732,6 +735,7 @@ describe("project remove in a Box project", () => {
   test("remove gateway-target of the last target removes the entry", async () => {
     const projectRoot = await boxProject();
 
+    // create declares no target, so weather is the only one; build adds the Bedrock target back.
     await run(["remove", "gateway-target", "--gateway", "agent-box", "--name", "weather"]);
 
     const spec = await projectSpec(projectRoot);
@@ -755,7 +759,7 @@ describe("project remove in a Box project", () => {
 
   test("remove gateway --name box in a project without projectType says nothing more", async () => {
     const { projectRoot, cleanup } = await initProject({
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-python-strands-box"],
     });
     cleanups.push(cleanup);
     const { projectType: _projectType, ...spec } = await projectSpec(projectRoot);
@@ -768,13 +772,13 @@ describe("project remove in a Box project", () => {
     expect(await projectSpec(projectRoot)).not.toHaveProperty("projectType");
   });
 
-  test("remove all removes projectType with the gateway entries", async () => {
+  test("remove all keeps projectType, so a runtime added later gets a Box gateway", async () => {
     const projectRoot = await boxProject();
 
     await run(["remove", "all", "--yes"]);
 
     const spec = await projectSpec(projectRoot);
-    expect(spec).not.toHaveProperty("projectType");
+    expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
   });
 });

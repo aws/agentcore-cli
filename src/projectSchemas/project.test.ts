@@ -31,6 +31,16 @@ describe("project custom validation", () => {
     }
   });
 
+  test('accepts projectType "box" and nothing else, with no default', () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, projectType: "box" }).projectType).toBe(
+      "box",
+    );
+    expect("projectType" in ProjectSpecSchema.parse(minimalProject)).toBe(false);
+    for (const projectType of ["Box", "agent", 1, ""]) {
+      expect(ProjectSpecSchema.safeParse({ ...minimalProject, projectType }).success).toBe(false);
+    }
+  });
+
   test("requires an explicit project version", () => {
     expect(ProjectSpecSchema.safeParse({ name: "project" }).success).toBe(false);
   });

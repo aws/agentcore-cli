@@ -1,9 +1,11 @@
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useApp } from "ink";
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { DeploymentTargetPicker } from "../../../components/DeploymentTargetPicker";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import { dropsBoxGateways } from "../../../projectSchemas/project";
 import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
 import { TuiHandoffKey } from "../../../tui/handoff";
 import { RegionKey } from "../../keys";
@@ -11,6 +13,7 @@ import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
 import {
+  boxGatewayDeletionQuestion,
   declaresNothingDeployable,
   DEPLOY_NEXT_STEP,
   deployedMessage,
@@ -97,6 +100,17 @@ function DeployConfirm({
   // disagrees with this preflight it reports the "re-run with --yes" error.
   const teardown = target !== undefined && declaresNothingDeployable(project);
 
+  // A spec that lost "projectType": "box" deletes the Box gateways the last deploy recorded, so
+  // the screen asks first, as the command does without --yes.
+  const boxGateways = useQuery({
+    queryKey: ["recorded-box-gateways", project.rootPath, targetName],
+    queryFn: () => core.projectManager.recordedBoxGateways(project, { target: targetName }),
+    enabled: target !== undefined && dropsBoxGateways(project.spec),
+    gcTime: 0,
+  });
+  const boxGatewayNames = boxGateways.data ?? [];
+  const deletesBoxGateways = boxGatewayNames.length > 0;
+
   return (
     <ConfirmAction
       breadcrumb={BREADCRUMB}
@@ -105,10 +119,12 @@ function DeployConfirm({
       trigger={
         teardown
           ? { kind: "confirm", message: teardownQuestion(project.name, target) }
-          : { kind: "immediate" }
+          : deletesBoxGateways
+            ? { kind: "confirm", message: boxGatewayDeletionQuestion(boxGatewayNames) }
+            : { kind: "immediate" }
       }
-      isPending={false}
-      error={null}
+      isPending={boxGateways.isLoading}
+      error={boxGateways.error}
       action={async function* () {
         recordProjectResourceCounts(ctx, project);
         const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
@@ -116,6 +132,7 @@ function DeployConfirm({
           target: targetName,
           region,
           confirmTeardown: async () => teardown,
+          confirmBoxGatewayDeletion: async () => deletesBoxGateways,
           transactionSearch: globalConfig?.transactionSearch,
         });
         // The title follows the result, not the preflight heuristic, which
