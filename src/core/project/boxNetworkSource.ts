@@ -291,7 +291,7 @@ function policyFileProblem(
   return undefined;
 }
 
-/** The policy files that build writes for the gateway's role. */
+/** The policy files that build writes for the gateway's role, after it reads them. */
 const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([
   BOX_BEDROCK_POLICY_FILE,
   BOX_MEMORY_POLICY_FILE,
@@ -300,8 +300,7 @@ const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([
 /**
  * The actions that the Allow statements of the `.json` policy files of `policies` grant, and a
  * warning for each such file that does not exist, cannot be read, or is not a JSON object, whose
- * actions build then does not count. The policy files that build writes are not read: each one
- * counts for its own endpoint when it is listed (`boxGatewayIamWarnings`).
+ * actions build then does not count. A policy file that build writes itself may not exist yet.
  */
 function grantedActions(
   projectRoot: string,
@@ -311,7 +310,7 @@ function grantedActions(
   const actions: string[] = [];
   const warnings: string[] = [];
   for (const policy of policies) {
-    if (!policy.endsWith(".json") || BUILD_POLICY_FILES.has(policy)) continue;
+    if (!policy.endsWith(".json")) continue;
     const skipped = (why: string, fix: string) =>
       warnings.push(
         `${policy}, in additionalPolicies of the gateway '${gateway}', ${why}, so build cannot ` +
@@ -323,7 +322,9 @@ function grantedActions(
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT") {
-        skipped("does not exist", "Create it, or remove it from additionalPolicies.");
+        if (!BUILD_POLICY_FILES.has(policy)) {
+          skipped("does not exist", "Create it, or remove it from additionalPolicies.");
+        }
       } else {
         skipped(
           `cannot be read (${code ?? String(error)})`,
