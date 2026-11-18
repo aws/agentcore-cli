@@ -150,6 +150,45 @@ describe("project add online-eval", () => {
     expect(config).toMatchObject(expected);
   });
 
+  test.each<[string, string[], string | undefined]>([
+    ["no FailureAnalysis", ["--agent", "agent", "--evaluators", "Builtin.Correctness"], undefined],
+    [
+      "FailureAnalysis on an agent source",
+      ["--agent", "agent", "--evaluators", "Builtin.FailureAnalysis"],
+      "--application-name <application-name>",
+    ],
+    [
+      "FailureAnalysis with a service name",
+      [
+        "--log-group-name",
+        "/aws/foo",
+        "--service-name",
+        "svc",
+        "--evaluators",
+        "Builtin.FailureAnalysis",
+      ],
+      "--application-name svc",
+    ],
+  ])("Insights note with %s", async (_label, flags, application) => {
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "online-eval",
+      "--name",
+      "x",
+      "--sampling-rate",
+      "5",
+      ...flags,
+    ]);
+    if (application === undefined) {
+      expect(io.stderr()).not.toContain("Insights");
+    } else {
+      expect(io.stderr()).toContain("become available after you deploy");
+      expect(io.stderr()).toContain(application);
+    }
+  });
+
   test("rejects a duplicate online-eval name", async () => {
     const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
     cleanups.push(cleanup);

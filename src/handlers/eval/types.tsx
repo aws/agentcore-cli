@@ -30,6 +30,11 @@ import type {
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
   OutputConfig as OnlineEvalOutputConfig,
+  AgentInsightStoreEnablementStatus,
+  AgentInsightStoreEncryptionConfiguration,
+  GetAgentInsightStoreResponse,
+  ListAgentInsightStoresResponse,
+  UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CreateABTestResponse,
@@ -56,6 +61,10 @@ import type {
   EvaluationResultContent,
   OutputConfig,
   DataSourceConfig as DataPlaneDataSourceConfig,
+  AgentInsightArchiveStatus,
+  GetAgentInsightResponse,
+  ListAgentInsightsResponse,
+  UpdateAgentInsightResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
 import type { LogSource } from "../../core/observability/types";
@@ -340,6 +349,25 @@ export type DatasetUpdateProgressEvent = {
   message: string;
 };
 
+export type ListAgentInsightsInput = {
+  applicationName?: string;
+  batchEvaluationId?: string;
+  archiveStatus?: AgentInsightArchiveStatus;
+  nextToken?: string;
+  maxResults?: number;
+};
+
+export type UpdateAgentInsightInput = {
+  applicationName: string;
+  agentInsightId: string;
+  archiveStatus: AgentInsightArchiveStatus;
+};
+
+export type AgentInsightStoreUpdate = {
+  enablementStatus?: AgentInsightStoreEnablementStatus;
+  encryptionConfiguration?: AgentInsightStoreEncryptionConfiguration;
+};
+
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
 // handlers depend on. It is declared here, next to the handlers that consume it,
 // and implemented by src/core/eval.tsx (dependency inversion: handlers own the
@@ -552,4 +580,29 @@ export interface CoreEvalClient {
     // Called immediately before each mutation batch starts.
     onProgress?: (event: DatasetUpdateProgressEvent) => void,
   ): Promise<DatasetUpdateResult>;
+
+  listAgentInsights(
+    input: ListAgentInsightsInput,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightsResponse>;
+  getAgentInsight(
+    applicationName: string,
+    agentInsightId: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightResponse>;
+  updateAgentInsight(
+    input: UpdateAgentInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightResponse>;
+  listAgentInsightStores(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightStoresResponse>;
+  getAgentInsightStore(id: string, options: CoreOptions): Promise<GetAgentInsightStoreResponse>;
+  updateAgentInsightStore(
+    id: string,
+    update: AgentInsightStoreUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightStoreResponse>;
 }

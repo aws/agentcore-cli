@@ -59,6 +59,12 @@ import {
   type UpdateConfigurationBundleResponse,
   type UpdateEvaluatorResponse,
   type UpdateOnlineEvaluationConfigResponse,
+  GetAgentInsightStoreCommand,
+  ListAgentInsightStoresCommand,
+  UpdateAgentInsightStoreCommand,
+  type GetAgentInsightStoreResponse,
+  type ListAgentInsightStoresResponse,
+  type UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
   DeleteRecommendationCommand,
@@ -95,6 +101,12 @@ import {
   type StopBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
+  GetAgentInsightCommand,
+  ListAgentInsightsCommand,
+  UpdateAgentInsightCommand,
+  type GetAgentInsightResponse,
+  type ListAgentInsightsResponse,
+  type UpdateAgentInsightResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { ResourceNotFoundException, type ResultField } from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
@@ -123,6 +135,7 @@ import {
   CloudWatchClient,
 } from "./observability/index";
 import type {
+  AgentInsightStoreUpdate,
   BatchEvaluationDetail,
   CodeBasedUpdate,
   DatasetUpdateProgressEvent,
@@ -137,6 +150,8 @@ import type {
   EvaluateResult,
   GetBatchEvaluationResult,
   GetTracesInput,
+  ListAgentInsightsInput,
+  UpdateAgentInsightInput,
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   SessionTrace,
@@ -1183,6 +1198,59 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async listAgentInsights(
+    input: ListAgentInsightsInput,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightsResponse> {
+    return this.clients.data(toClientConfig(options)).send(new ListAgentInsightsCommand(input));
+  }
+
+  async getAgentInsight(
+    applicationName: string,
+    agentInsightId: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new GetAgentInsightCommand({ applicationName, agentInsightId }));
+  }
+
+  async updateAgentInsight(
+    input: UpdateAgentInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightResponse> {
+    return this.clients.data(toClientConfig(options)).send(new UpdateAgentInsightCommand(input));
+  }
+
+  async listAgentInsightStores(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightStoresResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListAgentInsightStoresCommand({ nextToken, maxResults }));
+  }
+
+  async getAgentInsightStore(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightStoreResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetAgentInsightStoreCommand({ agentInsightStoreId: id }));
+  }
+
+  async updateAgentInsightStore(
+    id: string,
+    update: AgentInsightStoreUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightStoreResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new UpdateAgentInsightStoreCommand({ agentInsightStoreId: id, ...update }));
   }
 
   async createConfigurationBundle(
