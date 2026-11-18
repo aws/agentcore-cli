@@ -39,6 +39,7 @@ type BoxProfile = {
   packs: string[];
   policies?: string[];
   profile: { name: string };
+  project?: { access: string };
   options?: { bedrock?: { region?: string } };
   agent: {
     command: string[];
@@ -46,6 +47,7 @@ type BoxProfile = {
     filesystem: { read: unknown[]; exec: unknown[]; deny_write?: unknown[] };
     ingress: { listen: string; workload_port: number }[];
   };
+  tool?: Record<string, { filesystem: { deny_write: unknown[] } }>;
   egress?: Record<string, Record<string, unknown>>;
 };
 
@@ -89,6 +91,7 @@ describe("renderBoxProfile", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
       packs: ["box/base", "box/bedrock"],
       profile: { name: "V3Demo" },
+      project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
         command: UVICORN,
@@ -96,6 +99,7 @@ describe("renderBoxProfile", () => {
         filesystem: VENV_GRANTS,
         ingress: [{ listen: "127.0.0.1:8080", workload_port: 8081 }],
       },
+      tool: { uname: { filesystem: { deny_write: VENV_GRANTS.deny_write } } },
       egress: { bedrock: { secret: { ref: "aws://default" } } },
     });
   });
@@ -346,6 +350,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     expect(parse(text)).toEqual({
       packs: ["box/base", "box/bedrock", "box/agentcore", "box/agentcore-codezip"],
       profile: { name: "V3Demo" },
+      project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
         command: [
@@ -387,6 +392,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
         // The container reads the deployed resources from the environment through box/agentcore.
         packs: ["box/base", "box/bedrock", "box/agentcore"],
         profile: { name: "V3Demo" },
+        project: { access: "write" },
         options: { bedrock: { region: "us-west-2" } },
         agent: {
           command: [
@@ -405,6 +411,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
           filesystem: IMAGE_PYTHON_FILESYSTEM,
           ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
         },
+        tool: { uname: { filesystem: { deny_write: IMAGE_PYTHON_FILESYSTEM.deny_write } } },
       });
     },
   );
