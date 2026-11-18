@@ -90,7 +90,7 @@ export interface BoxNetwork {
   /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
   readonly hosts: readonly BoxNetworkHost[];
   readonly credentials: readonly BoxEgressCredential[];
-  /** The policy files, relative to the agent's local box folder, to copy beside the AgentCore Runtime profile. */
+  /** The policy files, relative to `.box/`, to copy beside the AgentCore Runtime profile. */
   readonly policyFiles: readonly string[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant its role. */
   readonly grantedActions: readonly string[];
@@ -355,7 +355,7 @@ function targetConflict(
   if (!host.entry) return undefined;
   const wanted = targetOutboundAuth(auth);
   if (sameOutboundAuth(target.outboundAuth, wanted)) return undefined;
-  return `the Box gateway's target ${target.name} sends ${outboundAuthText(target.outboundAuth)} to ${host.authority}, and [egress.${host.entry.egressEntry}] gives it ${outboundAuthText(wanted)}; one host has one target. Make the two the same, in agentcore.json or in the agent's box profile`;
+  return `the Box gateway's target ${target.name} sends ${outboundAuthText(target.outboundAuth)} to ${host.authority}, and [egress.${host.entry.egressEntry}] gives it ${outboundAuthText(wanted)}; one host has one target. Make the two the same, in agentcore.json or in .box/profile.toml`;
 }
 
 /** A warning for each host whose limits Box enforces alone, and each entry host with no target. */
