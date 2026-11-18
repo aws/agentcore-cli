@@ -62,7 +62,6 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
-  BOX_GATEWAY_TARGET_TYPE,
   boxGatewaySpec,
   isBoundGateway,
   isBoxProject,
@@ -962,18 +961,6 @@ export class FsProjectManager implements ProjectManager {
         if (gatewayIndex < 0) {
           throw new ResourceNotFoundError(
             `no gateway named '${input.gatewayName}' exists in this project`,
-          );
-        }
-        // A Box gateway takes only passthrough targets, because it has no MCP interface.
-        if (
-          isBoundGateway(projectSpec.agentCoreGateways[gatewayIndex]!) &&
-          input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE
-        ) {
-          throw new InputValidationError(
-            `the gateway '${input.gatewayName}' is bound to a runtime and takes only passthrough ` +
-              `targets, but target '${input.resourceConfig.name}' is ` +
-              `${input.resourceConfig.targetType}. Pass --target-configuration with ` +
-              `"targetType": "passthrough".`,
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);

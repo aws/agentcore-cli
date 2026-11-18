@@ -33,8 +33,6 @@ export const ProjectTypeSchema = z.enum(["box"]);
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
 export const BOX_GATEWAY_SUFFIX = "-box-egress";
-/** The only target type the Box gateway takes: it has no MCP interface (protocolType "None"). */
-export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
 /**
  * The variable prefix of each Box gateway. The CLI sets it on every Box gateway, so agent code
  * reads `AGENTCORE_GATEWAY_BOX_URL` in every runtime, each pointing to that runtime's own gateway.
@@ -62,7 +60,7 @@ export const boxGatewaySpec = (runtimeName: string) => ({
 });
 /**
  * Whether a gateway is bound to one runtime. Each Box gateway is: it belongs to its runtime, so
- * `remove runtime` removes it, `remove gateway` refuses it, and it takes only passthrough targets.
+ * `remove runtime` removes it and `remove gateway` refuses it. It takes every target type.
  */
 export const isBoundGateway = (gateway: { boundRuntime?: string }) =>
   gateway.boundRuntime !== undefined;

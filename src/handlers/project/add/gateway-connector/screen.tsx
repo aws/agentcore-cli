@@ -22,7 +22,6 @@ import type { Project } from "../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import { toAddGatewayConnectorInput, type GatewayConnectorShortcutInput } from "./index";
 import { RegionKey } from "../../../keys";
-import { isBoundGateway } from "../../../../projectSchemas/project";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-connector"];
 const DESCRIPTION = "add a connector-backed Target to a project Gateway";
@@ -142,11 +141,7 @@ function AddGatewayConnectorWizard({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  // A gateway bound to a runtime (each Box gateway is) takes only passthrough targets, which this
-  // wizard does not build, so it is not offered.
-  const gateways = (project.spec.agentCoreGateways ?? []).filter(
-    (gateway) => !isBoundGateway(gateway),
-  );
+  const gateways = project.spec.agentCoreGateways ?? [];
   const kbSchema = useMemo(
     () => knowledgeBaseSchema((project.spec.knowledgeBases ?? []).map((kb) => kb.name)),
     [project.spec.knowledgeBases],

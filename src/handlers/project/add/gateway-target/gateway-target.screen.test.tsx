@@ -314,7 +314,7 @@ describe("project add gateway-target wizard", () => {
     screen.unmount();
   });
 
-  test("does not offer a Box gateway, which takes only passthrough targets", async () => {
+  test("offers the Box gateway, which takes every target type", async () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     await writeProjectSpec(projectRoot, {
@@ -324,8 +324,8 @@ describe("project add gateway-target wizard", () => {
     });
     const screen = renderScreen("/agentcore/add/gateway-target");
 
-    await waitForText(screen.lastFrame, "no Gateways in this project");
-    expect(screen.lastFrame()).not.toContain("box-egress");
+    await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name).name);
     screen.unmount();
   });
 
