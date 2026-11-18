@@ -27,6 +27,7 @@ describe("template order", () => {
       "agent-typescript-strands",
       "agent-typescript-vercel",
       "a2a-python-strands",
+      "a2a-python-strands-box",
       "agui-python-strands",
       "mcp-python-fastmcp",
       "empty",
@@ -110,6 +111,7 @@ describe("Box gateway entry", () => {
     "agent-python-strands-box-container",
     "agent-python-minimal-box",
     "agent-python-langchain-box",
+    "a2a-python-strands-box",
   ] as const)("%s declares it with no target, which build adds", (template) => {
     expect(
       resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
