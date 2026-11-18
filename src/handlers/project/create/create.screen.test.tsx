@@ -19,7 +19,7 @@ import {
 import { createRootHandler } from "../../index";
 import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
-import { resolveRuntimeTemplateShortcut } from "../shortcuts";
+import { PROJECT_TEMPLATE_NAMES, resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
@@ -1178,7 +1178,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
-    for (let i = 0; i < 12; i++) await r.press("down");
+    for (let i = 0; i < PROJECT_TEMPLATE_NAMES.length - 1; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
 

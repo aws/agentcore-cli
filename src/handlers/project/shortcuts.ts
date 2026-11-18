@@ -149,6 +149,18 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
+  "agent-python-minimal-box": {
+    runtimeName: "agent_python_minimal_box",
+    description: "minimal Python project in Strands Box, no agent framework",
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    box: true,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "agent-python-strands": {
     runtimeName: "agent_python_strands",
     description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
