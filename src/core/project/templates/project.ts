@@ -94,7 +94,8 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
   }
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
-    // The box release dev runs, and build and deploy ship; change it to move to another release.
+    // The box release build and deploy ship; change it to move to another release. dev runs the
+    // box on PATH.
     runtime.box = { version: BOX_RELEASE.version };
   }
 }

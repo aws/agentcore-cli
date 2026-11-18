@@ -62,7 +62,9 @@ import {
   boxProfileWarnings,
   hasBoxProfile,
   renderBoxProfile,
+  startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
+import { BOX_INSTALL_HINT } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -2027,6 +2029,10 @@ export class FsProjectManager implements ProjectManager {
         templateManagesDependencies(resolveRuntimeTemplateProfile(input.scaffoldRuntimeInput))
       ) {
         await this.checkTool("uv", UV_INSTALL_HINT);
+      }
+      // `agentcore dev` runs a CodeZip box agent with the box on PATH; a container's image has its own.
+      if (input.scaffoldRuntimeInput && startsInBoxOnCodeZip(input.scaffoldRuntimeInput)) {
+        await this.checkTool("box", BOX_INSTALL_HINT);
       }
     }
     if (!input.skipGit) {

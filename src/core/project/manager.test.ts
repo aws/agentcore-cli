@@ -48,7 +48,8 @@ import {
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
-import { BOX_RELEASE } from "./backends/boxRelease";
+import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
+import { MissingToolError } from "../../io/exec";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
@@ -548,6 +549,51 @@ describe("FsProjectManager.create", () => {
       },
     });
     expect(harness.checkedTools).toEqual(["npm", "git"]);
+  });
+
+  test("checks for box only for the CodeZip box template, whose dev runs the box on PATH", async () => {
+    await inTempDirectory();
+
+    const codeZip = manager();
+    await runCreate(codeZip.manager, {
+      name: "codezip",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+    });
+    expect(codeZip.checkedTools).toEqual(["npm", "uv", "box", "git", "uv"]);
+
+    // The container image downloads its own box.
+    const container = manager();
+    await runCreate(container.manager, {
+      name: "container",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX_CONTAINER,
+    });
+    expect(container.checkedTools).not.toContain("box");
+
+    const skipInstall = manager();
+    await runCreate(skipInstall.manager, {
+      name: "skipped",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipInstall: true,
+    });
+    expect(skipInstall.checkedTools).toEqual(["git"]);
+  });
+
+  test("fails before writing files when box is not on PATH, with the install hint", async () => {
+    const directory = await inTempDirectory();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      runner: async () => {},
+      checkTool: async (tool, installHint) => {
+        if (tool === "box") throw new MissingToolError(tool, installHint);
+      },
+    });
+
+    await expect(
+      runCreate(subject, { name: "example", scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX }),
+    ).rejects.toThrow(`'box' was not found on your PATH. ${BOX_INSTALL_HINT}`);
+    expect(existsSync(join(directory, "example"))).toBe(false);
   });
 
   test("defers template-managed local dependency setup", async () => {

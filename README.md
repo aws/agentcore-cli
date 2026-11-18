@@ -208,7 +208,7 @@ is needed to download it.
 `src/core/project/backends/boxRelease.json` pins two releases on their own, each with its
 repository, version and SHA-256s:
 
-- `box`: the Linux build that ships to AgentCore Runtime, and the builds `agentcore dev` runs.
+- `box`: the Linux build that ships to AgentCore Runtime.
 - `ffi`: the Python ffi shim a CodeZip agent needs in a box, by Python version. It can come from
   another repository or version than box.
 
@@ -226,9 +226,10 @@ How each command uses it:
   checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
   the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
   builds the image on your machine and `agentcore deploy` builds it in AWS CodeBuild.
-- A CodeZip agent under `agentcore dev` runs on your Mac in the release's macOS arm64 build, which
-  dev downloads once into `~/.agentcore/box/` and runs with its packs beside it. On a machine the
-  release has no build for, dev runs the `box` on your PATH.
+- A CodeZip agent under `agentcore dev` runs in the `box` on your PATH, which you install from
+  the release: download the build for your machine, unpack it into a folder, and add that folder
+  to your PATH. `agentcore create --template agent-python-strands-box` and `agentcore dev` stop
+  with that instruction when `box` is not on your PATH. Container agents need no local box.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
 which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
