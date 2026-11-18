@@ -29,52 +29,55 @@ export const ProjectNameSchema = z
   });
 /** The kind of project. `box` is the only kind: each runtime of a Box project gets a Box gateway. */
 export const ProjectTypeSchema = z.enum(["box"]);
-/** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
+/** Whether the project is a Box project, so the CLI writes a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
-/** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box`. */
-export const BOX_GATEWAY_SUFFIX = "-box";
+/** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
+export const BOX_GATEWAY_SUFFIX = "-box-egress";
 /** The only target type the Box gateway takes: it has no MCP interface (protocolType "None"). */
 export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
 /**
- * The logical name of the Box gateway of a runtime, and of the gateway entry that adds targets to
- * it. Gateway names do not permit `_`, so `my_agent` gets `my-agent-box`. Must match the CDK library.
+ * The variable prefix of each Box gateway. The CLI sets it on every Box gateway, so agent code
+ * reads `AGENTCORE_GATEWAY_BOX_URL` in every runtime, each pointing to that runtime's own gateway.
+ */
+export const BOX_GATEWAY_DISCOVERY_PREFIX = "AGENTCORE_GATEWAY_BOX";
+/**
+ * The name of the Box gateway of a runtime. Gateway names do not permit `_`, so `my_agent` gets
+ * `my-agent-box-egress`. Must match the name the CLI binds in the CDK library.
  */
 export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
+/**
+ * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
+ * variable prefix, `AWS_IAM` auth and `protocolType: "None"`. The CDK library binds it from
+ * `boundRuntime` and `discoveryPrefix`.
+ */
+export const boxGatewaySpec = (runtimeName: string) => ({
+  name: boxGatewayName(runtimeName),
+  authorizerType: "AWS_IAM" as const,
+  protocolType: "None" as const,
+  boundRuntime: runtimeName,
+  discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
+  targets: [],
+});
 /** The Box gateway names of a Box project, one for each runtime; none in any other project. */
 export const boxGatewayNames = (spec: {
   projectType?: string;
   runtimes: { name: string }[];
 }): string[] => (isBoxProject(spec) ? spec.runtimes.map(({ name }) => boxGatewayName(name)) : []);
 /**
- * Whether a gateway entry only adds targets to a Box gateway: it is named `<runtime>-box` for a
- * runtime of a Box project. In any other project, such a name is a normal gateway.
+ * Whether a gateway entry is a Box gateway: it is named `<runtime>-box-egress` for a runtime of a
+ * Box project. In any other project, such a name is a normal gateway.
  */
 export const isBoxExtensionEntry = (
   spec: { projectType?: string; runtimes: { name: string }[] },
   gateway: { name: string },
 ) => boxGatewayNames(spec).includes(gateway.name);
 /**
- * Whether a gateway name is reserved for Box in a Box project: each name that ends in `-box`, in
- * any letter case. The CDK library refuses such a name unless it is a runtime's Box gateway.
+ * Whether a gateway name is reserved for Box in a Box project: each name that ends in
+ * `-box-egress`, in any letter case.
  */
 export const isReservedBoxGatewayName = (spec: { projectType?: string }, name: string) =>
   isBoxProject(spec) && name.toLowerCase().endsWith(BOX_GATEWAY_SUFFIX);
-/**
- * The AWS name the CDK library gives the Box gateway of a runtime: `<project>-<target>-<runtime>-box`.
- * A project migrated from v0 keeps v0's names, which have no target segment.
- */
-export const boxGatewayAwsName = (
-  spec: { name: string; migratedFrom?: string },
-  targetName: string,
-  runtimeName: string,
-): string =>
-  spec.migratedFrom === undefined
-    ? `${spec.name}-${targetName}-${boxGatewayName(runtimeName)}`
-    : `${spec.name}-${boxGatewayName(runtimeName)}`;
-/** "the Box gateway 'a'" or "the Box gateways 'a', 'b'", for messages about recorded gateways. */
-export const describeBoxGateways = (names: string[]): string =>
-  `the Box gateway${names.length === 1 ? "" : "s"} ${names.map((name) => `'${name}'`).join(", ")}`;
 /** Whether every resource collection of the spec is empty, as after `agentcore remove all`. */
 export function declaresNoResources(spec: ProjectSpec): boolean {
   const collections = [

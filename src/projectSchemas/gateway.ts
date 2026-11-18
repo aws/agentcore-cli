@@ -465,6 +465,10 @@ export const AgentCoreGatewaySchema = z
       .regex(/^arn:[^:]+:iam::\d{12}:role\/.+/, "Must be a valid IAM role ARN")
       .max(2048)
       .optional(),
+    // Bind this gateway to one runtime only. The CLI sets it on each Box gateway.
+    boundRuntime: z.string().optional(),
+    // The variable prefix for this gateway, in place of AGENTCORE_GATEWAY_<NAME>. Needs boundRuntime.
+    discoveryPrefix: z.string().optional(),
     tags: TagsSchema.optional(),
   })
   .strict()
@@ -488,6 +492,13 @@ export const AgentCoreGatewaySchema = z
           message: `Target "${target.name}" is ${target.targetType} but the Gateway does not have protocolType: "None"`,
         });
       }
+    }
+    if (gw.discoveryPrefix !== undefined && gw.boundRuntime === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Gateway "${gw.name}" sets discoveryPrefix without boundRuntime`,
+        path: ["discoveryPrefix"],
+      });
     }
   });
 export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;

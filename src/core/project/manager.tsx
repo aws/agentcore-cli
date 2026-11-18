@@ -65,6 +65,7 @@ import {
   BOX_GATEWAY_TARGET_TYPE,
   boxGatewayName,
   boxGatewayNames,
+  boxGatewaySpec,
   isBoxExtensionEntry,
   isBoxProject,
   isReservedBoxGatewayName,
@@ -101,7 +102,6 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
-import { readDeployedState } from "./backends/cdk/deployedState";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -828,6 +828,7 @@ export class FsProjectManager implements ProjectManager {
             }
           }
           projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          ensureBoxGateway(projectSpec, input.resourceConfig.name);
           break;
         }
 
@@ -848,6 +849,7 @@ export class FsProjectManager implements ProjectManager {
         });
         if (folderExisted) scaffoldedPaths.push(...scaffoldWritten);
         if (spec.runtimes) projectSpec.runtimes.push(...spec.runtimes);
+        for (const runtime of spec.runtimes ?? []) ensureBoxGateway(projectSpec, runtime.name);
         if (spec.memories) projectSpec.memories.push(...spec.memories);
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
         if (envEntries.length > 0) {
@@ -919,14 +921,13 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // KD6: in a Box project, names that end in -box belong to the Box gateways, in any
-        // letter case. The CDK library would refuse them at synth; refusing here keeps
-        // agentcore.json unchanged.
+        // In a Box project, names that end in -box-egress belong to the Box gateways, in any
+        // letter case. Refusing here keeps agentcore.json unchanged.
         if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
           throw new InputValidationError(
             `the gateway name '${input.resourceConfig.name}' is reserved: in this project, names that ` +
-              `end in '-box' belong to the Box gateways of the runtimes. Give the gateway a name that ` +
-              `does not end in '-box'.${boxGatewayHint(projectSpec)}`,
+              `end in '-box-egress' belong to the Box gateways of the runtimes. Give the gateway a name ` +
+              `that does not end in '-box-egress'.${boxGatewayHint(projectSpec)}`,
           );
         }
         projectSpec.agentCoreGateways.push(input.resourceConfig);
@@ -970,9 +971,7 @@ export class FsProjectManager implements ProjectManager {
         let gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
         );
-        // In a Box project the L3 owns the Box gateway, so the entry that holds its targets
-        // comes and goes with them. It states the gateway's true settings: the write-back would
-        // fill in authorizerType NONE, and the schema checks targets against protocolType.
+        // The Box gateway takes only passthrough targets, because it has no MCP interface.
         const boxEntry = isBoxExtensionEntry(projectSpec, { name: input.gatewayName });
         if (boxEntry && input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE) {
           throw new InputValidationError(
@@ -981,16 +980,18 @@ export class FsProjectManager implements ProjectManager {
               `--target-configuration with "targetType": "passthrough".`,
           );
         }
+        // A new project writes one Box gateway entry for each runtime, so the entry normally
+        // exists. For a project made before that, write it here from the matching runtime.
         if (gatewayIndex < 0 && boxEntry) {
-          gatewayIndex =
-            projectSpec.agentCoreGateways.push(
-              parseResource(AgentCoreGatewaySchema, {
-                name: input.gatewayName,
-                authorizerType: "AWS_IAM",
-                protocolType: "None",
-                targets: [],
-              }),
-            ) - 1;
+          const runtime = projectSpec.runtimes.find(
+            ({ name }) => boxGatewayName(name) === input.gatewayName,
+          );
+          if (runtime) {
+            gatewayIndex =
+              projectSpec.agentCoreGateways.push(
+                parseResource(AgentCoreGatewaySchema, boxGatewaySpec(runtime.name)),
+              ) - 1;
+          }
         }
         if (gatewayIndex < 0) {
           const hint = boxGatewayHint(projectSpec);
@@ -1085,6 +1086,19 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
+    // The CLI keeps one Box gateway for each runtime, so `remove gateway` cannot delete one. Its
+    // runtime owns it: `remove runtime` removes it. Its targets go with `remove gateway-target`.
+    if (
+      input.resourceType === "gateway" &&
+      isBoxExtensionEntry(existingProjectSpec, { name: input.name })
+    ) {
+      throw new InputValidationError(
+        `the gateway '${input.name}' is a Box gateway and cannot be removed with 'remove gateway'. ` +
+          `It belongs to its runtime: 'remove runtime' removes it. To remove its targets, use ` +
+          `'remove gateway-target --gateway ${input.name}'.`,
+      );
+    }
+
     let removed = false;
     let newSpec: unknown;
     let removedResource = input;
@@ -1132,12 +1146,9 @@ export class FsProjectManager implements ProjectManager {
       const gateway = gateways[gatewayIndex]!;
       const targets = gateway.targets.filter((target) => target.name !== input.name);
       removed = targets.length !== gateway.targets.length;
-      // The Box gateway stays without its entry, so the file shows only what the user added.
-      if (isBoxExtensionEntry(existingProjectSpec, gateway) && targets.length === 0) {
-        gateways.splice(gatewayIndex, 1);
-      } else {
-        gateways[gatewayIndex] = { ...gateway, targets };
-      }
+      // The Box gateway entry stays, even with no targets: the CLI keeps one entry for each
+      // runtime so the gateway is not removed by accident.
+      gateways[gatewayIndex] = { ...gateway, targets };
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
     } else if (input.resourceType === "payment-connector") {
       const payments = [...(existingProjectSpec.payments ?? [])];
@@ -1749,7 +1760,6 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
-      confirmBoxGatewayDeletion: input.confirmBoxGatewayDeletion,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
     });
@@ -1773,11 +1783,6 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<AwsDeploymentTarget | undefined> {
     const targets = await this.listTargets(project);
     return targets.find((candidate) => candidate.name === input.target);
-  }
-
-  public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    const state = await readDeployedState(this.json, project.rootPath);
-    return (state.targets[input.target]?.resources?.boxGateways ?? []).map(({ name }) => name);
   }
 
   public async resolveDeployedResource(
@@ -2096,6 +2101,17 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/**
+ * Adds the Box gateway of a runtime to a Box project, if it is not already there. A Box project
+ * keeps one Box gateway for each runtime, so `agentcore create` and `add runtime` call this.
+ */
+function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: string): void {
+  if (!isBoxProject(spec)) return;
+  const name = boxGatewayName(runtimeName);
+  if (spec.agentCoreGateways.some((gateway) => gateway.name === name)) return;
+  spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, boxGatewaySpec(runtimeName)));
 }
 
 /** A hint that lists the Box gateways of a Box project, for errors about gateway names. */

@@ -11,11 +11,7 @@ import {
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import {
-  declaresNoResources,
-  describeBoxGateways,
-  isBoxProject,
-} from "../../../projectSchemas/project";
+import { declaresNoResources } from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
   createHandler,
@@ -29,13 +25,7 @@ import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionExplicitKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
-import type {
-  BoxGatewayDeletionHandler,
-  DeployResult,
-  Project,
-  ProjectManager,
-  TeardownConfirmationHandler,
-} from "../types";
+import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
 
 export type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -87,8 +77,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       ),
       flag(
         "yes",
-        "confirm removing the target's stack when the project declares nothing to deploy, " +
-          'or the Box gateways when agentcore.json has lost its "projectType": "box"',
+        "confirm removing the target's stack when the project declares nothing to deploy",
         z.boolean().default(false),
       ),
       flag(
@@ -135,20 +124,11 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         canPrompt === true,
       );
 
-      const confirmBoxGatewayDeletion = await resolveBoxGatewayDecision(
-        config,
-        project,
-        flags.target,
-        flags.yes,
-        canPrompt === true,
-      );
-
       const globalConfig = await ctx.require(GlobalConfigAccessorKey).get();
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
         region: ctx.require(RegionKey),
         confirmTeardown,
-        confirmBoxGatewayDeletion,
         transactionSearch: globalConfig.transactionSearch,
         skipBootstrap: flags["skip-bootstrap"],
       });
@@ -298,8 +278,9 @@ async function delegateV0Deploy(
  * decides whether to ask the user before starting.
  */
 export function declaresNothingDeployable(project: Project): boolean {
-  // A Box project deploys the Box gateway, so it is never empty.
-  return !isBoxProject(project.spec) && declaresNoResources(project.spec);
+  // A Box project keeps a Box gateway for each runtime, so its agentCoreGateways are non-empty
+  // until every runtime is also removed; this check needs no Box-specific branch.
+  return declaresNoResources(project.spec);
 }
 
 /**
@@ -332,41 +313,6 @@ async function resolveTeardownDecision(
   // Non-interactive, --json, or the spec-level check missed (see
   // declaresNothingDeployable): the backend's own zero-resource check throws
   // the "re-run with --yes" ProjectStateError when this declines.
-  return async () => false;
-}
-
-/** The question the deploy command asks before it deletes the Box gateways. */
-function boxGatewayDeletionQuestion(gatewayNames: string[]): string {
-  return (
-    `agentcore.json has no "projectType": "box", so this deploy will delete ` +
-    `${describeBoxGateways(gatewayNames)}. Continue?`
-  );
-}
-
-/**
- * Resolves the Box gateway question before the deploy generator starts, the same way as the
- * teardown question: --yes confirms, an interactive session asks, and anything else declines,
- * so the backend reports the "re-run with --yes" error.
- */
-async function resolveBoxGatewayDecision(
-  config: DeployProjectHandlerConfig,
-  project: Project,
-  targetName: string,
-  confirmed: boolean,
-  canPrompt: boolean,
-): Promise<BoxGatewayDeletionHandler> {
-  if (confirmed) return async () => true;
-  if (canPrompt && !isBoxProject(project.spec) && !declaresNoResources(project.spec)) {
-    const gatewayNames = await config.projectManager.recordedBoxGateways(project, {
-      target: targetName,
-    });
-    if (gatewayNames.length > 0) {
-      if (!(await promptForConfirmation(config.io, boxGatewayDeletionQuestion(gatewayNames)))) {
-        throw new UserCancellationError();
-      }
-      return async () => true;
-    }
-  }
   return async () => false;
 }
 

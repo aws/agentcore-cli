@@ -41,6 +41,15 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
       prefix: `agentcore-${directoryPrefix}-`,
     });
     cleanups.push(cleanup);
+    // These tests cover generic gateway behavior, not the Box gateway. Start from a clean,
+    // non-Box project: drop the project type and the Box gateway that `create` writes.
+    const { projectType: _projectType, ...spec } = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      agentCoreGateways: (spec.agentCoreGateways ?? []).filter(
+        (gateway: { name: string }) => !gateway.name.endsWith("-box-egress"),
+      ),
+    });
     return projectRoot;
   }
 

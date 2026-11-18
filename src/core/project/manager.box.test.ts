@@ -2,16 +2,16 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ResourceNotFoundError } from "../../errors/errors";
+import { InputValidationError, ResourceNotFoundError } from "../../errors/errors";
 import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 
 /**
- * `"projectType": "box"` is written by `agentcore create` only. In a project with the
- * Box project, the gateway entry named `box` holds the targets of the Box gateway, which the CDK
- * library makes from the project type, so the entry comes and goes with its targets. A project
- * without the field behaves as before and never gets it.
+ * `"projectType": "box"` is written by `agentcore create` only. A Box project keeps one Box
+ * gateway for each runtime, `<runtime>-box-egress`, written by the CLI: created with the runtime,
+ * removed with the runtime, and refused by `remove gateway`. The CDK library binds it from its
+ * `boundRuntime` and `discoveryPrefix`. A project without the field behaves as before.
  */
 
 const tempDirectories: string[] = [];
@@ -41,7 +41,7 @@ async function drain<T>(generator: AsyncGenerator<unknown, T>): Promise<T> {
   }
 }
 
-/** A new Box project with the given runtimes. Each runtime gets the Box gateway `<runtime>-box`. */
+/** A new Box project with the given runtimes. Each runtime gets the gateway `<runtime>-box-egress`. */
 async function createdProject(
   manager: FsProjectManager,
   runtimes: string[] = ["agent"],
@@ -117,7 +117,7 @@ const specOnDisk = async (project: Project) =>
     agentCoreGateways: { name: string; targets: { name: string }[] }[];
   };
 
-const boxTarget = (name: string, gatewayName = "agent-box"): AddResourceInput => ({
+const boxTarget = (name: string, gatewayName = "agent-box-egress"): AddResourceInput => ({
   resourceType: "gateway-target",
   gatewayName,
   resourceConfig: {
@@ -128,7 +128,7 @@ const boxTarget = (name: string, gatewayName = "agent-box"): AddResourceInput =>
   } as never,
 });
 
-const mcpTarget = (name: string, gatewayName = "agent-box"): AddResourceInput => ({
+const mcpTarget = (name: string, gatewayName = "agent-box-egress"): AddResourceInput => ({
   resourceType: "gateway-target",
   gatewayName,
   resourceConfig: {
@@ -139,16 +139,33 @@ const mcpTarget = (name: string, gatewayName = "agent-box"): AddResourceInput =>
 });
 
 describe("agentcore create", () => {
-  test('writes "projectType": "box" into the new project', async () => {
-    const project = await createdProject(subject());
+  test('writes "projectType": "box" and a Box gateway for each runtime', async () => {
+    const project = await createdProject(subject(), ["agent", "my_agent"]);
 
-    expect((await specOnDisk(project)).projectType).toBe("box");
+    const spec = await specOnDisk(project);
+    expect(spec.projectType).toBe("box");
     expect(project.spec.projectType).toBe("box");
+    expect(spec.agentCoreGateways).toMatchObject([
+      {
+        name: "agent-box-egress",
+        authorizerType: "AWS_IAM",
+        protocolType: "None",
+        boundRuntime: "agent",
+        discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+        targets: [],
+      },
+      {
+        name: "my-agent-box-egress",
+        boundRuntime: "my_agent",
+        discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+        targets: [],
+      },
+    ]);
   });
 });
 
 describe("gateway targets in a Box project", () => {
-  test("add gateway-target --gateway agent-box makes the entry with AWS_IAM, then adds to it", async () => {
+  test("add gateway-target --gateway agent-box-egress adds to the existing entry", async () => {
     const manager = subject();
     let project = await createdProject(manager);
 
@@ -157,33 +174,33 @@ describe("gateway targets in a Box project", () => {
 
     const spec = await specOnDisk(project);
     expect(spec.projectType).toBe("box");
-    expect(spec.agentCoreGateways).toEqual([
+    expect(spec.agentCoreGateways).toMatchObject([
       {
-        name: "agent-box",
-        targets: ["weather", "search"].map((name) => ({
-          name,
-          targetType: "passthrough",
-          passthrough: { endpoint: `https://${name}.example.com`, protocolType: "CUSTOM" },
-          outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api" },
-        })),
+        name: "agent-box-egress",
         authorizerType: "AWS_IAM",
-        enableSemanticSearch: true,
-        exceptionLevel: "NONE",
         protocolType: "None",
+        boundRuntime: "agent",
+        discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+        targets: ["weather", "search"].map((name) => ({ name, targetType: "passthrough" })),
       },
-    ] as never);
+    ]);
   });
 
   test("adds a target only to the gateway of its runtime, and changes _ to -", async () => {
     const manager = subject();
     let project = await createdProject(manager, ["agent", "my_agent"]);
 
-    project = await drain(manager.addResource(project, boxTarget("weather", "my-agent-box")));
+    project = await drain(
+      manager.addResource(project, boxTarget("weather", "my-agent-box-egress")),
+    );
 
     const spec = await specOnDisk(project);
     expect(
       spec.agentCoreGateways.map(({ name, targets }) => [name, targets.map((t) => t.name)]),
-    ).toEqual([["my-agent-box", ["weather"]]]);
+    ).toEqual([
+      ["agent-box-egress", []],
+      ["my-agent-box-egress", ["weather"]],
+    ]);
   });
 
   test("--gateway box is not found, and the error lists the Box gateways", async () => {
@@ -194,7 +211,7 @@ describe("gateway targets in a Box project", () => {
 
     await expect(add).rejects.toBeInstanceOf(ResourceNotFoundError);
     await expect(add).rejects.toThrow(
-      "no gateway named 'box' exists in this project. The Box gateways in this project are: 'agent-box', 'my-agent-box'.",
+      "no gateway named 'box' exists in this project. The Box gateways in this project are: 'agent-box-egress', 'my-agent-box-egress'.",
     );
   });
 
@@ -209,8 +226,8 @@ describe("gateway targets in a Box project", () => {
     expect(await specText(project)).toBe(before);
   });
 
-  test.each(["agent-box", "AGENT-BOX", "other-box"])(
-    "add gateway --name %s is refused, because names that end in -box are reserved",
+  test.each(["AGENT-BOX-EGRESS", "other-box-egress"])(
+    "add gateway --name %s is refused, because names that end in -box-egress are reserved",
     async (name) => {
       const manager = subject();
       const project = await createdProject(manager);
@@ -224,53 +241,49 @@ describe("gateway targets in a Box project", () => {
       );
 
       await expect(add).rejects.toThrow(
-        `the gateway name '${name}' is reserved: in this project, names that end in '-box' belong to the Box gateways of the runtimes.`,
+        `the gateway name '${name}' is reserved: in this project, names that end in '-box-egress' belong to the Box gateways of the runtimes.`,
       );
-      await expect(add).rejects.toThrow("The Box gateways in this project are: 'agent-box'.");
+      await expect(add).rejects.toThrow(
+        "The Box gateways in this project are: 'agent-box-egress'.",
+      );
       expect(await specText(project)).toBe(before);
     },
   );
 
-  test("remove gateway-target keeps the entry until its last target goes", async () => {
+  test("remove gateway-target keeps the entry after its last target goes", async () => {
     const manager = subject();
     let project = await createdProject(manager);
     project = await drain(manager.addResource(project, boxTarget("weather")));
-    project = await drain(manager.addResource(project, boxTarget("search")));
 
     project = (
       await manager.removeResource(project, {
         resourceType: "gateway-target",
-        gatewayName: "agent-box",
+        gatewayName: "agent-box-egress",
         name: "weather",
       })
     ).project;
-    expect((await specOnDisk(project)).agentCoreGateways.map(({ name }) => name)).toEqual([
-      "agent-box",
-    ]);
 
-    project = (
-      await manager.removeResource(project, {
-        resourceType: "gateway-target",
-        gatewayName: "agent-box",
-        name: "search",
-      })
-    ).project;
     const spec = await specOnDisk(project);
-    expect(spec.agentCoreGateways).toEqual([]);
+    expect(spec.agentCoreGateways.map(({ name, targets }) => [name, targets])).toEqual([
+      ["agent-box-egress", []],
+    ]);
     expect(spec.projectType).toBe("box");
   });
 
-  test("remove gateway --name agent-box removes the entry and its targets, and keeps projectType", async () => {
+  test("remove gateway --name agent-box-egress is refused", async () => {
     const manager = subject();
     let project = await createdProject(manager);
     project = await drain(manager.addResource(project, boxTarget("weather")));
 
-    project = (
-      await manager.removeResource(project, { resourceType: "gateway", name: "agent-box" })
-    ).project;
+    const remove = manager.removeResource(project, {
+      resourceType: "gateway",
+      name: "agent-box-egress",
+    });
 
+    await expect(remove).rejects.toBeInstanceOf(InputValidationError);
+    await expect(remove).rejects.toThrow("is a Box gateway and cannot be removed");
     const spec = await specOnDisk(project);
-    expect(spec.agentCoreGateways).toEqual([]);
+    expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["agent-box-egress"]);
     expect(spec.projectType).toBe("box");
   });
 
@@ -278,13 +291,13 @@ describe("gateway targets in a Box project", () => {
     const manager = subject();
     let project = await createdProject(manager, ["agent", "my_agent"]);
     project = await drain(manager.addResource(project, boxTarget("weather")));
-    project = await drain(manager.addResource(project, boxTarget("search", "my-agent-box")));
+    project = await drain(manager.addResource(project, boxTarget("search", "my-agent-box-egress")));
 
     project = (await manager.removeResource(project, { resourceType: "runtime", name: "agent" }))
       .project;
 
     const spec = await specOnDisk(project);
-    expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["my-agent-box"]);
+    expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["my-agent-box-egress"]);
   });
 
   test("remove all removes projectType with every gateway entry", async () => {

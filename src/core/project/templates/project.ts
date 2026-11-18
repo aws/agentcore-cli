@@ -8,6 +8,7 @@ import type {
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { mergeSpecEntries } from "./spec";
+import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
@@ -44,16 +45,20 @@ export async function createProjectTree(
     ),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
-      FsTreeNode.createFile("agentcore.json", async () =>
-        json({
+      FsTreeNode.createFile("agentcore.json", async () => {
+        const merged = mergeSpecEntries(templates.map(({ spec }) => spec));
+        // A Box project gets one Box gateway for each runtime, written here at create time.
+        const boxGateways = (merged.runtimes ?? []).map((runtime) => boxGatewaySpec(runtime.name));
+        return json({
           name: input.projectName,
           version: 2,
           managedBy: "CDK",
           // Only new projects are Box projects; no other command adds this field.
           projectType: "box",
-          ...mergeSpecEntries(templates.map(({ spec }) => spec)),
-        }),
-      ),
+          ...merged,
+          ...(boxGateways.length > 0 && { agentCoreGateways: boxGateways }),
+        });
+      }),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
       FsTreeNode.createFile(".env.local", () =>
         config.assetSource.read("templates/shared/env.local.template"),
