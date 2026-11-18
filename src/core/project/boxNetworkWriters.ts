@@ -26,8 +26,8 @@ import {
 } from "./boxMemory";
 import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
 import {
-  BOX_TELEMETRY_POLICY_FILE,
   boxTelemetryPolicy,
+  boxTelemetryPolicyFile,
   placeBoxTelemetryPolicy,
 } from "./boxTelemetry";
 import {
@@ -258,25 +258,36 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 };
 
 /**
- * The policy that lets the execution role of each box runtime send the box profile's CloudWatch
- * telemetry, and its entry in each such runtime's `additionalPolicies`. With no CloudWatch target,
- * the file and the entries go.
+ * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
+ * its own box profile, and the entry in that runtime's `additionalPolicies`. A runtime with no
+ * CloudWatch target gets neither, and loses the file and the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
-  writes: () => [{ kind: "runtimePolicies" }, { kind: "file", path: BOX_TELEMETRY_POLICY_FILE }],
-  edits: (networks, { projectRoot }) => {
-    // Every box runtime runs the one box profile, so each network has the same telemetry.
-    const policy = boxTelemetryPolicy(networks.flatMap((network) => network.telemetry ?? []));
-    const boxed = policy ? networks.map((network) => network.runtime) : [];
-    return {
-      spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)],
-      files: [
-        policy
-          ? { path: BOX_TELEMETRY_POLICY_FILE, text: `${JSON.stringify(policy, undefined, 2)}\n` }
-          : { path: BOX_TELEMETRY_POLICY_FILE, remove: true },
-      ],
-    };
+  writes: (networks) => [
+    { kind: "runtimePolicies" },
+    ...networks.map(({ runtime }) => ({
+      kind: "file" as const,
+      path: boxTelemetryPolicyFile(runtime),
+    })),
+  ],
+  edits: (networks, { spec, projectRoot }) => {
+    // Each box runtime reads its own box/<name>/local profile, so each one gets the policy of its
+    // own telemetry only.
+    const files: BoxNetworkFile[] = [];
+    const boxed: string[] = [];
+    for (const { name } of spec.runtimes) {
+      const network = networks.find(({ runtime }) => runtime === name);
+      const policy = boxTelemetryPolicy(network?.telemetry ?? []);
+      const path = boxTelemetryPolicyFile(name);
+      if (policy) {
+        boxed.push(name);
+        files.push({ path, text: `${JSON.stringify(policy, undefined, 2)}\n` });
+      } else {
+        files.push({ path, remove: true });
+      }
+    }
+    return { spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)], files };
   },
 };
 

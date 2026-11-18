@@ -563,8 +563,8 @@ describe("build reads the box profile as box resolves it", () => {
 });
 
 describe("build writes the telemetry policy of the box profile", () => {
-  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy.json";
-  const ENTRY = "../../agentcore/box-telemetry-policy.json";
+  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
+  const ENTRY = "../../agentcore/box-telemetry-policy-agent_python_strands.json";
   const LOGS = {
     kind: "cloudwatch_logs",
     region: "us-west-2",
