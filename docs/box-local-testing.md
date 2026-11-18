@@ -16,8 +16,7 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
 `agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
-`~/.agentcore/box/`, check its SHA-256s, generate it into the agent's `.box/<runtime>/aws/`, and copy
-that into the zip or the image's `.box-dist/`.
+`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
 from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
@@ -103,15 +102,13 @@ credential's egress to any host not in the list. Each entry is a `<host>` or
 `<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
 
 ```
-printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/agent/local/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
 ```
 
 ### What build and deploy do with the box profile
 
-Build and deploy read `.box/<runtime>/local/profile.toml` and the policy files it lists under
-`policies`, and turn them into the runtime's Box network. They change nothing in
-`.box/<runtime>/local/`; they generate the Runtime profile and its resources under
-`.box/<runtime>/aws/`.
+Build and deploy read `.box/profile.toml` and the policy files it lists under `policies`, and
+turn them into the runtime's Box network. They change nothing in `.box/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
   with `type = "http"`, or a policy permit names, and that the policy allows at least one
@@ -132,11 +129,9 @@ Build and deploy read `.box/<runtime>/local/profile.toml` and the policy files i
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants.
-- **The AgentCore Runtime profile.** The generated `.box/<runtime>/aws/profile.toml` (copied into
-  `.box-dist/`) has one `[egress.<target>]` route through the gateway for each target of
-  `<runtime>-box`. For the target of an MCP server, the profile has an `[mcp.<server>]` server
-  through the gateway, not an `[egress]` route. That server keeps its `env://` secret, thus the
-  agent keeps its stand-in key. Each policy file is copied beside it, byte for byte, and listed under `policies`.
+- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
+  `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. Each policy
+  file is copied beside it, byte for byte, and listed under `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.

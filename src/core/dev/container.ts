@@ -27,7 +27,7 @@ import {
 } from "../project/backends/boxContainer";
 import { boxReleaseFor, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
-import { boxLocalProfilePath } from "../project/templates/boxProfile";
+import { boxProfileIsFor, boxProfilePath } from "../project/templates/boxProfile";
 import {
   BOX_DEV_AWS_REFRESH_MS,
   resolveDefaultAwsCredentials,
@@ -321,7 +321,7 @@ export class ContainerDevRunner implements DevRunner {
    */
   private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
     if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
-    const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
+    const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
@@ -330,13 +330,20 @@ export class ContainerDevRunner implements DevRunner {
       );
     }
     const profileText = readFileSync(profile, "utf8");
+    if (!boxProfileIsFor(profileText, input.runtime)) {
+      throw new InputValidationError(
+        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
+          `but ${profile} is the box profile of another runtime. Write a box profile for this ` +
+          "runtime there, or stop its Dockerfile from copying .box-dist/.",
+      );
+    }
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
       ? BOX_DEV_DIST
       : BOX_IMAGE_DIST;
     stageBoxImage(
       context,
       profileText,
-      boxPolicyFileCopies(input.projectRoot, input.runtime.name),
+      boxPolicyFileCopies(input.projectRoot),
       await this.releaseFor(input.runtime.box?.version),
       folder,
     );
