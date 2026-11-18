@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import type { CloudWatchTelemetry } from "./boxNetwork";
 import {
-  BOX_TELEMETRY_POLICY_FILE,
   boxTelemetryPolicy,
+  boxTelemetryPolicyFile,
   placeBoxTelemetryPolicy,
 } from "./boxTelemetry";
 
@@ -85,24 +85,47 @@ const agent = (rest: Record<string, unknown> = {}) => ({
   ...rest,
 });
 
+describe("boxTelemetryPolicyFile", () => {
+  test("names one file for each runtime, under agentcore/", () => {
+    expect(boxTelemetryPolicyFile("agent")).toBe("agentcore/box-telemetry-policy-agent.json");
+    expect(boxTelemetryPolicyFile("other")).toBe("agentcore/box-telemetry-policy-other.json");
+  });
+});
+
 describe("placeBoxTelemetryPolicy", () => {
   test("lists the file from the runtime's codeLocation, where the CDK library reads it", () => {
     const spec = specWith([agent({ additionalPolicies: ["mine.json"] })]);
 
     expect(placeBoxTelemetryPolicy(spec, ROOT, ["agent"])).toEqual([
-      `adding ${BOX_TELEMETRY_POLICY_FILE} to additionalPolicies of 'agent', so its box can ` +
-        "send telemetry to CloudWatch",
+      `adding ${boxTelemetryPolicyFile("agent")} to additionalPolicies of 'agent', so its box ` +
+        "can send telemetry to CloudWatch",
     ]);
     const [, entry] = spec.runtimes[0]!.additionalPolicies!;
     expect(spec.runtimes[0]!.additionalPolicies).toEqual([
       "mine.json",
-      "../../agentcore/box-telemetry-policy.json",
+      "../../agentcore/box-telemetry-policy-agent.json",
     ]);
-    expect(resolve(ROOT, "app/agent", entry!)).toBe(resolve(ROOT, BOX_TELEMETRY_POLICY_FILE));
+    expect(resolve(ROOT, "app/agent", entry!)).toBe(resolve(ROOT, boxTelemetryPolicyFile("agent")));
+  });
+
+  test("lists on each runtime of `boxed` its own file, and on no other runtime", () => {
+    const spec = specWith([
+      agent(),
+      agent({ name: "other", codeLocation: "app/other" }),
+      agent({ name: "none", codeLocation: "app/none" }),
+    ]);
+
+    placeBoxTelemetryPolicy(spec, ROOT, ["agent", "other"]);
+
+    expect(spec.runtimes.map(({ additionalPolicies }) => additionalPolicies)).toEqual([
+      ["../../agentcore/box-telemetry-policy-agent.json"],
+      ["../../agentcore/box-telemetry-policy-other.json"],
+      undefined,
+    ]);
   });
 
   test("changes nothing when the runtime lists the file already", () => {
-    const listed = ["../../agentcore/box-telemetry-policy.json"];
+    const listed = ["../../agentcore/box-telemetry-policy-agent.json"];
     const spec = specWith([agent({ additionalPolicies: listed })]);
     expect(placeBoxTelemetryPolicy(spec, ROOT, ["agent"])).toEqual([]);
     expect(spec.runtimes[0]!.additionalPolicies).toEqual(listed);
@@ -116,14 +139,19 @@ describe("placeBoxTelemetryPolicy", () => {
 
   test("removes the entry from a runtime whose box sends no CloudWatch telemetry, and keeps the user's", () => {
     const spec = specWith([
-      agent({ additionalPolicies: ["mine.json", "../../agentcore/box-telemetry-policy.json"] }),
-      agent({ name: "other", additionalPolicies: ["../../agentcore/box-telemetry-policy.json"] }),
+      agent({
+        additionalPolicies: ["mine.json", "../../agentcore/box-telemetry-policy-agent.json"],
+      }),
+      agent({
+        name: "other",
+        additionalPolicies: ["../../agentcore/box-telemetry-policy-other.json"],
+      }),
     ]);
 
     expect(placeBoxTelemetryPolicy(spec, ROOT, [])).toEqual([
-      `removing ${BOX_TELEMETRY_POLICY_FILE} from additionalPolicies of 'agent': its box ` +
+      `removing ${boxTelemetryPolicyFile("agent")} from additionalPolicies of 'agent': its box ` +
         "sends no telemetry to CloudWatch",
-      `removing ${BOX_TELEMETRY_POLICY_FILE} from additionalPolicies of 'other': its box ` +
+      `removing ${boxTelemetryPolicyFile("other")} from additionalPolicies of 'other': its box ` +
         "sends no telemetry to CloudWatch",
     ]);
     expect(spec.runtimes[0]!.additionalPolicies).toEqual(["mine.json"]);
@@ -131,8 +159,8 @@ describe("placeBoxTelemetryPolicy", () => {
   });
 
   test("keeps a user file of the same name elsewhere", () => {
-    const spec = specWith([agent({ additionalPolicies: ["box-telemetry-policy.json"] })]);
+    const spec = specWith([agent({ additionalPolicies: ["box-telemetry-policy-agent.json"] })]);
     expect(placeBoxTelemetryPolicy(spec, ROOT, [])).toEqual([]);
-    expect(spec.runtimes[0]!.additionalPolicies).toEqual(["box-telemetry-policy.json"]);
+    expect(spec.runtimes[0]!.additionalPolicies).toEqual(["box-telemetry-policy-agent.json"]);
   });
 });

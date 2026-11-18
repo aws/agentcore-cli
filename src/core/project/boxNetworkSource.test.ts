@@ -6,6 +6,7 @@ import { InvalidEnvironmentError } from "../../errors/errors";
 import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import type { BoxProfileResolver } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 
 const directories: string[] = [];
@@ -161,6 +162,55 @@ describe("readBoxNetworks", () => {
     );
 
     expect(await failuresOf(root)).toEqual([]);
+  });
+});
+
+describe("the telemetry of each box runtime", () => {
+  test("comes from the runtime's own local box profile", async () => {
+    const root = await project([]);
+    await writeProfile(root, "second", []);
+    await writeProfile(root, "quiet", []);
+    const spec = {
+      ...SPEC,
+      runtimes: [
+        ...SPEC.runtimes,
+        { ...SPEC.runtimes[0]!, name: "second", codeLocation: "app/second" },
+        { ...SPEC.runtimes[0]!, name: "quiet", codeLocation: "app/quiet" },
+      ],
+    } as ProjectSpec;
+    const logs = (log_group: string) => ({
+      kind: "cloudwatch_logs",
+      region: "us-west-2",
+      log_group,
+      log_stream: "s",
+      secret: { ref: "aws://default" },
+    });
+    const groups: Record<string, string> = {
+      "box/agent/local/profile.toml": "group-a",
+      "box/second/local/profile.toml": "group-b",
+    };
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        const shown = boxShowOf({ egress: API_ROUTE });
+        const group = groups[profilePath];
+        if (group === undefined) return shown;
+        return { ...shown, boxToml: { ...shown.boxToml, telemetry: { logs: logs(group) } } };
+      },
+    };
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(networks.map(({ runtime, telemetry }) => [runtime, telemetry])).toEqual([
+      [
+        "agent",
+        [{ kind: "cloudwatch_logs", region: "us-west-2", logGroup: "group-a", logStream: "s" }],
+      ],
+      [
+        "second",
+        [{ kind: "cloudwatch_logs", region: "us-west-2", logGroup: "group-b", logStream: "s" }],
+      ],
+      ["quiet", undefined],
+    ]);
   });
 });
 
