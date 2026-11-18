@@ -46,7 +46,7 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
+import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { MissingToolError } from "../../io/exec";
@@ -62,6 +62,7 @@ const AGENT_PYTHON_STRANDS_BOX = resolveRuntimeTemplateShortcut("agent-python-st
 const AGENT_PYTHON_STRANDS_BOX_CONTAINER = resolveRuntimeTemplateShortcut(
   "agent-python-strands-box-container",
 );
+const BOX_PROFILE_FILE = boxLocalProfileFile(AGENT_PYTHON_STRANDS_BOX.runtimeName);
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
 const AGUI_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("agui-python-strands");
@@ -743,22 +744,25 @@ describe("FsProjectManager.create box profile", () => {
   test.each([
     ["after installing", false],
     ["with --skip-install", true],
-  ])("writes the box profile into the project's .box folder %s", async (_label, skipInstall) => {
-    const directory = await inTempDirectory();
-    const { events } = await runCreate(manager().manager, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-      skipInstall,
-      skipGit: true,
-      region: "eu-west-1",
-    });
+  ])(
+    "writes the box profile into the agent's box/<name>/local folder %s",
+    async (_label, skipInstall) => {
+      const directory = await inTempDirectory();
+      const { events } = await runCreate(manager().manager, {
+        name: "example",
+        scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+        skipInstall,
+        skipGit: true,
+        region: "eu-west-1",
+      });
 
-    const path = join(directory, "example", BOX_PROFILE_FILE);
-    expect(await readFile(path, "utf8")).toBe(
-      renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "local", "", [], "eu-west-1")!,
-    );
-    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
-  });
+      const path = join(directory, "example", BOX_PROFILE_FILE);
+      expect(await readFile(path, "utf8")).toBe(
+        renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "local", "", [], "eu-west-1")!,
+      );
+      expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+    },
+  );
 
   test("calls Bedrock in the region build would use when create is given none", async () => {
     const directory = await inTempDirectory();
@@ -812,7 +816,7 @@ describe("FsProjectManager.create box profile", () => {
   test("leaves an existing box profile unchanged", async () => {
     const directory = await inTempDirectory();
     const path = join(directory, "example", BOX_PROFILE_FILE);
-    await mkdir(join(directory, "example", ".box"), { recursive: true });
+    await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "# mine\n");
 
     const { events } = await runCreate(manager().manager, {
@@ -2010,7 +2014,11 @@ describe("FsProjectManager.build", () => {
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
-    // The zip carries box and the Runtime profile, staged before synth packages the code.
+    // Build generates the canonical AWS tree under box/<agent>/aws.
+    const aws = join(directory, "example", "box", "agent_python_strands_box", "aws");
+    expect(existsSync(join(aws, "box"))).toBe(true);
+    expect(existsSync(join(aws, "profile.toml"))).toBe(true);
+    // The zip carries box and the Runtime profile, copied into the code folder's .box-dist.
     const dist = join(directory, "example", "app", "agent_python_strands_box", ".box-dist");
     expect(existsSync(join(dist, "box"))).toBe(true);
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
