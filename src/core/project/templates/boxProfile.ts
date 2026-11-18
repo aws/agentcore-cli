@@ -51,6 +51,12 @@ export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pa
 const GATEWAY_URL_PATTERN = "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com";
 
 /**
+ * Bounds the `aws.region` input, as box/bedrock bounds `bedrock.region`: box requires a `pattern` or
+ * `values` on an input that reaches a backend's `auth.aws.region`.
+ */
+const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
+
+/**
  * Bounds an input that reaches the agent `command` (the Python path and the code dir): an absolute
  * path of safe characters, so a value from the environment cannot inject other arguments.
  */
@@ -512,13 +518,13 @@ ${toolDenyWrite}${routes}${bedrockRoute}${keyedRoute}`;
  * with its own role. Every `[egress.<name>]` on the Runtime is one of these, so
  * every outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeGatewayRouteSection(target: string, host: string, region: string): string {
+function runtimeGatewayRouteSection(target: string, host: string): string {
   const key = tomlKey(target);
   return `
 # Calls to ${host}, through the runtime's Box gateway's '${target}' target.
 [egress.${key}]
 destinations = [${str(host)}]
-${runtimeGatewayBackend(`egress.${key}`, target, region)}`;
+${runtimeGatewayBackend(`egress.${key}`, target)}`;
 }
 
 /** An HTTP MCP server of the box profile that a Box gateway target serves. */
@@ -533,12 +539,7 @@ type McpSource = Extract<BoxNetworkSource, { kind: "mcp" }>;
  * gateway sends the key. Box refuses a signed secret beside a backend, and
  * `inject` has no effect there, so neither stays. Starts with a blank line.
  */
-function runtimeMcpServerSection(
-  server: RuntimeMcpServer,
-  target: string,
-  host: string,
-  region: string,
-): string {
+function runtimeMcpServerSection(server: RuntimeMcpServer, target: string, host: string): string {
   const key = tomlKey(server.name);
   const secret = server.secret?.ref.startsWith("env://")
     ? Object.entries(server.secret)
@@ -551,22 +552,23 @@ function runtimeMcpServerSection(
 [mcp.${key}]
 type = "http"
 destinations = [${str(host)}]
-${secret}${runtimeGatewayBackend(`mcp.${key}`, target, region)}`;
+${secret}${runtimeGatewayBackend(`mcp.${key}`, target)}`;
 }
 
 /**
  * The backend of a Runtime route or MCP server: the runtime's Box gateway
- * target. Both Runtime profiles read the gateway URL from the environment
- * through the agentcore pack's input, and sign with the execution role through
- * a bare `aws://`. Starts with a blank line.
+ * target. Both Runtime profiles read the gateway URL and the region from the
+ * environment through the agentcore pack's inputs, and sign with the execution
+ * role through a bare `aws://`, so the profile names no region. Starts with a
+ * blank line.
  */
-function runtimeGatewayBackend(table: string, target: string, region: string): string {
+function runtimeGatewayBackend(table: string, target: string): string {
   return `
 [[${table}.backends]]
 url = ${str(`\${{ inputs.gateway.url }}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
-auth.aws.region = ${str(region)}
+auth.aws.region = "\${{ inputs.aws.region }}"
 `;
 }
 
@@ -582,7 +584,6 @@ auth.aws.region = ${str(region)}
 function runtimeGatewayRoutes(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  region: string,
   servers: ReadonlyMap<string, RuntimeMcpServer>,
 ): string {
   if (!isBoxProject(spec)) return "";
@@ -594,8 +595,8 @@ function runtimeGatewayRoutes(
       const server = servers.get(target.name);
       return [
         server
-          ? runtimeMcpServerSection(server, target.name, host, region)
-          : runtimeGatewayRouteSection(target.name, host, region),
+          ? runtimeMcpServerSection(server, target.name, host)
+          : runtimeGatewayRouteSection(target.name, host),
       ];
     })
     .join("");
@@ -664,12 +665,11 @@ export function renderRuntimeBoxProfile(
     // Build and deploy render this only for a runtime that runs its agent in a box.
     box: true,
   } as ScaffoldRuntimeInput;
-  const region = network?.region ?? BOX_GATEWAY_BEDROCK_REGION;
   const profile = renderBoxProfile(
     spec.name,
     input,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
+    runtimeGatewayRoutes(spec, runtime, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
     network?.region,
   )!;
@@ -759,7 +759,13 @@ kind = "support"
 [inputs.gateway.url]
 description = "The runtime's Box gateway URL."
 from = ${str(`env:${BOX_GATEWAY_URL_ENV}`)}
-pattern = ${str(GATEWAY_URL_PATTERN)}${memoryInputs}
+pattern = ${str(GATEWAY_URL_PATTERN)}
+
+# The Runtime's region, which box signs each Box gateway backend for. The Runtime sets AWS_REGION.
+[inputs.aws.region]
+description = "The AWS region the runtime runs in."
+from = "env:AWS_REGION"
+pattern = ${str(AWS_REGION_PATTERN)}${memoryInputs}
 ${agentEnv}`;
 }
 

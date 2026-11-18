@@ -499,7 +499,7 @@ describe("renderRuntimeBoxProfile", () => {
           // A bare aws:// signs with the execution role via the default credential chain.
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -515,7 +515,7 @@ describe("renderRuntimeBoxProfile", () => {
           url: "${{ inputs.gateway.url }}/agentcore",
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -551,7 +551,10 @@ describe("renderRuntimeBoxProfile", () => {
     const BACKENDS = [
       {
         url: "${{ inputs.gateway.url }}/egress-tools",
-        auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+        auth: {
+          ref: "aws://",
+          aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
+        },
       },
     ];
     /** The model's host for the server `tools`, which the target `egress-tools` serves. */
@@ -611,7 +614,7 @@ describe("renderRuntimeBoxProfile", () => {
           'secret.phantom_prefix = "tk-"\n\n' +
           "[[mcp.tools.backends]]\n" +
           'url = "${{ inputs.gateway.url }}/egress-tools"\nauth.ref = "aws://"\n' +
-          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "us-west-2"\n',
+          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "${{ inputs.aws.region }}"\n',
       );
     });
 
@@ -747,6 +750,16 @@ describe("renderAgentCorePack", () => {
     // The input reaches a backend url, so box needs a pattern or values on it.
     expect(typeof inputs.gateway.url.pattern).toBe("string");
     expect(inputs.gateway.url.pattern.length).toBeGreaterThan(0);
+  });
+
+  test("declares the region input from AWS_REGION, bounded to region names", () => {
+    const { inputs } = pack([]);
+    expect(inputs.aws.region.from).toBe("env:AWS_REGION");
+    // The input reaches a backend's auth.aws.region, so box needs a pattern or values on it.
+    const pattern = new RegExp(`^(?:${inputs.aws.region.pattern})$`);
+    expect(pattern.test("us-west-2")).toBe(true);
+    expect(pattern.test("eu-central-1")).toBe(true);
+    expect(pattern.test("us-west-2.evil.com")).toBe(false);
   });
 
   test("declares one input per memory and carries each ID into the agent's environment", () => {
