@@ -610,24 +610,12 @@ describe("hosts the model cannot carry", () => {
     ]);
   });
 
-  test("fails an MCP server over HTTP at its [mcp] entry, and an [egress] entry that is one", () => {
-    const r = model(
-      permit("tools", on("tools.example.com")),
-      { m: { destinations: ["mcp.example.com"], protocol: "mcp" } },
-      {
-        mcp: { tools: { type: "http", destinations: ["tools.example.com"] } },
-      },
-    );
-    expect(r.failures()).toEqual([
-      ["MCP_OVER_HTTP", "m"],
-      ["MCP_OVER_HTTP", "tools"],
-    ]);
+  test("refuses an [egress] entry that sets protocol = mcp, and names the [mcp] server to write", () => {
+    const r = model("", { m: { destinations: ["mcp.example.com"], protocol: "mcp" } });
+    expect(r.failures()).toEqual([["MCP_OVER_HTTP", "m"]]);
     expect(r.lines()).toEqual([
-      'box/agent/local/profile.toml:2:1  [egress.m] is an MCP server (protocol = "mcp"), and the deployed ' +
-        "agent cannot reach it through the gateway. Run the server as a stdio server under " +
-        "[mcp], or remove the entry.",
-      "box/agent/local/profile.toml:3:1  [mcp.tools] is an MCP server over HTTP, and the deployed agent " +
-        "cannot reach it through the gateway. Make it a stdio server, or remove it.",
+      'box/agent/local/profile.toml:2:1  [egress.m] sets protocol = "mcp", which Box does not take. ' +
+        'Declare the server as [mcp.m] with type = "http", and remove this entry.',
     ]);
   });
 
@@ -757,6 +745,134 @@ describe("hosts the model cannot carry", () => {
     expect(unnamed.lines()).toEqual([
       `box/agent/local/policy.dw:1:1  This rule allows requests to every host, ${rest} Add a condition ` +
         'that names each host, for example context.input.host == "api.example.com".',
+    ]);
+  });
+});
+
+describe("HTTP MCP servers", () => {
+  const server = (destinations: string[], rest: Record<string, unknown> = {}) => ({
+    type: "http",
+    destinations,
+    ...rest,
+  });
+
+  test("gives a server with no secret a target named after it, which sends no credential", () => {
+    const r = model("", {}, { mcp: { tools: server(["tools.example.com"]) } });
+    expect(r.failures()).toEqual([]);
+    expect(r.host("tools.example.com")).toMatchObject({
+      target: "egress-tools",
+      outboundAuth: { kind: "none" },
+      reachable: true,
+      sources: [
+        { kind: "mcp", mcpEntry: "tools", destinations: ["tools.example.com"] },
+        { kind: "rule", ruleId: "mcp_tools_connect" },
+        { kind: "rule", ruleId: "mcp_tools_request" },
+      ],
+    });
+    expect(r.network.credentials).toEqual([]);
+  });
+
+  test("sends an env:// server's key from the API key credential named after it, and keeps its secret", () => {
+    const secret = { ref: "env://TOOLS_TOKEN", header: "x-api-key", phantom_prefix: "tk-" };
+    const r = model("", {}, { mcp: { tools: server(["tools.example.com"], { secret }) } });
+    expect(r.failures()).toEqual([]);
+    expect(r.host("tools.example.com")).toMatchObject({
+      target: "egress-tools",
+      outboundAuth: {
+        kind: "apiKey",
+        credentialName: "tools",
+        variable: "TOOLS_TOKEN",
+        header: "x-api-key",
+      },
+      sources: [
+        { kind: "mcp", mcpEntry: "tools", destinations: ["tools.example.com"], secret },
+        { kind: "rule", ruleId: "mcp_tools_connect" },
+        { kind: "rule", ruleId: "mcp_tools_request" },
+      ],
+    });
+    expect(r.network.credentials).toEqual([{ name: "tools", variable: "TOOLS_TOKEN" }]);
+  });
+
+  test("signs an aws:// server on an AWS host with the gateway's role, and refuses one on another host", () => {
+    const host = "abc123.lambda-url.us-west-2.on.aws";
+    const signed = model("", {}, { mcp: { fn: server([host], { secret: { ref: "aws://" } }) } });
+    expect(signed.failures()).toEqual([]);
+    expect(signed.host(host)).toMatchObject({
+      target: "egress-fn",
+      outboundAuth: { kind: "iam", service: "lambda", region: "us-west-2" },
+    });
+    const unsigned = model(
+      "",
+      {},
+      { mcp: { tools: server(["tools.example.com"], { secret: { ref: "aws://default" } }) } },
+    );
+    expect(unsigned.lines()).toEqual([
+      "box/agent/local/profile.toml:2:1  [mcp.tools] signs requests to tools.example.com with " +
+        "aws://default, and the gateway signs only for Bedrock, AgentCore, and Lambda function " +
+        "URL hosts. Use an env:// secret for this host, or remove the secret.",
+    ]);
+  });
+
+  test("stops on a server with two destinations, a path, or a wildcard, at its entry", () => {
+    const r = model(
+      "",
+      {},
+      {
+        mcp: {
+          two: server(["a.example.com", "b.example.com"]),
+          pathed: server(["c.example.com/mcp"]),
+          wild: server(["*.example.com"]),
+        },
+      },
+    );
+    expect(r.failures()).toEqual([
+      ["MCP_DESTINATION_NOT_ONE_HOST", "two"],
+      ["MCP_DESTINATION_NOT_ONE_HOST", "pathed"],
+      ["MCP_DESTINATION_NOT_ONE_HOST", "wild"],
+    ]);
+    expect(r.lines()).toEqual([
+      "box/agent/local/profile.toml:2:1  [mcp.two] names 2 destinations, and the gateway route of " +
+        "an MCP server takes exactly one host. Declare one [mcp] server for each host.",
+      'box/agent/local/profile.toml:3:1  [mcp.pathed] has the destination "c.example.com/mcp", and ' +
+        "the gateway route of an MCP server takes a host with no path. Remove /mcp from the " +
+        "destination. The agent's MCP client keeps the path in its URL.",
+      'box/agent/local/profile.toml:4:1  [mcp.wild] has the wildcard destination "*.example.com", ' +
+        "and the gateway route of an MCP server takes one exact host. Name the server's host.",
+    ]);
+    expect(r.network.hosts).toEqual([]);
+  });
+
+  test("fails a server whose target name an [egress] entry's target has, with the collision failure", () => {
+    const r = model("", { github: GITHUB }, { mcp: { github: server(["api.githubcopilot.com"]) } });
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "github"]]);
+    expect(r.lines()).toEqual([
+      "box/agent/local/profile.toml:3:1  [mcp.github] would name the gateway target for " +
+        "api.githubcopilot.com 'egress-github', and [egress.github] for api.github.com has that " +
+        "name. Rename the entry.",
+    ]);
+  });
+
+  test("fails a server that takes the API key credential of an [egress] entry for another variable", () => {
+    const r = model(
+      "",
+      {
+        tools: {
+          destinations: ["a.example.com", "b.example.com"],
+          secret: { ref: "env://TOOLS_KEY" },
+        },
+      },
+      { mcp: { tools: server(["mcp.example.com"], { secret: { ref: "env://TOOLS_MCP_KEY" } }) } },
+    );
+    expect(r.targets()).toEqual([
+      "a.example.com -> egress-tools-a-example-com",
+      "b.example.com -> egress-tools-b-example-com",
+      "mcp.example.com -> egress-tools",
+    ]);
+    expect(r.failures()).toEqual([["API_KEY_CREDENTIAL_SHARED", "tools"]]);
+    expect(r.lines()).toEqual([
+      "box/agent/local/profile.toml:3:1  [mcp.tools] needs the API key credential 'tools' for " +
+        "env://TOOLS_MCP_KEY, and [egress.tools] takes that credential for env://TOOLS_KEY. One " +
+        "credential holds one key. Rename the entry.",
     ]);
   });
 });

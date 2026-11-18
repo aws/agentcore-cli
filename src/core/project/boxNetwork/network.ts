@@ -9,8 +9,14 @@ import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName, boxEgressCredentials } from "../boxProfileCredentials";
-import { buildHostMap, type MappedHost } from "./hostMap";
-import { BOX_EGRESS_TARGET_PREFIX, outboundAuthFor, parseEndpoint, targetNameFor } from "./egress";
+import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
+import {
+  BOX_EGRESS_TARGET_PREFIX,
+  outboundAuthFor,
+  parseEndpoint,
+  targetNameFor,
+  type BoxEgressSecret,
+} from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
@@ -33,12 +39,22 @@ export type BoxEgressAuth =
       readonly prefix?: string;
     };
 
-/** What names a host: an `[egress]` entry with its destinations there, or a permit. */
+/**
+ * What names a host: an `[egress]` entry with its destinations there, an HTTP `[mcp]` server, or a
+ * permit.
+ */
 export type BoxNetworkSource =
   | {
       readonly kind: "entry";
       readonly egressEntry: string;
       readonly destinations: readonly string[];
+    }
+  | {
+      readonly kind: "mcp";
+      readonly mcpEntry: string;
+      readonly destinations: readonly string[];
+      /** The server's own secret, which the AgentCore Runtime profile keeps for the agent. */
+      readonly secret?: BoxEgressSecret;
     }
   | { readonly kind: "rule"; readonly ruleId: string };
 
@@ -93,7 +109,10 @@ export interface BoxNetwork {
   readonly gateway: string;
   /** The region build builds for: of the Box gateway, its `bedrock` and `agentcore` targets. */
   readonly region: string;
-  /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
+  /**
+   * The `[egress]` entries' hosts in profile order, then the HTTP `[mcp]` servers' hosts, then the
+   * hosts only the permits name.
+   */
   readonly hosts: readonly BoxNetworkHost[];
   readonly credentials: readonly BoxEgressCredential[];
   /** The policy files, relative to the agent's local box folder, to copy beside the AgentCore Runtime profile. */
@@ -154,7 +173,11 @@ export function buildBoxNetwork(
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
   const targets = hostTargets(map.hosts, project, located, parsed.profile.path);
   failures.push(...targets.failures);
-  const credentials = boxEgressCredentials(parsed.profile.egress, project.spec.credentials);
+  const credentials = boxEgressCredentials(
+    parsed.profile.egress,
+    project.spec.credentials,
+    parsed.profile.mcp,
+  );
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -254,9 +277,11 @@ function hostTargets(
     });
   }
   /** The entry, or else the first rule, that names the host. */
-  const namer = (host: MappedHost): Pick<ConversionFailure, "egressEntry" | "ruleId"> =>
+  const namer = (
+    host: MappedHost,
+  ): Pick<ConversionFailure, "egressEntry" | "mcpEntry" | "ruleId"> =>
     host.entry
-      ? { egressEntry: host.entry.egressEntry }
+      ? entryRef(host.entry)
       : host.namedBy[0] !== undefined
         ? { ruleId: host.namedBy[0] }
         : {};
@@ -267,15 +292,29 @@ function hostTargets(
 
   const claimed = new Set<string>();
   const reused = new Set<number>();
+  /** The variable and the entry of each API key credential an entry takes. */
+  const keys = new Map<string, { readonly variable: string; readonly entry: string }>();
   const hosts = mapped.map((host, index): BoxNetworkHost => {
     let auth: BoxEgressAuth = { kind: "none" };
     const entry = host.entry;
     if (entry) {
-      const result = outboundAuthFor(entry.secret, host.host, entry.egressEntry, (variable) =>
-        boxEgressCredentialName(project.spec.credentials, entry.egressEntry, variable),
+      const result = outboundAuthFor(entry.secret, host.host, entry.name, (variable) =>
+        boxEgressCredentialName(project.spec.credentials, entry.name, variable),
       );
       if (result.ok) auth = result.auth;
       else failAt(host, result.code, result.reason);
+      const holder = auth.kind === "apiKey" ? keys.get(auth.credentialName) : undefined;
+      if (auth.kind === "apiKey" && holder && holder.variable !== auth.variable) {
+        failAt(
+          host,
+          "API_KEY_CREDENTIAL_SHARED",
+          `needs the API key credential '${auth.credentialName}' for env://${auth.variable}, ` +
+            `and ${holder.entry} takes that credential for env://${holder.variable}. One ` +
+            "credential holds one key. Rename the entry.",
+        );
+      } else if (auth.kind === "apiKey" && !holder) {
+        keys.set(auth.credentialName, { variable: auth.variable, entry: entryLabel(entry) });
+      }
     }
     let target: string | undefined;
     if (host.reachable) {
@@ -301,8 +340,8 @@ function hostTargets(
       } else {
         const proposed = entry
           ? entry.split
-            ? `${entry.egressEntry}-${host.authority}`
-            : entry.egressEntry
+            ? `${entry.name}-${host.authority}`
+            : entry.name
           : host.authority;
         target = targetNameFor(proposed);
         if (target === undefined) {
@@ -323,15 +362,7 @@ function hostTargets(
       ...(host.port !== 443 && { port: host.port }),
       authority: host.authority,
       sources: [
-        ...(entry
-          ? [
-              {
-                kind: "entry" as const,
-                egressEntry: entry.egressEntry,
-                destinations: entry.destinations,
-              },
-            ]
-          : []),
+        ...(entry ? [entrySource(entry)] : []),
         ...host.namedBy.map((ruleId) => ({ kind: "rule" as const, ruleId })),
       ],
       outboundAuth: auth,
@@ -350,9 +381,7 @@ function hostTargets(
     if (!isManagedTarget(target)) owners.set(target.name, `the gateway target '${target.name}'`);
   }
   const describeHost = (host: MappedHost) =>
-    host.entry
-      ? `[egress.${host.entry.egressEntry}] for ${host.authority}`
-      : `the host ${host.authority}`;
+    host.entry ? `${entryLabel(host.entry)} for ${host.authority}` : `the host ${host.authority}`;
   for (const index of reused) owners.set(hosts[index]!.target!, describeHost(mapped[index]!));
   mapped.forEach((host, index) => {
     const name = hosts[index]!.target;
@@ -386,6 +415,19 @@ function hostTargets(
     });
   }
   return { hosts, failures };
+}
+
+/** The source of the entry that names a host. */
+function entrySource(entry: NonNullable<MappedHost["entry"]>): BoxNetworkSource {
+  if (entry.table === "egress") {
+    return { kind: "entry", egressEntry: entry.name, destinations: entry.destinations };
+  }
+  return {
+    kind: "mcp",
+    mcpEntry: entry.name,
+    destinations: entry.destinations,
+    ...(entry.secret && { secret: entry.secret }),
+  };
 }
 
 /**
@@ -448,7 +490,7 @@ function targetConflict(
   if (sameOutboundAuth(target.outboundAuth, wanted)) return undefined;
   return (
     `${named} sends ${outboundAuthWords(target.outboundAuth)}, and ` +
-    `[egress.${host.entry.egressEntry}] sends ${outboundAuthWords(wanted)}. Make the two the ` +
+    `${entryLabel(host.entry)} sends ${outboundAuthWords(wanted)}. Make the two the ` +
     `same, in agentcore.json or in ${profilePath}.`
   );
 }
@@ -463,7 +505,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
     return `the ${quoted.length > 1 ? "rules" : "rule"} ${list}`;
   };
   for (const host of hosts) {
-    const entry = host.sources.find((source) => source.kind === "entry");
+    const entry = host.sources.find((source): source is EntrySource => source.kind !== "rule");
     if (!host.reachable) {
       if (!entry) continue;
       const deny =
@@ -472,7 +514,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
           : ` (${rules(host.forbiddenBy)} ${host.forbiddenBy.length > 1 ? "deny" : "denies"} it)`;
       warnings.push(
         `${host.authority}: your policy allows no request to this host${deny}, so ` +
-          `[egress.${entry.egressEntry}] gets no gateway target.`,
+          `${sourceLabel(entry)} gets no gateway target.`,
       );
       continue;
     }
@@ -487,6 +529,13 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
     );
   }
   return warnings;
+}
+
+type EntrySource = Exclude<BoxNetworkSource, { kind: "rule" }>;
+
+/** The entry of a source as a message names it: `[egress.github]` or `[mcp.docs]`. */
+function sourceLabel(source: EntrySource): string {
+  return source.kind === "entry" ? `[egress.${source.egressEntry}]` : `[mcp.${source.mcpEntry}]`;
 }
 
 /**

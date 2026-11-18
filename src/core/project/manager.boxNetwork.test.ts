@@ -282,6 +282,42 @@ describe("build writes the Box network of the box profile", () => {
     expect(await boxFiles(root)).toEqual(before);
   });
 
+  test("gives an HTTP MCP server a target and its API key credential, and keeps it an [mcp] server on the Runtime", async () => {
+    const { manager, root, box } = await strandsProject();
+    const tools = {
+      type: "http",
+      destinations: ["tools.example.com"],
+      secret: { ref: "env://TOOLS_TOKEN" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+        'secret.ref = "env://TOOLS_TOKEN"\n',
+    });
+    box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-tools", "bedrock", "agentcore"]);
+    const { targets } = await boxGateway(root);
+    // A CUSTOM passthrough target, so Box alone decides each mcp:call.
+    expect(targets[0]).toEqual(
+      userTarget("egress-tools", "https://tools.example.com", {
+        outboundAuth: { ...GITHUB_KEY, credentialName: "tools" },
+      }),
+    );
+    expect(JSON.parse(await text(root, SPEC)).credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "tools",
+    });
+    expect(steps).toContain("adding API key credential 'tools' for env://TOOLS_TOKEN");
+    const profile = await runtimeProfile(root);
+    expect(Object.keys(profile.egress as object)).toEqual(["bedrock", "agentcore"]);
+    expect(profile.mcp).toEqual({
+      tools: { ...tools, backends: GATEWAY_BACKEND("egress-tools") },
+    });
+  });
+
   test("leaves the user's other gateways as written, with no defaults added", async () => {
     const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
@@ -393,7 +429,7 @@ describe("build writes the Box network of the box profile", () => {
         '\n[egress.github]\ndestinations = ["api.github.com"]\n' +
         '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n' +
         '\n[egress.wide]\ndestinations = ["*.wide.example.com"]\nsecret.ref = "env://WIDE_KEY"\n' +
-        '\n[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',
+        '\n[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com/mcp"]\n',
       policy,
     });
     await editGateway(root, (gateway) => {
@@ -410,7 +446,7 @@ describe("build writes the Box network of the box profile", () => {
         wide: { destinations: ["*.wide.example.com"], secret: { ref: "env://WIDE_KEY" } },
         legacy: { destinations: ["legacy.example.com"], secret: { ref: "credsd://prod" } },
       },
-      mcp: { docs: { type: "http", destinations: ["docs.example.com"] } },
+      mcp: { docs: { type: "http", destinations: ["docs.example.com/mcp"] } },
       policy:
         policy +
         `@id("pack_mirrors") permit (principal, ${HR}, resource) when { context.input.host like "*.mirror.example.com" };\n`,

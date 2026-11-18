@@ -40,26 +40,33 @@ export function boxEgressCredentialName(
 }
 
 /**
- * The API key credential each `[egress.<name>] secret.ref = "env://VAR"` route of `egress` needs,
- * named by {@link boxEgressCredentialName}, and a message for each route it cannot name. A
- * non-`env://` ref (`aws://`, and so on) names no API key, and a var that an existing credential
- * already covers (for example a model provider's key that `agentcore create` declared) needs no
- * second one.
+ * The API key credential each `[egress.<name>] secret.ref = "env://VAR"` route of `egress`, and
+ * each such HTTP server of `mcp`, needs, named by {@link boxEgressCredentialName}, and a message
+ * for each entry it cannot name. A non-`env://` ref (`aws://`, and so on) names no API key, and a
+ * var that an existing credential already covers (for example a model provider's key that
+ * `agentcore create` declared) needs no second one.
  */
 export function boxEgressCredentials(
   egress: Readonly<Record<string, unknown>>,
   credentials: readonly Credential[],
+  mcp: Readonly<Record<string, unknown>> = {},
 ): { needed: AddedBoxCredential[]; skipped: string[] } {
   const needed: AddedBoxCredential[] = [];
   const skipped: string[] = [];
-  for (const [name, entry] of Object.entries(egress)) {
+  const entries = [
+    ...Object.entries(egress).map(([name, entry]) => ({ table: "egress", name, entry })),
+    ...Object.entries(mcp)
+      .filter(([, entry]) => (entry as { type?: unknown } | null)?.type === "http")
+      .map(([name, entry]) => ({ table: "mcp", name, entry })),
+  ];
+  for (const { table, name, entry } of entries) {
     const ref = (entry as { secret?: { ref?: unknown } } | null)?.secret?.ref;
     const variable = envVarFromRef(ref);
     if (variable === undefined) continue;
     const credential = boxEgressCredentialName(credentials, name, variable);
     if (credential === undefined) {
       skipped.push(
-        `[egress.${name}] gets no API key credential for env://${variable}: ${JSON.stringify(name)} ` +
+        `[${table}.${name}] gets no API key credential for env://${variable}: ${JSON.stringify(name)} ` +
           "is not a valid credential name, or a credential of another type has it. Rename the " +
           "entry.",
       );

@@ -397,10 +397,9 @@ describe("the copy of the profile for the build region", () => {
     const reachable = network?.hosts.filter((host) => host.reachable) ?? [];
     expect(reachable.map((h) => [h.authority, h.target, h.outboundAuth.kind])).toEqual([
       ["k.example.com:8443", "egress-keyed", "apiKey"],
+      ["docs.example.com", "egress-docs", "none"],
     ]);
-    expect(network?.failures.map(({ code, mcpEntry }) => [code, mcpEntry])).toEqual([
-      ["MCP_OVER_HTTP", "docs"],
-    ]);
+    expect(network?.failures).toEqual([]);
   });
 
   test.each([
@@ -515,10 +514,9 @@ describe("the box on PATH", () => {
       expect(reachable.map((h) => [h.authority, h.target, h.outboundAuth.kind])).toEqual([
         ["k.example.com:8443", "egress-keyed", "apiKey"],
         ["api.github.com", "egress-github", "none"],
+        ["docs.example.com", "egress-docs", "none"],
       ]);
-      expect(network?.failures.map(({ code, mcpEntry }) => [code, mcpEntry])).toEqual([
-        ["MCP_OVER_HTTP", "docs"],
-      ]);
+      expect(network?.failures).toEqual([]);
       expect(network?.warnings).toContainEqual(
         expect.stringContaining('Box still applies the rule "no_admin"'),
       );

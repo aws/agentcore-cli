@@ -86,16 +86,90 @@ describe("the policy decision on each host", () => {
       result.failures.map(({ code, egressEntry, ruleId }) => [code, egressEntry ?? ruleId]),
     ).toEqual([["EGRESS_WILDCARD_DESTINATION", "wide"]]);
   });
+});
 
-  test("fails an MCP server over HTTP at its [mcp] entry, once", () => {
+describe("HTTP MCP servers", () => {
+  const named = (result: ReturnType<typeof map>) =>
+    result.failures.map(({ code, egressEntry, mcpEntry, ruleId }) => [
+      code,
+      egressEntry ?? mcpEntry ?? ruleId,
+    ]);
+
+  test("makes the host of a server a node, which Box's own rules for the server decide", () => {
     const result = map(
-      permit("tools", on("tools.example.com")),
+      permit("tools_get", on("tools.example.com", 'context.input.method == "GET"')),
       {},
       { tools: { type: "http", destinations: ["tools.example.com"] } },
     );
-    expect(result.failures.map(({ code, mcpEntry, ruleId }) => [code, mcpEntry ?? ruleId])).toEqual(
-      [["MCP_OVER_HTTP", "tools"]],
+    expect(named(result)).toEqual([]);
+    expect(result.hosts.map(({ authority }) => authority)).toEqual(["tools.example.com"]);
+    expect(host(result, "tools.example.com")).toMatchObject({
+      entry: { table: "mcp", name: "tools", destinations: ["tools.example.com"], split: false },
+      namedBy: ["tools_get", "mcp_tools_connect", "mcp_tools_request"],
+      reachable: true,
+      forbiddenBy: [],
+    });
+  });
+
+  test("fails a server that is not one exact host on port 443, at its entry, with its rules", () => {
+    const result = map(
+      permit("two_get", on("a.example.com")),
+      {},
+      {
+        two: { type: "http", destinations: ["a.example.com", "b.example.com"] },
+        pathed: { type: "http", destinations: ["c.example.com/mcp"] },
+        wild: { type: "http", destinations: ["*.example.com"] },
+        port: { type: "http", destinations: ["d.example.com:8443"] },
+        routed: {
+          type: "http",
+          destinations: ["e.example.com"],
+          backends: [{ url: "https://gw.example.com" }],
+        },
+        stray: { type: "http", destinations: ["f.example.com"], tools: ["x"] },
+      },
     );
+    expect(named(result)).toEqual([
+      ["MCP_DESTINATION_NOT_ONE_HOST", "two"],
+      ["MCP_DESTINATION_NOT_ONE_HOST", "pathed"],
+      ["MCP_DESTINATION_NOT_ONE_HOST", "wild"],
+      ["MCP_PORT_NOT_443", "port"],
+      ["EGRESS_HAS_BACKEND", "routed"],
+      ["INVALID_INPUT", "stray"],
+      ["EGRESS_ENTRY_FAILED", "two_get"],
+    ]);
+    expect(result.hosts).toEqual([]);
+  });
+
+  test("fails a server on a host another entry names on any port, and a rule on another port of it", () => {
+    const result = map(
+      permit("tools_alt", on("tools.example.com", "context.input.port == 8443")),
+      { api: { destinations: ["api.example.com:8443"] } },
+      {
+        api: { type: "http", destinations: ["api.example.com"] },
+        tools: { type: "http", destinations: ["tools.example.com"] },
+        again: { type: "http", destinations: ["tools.example.com"] },
+      },
+    );
+    expect(named(result)).toEqual([
+      ["EGRESS_DESTINATION_OVERLAP", "api"],
+      ["EGRESS_DESTINATION_OVERLAP", "again"],
+      ["EGRESS_DESTINATION_OVERLAP", "tools_alt"],
+    ]);
+    expect(result.failures.map(({ reason }) => reason)).toEqual([
+      "names api.example.com, and [egress.api] names that host too, but Box gives each request " +
+        "to the host of an MCP server to that server. Keep api.example.com in only one of the two.",
+      "names tools.example.com, and [mcp.tools] names that host too, but Box gives each request " +
+        "to the host of an MCP server to that server. Keep tools.example.com in only one of the two.",
+      "allows tools.example.com:8443, and [mcp.tools] names tools.example.com, but Box gives each " +
+        "request to the host of an MCP server to that server. Allow tools.example.com only on " +
+        "port 443, or remove the rule.",
+    ]);
+    // Box's own request permit for [egress.api] names no port, so it also names api.example.com.
+    expect(result.hosts.map(({ authority, reachable }) => [authority, reachable])).toEqual([
+      ["api.example.com:8443", true],
+      ["tools.example.com", true],
+      ["api.example.com", false],
+    ]);
   });
 });
 
