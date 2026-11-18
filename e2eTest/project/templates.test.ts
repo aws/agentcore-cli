@@ -14,6 +14,8 @@ type RuntimeTemplateTestCase = {
   protocol: "HTTP" | "MCP" | "A2A" | "AGUI";
   payload: Record<string, unknown>;
   invokeFlags?: string[];
+  /** The port `agentcore dev` serves on; LOCAL_DEV_PORT_BASE plus the case's index otherwise. */
+  devPort?: number;
   skip?: boolean;
   /**
    * A Strands Box template: it runs its agent in a box on AgentCore Runtime. Create needs `box` on
@@ -84,6 +86,25 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     // Note: GH actions mac runners do not come with docker installed and does not allow nested virtualization (https://docs.github.com/en/actions/reference/runners/github-hosted-runners#limitations-for-arm64-macos-runners)
     // windows are also unable to run the linux container without a vm.
     skip: process.env.CI === "true" && process.platform !== "linux",
+  },
+  // The box templates run their agent in Strands Box. CI deploys with the released
+  // @aws/agentcore-cdk, which has no Box support yet, and its runners have no box on PATH for a
+  // CodeZip `agentcore dev`, so they run only outside CI for now.
+  {
+    name: "py_strands_box",
+    template: "agent-python-strands-box",
+    protocol: "HTTP" as const,
+    payload: { prompt: "Reply with a short greeting." },
+    // A CodeZip box agent's dev serves on the box profile's ingress port, 8080 for HTTP.
+    devPort: 8080,
+    skip: process.env.CI === "true",
+  },
+  {
+    name: "py_strands_box_container",
+    template: "agent-python-strands-box-container",
+    protocol: "HTTP" as const,
+    payload: { prompt: "Reply with a short greeting." },
+    skip: process.env.CI === "true",
   },
   {
     name: "agent_python_langchain",
@@ -242,7 +263,7 @@ describe(
             cli,
             runtime,
             projectDir,
-            LOCAL_DEV_PORT_BASE + RUNTIME_TEMPLATES.indexOf(runtime),
+            runtime.devPort ?? LOCAL_DEV_PORT_BASE + RUNTIME_TEMPLATES.indexOf(runtime),
           );
 
           const deployment = parseResult(
