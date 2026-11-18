@@ -370,9 +370,22 @@ bun run "$CLI" gateway list
 bun run "$CLI" identity api-key-credential-provider get --name github
 ```
 
-## 10. (Optional) Send box telemetry to CloudWatch
+## 10. Read box telemetry and gateway logs in CloudWatch
 
-Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
+On AgentCore Runtime, box sends each policy decision (permit, deny, trace) to CloudWatch Logs. When
+the agent's box profile names no `cloudwatch_logs` target, build adds one for the log group that
+deploy creates for the runtime, `/aws/bedrock-agentcore/box/<project>/<agent>`, stream `box`.
+
+```sh
+aws logs filter-log-events --log-group-name /aws/bedrock-agentcore/box/$PROJECT/agent --filter-pattern '"deny"'
+```
+
+Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`.
+
+Deploy also delivers the logs of the agent's Box gateway to
+`/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`.
+
+To send box telemetry to your own log group instead:
 
 1. Create the log group and the log stream. Box does not create them.
 
@@ -393,18 +406,10 @@ Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
    secret.ref = "aws://"
    ```
 
-3. Run `agentcore deploy`. Build copies the table into the Runtime profile, so on AgentCore Runtime
-   box signs with the execution role. It also grants that role `logs:PutLogEvents` on the stream,
-   in `agentcore/box-telemetry-policy-agent.json`, which it lists in the runtime's
-   `additionalPolicies`.
-
-4. Invoke the agent, then read the records:
-
-   ```sh
-   aws logs filter-log-events --log-group-name /aws/box/$PROJECT --filter-pattern '"deny"'
-   ```
-
-   Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`.
+3. Run `agentcore deploy`. Build copies the table into the Runtime profile in place of the default,
+   so on AgentCore Runtime box signs with the execution role. It also grants that role
+   `logs:PutLogEvents` on the stream, in `agentcore/box-telemetry-policy-agent.json`, which it lists
+   in the runtime's `additionalPolicies`.
 
 ## 11. Tear down
 

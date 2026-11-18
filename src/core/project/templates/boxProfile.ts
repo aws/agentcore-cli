@@ -80,6 +80,50 @@ const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+/-]+";
  */
 const RUNTIME_AWS_SIGNER = "aws://";
 
+/** The log stream of the Box telemetry log group that the CDK creates for each box runtime. */
+export const BOX_TELEMETRY_LOG_STREAM = "box";
+
+/** The signal groups that the default CloudWatch Logs target of a Runtime profile receives. */
+const DEFAULT_TELEMETRY_INCLUDE = ["deny", "permit", "trace"] as const;
+
+/**
+ * The Box telemetry log group that the CDK creates for runtime `runtimeName` of project
+ * `projectName`. Box reads a telemetry target only as literal text, so build writes the name.
+ */
+export function boxTelemetryLogGroup(projectName: string, runtimeName: string): string {
+  return `/aws/bedrock-agentcore/box/${projectName}/${runtimeName}`;
+}
+
+/**
+ * The CloudWatch targets of the Runtime profile of `runtime`: those of its box profile, and, when
+ * none of them is a `cloudwatch_logs` target, the runtime's Box telemetry log group in `region`.
+ */
+export function runtimeTelemetryTargets(
+  spec: ProjectSpec,
+  runtime: ProjectRuntime,
+  telemetry: readonly CloudWatchTelemetry[] = [],
+  region: string = BOX_GATEWAY_BEDROCK_REGION,
+): { readonly target: CloudWatchTelemetry; readonly isDefault: boolean }[] {
+  const own = telemetry.map((target) => ({ target, isDefault: false }));
+  if (telemetry.some(({ kind }) => kind === "cloudwatch_logs")) return own;
+  const names = new Set(telemetry.map(({ name }) => name));
+  const name = names.has("agentcore") ? "agentcore_default" : "agentcore";
+  return [
+    ...own,
+    {
+      target: {
+        name,
+        kind: "cloudwatch_logs",
+        region,
+        logGroup: boxTelemetryLogGroup(spec.name, runtime.name),
+        logStream: BOX_TELEMETRY_LOG_STREAM,
+        include: DEFAULT_TELEMETRY_INCLUDE,
+      },
+      isDefault: true,
+    },
+  ];
+}
+
 /**
  * Stand-in AWS keys for the agent on AgentCore Runtime. They let boto3 in the box sign a request,
  * which box then sends to the Box gateway signed again with RUNTIME_AWS_SIGNER, so they
@@ -634,15 +678,23 @@ function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpSe
  * through a bare `aws://`, whatever the box profile signs it with. Starts with a
  * blank line.
  */
-function runtimeTelemetrySection(target: CloudWatchTelemetry, profileFile: string): string {
+function runtimeTelemetrySection(
+  target: CloudWatchTelemetry,
+  profileFile: string,
+  isDefault = false,
+): string {
   const logs =
     target.kind === "cloudwatch_logs"
       ? `log_group = ${str(target.logGroup)}\nlog_stream = ${str(target.logStream)}\n`
       : "";
   const include = target.include ? `include = ${list([...target.include])}\n` : "";
   const key = tomlKey(target.name);
+  const comment = isDefault
+    ? "# The default CloudWatch Logs target: the runtime's Box telemetry log group, which the CDK\n" +
+      `# creates, signed with the execution role. Add a cloudwatch_logs target to ${profileFile} to use another.`
+    : `# The [telemetry.${key}] target of ${profileFile}, signed with the execution role.`;
   return `
-# The [telemetry.${key}] target of ${profileFile}, signed with the execution role.
+${comment}
 [telemetry.${key}]
 kind = ${str(target.kind)}
 region = ${str(target.region)}
@@ -688,8 +740,8 @@ export function renderRuntimeBoxProfile(
   const profileFile = boxLocalProfileFile(runtime.name);
   return (
     profile +
-    (network?.telemetry ?? [])
-      .map((target) => runtimeTelemetrySection(target, profileFile))
+    runtimeTelemetryTargets(spec, runtime, network?.telemetry, network?.region)
+      .map(({ target, isDefault }) => runtimeTelemetrySection(target, profileFile, isDefault))
       .join("")
   );
 }

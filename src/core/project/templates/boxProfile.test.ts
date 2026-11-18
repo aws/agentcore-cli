@@ -13,6 +13,8 @@ import { cloudWatchTelemetry, type BoxNetworkHost } from "../boxNetwork";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
+  BOX_TELEMETRY_LOG_STREAM,
+  boxTelemetryLogGroup,
   boxProfileWarnings,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
@@ -644,13 +646,26 @@ describe("renderRuntimeBoxProfile", () => {
       },
       "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
     };
-    const rendered = (telemetry: Record<string, unknown>) => {
+    const rendered = (telemetry: Record<string, unknown>, region?: string) => {
       const project = spec([bedrock]);
       const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
         policyFiles: [],
         telemetry: cloudWatchTelemetry({ telemetry }),
+        ...(region && { region }),
       });
       return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
+    };
+    /** The default target of the Runtime profile: the runtime's Box telemetry log group. */
+    const defaultTarget = (region: string) => {
+      const project = spec([bedrock]);
+      return {
+        kind: "cloudwatch_logs",
+        region,
+        log_group: boxTelemetryLogGroup(project.name, project.runtimes[0]!.name),
+        log_stream: BOX_TELEMETRY_LOG_STREAM,
+        include: ["deny", "permit", "trace"],
+        secret: { ref: "aws://" },
+      };
     };
 
     test("copies each CloudWatch target with its keys, signed with a bare aws://", () => {
@@ -678,18 +693,48 @@ describe("renderRuntimeBoxProfile", () => {
       expect(text).not.toContain("Admin-personal");
     });
 
-    test("copies no file, otlp, langfuse, or langsmith target", () => {
+    test("copies no file, otlp, langfuse, or langsmith target, and adds the default target", () => {
       const { records, collector, langfuse, langsmith } = TELEMETRY;
 
-      expect(rendered({ records, collector, langfuse, langsmith }).toml.telemetry).toBeUndefined();
+      expect(
+        rendered({ records, collector, langfuse, langsmith }, "eu-west-1").toml.telemetry,
+      ).toEqual({ agentcore: defaultTarget("eu-west-1") });
     });
 
-    test("copies no CloudWatch target that Box refuses, as it grants it nothing", () => {
+    test("copies no CloudWatch target that Box refuses, and adds the default target", () => {
       const logs = { ...TELEMETRY.logs, log_stream: "a:b" };
 
       expect(
-        rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }).toml.telemetry,
-      ).toBeUndefined();
+        rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }, "eu-west-1").toml
+          .telemetry,
+      ).toEqual({ agentcore: defaultTarget("eu-west-1") });
+    });
+
+    test("sends to the runtime's Box telemetry log group when the profile has no [telemetry]", () => {
+      const { text, toml } = rendered({}, "ap-south-1");
+
+      expect(toml.telemetry).toEqual({ agentcore: defaultTarget("ap-south-1") });
+      expect(text).toContain("# The default CloudWatch Logs target: the runtime's Box telemetry");
+    });
+
+    test("adds the default target beside a cloudwatch_traces target, as it sends no logs", () => {
+      expect(rendered({ "x-ray": TELEMETRY["x-ray"] }, "eu-west-1").toml.telemetry).toEqual({
+        "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
+        agentcore: defaultTarget("eu-west-1"),
+      });
+    });
+
+    test("names the default target agentcore_default when the profile has an agentcore target", () => {
+      const telemetry = rendered({ agentcore: TELEMETRY["x-ray"] }, "eu-west-1").toml.telemetry;
+
+      expect(Object.keys(telemetry ?? {})).toEqual(["agentcore", "agentcore_default"]);
+      expect(telemetry?.agentcore_default).toEqual(defaultTarget("eu-west-1"));
+    });
+
+    test("adds no default target when the profile has its own cloudwatch_logs target", () => {
+      expect(Object.keys(rendered({ logs: TELEMETRY.logs }).toml.telemetry ?? {})).toEqual([
+        "logs",
+      ]);
     });
   });
 
