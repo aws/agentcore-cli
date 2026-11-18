@@ -23,6 +23,7 @@ describe("template order", () => {
       "agent-typescript-strands",
       "agent-typescript-vercel",
       "a2a-python-strands",
+      "a2a-python-strands-box",
       "agui-python-strands",
       "mcp-python-fastmcp",
       "empty",

@@ -280,6 +280,20 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
+  "a2a-python-strands-box": {
+    runtimeName: "a2a_python_strands_box",
+    description:
+      "Strands agent speaking the A2A protocol in Strands Box, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    protocol: "A2A",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "agui-python-strands": {
     runtimeName: "agui_python_strands",
     description: "Strands agent speaking AG-UI, Bedrock or another model provider",
