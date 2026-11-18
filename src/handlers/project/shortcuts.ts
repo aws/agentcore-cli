@@ -219,6 +219,18 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
+  "agent-python-langchain-box": {
+    runtimeName: "agent_python_langchain_box",
+    description: "LangChain agent in Strands Box with Bedrock for inference",
+    build: "CodeZip",
+    language: "Python",
+    framework: "langchain",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    box: true,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "agent-typescript-vercel": {
     runtimeName: "agent_typescript_vercel",
     description: "Vercel AI SDK agent in TypeScript, Bedrock for inference",

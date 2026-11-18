@@ -16,6 +16,7 @@ describe("template order", () => {
       "agent-python-strands-container",
       "agent-python-strands-box-container",
       "agent-python-langchain",
+      "agent-python-langchain-box",
       "environment-python-bma",
       "agent-python-minimal",
       "agent-python-minimal-box",
