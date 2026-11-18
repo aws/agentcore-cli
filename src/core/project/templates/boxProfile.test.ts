@@ -392,7 +392,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
         // The container reads the deployed resources from the environment through box/agentcore.
         packs: ["box/base", "box/bedrock", "box/agentcore"],
         profile: { name: "V3Demo" },
-        project: { access: "write" },
+        project: { access: "read" },
         options: { bedrock: { region: "us-west-2" } },
         agent: {
           command: [
@@ -411,7 +411,6 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
           filesystem: IMAGE_PYTHON_FILESYSTEM,
           ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
         },
-        tool: { uname: { filesystem: { deny_write: IMAGE_PYTHON_FILESYSTEM.deny_write } } },
       });
     },
   );
