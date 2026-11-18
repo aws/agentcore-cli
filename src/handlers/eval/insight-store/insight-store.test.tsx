@@ -74,6 +74,7 @@ describe("eval insight-store command hierarchy", () => {
       "evaluator",
       "online-eval",
       "dataset",
+      "dataset-generation",
       "batch-evaluation",
       "ondemand",
       "config-bundle",
