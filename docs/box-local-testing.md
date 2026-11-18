@@ -95,14 +95,18 @@ to that folder.
 
 Set these once per shell. Change the values for your machine: `CLI` is the CLI run from source in
 your workspace checkout, `L3` is the local L3 constructs checkout, and `DEMO` and `PROJECT` say
-where the demo project goes.
+where the demo project goes. Use absolute paths: the steps below `cd` into other folders, where a
+relative path no longer resolves (`bun` then says `Module not found "./agentcore-cli/src/index.ts"`).
+From the folder that holds both checkouts, `$PWD` gives them:
 
 ```
-CLI=/path/to/workspace/agentcore-cli/src/index.ts
-L3=/path/to/workspace/agentcore-l3-cdk-constructs
+CLI="$PWD/agentcore-cli/src/index.ts"
+L3="$PWD/agentcore-l3-cdk-constructs"
 DEMO=/tmp/cliDemo
 PROJECT=cliDemo
 ```
+
+`echo "$CLI"` must print a path that starts with `/`.
 
 ## Install the CLI's dependencies
 
